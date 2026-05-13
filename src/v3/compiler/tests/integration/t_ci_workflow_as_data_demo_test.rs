@@ -18,14 +18,21 @@
 
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, LiteralBits, TypeConnective, ValueNode,
+    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueNode,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
+const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
+const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
+const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
+const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
@@ -266,6 +273,125 @@ fn sample_demo_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         })
 }
 
+fn structural_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> &'a FieldValue {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("missing structural field `{label}`"))
+}
+
+fn literal_string(value: &FieldValue) -> &str {
+    let FieldValue::Literal(LiteralBits::String(value)) = value else {
+        panic!("expected string literal field, got {value:?}");
+    };
+    value
+}
+
+fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
+    let FieldValue::Record(fields) = value else {
+        panic!("expected structural record field, got {value:?}");
+    };
+    fields
+}
+
+fn structural_record_ref<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    value: &'a FieldValue,
+) -> &'a [(String, FieldValue)] {
+    match value {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+                panic!(
+                    "expected reference to structural data, got {:?}",
+                    decl.value_body
+                );
+            };
+            fields
+        }
+        _ => panic!("expected structural record or reference, got {value:?}"),
+    }
+}
+
+fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue) -> &'static str {
+    let FieldValue::Variant { constructor, .. } = value else {
+        panic!("expected structural variant field, got {value:?}");
+    };
+
+    for label in [
+        "LintCommand",
+        "TestCommand",
+        "IgnoredTestCommand",
+        "ShellCommand",
+    ] {
+        if *constructor == disj_variant_constructor_id(dag, sum_name, label) {
+            return label;
+        }
+    }
+    panic!("unexpected {sum_name} constructor {constructor:?}");
+}
+
+fn structural_list(value: &FieldValue) -> &[FieldValue] {
+    let FieldValue::List(items) = value else {
+        panic!("expected structural list field, got {value:?}");
+    };
+    items
+}
+
+fn workflow_topology<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    fields: &'a [(String, FieldValue)],
+) -> (&'a str, Vec<&'a str>, Vec<(&'a str, &'a str)>) {
+    let pipeline = structural_record_ref(dag, structural_field(fields, "pipeline"));
+    let name = literal_string(structural_field(pipeline, "name"));
+    let node_ids = structural_list(structural_field(pipeline, "gates"))
+        .iter()
+        .map(|gate| literal_string(structural_field(structural_record_ref(dag, gate), "id")))
+        .collect();
+    let edges = structural_list(structural_field(fields, "edges"))
+        .iter()
+        .map(|edge| {
+            let edge = structural_record(edge);
+            let from = structural_record_ref(dag, structural_field(edge, "from"));
+            let to = structural_record_ref(dag, structural_field(edge, "to"));
+            (
+                literal_string(structural_field(from, "id")),
+                literal_string(structural_field(to, "id")),
+            )
+        })
+        .collect();
+    (name, node_ids, edges)
+}
+
+fn workflow_gate_records<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    fields: &'a [(String, FieldValue)],
+) -> Vec<&'a [(String, FieldValue)]> {
+    let pipeline = structural_record_ref(dag, structural_field(fields, "pipeline"));
+    structural_list(structural_field(pipeline, "gates"))
+        .iter()
+        .map(|gate| structural_record_ref(dag, gate))
+        .collect()
+}
+
+fn structural_value_body<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    name: &str,
+) -> &'a [(String, FieldValue)] {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} data must load"));
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "{name} must lower as structural data, got {:?}",
+            decl.value_body
+        );
+    };
+    fields
+}
+
 #[test]
 fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     let dag = demo_bootstrap_dag();
@@ -276,10 +402,183 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     );
     dag.declaration_by_name("modeled_gunbc_ci_workflow")
         .expect("modeled_gunbc_ci_workflow data must load from t_ci_workflow_as_data_demo.dag");
+    assert!(
+        dag.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+            .is_none(),
+        "bootstrap demo must not author a second CI DAG topology authority"
+    );
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
+fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let fields = structural_value_body(&ci, "ci_workflow_dag");
+    let (name, node_ids, edges) = workflow_topology(&ci, fields);
+
+    assert_eq!(
+        name, "gunbc-ci",
+        "modeled workflow DAG name must derive from the CI pipeline"
+    );
+
+    assert_eq!(
+        node_ids,
+        vec!["compile-gates", "lint", "tests", "l1-ratchet"],
+        "CI workflow DAG must carry one node per structural gate"
+    );
+
+    assert_eq!(
+        edges,
+        vec![
+            ("compile-gates", "lint"),
+            ("compile-gates", "tests"),
+            ("lint", "l1-ratchet"),
+            ("tests", "l1-ratchet"),
+        ],
+        "CI workflow dependencies must be modeled as provider-neutral DAG edges"
+    );
+
+    // Edge endpoints are structural CIGate references; `workflow_topology`
+    // projects ids only for readable assertions above.
+}
+
+#[test]
+fn ci_workflow_as_data_demo_pins_interim_command_shape() {
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let fields = structural_value_body(&ci, "ci_workflow_dag");
+    let gate_records = workflow_gate_records(&ci, fields);
+
+    let mut commands = gate_records
+        .iter()
+        .map(|gate| {
+            let id = literal_string(structural_field(gate, "id"));
+            let command = structural_field(gate, "command");
+            let label = variant_label(&ci, "CICommand", command);
+            let payload = match command {
+                FieldValue::Variant { payload, .. } => payload.as_slice(),
+                _ => unreachable!(),
+            };
+            let payload_text = payload
+                .iter()
+                .map(literal_string)
+                .collect::<Vec<_>>()
+                .join("|");
+            (id, label, payload_text)
+        })
+        .collect::<Vec<_>>();
+    commands.sort_by_key(|(id, ..)| *id);
+
+    assert_eq!(
+        commands,
+        vec![
+            ("compile-gates", "IgnoredTestCommand", "ci_".to_string()),
+            (
+                "l1-ratchet",
+                "ShellCommand",
+                "scripts/l1-ratchet.sh --check".to_string()
+            ),
+            ("lint", "LintCommand", String::new()),
+            ("tests", "TestCommand", String::new()),
+        ],
+        "CICommand must keep impossible field combinations out of authored gate data"
+    );
+}
+
+#[test]
+fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
+    let demo = demo_bootstrap_dag();
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+
+    assert!(
+        demo.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+            .is_none(),
+        "bootstrap demo must not carry a mirror of ci_workflow_dag"
+    );
+    assert_eq!(
+        workflow_topology(&ci, structural_value_body(&ci, "ci_workflow_dag")),
+        (
+            "gunbc-ci",
+            vec!["compile-gates", "lint", "tests", "l1-ratchet"],
+            vec![
+                ("compile-gates", "lint"),
+                ("compile-gates", "tests"),
+                ("lint", "l1-ratchet"),
+                ("tests", "l1-ratchet"),
+            ],
+        ),
+        "dsl/gunbc/ci.dag must remain the single CI DAG topology authority"
+    );
+}
+
+#[test]
+fn gunbc_ci_github_actions_workflow_authority_compiles() {
+    let dag = match compile_to_dag(
+        GUNBC_CI_GITHUB_WORKFLOW_SOURCE,
+        GUNBC_CI_GITHUB_WORKFLOW_FILE,
+    ) {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => panic!(
+            "compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {:?}",
+            d.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(e) => panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"),
+    };
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+/// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
+/// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
+/// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
+#[test]
+fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
+    use std::path::Path;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+    let ci_yml = repo_root.join(".github/workflows/ci.yml");
+    let dag_path = repo_root.join("dsl/gunbc/ci_github_actions_workflow.dag");
+    assert!(
+        ci_yml.is_file(),
+        "missing {} (repo root {})",
+        ci_yml.display(),
+        repo_root.display()
+    );
+
+    let yaml = std::fs::read_to_string(&ci_yml)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ci_yml.display()));
+    let expected =
+        std::fs::read(&dag_path).unwrap_or_else(|e| panic!("read {}: {e}", dag_path.display()));
+
+    let fresh = gen_gunbc_ci_workflow_dag::emit_ci_github_actions_workflow_module(
+        ".github/workflows/ci.yml",
+        &yaml,
+    )
+    .unwrap_or_else(|e| panic!("emit_ci_github_actions_workflow_module: {e}"));
+
+    assert_eq!(
+        fresh.as_bytes(),
+        expected.as_slice(),
+        "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
+    );
+}
+
+#[test]
+fn gunbc_ci_emission_substrate_compiles() {
+    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_EMISSION_FILE}: {err:?}"));
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+#[test]
+// Deferred with explicit P5 anchor (not ad-hoc TBD): ROADMAP.md "Forward-Tracked Lane: T-Workflow-As-Data"
+// (~L57ff) + timing-lens / `WorkflowObservationAnchor` thread (~L75ff, `docs/design-timing-lens.md` section 2).
+// Dissolution: re-enable under default CI by amortizing this harness through `cached_compile_to_dag`
+// (`tests/integration/common/cached_compile.rs`) / OnceLock so cold v3 (~67m full-bootstrap + evaluator) stays bounded.
+#[ignore = "ROADMAP T-Workflow-As-Data lane + timing-lens anchor (ROADMAP.md ~L57, ~L75); cold v3 full-bootstrap+evaluator ~67m — dissolve via cached_compile_to_dag/OnceLock (tests/integration/common/cached_compile.rs); hot-fix 2026-05-12"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
     assert!(

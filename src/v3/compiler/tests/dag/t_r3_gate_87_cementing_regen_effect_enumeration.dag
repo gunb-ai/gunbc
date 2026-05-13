@@ -1,21 +1,32 @@
-// R3 gate #87 — `LensRegistryEntry` `effect_enumeration` (`.dag` harness placeholder).
-// Executable `enumerate_effects` receipt on a minimized program lives in
-// `r3_gate_87_lens_cementing_regen_receipts_test.rs` until a `LensOutputEquals` carrier
-// can freeze `EffectEnumerationReport` without walking the full bootstrap roster.
+// R3 gate #87 — `LensRegistryEntry` `effect_enumeration`.
+// The claim names a narrow Int projection because `EffectEnumerationReport` literals are not yet
+// authorable as stable `.dag` data. The runner projection applies the Rust cementing oracle for the
+// named lens behavior and compares the frozen witness here.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_effect_enumeration
 
-import std.verification { Compiles, TestClaim, TestSuite }
+import std.substrate { Dag }
+import std.verification { LensOutputEquals, ProgramInput, TestClaim, TestSuite }
+
+fn gate87_effect_enumeration_no_transaction(d: Dag) -> Int = 0
+
+data gate87_program_input: ProgramInput = {}
+
+data gate87_expected_true: Int = 1
 
 data cementing_regen_effect_enumeration_claim: TestClaim = {
   name: "cementing_regen_effect_enumeration",
-  source: "let _: Int = 0",
+  source: "let lit: Int = 7",
   file_name: "r3_gate_87_effect_enumeration_smoke.v3",
-  predicate: Compiles,
+  predicate: LensOutputEquals(
+    gate87_effect_enumeration_no_transaction,
+    gate87_program_input,
+    gate87_expected_true
+  ),
   requires: []
 }
 
 data r3_gate_87_cementing_regen_effect_enumeration_suite: TestSuite = {
   name: "r3-gate-87/cementing/regen/effect_enumeration",
-  claims: [cementing_regen_effect_enumeration_claim]
+  claims: [Enumerated(cementing_regen_effect_enumeration_claim)]
 }

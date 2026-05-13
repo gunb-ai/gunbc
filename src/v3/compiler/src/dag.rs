@@ -119,10 +119,6 @@ mod computation {
         Forever,
     }
 
-    pub fn tree_size_bound(param: String) -> SizeBound {
-        SizeBound::TreeSize { param }
-    }
-
     /// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
     ///
     /// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
@@ -270,17 +266,16 @@ mod computation {
         )
     }
 
-    /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
-    pub fn forever_iteration_bound() -> i64 {
-        i64::MAX
-    }
-
     /// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
+    ///
+    /// `Forever` materializes as signed-`Int` top (`i64::MAX`) per `std.computation`
+    /// `repeat(max_int)`; the prior `forever_iteration_bound()` Rust mirror was retired
+    /// (Tier3 gate #2 narrow slice — see `tier3_computation_mirror_trivial_constructors_dissolved`).
     pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
         match bound {
             SizeBound::ExplicitCountZero => Some(0),
             SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
-            SizeBound::Forever => Some(forever_iteration_bound()),
+            SizeBound::Forever => Some(i64::MAX),
             _ => None,
         }
     }
@@ -339,10 +334,9 @@ mod effects;
 mod ports;
 
 pub use computation::{
-    algebra_profile_to_dimension, constant_bound_value, forever_iteration_bound, is_constant_bound,
-    lower_call_pattern, size_bound_param, tree_size_bound, type_iteration_dimension,
-    AlgebraProfile, CallPattern, IterationDimension, IterationPrimitive, LoweringTarget,
-    ShrinkFactor, SizeBound,
+    algebra_profile_to_dimension, constant_bound_value, is_constant_bound, lower_call_pattern,
+    size_bound_param, type_iteration_dimension, AlgebraProfile, CallPattern, IterationDimension,
+    IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
 
 pub use effects::{
@@ -1147,15 +1141,15 @@ pub enum ArrowBody {
 // Port, port-reference carriers, and the non-trivial-arity list helpers
 // live in `dag/ports.rs`. See re-exports at the top of this module.
 
-// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/termination.dag`.
+// Termination carriers for `src/v3/std/termination.dag`.
 //
-// The `.dag` declarations are the carrier authority, but std block bodies
-// still lower as `ArrowBody::Unparsed`, so the lattice helpers below are the
-// temporary executable bridge. Dissolution trigger: when std block bodies lower
-// and can be evaluated from `.dag`, replace these helper bodies with calls into
-// the evaluated `.dag` authority or remove them with the first real consumer.
-// `m2_substrate_inhabitance_test` pins the carrier shape, body-span staging
-// contract, and current Rust mirror behavior until that trigger fires.
+// The `.dag` declarations are the carrier authority. Gate
+// `tier3_termination_mirror_dissolved` retired the public Rust mirror of the
+// `DescentEvidence` lattice operations (`evidence_rank`, `merge_evidence`,
+// `join_evidence`, `promote_to_strict`, `optional_evidence_meet`, and
+// `map_evidence_merge_at`). The std declarations still preserve their
+// `ArrowBody::Unparsed` spans in bootstrap; consumers must not add a second
+// host-side executable copy while evaluator-backed std body execution lands.
 
 /// 🟢 TERMINAL at termination-proof scope.
 ///
@@ -1280,82 +1274,6 @@ pub struct ProofEdge {
     pub caller: String,
     pub callee: String,
     pub evidence: Vec<DescentEvidence>,
-}
-
-pub fn evidence_rank(evidence: DescentEvidence) -> i64 {
-    match evidence {
-        DescentEvidence::Strict => 2,
-        DescentEvidence::NonIncreasing => 1,
-        DescentEvidence::DescentUnknown => 0,
-    }
-}
-
-pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-        DescentEvidence::Strict => match b {
-            DescentEvidence::Strict => DescentEvidence::Strict,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-        },
-        DescentEvidence::NonIncreasing => match b {
-            DescentEvidence::Strict => DescentEvidence::NonIncreasing,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-        },
-        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-    }
-}
-
-pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-        DescentEvidence::DescentUnknown => b,
-        DescentEvidence::NonIncreasing => match b {
-            DescentEvidence::Strict => DescentEvidence::Strict,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
-        },
-        DescentEvidence::Strict => DescentEvidence::Strict,
-    }
-}
-
-/// Legacy E-T helper name retained for carrier API parity.
-///
-/// Fail-closed behavior means no unary helper may fabricate `Strict` from
-/// weaker evidence; strict promotion requires a separate structural witness.
-///
-/// P5 bridge: identifier suggests promotion; this mirror is identity on the
-/// three `DescentEvidence` variants today (same fail-closed contract as
-/// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
-/// and/or remove `v2.compiler.complexity` call sites when parser progress threads
-/// `Strict` at the witness site.
-pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
-    evidence
-}
-
-pub fn optional_evidence_meet(
-    a: Option<DescentEvidence>,
-    b: Option<DescentEvidence>,
-) -> Option<DescentEvidence> {
-    match a {
-        None => b,
-        Some(va) => match b {
-            None => a,
-            Some(vb) => Some(merge_evidence(va, vb)),
-        },
-    }
-}
-
-pub fn map_evidence_merge_at(
-    mut base: HashMap<String, DescentEvidence>,
-    key: String,
-    new_val: DescentEvidence,
-) -> HashMap<String, DescentEvidence> {
-    let merged = match base.get(&key).copied() {
-        Some(existing) => merge_evidence(existing, new_val),
-        None => new_val,
-    };
-    base.insert(key, merged);
-    base
 }
 
 /// 🟢 TERMINAL at E-I inductive-shape scope.
@@ -3344,7 +3262,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
 /// Bind chain). INVARIANTS P3 fail-closed: consumers must not collapse
 /// the malformed variants into the legitimate-absence path — see
 /// `Dag::resolve_producer_opt` for the compat wrapper that does
-/// collapse, and `lens_apply.rs::eligibility_walk_port` for the
+/// collapse, and `lens_declaration_apply.rs::eligibility_walk_port` for the
 /// canonical typed consumer.
 pub enum ProducerLookup<'a> {
     /// Legitimate: the port has no `produced_by` link (e.g., a

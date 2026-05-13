@@ -15,12 +15,15 @@
 //   on CompileError — type errors live on the Dag, not in the Err
 //   payload.
 
+pub mod cementing_dispatch;
 pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
+pub mod integration_rs_wiring_scan;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
+pub mod r3_gate_87_cementing_regen_runner_suites;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
 
@@ -3752,9 +3755,9 @@ pub mod evaluator {
 }
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
-/// (see module docs in `lens_apply.rs`).
-pub mod lens_apply;
-pub use lens_apply::lens_testgen;
+/// (see module docs in `lens_declaration_apply.rs`).
+pub mod lens_declaration_apply;
+pub use lens_declaration_apply::lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
 /// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
@@ -4026,6 +4029,7 @@ pub mod lens_unused_parameters {
 
 /// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
 pub mod emit_rust_roundtrip_fixtures;
+pub mod gunbc_ci;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates;
 pub mod test_runner;
@@ -5200,6 +5204,158 @@ pub(crate) mod variant_payload {
     pub(crate) use generated::{
         variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
     };
+
+    #[cfg(test)]
+    mod tests {
+        use super::{variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup};
+        use crate::dag::{AtomPayload, Dag, Declaration, DeclarationId, Field, TypeConnective};
+        use crate::diagnostics::SourceSpan;
+
+        fn span() -> SourceSpan {
+            SourceSpan::new("<variant-payload-cementing-test>", 0, 0)
+        }
+
+        fn push_payload_decl(
+            dag: &mut Dag,
+            name: &str,
+            fields: Vec<(&str, DeclarationId)>,
+        ) -> DeclarationId {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some(name.to_string()),
+                connective: TypeConnective::Conj {
+                    children: fields
+                        .into_iter()
+                        .map(|(label, ty)| Field {
+                            label: label.to_string(),
+                            ty,
+                        })
+                        .collect(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span(),
+            });
+            id
+        }
+
+        fn shape_for(dag: &Dag, decl: DeclarationId) -> VariantPayloadShape {
+            match variant_payload_shape(dag, &decl) {
+                VariantPayloadShapeLookup::Found { _0: shape } => shape,
+                other => panic!("expected Found(..) payload shape, got {other:?}"),
+            }
+        }
+
+        fn dag_with_int_decl() -> (Dag, DeclarationId) {
+            let dag = Dag::new();
+            let int_decl = dag.int_shape().expect("bootstrap Int shape").declaration;
+            (dag, int_decl)
+        }
+
+        fn push_atom_decl(dag: &mut Dag) -> DeclarationId {
+            let atom = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id: atom,
+                name: Some("AtomPayload".to_string()),
+                connective: TypeConnective::Atom(AtomPayload::TypeParam("AtomPayload".to_string())),
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span(),
+            });
+            atom
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_empty_product_payload() {
+            let (mut dag, _) = dag_with_int_decl();
+            let empty = push_payload_decl(&mut dag, "EmptyPayload", Vec::new());
+            assert!(
+                matches!(shape_for(&dag, empty), VariantPayloadShape::Empty),
+                "zero-field Conj payloads are empty variants"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_positional_single_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let positional = push_payload_decl(&mut dag, "TuplePayload", vec![("_0", int_decl)]);
+            assert!(
+                matches!(
+                    shape_for(&dag, positional),
+                    VariantPayloadShape::PositionalSingle
+                ),
+                "single `_0` field is the positional-single payload convention"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_single_named_field_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let named_one =
+                push_payload_decl(&mut dag, "NamedOnePayload", vec![("value", int_decl)]);
+            match shape_for(&dag, named_one) {
+                VariantPayloadShape::NamedFields { _0: fields } => {
+                    assert_eq!(fields, vec!["value".to_string()]);
+                }
+                other => panic!("single non-`_0` field must stay named, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_multi_named_field_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let named_many = push_payload_decl(
+                &mut dag,
+                "NamedManyPayload",
+                vec![("left", int_decl), ("right", int_decl)],
+            );
+            match shape_for(&dag, named_many) {
+                VariantPayloadShape::NamedFields { _0: fields } => {
+                    assert_eq!(fields, vec!["left".to_string(), "right".to_string()]);
+                }
+                other => panic!("multi-field payload must stay named, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn variant_payload_shape_fails_closed_on_missing_declaration() {
+            let (dag, _) = dag_with_int_decl();
+            let missing = DeclarationId::test_raw(u32::MAX);
+            assert!(
+                matches!(
+                    variant_payload_shape(&dag, &missing),
+                    VariantPayloadShapeLookup::DeclarationMissing
+                ),
+                "missing declaration ids are substrate-integrity failures, not not-a-product"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_reports_non_product_declaration() {
+            let (mut dag, _) = dag_with_int_decl();
+            let atom = push_atom_decl(&mut dag);
+            assert!(
+                matches!(
+                    variant_payload_shape(&dag, &atom),
+                    VariantPayloadShapeLookup::NotPayloadProduct
+                ),
+                "non-Conj declarations are ordinary non-payload products"
+            );
+        }
+    }
 }
 mod r3_fc_lane2_loop_witness;
 pub(crate) mod workflow_parallelism;

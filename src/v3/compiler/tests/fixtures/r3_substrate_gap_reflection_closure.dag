@@ -34,5 +34,5 @@ data substrate_gap_reflection_residual_census_receipt: TestClaim = {
 
 data r3_substrate_gap_reflection_closure_suite: TestSuite = {
   name: "r3_substrate_gap_reflection_closure_suite",
-  claims: [substrate_gap_reflection_residual_census_receipt]
+  claims: [Enumerated(substrate_gap_reflection_residual_census_receipt)]
 }

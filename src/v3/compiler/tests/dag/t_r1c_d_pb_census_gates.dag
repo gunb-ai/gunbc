@@ -1,4 +1,4 @@
-// std.r1_pb_census_gates - R1C-D `.dag` TestClaim fixtures for the six
+// R1C-D — PB census `.dag` TestClaim fixtures for the six
 // PB census gates (T-PB-A ×4 + T-PB-B ×2). The Rust ratchets in
 // `src/v3/compiler/tests/integration/sg0_census_test.rs` remain the
 // drift-detection authority on the underlying lists; this file wires the
@@ -27,13 +27,11 @@
 //         (same dissolution gating as D.6) AND that the listed paths
 //         all live in the SG-0 generated-file manifest.
 //
-// Lives under `src/v3/compiler/tests/fixtures/` so it is **not**
-// auto-staged into `Dag::new()` bootstrap (`src/v3/std/*.dag` is the
-// build-script-enumerated tree). The runner test in
-// `tests/integration/r1c_d_pb_census_gates_test.rs` lowers this file
-// via `compile_to_dag` exactly like the sibling R1 gate fixtures.
+// Lives under `src/v3/compiler/tests/dag/` alongside other `TestRunner`
+// harness modules (R3 Cluster M #84 pilot — tests-as-data layout). The
+// integration receipt is `t_pb_b_1_dag_runner_test::r1c_d_pb_census_gates_suite_evaluates_through_runner`.
 
-module std.r1_pb_census_gates
+module v3.compiler.tests.r1c_d.pb_census_gates
 
 import std.verification {
   CensusBoundCheck,
@@ -147,11 +145,11 @@ data pb_rust_tests_outside_residual_zero_gate: TestClaim = {
 data r1_pb_census_gates_suite: TestSuite = {
   name: "r1_pb_census_gates_suite",
   claims: [
-    pb_hand_rust_at_shim_floor_gate,
-    lens_producer_files_remaining_gate,
-    pb_self_compile_fixed_point_gate,
-    pb_compiler_std_ratchet_zero_gate,
-    pb_test_file_generated_from_dag_gate,
-    pb_rust_tests_outside_residual_zero_gate
+    Enumerated(pb_hand_rust_at_shim_floor_gate),
+    Enumerated(lens_producer_files_remaining_gate),
+    Enumerated(pb_self_compile_fixed_point_gate),
+    Enumerated(pb_compiler_std_ratchet_zero_gate),
+    Enumerated(pb_test_file_generated_from_dag_gate),
+    Enumerated(pb_rust_tests_outside_residual_zero_gate)
   ]
 }

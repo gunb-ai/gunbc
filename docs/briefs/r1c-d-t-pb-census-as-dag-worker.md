@@ -39,7 +39,11 @@ Each gate's `.dag` fixture reads the same census-authority data the Rust ratchet
 
 ## Six fixture-authoring deliverables
 
-Each gate is a separate fixture. All 6 land in `r1_gates.dag` (or sibling `r1_pb_census_gates.dag` if the file gets too large — at the worker's discretion).
+Each gate is a separate `TestClaim`. **Landed layout:** all six live in
+`src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag` (suite `r1_pb_census_gates_suite`).
+Early drafts suggested bundling into `r1_gates.dag` vs a sibling file; the checked-in path was
+`tests/fixtures/r1_pb_census_gates.dag` until **#2715** (R3 Cluster M #84 pilot) relocated/renamed it
+under `tests/dag/` — see [`r1-closure-manager.md`](r1-closure-manager.md) R1C-D row.
 
 ### D.1 — `pb_hand_rust_at_shim_floor` `[ext: CensusBoundCheck]`
 

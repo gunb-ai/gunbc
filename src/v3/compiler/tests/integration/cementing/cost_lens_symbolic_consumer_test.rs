@@ -1,19 +1,21 @@
 //! **Layer:** integration
 //!
-//! **`symbolic_cost_of` consumer wiring** for `src/v3/lenses/cost.dag` (`regen_lens` →
-//! `lens_cost_symbolic_generated.rs`).
+//! Band-C cementing for the generated `symbolic_cost_of` consumer in
+//! `src/v3/lenses/cost.dag` (`regen_lens` → `lens_cost_symbolic_generated.rs`).
 //!
-//! **Not Band-C cementing** (`TESTING.md` § *Cementing tests — lens subsumption*): Band-C
-//! governs explicit v3 **subsumes v2** / register **`COMPLETE` + real v2 counterpart**
-//! claims and expects a v2-oracle match or reviewed projection on the same fixture. The
-//! `cost.dag` row is **PROXY** until those obligations clear; this module is only a
-//! v3-side regression pin on `compile_to_dag` fixtures (the same lookup surface
-//! `analyze_symbolic_cost_dimension` walks in `v3_compiler::dimension`).
+//! Residual gate #78 Rust receipt for the generated symbolic-cost consumer.
+//! Gate #80 Band-C cementing for `cost_symbolic` now lives in
+//! `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; this module
+//! keeps the remaining host-wrapper / `per_call_pattern_at` checks that are not
+//! the COMPLETE-row cementing authority.
 //!
-//! Tests below exercise **only** the generated `symbolic_cost_of` consumer by design;
-//! that is **not** a Band-C shortfall while `cost.dag` remains **PROXY** in
-//! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
-//! projection once the row is `COMPLETE` with a real v2 counterpart).
+//! Frozen v2-projection contract for the abstract cost scope:
+//! - leaf literal cost projects to `SymbolicCost::ConstantCost(0)`;
+//! - unary recursive countdown projects to one linear size variable keyed by the
+//!   countdown parameter port, with no polynomial or unknown carrier.
+//!
+//! The live v2 oracle is intentionally not invoked here; R3 consumes reviewed
+//! frozen projections so v2-oracle retirement does not regain a test consumer.
 //!
 //! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): integration tests pin **`symbolic_cost_of`**
 //! on unary countdown fixtures with **`assert_recursive_countdown_linear_semantics`** (linear-family).
@@ -26,6 +28,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Witness};
 
 use crate::common::assert_recursive_countdown_linear_semantics;
 
@@ -43,7 +46,16 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
         .value
 }
 
-/// v3 `symbolic_cost_of` lookup only (no v2 oracle); see module docs for Band-C scope.
+fn find_bind_node(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|bind| bind.name == name)
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
+        .id
+}
+
+/// Generated `symbolic_cost_of` lookup; see module docs for the frozen v2 projection scope.
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
     match symbolic_cost_of(dag, &port) {
@@ -52,6 +64,25 @@ fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> Symboli
             panic!("symbolic_cost_of returned Miss for bind `{bind_name}`")
         }
     }
+}
+
+fn expect_symbolic_cost_dimension(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
+    let report = analyze_symbolic_cost_dimension(dag, find_bind_node(dag, bind_name));
+    let DimensionReport::DimensionOk {
+        dimension_name,
+        composed,
+        witnesses,
+    } = report
+    else {
+        panic!("analyze_symbolic_cost_dimension returned failure for bind `{bind_name}`");
+    };
+    assert_eq!(dimension_name, "symbolic_cost");
+    assert!(
+        witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
+        "symbolic cost dimension should only emit Inhabits witnesses for `{bind_name}`, got \
+         {witnesses:?}"
+    );
+    composed
 }
 
 fn linear_size_ports(cost: &SymbolicCost, out: &mut Vec<PortId>) {
@@ -86,10 +117,15 @@ fn literal_bind_pins_symbolic_cost_of_constant_on_fixture() {
     run_with_symbolic_cost_stack(|| {
         let dag = compile_to_dag("let lit: Int = 7", "cost_sym_lit.v3").expect("literal compiles");
         let cost = expect_symbolic_cost(&dag, "lit");
+        let dimension_cost = expect_symbolic_cost_dimension(&dag, "lit");
+        assert_eq!(
+            dimension_cost, cost,
+            "dimension entrypoint should compose the same generated symbolic_cost_of carrier"
+        );
 
         assert!(
             matches!(cost, SymbolicCost::ConstantCost { _0: 0 }),
-            "literal cost should preserve constant source, got {cost:?}"
+            "frozen v2 projection: literal cost should project to ConstantCost(0), got {cost:?}"
         );
     });
 }
@@ -114,13 +150,18 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             .copied()
             .expect("countdown should have one size-bearing parameter port");
         let cost = expect_symbolic_cost(&dag, "countdown");
+        let dimension_cost = expect_symbolic_cost_dimension(&dag, "countdown");
+        assert_eq!(
+            dimension_cost, cost,
+            "dimension entrypoint should compose the same generated symbolic_cost_of carrier"
+        );
 
         let mut ports = Vec::new();
         linear_size_ports(&cost, &mut ports);
         assert!(
             ports.contains(&parameter),
-            "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
-             {parameter:?}, got cost={cost:?}"
+            "frozen v2 projection: recursive countdown cost should carry a SizeVariable keyed \
+             by the parameter port {parameter:?}, got cost={cost:?}"
         );
         assert_recursive_countdown_linear_semantics(&cost);
     });

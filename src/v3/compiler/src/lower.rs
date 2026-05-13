@@ -4149,6 +4149,26 @@ fn lower_data_item(
             ctx.dag,
             ctx.pending_refined_function_refs,
         ),
+        Some(variant_expr @ SurfaceExpr::VariantRecord { .. }) => {
+            try_lower_symbolic_cost_bind_param_expected_structural_data(
+                name,
+                variant_expr,
+                ty_decl_id,
+                ctx.symbols,
+                ctx.dag,
+                ctx.pending_refined_function_refs,
+            )
+            .or_else(|| {
+                try_lower_symbolic_cost_structural_data(
+                    name,
+                    variant_expr,
+                    ty_decl_id,
+                    ctx.symbols,
+                    ctx.dag,
+                    ctx.pending_refined_function_refs,
+                )
+            })
+        }
         Some(SurfaceExpr::Call { target, args, .. }) => {
             match (
                 dsl_std_render_repeat_string_decl_id(ctx.dag),
@@ -4157,13 +4177,33 @@ fn lower_data_item(
                 (Some(canonical), Some(&callee)) if callee == canonical => {
                     try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, ctx.dag)
                 }
-                _ => try_lower_symbolic_cost_constant_cost_data(
-                    target,
-                    args.as_slice(),
+                _ => try_lower_symbolic_cost_bind_param_expected_structural_data(
+                    name,
+                    body.expect("call arm has body"),
                     ty_decl_id,
+                    ctx.symbols,
                     ctx.dag,
-                    ctx.symbols.get(target).copied(),
-                ),
+                    ctx.pending_refined_function_refs,
+                )
+                .or_else(|| {
+                    try_lower_symbolic_cost_structural_data(
+                        name,
+                        body.expect("call arm has body"),
+                        ty_decl_id,
+                        ctx.symbols,
+                        ctx.dag,
+                        ctx.pending_refined_function_refs,
+                    )
+                })
+                .or_else(|| {
+                    try_lower_symbolic_cost_constant_cost_data(
+                        target,
+                        args.as_slice(),
+                        ty_decl_id,
+                        ctx.dag,
+                        ctx.symbols.get(target).copied(),
+                    )
+                }),
             }
         }
         _ => None,
@@ -4388,6 +4428,178 @@ fn try_lower_symbolic_cost_constant_cost_data(
             },
         )],
     })
+}
+
+fn try_lower_symbolic_cost_structural_data(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
+) -> Option<crate::dag::ValueBody> {
+    if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
+        return None;
+    }
+    if !symbolic_cost_expr_uses_canonical_constructors(name, expr, symbols, dag) {
+        return None;
+    }
+    let span = surface_expr_span(expr);
+    let fv = lower_structural_field_value(
+        name,
+        "_",
+        expr,
+        ty_decl_id,
+        &LowerSubstStack::default(),
+        symbols,
+        dag,
+        None,
+        span,
+        pending_refined_function_refs,
+    )?;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![("_".to_string(), fv)],
+    })
+}
+
+fn try_lower_symbolic_cost_bind_param_expected_structural_data(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
+) -> Option<crate::dag::ValueBody> {
+    let expected_id = dag.declaration_by_name("SymbolicCostBindParamExpected")?.id;
+    if ty_decl_id != expected_id {
+        return None;
+    }
+    let span = surface_expr_span(expr);
+    let fv = lower_structural_field_value(
+        name,
+        "_",
+        expr,
+        ty_decl_id,
+        &LowerSubstStack::default(),
+        symbols,
+        dag,
+        None,
+        span,
+        pending_refined_function_refs,
+    )?;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![("_".to_string(), fv)],
+    })
+}
+
+fn symbolic_cost_expr_uses_canonical_constructors(
+    data_name: &str,
+    expr: &SurfaceExpr,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> bool {
+    match expr {
+        SurfaceExpr::Call { target, args, span } => {
+            if !symbolic_cost_constructor_spelling_is_canonical(
+                data_name, target, span, symbols, dag,
+            ) {
+                return false;
+            }
+            args.iter().all(|arg| {
+                symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)
+            })
+        }
+        SurfaceExpr::VariantRecord {
+            target,
+            fields,
+            span,
+        } => {
+            symbolic_cost_constructor_spelling_is_canonical(data_name, target, span, symbols, dag)
+                && fields.iter().all(|field| {
+                    symbolic_cost_expr_uses_canonical_constructors(
+                        data_name,
+                        &field.value,
+                        symbols,
+                        dag,
+                    )
+                })
+        }
+        SurfaceExpr::Operator { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            args.iter().all(|arg| {
+                symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)
+            })
+        }
+        SurfaceExpr::Lambda { body, .. } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, body, symbols, dag)
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, cond, symbols, dag)
+                && symbolic_cost_expr_uses_canonical_constructors(
+                    data_name,
+                    then_branch,
+                    symbols,
+                    dag,
+                )
+                && symbolic_cost_expr_uses_canonical_constructors(
+                    data_name,
+                    else_branch,
+                    symbols,
+                    dag,
+                )
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, scrutinee, symbols, dag)
+                && arms.iter().all(|arm| {
+                    symbolic_cost_expr_uses_canonical_constructors(
+                        data_name, &arm.body, symbols, dag,
+                    )
+                })
+        }
+        SurfaceExpr::Record { fields, .. } => fields.iter().all(|field| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, &field.value, symbols, dag)
+        }),
+        SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, element, symbols, dag)
+        }),
+        SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, &entry.value, symbols, dag)
+        }),
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
+    }
+}
+
+fn symbolic_cost_constructor_spelling_is_canonical(
+    data_name: &str,
+    target: &str,
+    span: &SourceSpan,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> bool {
+    let Some(canonical) = symbolic_cost_variant_constructor_id(dag, target) else {
+        return true;
+    };
+    if symbols.get(target).copied() == Some(canonical) {
+        return true;
+    }
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!(
+                "data `{data_name}` SymbolicCost constructor `{target}` is shadowed or unresolved; \
+                 expected the canonical std.algebra `{target}` constructor"
+            ),
+            span: span.clone(),
+            fixes: Vec::new(),
+        },
+    );
+    false
 }
 
 fn lower_list_to_structural(
@@ -5096,7 +5308,19 @@ fn lower_structural_field_value(
 ) -> Option<crate::dag::FieldValue> {
     if let Some(marker_id) = dag.declaration_by_name("DeclarationRef").map(|d| d.id) {
         if walks_to(dag, expected_type, marker_id) {
-            let decl_id = resolve_field_value_as_declaration_ref(expr, symbols, dag)?;
+            let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) else {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` must be a DeclarationRef edge; use an identifier or dotted path, not a record literal"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            };
             if let Some(cat) = category {
                 if let Err(reason) =
                     validate_realization_field_target(dag, cat, field_label, decl_id)
@@ -5346,7 +5570,14 @@ fn lower_structural_field_value(
             }
         }
         for (label, _) in &expected_fields {
-            if !fields.iter().any(|field| field.name == *label) {
+            if !fields.iter().any(|field| field.name == *label)
+                && !expected_fields
+                    .iter()
+                    .find(|(candidate, _)| candidate == label)
+                    .is_some_and(|(_, ty)| {
+                        is_at_most_one_type_with_subst(dag, *ty, &nested_subst, 0)
+                    })
+            {
                 report_declaration_error(
                     dag,
                     Diagnostic::ResolveError {
@@ -5362,10 +5593,9 @@ fn lower_structural_field_value(
         }
         let mut lowered = Vec::with_capacity(expected_fields.len());
         for (label, ty) in expected_fields {
-            let nested = fields
-                .iter()
-                .find(|field| field.name == label)
-                .expect("checked above");
+            let Some(nested) = fields.iter().find(|field| field.name == label) else {
+                continue;
+            };
             lowered.push((
                 label.clone(),
                 lower_structural_field_value(
@@ -5670,17 +5900,28 @@ fn lower_scalar_literal_for_type(
             int_decl_id
                 .map(|id| walks_to(dag, expected_type, id))
                 .unwrap_or(false)
+                || optional_element_type(dag, expected_type)
+                    .is_some_and(|element| walks_to(dag, element, int_decl_id.unwrap_or(element)))
                 || matches!(
                     int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
         }
-        LiteralBits::Bool(_) => bool_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
-        LiteralBits::String(_) => string_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
+        LiteralBits::Bool(_) => {
+            bool_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || optional_element_type(dag, expected_type)
+                    .is_some_and(|element| walks_to(dag, element, bool_decl_id.unwrap_or(element)))
+        }
+        LiteralBits::String(_) => {
+            string_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || optional_element_type(dag, expected_type).is_some_and(|element| {
+                    walks_to(dag, element, string_decl_id.unwrap_or(element))
+                })
+        }
     };
     if type_ok {
         let span = surface_expr_span(expr).clone();
@@ -5730,6 +5971,23 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
         } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
+        _ => None,
+    }
+}
+
+fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Cardinality(payload) if payload.bound() == CardinalityBound::AtMostOne => {
+            Some(payload.element())
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_element_type(dag, *next)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
 }
@@ -5868,6 +6126,33 @@ fn map_key_type_is_not_string_with_subst(
             let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
                 .unwrap_or(arguments[0].value);
             !walks_to(dag, key, string_id)
+        }
+        _ => false,
+    }
+}
+
+fn is_at_most_one_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Cardinality(payload) => payload.bound() == CardinalityBound::AtMostOne,
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
+            .lookup(expected_type)
+            .is_some_and(|bound| is_at_most_one_type_with_subst(dag, bound, subst, depth + 1)),
+        TypeConnective::Atom(
+            AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+        ) => is_at_most_one_type_with_subst(dag, *next, subst, depth + 1),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            is_at_most_one_type_with_subst(dag, *template, subst, depth + 1)
         }
         _ => false,
     }

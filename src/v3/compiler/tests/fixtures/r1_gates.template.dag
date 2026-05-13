@@ -49,7 +49,7 @@ data sub_match_over_user_sum: TestClaim = {
 
 data sub_match_over_user_sum_gate: TestSuite = {
   name: "sub_match_over_user_sum_gate",
-  claims: [sub_match_over_user_sum]
+  claims: [Enumerated(sub_match_over_user_sum)]
 }
 
 // R1C-C / T-Sub — type-alias RHS `where` parse + lower (PR #703; DB-11:
@@ -65,7 +65,7 @@ data sub_type_alias_where_lowers: TestClaim = {
 
 data sub_type_alias_where_lowers_gate: TestSuite = {
   name: "sub_type_alias_where_lowers_gate",
-  claims: [sub_type_alias_where_lowers]
+  claims: [Enumerated(sub_type_alias_where_lowers)]
 }
 
 // R1C-B / T-P0 — `p0_repeat_string_correct`: literal `repeat_string(...)` on `data` bodies
@@ -93,7 +93,7 @@ data p0_repeat_string_space_pad_correct: TestClaim = {
 
 data p0_repeat_string_correct_gate: TestSuite = {
   name: "p0_repeat_string_correct_gate",
-  claims: [p0_repeat_string_correct, p0_repeat_string_space_pad_correct]
+  claims: [Enumerated(p0_repeat_string_correct), Enumerated(p0_repeat_string_space_pad_correct)]
 }
 
 // R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15
@@ -119,7 +119,7 @@ data p0_rest_ops_aligned: TestClaim = {
 
 data p0_host_sentinel_and_rest_gate: TestSuite = {
   name: "p0_host_sentinel_and_rest_gate",
-  claims: [p0_no_fabrication_sentinel, p0_rest_ops_aligned]
+  claims: [Enumerated(p0_no_fabrication_sentinel), Enumerated(p0_rest_ops_aligned)]
 }
 
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
@@ -185,12 +185,12 @@ data manual_negative_claim_gate: TestClaim = {
 
 data manual_claim_suite: TestSuite = {
   name: "manual_claim_suite",
-  claims: [manual_negative_claim_gate]
+  claims: [Enumerated(manual_negative_claim_gate)]
 }
 
 data lens_composition_associative_gate: TestClaim = {
   name: "lens_composition_associative",
-  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// The runner checks associativity on every triple in `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`\n// via `int_associativity_holds_all_triples` (not a single sample), not a structural\n// operator-shape recognizer.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
+  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// The runner checks associativity on every triple in `lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES`\n// via `int_associativity_holds_all_triples` (not a single sample), not a structural\n// operator-shape recognizer.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
   file_name: "src/v3/lenses/lens_composition_associative_witness.dag",
   predicate: AlgebraicLaw(Associativity, lens_composition_op),
   requires: []
@@ -198,7 +198,7 @@ data lens_composition_associative_gate: TestClaim = {
 
 data lens_composition_associative_suite: TestSuite = {
   name: "lens_composition_associative_suite",
-  claims: [lens_composition_associative_gate]
+  claims: [Enumerated(lens_composition_associative_gate)]
 }
 
 // R1 T-TestGen gate: the runner evaluates a structural fact about a compiled
@@ -214,7 +214,7 @@ data testgen_structural_coverage_gate: TestClaim = {
 
 data testgen_structural_coverage_suite: TestSuite = {
   name: "testgen_structural_coverage_suite",
-  claims: [testgen_structural_coverage_gate]
+  claims: [Enumerated(testgen_structural_coverage_gate)]
 }
 
 // `LensOutputEquals` R1 gate: `input_ref` is `ProgramInput {}` — runner reflects the claim
@@ -249,7 +249,7 @@ data lens_output_equals_gate: TestClaim = {
 
 data r1_lens_output_equals_suite: TestSuite = {
   name: "r1_lens_output_equals_suite",
-  claims: [lens_output_equals_gate]
+  claims: [Enumerated(lens_output_equals_gate)]
 }
 
 // T-LaneE — merge-sort pair witness (structural `cost_of` on `merge_sort_out` vs expected `Int`).
@@ -303,8 +303,8 @@ data lane_e_bundled_witness_host_emit_parity_gate: TestClaim = {
 data r1_lane_e_suite: TestSuite = {
   name: "r1_lane_e_suite",
   claims: [
-    complexity_merge_sort_is_nlogn_gate,
-    complexity_merge_sort_v3_matches_v2_oracle_gate,
-    lane_e_bundled_witness_host_emit_parity_gate
+    Enumerated(complexity_merge_sort_is_nlogn_gate),
+    Enumerated(complexity_merge_sort_v3_matches_v2_oracle_gate),
+    Enumerated(lane_e_bundled_witness_host_emit_parity_gate)
   ]
 }

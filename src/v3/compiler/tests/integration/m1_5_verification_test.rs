@@ -2,11 +2,18 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
+    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, PortState, TypeConnective,
+    ValueBody,
 };
 use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
+
+use crate::common::{
+    assert_recursive_countdown_linear_semantics, escape_v3_string_literal_content,
+    run_on_larger_stack, symbolic_cost_as_v3_data_initializer,
+};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     match compile_to_dag(src, file) {
@@ -52,6 +59,16 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
             .collect(),
         other => panic!("expected `{name}` to lower to a Disj, got {other:?}"),
     }
+}
+
+fn find_bind_value_port(dag: &Dag, name: &str) -> PortId {
+    dag.nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Bind(bind) if bind.name == name => Some(bind.value),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
 fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
@@ -337,7 +354,7 @@ let claim_alias_refine: TestClaim = {
 
 let suite: TestSuite = {
   name: "verification_smoke",
-  claims: [claim_compiles, claim_fails, claim_alias_refine]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails), Enumerated(claim_alias_refine)]
 }
 "#;
 
@@ -378,6 +395,43 @@ let suite: TestSuite = {
     assert_eq!(
         bind_value_type_decl(&dag, "suite"),
         find_named(&dag, "TestSuite")
+    );
+}
+
+#[test]
+fn program_generator_authoring_surface_compiles_cleanly() {
+    let src = r#"
+data parse_smoke_generator: List<ProgramShape> = []
+
+let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+"#;
+
+    let dag = compile_any(src, "program_generator_authoring_surface.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "ProgramGenerator authoring surface should compile cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    assert_eq!(
+        bind_value_type_decl(&dag, "generator_ref"),
+        find_named(&dag, "ProgramGenerator")
+    );
+}
+
+#[test]
+fn program_generator_rejects_empty_declaration_ref_literal() {
+    let src = r#"
+let generator_ref: ProgramGenerator = { generator: {  } }
+"#;
+
+    let dag = compile_any(src, "program_generator_empty_ref.v3");
+    assert!(
+        dag.diagnostics().iter().any(|diagnostic| {
+            format!("{diagnostic:?}").contains("must be a DeclarationRef edge")
+        }),
+        "empty DeclarationRef literal should fail-closed for ProgramGenerator.generator, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
 
@@ -736,7 +790,7 @@ data symbolic_cost_expr_equals_claim: TestClaim = {
 
 data symbolic_cost_expr_equals_suite: TestSuite = {
   name: "symbolic_cost_expr_equals_smoke_suite",
-  claims: [symbolic_cost_expr_equals_claim]
+  claims: [Enumerated(symbolic_cost_expr_equals_claim)]
 }
 "#;
 
@@ -767,4 +821,228 @@ fn symbolic_cost_expr_equals_smoke_suite_passes() {
         "literal_symbolic_cost_matches_expected"
     );
     assert_eq!(results[0].result, ClaimResult::Pass);
+}
+
+/// Representative program for gate **#40**: tail-recursive `countdown` (recursive call-site) plus
+/// top-level `demo` that composes `+` / `==` / `-` algebra instances (same fixture spine as gate **#70**).
+const SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_SOURCE: &str =
+    "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)\n\nlet demo: Int = countdown(3) + 1\n";
+const SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_FILE: &str = "r3_gate40_countdown_demo.v3";
+
+#[test]
+fn symbolic_cost_expr_equals_countdown_demo_suite_passes() {
+    run_on_larger_stack(|| {
+        let program = compile_to_dag(
+            SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_SOURCE,
+            SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_FILE,
+        )
+        .unwrap_or_else(|e| panic!("gate #40 representative program should compile: {e:?}"));
+        assert!(
+            program.diagnostics().is_empty(),
+            "gate #40 program should compile cleanly: {:?}",
+            program.diagnostics().iter().collect::<Vec<_>>()
+        );
+
+        // Independent behavioral oracle for the recursive fixture (gate #78 / lane2d discipline):
+        // not derived from the `SymbolicCostExprEquals` roundtrip below — pins unary tail-recursion
+        // `LinearCost` normalization before we self-oracle `demo` through serialize→lower→runner.
+        let countdown_port = find_bind_value_port(&program, "countdown");
+        let countdown_cost = match symbolic_cost_of(&program, &countdown_port) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of returned Miss for `countdown`"),
+        };
+        assert_recursive_countdown_linear_semantics(&countdown_cost);
+
+        let demo_port = find_bind_value_port(&program, "demo");
+        let demo_cost = match symbolic_cost_of(&program, &demo_port) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of returned Miss for `demo`"),
+        };
+        let cost_init = symbolic_cost_as_v3_data_initializer(&demo_cost);
+        let escaped_src =
+            escape_v3_string_literal_content(SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_SOURCE);
+        let module_src = format!(
+            r#"module std.symbolic_cost_expr_equals_gate40_countdown
+
+import std.verification {{
+  SymbolicCostExprEquals,
+  TestClaim,
+  TestSuite
+}}
+import std.algebra {{
+  SymbolicCost,
+  ConstantCost,
+  LinearCost,
+  LogCost,
+  PolynomialCost,
+  ProductCost,
+  SumCost,
+  UnknownCost,
+  unnamed_size_variable,
+  two_terms,
+  many_terms,
+  DegreeTwo,
+  DegreeSuccessor
+}}
+import std.substrate {{ PortId }}
+import std.list {{ cons, empty }}
+
+data expected_demo_symbolic_cost: SymbolicCost = {cost_init}
+
+data symbolic_cost_expr_equals_gate40_claim: TestClaim = {{
+  name: "r3_gate40_countdown_demo_symbolic_cost_expr_equals",
+  source: "{escaped_src}",
+  file_name: "{file_name}",
+  predicate: SymbolicCostExprEquals(expected_demo_symbolic_cost),
+  requires: []
+}}
+
+data symbolic_cost_expr_equals_gate40_suite: TestSuite = {{
+  name: "symbolic_cost_expr_equals_gate40_suite",
+  claims: [Enumerated(symbolic_cost_expr_equals_gate40_claim)]
+}}
+"#,
+            cost_init = cost_init,
+            escaped_src = escaped_src,
+            file_name = SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_FILE,
+        );
+
+        let dag = match compile_to_dag(
+            &module_src,
+            "symbolic_cost_expr_equals_gate40_countdown.dag",
+        ) {
+            Ok(dag) => {
+                assert!(
+                    dag.diagnostics().is_empty(),
+                    "gate #40 verification module should compile cleanly: {:?}",
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                );
+                dag
+            }
+            Err(CompileError::Semantic(dag)) => panic!(
+                "gate #40 verification module semantic failure: {:?}\n--- module ---\n{module_src}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            ),
+            Err(other) => panic!("gate #40 verification module compile error: {other:?}"),
+        };
+
+        let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_gate40_suite");
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].claim_name,
+            "r3_gate40_countdown_demo_symbolic_cost_expr_equals"
+        );
+        assert_eq!(results[0].result, ClaimResult::Pass);
+    });
+}
+
+const SYMBOLIC_COST_EXPR_EQUALS_TYPE_MISMATCH_FIXTURE: &str = r#"
+module std.symbolic_cost_expr_equals_type_mismatch
+
+import std.verification {
+  SymbolicCostExprEquals,
+  TestClaim,
+  TestSuite
+}
+
+data not_symbolic_cost: Int = 0
+
+data symbolic_cost_expr_equals_type_mismatch_claim: TestClaim = {
+  name: "expected_must_normalize_to_symbolic_cost",
+  source: "let lit: Int = 7",
+  file_name: "lit.v3",
+  predicate: SymbolicCostExprEquals(not_symbolic_cost),
+  requires: []
+}
+
+data symbolic_cost_expr_equals_type_mismatch_suite: TestSuite = {
+  name: "symbolic_cost_expr_equals_type_mismatch_suite",
+  claims: [Enumerated(symbolic_cost_expr_equals_type_mismatch_claim)]
+}
+"#;
+
+#[test]
+fn symbolic_cost_expr_equals_fail_closed_when_expected_not_symbolic_cost() {
+    let dag = match compile_to_dag(
+        SYMBOLIC_COST_EXPR_EQUALS_TYPE_MISMATCH_FIXTURE,
+        "symbolic_cost_expr_equals_type_mismatch.dag",
+    ) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "fixture semantic failure: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("fixture compile error: {other:?}"),
+    };
+    let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_type_mismatch_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name, "expected_must_normalize_to_symbolic_cost",
+        "fixture wiring"
+    );
+    let result = &results[0].result;
+    assert!(
+        matches!(result, ClaimResult::Fail(_)),
+        "expected ClaimResult::Fail for non-SymbolicCost expected ref; got {result:?}"
+    );
+    assert!(
+        !matches!(result, ClaimResult::NotYetImplemented(_)),
+        "must execute (not NYI shell); got {result:?}"
+    );
+}
+
+const SYMBOLIC_COST_EXPR_EQUALS_VALUE_MISMATCH_FIXTURE: &str = r#"
+module std.symbolic_cost_expr_equals_value_mismatch
+
+import std.verification {
+  SymbolicCostExprEquals,
+  TestClaim,
+  TestSuite
+}
+import std.algebra { SymbolicCost }
+
+data wrong_expected_lit_cost: SymbolicCost = ConstantCost(99)
+
+data symbolic_cost_expr_equals_value_mismatch_claim: TestClaim = {
+  name: "literal_symbolic_cost_value_mismatch",
+  source: "let lit: Int = 7",
+  file_name: "lit.v3",
+  predicate: SymbolicCostExprEquals(wrong_expected_lit_cost),
+  requires: []
+}
+
+data symbolic_cost_expr_equals_value_mismatch_suite: TestSuite = {
+  name: "symbolic_cost_expr_equals_value_mismatch_suite",
+  claims: [Enumerated(symbolic_cost_expr_equals_value_mismatch_claim)]
+}
+"#;
+
+#[test]
+fn symbolic_cost_expr_equals_fail_closed_on_symbolic_cost_value_mismatch() {
+    let dag = match compile_to_dag(
+        SYMBOLIC_COST_EXPR_EQUALS_VALUE_MISMATCH_FIXTURE,
+        "symbolic_cost_expr_equals_value_mismatch.dag",
+    ) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "fixture semantic failure: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("fixture compile error: {other:?}"),
+    };
+    let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_value_mismatch_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name, "literal_symbolic_cost_value_mismatch",
+        "fixture wiring"
+    );
+    let result = &results[0].result;
+    assert!(
+        matches!(result, ClaimResult::Fail(_)),
+        "expected ClaimResult::Fail on ConstantCost mismatch; got {result:?}"
+    );
+    assert!(
+        !matches!(result, ClaimResult::NotYetImplemented(_)),
+        "must execute (not NYI shell); got {result:?}"
+    );
 }

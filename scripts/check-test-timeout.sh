@@ -5,9 +5,19 @@
 # Reads libtest `--report-time` output (lines like
 # `test foo::bar ... ok <1.234s>`) from a pre-captured log file and fails
 # if any single `#[test]` exceeded the budget (default 2000 ms, aligns
-# with `feedback_test_timeout_2s`). Tests listed in the exemption file
-# are tolerated with a logged warning so the ratchet can land without
-# blocking known-slow tests — the exemption file IS the paydown backlog.
+# with `feedback_test_timeout_2s`). Tests listed in the checked-in JSONL
+# warn manifest log a warning when over budget instead of failing — still a
+# hand-maintained side file (P5 bridge), but structured JSONL replacing the
+# retired free-form `slow-test-exemptions.txt` table + row-count ratchet.
+#
+# **Naming alignment (gate #101; gate #102 in flight).** Rows use the same
+# libtest name tokens as `--report-time` — the tokens that
+# `TestNodeCostDimension` will attach to in `src/v3/std/verification.dag`.
+# **Enforcement here still
+# reads this file** until #102 wires the ratchet to modeled timing facts. Each
+# line is JSON `{"test":"<token>","policy":"warn"}` carrying warn-only policy
+# for that node (shell transport today; substrate projection is the retirement
+# path).
 #
 # **Why parse an external log, not re-run `cargo test`.** The v3 CI job
 # already runs `cargo test -p v3-compiler` once (budget 1200s) and the
@@ -42,21 +52,24 @@
 #   TEST_TIMEOUT_MS       Override budget (default 2000).
 #   TEST_TIMEOUT_PACKAGE  Cargo package for the local fallback
 #                         (default v3-compiler).
-#   TEST_TIMEOUT_EXEMPT   Path to exemption file
-#                         (default scripts/slow-test-exemptions.txt).
-#   TEST_TIMEOUT_MAX_EXEMPTIONS
-#                         Ratchet floor for active exemption entries (default 84;
-#                         keep aligned with non-comment rows in
-#                         scripts/slow-test-exemptions.txt). Raise or lower in the same PR
-#                         as exemption rows; lower when deleting exemptions.
+#   TEST_TIMEOUT_MANIFEST Path to JSONL warn manifest (default
+#                         scripts/test-node-wall-clock-ratchet.jsonl).
+#
+# **Fail-closed policy (interim ratchet).** A test whose wall time exceeds
+# `TEST_TIMEOUT_MS` and whose libtest name is **not** warn-listed in the
+# manifest is a ratchet **failure**. There is no `TEST_TIMEOUT_MAX_EXEMPTIONS`
+# floor: the JSONL is the sole warn backlog for this step — add a
+# `{"policy":"warn"}` row in the **same PR** as any intentional expansion of
+# warn-only coverage. Omitting a slow test fails closed (unknown over-budget
+# names error this step). Closing R3 gate #102 still requires moving policy
+# input off this hand manifest onto modeled test-node timing facts.
 
 set -euo pipefail
 
 log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
-exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
-max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-84}
+manifest=${TEST_TIMEOUT_MANIFEST:-scripts/test-node-wall-clock-ratchet.jsonl}
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
@@ -64,6 +77,16 @@ cd "$repo_root"
 
 cleanup_log=""
 trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"' EXIT
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "::error::jq is required to parse ${manifest} (install jq)."
+  exit 2
+fi
+
+if [ ! -r "$manifest" ]; then
+  echo "::error::test-node wall-clock manifest not readable: $manifest"
+  exit 2
+fi
 
 if [ -n "$log_file_arg" ]; then
   log_file=$log_file_arg
@@ -155,41 +178,16 @@ if [ -z "$parsed_count" ] || [ "$parsed_count" -eq 0 ]; then
 fi
 echo "Parsed ${parsed_count} test-result lines from timing log."
 
-# Load exemptions. Lines are `test::name  # reason` — the `#` and anything
-# after it is a comment. Blank lines ignored.
-exempt_set=""
-if [ -f "$exempt_file" ]; then
-  exempt_set=$(sed -e 's/^[[:space:]]*//' -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt_file" | grep -v '^[[:space:]]*$' || true)
-fi
-
-exempt_count=0
-if [ -n "$exempt_set" ]; then
-  exempt_count=$(printf '%s\n' "$exempt_set" | wc -l | tr -d '[:space:]')
-fi
-
-if ! printf '%s\n' "$max_exemptions" | grep -Eq '^[0-9]+$'; then
-  echo "::error::TEST_TIMEOUT_MAX_EXEMPTIONS must be a non-negative integer, got: $max_exemptions"
-  exit 2
-fi
-
-if [ "$exempt_count" -ne "$max_exemptions" ]; then
-  if [ "$exempt_count" -gt "$max_exemptions" ]; then
-    echo "::error::slow-test exemption count grew to ${exempt_count}; ratchet floor is ${max_exemptions}."
-    echo "Remove at least $((exempt_count - max_exemptions)) exemption(s)."
-  else
-    echo "::error::slow-test exemption count shrank to ${exempt_count}; ratchet floor is still ${max_exemptions}."
-    echo "Lower TEST_TIMEOUT_MAX_EXEMPTIONS in the same PR that deletes exemptions."
-  fi
-  exit 1
-fi
-echo "Slow-test exemption count: ${exempt_count}/${max_exemptions}."
+warn_list=$(mktemp)
+trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"; rm -f "$warn_list"' EXIT
+jq -r 'select(.policy == "warn") | .test' "$manifest" | sort -u >"$warn_list"
 
 unexpected=""
 warned=""
 if [ -n "$violations" ]; then
   while IFS=$'\t' read -r name elapsed_ms; do
     if [ -z "$name" ]; then continue; fi
-    if [ -n "$exempt_set" ] && grep -Fxq "$name" <<< "$exempt_set"; then
+    if grep -Fxq "$name" "$warn_list"; then
       warned+=$(printf '%s\t%s\n' "$name" "$elapsed_ms")
       warned+=$'\n'
     else
@@ -200,18 +198,18 @@ if [ -n "$violations" ]; then
 fi
 
 if [ -n "$warned" ]; then
-  echo "::warning::${budget_ms}ms ratchet: exempt tests exceeded budget (paydown backlog in $exempt_file):"
+  echo "::warning::${budget_ms}ms ratchet: warn-policy tests exceeded budget (paydown backlog in $manifest):"
   printf '%s' "$warned" | awk -F'\t' 'NF==2 {printf "  %s — %sms\n", $1, $2}'
 fi
 
 if [ -n "$unexpected" ]; then
-  echo "::error::${budget_ms}ms ratchet: tests exceeded budget (not in exemption list):"
+  echo "::error::${budget_ms}ms ratchet: tests exceeded budget (not warn-listed in manifest):"
   printf '%s' "$unexpected" | awk -F'\t' 'NF==2 {printf "  %s — %sms\n", $1, $2}'
   echo ""
   echo "Options:"
   echo "  1. Speed up the test (share bootstrap via OnceLock, shrink fixtures,"
   echo "     collapse fine-grained cases)."
-  echo "  2. Add to $exempt_file with a reason and a ROADMAP/task reference."
+  echo "  2. Add a {\"test\":\"<token>\",\"policy\":\"warn\"} line to $manifest with a ROADMAP/task reference in commit message."
   echo "  3. Mark #[ignore]-by-default if the coverage is redundant."
   exit 1
 fi

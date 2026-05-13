@@ -1,6 +1,6 @@
 // R3 gate #74 -- tests_as_data_demonstration.
 //
-// Port target: Rust integration test
+// Port target: retired Rust integration test
 // `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
 // (`src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs`).
 //
@@ -24,5 +24,5 @@ data claim_tests_as_data_pipeline_smoke_compiles: TestClaim = {
 
 data suite_tests_as_data_demonstration: TestSuite = {
   name: "r3/tests-as-data-demonstration/pipeline_smoke_compiles",
-  claims: [claim_tests_as_data_pipeline_smoke_compiles]
+  claims: [Enumerated(claim_tests_as_data_pipeline_smoke_compiles)]
 }

@@ -1,0 +1,95 @@
+// gunbc/ci_emission.dag — T-WAD WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions`.
+//
+// Canonical GitHub Actions `Workflow` bytes live in `gunbc.ci.github_actions_workflow`
+// (`dsl/gunbc/ci_github_actions_workflow.dag`, regenerated from `.github/workflows/ci.yml`).
+// `CIWorkflowDag.github_actions_workflow` pins that carrier as part of the same authority
+// row as the gate graph (`dsl/gunbc/ci.dag`).
+//
+// `project_github_actions(..., YamlStatic)` returns that YAML-pinned carrier (Slice 4:
+// no structural projection from `pipeline`/`edges` yet; WI-2 follow-on). Transport-arm
+// selection, not a second gate-topology editor.
+
+module gunbc.ci_emission
+
+import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
+import gunbc.ci.github_actions_workflow { gunbc_ci_github_actions_workflow }
+import extdeps.github.actions {
+  Workflow, Job, RunStep, UsesStep,
+  HostedRunner, UbuntuLatest,
+  Bash
+}
+
+// 🟡 YELLOW (scaffold) — coproduct-dissolution receipt (see modeling-discipline Practice 4).
+// Ratified initial surface: YamlStatic | BinaryShim | PythonShim (`docs/design-ci-workflow-emitter-dispatch.md` §3;
+// `docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md` §1). `InlineGunbc` stays off the enum until a
+// real runtime consumer exists (emitter-dispatch §5.4).
+
+type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
+
+// Slice 5: BinaryShim thin-shim `Workflow` projection (design-ci-workflow-emitter-dispatch.md §5.2).
+//
+// Single-authority discipline (brief Phase C): every workflow-level field
+// (`name`, `on`, `concurrency`, `env`, `permissions`) is forwarded from the
+// `CIWorkflowDag` source — same trigger / permissions / concurrency envelope
+// as the YamlStatic arm per emitter-dispatch §7 (1)–(2). The structural
+// deviation between the two targets is `jobs`: BinaryShim collapses the full
+// gate matrix into a single bootstrap job whose only `run:` invokes the
+// compiled `gunbc-ci` runner. The binary at runtime reads `CIWorkflowDag` and
+// dispatches the gate matrix (Slice 7 / PR #2713 affected-set lens territory).
+//
+// Binary `main()` and affected-set selection are out of scope — the arm
+// emits a `Workflow` that *references* the binary, not the binary itself.
+fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = Workflow {
+  name: dag.github_actions_workflow.name,
+  on: dag.github_actions_workflow.on,
+  concurrency: dag.github_actions_workflow.concurrency,
+  jobs: [Job {
+      id: "ci",
+      name: none,
+      runner: HostedRunner { label: UbuntuLatest },
+      steps: [UsesStep {
+          name: Some { value: "Checkout" },
+          id: none,
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
+          with: none,
+          env: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Invoke gunbc-ci runner" },
+          id: none,
+          run: "./gunbc-ci --workflow ci --event \"$GITHUB_EVENT_PATH\"",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      strategy: none,
+      timeout_minutes: none,
+      continue_on_error: false,
+      concurrency: none
+    }],
+  env: dag.github_actions_workflow.env,
+  permissions: dag.github_actions_workflow.permissions
+}
+
+// PythonShim placeholder retained until that arm body lands (separate slice / brief).
+data gunbc_ci_emission_python_shim_placeholder_workflow: Workflow = gunbc_ci_github_actions_workflow
+
+// v3 tokenizer maps `fn`, not legacy `func` (which becomes `Ident("func")` and fails top-level dispatch).
+fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
+  match runtime {
+    YamlStatic => dag.github_actions_workflow
+    BinaryShim => gunbc_ci_emission_binary_shim_workflow(dag)
+    PythonShim => gunbc_ci_emission_python_shim_placeholder_workflow
+  }
+
+// Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
+data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)

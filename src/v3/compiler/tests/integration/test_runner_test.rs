@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use v3_compiler::dag::{FieldValue, LiteralBits};
+use v3_compiler::dag::{FieldValue, LiteralBits, ValueBody};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -77,7 +77,7 @@ data claim_fails: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_smoke",
-  claims: [claim_compiles, claim_fails]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_smoke.dag");
@@ -100,7 +100,7 @@ data claim_should_compile: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_failure",
-  claims: [claim_should_compile]
+  claims: [Enumerated(claim_should_compile)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_failure.dag");
@@ -179,7 +179,7 @@ data claim_with_requires: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_requires",
-  claims: [claim_with_requires]
+  claims: [Enumerated(claim_with_requires)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_requires.dag");
@@ -205,7 +205,7 @@ data claim_parse_error: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_parse_error",
-  claims: [claim_parse_error]
+  claims: [Enumerated(claim_parse_error)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_parse_error.dag");
@@ -267,12 +267,84 @@ data claim_cost: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_cost",
-  claims: [claim_cost]
+  claims: [Enumerated(claim_cost)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_cost.dag");
     let results = TestRunner::new(&dag).run_suite("suite");
 
+    assert_eq!(results.len(), 1);
+    assert_all_pass(&results);
+}
+
+#[test]
+// P5 receipt for R3 T-WAD gate #101 (`test_cost_dimension_landed`): until
+// #102 wires the slow-test ratchet to v3 timing data, this hand-written
+// integration test is the checkable lowering receipt for the new
+// `TestNodeCostDimension` substrate shape. It compiles the `.dag` row through
+// the real bootstrap stack, asserts the nested `TimingBudget` / `Nanoseconds`
+// structure, and runs the referenced `TestClaim` through `TestRunner`.
+fn test_cost_dimension_landed_on_test_node() {
+    let source = r#"
+data claim_cost: TestClaim = {
+  name: "cost dimension node",
+  source: "let x: Int = 0",
+  file_name: "runner_cost_dimension.v3",
+  predicate: CostBounded("x", Eq, 0),
+  requires: []
+}
+
+data claim_cost_dimension: TestNodeCostDimension = {
+  node: EnumeratedTestNode(claim_cost),
+  budget: { max: { count: 2000000000 } },
+  measured: Observed { duration: { count: 17000000 } }
+}
+
+data suite: TestSuite = {
+  name: "runner_cost_dimension",
+  claims: [Enumerated(claim_cost)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_cost_dimension.dag");
+    let dimension = dag
+        .declarations()
+        .iter()
+        .find(|decl| decl.name.as_deref() == Some("claim_cost_dimension"))
+        .expect("test node cost dimension declaration should lower");
+    let fields = match dimension.value_body.as_ref() {
+        Some(ValueBody::Structural { fields }) => fields,
+        other => panic!("TestNodeCostDimension should lower structurally, got {other:?}"),
+    };
+
+    let budget = fields
+        .iter()
+        .find(|(label, _)| label == "budget")
+        .map(|(_, value)| value)
+        .expect("budget timing field should be present");
+    let FieldValue::Record(budget_fields) = budget else {
+        panic!("budget should lower as a TimingBudget record, got {budget:?}");
+    };
+    let max = budget_fields
+        .iter()
+        .find(|(label, _)| label == "max")
+        .map(|(_, value)| value)
+        .expect("TimingBudget.max should be present");
+    let FieldValue::Record(max_fields) = max else {
+        panic!("TimingBudget.max should lower as a Nanoseconds record, got {max:?}");
+    };
+    assert!(
+        max_fields.iter().any(|(label, value)| {
+            label == "count"
+                && matches!(
+                    value,
+                    FieldValue::Literal(LiteralBits::Int(bits))
+                    if bits == "2000000000"
+                )
+        }),
+        "budget TimingBudget.max Nanoseconds should retain its count field"
+    );
+
+    let results = TestRunner::new(&dag).run_suite("suite");
     assert_eq!(results.len(), 1);
     assert_all_pass(&results);
 }
@@ -290,7 +362,7 @@ data claim_state: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_port_state",
-  claims: [claim_state]
+  claims: [Enumerated(claim_state)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_port_state.dag");
@@ -310,7 +382,7 @@ data claim_true: TestClaim = {
   predicate: ExecuteCommand("true", [], 0),
   requires: []
 }
-data suite_pass: TestSuite = { name: "execute_command_pass", claims: [claim_true] }
+data suite_pass: TestSuite = { name: "execute_command_pass", claims: [Enumerated(claim_true)] }
 "#;
     let dag = compile_clean(pass, "test_runner_exec_pass.dag");
     let results = TestRunner::new(&dag).run_suite("suite_pass");
@@ -325,7 +397,7 @@ data claim_mismatch: TestClaim = {
   predicate: ExecuteCommand("true", [], 1),
   requires: []
 }
-data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [claim_mismatch] }
+data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [Enumerated(claim_mismatch)] }
 "#;
     let dag = compile_clean(mismatch, "test_runner_exec_mismatch.dag");
     let results = TestRunner::new(&dag).run_suite("suite_mismatch");
@@ -361,7 +433,7 @@ data claim: TestClaim = {
   ),
   requires: []
 }
-data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
+data suite: TestSuite = { name: "execute_command_spawn", claims: [Enumerated(claim)] }
 "#;
     let dag = compile_clean(source, "test_runner_exec_spawn.dag");
     let result = &TestRunner::new(&dag).run_suite("suite")[0].result;
@@ -410,7 +482,7 @@ data claim_cost: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_shadow_bind",
-  claims: [claim_state, claim_cost]
+  claims: [Enumerated(claim_state), Enumerated(claim_cost)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_shadow_bind.dag");
@@ -433,7 +505,7 @@ data claim_output: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_output",
-  claims: [claim_output]
+  claims: [Enumerated(claim_output)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_output.dag");
@@ -458,7 +530,7 @@ data claim_nyi: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_nyi",
-  claims: [claim_nyi]
+  claims: [Enumerated(claim_nyi)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_nyi.dag");
@@ -533,11 +605,11 @@ data generated_from_dag_claim: TestClaim = {
 data suite: TestSuite = {
   name: "pb_census_predicate_shapes",
   claims: [
-    census_bound_claim,
-    census_subset_claim,
-    fixed_point_claim,
-    ratchet_zero_claim,
-    generated_from_dag_claim
+    Enumerated(census_bound_claim),
+    Enumerated(census_subset_claim),
+    Enumerated(fixed_point_claim),
+    Enumerated(ratchet_zero_claim),
+    Enumerated(generated_from_dag_claim)
   ]
 }
 "#;
@@ -565,7 +637,7 @@ data suite: TestSuite = {
     );
     assert_fail_contains(
         "lens_producer_files_remaining",
-        "lens-producer subset observed",
+        "lens-producer subset observed 2",
     );
     assert_eq!(
         result_for("pb_self_compile_fixed_point"),
@@ -627,7 +699,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "clean_mock_subject_suite",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "clean_mock_subject_harness.v3");
@@ -654,7 +726,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     compile_clean(source, "lens_output_equals_int_harness.v3");
@@ -680,7 +752,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "binary_dimension_report_non_report_harness.v3");
@@ -721,7 +793,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(
@@ -766,7 +838,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "binary_dimension_report_same_carrier_harness.v3");
@@ -809,7 +881,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(
@@ -857,7 +929,7 @@ data claim_bad_program: TestClaim = {
 
 data suite: TestSuite = {
   name: "suite",
-  claims: [claim_bad_program]
+  claims: [Enumerated(claim_bad_program)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_bad_claim_source_harness.dag");
@@ -953,7 +1025,7 @@ data spoof_claim: TestClaim = {
 
 data spoof_suite: TestSuite = {
   name: "spoof_suite",
-  claims: [spoof_claim]
+  claims: [Enumerated(spoof_claim)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_sentinel_spoof_harness.dag");
@@ -1010,7 +1082,7 @@ data wrong_lens_claim: TestClaim = {
 
 data wrong_lens_suite: TestSuite = {
   name: "wrong_lens_suite",
-  claims: [wrong_lens_claim]
+  claims: [Enumerated(wrong_lens_claim)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_wrong_output_bind_harness.dag");
@@ -1047,7 +1119,7 @@ data claim_comm: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_commutativity_suite",
-  claims: [claim_comm]
+  claims: [Enumerated(claim_comm)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_comm.dag");
@@ -1076,7 +1148,7 @@ data claim_comm: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_commutativity_fail_suite",
-  claims: [claim_comm]
+  claims: [Enumerated(claim_comm)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_comm_fail.dag");
@@ -1105,7 +1177,7 @@ data claim_identity: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_identity_suite",
-  claims: [claim_identity]
+  claims: [Enumerated(claim_identity)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_identity.dag");
@@ -1159,4 +1231,79 @@ fn test_runner_runs_p0_repeat_string_correct_gate() {
 #[test]
 fn test_runner_runs_p0_host_sentinel_and_rest_gate() {
     crate::common::assert_p0_host_sentinel_and_rest_gate_passes();
+}
+
+#[test]
+fn test_runner_quantified_suite_entry_reports_nyi_with_modeled_name() {
+    // Gate #85 happy-path regression: a structurally valid
+    // `Quantified(QuantifiedTestClaim)` suite entry passes the
+    // `validate_quantified_claim_shape` boundary and yields
+    // `NotYetImplemented`; `claim_name` is projected from the modeled
+    // `QuantifiedTestClaim.name` so runner and obligation-walk agree on the
+    // single-authority identity.
+    let source = r#"
+data smoke_generator_body: List<ProgramShape> = []
+
+data smoke_quantified_claim: QuantifiedTestClaim = {
+  name: "smoke_quantified_claim_name",
+  generator: { generator: smoke_generator_body },
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_quantified: TestSuite = {
+  name: "runner_quantified_smoke",
+  claims: [Quantified(smoke_quantified_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_nyi.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_quantified");
+
+    assert_eq!(results.len(), 1);
+    let entry = &results[0];
+    assert_eq!(
+        entry.claim_name, "smoke_quantified_claim_name",
+        "claim_name must come from QuantifiedTestClaim.name (single-authority \
+         identity matching obligation_for_quantified_claim), got {entry:?}",
+    );
+    assert!(
+        matches!(entry.result, ClaimResult::NotYetImplemented(_)),
+        "Quantified suite entry with valid shape must yield NotYetImplemented \
+         (gate #85 substrate-only landing), got {entry:?}",
+    );
+}
+
+#[test]
+fn test_runner_quantified_suite_entry_fails_closed_on_wrong_shape() {
+    // Gate #85 fail-closed regression: a `Quantified(...)` payload pointing at
+    // a non-`QuantifiedTestClaim` declaration is rejected at the type-checker
+    // boundary (`TypeMismatch` on the variant argument) — the suite never
+    // reaches the runner. This is the stronger of the two fail-closed postures
+    // (ill-shaped quantified entries cannot compile at all);
+    // `validate_quantified_claim_shape` handles the residual synthetic-dag
+    // case below the type-checker.
+    let source = r#"
+data not_quantified: Int = 7
+
+data suite_quantified_bad: TestSuite = {
+  name: "runner_quantified_bad_shape",
+  claims: [Quantified(not_quantified)]
+}
+"#;
+    match compile_to_dag(source, "test_runner_quantified_bad_shape.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            let found_type_mismatch = dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diag)| matches!(diag, Diagnostic::TypeMismatch { .. }));
+            assert!(
+                found_type_mismatch,
+                "ill-shaped `Quantified(Int)` must surface a TypeMismatch diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+        Ok(_) => panic!("Quantified(Int) should not compile cleanly — TypeMismatch expected"),
+        Err(err) => panic!("expected Semantic diagnostic, got {err:?}"),
+    }
 }
