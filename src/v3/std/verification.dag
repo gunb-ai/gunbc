@@ -17,7 +17,7 @@
 module std.verification
 
 import std.list { List, map }
-import std.types { FilePath, NonEmptyStr }
+import std.types { FilePath, NonEmptyStr, ContentHash }
 import v3.std.substrate { ComparisonOp }
 import v3.std.timing_lens { TimingBudget, TimingMeasurement }
 import v3.spec.v3_l1 { DeclarationRef }
@@ -29,6 +29,21 @@ import v3.std.bridge_ledger { BridgeLedgerRef }
 // runner still owns evaluation against the live census authorities.
 type Path = FilePath
 type SnapshotRef = NonEmptyStr
+
+// R3 Cluster M generator-manifest substrate (Director ratification msg_05837745
+// + amendment msg_606e0e50). One manifest entry binds a generated output path
+// to its `DeclarationRef` source authority (Q2-ratified) plus the byte-level
+// `ContentHash` (Q3-amend (b): canonical hash type per CLAUDE.md hash-
+// unification; the original Q3 SnapshotRef framing overloaded an existing
+// sentinel-key convention and was retracted post-STOP-AND-PING). The 3-way
+// byte-equality assertion that consumes `source_hash` lands in the follow-up
+// Evaluator-Mgr-owned runtime PR; this PR's evaluator preserves prior
+// one-direction set-membership semantics on `output_path` only.
+type GeneratedManifestEntry {
+  output_path: Path
+  dag_source: DeclarationRef
+  source_hash: ContentHash
+}
 
 // R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
 //
@@ -434,9 +449,18 @@ type TestPredicate
       authority: DeclarationRef
       ratchet_kind: DeclarationRef
     }
+  // R3 Cluster M substrate-shape refinement (Director ratification msg_05837745
+  // + amendment msg_606e0e50). `manifest_entries` replaces `generated_paths`
+  // ahead of the follow-up Evaluator-Mgr-owned runtime PR that introduces the
+  // 3-way byte-equality assertion + directory-walk orphan-output detection at
+  // the well-known `src/v3/compiler/tests/` scan-root. This PR lands the
+  // shape-only readiness; runtime currently preserves the prior one-direction
+  // set-membership + outside-paths hand-count semantics. A future `scan_root:
+  // Path` (or `TestRootRef`) field is a Q4-amendment trigger flagged for the
+  // follow-up runtime PR.
   | GeneratedFromDag {
       authority: DeclarationRef
-      generated_paths: List<Path>
+      manifest_entries: List<GeneratedManifestEntry>
     }
   // **🟢 TERMINAL — Band-C cementing dispatch.** The runner fail-closes unless the
   // `TestClaim` is declared in `src/v3/compiler/tests/dag/cementing_dispatch.dag`.
