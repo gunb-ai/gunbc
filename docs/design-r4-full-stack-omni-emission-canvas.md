@@ -106,15 +106,33 @@ React components are TS source-code generation that happens to produce a tree-sh
 type Component { name, props: List<PropSpec>, state: List<StateSpec>, body: JSXTree }
 type PropSpec { name, type_ref: TypeRef, required: Bool }
 type StateSpec { name, type_ref: TypeRef, initial: Expression }
-type Hook { name, kind: HookKind, dependencies: List<Reference> }
-// React 18 built-in hooks (authority anchor: react.dev/reference/react @ React 18.3 — 15 standard hooks):
+type Hook { name, kind: HookKind }
+// React 18 built-in hooks — per-arm call signature carried in the arm itself,
+// NOT on Hook record (codex BLOCKING canvas:76 — dependencies/cleanup/etc. are
+// call-signature-specific; uniform Hook.dependencies would let UseState carry
+// dependency facts it doesn't take, and would erase distinct effect/memo/callback
+// signatures). Authority anchor: react.dev/reference/react @ React 18.3:
 type HookKind =
-    UseState | UseReducer | UseEffect | UseLayoutEffect | UseInsertionEffect
-  | UseContext | UseRef | UseImperativeHandle | UseMemo | UseCallback
-  | UseDebugValue | UseDeferredValue | UseTransition | UseId | UseSyncExternalStore
+    UseState        { initial: Expression }
+  | UseReducer      { reducer: Expression, initial: Expression }
+  | UseEffect       { body: Expression, dependencies: List<Reference>, cleanup: Expression? }
+  | UseLayoutEffect { body: Expression, dependencies: List<Reference>, cleanup: Expression? }
+  | UseInsertionEffect { body: Expression, dependencies: List<Reference>, cleanup: Expression? }
+  | UseContext      { context_ref: Reference }
+  | UseRef          { initial: Expression }
+  | UseImperativeHandle { ref: Expression, factory: Expression, dependencies: List<Reference> }
+  | UseMemo         { factory: Expression, dependencies: List<Reference> }
+  | UseCallback     { callback: Expression, dependencies: List<Reference> }
+  | UseDebugValue   { value: Expression, format: Expression? }
+  | UseDeferredValue { value: Expression }
+  | UseTransition           // no args; returns [isPending, startTransition]
+  | UseId                   // no args
+  | UseSyncExternalStore { subscribe: Expression, get_snapshot: Expression, get_server_snapshot: Expression? }
   | Custom(Identifier)
 type Lifecycle = OnMount | OnUnmount | OnUpdate { triggers: List<Reference> }
-type Effect { hook: Hook, body: Expression, cleanup: Expression? }
+// (Prior standalone `Effect { hook, body, cleanup }` type DROPPED — body+cleanup
+//  now live on UseEffect/UseLayoutEffect/UseInsertionEffect arms directly per the
+//  per-arm-call-signature reshape above. Single carrier for each hook call site.)
 // Component body IS a JSXTree. Subcomponents are nodes within the tree (ComponentRefNode
 // arm), NOT an alternate body mode. JSXNode coproduct dissolves the prior Render vs
 // Composite split — one render tree with component references as tree nodes.
@@ -305,6 +323,7 @@ Each phase = separate worker brief; standard canvas → ratification → worker 
 8. **Director-added (msg_7d51b699)**: Custom `HookKind` landing in R4-Phase-2 without the Practice-4-promotion canvas enumerated in §10 (Phase-1.5)
 9. **Director-added (msg_7d51b699)**: Introducing parallel `omni_*_share_one_node_tree` gate when the invariant is already cashed at gate #28 — direct INVARIANTS P1 violation (gate #28's NAME is layer-count-agnostic; the layer-enumeration in the description is incidental, not load-bearing)
 10. **Mgr-derived per codex 10864 (INVARIANTS P3 + Practice 6)**: Landing the `TypingDiscipline` carrier extension with an implicit `Nominal` default for existing rows — missing field interpreted as a plausible value reintroduces convention-fallback semantics in place of API-level enforcement. R4-Phase-1 migration MUST be atomic: same PR sets every existing inhabitant's field explicitly + adds a compile-time exhaustiveness test asserting no row lacks the field.
+11. **Mgr-derived per codex canvas:76 (INVARIANTS P1/P2 + Practice 6)**: Putting call-signature-specific fields (`dependencies`, `cleanup`, `initial`, etc.) on the uniform `Hook` record — would let arms that don't take that field (UseState's `dependencies`?) carry meaningless facts, and erase the distinct call signatures of effect/memo/callback hooks. Call-signature fields MUST live on each `HookKind` arm.
 
 ## §12. Ratified dispositions (audit trail; all Director-ratified msg_7d51b699 via PM msg_1faad154 2026-05-13)
 
