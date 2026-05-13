@@ -27,7 +27,7 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 **OVERALL: PENDING** — 48 of 106 gates have HARNESS_NAMED at the §1.8-ledger snapshot this index is derived from; the remaining 58 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
-## Ledger-snapshot anchor (single-authority discipline, INVARIANTS P1/P2)
+## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
 This index is derived from `docs/r3-program-plan.md` §1.8 at commit `26cef041a` (the base commit of this PR; `git merge-base HEAD main` at authoring time). **This PR adds only this audit document; it does not modify `docs/r3-program-plan.md` or any other §1.8 authority surface.** Therefore the derivation is valid for any HEAD that includes commit `26cef041a` and has not subsequently modified §1.8. If a future PR edits §1.8, that PR must re-derive this table in the same change per the row-count parity check below.
 
@@ -196,7 +196,7 @@ This Phase 2 PR captures the partial receipt only for the lint/format components
 - `docs/r3-program-plan.md` §1.8 — canonical gate table (Status / Notes authority for what "PASSING" means per gate).
 - `docs/r3-close-interrogation.md` §8 — predicate-execution requirement (attaches to PASSING gates; executed at close-time within 24h).
 - `docs/r3-actual-close-plan.md` — Gap 10 (this artifact) + Gap 9 (row #106).
-- `INVARIANTS.md` P1 (single authority), P2 (no parallel authority), P3 (fail-closed / live-state).
+- `INVARIANTS.md` P2 (Boundary Discipline — single authority / no parallel authority), P3 (Fail-Closed / live-state).
 - Merged PR #3013 — Gap 10 close criterion (this artifact exists on `main` with all §1.8 ledger gate rows represented).
 - Merged PR #3019 — Phase 1 skeleton (105-row scaffold).
 - Merged PR #3020 — Gap 9 row #106 `show_correct_code_diagnostic_coverage`.
