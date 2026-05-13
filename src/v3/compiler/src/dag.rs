@@ -4093,6 +4093,13 @@ impl Dag {
         self.declarations.get(id.index())
     }
 
+    /// Returns a [`DeclarationId`] for which [`Self::declaration_opt`] yields `None` on this
+    /// graph (out-of-range index). Used by closed-world witnesses such as
+    /// `variant_payload_shape`'s `DeclarationMissing` cementing receipt.
+    pub fn absent_declaration_id_witness(&self) -> DeclarationId {
+        DeclarationId(self.declarations.len() as u32)
+    }
+
     /// **🟡 Scaffold — v3 migration preference rank.** Ranks declarations by
     /// source-tree location so that same-named declarations in `src/v3/` win
     /// over `dsl/` duplicates during the bootstrap window. This rule is a

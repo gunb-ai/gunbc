@@ -3124,6 +3124,43 @@ impl<'a> TestRunner<'a> {
         expected_decl: &Declaration,
         expected_name: &str,
     ) -> Option<ClaimResult> {
+        if lens_decl_name == Some("gate87_variant_payload_shape_on_missing_declaration_id") {
+            let computed = crate::variant_payload::variant_payload_shape(
+                program_dag,
+                &program_dag.absent_declaration_id_witness(),
+            );
+            let computed_fv = match field_value_variant_payload_shape_lookup(self.dag, computed) {
+                Ok(v) => v,
+                Err(msg) => {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): {msg}"
+                    )));
+                }
+            };
+            let Some(expected_body) = expected_decl.value_body.as_ref() else {
+                return Some(ClaimResult::Fail(format!(
+                    "LensOutputEquals({lens_name}): expected_ref `{expected_name}` has no value body"
+                )));
+            };
+            let expected_fv = match field_value_from_value_body(self.dag, expected_body) {
+                Ok(v) => v,
+                Err(err) => {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): could not lower expected `{expected_name}`: {err:?}"
+                    )));
+                }
+            };
+            return Some(if computed_fv == expected_fv {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals({lens_name}): expected {} for `{expected_name}`, computed {}",
+                    render_field_value(self.dag, &expected_fv),
+                    render_field_value(self.dag, &computed_fv),
+                ))
+            });
+        }
+
         let computed = match lens_decl_name? {
             "gate87_cost_target_realization_meta_present" => {
                 i64::from(type_realization_meta(program_dag).is_some())
@@ -6244,6 +6281,109 @@ fn tc1_eta_equivalence_symbolic_cost_reports_equivalent(
             "tc1_eta_equivalence_executable: expected both η-pair symbolic-cost analyses to reach \
              DimensionOk with identical composed `SymbolicCost`; left={left:?} right={right:?}"
         )),
+    }
+}
+
+fn disj_variant_child_decl_id(
+    dag: &Dag,
+    sum_decl_name: &str,
+    variant_label: &str,
+) -> Result<DeclarationId, String> {
+    let sum = dag
+        .declaration_by_name(sum_decl_name)
+        .ok_or_else(|| format!("missing `{sum_decl_name}` in fixture id-space"))?;
+    let TypeConnective::Disj { variants } = &sum.connective else {
+        return Err(format!(
+            "`{sum_decl_name}` is not a sum (connective={:?})",
+            sum.connective
+        ));
+    };
+    variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .map(|v| v.ty)
+        .ok_or_else(|| {
+            format!(
+                "variant `{variant_label}` not found on `{sum_decl_name}` (labels=[{}])",
+                variants
+                    .iter()
+                    .map(|v| v.label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+}
+
+fn field_value_variant_payload_shape(
+    id_space: &Dag,
+    shape: crate::variant_payload::VariantPayloadShape,
+) -> Result<FieldValue, String> {
+    use crate::variant_payload::VariantPayloadShape;
+    match shape {
+        VariantPayloadShape::Empty => Ok(FieldValue::Variant {
+            constructor: disj_variant_child_decl_id(id_space, "VariantPayloadShape", "Empty")?,
+            payload: vec![],
+        }),
+        VariantPayloadShape::PositionalSingle => Ok(FieldValue::Variant {
+            constructor: disj_variant_child_decl_id(
+                id_space,
+                "VariantPayloadShape",
+                "PositionalSingle",
+            )?,
+            payload: vec![],
+        }),
+        VariantPayloadShape::NamedFields { _0: labels } => {
+            let list = FieldValue::List(
+                labels
+                    .into_iter()
+                    .map(|s| FieldValue::Literal(LiteralBits::String(s)))
+                    .collect(),
+            );
+            Ok(FieldValue::Variant {
+                constructor: disj_variant_child_decl_id(
+                    id_space,
+                    "VariantPayloadShape",
+                    "NamedFields",
+                )?,
+                payload: vec![list],
+            })
+        }
+    }
+}
+
+fn field_value_variant_payload_shape_lookup(
+    id_space: &Dag,
+    out: crate::variant_payload::VariantPayloadShapeLookup,
+) -> Result<FieldValue, String> {
+    use crate::variant_payload::VariantPayloadShapeLookup;
+    match out {
+        VariantPayloadShapeLookup::DeclarationMissing => Ok(FieldValue::Variant {
+            constructor: disj_variant_child_decl_id(
+                id_space,
+                "VariantPayloadShapeLookup",
+                "DeclarationMissing",
+            )?,
+            payload: vec![],
+        }),
+        VariantPayloadShapeLookup::NotPayloadProduct => Ok(FieldValue::Variant {
+            constructor: disj_variant_child_decl_id(
+                id_space,
+                "VariantPayloadShapeLookup",
+                "NotPayloadProduct",
+            )?,
+            payload: vec![],
+        }),
+        VariantPayloadShapeLookup::Found { _0: shape } => {
+            let inner = field_value_variant_payload_shape(id_space, shape)?;
+            Ok(FieldValue::Variant {
+                constructor: disj_variant_child_decl_id(
+                    id_space,
+                    "VariantPayloadShapeLookup",
+                    "Found",
+                )?,
+                payload: vec![inner],
+            })
+        }
     }
 }
 
