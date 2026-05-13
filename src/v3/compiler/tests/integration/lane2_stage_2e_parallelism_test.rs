@@ -1,6 +1,6 @@
 //! Lane 2 Stage 2e / DB-20 — `ParallelEffect` parallel composition safety.
 //!
-//! Derivation coverage (merge gate: pairwise commutativity from `OperationEffect` shapes):
+//! Derivation coverage (merge gate: pairwise commutativity from `Operation` shapes):
 //! - **Commute (green):** `parallel_read_only_branches_commute` — cross-branch `ReadEffect` only.
 //! - **Upsert×Upsert (v1):** always **red** — `UpsertEffect` has no merge/value witness; see
 //!   `parallel_upsert_cross_branch_fail_closed_same_op_name` and
@@ -20,7 +20,7 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BreakingShape, CompositionVerdict, EffectShape, IdempotentShape, KeySource,
-    NonSingletonList, OperationEffect, ParallelismUnsupportedKind, WorkflowEffect,
+    NonSingletonList, Operation, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
@@ -47,14 +47,14 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(name: &str, shape: EffectShape) -> OperationEffect {
-    OperationEffect {
+fn op(name: &str, shape: EffectShape) -> Operation {
+    Operation {
         operation_name: name.to_string(),
         shape,
     }
 }
 
-fn read(name: &str) -> OperationEffect {
+fn read(name: &str) -> Operation {
     op(name, EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
 }
 

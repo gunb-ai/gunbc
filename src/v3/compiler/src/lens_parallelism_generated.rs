@@ -36,7 +36,7 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
     }
 }
 
-fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
+fn operations_commute(a: &Operation, b: &Operation) -> bool {
     match (&a.shape, &b.shape) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
             idempotent_shapes_commute(ia, ib)
@@ -47,7 +47,7 @@ fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
 
 fn extract_linear_branches(
     branches: &NonSingletonList<Box<WorkflowEffect>>,
-) -> Option<Vec<Vec<OperationEffect>>> {
+) -> Option<Vec<Vec<Operation>>> {
     let mut out = Vec::new();
     for br in branches.iter() {
         match br.as_ref() {
@@ -58,7 +58,7 @@ fn extract_linear_branches(
     Some(out)
 }
 
-fn flatten_branch_ops(branch_ops: &[Vec<OperationEffect>]) -> Vec<OperationEffect> {
+fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
     branch_ops
         .iter()
         .flat_map(|ops| ops.iter().cloned())
@@ -66,7 +66,7 @@ fn flatten_branch_ops(branch_ops: &[Vec<OperationEffect>]) -> Vec<OperationEffec
 }
 
 fn pairwise_cross_branch_commutes(
-    branch_ops: &[Vec<OperationEffect>],
+    branch_ops: &[Vec<Operation>],
 ) -> Result<(), (String, String)> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {

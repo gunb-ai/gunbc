@@ -1615,7 +1615,7 @@ mod substrate_reflection {
         BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
         ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
         IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
-        OperationEffect, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
+        Operation, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
         TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
@@ -2040,7 +2040,7 @@ mod substrate_reflection {
         }
     }
 
-    fn reflect_operation_effect(dag: &Dag, op: &OperationEffect) -> ReflectResult<FieldValue> {
+    fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {
         Ok(FieldValue::Record(vec![
             (
                 "operation_name".to_string(),
@@ -2050,9 +2050,9 @@ mod substrate_reflection {
         ]))
     }
 
-    fn reflect_operation_effect_vec_spine(
+    fn reflect_operation_vec_spine(
         dag: &Dag,
-        ops: &[OperationEffect],
+        ops: &[Operation],
     ) -> ReflectResult<FieldValue> {
         let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
         let mut tail = FieldValue::Variant {
@@ -2060,7 +2060,7 @@ mod substrate_reflection {
             payload: vec![],
         };
         for op in ops.iter().rev() {
-            let head = reflect_operation_effect(dag, op)?;
+            let head = reflect_operation(dag, op)?;
             tail = FieldValue::Variant {
                 constructor: cons_id,
                 payload: vec![head, tail],
@@ -2082,7 +2082,7 @@ mod substrate_reflection {
                 dag,
                 "WorkflowEffect",
                 "LinearEffect",
-                vec![reflect_operation_effect_vec_spine(dag, ops)?],
+                vec![reflect_operation_vec_spine(dag, ops)?],
             ),
             WorkflowEffect::BranchEffect { arms } => sum_variant_payload(
                 dag,
