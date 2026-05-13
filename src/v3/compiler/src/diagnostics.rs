@@ -365,17 +365,6 @@ impl Diagnostic {
         }
     }
 
-    pub fn fixes(&self) -> &[Correction] {
-        self.live_corrections()
-    }
-
-    pub fn live_corrections(&self) -> &[Correction] {
-        match self.correction() {
-            Correction::LiveCorrection { .. } => std::slice::from_ref(self.correction()),
-            Correction::DeferredCorrection { .. } => &[],
-        }
-    }
-
     pub fn message(&self) -> String {
         match self {
             Diagnostic::TokenizerError { message, .. } | Diagnostic::ParseError { message, .. } => {
@@ -552,9 +541,12 @@ fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyle
         diagnostic.span().byte_end,
         diagnostic.message()
     )];
-    for (index, fix) in diagnostic.live_corrections().iter().enumerate() {
-        lines.push(format!("FIX (option {}): {}", index + 1, fix.description()));
-        lines.push(render_correction_source(fix, style));
+    if let Correction::LiveCorrection { .. } = diagnostic.correction() {
+        lines.push(format!(
+            "FIX (option 1): {}",
+            diagnostic.correction().description()
+        ));
+        lines.push(render_correction_source(diagnostic.correction(), style));
     }
     lines.join(&style.line_ending)
 }

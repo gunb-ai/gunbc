@@ -27,27 +27,29 @@ fn assert_fixes_apply_and_recompile(
     require_clean_compile: bool,
 ) {
     assert!(
-        !diagnostic.live_corrections().is_empty(),
-        "fixture should carry corrections"
+        matches!(
+            diagnostic.correction(),
+            v3_compiler::diagnostics::Correction::LiveCorrection { .. }
+        ),
+        "fixture should carry a live correction"
     );
-    for fix in diagnostic.live_corrections() {
-        let repaired = apply_correction_and_reparse(source, file, fix).unwrap_or_else(|error| {
-            panic!("correction should apply and reparse for {file}: {fix:?}\nerror: {error:?}")
-        });
-        match compile_to_dag(&repaired, file) {
-            Ok(_) => {}
-            Err(CompileError::Semantic(_)) if !require_clean_compile => {}
-            Err(CompileError::Semantic(dag)) => panic!(
-                "applied correction should compile cleanly for {file}: {fix:?}\ndiagnostics: {:?}\nrepaired source:\n{repaired}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            ),
-            Err(CompileError::Tokenize(error)) => panic!(
-                "applied correction should not tokenize-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
-            ),
-            Err(CompileError::Parse(error)) => panic!(
-                "applied correction should not parse-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
-            ),
-        }
+    let fix = diagnostic.correction();
+    let repaired = apply_correction_and_reparse(source, file, fix).unwrap_or_else(|error| {
+        panic!("correction should apply and reparse for {file}: {fix:?}\nerror: {error:?}")
+    });
+    match compile_to_dag(&repaired, file) {
+        Ok(_) => {}
+        Err(CompileError::Semantic(_)) if !require_clean_compile => {}
+        Err(CompileError::Semantic(dag)) => panic!(
+            "applied correction should compile cleanly for {file}: {fix:?}\ndiagnostics: {:?}\nrepaired source:\n{repaired}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(CompileError::Tokenize(error)) => panic!(
+            "applied correction should not tokenize-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
+        ),
+        Err(CompileError::Parse(error)) => panic!(
+            "applied correction should not parse-fail for {file}: {fix:?}\nerror: {error:?}\nrepaired source:\n{repaired}"
+        ),
     }
 }
 

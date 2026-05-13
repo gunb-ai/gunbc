@@ -155,11 +155,12 @@ fn read(x: Outer) -> Int = x.bad.leaf
                 dag.diagnostics().iter().collect::<Vec<_>>()
             )
         });
-    let fix = diag
-        .fixes()
-        .iter()
-        .find(|fix| fix.new_source() == Some("ok"))
-        .expect("missing-field fix should suggest `ok`");
+    let fix = diag.correction();
+    assert_eq!(
+        fix.new_source(),
+        Some("ok"),
+        "missing-field fix should suggest `ok`"
+    );
     let span = fix.span().expect("missing-field fix should be live");
     assert_eq!(span.byte_start, bad_start);
     assert_eq!(span.byte_end, bad_start + "bad".len() as u32);
@@ -199,9 +200,7 @@ fn read(x: AB) -> Int = match x { A => 1 }
             )
         });
     assert!(
-        diag.fixes()
-            .iter()
-            .any(|fix| fix.description().contains("`B`")),
+        diag.correction().description().contains("`B`"),
         "non-exhaustive match diagnostic should suggest the missing `B` arm"
     );
 }
@@ -232,14 +231,11 @@ fn read(x: AB) -> Int = match x {}
             )
         });
     assert!(
-        diag.fixes().iter().any(|fix| {
-            let Some(new_source) = fix.new_source() else {
-                return false;
-            };
-            !new_source.starts_with(", ") && new_source == "A => 1"
-        }),
+        diag.correction()
+            .new_source()
+            .is_some_and(|new_source| !new_source.starts_with(", ") && new_source == "A => 1"),
         "empty match fix should seed a valid first arm, got {:?}",
-        diag.fixes()
+        diag.correction()
     );
 }
 
