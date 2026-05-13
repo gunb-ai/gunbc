@@ -36,9 +36,13 @@
 //! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
 
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -140,6 +144,31 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_cementing_regen_on_disk_dag_harnesses_match_runner_table() {
+    let dag_dir = workspace_root().join("src/v3/compiler/tests/dag");
+    let mut on_disk: BTreeSet<String> = BTreeSet::new();
+    for entry in std::fs::read_dir(&dag_dir).expect("read tests/dag") {
+        let path = entry.expect("dir entry").path();
+        if path.extension() != Some(OsStr::new("dag")) {
+            continue;
+        }
+        let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !name.starts_with("t_r3_gate_87_cementing_regen_") {
+            continue;
+        }
+        on_disk.insert(name.to_string());
+    }
+    let from_runner = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+    assert_eq!(
+        on_disk, from_runner,
+        "on-disk `tests/dag/t_r3_gate_87_cementing_regen_*.dag` stems must equal \
+         `R3_GATE_87_CEMENTING_REGEN_SUITES` (no orphan harness files; runner table is sole merge-visible inventory per INVARIANTS P2)."
     );
 }
 
