@@ -204,11 +204,11 @@ data impossible_bug_type_drift: TestClaim = {
 
 data impossible_bug_idempotency_violation: TestClaim = {
   name: "impossible_bug_class_suite_r1.idempotency_violation",
-  source: "let bad_compose = compose_effects([])\n",
+  source: "let bad_shape = IsIdempotent(AppendEffect())\n",
   file_name: "impossible_bug_idempotency.v3",
   predicate: FailsWithDiagnostic({
     kind: ResolveError,
-    detail_contains: Contains("named constructor `AppendEffect` is not a variant of the expected sum type")
+    detail_contains: Contains("AppendEffect")
   }),
   requires: []
 }

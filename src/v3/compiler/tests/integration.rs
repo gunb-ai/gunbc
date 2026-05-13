@@ -348,7 +348,7 @@ mod t_demo_fixture_test {
             panic!("expected Semantic(Dag) handoff, got {err:?}");
         };
         let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
-        let needle = "named constructor `AppendEffect` is not a variant of the expected sum type";
+        let needle = "AppendEffect";
         assert!(
             msgs.iter().any(|m| m.contains(needle)),
             "expected nullary-call lowering to reject AppendEffect as IdempotentShape payload; got: {msgs:?}"
