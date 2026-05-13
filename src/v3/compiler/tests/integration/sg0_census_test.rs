@@ -787,6 +787,16 @@ enum TestsAsDataMigrationClass {
 // Match order is load-bearing while this exists: check classification
 // before deleting or reordering a branch, especially broad substring
 // branches such as `contains("sg")`.
+//
+// Gate #84 — `CementingV2Oracle` ownership / delta (handoff refresh):
+// | Path (suffix) | Previously (first other match) | Why `CementingV2Oracle` |
+// |---|---|---|
+// | `.../cementing/*.rs` | — | Band-C Rust receipts + gate-#87 staging dir. |
+// | `lens_behavioral_parity_demonstration_test.rs` | would hit `lens` → LensOutputEquality | T-LBP parity snapshot for cementing migration. |
+// | `r3_gate_87_lens_cementing_regen_receipts_test.rs` | would hit `lens` / `gate` | Paired Rust receipts for `t_r3_gate_87_cementing_regen_*.dag`. |
+// | `lens_register_correspondence_test.rs` | `lens` → LensOutputEquality | `cementing_dispatch` / `lens_capability_register_rows` projection ratchet. |
+// | `t_pb_b_1_dag_runner_test.rs` | `integration/` → CompileOrReject | PB-B-1 runner: `cementing_dispatch_suite` + gate-#87 regen harness table. |
+// | `.../wiring_scanner_test.rs` | `integration/` → CompileOrReject | `integration_rs_wiring_scan` — Band-C `#[path]` / `mod` wiring ratchet. |
 fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass> {
     use TestsAsDataMigrationClass::*;
 
@@ -797,6 +807,9 @@ fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass
     if path.contains("/cementing/")
         || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
         || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs")
+        || path.ends_with("lens_register_correspondence_test.rs")
+        || path.ends_with("t_pb_b_1_dag_runner_test.rs")
+        || path.ends_with("wiring_scanner_test.rs")
     {
         return Some(CementingV2Oracle);
     }
