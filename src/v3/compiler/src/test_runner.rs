@@ -3,6 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::analyze_parallelism;
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
@@ -27,7 +28,6 @@ use crate::lens_declaration_apply::{
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
-use crate::analyze_parallelism;
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -3162,10 +3162,12 @@ impl<'a> TestRunner<'a> {
                 let report = analyze_parallelism(program_dag, bind.id);
                 i64::from(matches!(
                     report,
-                    WorkflowParallelismReport::ParallelismUnsupported(ParallelismUnsupportedDetail {
-                        kind: ParallelismUnsupportedKind::NoWorkflowProjection,
-                        ..
-                    })
+                    WorkflowParallelismReport::ParallelismUnsupported(
+                        ParallelismUnsupportedDetail {
+                            kind: ParallelismUnsupportedKind::NoWorkflowProjection,
+                            ..
+                        }
+                    )
                 ))
             }
             _ => return None,

@@ -149,8 +149,8 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
 
 #[test]
 fn r3_gate_87_parallelism_unsupported_on_literal_program() {
-    let dag = compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3")
-        .expect("compile");
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
     let bind_id = dag
         .nodes()
         .iter()
