@@ -400,17 +400,18 @@ fn assert_ci_prereq_graph_has_single_parallel_fanout(input: &CiWorkflowDagInput)
         }
     }
     two_branch.sort_by(|a, b| a.0.cmp(&b.0));
-    assert!(
-        two_branch.len() <= 1,
-        "expected at most one 2-branch prerequisite fan-out in gunbc ci_workflow_dag; found {two_branch:?}"
-    );
-
-    let (parent, kids) = two_branch
-        .into_iter()
-        .next()
-        .expect("ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding)");
-    assert_eq!(parent.as_str(), "compile-gates");
-    assert_eq!(kids, vec!["lint".to_string(), "tests".to_string()]);
+    match two_branch.as_slice() {
+        [(parent, kids)] => {
+            assert_eq!(parent.as_str(), "compile-gates");
+            assert_eq!(kids, &vec!["lint".to_string(), "tests".to_string()]);
+        }
+        [] => panic!(
+            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found none"
+        ),
+        found => panic!(
+            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found {found:?}"
+        ),
+    }
 }
 
 fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
