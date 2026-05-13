@@ -85,6 +85,12 @@ manager-brief-authority-check:
 manager-brief-authority-test:
 	@bash scripts/test-check-manager-brief-authority.sh
 
+# Self-test for the per-test timeout ratchet consumer. Without this,
+# future JSONL manifest parsing changes could silently neuter fail-closed
+# behavior for slow-test policy.
+test-timeout-ratchet-test:
+	@bash scripts/test-check-test-timeout.sh
+
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-bootstrap
