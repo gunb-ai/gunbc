@@ -38,7 +38,9 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table, R3_GATE_87_CEMENTING_REGEN_SUITES,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -122,6 +124,12 @@ fn assert_lens_dag_compiles(rel: &str) {
     );
 }
 
+fn lens_name_from_gate_87_harness_path(file: &str) -> &str {
+    file.strip_prefix("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_")
+        .and_then(|rest| rest.strip_suffix(".dag"))
+        .unwrap_or_else(|| panic!("unexpected gate-87 harness path `{file}`"))
+}
+
 fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
     dag.nodes()
         .iter()
@@ -141,6 +149,45 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_compiles_placeholders_are_explicit_helper_rows() {
+    let allowed: BTreeSet<&str> = ["infer_helpers", "lower_helpers", "variant_payload"]
+        .into_iter()
+        .collect();
+    let actual: BTreeSet<&str> = R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .filter_map(|(source, file, _, _)| source.contains("predicate: Compiles").then_some(*file))
+        .map(lens_name_from_gate_87_harness_path)
+        .collect();
+
+    assert_eq!(
+        actual, allowed,
+        "gate-87 `Compiles` placeholders are allowed only for the helper/carrier-blocked \
+         rows named in `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §2.1; \
+         any other registry row must use `DifferentialEquals`, `LensOutputEquals`, \
+         `SymbolicCostExprEquals`, or update the dissolution ledger in the same PR."
+    );
+
+    for (source, file, _, _) in R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .filter(|(source, _, _, _)| source.contains("predicate: Compiles"))
+    {
+        let lens_name = lens_name_from_gate_87_harness_path(file);
+        assert!(
+            source.contains("Dissolution trigger:"),
+            "{file} must name the placeholder dissolution trigger"
+        );
+        assert!(
+            source.contains("Temporary Rust receipt:"),
+            "{file} must name the paired Rust pin"
+        );
+        assert!(
+            source.contains(&format!("r3_gate_87_{lens_name}_lens_source_compiles")),
+            "{file} must name the exact paired Rust source-compilation receipt"
+        );
+    }
 }
 
 #[test]
