@@ -776,6 +776,13 @@ const CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR: &[&str] = &[
     "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
 ];
 
+fn is_cementing_family_sg0_paired_test_outside_cementing_dir(path: &str) -> bool {
+    path.starts_with("src/v3/compiler/tests/integration/")
+        && !path.contains("/cementing/")
+        && (path.ends_with("integration/common/wiring_scanner_test.rs")
+            || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs"))
+}
+
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
 // hand-authored and text-inlined into generated Rust (or otherwise
 // dissolve when the corresponding `.dag` authority lands). The
@@ -1184,6 +1191,23 @@ fn sg0_cementing_family_integration_directory_is_census_locked() {
              without updating `CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR`"
         );
     }
+
+    let declared: BTreeSet<&str> = CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR
+        .iter()
+        .copied()
+        .collect();
+    let derived_from_census: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST
+        .iter()
+        .copied()
+        .filter(|p| is_cementing_family_sg0_paired_test_outside_cementing_dir(p))
+        .collect();
+    assert_eq!(
+        derived_from_census, declared,
+        "cementing-family paired paths outside `tests/integration/cementing/` must match exactly: \
+         extend `CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR` (and this assertion's \
+         filter `is_cementing_family_sg0_paired_test_outside_cementing_dir`) when adding a new \
+         gate-#87 paired integration module, or tighten the filter when retiring one"
+    );
 }
 
 #[test]
