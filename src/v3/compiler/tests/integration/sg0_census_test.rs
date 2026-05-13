@@ -645,8 +645,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // when the generic TestClaim runner can execute the receipt without this
     // host-side harness.
     "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
-    // R3 gate #62 (`substrate_gap_file_ingestion_closed`): `read_utf8_file` lowering +
-    // checked-in Compiles TestClaim until workflow-as-data fully owns timing/JSON carriers.
+    // R3 gate #62 (`substrate_gap_file_ingestion_closed`): `read_utf8_file` lowering + Compiles
+    // receipt — **Plan** `docs/r3-program-plan.md` §1.8 row #62; **ROADMAP** forward lane
+    // `T-Workflow-As-Data` (`ROADMAP.md` § "Forward-Tracked Lane: T-Workflow-As-Data"). P5
+    // home-of-record: INVARIANTS.md §P5 SG-0 hand-authored integration test receipts row for this path.
     "src/v3/compiler/tests/integration/r3_substrate_gap_file_ingestion_test.rs",
     // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
     // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice

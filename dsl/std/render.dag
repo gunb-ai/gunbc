@@ -188,6 +188,14 @@ fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
 fn repeat_string(s: String, n: Int) -> String {
   repeat_string_loop(acc: "", s: s, remaining: n)
 }
+
+// R3 §1.8 gate #62 (`substrate_gap_file_ingestion_closed`): compile-time UTF-8 read of a
+// sibling file relative to `compile_to_dag(_, file)`. Lowering expands well-formed calls to a
+// `String` literal and resolves this declaration id (P5 identity discipline — not a bare
+// callee-string match). Runtime body is scaffolding only; do not rely on evaluation semantics.
+fn read_utf8_file(path: String) -> String {
+  ""
+}
 // GUNBC_BOOTSTRAP_EMIT_END
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {
