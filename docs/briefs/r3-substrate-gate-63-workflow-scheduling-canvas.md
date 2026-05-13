@@ -46,11 +46,16 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 - **Demo evaluator entrypoint**: `src/v3/std/t_ci_workflow_as_data_demo.dag:206-210` returns `DimensionReport<TimingMeasurement>` — the criterion (b) shape exists
 - **Integration evaluator receipt**: `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:582` exists
 
-### What's broken (the smoking gun)
+### What's the actual state (corrected per snappy-bear-502 msg_cef1340b 2026-05-13)
 
-- Integration test at line 582 is **`#[ignore]` at line 581**
-- `--include-ignored` run: 3 passed, **5 failed** (BuildBuddy invocation `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`)
-- Failure modes:
+**The gate-criterion test PASSES in isolation:**
+- Test: `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`
+- Command: `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator -- --ignored --exact --nocapture`
+- Result: **1 passed in 5.26s** (BuildBuddy `9f22cbce-66ff-41e0-a172-c2e62a69dee0`)
+
+**But sibling tests in the broader `--include-ignored` run fail:**
+- BuildBuddy invocation `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`: 3 passed, 5 failed
+- Failure modes (NOT the gate-criterion test itself):
   - `dsl/gunbc/ci_emission.dag` unresolved `CIWorkflowDag` / unknown type
   - `gunbc_ci_emission_binary_shim_workflow` opaque body
   - PythonShim placeholder opaque body
@@ -59,7 +64,9 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
   - `gunbc_ci_emission_substrate_compiles` fails
   - `gunbc_ci_github_actions_workflow_authority_compiles` fails
 
-**Reading**: substrate-shape is **modeled but not closed-loop**. The `.dag` carriers exist, the demo entrypoint exists, the test exists — but the substrate doesn't compile cleanly + the demo doesn't pass + `#[ignore]` masks the state.
+**Reading**: the substrate-shape is **closer-to-closed than first thought**. The gate-criterion test itself passes; the `#[ignore]` masks a passing receipt, not a failing one. The 5 sibling failures are **separately-scoped substrate-debt** in adjacent tests/compiles, not the gate-criterion path.
+
+**This materially shifts the candidate evaluation** (see §3 updates below).
 
 ## §3. Closure-scope question — three candidates
 
