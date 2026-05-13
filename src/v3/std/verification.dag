@@ -45,6 +45,12 @@ type LensProducerFilesSubsetPredicate {}
 
 data lens_producer_files_subset_predicate: LensProducerFilesSubsetPredicate = {}
 
+// Closed PB bin-shim predicate follows the same declaration-ref pattern
+// as the lens-producer subset.
+type BinShimFilesSubsetPredicate {}
+
+data bin_shim_files_subset_predicate: BinShimFilesSubsetPredicate = {}
+
 // Closed PB consolidation ratchets follow the same declaration-ref pattern.
 type CompilerStdPositiveSetRatchet {}
 
