@@ -55,6 +55,12 @@ type PullRequestDigestView {
   review_states: List<String>
 }
 
+data digest_render_expectation_receipts: List<String> = [
+  "render_readiness|DigestNotReady(first_reason=already merged,more_reasons=[])|not ready: already merged",
+  "render_readiness|DigestNotReady(first_reason=changes requested,more_reasons=[stale])|not ready: changes requested; stale",
+  "render_readiness|DigestOpenForReview|open for review"
+]
+
 fn digest_subject(pr: PullRequest) -> PullRequestDigestSubject {
   PullRequestDigestSubject {
     number: pr.number,
