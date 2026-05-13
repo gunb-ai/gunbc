@@ -32,7 +32,7 @@ use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_
 /// `cached_compile_to_dag` amortizes **duplicate** compile work when both tests run in one
 /// process. This is **not** a `TESTING.md` Phase-0 exemption dissolution receipt: the first
 /// caller still pays cold bootstrap, and libtest parallelism can inflate wall time — those
-/// tests stay listed in `scripts/test-node-wall-clock-ratchet.jsonl` until a sole-filter
+/// tests stay listed in `dsl/gunbc/test_node_wall_clock_ratchet.dag` until a sole-filter
 /// `--report-time` ≤2000ms receipt exists (or gate #102 lands a structural cost ratchet).
 const LANE2D_COUNTDOWN_SOURCE: &str =
     "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)";
