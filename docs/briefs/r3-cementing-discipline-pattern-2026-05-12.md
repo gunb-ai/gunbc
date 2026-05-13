@@ -8,7 +8,6 @@
 - [`TESTING.md`](../../TESTING.md) section "Cementing tests (Band C — lens subsumption)".
 - [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §5 and §C5.
 - [`docs/v3-lens-capability-register.md`](../v3-lens-capability-register.md).
-- [`docs/briefs/r3-gate-87-placeholder-dissolution-ledger-2026-05-13.md`](r3-gate-87-placeholder-dissolution-ledger-2026-05-13.md) for the Gate 87 `Compiles` placeholder and Rust-pin blocker ledger.
 - `src/v3/std/verification.dag` `TestPredicate` variants and lens-capability data.
 - `src/v3/compiler/regen.dag` `LensRegistryEntry` rows for the gate-#87 corpus.
 - `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` `R3_GATE_87_CEMENTING_REGEN_SUITES`.
@@ -55,6 +54,16 @@ Use the existing `TestPredicate` surface. Inventing new predicate variants is ou
 Predicate-axis boundaries:
 - `BinaryDimensionReportEquals` belongs to Pattern-A DimensionReport comparisons, not cementing-class bulk-port.
 - `ProgramGenerator`, `Quantifier`, and `QuantifiedTestClaim` belong to property-based family claims, not per-lens cementing receipts.
+
+### §2.1 Gate-#87 `Compiles` helper placeholders
+
+The rows below are the complete Gate #87 `.dag` `Compiles` placeholder set at the G87-D3 refresh. They are helper or carrier-blocked placeholders, not behavioral cementing evidence. On dissolution, replace the placeholder with the named stronger predicate and remove the paired Rust pin in the same PR.
+
+| Lens row | Placeholder file | Paired Rust pin | Dissolution trigger / owning lane |
+|---|---|---|---|
+| `infer_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals` over that carrier. Owning lane: PB / compiler-std helper carrier lane. |
+| `lower_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles` | Public `lower_helpers` behavior carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals`. Owning lane: PB / parse-surface and lower-helper convergence lane. |
+| `variant_payload` | `tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_variant_payload_lens_source_compiles`; temporary unit receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests` | Stable variant-declaration fixture and `VariantPayloadShapeLookup` expected literal become authorable as `.dag` data; replace with `LensOutputEquals(variant_payload_shape, ..., expected)`. Owning lane: T-PB-B tests-as-data carrier completeness for generated lens output literals. |
 
 ## §3. Known Hand-Rust Cementing Dispositions
 
