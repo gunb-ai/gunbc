@@ -30,6 +30,10 @@ type CementingBandCReceipt {
   // `DagHarness` → `.dag` TestClaim harness under `tests/dag/<module_stem>.dag`;
   // `TemporaryRustModule` → `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
   kind: CementingBandCReceiptKind
+  // Explicit Band-C placeholder / dissolution trigger. Real v2 receipts use
+  // "complete-v2-cementing"; v3-native and helper rows name the blocker that
+  // dissolves the placeholder into a full behavioral `.dag` carrier receipt.
+  dissolution_trigger: String
 }
 
 data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
@@ -37,21 +41,79 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
     registry_name: "cost"
     module_stem: "t_r3_gate_87_cementing_regen_cost"
     kind: DagHarness
+    dissolution_trigger: "complete-v2-cementing"
   },
   {
     registry_name: "cost"
     module_stem: "complexity_lens_behavioral_completion"
     kind: TemporaryRustModule
+    dissolution_trigger: "replace temporary Rust receipt once .dag expected values can express ComplexitySummary / nested SymbolicCost"
   },
   {
     registry_name: "cost_symbolic"
     module_stem: "t_r3_gate_87_cementing_regen_cost_symbolic"
     kind: DagHarness
+    dissolution_trigger: "complete-v2-cementing"
   },
   {
     registry_name: "cost_symbolic"
     module_stem: "cost_lens_symbolic_consumer_test"
     kind: TemporaryRustModule
+    dissolution_trigger: "replace temporary Rust receipt once .dag expected values can express DimensionReport<SymbolicCost>"
+  },
+  {
+    registry_name: "cost_target_realization"
+    module_stem: "t_r3_gate_87_cementing_regen_cost_target_realization"
+    kind: DagHarness
+    dissolution_trigger: "v3-native N/A row; replace narrow Int witness when target-realization composition exposes a public .dag carrier"
+  },
+  {
+    registry_name: "effect_enumeration"
+    module_stem: "t_r3_gate_87_cementing_regen_effect_enumeration"
+    kind: DagHarness
+    dissolution_trigger: "partial v3-native row; replace narrow no-transaction witness when OperationEffect/resource-threading migration exposes full report equality"
+  },
+  {
+    registry_name: "parallelism"
+    module_stem: "t_r3_gate_87_cementing_regen_parallelism"
+    kind: DagHarness
+    dissolution_trigger: "partial v3-native row; replace placeholder when PairwiseNonCommute carries typed left/right operation evidence"
+  },
+  {
+    registry_name: "provenance"
+    module_stem: "t_r3_gate_87_cementing_regen_provenance"
+    kind: DagHarness
+    dissolution_trigger: "v3-native complete row; dissolve any narrow projection when Origin expected literals are fully authorable as .dag data"
+  },
+  {
+    registry_name: "structural_resolution"
+    module_stem: "t_r3_gate_87_cementing_regen_structural_resolution"
+    kind: DagHarness
+    dissolution_trigger: "v3-native complete row; dissolve narrow projection when List<UnresolvedArrowBody> expected literals are fully authorable as .dag data"
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "t_r3_gate_87_cementing_regen_unused_parameters"
+    kind: DagHarness
+    dissolution_trigger: "v3-native complete row; dissolve narrow no-finding projection when List<UnusedParameter> expected literals are fully authorable as .dag data"
+  },
+  {
+    registry_name: "infer_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_infer_helpers"
+    kind: DagHarness
+    dissolution_trigger: "helper partial row; replace Compiles placeholder when infer_helpers public output carrier is authorable as .dag data"
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "t_r3_gate_87_cementing_regen_variant_payload"
+    kind: DagHarness
+    dissolution_trigger: "v3-native complete row; replace Compiles placeholder when stable variant-declaration fixture and VariantPayloadShapeLookup expected literal are authorable as .dag data"
+  },
+  {
+    registry_name: "lower_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_lower_helpers"
+    kind: DagHarness
+    dissolution_trigger: "helper partial row; replace Compiles placeholder when lower_helpers public output carrier is authorable as .dag data"
   }
 ]
 

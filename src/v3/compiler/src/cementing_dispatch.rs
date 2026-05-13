@@ -197,12 +197,14 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
 }
 
 /// Closed roster of Band-C `(registry_name, module_stem, kind)` receipts implied by the
-/// current `regen.dag` × v2-complete register projection. When a new v2-complete lens
-/// lands in `regen.dag`, extend this expansion in the same PR as `cementing_dispatch.dag`
-/// receipt rows — otherwise the dispatch predicate fail-closes with an explicit error.
+/// current `regen.dag` × capability-register projection. Every `LensRegistryEntry` whose
+/// lens basename is registered gets an explicit `.dag` harness receipt. Real-v2 complete
+/// rows additionally keep their temporary Rust oracle receipts until the full expected
+/// carrier shape is authorable as `.dag` data.
 fn expected_cementing_receipt_triples(
     registry_pairs: &[(String, String)],
-    basenames: &BTreeSet<String>,
+    registered_basenames: &BTreeSet<String>,
+    v2_cementing_basenames: &BTreeSet<String>,
 ) -> Result<BTreeSet<(String, String, String)>, String> {
     let mut out = BTreeSet::new();
     for (name, lens_file) in registry_pairs {
@@ -213,16 +215,19 @@ fn expected_cementing_receipt_triples(
                 format!("registry entry `{name}` has lens_file without basename: {lens_file}")
             })?
             .to_string();
-        if !basenames.contains(&basename) {
+        if !registered_basenames.contains(&basename) {
+            continue;
+        }
+        out.insert((
+            name.clone(),
+            format!("t_r3_gate_87_cementing_regen_{name}"),
+            "dag".to_string(),
+        ));
+        if !v2_cementing_basenames.contains(&basename) {
             continue;
         }
         match (name.as_str(), basename.as_str()) {
             ("cost", "complexity.dag") => {
-                out.insert((
-                    name.clone(),
-                    "t_r3_gate_87_cementing_regen_cost".to_string(),
-                    "dag".to_string(),
-                ));
                 out.insert((
                     name.clone(),
                     "complexity_lens_behavioral_completion".to_string(),
@@ -230,11 +235,6 @@ fn expected_cementing_receipt_triples(
                 ));
             }
             ("cost_symbolic", "cost.dag") => {
-                out.insert((
-                    name.clone(),
-                    "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
-                    "dag".to_string(),
-                ));
                 out.insert((
                     name.clone(),
                     "cost_lens_symbolic_consumer_test".to_string(),
@@ -254,6 +254,19 @@ fn expected_cementing_receipt_triples(
         }
     }
     Ok(out)
+}
+
+fn capability_register_basenames(capability_rows: &[FieldValue]) -> Result<BTreeSet<String>, String> {
+    let mut basenames = BTreeSet::new();
+    for row in capability_rows {
+        let Some(fields) = record_fields(row) else {
+            return Err(format!(
+                "capability_register list: expected record row, got {row:?}"
+            ));
+        };
+        basenames.insert(string_field(fields, "lens_basename")?);
+    }
+    Ok(basenames)
 }
 
 fn v2_cementing_basenames_from_capability_rows(
@@ -377,23 +390,27 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     let capability_rows = list_items_of_declaration(dag, reg_id, "capability_register")?;
     let receipt_rows = list_items_of_declaration(dag, recv_id, "cementing_receipts")?;
 
-    let basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
+    let registered_basenames = capability_register_basenames(&capability_rows)?;
+    let v2_cementing_basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
 
     let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 
-    let mut matched_basenames = BTreeSet::new();
+    let mut matched_v2_basenames = BTreeSet::new();
     for (name, lens_file) in &registry_pairs {
         let Some(basename) = FsPath::new(lens_file).file_name().and_then(|s| s.to_str()) else {
             return Err(format!(
                 "registry entry `{name}` has lens_file without basename: {lens_file}"
             ));
         };
-        if basenames.contains(basename) {
-            matched_basenames.insert(basename.to_string());
+        if v2_cementing_basenames.contains(basename) {
+            matched_v2_basenames.insert(basename.to_string());
         }
     }
 
-    let missing: Vec<_> = basenames.difference(&matched_basenames).cloned().collect();
+    let missing: Vec<_> = v2_cementing_basenames
+        .difference(&matched_v2_basenames)
+        .cloned()
+        .collect();
     if !missing.is_empty() {
         return Err(format!(
             "`lens_capability_register` escalates v2 cementing for lens basenames {missing:?}, \
@@ -417,6 +434,13 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 .to_string()
         })?;
         let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        let dissolution_trigger = string_field(fields, "dissolution_trigger")?;
+        if dissolution_trigger.trim().is_empty() {
+            return Err(format!(
+                "cementing receipt row `{registry_name}` / `{module_stem}` must carry a non-empty \
+                 `dissolution_trigger` (use `complete-v2-cementing` for complete v2 receipts)."
+            ));
+        }
         let triple = (
             registry_name.clone(),
             module_stem.clone(),
@@ -430,7 +454,11 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         }
     }
 
-    let expected_triples = expected_cementing_receipt_triples(&registry_pairs, &basenames)?;
+    let expected_triples = expected_cementing_receipt_triples(
+        &registry_pairs,
+        &registered_basenames,
+        &v2_cementing_basenames,
+    )?;
     if receipt_triples != expected_triples {
         return Err(format!(
             "cementing_receipts `(registry_name, module_stem, kind)` triples must exactly match \
