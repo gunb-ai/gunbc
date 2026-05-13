@@ -222,7 +222,7 @@ Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_len
 - All 9 variant names + field shapes structurally present
 - Phase A Q1-α deliverables present: rational_lt/le/gt/ge/eq/ne free functions in cost-lens module; NO OrderedField type declared
 - `Rational = Field<FieldOfFractions<Int>>` UNCHANGED at `dsl/std/rational.dag:26` (Q1-α)
-- Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ExpCost(2,n)`; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
+- Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ProductCost([ExpCost(2,n), PolyCost(d)])` — multiplicative cross-class is NOT absorbed per §6 + anti-pattern #9 (asymptotic absorption is sound for SUM but unsound for PRODUCT); `ExpCost(2,n) + PolyCost(d)` produces `ExpCost(2,n)` — additive cross-class absorption is sound; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
 - STOP-SIGNAL text at `:60-72` contains new "10th variant" wording
 
 ## §8. Phase F — Consumer migration (atomic)
