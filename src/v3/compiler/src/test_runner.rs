@@ -3138,10 +3138,10 @@ impl<'a> TestRunner<'a> {
                         "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
                     )));
                 };
-                i64::from(matches!(
-                    origin_of(program_dag, &bind.value),
-                    Origin::Source { .. }
-                ))
+                match provenance_origin_matches_producer(program_dag, &bind.value, lens_name) {
+                    Ok(matches) => i64::from(matches),
+                    Err(result) => return Some(result),
+                }
             }
             "gate87_provenance_sum_origin_computed" => {
                 let Some(bind) = find_bind(program_dag, "sum", file_name) else {
@@ -3149,10 +3149,10 @@ impl<'a> TestRunner<'a> {
                         "LensOutputEquals({lens_name}): bind `sum` not found in `{file_name}`"
                     )));
                 };
-                i64::from(matches!(
-                    origin_of(program_dag, &bind.value),
-                    Origin::Computed { .. }
-                ))
+                match provenance_origin_matches_producer(program_dag, &bind.value, lens_name) {
+                    Ok(matches) => i64::from(matches),
+                    Err(result) => return Some(result),
+                }
             }
             "gate87_structural_resolution_no_violations" => {
                 i64::from(lens_structural_resolution::check(program_dag).is_empty())
@@ -6269,6 +6269,49 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+fn provenance_origin_matches_producer(
+    dag: &Dag,
+    port: &PortId,
+    lens_name: &str,
+) -> Result<bool, ClaimResult> {
+    let got = origin_of(dag, port);
+    let Some(produced_by) = dag.port_opt(port).and_then(|p| p.produced_by) else {
+        return Err(ClaimResult::Fail(format!(
+            "LensOutputEquals({lens_name}): port `{port:?}` has no producer"
+        )));
+    };
+    let Some(behavior) = dag.nodes().iter().find(|b| b.id() == produced_by) else {
+        return Err(ClaimResult::Fail(format!(
+            "LensOutputEquals({lens_name}): missing producer node `{produced_by:?}`"
+        )));
+    };
+    let expected = expected_provenance_origin_from_producer_behavior(behavior);
+    Ok(origin_carriers_equal(&got, &expected))
+}
+
+fn expected_provenance_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
+    match behavior {
+        Behavior::Value(v) => Origin::Source { _0: v.id },
+        Behavior::Transform(t) => Origin::Computed { _0: t.id },
+        Behavior::Branch(b) => Origin::Selected { _0: b.id },
+        Behavior::Loop(l) => Origin::Accumulated { _0: l.id },
+        Behavior::Bind(bind) => Origin::Source { _0: bind.id },
+    }
+}
+
+fn origin_carriers_equal(a: &Origin, b: &Origin) -> bool {
+    match (a, b) {
+        (Origin::NoProducer, Origin::NoProducer)
+        | (Origin::MissingPort, Origin::MissingPort)
+        | (Origin::MissingBehavior, Origin::MissingBehavior) => true,
+        (Origin::Source { _0: x }, Origin::Source { _0: y })
+        | (Origin::Computed { _0: x }, Origin::Computed { _0: y })
+        | (Origin::Selected { _0: x }, Origin::Selected { _0: y })
+        | (Origin::Accumulated { _0: x }, Origin::Accumulated { _0: y }) => x == y,
+        _ => false,
+    }
 }
 
 fn expected_int_literal(
