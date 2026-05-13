@@ -28,9 +28,10 @@
 //! never by stringified message. When porting any Rust receipt below to a `.dag` `TestClaim`,
 //! the same PR removes its row from `sg0_census_test::EXPECTED_HAND_AUTHORED_TEST` — no
 //! parallel cementing inventory is allowed to track the Rust→`.dag` migration separately.
-//! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
-//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
-//! description**; module comments must not assert deletes for paths that never existed on
+//! Per `INVARIANTS.md` §P5(b) Dispatch-Discipline Mechanism **(b)**, the landing **PR description**
+//! must state **exactly one** checkable receipt (deleted path/scaffold, SG-0 census line shrink
+//! with before/after counts, or explicit deferral naming a lane **and** citing a concrete
+//! `ROADMAP.md` row); module comments must not assert deletes for paths that never existed on
 //! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
 //! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
