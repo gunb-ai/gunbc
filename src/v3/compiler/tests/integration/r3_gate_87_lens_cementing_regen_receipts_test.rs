@@ -10,8 +10,9 @@
 //! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
-//! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! Helper-only or carrier-blocked rows (`infer_helpers`, `lower_helpers`, `parallelism`,
+//! `variant_payload`) stay explicit `Compiles` placeholders with per-file dissolution triggers
+//! in their `.dag` harness comments.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
@@ -110,6 +111,11 @@ fn read_lens_source(rel: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn read_workspace_file(rel: &str) -> String {
+    let path = workspace_root().join(rel);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
 fn assert_lens_dag_compiles(rel: &str) {
     let source = read_lens_source(rel);
     let dag = compile_to_dag(&source, rel).unwrap_or_else(|diag| {
@@ -129,6 +135,49 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .find(|bind| bind.name == name)
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
         .value
+}
+
+#[test]
+fn r3_gate_87_v3_native_output_contract_harness_predicates_are_pinned() {
+    for (lens, projection) in [
+        ("provenance", "gate87_provenance_literal_origin_source"),
+        ("unused_parameters", "gate87_unused_parameters_no_findings"),
+        (
+            "structural_resolution",
+            "gate87_structural_resolution_no_violations",
+        ),
+        (
+            "cost_target_realization",
+            "gate87_cost_target_realization_meta_present",
+        ),
+    ] {
+        let rel = format!("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_{lens}.dag");
+        let source = read_workspace_file(&rel);
+        assert!(
+            source.contains("LensOutputEquals("),
+            "{rel} must remain a LensOutputEquals output-contract receipt"
+        );
+        assert!(
+            source.contains(projection),
+            "{rel} must name its host-side scalar projection `{projection}`"
+        );
+    }
+
+    let variant_payload = read_workspace_file(
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
+    );
+    assert!(
+        variant_payload.contains("predicate: Compiles"),
+        "variant_payload must stay an explicit Compiles placeholder until \
+         VariantPayloadShapeLookup expected literals are authorable as `.dag` data"
+    );
+    assert!(
+        variant_payload.contains("VariantPayloadShapeLookup")
+            && variant_payload.contains("r3_gate_87_variant_payload_lens_source_compiles")
+            && variant_payload.contains("LensOutputEquals(variant_payload_shape"),
+        "variant_payload placeholder must name the missing carrier, Rust pin, and replacement \
+         LensOutputEquals contract"
+    );
 }
 
 #[test]
@@ -199,6 +248,11 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]

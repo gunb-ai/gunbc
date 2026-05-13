@@ -24,9 +24,35 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 | `unused_parameters` | `src/v3/lenses/unused_parameters.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` plus Rust clean-program receipt. |
 | `variant_payload` | `src/v3/lenses/variant_payload.dag` | v3-native | Green after this audit: unit cementing receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests` pin empty, positional-single, single named-field, multi named-field, missing-declaration, and non-product outcomes as one claim per test. The gate-87 `.dag` harness remains `Compiles` until `VariantPayloadShapeLookup` expected literals are authorable as `.dag` data. |
 
+## V3-Native Output-Contract Audit
+
+The G87-C audit pins the output-contract shape for the v3-native / no-v2-counterpart registry
+rows that are easy to blur into source-compilation smoke tests:
+
+- `provenance`, `unused_parameters`, and `structural_resolution` use `.dag`
+  `LensOutputEquals` claims over narrow Int projections, with paired Rust receipts in
+  `r3_gate_87_lens_cementing_regen_receipts_test.rs` covering the public Rust output surface.
+- `cost_target_realization` is not a COMPLETE behavioral row, but it is a v3-native registry
+  output contract for the ε realization-meta lookup. Its `.dag` receipt is
+  `LensOutputEquals(gate87_cost_target_realization_meta_present, ...)`, paired with the Rust
+  `type_realization_meta` declaration-resolution receipt.
+- `variant_payload` is the only row in this set that cannot yet author the public
+  `VariantPayloadShapeLookup` carrier as `.dag` expected data. It therefore remains an explicit
+  `Compiles` placeholder plus Rust pins, and its harness names the replacement
+  `LensOutputEquals(variant_payload_shape, ..., expected)` contract and dissolution trigger.
+
+Executable ratchet: `r3_gate_87_v3_native_output_contract_harness_predicates_are_pinned` fails if
+these four projection rows stop using `LensOutputEquals`, or if the `variant_payload` placeholder
+loses the missing-carrier / Rust-pin / replacement-contract breadcrumbs.
+
 ## Non-Complete Registered Rows
 
-These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
+These registry rows are intentionally outside the complete-lens closure set:
+`cost_target_realization` (`N/A`, but covered by the output-contract receipt above),
+`effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), `lower_helpers` (`N/A`), and
+`parallelism` (`PARTIAL`, covered by the explicit source-compilation placeholder
+`t_r3_gate_87_cementing_regen_parallelism.dag` until the public report carrier exposes typed
+pairwise-noncommute evidence).
 
 ## Ratchets
 
