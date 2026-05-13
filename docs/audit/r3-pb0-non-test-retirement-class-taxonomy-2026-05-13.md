@@ -1,14 +1,16 @@
 # PB-0 — `EXPECTED_HAND_AUTHORED_NON_TEST` retirement-class taxonomy
 
-**Authority:** R3 Debt-Paydown Mgr (`zesty-boar-261`) — Director dispatch **msg_84abadad-35fd-4c92-8db3-0e7737adfa4f** (operator-ratified).
+**Authority:** R3 Debt-Paydown Mgr (`zesty-boar-261`) — Director dispatch **msg_84abadad-35fd-4c92-8db3-0e7737adfa4f** (operator-ratified); **scope correction** **msg_dda96d21-b937-448c-a72d-f7c8a44b691c** (PM awk-range verification **msg_bda6867a**).
 **Procedure:** `docs/audit/r3-sg0-trajectory-tracker.md` §2 (`awk` window on `sg0_census_test.rs`).
 **Snapshot:** `gunbc` @ `2b7241362` (`2b7241362a7f`).
 
 ## §0. Count discipline vs close-plan narrative
 
-- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **55** (this table has one row per path).
-- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **179** at this snapshot (`55 + 122 + 2`).
-- **Director / operator relay** cited **178** on the **non-test** slice alone; that figure **does not match** the live const at this SHA — operator reconciliation may be on a different HEAD or included auxiliary rows. **This taxonomy tracks the authoritative const at the snapshot SHA**; PM should amend close-plan arithmetic if the gap persists after operator recount.
+- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **55** (this table has one row per path) — **Gap 1 / Debt-Paydown lane** scope per Director **msg_dda96d21** (awk-range extraction; PM **msg_bda6867a**).
+- **Live `EXPECTED_HAND_AUTHORED_TEST` paths:** **122** — **Gap 5 / Verification lane** (`bright-bee-903` / `still-moth-538`); **not** classified here.
+- **Combined `NON_TEST` + `TEST`:** **177** (`55 + 122`) — matches close-plan Σ narrative **excluding** fragments.
+- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **179** (`55 + 122 + 2`).
+- **Earlier relay inflation:** loose `grep -c` over the whole `sg0_census_test.rs` file inflated a **non-test-only** headline count; **authoritative** counts are always the **per-const `awk` windows** (tracker §2).
 
 ## §1. Classification legend
 
@@ -92,3 +94,4 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | Date | Change |
 |------|--------|
 | 2026-05-13 | Initial taxonomy + Track A six-path dispatch list (Director msg_84abadad). |
+| 2026-05-13 | §0 count narrative aligned to Director msg_dda96d21 (55 NON_TEST + 122 TEST = 177; Σ 179). |
