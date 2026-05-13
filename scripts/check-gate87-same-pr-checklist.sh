@@ -12,8 +12,9 @@ usage() {
 usage:
   bash scripts/check-gate87-same-pr-checklist.sh [--self-test]
 
-On pull_request CI, set PR_BODY to the GitHub PR description. The script diffs
-origin/main...HEAD and requires a column-0 line:
+On pull_request CI, set PR_BODY to the GitHub PR description, PR_BASE_SHA to the
+pull request base commit, and PR_HEAD_SHA to the pull request head commit. The
+script diffs that explicit PR range and requires a column-0 line:
 
   Gate-87 same-PR checklist: complete - <lens/receipt summary>
   Gate-87 same-PR checklist: n/a - <why this touched surface is not a COMPLETE flip>
@@ -32,11 +33,18 @@ TRIGGER_PATHS=(
 )
 
 changed_files() {
-  if git rev-parse --verify origin/main >/dev/null 2>&1; then
-    git diff --name-only origin/main...HEAD
-  else
-    git diff --name-only HEAD~1...HEAD
+  if [[ -n "${GATE87_CHANGED_FILES:-}" ]]; then
+    printf '%s\n' "${GATE87_CHANGED_FILES}"
+    return 0
   fi
+
+  local base=${PR_BASE_SHA:-}
+  local head=${PR_HEAD_SHA:-HEAD}
+  if [[ -z "$base" ]]; then
+    echo "::error::PR_BASE_SHA is required so the Gate-87 same-PR ratchet diffs against the actual pull request base." >&2
+    return 1
+  fi
+  git diff --name-only "${base}...${head}"
 }
 
 is_trigger_path() {
@@ -90,6 +98,43 @@ self_test() {
     echo "expected non-column-0 checklist line to fail" >&2
     return 1
   fi
+
+  GATE87_CHANGED_FILES=$'README.md\nsrc/v3/compiler/regen.dag'
+  requires_checklist < <(changed_files)
+  GATE87_CHANGED_FILES=$'README.md\ndocs/other.md'
+  if requires_checklist < <(changed_files); then
+    echo "expected non-trigger changed-file set to skip checklist" >&2
+    return 1
+  fi
+  unset GATE87_CHANGED_FILES
+
+  local tmp base parent head range
+  tmp=$(mktemp -d)
+  (
+    cd "$tmp"
+    git init -q
+    git config user.email gate87@example.invalid
+    git config user.name gate87
+    printf 'base\n' > README.md
+    git add README.md
+    git commit -q -m base
+    base=$(git rev-parse HEAD)
+    mkdir -p src/v3/compiler
+    printf 'inherited\n' > src/v3/compiler/regen.dag
+    git add src/v3/compiler/regen.dag
+    git commit -q -m parent-trigger-change
+    parent=$(git rev-parse HEAD)
+    printf 'feature\n' >> README.md
+    git add README.md
+    git commit -q -m feature-change
+    head=$(git rev-parse HEAD)
+    range=$(PR_BASE_SHA="$parent" PR_HEAD_SHA="$head" changed_files)
+    if [[ "$range" != "README.md" ]]; then
+      echo "expected explicit PR base range to exclude inherited trigger change, got: $range" >&2
+      return 1
+    fi
+  )
+  rm -rf "$tmp"
 
   echo "check-gate87-same-pr-checklist.sh: self-test OK"
 }
