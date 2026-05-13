@@ -81,14 +81,14 @@ fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
   match a {
     PathParam { param: pa } =>
       match b {
-        PathParam { param: pb } => pa == pb
+        PathParam { param: _ } => true
         InputField { field: _ } => false
         CompositeKey { fields: _ } => false
       }
     InputField { field: fa } =>
       match b {
         PathParam { param: _ } => false
-        InputField { field: fb } => fa == fb
+        InputField { field: _ } => true
         CompositeKey { fields: _ } => false
       }
     CompositeKey { fields: _ } =>
