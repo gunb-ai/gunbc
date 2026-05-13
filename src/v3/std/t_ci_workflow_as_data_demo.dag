@@ -7,8 +7,8 @@
 module v3.std.t_ci_workflow_as_data_demo
 
 import std.list { List, Empty, Cons, is_empty }
-import std.types { Bool, ContentHash, WorkflowProducerId, WorkflowRunId }
-import std.substrate { Behavior, Cluster, Dag, DagPort, Declaration, NodeId }
+import std.types { Bool }
+import std.substrate { Behavior, Cluster, Dag, DagPort, Declaration }
 import extdeps.github.actions {
   Workflow,
   Job,
@@ -23,8 +23,6 @@ import extdeps.github.actions {
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
 import v3.std.timing_lens {
-  FileAttachment,
-  Nanoseconds,
   TimingMeasurement,
   timing_lens_behavior_span,
   timing_lens_scaffold_non_evidence_diagnostic,
@@ -210,21 +208,3 @@ fn demo_ci_modeled_timing_dimension_report(d: Dag, b: Behavior) -> DimensionRepo
     dimension_report_tm_from_witness(d, ci_demo_timing_read(d, b))
   else
     dimension_report_tm_from_witness(d, ci_wad_modeled_workflow_timing_witness(d, b))
-
-// Gate #62 existence proof (`substrate_gap_file_ingestion_closed`): construct a digest-addressed
-// `FileAttachment` in `.dag` without `include_str!`. External bytes resolve by `content_digest` at
-// workflow-consumer time (blob substrate Wave-2); this carrier is the eager typed shell (Director Q5).
-fn ci_wad_demo_file_attachment(
-  subject: NodeId,
-  digest: ContentHash,
-  producer: WorkflowProducerId,
-  run: WorkflowRunId,
-  attached: Nanoseconds
-) -> FileAttachment =
-  {
-    subject_node: subject,
-    content_digest: digest,
-    producer_id: producer,
-    workflow_run_id: run,
-    attached_at_ns: attached,
-  }
