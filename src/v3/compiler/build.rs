@@ -67,7 +67,7 @@
 // time.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -114,32 +114,63 @@ fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, S
 }
 
 /// `edges` are `(must_precede, dependent)` file names: `must_precede` must sort before `dependent`.
-fn std_v3_import_order_cmp(edges: &[(String, String)], name_a: &str, name_b: &str) -> Ordering {
-    let precedes = |from: &str, to: &str| -> bool {
-        let mut stack = vec![from.to_string()];
-        let mut seen = HashSet::<String>::new();
-        while let Some(n) = stack.pop() {
-            if n == to {
-                return true;
-            }
-            if !seen.insert(n.clone()) {
-                continue;
-            }
-            for (d, u) in edges {
-                if d == &n {
-                    stack.push(u.clone());
+///
+/// Returns a total rank per staged file name so `sort_by` can compare by integer index (Kahn
+/// topological order with lexical tie-break among ready nodes). Reachability-only `cmp` is not a
+/// strict weak order and can panic Rust's sort — see PR #2827 review.
+fn std_v3_import_topo_ranks(names: &[String], edges: &[(String, String)]) -> HashMap<String, usize> {
+    let name_set: HashSet<&str> = names.iter().map(String::as_str).collect();
+    let unique_edges: HashSet<(String, String)> = edges.iter().cloned().collect();
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+    for n in names {
+        in_degree.insert(n.clone(), 0);
+    }
+    for (d, u) in unique_edges {
+        if d == u {
+            continue;
+        }
+        if name_set.contains(d.as_str()) && name_set.contains(u.as_str()) {
+            adj.entry(d.clone()).or_default().push(u.clone());
+            *in_degree.get_mut(&u).expect("u is a staged name") += 1;
+        }
+    }
+    let mut ready = BTreeSet::<String>::new();
+    for n in names {
+        if *in_degree.get(n).unwrap_or(&0) == 0 {
+            ready.insert(n.clone());
+        }
+    }
+    let mut order = Vec::<String>::new();
+    let mut placed = HashSet::<String>::new();
+    while let Some(n) = ready.iter().next().cloned() {
+        ready.remove(&n);
+        if !placed.insert(n.clone()) {
+            continue;
+        }
+        order.push(n.clone());
+        if let Some(succs) = adj.get(&n) {
+            for succ in succs {
+                let deg = in_degree.get_mut(succ).expect("edge target is a staged name");
+                *deg -= 1;
+                if *deg == 0 {
+                    ready.insert(succ.clone());
                 }
             }
         }
-        false
-    };
-    let ab = precedes(name_a, name_b);
-    let ba = precedes(name_b, name_a);
-    match (ab, ba) {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        _ => Ordering::Equal,
     }
+    let mut leftover: Vec<String> = names
+        .iter()
+        .filter(|n| !placed.contains(*n))
+        .cloned()
+        .collect();
+    leftover.sort();
+    order.extend(leftover);
+    order
+        .into_iter()
+        .enumerate()
+        .map(|(i, n)| (n, i))
+        .collect()
 }
 
 fn collect_dag_entries(dir: &Path, prioritized: &[&str], scan_std_v3_import_edges: bool) -> Vec<PathBuf> {
@@ -188,11 +219,15 @@ fn collect_dag_entries_impl(
         }
     }
 
-    let import_edges_storage: Vec<(String, String)> =
-        if scan_std_v3_import_edges && !recursive && !entries.is_empty() {
-            collect_std_v3_import_dependency_edges(&entries)
+    let import_topo_ranks: HashMap<String, usize> =
+        if scan_std_v3_import_edges && !import_edges_storage.is_empty() {
+            let names: Vec<String> = entries
+                .iter()
+                .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
+                .collect();
+            std_v3_import_topo_ranks(&names, &import_edges_storage)
         } else {
-            Vec::new()
+            HashMap::new()
         };
 
     entries.sort_by(|a, b| {
@@ -209,10 +244,18 @@ fn collect_dag_entries_impl(
             Ordering::Equal => {
                 let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                let import_cmp = if import_edges_storage.is_empty() {
+                let import_cmp = if import_topo_ranks.is_empty() {
                     Ordering::Equal
                 } else {
-                    std_v3_import_order_cmp(&import_edges_storage, name_a, name_b)
+                    let ra = import_topo_ranks
+                        .get(name_a)
+                        .copied()
+                        .unwrap_or(usize::MAX);
+                    let rb = import_topo_ranks
+                        .get(name_b)
+                        .copied()
+                        .unwrap_or(usize::MAX);
+                    ra.cmp(&rb)
                 };
                 match import_cmp {
                     Ordering::Equal => name_a.cmp(name_b).then_with(|| {
