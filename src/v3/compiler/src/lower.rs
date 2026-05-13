@@ -62,6 +62,28 @@ const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 const COMPLEXITY_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/complexity.dag");
 const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
 
+const VARIANT_PAYLOAD_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/variant_payload.dag");
+const VARIANT_PAYLOAD_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/variant_payload.dag";
+
+fn append_variant_payload_lens_authority(dag: &mut Dag) {
+    let tokens = crate::tokenize::tokenize(
+        VARIANT_PAYLOAD_LENS_AUTHORITY_DAG,
+        VARIANT_PAYLOAD_LENS_AUTHORITY_FILE,
+    )
+    .unwrap_or_else(|diag| {
+        panic!(
+            "variant_payload lens authority must tokenize ({VARIANT_PAYLOAD_LENS_AUTHORITY_FILE}): {diag:?}"
+        )
+    });
+    let module =
+        crate::parse::parse(&tokens, VARIANT_PAYLOAD_LENS_AUTHORITY_FILE).unwrap_or_else(|diag| {
+            panic!(
+                "variant_payload lens authority must parse ({VARIANT_PAYLOAD_LENS_AUTHORITY_FILE}): {diag:?}"
+            )
+        });
+    lower_into(dag, &module);
+}
+
 fn append_complexity_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
         COMPLEXITY_LENS_AUTHORITY_DAG,
@@ -190,6 +212,20 @@ pub fn lower(module: &SurfaceModule) -> Dag {
 pub(crate) fn lower_prepending_complexity_lens_authority(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     append_complexity_lens_authority(&mut dag);
+    dag.seal_prepended_authority_fixture_range();
+    let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
+    lower_into(&mut dag, module);
+    finalize_strict_user_lower_range(&mut dag, user_start);
+    dag
+}
+
+/// Prepends `src/v3/lenses/variant_payload.dag` before lowering `module` (R3 gate #87 cementing).
+/// Mirrors [`lower_prepending_complexity_lens_authority`]: kept out of [`Dag::new`] so ordinary
+/// `compile_to_dag` callers do not load variant-payload carriers unless the surface imports
+/// `lenses.variant_payload`.
+pub(crate) fn lower_prepending_variant_payload_lens_authority(module: &SurfaceModule) -> Dag {
+    let mut dag = Dag::new();
+    append_variant_payload_lens_authority(&mut dag);
     dag.seal_prepended_authority_fixture_range();
     let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
     lower_into(&mut dag, module);

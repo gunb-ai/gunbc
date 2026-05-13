@@ -5549,6 +5549,31 @@ fn is_lenses_complexity_authority_module(module: &parse::SurfaceModule) -> bool 
     })
 }
 
+fn is_lenses_variant_payload_authority_module(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Module { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "variant_payload"
+        )
+    })
+}
+
+fn needs_variant_payload_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    if is_lenses_variant_payload_authority_module(module) {
+        return false;
+    }
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "variant_payload"
+        )
+    })
+}
+
 fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
     use crate::parse::SurfaceItem;
     if is_lenses_complexity_authority_module(module) {
@@ -5567,7 +5592,9 @@ fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> b
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = if needs_complexity_lens_authority_prepended(&surface) {
+    let mut dag = if needs_variant_payload_lens_authority_prepended(&surface) {
+        lower::lower_prepending_variant_payload_lens_authority(&surface)
+    } else if needs_complexity_lens_authority_prepended(&surface) {
         lower::lower_prepending_complexity_lens_authority(&surface)
     } else {
         lower::lower(&surface)
