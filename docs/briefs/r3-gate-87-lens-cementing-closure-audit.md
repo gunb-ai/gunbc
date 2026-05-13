@@ -1,8 +1,20 @@
 # R3 Gate 87 Lens Cementing Closure Audit
 
-Audit date: 2026-05-12
+Audit date: 2026-05-13 (G87-D3 ledger refresh); prior walk 2026-05-12.
 
 Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen.dag`, `dsl/gunbc/tools/regen.dag`, `TESTING.md` Band-C, and the gate-87 cementing receipts for every registered lens whose capability-register row is `BEHAVIORALLY COMPLETE`.
+
+## Placeholder-dissolution ledger (G87-D3)
+
+Canonical row-by-row inventory of **every** gate-#87 harness `Compiles` placeholder and **every** narrow `.dag` witness paired with a Rust pin in `r3_gate_87_lens_cementing_regen_receipts_test.rs` lives in [`r3-cementing-discipline-pattern-2026-05-12.md`](r3-cementing-discipline-pattern-2026-05-12.md) §2.1 (Tables 1–2), including named **carrier** and **owning lane** per entry. Spot-check:
+
+```bash
+rg 'Compiles|dissolve|placeholder' \
+  src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag \
+  src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs
+```
+
+**G87-D3 audit result:** three `.dag` files use `predicate: Compiles` (helper registry rows only). Five harnesses use behavioral predicates with **Int projections** plus a matching Rust test in `r3_gate_87_lens_cementing_regen_receipts_test.rs` (`effect_enumeration`, `provenance`, `cost_target_realization`, `structural_resolution`, `unused_parameters`). The `cost` and `cost_symbolic` harnesses use full `.dag` differential / symbolic predicates without pins in that module; their extra behavioral supplements stay in `tests/integration/cementing/` per the capability register and the cementing-discipline brief §3.
 
 ## Band-C Rule Applied
 
