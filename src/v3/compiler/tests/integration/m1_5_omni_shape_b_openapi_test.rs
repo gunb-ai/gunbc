@@ -169,11 +169,8 @@ fn compile_todo_service_repository_fixture() -> v3_compiler::Dag {
         .name("m1_5_todo_service_repository_compile".to_string())
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
-            compile_to_dag(
-                TODO_SERVICE_REPOSITORY_SOURCE,
-                "dsl/demos/todo_service.dag",
-            )
-            .expect("repository todo_service.dag demo compiles")
+            compile_to_dag(TODO_SERVICE_REPOSITORY_SOURCE, "dsl/demos/todo_service.dag")
+                .expect("repository todo_service.dag demo compiles")
         })
         .expect("spawn larger-stack compile thread")
         .join()
