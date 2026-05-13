@@ -5,19 +5,15 @@
 # Reads libtest `--report-time` output (lines like
 # `test foo::bar ... ok <1.234s>`) from a pre-captured log file and fails
 # if any single `#[test]` exceeded the budget (default 2000 ms, aligns
-# with `feedback_test_timeout_2s`). Tests listed in the checked-in JSONL
-# warn manifest log a warning when over budget instead of failing — still a
-# hand-maintained side file (P5 bridge), but structured JSONL replacing the
-# retired free-form `slow-test-exemptions.txt` table + row-count ratchet.
+# with `feedback_test_timeout_2s`). Warn-only policy rows are projected from
+# substrate (`dsl/gunbc/test_node_wall_clock_ratchet.dag`) via `gunbc-ci
+# wall-clock-warn-manifest` (**interim toward #102** — canonical #102 is timing-fact
+# authority via `TestNodeCostDimension`) into JSONL consumed here — same
+# `{"test":"<token>","policy":"warn"}` transport `jq` already understands.
 #
-# **Naming alignment (gate #101; gate #102 in flight).** Rows use the same
-# libtest name tokens as `--report-time` — the tokens that
-# `TestNodeCostDimension` will attach to in `src/v3/std/verification.dag`.
-# **Enforcement here still
-# reads this file** until #102 wires the ratchet to modeled timing facts. Each
-# line is JSON `{"test":"<token>","policy":"warn"}` carrying warn-only policy
-# for that node (shell transport today; substrate projection is the retirement
-# path).
+# **Naming alignment (gates #101 / #102).** Row tokens match libtest
+# `--report-time` names — the same strings `TestNodeCostDimension` attaches
+# to in `src/v3/std/verification.dag`.
 #
 # **Why parse an external log, not re-run `cargo test`.** The v3 CI job
 # already runs `cargo test -p v3-compiler` once (budget 1200s) and the
@@ -52,34 +48,59 @@
 #   TEST_TIMEOUT_MS       Override budget (default 2000).
 #   TEST_TIMEOUT_PACKAGE  Cargo package for the local fallback
 #                         (default v3-compiler).
-#   TEST_TIMEOUT_MANIFEST Path to JSONL warn manifest (default
-#                         scripts/test-node-wall-clock-ratchet.jsonl).
+#   TEST_TIMEOUT_MANIFEST Optional path to JSONL warn manifest (self-tests /
+#                         emergencies). When unset, rows come from `gunbc-ci
+#                         wall-clock-warn-manifest` (requires built binary).
+#   GUNBC_CI_BIN          Override path to `gunbc-ci` (default: search
+#                         target/debug|release under repo root).
+#   GITHUB_WORKSPACE      Passed through to `gunbc-ci` (default: repo root).
 #
-# **Fail-closed policy (interim ratchet).** A test whose wall time exceeds
-# `TEST_TIMEOUT_MS` and whose libtest name is **not** warn-listed in the
-# manifest is a ratchet **failure**. There is no `TEST_TIMEOUT_MAX_EXEMPTIONS`
-# floor: the JSONL is the sole warn backlog for this step — add a
-# `{"policy":"warn"}` row in the **same PR** as any intentional expansion of
-# warn-only coverage. Omitting a slow test fails closed (unknown over-budget
-# names error this step). Closing R3 gate #102 still requires moving policy
-# input off this hand manifest onto modeled test-node timing facts.
+# **Fail-closed policy.** A test whose wall time exceeds `TEST_TIMEOUT_MS` and
+# whose libtest name is **not** warn-listed fails this step. Add a row to
+# `dsl/gunbc/test_node_wall_clock_ratchet.dag` in the **same PR** as any
+# intentional warn-only expansion.
 
 set -euo pipefail
 
 log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
-manifest=${TEST_TIMEOUT_MANIFEST:-scripts/test-node-wall-clock-ratchet.jsonl}
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
 cd "$repo_root"
 
 cleanup_log=""
-trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"' EXIT
+cleanup_manifest=""
+trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"; [ -n "$cleanup_manifest" ] && rm -f "$cleanup_manifest"' EXIT
+
+if [ -n "${TEST_TIMEOUT_MANIFEST:-}" ]; then
+  manifest=${TEST_TIMEOUT_MANIFEST}
+else
+  gunbc_ci_bin=${GUNBC_CI_BIN:-}
+  if [ -z "$gunbc_ci_bin" ]; then
+    for c in "$repo_root/target/debug/gunbc-ci" "$repo_root/target/release/gunbc-ci"; do
+      if [ -x "$c" ]; then
+        gunbc_ci_bin=$c
+        break
+      fi
+    done
+  fi
+  if [ -z "$gunbc_ci_bin" ]; then
+    echo "::error::gunbc-ci binary not found (build with: cargo build -p v3-compiler --bin gunbc-ci, or set GUNBC_CI_BIN / TEST_TIMEOUT_MANIFEST)."
+    exit 2
+  fi
+  manifest=$(mktemp -t wall-clock-warn.XXXXXX.jsonl)
+  cleanup_manifest=$manifest
+  export GITHUB_WORKSPACE=${GITHUB_WORKSPACE:-$repo_root}
+  if ! "$gunbc_ci_bin" wall-clock-warn-manifest >"$manifest"; then
+    echo "::error::gunbc-ci wall-clock-warn-manifest failed"
+    exit 2
+  fi
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "::error::jq is required to parse ${manifest} (install jq)."
+  echo "::error::jq is required to parse warn manifest (install jq)."
   exit 2
 fi
 
@@ -179,7 +200,7 @@ fi
 echo "Parsed ${parsed_count} test-result lines from timing log."
 
 warn_list=$(mktemp)
-trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"; rm -f "$warn_list"' EXIT
+trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"; [ -n "$cleanup_manifest" ] && rm -f "$cleanup_manifest"; rm -f "$warn_list"' EXIT
 jq -r 'select(.policy == "warn") | .test' "$manifest" | sort -u >"$warn_list"
 
 unexpected=""
@@ -197,8 +218,13 @@ if [ -n "$violations" ]; then
   done <<< "$violations"
 fi
 
+warn_source="warn-policy manifest"
+if [ -z "${TEST_TIMEOUT_MANIFEST:-}" ]; then
+  warn_source="warn-policy manifest (projected from dsl/gunbc/test_node_wall_clock_ratchet.dag)"
+fi
+
 if [ -n "$warned" ]; then
-  echo "::warning::${budget_ms}ms ratchet: warn-policy tests exceeded budget (paydown backlog in $manifest):"
+  echo "::warning::${budget_ms}ms ratchet: warn-policy tests exceeded budget ($warn_source):"
   printf '%s' "$warned" | awk -F'\t' 'NF==2 {printf "  %s — %sms\n", $1, $2}'
 fi
 
@@ -209,7 +235,7 @@ if [ -n "$unexpected" ]; then
   echo "Options:"
   echo "  1. Speed up the test (share bootstrap via OnceLock, shrink fixtures,"
   echo "     collapse fine-grained cases)."
-  echo "  2. Add a {\"test\":\"<token>\",\"policy\":\"warn\"} line to $manifest with a ROADMAP/task reference in commit message."
+  echo '  2. Add a WallClockWarnLibtestToken row to dsl/gunbc/test_node_wall_clock_ratchet.dag (same PR as the policy intent).'
   echo "  3. Mark #[ignore]-by-default if the coverage is redundant."
   exit 1
 fi

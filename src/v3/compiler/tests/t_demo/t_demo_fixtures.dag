@@ -121,7 +121,7 @@ data integration_effects_compiles: TestClaim = {
 
 data integration_idempotency_compiles: TestClaim = {
   name: "fixture_integration_canonical.idempotency_compiles",
-  source: "import std.effects { EffectShape, operation_effect_shape }\nimport v3.std.services { Operation }\nfn classify_operation(op: Operation) -> EffectShape = operation_effect_shape(op)",
+  source: "import std.effects { CompositionVerdict, compose_effects }\nimport std.list { List }\nimport v3.std.services { Operation }\nfn classify_composition(ops: List<Operation>) -> CompositionVerdict = compose_effects(ops)",
   file_name: "fixture_integration_canonical_idempotency.v3",
   predicate: Compiles,
   requires: []
@@ -137,7 +137,7 @@ data integration_testgen_compiles: TestClaim = {
 
 data integration_effects_lens_output: TestClaim = {
   name: "fixture_integration_canonical.effects_lens_output",
-  source: "import std.effects { EffectShape, operation_effect_shape }\nimport v3.std.services { Operation }\nfn classify_operation(op: Operation) -> EffectShape = operation_effect_shape(op)",
+  source: "import std.effects { CompositionVerdict, compose_effects }\nimport std.list { List }\nimport v3.std.services { Operation }\nfn classify_composition_for_lens(ops: List<Operation>) -> CompositionVerdict = compose_effects(ops)",
   file_name: "fixture_integration_canonical_effects.v3",
   predicate: LensOutputEquals(
     named_function_count,
@@ -213,11 +213,23 @@ data impossible_bug_idempotency_violation: TestClaim = {
   requires: []
 }
 
+data impossible_bug_idempotency_violation_context: TestClaim = {
+  name: "impossible_bug_class_suite_r1.idempotency_violation_context",
+  source: "let bad_shape = IsIdempotent(AppendEffect())\n",
+  file_name: "impossible_bug_idempotency_context.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("IsIdempotent")
+  }),
+  requires: []
+}
+
 data impossible_bug_class_suite_r1: TestSuite = {
   name: "impossible_bug_class_suite_r1",
   claims: [
     Enumerated(impossible_bug_type_drift),
-    Enumerated(impossible_bug_idempotency_violation)
+    Enumerated(impossible_bug_idempotency_violation),
+    Enumerated(impossible_bug_idempotency_violation_context)
   ]
 }
 

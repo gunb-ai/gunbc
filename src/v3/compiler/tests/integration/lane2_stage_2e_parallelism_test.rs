@@ -82,10 +82,14 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
-        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
-        | EffectShape::IsIdempotent(IdempotentShape::DeleteEffect { .. }) => {
-            (HttpMethodScalar::Put, vec![])
-        }
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::InputField { field },
+        })
+        | EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::InputField { field },
+        }) => panic!(
+            "Operation endpoints cannot rederive InputField key source `{field}` at Stage 2 scope"
+        ),
     };
     Operation {
         callable: CallableRef { decl: callable },
