@@ -162,8 +162,7 @@ budgeted_test! {
         let cementing_names = r3_gate_87_cementing_regen_lens_names_for_runner_table();
         let generated_by_name = regen_lens_registry_rows_name_and_generated_file();
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // Match `regen_lens` workspace root construction so `out_path.display()` matches CLI stdout
-        // and `canonicalize` agrees with the binary's write target.
+        // Match `regen_lens::workspace_root()` so `println!("wrote {}", out_path.display())` matches.
         let root = manifest_dir.join("..").join("..").join("..");
 
         for name in cementing_names.iter() {
