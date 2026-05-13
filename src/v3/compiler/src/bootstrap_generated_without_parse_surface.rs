@@ -7521,7 +7521,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 PortId(804),
                 PortId(805),
             ],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9272, 9430),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9272, 9415),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -39569,7 +39569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9096, 9430),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9096, 9415),
         });
         declarations.push(Declaration {
             id: DeclarationId(1198),
@@ -81451,7 +81451,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
 fn bootstrapped_fixture_without_parse_surface_dag_diagnostics() -> DiagnosticTable {
     {
         let mut table = DiagnosticTable::new();
-        table.insert(PortId(806), Diagnostic::ResolveError { name: "named constructor `FileAttachment` requires an expected sum type whose variants include `FileAttachment`".to_string(), span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9272, 9430), fixes: vec![] }, DiagnosticAttribution::Unattributed);
+        table.insert(
+            PortId(806),
+            Diagnostic::ResolveError {
+                name: "record literal does not have an expected record type at this position"
+                    .to_string(),
+                span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 9272, 9415),
+                fixes: vec![],
+            },
+            DiagnosticAttribution::Unattributed,
+        );
         table
     }
 }

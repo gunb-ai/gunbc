@@ -221,7 +221,7 @@ fn ci_wad_demo_file_attachment(
   run: WorkflowRunId,
   attached: Nanoseconds
 ) -> FileAttachment =
-  FileAttachment {
+  {
     subject_node: subject,
     content_digest: digest,
     producer_id: producer,
