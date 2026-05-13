@@ -1,0 +1,1 @@
+data ingested: String = read_utf8_file("r3_substrate_gap_file_ingestion_payload.json")
