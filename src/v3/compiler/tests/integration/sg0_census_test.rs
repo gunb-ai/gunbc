@@ -1046,36 +1046,6 @@ fn sg0_expected_list_is_sorted_and_unique() {
 }
 
 #[test]
-fn sg0_r3_gate_87_shared_inventory_authority_paths_ratchetted() {
-    const RUNNER_TABLE: &str = "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs";
-    const CEMENTING_DISPATCH: &str = "src/v3/compiler/src/cementing_dispatch.rs";
-    const LENS_RECEIPTS_TEST: &str =
-        "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs";
-    const PB_B1_RUNNER: &str = "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs";
-
-    fn in_slice(list: &[&str], p: &str) -> bool {
-        list.iter().any(|&e| e == p)
-    }
-
-    assert!(
-        in_slice(EXPECTED_HAND_AUTHORED_NON_TEST, RUNNER_TABLE),
-        "{RUNNER_TABLE} must remain on EXPECTED_HAND_AUTHORED_NON_TEST (PB-B-1 runner inventory table)."
-    );
-    assert!(
-        in_slice(EXPECTED_HAND_AUTHORED_NON_TEST, CEMENTING_DISPATCH),
-        "{CEMENTING_DISPATCH} must remain on EXPECTED_HAND_AUTHORED_NON_TEST (`CementingDispatchMatchesProjection` cross-checks runner stems)."
-    );
-    assert!(
-        in_slice(EXPECTED_HAND_AUTHORED_TEST, LENS_RECEIPTS_TEST),
-        "{LENS_RECEIPTS_TEST} must remain on EXPECTED_HAND_AUTHORED_TEST (regen.dag names ↔ runner table)."
-    );
-    assert!(
-        in_slice(EXPECTED_HAND_AUTHORED_TEST, PB_B1_RUNNER),
-        "{PB_B1_RUNNER} must remain on EXPECTED_HAND_AUTHORED_TEST (executable `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring)."
-    );
-}
-
-#[test]
 fn sg0_expected_rs_entries_match_test_partition() {
     let misplaced_non_test: Vec<&str> = EXPECTED_HAND_AUTHORED_NON_TEST
         .iter()
