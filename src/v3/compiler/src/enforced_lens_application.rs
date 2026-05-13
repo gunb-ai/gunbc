@@ -64,9 +64,9 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
     });
 }
 
-/// Reads [`timing_enforcement_fault_sentinel_count`](../../std/timing_lens.dag) from the lowered
-/// `timing_lens.dag` declaration body (nullary `fn` → bind → [`ValueNode`]), matching substrate
-/// authority instead of duplicating the decimal literal in Rust.
+/// Reads `timing_enforcement_fault_sentinel_count` from the lowered `timing_lens.dag` declaration
+/// body (nullary `fn` → bind → [`ValueNode`]), matching substrate authority instead of duplicating
+/// the decimal literal in Rust.
 fn timing_enforcement_fault_sentinel_ns_from_substrate(dag: &Dag) -> Option<u64> {
     let decl = dag.declarations().iter().find(|d| {
         d.name.as_deref() == Some("timing_enforcement_fault_sentinel_count")
@@ -284,6 +284,8 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
         .declaration_by_name("PositiveDescentAmount")
         .map(|d| d.id);
 
+    let timing_fault_sentinel_ns = timing_enforcement_fault_sentinel_ns_from_substrate(dag);
+
     let mut violations: Vec<Diagnostic> = Vec::new();
 
     for decl in dag.declarations() {
@@ -428,6 +430,17 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
             timing_lens_id,
             timing_enforcement_id,
         ) {
+            let Some(fault_sentinel_ns) = timing_fault_sentinel_ns else {
+                violations.push(Diagnostic::ParseError {
+                    message:
+                        "lens enforcement: could not resolve substrate `timing_enforcement_fault_sentinel_count` \
+                         from `timing_lens.dag` (modeled authority missing; fail-closed)"
+                            .to_string(),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
             let Some(section_decl_id) =
                 resolve_declaration_scope_declaration_id(section, declaration_scope_conj)
             else {
@@ -511,9 +524,12 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 });
                 continue;
             };
-            let Some(usage_max_ns) =
-                timing_measurement_variant_usage_max_ns(dag, tm_disj, measurement)
-            else {
+            let Some(usage_max_ns) = timing_measurement_variant_usage_max_ns(
+                dag,
+                tm_disj,
+                measurement,
+                fault_sentinel_ns,
+            ) else {
                 violations.push(Diagnostic::ParseError {
                     message: format!(
                         "lens enforcement: could not interpret `measurement` as lowered \
@@ -535,7 +551,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 });
                 continue;
             };
-            if !timing_enforcement_violates(declared_max_ns, usage_max_ns) {
+            if !timing_enforcement_violates(declared_max_ns, usage_max_ns, fault_sentinel_ns) {
                 continue;
             }
             let severity_val = match fm.get("diagnostic_severity") {
@@ -1016,28 +1032,32 @@ mod polynomial_budget_class_policy_tests {
 
 #[cfg(test)]
 mod gate_58_timing_enforcement_unit_tests {
-    use super::{timing_enforcement_violates, TIMING_ENFORCEMENT_FAULT_SENTINEL_NS};
+    use super::{timing_enforcement_fault_sentinel_ns_from_substrate, timing_enforcement_violates};
+    use crate::dag::Dag;
 
     #[test]
     fn fault_sentinel_always_violates_under_any_finite_budget() {
-        assert!(timing_enforcement_violates(
-            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS - 1,
-            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS
-        ));
-        assert!(timing_enforcement_violates(
-            1,
-            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS
-        ));
+        let dag = Dag::new();
+        let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
+            .expect("bootstrap should carry timing_lens fault sentinel");
+        assert!(timing_enforcement_violates(s - 1, s, s));
+        assert!(timing_enforcement_violates(1, s, s));
     }
 
     #[test]
     fn observed_usage_strictly_exceeding_budget_violates() {
-        assert!(timing_enforcement_violates(500, 1000));
+        let dag = Dag::new();
+        let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
+            .expect("bootstrap should carry timing_lens fault sentinel");
+        assert!(timing_enforcement_violates(500, 1000, s));
     }
 
     #[test]
     fn observed_usage_within_or_equal_budget_is_clean() {
-        assert!(!timing_enforcement_violates(1000, 500));
-        assert!(!timing_enforcement_violates(1000, 1000));
+        let dag = Dag::new();
+        let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
+            .expect("bootstrap should carry timing_lens fault sentinel");
+        assert!(!timing_enforcement_violates(1000, 500, s));
+        assert!(!timing_enforcement_violates(1000, 1000, s));
     }
 }
