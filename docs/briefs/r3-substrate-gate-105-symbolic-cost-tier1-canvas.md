@@ -229,6 +229,8 @@ Signed-Rational degrees require explicit dominance rules across the sign boundar
 
 **Authority**: Q1-α already provides `Field.compare: fn(Rational, Rational) -> Ordering` on the signed-rational carrier. Worker encodes the dominance rule as a derived ordering on `(SizeVariable, Rational)` pairs using `Field.compare` for the magnitude comparison — no new ordering authority introduced.
 
+**Zero-degree collision dissolution** (per codex BLOCKING 4bd0cb5a finding #1): plain signed `Rational` admits `degree = 0`, which would collide with `ConstantCost` (n^0 ≡ 1 for any n). Resolution: **carrier stays plain signed Rational** (Q6 ratified shape preserved); collision is dissolved at the canonicalize-fold layer via the rule `canonicalize(PolyCost(_, 0)) ⇒ ConstantCost(1)` — same dissolution discipline as Q2-Y `LinearCost(v) ≡ PolyCost(v, 1)` collapse and Practice-4 coproduct-arm dissolution. Construction-time the carrier is permissive; canonical-form construction folds the degenerate case into the existing `ConstantCost` arm. Worker brief §6 algebra encodes this rule alongside the Q2-Y collapse — single-authority for "value=1 constant" via `ConstantCost`, not parallel via `PolyCost(_, 0)`.
+
 ## §6.2 — Q7 SymbolicCost preserves full expression; Big-O is a derived operation (Director RATIFIED msg_2c1bfb0e)
 
 Director-verbatim disposition (RATIFIED):

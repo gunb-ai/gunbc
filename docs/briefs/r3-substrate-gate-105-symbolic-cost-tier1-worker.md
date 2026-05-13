@@ -225,8 +225,9 @@ Same-variable rules (operands share `SizeVariable`):
 
 | Operation | Result |
 |---|---|
-| `PolyCost(d1) + PolyCost(d2)` | `PolyCost(max(d1, d2))` (uses `Rational.compare` (Q1-α free function `rational_max`)) |
-| `PolyCost(d1) · PolyCost(d2)` | `PolyCost(d1 + d2)` (uses `Rational.add` (Field)) |
+| `canonicalize(PolyCost(_, 0))` | `ConstantCost(1)` — zero-degree dissolution per canvas §6.1 (n^0 ≡ 1; collision with ConstantCost resolved at canonicalize-fold; codex BLOCKING 4bd0cb5a finding #1) |
+| `PolyCost(d1) + PolyCost(d2)` (`dominant_term` projection) | `PolyCost(max(d1, d2))` (uses `Rational.compare` (Q1-α free function `rational_max`)) |
+| `PolyCost(d1) · PolyCost(d2)` | `canonicalize(PolyCost(d1 + d2))` — uses `Rational.add` (Field); if `d1 + d2 = 0` collapses to `ConstantCost(1)` per zero-degree rule |
 | `PolyCost(d) · LogCost(v)` | `ProductCost([PolyCost(d), LogCost(v)])` (§5.1: composite, NOT PolyLogCost) |
 | `PolyLogCost(v, k1) · PolyLogCost(v, k2)` | `PolyLogCost(v, k1+k2)` |
 | `PolyLogCost(v, k1) + PolyLogCost(v, k2)` | `PolyLogCost(v, max(k1, k2))` |
@@ -285,7 +286,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
-## §11. 10 anti-patterns (7 Director-enumerated/pending + 3 Mgr-derived per canvas §10)
+## §11. 11 anti-patterns (7 Director-enumerated + 4 Mgr-derived per canvas §10)
 
 PR body MUST cite each verbatim + assert receipt-of-compliance:
 
@@ -307,7 +308,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
 4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
-5. **All 10 anti-patterns enforceable** at PR review
+5. **All 11 anti-patterns enforceable** at PR review
 
 ## §13. Verification
 
@@ -323,7 +324,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
   - Canvas PR #2828 + composite Director ratification verbatim Q1-Q5 + §8 (PM msg_a055c38b relaying msg_d86a5987 Q2-Q5/§8 base RECONCILED BY msg_676ad4e7 Q1-α supersession of prior Q1-c)
-  - 10 anti-patterns receipt-of-compliance (§11)
+  - 11 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
 ## §14. Out of scope
@@ -331,7 +332,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - **Tier 2 variants** (LogLog / InverseAckermann / IteratedLog / HyperExp) — R4-deferred per Director §8. Worker must NOT add these.
 - **`Field<T>` consumer migration** beyond cost-lens — Q1-α; Field stays in place unchanged (compare already present)
 - **InverseAckermann / IteratedAlgebra mechanism** — canvas §8 finding accepted; not introduced
-- **Cost-lens behavioral changes** — this is a carrier-extension PR, not a semantics change; lens output must be backwards-compatible modulo Linear→Poly(d=1) lossless rewrite
+- **Cost-lens behavioral changes** — this is a carrier-extension PR + Q7 canonical-form-preservation contract change. **Q7 OUTPUT SEMANTICS (Director RATIFIED msg_2c1bfb0e via canvas §6.2)**: `symbolic_cost_of(...)` returns **exact canonical SymbolicCost** with all dominance-sorted terms preserved — NOT dominant-term-reduced (no pre-applied asymptotic-simplification). Big-O projection is the separate derived function `dominant_term(SymbolicCost) -> SymbolicCost`. Consumers that previously expected dominant-only output MUST call `dominant_term` explicitly; this is the Q7 contract change, expected and ratified. Lens output for the Linear→Poly(d=1) atomic rewrite is lossless modulo the canonical-form change (multi-term SumCost where the prior shape may have been dominant-only). Worker tests assert: (1) canonicalize preserves all terms; (2) dominant_term applies §6.2 dominance fold; (3) consumers of `symbolic_cost_of` either accept multi-term output OR wrap with `dominant_term` for legacy single-term consumption.
 - **`docs/design-symbolic-cost-algebra.md` rewrite** — out of scope; tracked separately as doc-drift sweep
 
 ## §15. PR body framing template
@@ -355,7 +356,7 @@ STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:69-72.
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
 
-10 anti-patterns receipt-of-compliance:
+11 anti-patterns receipt-of-compliance:
 [enumerate each + cite that the implementation does not violate it]
 
 5 reviewer ratchets compliance:
