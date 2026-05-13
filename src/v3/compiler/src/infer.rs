@@ -177,7 +177,7 @@ pub fn infer(dag: &mut Dag) {
                                     changed = true;
                                     continue;
                                 }
-                                IntLiteralNarrowMerge::Reject(diag) => {
+                                IntLiteralNarrowMerge::reject(diag) => {
                                     dag.mark_unresolved(port, diag);
                                     changed = true;
                                     continue;
@@ -228,7 +228,7 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Unresolved => unreachable!("guarded above"),
                     }
                 }
-                Decision::Fail(port, diag) => {
+                Decision::fail(port, diag) => {
                     if !matches!(dag.port(port).state(), PortState::Unresolved) {
                         dag.mark_unresolved(port, diag);
                         changed = true;
@@ -657,8 +657,8 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                 ", "
             };
             let correction = match dag.port(check.output_port).state() {
-                PortState::Resolved(output_ty) => example_source_for_decl(dag, output_ty.declaration)
-                    .map(|body| {
+                PortState::Resolved(output_ty) => {
+                    example_source_for_decl(dag, output_ty.declaration).map(|body| {
                         let insert_at = check.span.byte_end.saturating_sub(1);
                         let arms = missing
                             .iter()
@@ -670,7 +670,8 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                             SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
                             format!("{arm_prefix}{arms}"),
                         )
-                    }),
+                    })
+                }
                 _ => None,
             };
             dag.mark_unresolved(
@@ -895,19 +896,19 @@ fn int_literal_magnitude_narrow_merge(
     match int_literal_fits_expected_type(dag, &lit, to.declaration) {
         Ok(Some(true)) => IntLiteralNarrowMerge::Merge,
         Ok(Some(false)) => match integer_range_for_decl(dag, to.declaration) {
-            IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::Reject(
+            IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::reject(
                 magnitude_out_of_range_for_interval(&lit, *to, bound, span),
             ),
-            IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
+            IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::reject(diag),
             IntegerRangeLookup::Missing => {
-                IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
+                IntLiteralNarrowMerge::reject(Diagnostic::ResolveError {
                     name: "(internal: integer literal out of range but no range fact)".to_string(),
                     span,
                     correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                 })
             }
         },
-        Err(diag) => IntLiteralNarrowMerge::Reject(diag),
+        Err(diag) => IntLiteralNarrowMerge::reject(diag),
         Ok(None) => IntLiteralNarrowMerge::NotApplicable,
     }
 }
@@ -933,7 +934,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
             // applies when there is no range-backed check.
             if let LiteralBits::Int(lit_str) = &v.data {
                 let Some(literal) = BigInt::from_str(lit_str.as_str()).ok() else {
-                    return Decision::Fail(
+                    return Decision::fail(
                         v.output,
                         Diagnostic::ResolveError {
                             name: "internal: malformed decimal integer literal".to_string(),
@@ -956,7 +957,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 Ok(Some(false)) => {
                                     match integer_range_for_decl(dag, existing.declaration) {
                                         IntegerRangeLookup::Found(range) => {
-                                            return Decision::Fail(
+                                            return Decision::fail(
                                                 v.output,
                                                 magnitude_out_of_range_for_interval(
                                                     &literal,
@@ -967,10 +968,10 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                             );
                                         }
                                         IntegerRangeLookup::Invalid(diag) => {
-                                            return Decision::Fail(v.output, diag);
+                                            return Decision::fail(v.output, diag);
                                         }
                                         IntegerRangeLookup::Missing => {
-                                            return Decision::Fail(
+                                            return Decision::fail(
                                                 v.output,
                                                 Diagnostic::ResolveError {
                                                     name: "(internal: integer literal out of range but no range fact)"
@@ -982,7 +983,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                         }
                                     }
                                 }
-                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Err(diag) => return Decision::fail(v.output, diag),
                                 Ok(None) => {}
                             }
                         }
@@ -998,7 +999,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                 LiteralBits::String(_) => (dag.string_shape(), "String"),
             };
             let Some(ty) = shape_and_name.0 else {
-                return Decision::Fail(
+                return Decision::fail(
                     v.output,
                     Diagnostic::ResolveError {
                         name: format!(
@@ -1030,7 +1031,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
             match dag.port(b.input).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
-                    return Decision::Fail(
+                    return Decision::fail(
                         b.output,
                         Diagnostic::ResolveError {
                             name: "(upstream failure in branch condition)".to_string(),
@@ -1049,7 +1050,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                             return Decision::Retry;
                         }
                         let Some(bool_ty) = dag.bool_shape() else {
-                            return Decision::Fail(
+                            return Decision::fail(
                                 b.output,
                                 Diagnostic::ResolveError {
                                     name: "primitive `Bool` missing from declaration table — bootstrap failed"
@@ -1059,7 +1060,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 },
                             );
                         };
-                        return Decision::Fail(
+                        return Decision::fail(
                             b.output,
                             Diagnostic::TypeMismatch {
                                 expected: bool_ty,
@@ -1081,7 +1082,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
             let first_type = match dag.port(first_path.output).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
-                    return Decision::Fail(
+                    return Decision::fail(
                         b.output,
                         Diagnostic::ResolveError {
                             name: "(upstream failure in branch path)".to_string(),
@@ -1098,7 +1099,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                 match dag.port(path.output).state() {
                     PortState::Uninferred => return Decision::Retry,
                     PortState::Unresolved => {
-                        return Decision::Fail(
+                        return Decision::fail(
                             b.output,
                             Diagnostic::ResolveError {
                                 name: "(upstream failure in branch path)".to_string(),
@@ -1112,7 +1113,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                     PortState::Resolved(other)
                         if type_shapes_equivalent(dag, other, &first_type) => {}
                     PortState::Resolved(other) => {
-                        return Decision::Fail(
+                        return Decision::fail(
                             b.output,
                             Diagnostic::TypeMismatch {
                                 expected: first_type,
@@ -1136,7 +1137,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
             let body_output = behavior_output_port(body_node);
             match dag.port(body_output).state() {
                 PortState::Uninferred => Decision::Retry,
-                PortState::Unresolved => Decision::Fail(
+                PortState::Unresolved => Decision::fail(
                     l.output,
                     Diagnostic::ResolveError {
                         name: "function body is unresolved".to_string(),
@@ -1170,7 +1171,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
                 None => {
-                    return Decision::Fail(
+                    return Decision::fail(
                         t.output,
                         Diagnostic::ArityMismatch {
                             function: crate::operators::symbol(*op_kind),
@@ -1186,7 +1187,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 Some(port) => match dag.port(*port).state() {
                     PortState::Uninferred => return Decision::Retry,
                     PortState::Unresolved => {
-                        return Decision::Fail(
+                        return Decision::fail(
                             t.output,
                             Diagnostic::ResolveError {
                                 name: format!(
@@ -1212,7 +1213,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                     if is_retryable_generic_decl(dag, lhs_type.declaration) {
                         return Decision::Retry;
                     }
-                    return Decision::Fail(
+                    return Decision::fail(
                         t.output,
                         Diagnostic::ResolveError {
                             name: format!(
@@ -1231,7 +1232,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
         TransformTarget::Callable(target_id) => {
             match resolve_callable_target(dag, *target_id, &t.inputs, &t.span) {
                 CallableTargetResolution::Retry => return Decision::Retry,
-                CallableTargetResolution::Fail(diag) => return Decision::Fail(t.output, diag),
+                CallableTargetResolution::Fail(diag) => return Decision::fail(t.output, diag),
                 CallableTargetResolution::Resolved { signature, .. } => signature,
             }
         }
@@ -1251,7 +1252,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
                     let name = transform_target_display_name(dag, &t.target);
-                    return Decision::Fail(
+                    return Decision::fail(
                         t.output,
                         Diagnostic::ResolveError {
                             name: format!("function `{name}` has an invalid body"),
@@ -1275,7 +1276,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
             // construction-time invariant.
             if !is_realization_shape(dag, *realization_id) {
                 let name = transform_target_display_name(dag, &t.target);
-                return Decision::Fail(
+                return Decision::fail(
                     t.output,
                     Diagnostic::ResolveError {
                         name: format!(
@@ -1310,7 +1311,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
     }
 
     if signature.inputs.len() != t.inputs.len() {
-        return Decision::Fail(
+        return Decision::fail(
             t.output,
             Diagnostic::ArityMismatch {
                 function: transform_target_display_name(dag, &t.target),
@@ -1325,7 +1326,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
         match dag.port(*input_port).state() {
             PortState::Uninferred => return Decision::Retry,
             PortState::Unresolved => {
-                return Decision::Fail(
+                return Decision::fail(
                     t.output,
                     Diagnostic::ResolveError {
                         name: format!(
@@ -1354,7 +1355,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                     actual,
                     &t.span,
                 ) {
-                    return Decision::Fail(t.output, diag);
+                    return Decision::fail(t.output, diag);
                 }
                 if !types_equivalent {
                     if let Some(literal) = literal_bigint_at(dag, *input_port) {
@@ -1368,7 +1369,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                     &t.target,
                                     &t.span,
                                 ) {
-                                    return Decision::Fail(t.output, diag);
+                                    return Decision::fail(t.output, diag);
                                 }
                                 // Default literal shape is `Int`; align the argument port with
                                 // the callee's narrow range-backed type (same as `let` / `data`
@@ -1376,11 +1377,11 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
-                            Err(diag) => return Decision::Fail(t.output, diag),
+                            Err(diag) => return Decision::fail(t.output, diag),
                         }
                         match integer_range_for_decl(dag, expected_ty.declaration) {
                             IntegerRangeLookup::Found(range) => {
-                                return Decision::Fail(
+                                return Decision::fail(
                                     *input_port,
                                     magnitude_out_of_range_for_interval(
                                         &literal,
@@ -1391,12 +1392,12 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 );
                             }
                             IntegerRangeLookup::Invalid(diag) => {
-                                return Decision::Fail(t.output, diag);
+                                return Decision::fail(t.output, diag);
                             }
                             IntegerRangeLookup::Missing => {}
                         }
                     }
-                    return Decision::Fail(
+                    return Decision::fail(
                         t.output,
                         Diagnostic::TypeMismatch {
                             expected: *expected_ty,
@@ -1419,7 +1420,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 if let Some(diag) =
                     check_refinement_discharge(dag, actual, expected_ty, &t.target, &t.span)
                 {
-                    return Decision::Fail(t.output, diag);
+                    return Decision::fail(t.output, diag);
                 }
             }
         }
@@ -4235,7 +4236,7 @@ fn resolve_field_project(
     field_label: &str,
 ) -> FieldProjectResolution {
     if t.inputs.len() != 1 {
-        return FieldProjectResolution::Fail(Diagnostic::ArityMismatch {
+        return FieldProjectResolution::fail(Diagnostic::ArityMismatch {
             function: format!(".{field_label}"),
             expected: 1,
             actual: t.inputs.len(),
@@ -4247,7 +4248,7 @@ fn resolve_field_project(
     let input_ty = match dag.port(t.inputs[0]).state() {
         PortState::Uninferred => return FieldProjectResolution::Retry,
         PortState::Unresolved => {
-            return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            return FieldProjectResolution::fail(Diagnostic::ResolveError {
                 name: format!("(upstream failure in field `{field_label}`)"),
                 span: t.span.clone(),
                 correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
@@ -4259,7 +4260,7 @@ fn resolve_field_project(
     let mut subst = SubstStack::new();
     if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
     {
-        return FieldProjectResolution::Fail(Diagnostic::NominalOpacityViolation {
+        return FieldProjectResolution::fail(Diagnostic::NominalOpacityViolation {
             declaration: opaque_decl,
             accessor: None,
             span: t.span.clone(),
@@ -4268,7 +4269,7 @@ fn resolve_field_project(
     }
     let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
-        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+        return FieldProjectResolution::fail(Diagnostic::ResolveError {
             name: format!(
                 "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
                 target_display_name(dag, input_ty.declaration),
@@ -4300,7 +4301,7 @@ fn resolve_field_project(
             })
             .next()
             .unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic"));
-        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+        return FieldProjectResolution::fail(Diagnostic::ResolveError {
             name: format!(
                 "field `{field_label}` does not exist on `{}`",
                 target_display_name(dag, input_ty.declaration),
@@ -4310,7 +4311,7 @@ fn resolve_field_project(
         });
     };
     let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &subst, 0) else {
-        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+        return FieldProjectResolution::fail(Diagnostic::ResolveError {
             name: format!(
                 "field `{field_label}` on `{}` does not resolve to a port type",
                 target_display_name(dag, input_ty.declaration),
@@ -4338,7 +4339,7 @@ fn first_nominal_opaque_on_conj_walk(
 fn decide_field_project(dag: &Dag, t: &TransformNode, field_label: &str) -> Decision {
     match resolve_field_project(dag, t, field_label) {
         FieldProjectResolution::Retry => Decision::Retry,
-        FieldProjectResolution::Fail(diag) => Decision::Fail(t.output, diag),
+        FieldProjectResolution::fail(diag) => Decision::fail(t.output, diag),
         FieldProjectResolution::Resolved { output_ty, .. } => Decision::Set(t.output, output_ty),
     }
 }

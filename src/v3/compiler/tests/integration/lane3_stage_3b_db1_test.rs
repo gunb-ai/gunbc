@@ -87,6 +87,25 @@ fn read(x: AB) -> Int = match x { A => 1 }
 }
 
 #[test]
+fn non_exhaustive_match_correction_covers_all_missing_arms() {
+    let source = "\
+type ABC = A | B | C
+fn read(x: ABC) -> Int = match x { A => 1 }
+";
+    let file = "lane3_db1_non_exhaustive_multiple.v3";
+    let dag = compile_semantic_fixture(source, file);
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("non-exhaustive match")
+                    && name.contains("`B, C`")
+        )
+    });
+    assert_fixes_apply_and_recompile(source, file, diagnostic, true);
+}
+
+#[test]
 fn empty_match_seed_corrections_apply_without_parse_breakage() {
     let source = "\
 type AB = A | B
@@ -100,7 +119,7 @@ fn read(x: AB) -> Int = match x {}
             Diagnostic::ResolveError { name, .. } if name.contains("non-exhaustive match")
         )
     });
-    assert_fixes_apply_and_recompile(source, file, diagnostic, false);
+    assert_fixes_apply_and_recompile(source, file, diagnostic, true);
 }
 
 #[test]
