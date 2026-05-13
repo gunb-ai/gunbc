@@ -230,10 +230,15 @@ fn expected_cementing_receipt_triples(
                 ));
             }
             ("cost_symbolic", "cost.dag") => {
+                // Band-C COMPLETE-row authority for abstract `SymbolicCost` is the gate-#87
+                // `.dag` harness (`t_r3_gate_87_cementing_regen_cost_symbolic` — PB-B-1 runner).
+                // `integration/cementing/cost_lens_symbolic_consumer_test.rs` stays wired for
+                // residual gate-#78 / host-wrapper checks per that module's header; it is not a
+                // `CementingDispatchMatchesProjection` receipt triple.
                 out.insert((
                     name.clone(),
-                    "cost_lens_symbolic_consumer_test".to_string(),
-                    "temporary-rust".to_string(),
+                    "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
+                    "dag".to_string(),
                 ));
             }
             _ => {
