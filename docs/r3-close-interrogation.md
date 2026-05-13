@@ -839,33 +839,37 @@ These are unification claims — load-bearing because each pairing-or-tripling t
   - Scripts `.sh`: enumerate. Each one is a process-discipline-bridge per `feedback_no_textual_enforcement_bridges` candidate — is each scoped to dissolve, or accepted as out-of-thesis?
 - [ ] **Falsification probe**: pick a hand-maintained non-Rust file (e.g., a build script). Is the load-bearing fact it encodes derivable from `.dag` substrate? If yes, why isn't it derived? If no, what's the named carrier for the fact?
 
-#### §5.4.d "Pure data" thesis-state at R3 close
+#### §5.4.d "Pure data" thesis-state at R3 close — interrogate against the committed 0-floor target
 
-**Promise** (THESIS.md substrate-describes-everything claim): the compiler is "pure data" — meaning the load-bearing fact about every behavior in the compiler lives in `.dag`, with Rust as mechanical execution-layer.
+**Committed target** (`docs/design-pure-bootstrap-zero.md:41` verbatim): *"Goal: zero hand-authored files in v3's source tree. Better than v2's 1-residual."* The ≤5-floor framing was retracted; the 0-floor target is the LIVE shape per ROADMAP T-PB-A row amendment. `docs/design-pure-bootstrap-zero.md:210` clarifies the hand-authored-vs-generated boundary: *"trampolines are 0 if their content is generated... a 1-line `include!()` trampoline that's itself emitted from a `.dag` authority is generated, not hand-authored."*
 
-**Distinguishing two readings**:
+**Promise** (THESIS.md substrate-describes-everything + design-pure-bootstrap-zero.md committed target): the compiler is "pure data" — every load-bearing fact lives in `.dag`; Rust files exist ONLY as machine-emitted artifacts of `.dag` authority. Hand-authored Rust at R3 close is debt against the 0-floor target, NOT an acceptable interpretation of "pure data."
 
-- **Strong reading**: "0 hand-Rust files on disk" — every `.rs` is `_generated.rs` or absent.
-- **Weak reading**: "0 hand-Rust *authoritative*" — `.rs` survivors are mechanically-derived bootstrap-seed (replayable from `.dag`), even if not literally machine-emitted today.
+**Reconciling against contrary evidence**:
 
-**Probes**:
+`src/v3/SELF_HOSTING.md` §1 describes Rust at `src/v3/compiler/src/` as a "bootstrap seed: kept for fresh-checkout bootstrapping and for the initial compilation of the `.dag` pipeline files, but no longer the authoritative compiler." This framing describes the POST-0-floor functional shape, NOT an alternative R3-close criterion. The bootstrap-seed Rust is acceptable at R3 close IFF it is itself **machine-emitted from `.dag` authority** (per design-pure-bootstrap-zero.md:210 trampoline framing) — hand-authored bootstrap-seed Rust is R3-close debt against the 0-floor target.
 
-- [ ] Which reading does R3 close target? Cite the disposition.
-- [ ] If strong: PB-0 census at 0 per §2.1; this section dissolves into §2.1.
-- [ ] If weak: what's the named distinction between "bootstrap-seed Rust" (acceptable) and "hand-authored Rust" (R3 debt)? Where is the line defined?
-- [ ] Cross-reference SELF_HOSTING.md §1 "bootstrap seed" framing: is the bootstrap seed itself authored or derived? If authored, what makes it different from generic hand-Rust?
-- [ ] **Falsification probe**: produce the `.dag` source for the LARGEST hand-Rust survivor at R3 close. Compile the `.dag`. Diff the emitted `.rs` against the survivor. Does the survivor match the emission byte-for-byte (or behaviorally), or is the survivor authoring facts not present in the `.dag`?
+**Probes** (interrogating against the 0-floor target, not between alternative readings):
+
+- [ ] Run the PB-0 census at HEAD. What's the count of hand-authored `.rs` files in `src/v3/`? The committed target is **0** per design-pure-bootstrap-zero.md.
+- [ ] For each hand-authored survivor: cite the named-retirement-schedule (PR # / gate # / target SHA). Survivors without named retirement are 0-floor debt.
+- [ ] For each hand-authored survivor flagged as "bootstrap-seed": verify it is **machine-emitted from `.dag`** (replayable via `cargo run --bin regen-*` or equivalent). Hand-authored bootstrap-seed is NOT acceptable per design-pure-bootstrap-zero.md:210.
+- [ ] Cross-reference SELF_HOSTING.md §1 "bootstrap seed" framing against design-pure-bootstrap-zero.md:210 generated-trampoline framing: is every claimed bootstrap-seed survivor actually generated, not hand-authored?
+- [ ] **Falsification probe**: produce the `.dag` source for the LARGEST hand-Rust survivor at R3 close. Compile the `.dag`. Diff the emitted `.rs` against the survivor. If the survivor doesn't match the emission, the survivor is authoring facts not present in `.dag` — that's R3-close debt against the 0-floor target.
+- [ ] **Bootstrap-resolution boundary probe** (per design-pure-bootstrap-zero.md:191 STOP-condition): if first-time bootstrap (N=0) resolution requires hand-Rust in v3's source tree, the 0-floor target is unreachable and the framing needs revision back toward an explicit alternative. Verify the N=0 resolution lives OUTSIDE `src/v3/` (install script, gunbc-runtime crate, rustc macro).
 
 #### §5.4.e R3-close honest framing
 
-This section's probes feed the close framing. PM-recommended answer-shape for R3 close:
+The committed target (per `docs/design-pure-bootstrap-zero.md`) is 0 hand-authored files in `src/v3/`. R3 close framing must interrogate against this target, not negotiate around it.
 
-- R3 close DOES NOT claim "0 hand-Rust files on disk" if the count is non-zero
-- R3 close MAY claim "all hand-Rust survivors are bootstrap-seed-class with named retirement" if true and ledger-cross-referenced
-- R3 close MAY claim "compiler authority is in `.dag`; Rust is mechanical execution-layer" if every hand-Rust survivor's authoritative behavior is mirrored in `.dag` and `pb_self_compile_fixed_point` (gate #16) holds
-- R3 close MUST distinguish the strong vs weak reading explicitly — the operator's 2026-05-09 "0 hand-Rust including stage0" framing is the strong reading; the SELF_HOSTING.md "bootstrap seed" framing is the weak reading; reconciling these is itself an R3-close question
+PM-recommended answer-shape for R3 close:
 
-**Anti-pattern**: silently shipping with the weak reading while citing the strong reading. R3 close framing must explicitly cash which reading is operative + cite per-survivor disposition.
+- R3 close MUST report PB-0 census count at HEAD. Per the committed 0-floor target: the goal is **0**.
+- If census count > 0 at R3 close: each survivor MUST be either (i) machine-emitted from `.dag` (and therefore not actually hand-authored per design-pure-bootstrap-zero.md:210), OR (ii) on the SG-0 ledger with named-retirement-schedule (per `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` discipline).
+- Hand-authored survivors with named-retirement-schedule are **acknowledged R3 debt against the 0-floor target**, NOT "acceptable close criterion." The named retirement is the dissolution plan; the survivor itself is debt.
+- R3 close framing CANNOT claim "pure data" if hand-authored survivors exist without machine-emitted reconciliation. The thesis claim is true iff the census is 0 OR all survivors are machine-emitted.
+
+**Anti-pattern**: silently shipping with hand-authored survivors while claiming "compiler is pure data" or "bootstrap-seed framing satisfies R3 close." Per design-pure-bootstrap-zero.md authority, bootstrap-seed Rust is acceptable IFF it is itself generated; otherwise it is 0-floor debt. R3 close framing must cite the census count + per-survivor disposition (machine-emitted OR named-retirement-schedule) against the committed 0-floor target.
 
 ### §5.5 Free consequences (when Tiers 1-2 close)
 
