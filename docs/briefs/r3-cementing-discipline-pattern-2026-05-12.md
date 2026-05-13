@@ -39,6 +39,41 @@ Registry-corpus drift smoke:
 cargo test -p v3-compiler r3_gate_87
 ```
 
+### §1.1 COMPLETE-flip / new-registry-row checklist
+
+Any PR that flips a lens row to `BEHAVIORALLY COMPLETE` or adds a new
+`LensRegistryEntry` must move the complete receipt stack together. The detailed
+review checklist lives in `TESTING.md` under *Cementing tests (Band C — lens
+subsumption)* → **Same-PR checklist — promoting a row to `BEHAVIORALLY
+COMPLETE`**; this brief records the dispatch rule for Cluster M workers.
+
+Required same-PR surfaces:
+
+1. `docs/v3-lens-capability-register.md` — register row updated, with the
+   behavioral marker and v2-counterpart / v3-native scope stated honestly.
+2. `src/v3/compiler/regen.dag` — `LensRegistryEntry` row added or updated when
+   the lens is part of the gate-#87 generated corpus.
+3. Generated Rust refreshed from that row when the source lens changes.
+4. `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag` —
+   per-lens `.dag` receipt added or strengthened.
+5. `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` —
+   `R3_GATE_87_CEMENTING_REGEN_SUITES` updated so the PB-B-1 runner executes the
+   receipt.
+6. `src/v3/compiler/tests/dag/cementing_dispatch.dag` — Band-C receipt row
+   updated for v2-complete registry rows.
+7. `src/v3/std/verification.dag` — `lens_capability_register_rows` kept aligned
+   with the prose register and dispatch projection.
+8. `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`
+   and any `tests/integration/cementing/*.rs` Rust pin — named explicitly when a
+   temporary host receipt remains, with the dissolution trigger and owning lane.
+
+Predicate selection is part of the same checklist: real v2 counterpart rows use
+`DifferentialEquals` or a reviewed frozen-v2 projection; v3-native / helper rows
+use `LensOutputEquals`, `SymbolicCostExprEquals`, or an explicit `Compiles`
+placeholder paired with a named blocker. A `BEHAVIORALLY COMPLETE` flip or new
+`LensRegistryEntry` without this receipt stack is non-mergeable for the
+lens-completeness invariant.
+
 ## §2. Predicate Taxonomy
 
 Use the existing `TestPredicate` surface. Inventing new predicate variants is out of scope for #84 cementing-class bulk port.
