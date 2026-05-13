@@ -105,6 +105,40 @@ Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
 
 - **Paste into PR description — `SG-0 pairing:`** ___ (`n/a` unless delta is strict `+N`, `N>0`)
 
+## Gate-87 same-PR checklist (required when lens register/cementing surfaces change)
+
+<!--
+CI: `scripts/check-gate87-same-pr-checklist.sh` (`.github/workflows/ci.yml`
+`ci` job).
+
+When this PR touches any gate-87 lens/register/cementing surface, the GitHub PR
+**description** must include a line starting exactly with
+`Gate-87 same-PR checklist:` followed by either:
+
+- `complete - <lens/receipt summary>` when this PR promotes a
+  `BEHAVIORALLY COMPLETE` row or edits a `LensRegistryEntry`, and the
+  `TESTING.md` Band-C subsection **Same-PR checklist — promoting a row to
+  `BEHAVIORALLY COMPLETE`** has been followed in this same PR; or
+- `n/a - <reason>` when the touched surface is a docs/ratchet clarification or
+  other non-promotion edit.
+
+The gate triggers on:
+`docs/v3-lens-capability-register.md`, `src/v3/std/verification.dag`,
+`src/v3/compiler/regen.dag`, `src/v3/compiler/tests/dag/cementing_dispatch.dag`,
+`src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`,
+`src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`,
+and `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag`.
+
+**Delete this entire section** if none of those surfaces changed.
+-->
+
+**CI reads raw PR description text.** The gate line must start at column 0; a
+leading markdown list marker (`- ...`) or bold wrapper on the same line will not
+satisfy the checker. Paste one plain-text line below the checklist into the
+description body.
+
+- **Paste into PR description — `Gate-87 same-PR checklist:`** ___
+
 ## Per-PR debt-paydown receipt (required for all PRs)
 
 <!--

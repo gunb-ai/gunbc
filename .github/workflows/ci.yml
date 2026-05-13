@@ -117,6 +117,15 @@ jobs:
           fi
           PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
+      - name: Gate-87 same-PR checklist discipline (self-test)
+        run: bash scripts/check-gate87-same-pr-checklist.sh --self-test
+
+      - name: Gate-87 same-PR checklist discipline
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/check-gate87-same-pr-checklist.sh
+
       - name: R4-carve dissolution discipline (self-test)
         run: bash scripts/check-r4-carve-dissolution-discipline.sh --self-test
 
