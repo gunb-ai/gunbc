@@ -28,6 +28,21 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 
 These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
 
+## Placeholder-Dissolution Ledger
+
+Gate #87 allows a temporary `.dag` `Compiles` receipt or a narrow `LensOutputEquals` projection only when the receipt names the missing carrier / runner capability and the lane that can dissolve it. These rows are not silent exceptions to Band-C; they are explicit placeholders paired with Rust pins or narrower runner projections until the stronger `.dag` expected value can be authored.
+
+| Registry key | Current placeholder | Missing carrier / capability | Owning unblock lane | Dissolution receipt |
+|---|---|---|---|---|
+| `effect_enumeration` | Narrow Int `LensOutputEquals` projection in `t_r3_gate_87_cementing_regen_effect_enumeration.dag` plus `r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program`. | `EffectEnumerationReport` expected literals as stable `.dag` data. | T-Tests-As-Data carrier completeness for report-typed lens outputs. | Replace the Int projection with full-carrier `LensOutputEquals` and remove the Rust projection pin in the same PR. |
+| `structural_resolution` | Narrow Int `LensOutputEquals` projection in `t_r3_gate_87_cementing_regen_structural_resolution.dag` plus `r3_gate_87_structural_resolution_rust_receipt_on_literal_program`. | `List<UnresolvedArrowBody>` expected literals as stable `.dag` data. | T-Tests-As-Data carrier completeness for list/sum lens outputs. | Replace the no-violation projection with full-carrier `LensOutputEquals` and remove the Rust projection pin in the same PR. |
+| `unused_parameters` | Narrow Int `LensOutputEquals` projection in `t_r3_gate_87_cementing_regen_unused_parameters.dag` plus `r3_gate_87_unused_parameters_rust_receipt_on_literal_program`. | `List<UnusedParameter>` expected literals as stable `.dag` data. | T-Tests-As-Data carrier completeness for list/sum lens outputs. | Replace the no-finding projection with full-carrier `LensOutputEquals` and remove the Rust projection pin in the same PR. |
+| `infer_helpers` | `Compiles` in `t_r3_gate_87_cementing_regen_infer_helpers.dag` plus `r3_gate_87_infer_helpers_lens_source_compiles`. | Public `infer_helpers` output carrier authorable as `.dag` expected data. | PB compiler-std helper-carrier lane. | Replace `Compiles` with behavior/output `LensOutputEquals` and delete the source-compilation Rust pin in the same PR. |
+| `lower_helpers` | `Compiles` in `t_r3_gate_87_cementing_regen_lower_helpers.dag` plus `r3_gate_87_lower_helpers_lens_source_compiles`. | Public `lower_helpers` behavior carrier authorable as `.dag` expected data. | PB parse-surface and lower-helper convergence lane. | Replace `Compiles` with behavior/output `LensOutputEquals` and delete the source-compilation Rust pin in the same PR. |
+| `variant_payload` | `Compiles` in `t_r3_gate_87_cementing_regen_variant_payload.dag` plus `r3_gate_87_variant_payload_lens_source_compiles` and temporary unit receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests`. | Stable variant-declaration fixture and `VariantPayloadShapeLookup` expected literal authorable as `.dag` data. | T-PB-B tests-as-data carrier completeness for generated lens output literals. | Replace `Compiles` with `LensOutputEquals(variant_payload_shape, ..., expected)` and delete both the source-compilation pin and temporary unit receipts in the same PR. |
+
+Non-gate-87 residuals stay out of this table. For example, `cost_lens_symbolic_consumer_test.rs` is now a gate #78 host-wrapper pin because `cost_symbolic` already has its gate-87 `.dag` symbolic-cost receipt; it is classified in `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §3, not here.
+
 ## Ratchets
 
 - `cementing_lens_registry_dispatch_test.rs` derives real-v2 complete rows from the capability register plus `src/v3/compiler/regen.dag` and requires the v2 receipt slice to match exactly.

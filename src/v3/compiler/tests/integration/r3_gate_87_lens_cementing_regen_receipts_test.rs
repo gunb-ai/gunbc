@@ -11,7 +11,11 @@
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! placeholders with per-file dissolution triggers in their `.dag` harness comments. Narrow Int
+//! projections (`effect_enumeration`, `structural_resolution`, `unused_parameters`) are likewise
+//! temporary carrier-authoring placeholders, not silent Band-C exceptions; the ledger in
+//! `docs/briefs/r3-gate-87-lens-cementing-closure-audit.md` names the missing carrier and owning
+//! unblock lane for each row.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the

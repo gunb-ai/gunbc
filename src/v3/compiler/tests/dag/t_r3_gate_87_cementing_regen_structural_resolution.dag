@@ -1,6 +1,9 @@
 // R3 gate #87 — `LensRegistryEntry` `structural_resolution`.
 // The full `List<UnresolvedArrowBody>` expected carrier is not yet stable as authored `.dag`
 // data, so this claim freezes the minimal no-violation witness through a named Int projection.
+// Dissolution trigger / owner: T-Tests-As-Data carrier completeness for list/sum lens outputs makes
+// `List<UnresolvedArrowBody>` expected literals authorable; then replace this Int projection with a
+// full-carrier `LensOutputEquals` claim and remove the paired Rust projection pin.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_structural_resolution
 

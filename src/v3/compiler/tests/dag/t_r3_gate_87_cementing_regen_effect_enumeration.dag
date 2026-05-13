@@ -2,6 +2,9 @@
 // The claim names a narrow Int projection because `EffectEnumerationReport` literals are not yet
 // authorable as stable `.dag` data. The runner projection applies the Rust cementing oracle for the
 // named lens behavior and compares the frozen witness here.
+// Dissolution trigger / owner: T-Tests-As-Data carrier completeness for report-typed lens outputs
+// makes `EffectEnumerationReport` expected literals authorable; then replace this Int projection
+// with a full-carrier `LensOutputEquals` claim and remove the paired Rust projection pin.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_effect_enumeration
 

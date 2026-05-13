@@ -4,9 +4,10 @@
 // predicate. Temporary Rust receipt:
 // `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles`.
 //
-// Dissolution trigger: when a `lower_helpers` public output carrier is authorable as `.dag` data,
-// replace this `Compiles` claim with a behavior/output `LensOutputEquals` receipt over that carrier
-// and delete the temporary Rust source-compilation receipt.
+// Dissolution trigger / owner: when the PB parse-surface/lower-helper convergence lane exposes a
+// public `lower_helpers` behavior carrier authorable as `.dag` expected data, replace this
+// `Compiles` claim with a behavior/output `LensOutputEquals` receipt over that carrier and delete
+// the temporary Rust source-compilation receipt.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_lower_helpers
 
