@@ -5,6 +5,16 @@
 //! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
 //! via `evaluate_body` against bind ports resolved from **`generated_full_bootstrap_dag()`**.
 //!
+//! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** the recursive-flex
+//! thesis (*the compiler stack that compiles gunbc programs validates the workflow that produces
+//! gunbc itself*) lands here on the **emit-back** branch from `docs/r3-structure.md` §"Acceptance"
+//! (either YAML round-trip **or** direct execution): `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output`
+//! regression-locks the live GitHub Actions file `.github/workflows/ci.yml` against
+//! `dsl/gunbc/ci_github_actions_workflow.dag` through the `gen_gunbc_ci_workflow_dag` crate (see also
+//! `dsl/gunbc/ci_emission.dag` / `gunbc_ci_emission_substrate_compiles`). The optional full-bootstrap
+//! `evaluate_body` receipt remains `#[ignore]` until the cold-cache amortization work called out
+//! inline on `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`.
+//!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
 //! `_ci_wad_seed_*` in `t_ci_workflow_as_data_demo.dag`). The eager evaluator cannot execute
@@ -531,6 +541,11 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
 /// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
 /// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
 /// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
+///
+/// **R3 gate #59 — `recursive_flex_demonstration_landed` (emit-back branch):** this is the
+/// checkable receipt that the repository's CI workflow bytes stay tied to the `.dag` workflow
+/// authority row (`dsl/gunbc/ci_github_actions_workflow.dag`) through gunbc's own generator — the
+/// narrative cash-out for "validate the workflow that produces gunbc" without hand-maintained drift.
 #[test]
 fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
     use std::path::Path;
