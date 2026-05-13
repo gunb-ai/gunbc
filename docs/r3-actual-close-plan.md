@@ -45,11 +45,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 ```
 plus `cargo test --release sg0_census_test` passes with predicate = 0.
 
-**Alternative disposition** (briansrls BLOCKING PR #3013 2026-05-13T18:22:57Z enforcement: **fabricated Tier-2 R4-deferral authority RETRACTED**): the prior framing cited `docs/design-pure-bootstrap-zero.md` as authority for Tier-2 R4-deferral of grounding submodules. That citation is fabricated — `docs/design-pure-bootstrap-zero.md` sets an absolute 0-floor (L41: *"Goal: zero hand-authored files in v3's source tree"*) and contains zero references to "Tier-2", "grounding submodules deferred", or any R4-deferral carve-out mechanism. The only "carves out" mention in that doc (L131) is the *historical* TESTING.md carve-out, which the doc explicitly **retracts** under the 0-floor target.
+**Alternative disposition** (briansrls + codex BLOCKING PR #3013 2026-05-13 enforcement: **no Tier-2 escape language survives this section**): `docs/design-pure-bootstrap-zero.md` sets an absolute 0-floor (L41: *"Goal: zero hand-authored files in v3's source tree"*) with no internal carve-out mechanism. Any PB-0 R4-carve requires **TWO** explicit operator-authored amendments BEFORE the carve can count:
 
-The PB-0 design doc admits no internal escape hatch. Any R4-carve of PB-0 subsets requires explicit operator override of `project_no_r4_carves_directive` (2026-05-08), naming the specific subset + structural-unblockable reason. There is no per-subset deferral mechanism inside the design doc itself; the no-carves directive is the sole gate.
+1. **Override of `project_no_r4_carves_directive`** (operator 2026-05-08: *"we are NOT moving anything to R4 as of now"*) — naming the specific subset + structural-unblockable reason
+2. **Amendment to `docs/design-pure-bootstrap-zero.md` authority text itself** — adding a per-subset deferral carrier with named reason + retirement plan to the design-doc-tier authority, not just to this plan doc
 
-**PM-recommended**: do NOT R4-defer this — it's the load-bearing thesis claim ("0 hand-Rust"). The standing directive applies absent explicit per-subset override.
+Neither override alone is sufficient. The PB-0 design doc currently admits no escape hatch; absent the amendment, the 0-floor stands and no carve-counter exists in the authority chain.
+
+**PM-recommended**: do NOT R4-defer this — it's the load-bearing thesis claim ("0 hand-Rust"). The standing directive + design-doc 0-floor both apply absent explicit dual amendment.
 
 ---
 
@@ -180,19 +183,35 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
   - **Phase 3 (#84 bulk-port)**: 99 tests × per-class dispatch — per-class worker briefs needed
 - **Effort estimate**: 4-8 weeks per Cluster M plan (operator "staffing not a concern" allows parallel dispatch)
 
-**Close criterion** (briansrls BLOCKING PR #3013 2026-05-13T18:22:57Z enforcement: **textual `// AUTO-GENERATED FROM .dag` marker predicate RETRACTED** per `feedback_no_textual_enforcement_bridges` — "never propose grep/regex as interim enforcement; text-gating 'be structural' defeats itself". A textual comment is gameable: hand-authored Rust carrying the marker would pass the predicate without satisfying the THESIS tests-as-data claim. The structural authority for "no hand-authored tests" is the same ratchet Gap 1 uses):
+**Close criterion** (briansrls + codex BLOCKING PR #3013 2026-05-13 dual enforcement: **negative-form list-emptied predicate + positive-form generator-manifest predicate, both required**; textual `// AUTO-GENERATED FROM .dag` marker RETRACTED per `feedback_no_textual_enforcement_bridges`):
+
+**Negative authority** — hand-authored ratchet empty:
 ```rust
 // in src/v3/compiler/tests/integration/sg0_census_test.rs at HEAD when gate #84 closes:
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 ```
-plus `cargo test --release sg0_census_test` passes with predicate = 0
+plus `cargo test --release sg0_census_test` passes with predicate = 0.
+
+**Positive authority** — generator-manifest covers every surviving test (codex BLOCKING strengthening: *"make the predicate consume a generator manifest or generated-output comparison, not just a header grep"*):
+```
+# Predicate at gate #84 close — every checked-in test file traces back to a .dag source via manifest:
+for each *_test.rs in src/v3/compiler/tests:
+  manifest_entry = lookup_in_test_generator_manifest(file_path)
+  assert manifest_entry.exists()
+  assert manifest_entry.dag_source_path.exists()
+  assert generate_from(manifest_entry.dag_source_path) == file_contents
+```
+
+The generator-manifest (substrate to be authored as a Cluster M Phase 3 deliverable) maps each surviving Rust test file → its `.dag` `TestClaim` source. The predicate fails closed on any orphaned test file (no manifest entry) OR any test file whose bytes diverge from regeneration (drift). This is the structural form of "every Rust test ports to .dag or is generated."
+
 plus #85 SuiteClaim wrapper consumer landed.
 
-**Why structural-list-emptied beats textual-marker** (briansrls BLOCKING PR #3013 receipt):
-- `feedback_no_textual_enforcement_bridges`: textual gating defeats itself; a `// AUTO-GENERATED FROM .dag` comment can be hand-authored
-- `EXPECTED_HAND_AUTHORED_TEST` is the existing structural ratchet — every hand-authored test entry must be named on the list (PR-template enforcement); migrations remove entries; close fires when list empties
-- The list-emptied predicate IS the THESIS tests-as-data claim: "every Rust test ports to .dag or is generated" ⇔ "no entry remains on the hand-authored ratchet"
-- Generated tests (if any are checked-in as trampolines per `docs/design-pure-bootstrap-zero.md` "trampolines are 0 if their content is generated") are NOT named on `EXPECTED_HAND_AUTHORED_TEST`; the list discriminates structurally, not textually
+**Why dual authority is required** (briansrls + codex BLOCKING PR #3013 receipt):
+- `feedback_no_textual_enforcement_bridges`: textual marker gating defeats itself; a `// AUTO-GENERATED FROM .dag` comment can be hand-authored
+- **Negative authority alone** (list-emptied) is necessary but not sufficient: it proves no entry on the hand-authored ratchet, but doesn't structurally tie each surviving file to its .dag source. A generated file that loses its .dag source (orphaned) would pass the negative predicate while violating THESIS
+- **Positive authority** (generator manifest) ties each surviving Rust test file structurally to its .dag source; orphan detection + regeneration-byte-equality fail-close on drift
+- Together the two predicates cash the THESIS claim *"every Rust test ports to .dag or is generated"* structurally — no textual proxy
+- Substrate prereq: generator-manifest substrate carrier must be designed + landed as part of Cluster M Phase 3; brief-authoring scope expands beyond the current cluster-M-sequencing-plan to include manifest substrate
 
 **Authority for no-boundary-carve-out** (separate codex BLOCKING PR #3013 receipt; preserved):
 - `TESTING.md` "🔄 RETRACTED 2026-04-25 (cascade promotion of `docs/design-pure-bootstrap-zero.md`)": *"the previous 'two residual categories' framing (compiler-internal unit tests + external-toolchain boundary tests stay Rust-authored permanently) is retracted under the 0-floor target. Both categories dissolve"*
@@ -286,7 +305,20 @@ plus #85 SuiteClaim wrapper consumer landed.
   1. Author new §1.8 row #106 `show_correct_code_diagnostic_coverage` with substrate-shape gate type
   2. Enumerate diagnostic classes (parse / type / lens / emit / ...)
   3. For each class, audit existing diagnostics + check whether they cite "Y would be right" or only "X is wrong"
-  4. **Substrate-shape canvas authored by Substrate Mgr BEFORE worker dispatch** (per claude review exploratory observation #2 — this plan doc surfaces a sub-program step, but the actual substrate-shape commitment must be ratified via Mgr canvas, not implemented from this prose). **Canvas substrate-shape constraint (briansrls BLOCKING PR #3013 2026-05-13T18:22:57Z enforcement: `Option<Witness>` shape RETRACTED)**: per `feedback_state_space_vs_behavioral_invariants` ("check if the type admits illegal state combinations; type enforcement > API enforcement") + `feedback_optional_models_recovery_as_exception` ("T? where absence is the norm conceals plurality") + `feedback_practice_2_vs_4_same_variant_vs_cross_variant`, the field MUST be `correction: Witness` (NOT `correction: Option<Witness>`). The Option-wrapped form admits `None` = "diagnostic without correction" which is exactly the state THESIS.md "show the correct code" forbids. Practice-2 carrier refinement: type-level enforcement that every Diagnostic value carries a Witness, no None state representable. Canvas authors a substrate shape that admits Diagnostic-with-correction *by construction*; the Witness field is non-optional. Director ratifies; worker dispatches against ratified shape.
+  4. **Substrate-shape canvas authored by Substrate Mgr BEFORE worker dispatch** (per claude review exploratory observation #2 — this plan doc surfaces a sub-program step, but the actual substrate-shape commitment must be ratified via Mgr canvas, not implemented from this prose). **Canvas substrate-shape constraint (briansrls + codex BLOCKING PR #3013 2026-05-13 dual enforcement: `Option<Witness>` shape RETRACTED; absolute thesis shape and pragmatic residual policy SEPARATED into named carrier variants)**: per `feedback_state_space_vs_behavioral_invariants` ("check if the type admits illegal state combinations; type enforcement > API enforcement") + `feedback_optional_models_recovery_as_exception` ("T? where absence is the norm conceals plurality") + `feedback_practice_2_vs_4_same_variant_vs_cross_variant`, the Correction field MUST inhabit exactly one of two named carrier variants (NOT `Option<Witness>`):
+
+     ```dag
+     sum Correction {
+       LiveCorrection { witness: Witness }
+       | DeferredCorrection { reason: String, retirement_plan: RetirementPlan }
+     }
+     type Diagnostic {
+       ...
+       correction: Correction  // mandatory; structurally exhaustive over LiveCorrection | DeferredCorrection
+     }
+     ```
+
+     **LiveCorrection** is the 100% THESIS-correct path — diagnostic points to the structurally correct program via Witness. **DeferredCorrection** models any accepted residual as an explicit named-deferral carrier with retirement plan (codex BLOCKING #3 enforcement: *"model any accepted residual as an explicit deferral carrier with named reason"*). The Option-wrapped form admits `None` = "diagnostic without correction" — exactly the state THESIS.md "show the correct code" forbids — AND collapses the absolute-thesis vs pragmatic-residual axes into a single nullable boolean. Practice-2 carrier refinement: type-level enforcement that every Diagnostic value carries a Correction; the residual path is structurally named with retirement-plan accountability rather than absorbed silently into None. **Gate #84/#106 close condition** requires every `DeferredCorrection` entry to be ratchetable to zero per its own retirement plan. Canvas authors the substrate shape that admits Diagnostic-with-correction *by construction* via the sum variant; Director ratifies; worker dispatches against ratified shape.
   5. Worker brief dispatch to retrofit existing diagnostics
 - **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it). **Caveat (per claude review exploratory observation #3 — estimates unsourced)**: this estimate is PM-prior-cycle-experience-based, NOT cited against specific velocity data. Substrate Mgr canvas surfaces the actual scope + worker effort; final estimate calibrates post-canvas-ratification.
 
@@ -321,7 +353,7 @@ plus #85 SuiteClaim wrapper consumer landed.
   - **Predicate execution (Verification Mgr parallel via ctrl-build)**: 3-5 days compressed if remote BuildBuddy infra healthy + parallelism dispatch
   - **Overall**: 1-2 weeks for full landing, contingent on Verification Mgr capacity + ctrl-build availability
 
-**Close criterion**: `docs/audit/r3-close-predicate-execution-YYYY-MM-DD.md` exists on main with ALL 105 rows filled + overall verdict cited.
+**Close criterion** (codex non-blocking PR #3013 2026-05-13: **count-drift cleanup — derive row-count from §1.8 ledger at execution time**, NOT hard-coded; per `feedback_no_snapshot_integers_in_briefs`): `docs/audit/r3-close-predicate-execution-YYYY-MM-DD.md` exists on main with **all §1.8 ledger rows filled** (count derived at execution time via `grep -cE "^\| #[0-9]+ \|" docs/r3-program-plan.md` or equivalent §1.8 row enumeration; Gap 9 row #106 + any subsequent additions automatically included) + overall verdict cited. Avoids the snapshot-integer rot pattern.
 
 **Note**: this gap is the *receipt* for the closure ceremony. Skeleton authoring (1-2 days) is not blocked on other gaps and is PM's immediate next deliverable; predicate execution (1-2 weeks) can run in parallel with other Phase B/C/D work.
 
