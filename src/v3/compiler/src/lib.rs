@@ -16,7 +16,113 @@
 //   payload.
 
 pub mod cementing_dispatch;
-pub mod complexity_lattice;
+pub mod complexity_lattice {
+    //! **`complexity_enforcement_budget_dominates`** — executable **T-LAS enforcement**
+    //! ordering on `AsymptoticClass` for `complexity_enforcement_violates` /
+    //! `EnforcedApplication` (gate #92). It matches
+    //! `v3.std.algebra::asymptotic_dominates` on every arm including
+    //! `ClassPolynomial×ClassPolynomial` (Peano `degree` compare).
+
+    use crate::dag::{positive_descent_count, AsymptoticClass};
+
+    pub fn complexity_enforcement_budget_dominates(
+        a: &AsymptoticClass,
+        b: &AsymptoticClass,
+    ) -> bool {
+        use AsymptoticClass::*;
+        match a {
+            ClassUnknown => true,
+            ClassExponential => match b {
+                ClassUnknown => false,
+                ClassExponential
+                | ClassPolynomial { .. }
+                | ClassQuadratic
+                | ClassLinearithmic
+                | ClassLinear
+                | ClassLog
+                | ClassConstant => true,
+            },
+            ClassPolynomial { degree: da } => match b {
+                ClassUnknown | ClassExponential => false,
+                ClassPolynomial { degree: db } => {
+                    positive_descent_count(da) >= positive_descent_count(db)
+                }
+                ClassQuadratic | ClassLinearithmic | ClassLinear | ClassLog | ClassConstant => true,
+            },
+            ClassQuadratic => match b {
+                ClassConstant | ClassLog | ClassLinear | ClassLinearithmic | ClassQuadratic => true,
+                ClassPolynomial { .. } | ClassExponential | ClassUnknown => false,
+            },
+            ClassLinearithmic => match b {
+                ClassConstant | ClassLog | ClassLinear | ClassLinearithmic => true,
+                ClassQuadratic | ClassPolynomial { .. } | ClassExponential | ClassUnknown => false,
+            },
+            ClassLinear => match b {
+                ClassConstant | ClassLog | ClassLinear => true,
+                ClassLinearithmic
+                | ClassQuadratic
+                | ClassPolynomial { .. }
+                | ClassExponential
+                | ClassUnknown => false,
+            },
+            ClassLog => match b {
+                ClassConstant | ClassLog => true,
+                ClassLinear
+                | ClassLinearithmic
+                | ClassQuadratic
+                | ClassPolynomial { .. }
+                | ClassExponential
+                | ClassUnknown => false,
+            },
+            ClassConstant => match b {
+                ClassConstant => true,
+                ClassLog
+                | ClassLinear
+                | ClassLinearithmic
+                | ClassQuadratic
+                | ClassPolynomial { .. }
+                | ClassExponential
+                | ClassUnknown => false,
+            },
+        }
+    }
+
+    #[inline]
+    pub fn asymptotic_dominates(a: &AsymptoticClass, b: &AsymptoticClass) -> bool {
+        complexity_enforcement_budget_dominates(a, b)
+    }
+
+    #[cfg(test)]
+    mod asymptotic_dominates_tests {
+        use super::{asymptotic_dominates, complexity_enforcement_budget_dominates};
+        use crate::dag::{positive_amount_from_i64, AsymptoticClass};
+
+        fn poly(k: i64) -> AsymptoticClass {
+            AsymptoticClass::ClassPolynomial {
+                degree: positive_amount_from_i64(k).expect("test degree in range"),
+            }
+        }
+
+        #[test]
+        fn polynomial_degree_orders_within_class_polynomial() {
+            let p5 = poly(5);
+            let p3 = poly(3);
+            assert!(complexity_enforcement_budget_dominates(&p5, &p3));
+            assert!(!complexity_enforcement_budget_dominates(&p3, &p5));
+            assert!(complexity_enforcement_budget_dominates(&p3, &p3));
+        }
+
+        #[test]
+        fn alias_matches_budget_dominates() {
+            let p3 = poly(3);
+            let p5 = poly(5);
+            assert_eq!(
+                asymptotic_dominates(&p5, &p3),
+                complexity_enforcement_budget_dominates(&p5, &p3)
+            );
+        }
+    }
+}
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
@@ -54,7 +160,15 @@ pub mod emit;
 pub mod emit_rust;
 pub mod emit_rust_bin_shim;
 pub mod omni_shape_b_openapi;
-pub mod process_exit;
+pub mod process_exit {
+    //! Host-side mirror of `dsl/std/process.dag` `ProcessExit`.
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ProcessExit {
+        ExitSuccess,
+        ExitFailure { code: i64, reason: String },
+    }
+}
 pub mod realization_cost {
     //! Rust-side realization-cost table for T-CostLens-Composition's epsilon path.
     //!
@@ -435,7 +549,101 @@ pub mod realization_cost {
         }
     }
 }
-pub mod self_host_receipt_p0;
+pub mod self_host_receipt_p0 {
+    //! P0 prerequisite pin: stable top-level JSON keys in `target/self_host/receipt.json`.
+
+    /// Pipeline snapshot fixed-point on [`crate::default_fixed_point_source`].
+    pub const K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE: &str =
+        "pipeline_fixed_point_default_source";
+
+    /// `dsl/gunbc/compiler.dag` parse outcome under v3.
+    pub const K_COMPILER_DAG_V3_PARSE: &str = "compiler_dag_v3_parse";
+
+    /// Overall receipt status.
+    pub const K_STATUS: &str = "status";
+
+    /// Keys emitted on every path.
+    pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
+        K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE,
+        K_COMPILER_DAG_V3_PARSE,
+        K_STATUS,
+    ];
+
+    fn top_level_property_needle(key: &str) -> String {
+        let mut needle = String::with_capacity(key.len() + 8);
+        needle.push_str("  \"");
+        needle.push_str(key);
+        needle.push_str("\":");
+        needle
+    }
+
+    fn missing_always_emitted_key_properties(json_body: &str) -> Vec<&'static str> {
+        ALWAYS_EMITTED_TOP_LEVEL_KEYS
+            .iter()
+            .copied()
+            .filter(|key| !json_body.contains(&top_level_property_needle(key)))
+            .collect()
+    }
+
+    pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
+        let missing = missing_always_emitted_key_properties(json_body);
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "receipt.json missing always-emitted P0 keys: {}",
+                missing.join(", ")
+            ))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::HashSet;
+
+        #[test]
+        fn always_emitted_keys_are_unique_nonempty() {
+            let mut seen = HashSet::new();
+            for key in super::ALWAYS_EMITTED_TOP_LEVEL_KEYS {
+                assert!(!key.is_empty(), "empty key");
+                assert!(seen.insert(*key), "duplicate key {key}");
+            }
+        }
+
+        #[test]
+        fn validate_accepts_minimal_receipt_shape() {
+            let body = r#"{
+  "pipeline_fixed_point_default_source": "ok",
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+            super::validate_receipt_json_always_emitted_keys(body).unwrap();
+        }
+
+        #[test]
+        fn validate_rejects_missing_pipeline_key() {
+            let body = r#"{
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("pipeline_fixed_point_default_source"), "{err}");
+        }
+
+        #[test]
+        fn validate_rejects_missing_status_key() {
+            let body = r#"{
+  "pipeline_fixed_point_default_source": "ok",
+  "compiler_dag_v3_parse": "x",
+}
+"#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("status"), "{err}");
+        }
+    }
+}
 pub mod evaluator {
     //! E2 evaluator frame helpers.
     //!
@@ -4578,7 +4786,104 @@ pub mod lens_cost_symbolic {
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
-pub mod memory_peak_cost;
+pub mod memory_peak_cost {
+    //! Memory-peak composition for the symbolic cost lens.
+
+    use crate::dag::{dominates, max_path, SymbolicCost};
+
+    #[must_use]
+    pub fn compose_branch_memory_peak(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+        max_path(&[a, b])
+    }
+
+    #[must_use]
+    pub fn memory_peak_enforcement_violates(
+        declared_budget: &SymbolicCost,
+        observed_peak: &SymbolicCost,
+    ) -> bool {
+        !dominates(declared_budget, observed_peak)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::dag::{max_path, DegreeAtLeastTwo, PortId, SizeVariable};
+
+        fn var(p: PortId) -> SizeVariable {
+            SizeVariable {
+                source_port: p,
+                display_name: None,
+            }
+        }
+
+        #[test]
+        fn compose_branch_memory_peak_delegates_to_max_path() {
+            let p0 = PortId::test_raw(110);
+            let p1 = PortId::test_raw(111);
+            let a = SymbolicCost::LinearCost { _0: var(p0) };
+            let b = SymbolicCost::LogCost { _0: var(p1) };
+            assert_eq!(
+                compose_branch_memory_peak(a.clone(), b.clone()),
+                max_path(&[a, b])
+            );
+        }
+
+        #[test]
+        fn enforcement_violates_when_peak_exceeds_budget() {
+            let p = PortId::test_raw(200);
+            let n = var(p);
+            let budget = SymbolicCost::LogCost { _0: n.clone() };
+            let peak = SymbolicCost::LinearCost { _0: n };
+            assert!(memory_peak_enforcement_violates(&budget, &peak));
+        }
+
+        #[test]
+        fn enforcement_clean_when_budget_covers_peak() {
+            let p = PortId::test_raw(201);
+            let n = var(p);
+            let budget = SymbolicCost::LinearCost { _0: n.clone() };
+            let peak = SymbolicCost::LogCost { _0: n };
+            assert!(!memory_peak_enforcement_violates(&budget, &peak));
+        }
+
+        #[test]
+        fn enforcement_clean_when_budget_ties_observed_peak_under_dominance() {
+            let p = PortId::test_raw(202);
+            let n = var(p);
+            let cost = SymbolicCost::LinearCost { _0: n.clone() };
+            assert!(!memory_peak_enforcement_violates(
+                &cost,
+                &SymbolicCost::LinearCost { _0: n }
+            ));
+        }
+
+        #[test]
+        fn enforcement_violates_on_incomparable_size_variables_fail_closed() {
+            let a = SymbolicCost::LinearCost {
+                _0: var(PortId::test_raw(203)),
+            };
+            let b = SymbolicCost::LinearCost {
+                _0: var(PortId::test_raw(204)),
+            };
+            assert!(memory_peak_enforcement_violates(&a, &b));
+        }
+
+        #[test]
+        fn branch_style_peak_over_two_quadratic_arms_normalizes_budget_sharpness_check() {
+            let p = PortId::test_raw(300);
+            let n = var(p);
+            let q = SymbolicCost::PolynomialCost {
+                var: n.clone(),
+                degree: DegreeAtLeastTwo::TWO,
+            };
+            let peak_branch = compose_branch_memory_peak(q.clone(), q);
+            assert!(memory_peak_enforcement_violates(
+                &SymbolicCost::LinearCost { _0: n.clone() },
+                &peak_branch
+            ));
+        }
+    }
+}
 
 /// `cost_target_realization.dag` `.dag`-tier consumer of the
 /// `declaration_by_name` substrate accessor (T-CostLens-Composition
