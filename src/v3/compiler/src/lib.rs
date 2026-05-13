@@ -20,6 +20,16 @@ pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
+pub use enforced_lens_application::check_enforced_lens_applications;
+// Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
+// need the helpers below as **`pub`**: the consolidated integration test binary is a separate
+// crate that links this library and cannot call `pub(crate)` items on `v3_compiler`.
+// `#[doc(hidden)]` keeps them off the supported public API; they remain unsupported for
+// out-of-tree callers (see `enforced_lens_application` module docs on each symbol).
+#[doc(hidden)]
+pub use enforced_lens_application::gate_58_test_parse_timing_budget_violation_max_ns_pair;
+#[doc(hidden)]
+pub use enforced_lens_application::gate_58_test_raise_modeled_ci_timing_measurement_duration_ns;
 pub mod integration_rs_wiring_scan;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
