@@ -17,14 +17,14 @@ use crate::evaluator::{
 };
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
+use crate::lens_cost::{cost_of, CostLookup};
+use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_target_realization::type_realization_meta;
 use crate::lens_declaration_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     int_identity_witness_holds, reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
-use crate::lens_cost::{cost_of, CostLookup};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
-use crate::lens_cost_target_realization::type_realization_meta;
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
@@ -6300,10 +6300,7 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 }
 
 fn is_lens_producer_census_path(path: &str) -> bool {
-    matches!(
-        path,
-        "src/v3/compiler/src/bin/regen_lens.rs"
-    )
+    matches!(path, "src/v3/compiler/src/bin/regen_lens.rs")
 }
 
 fn compiler_std_positive_set_ratchet_count() -> i64 {
