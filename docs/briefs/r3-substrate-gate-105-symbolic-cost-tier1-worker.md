@@ -27,13 +27,11 @@ Net 7 → **9** SymbolicCost variants:
 - **ADD**: `ExponentialCost { base: Int, var: SizeVariable }` for c^n with c ≥ 2
 - **ADD**: `FactorialCost { var: SizeVariable }` for n!
 
-Sibling substrate (Q1 — Rational ordering; **DISPOSITION REVISED per operator BLOCKING canvas:48 2026-05-13**):
+Sibling substrate (Q1 — Rational ordering; **Director RATIFIED Q1-α per msg_676ad4e7 2026-05-13**, retracting prior Q1-c msg_d86a5987):
 
-**Original Q1-c (OrderedField introduction) IS REJECTED**: `Field<T>` at `dsl/std/algebra.dag:294` already carries `compare: fn(T, T) -> Ordering`. Introducing `OrderedField<T>` would create parallel order authority.
+**Original Q1-c (OrderedField introduction) REJECTED**: `Field<T>` at `dsl/std/algebra.dag:294` already carries `compare: fn(T, T) -> Ordering` (precedent: `OrderedRing<T>.compare` at `:276`). Introducing `OrderedField<T>` would have duplicated Field.compare authority, violating INVARIANTS P1 + row #24 + Q-MachineConstraint-Carrier "no dual representations".
 
-**Revised disposition pending Director re-ratification** (see canvas §3 REVISED). Worker brief Phase A scope below assumes **Q1-α** (use `Field.compare` directly + define lt/le/gt/ge as cost-lens-local free functions). If Director re-ratifies as Q1-β or Q1-γ, this section regenerates accordingly.
-
-Under Q1-α:
+**Director-ratified Q1-α**:
 - **NO `OrderedField<T>` introduction**
 - **NO `Rational` re-declaration** at `dsl/std/rational.dag:26`
 - Cost-lens fold uses `Rational.compare` via existing `Field.compare`
@@ -50,11 +48,11 @@ Under Q1-α:
 - Canvas: PR #2828 / `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md` §§3-9
 - Ratification: PM msg_a055c38b relaying Director msg_d86a5987
 
-## §3. Phase A — Rational ordering helpers (Q1-α; **PENDING Director re-ratification**)
+## §3. Phase A — Rational ordering helpers (Q1-α; Director RATIFIED msg_676ad4e7)
 
-**Premise correction**: `Field<T>` at `dsl/std/algebra.dag:294` ALREADY has `compare: fn(T, T) -> Ordering`. The original Phase A introducing `OrderedField<T>` was based on stale premise (rejected per operator BLOCKING canvas:48).
+**Premise correction landed**: `Field<T>` at `dsl/std/algebra.dag:294` carries `compare: fn(T, T) -> Ordering`. Original Phase A introducing `OrderedField<T>` was based on stale premise (operator BLOCKING canvas:48); Director retracted msg_d86a5987 Q1-c via msg_676ad4e7.
 
-**Under Q1-α (pending re-ratification)**:
+**Under Q1-α (ratified)**:
 
 - **NO `OrderedField<T>` introduction** — Field carries `compare` already
 - **NO `Rational` re-declaration** at `dsl/std/rational.dag:26` — stays as `Field<FieldOfFractions<Int>>`
@@ -83,9 +81,9 @@ fn rational_max(a: Rational, b: Rational) -> Rational =
 
 **Witness realization**: Rational's Field-witness realization (`compare` for `FieldOfFractions<Int>`) uses Int cross-multiplication: `a/b ≶ c/d ⟺ ad ≶ bc` when b·d > 0. If this realization is NOT yet wired at HEAD, Phase A may need to land the data witness; worker grep-verifies before authoring.
 
-**If Director re-ratifies as Q1-β** (extend Field with lt/le/gt/ge in-place): Phase A becomes a `dsl/std/algebra.dag:287` extension instead — adds 6 predicate fields to `Field<T>` and refits all Field-realizations. Larger blast radius.
+Q1-β (extend Field with predicate fields) REJECTED by Director — doubles Field carrier surface (7→13) for predicates derivable from Ordering pattern-match; violates cost-of-change minimization.
 
-**If Director re-ratifies as Q1-γ** (OrderedField as Field-superset with inheritance): worker grep-verifies DSL grammar supports type-level inheritance before authoring; if not supported, falls back to Q1-α.
+Q1-γ (OrderedField as Field-superset via inheritance) REJECTED by Director — DSL grammar inheritance/superset typing R4-scope at earliest; forward-incompatible with R3 timeline.
 
 ## §4. Phase B — STOP SIGNAL rewrite (Q4)
 
@@ -223,17 +221,18 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
-## §11. 7 anti-patterns (5 Director-enumerated + 2 Mgr-derived per canvas §10)
+## §11. 8 anti-patterns (6 Director-enumerated + 2 Mgr-derived per canvas §10)
 
 PR body MUST cite each verbatim + assert receipt-of-compliance:
 
 1. Any Tier 2 variant named without consumer-evidence (premature variants)
 2. Any Path B revival (RootCost as separate variant — Practice-4 RED)
 3. Linear-Polynomial split decision authored without canvas (substrate-shape question goes through Mgr)
-4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-c addresses
+4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-α addresses via existing Field.compare
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation)
-6. Parallel order authority — adding any new `OrderedField` or equivalent witness when `Field.compare` already exists at algebra.dag:294 (Q1 premise-corrected anti-pattern)
-7. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering` — lens-local predicate derivation from Ordering pattern-match is the canonical path
+7. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
+8. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §12. 5 reviewer ratchets (Director-enumerated for PR review)
 
@@ -241,7 +240,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
 4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
-5. **All 7 anti-patterns enforceable** at PR review
+5. **All 8 anti-patterns enforceable** at PR review
 
 ## §13. Verification
 
@@ -251,7 +250,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
   - Canvas PR #2828 + Director disposition (PM msg_a055c38b) verbatim Q1-Q5 + §8
-  - 7 anti-patterns receipt-of-compliance (§11)
+  - 8 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
 ## §14. Out of scope
@@ -283,7 +282,7 @@ STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
 
-7 anti-patterns receipt-of-compliance:
+8 anti-patterns receipt-of-compliance:
 [enumerate each + cite that the implementation does not violate it]
 
 5 reviewer ratchets compliance:

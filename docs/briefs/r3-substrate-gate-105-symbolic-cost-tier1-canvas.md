@@ -49,7 +49,7 @@ Tier 2 R4-DEFERRED per Director with named-consumer-trigger requirement:
 - `dsl/std/rational.dag:26`: `type Rational = Field<FieldOfFractions<Int>>`. Per above correction: Rational already carries `compare` via Field — order primitive is present. What's missing is the convenience-predicate set (lt/le/gt/ge/eq/ne). This invalidates the original Q1 premise; see §3 revised candidate set below.
 - `dsl/std/computation.dag:8`: "algebra.dag says 'Int inhabits OrderedRing'" — Int is ordered, but Rational is not
 
-## §3. Q1 — Rational dominance lattice (substrate-shape question; REVISED per operator BLOCKING canvas:48)
+## §3. Q1 — Rational dominance lattice (Director RATIFIED Q1-α per msg_676ad4e7 2026-05-13; supersedes msg_d86a5987 Q1-c)
 
 **Premise correction**: Earlier canvas authoring claimed Rational "carries no order witness." This was wrong — `Field<T>` at `dsl/std/algebra.dag:294` already has `compare: fn(T, T) -> Ordering`. Rational therefore already carries the foundational order primitive. What's missing is the **derived order predicates** (lt/le/gt/ge/eq/ne) that `OrderedRing<T>` carries on top of `compare`.
 
@@ -107,7 +107,11 @@ Cons:
 - Q1-β is acceptable if Director prefers carrier-uniform predicate set, but the migration scope is broader
 - Q1-γ requires DSL-grammar prerequisite check; defer unless Q1-α is rejected
 
-**Re-ratification required**: Director's prior Q1-c ratification (PM msg_a055c38b relaying msg_d86a5987) was based on the stale premise. With premise corrected, Q1 needs re-disposition. Most likely lands on Q1-α (smallest scope, premise-corrected) but Director may prefer Q1-β for carrier uniformity.
+**Director ratified Q1-α** (msg_676ad4e7 2026-05-13, explicit retraction of msg_d86a5987 Q1-c). Director acknowledged discipline-miss (failure to grep `dsl/std/algebra.dag` for existing Field carrier shape before ratifying); will fold incident as Case 3 in `feedback_grep_substrate_before_naming_ratification`.
+
+Q1-β REJECTED: doubles Field carrier surface (7→13) for predicates derivable from Ordering pattern-match.
+
+Q1-γ REJECTED: DSL grammar inheritance/superset typing R4-scope at earliest.
 
 ## §4. Q2 — Linear-vs-Polynomial split reconciliation
 
@@ -244,20 +248,21 @@ For each Tier-1 addition under §1:
 
 No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B revival (RootCost as separate variant — Practice-4 RED)" — explicitly NOT done; roots are PolynomialCost(degree=1/2 etc.).
 
-## §10. Anti-patterns (5 Director-enumerated + 2 derived)
+## §10. Anti-patterns (6 Director-enumerated + 2 derived)
 
 ### Director-enumerated
 
 1. Any Tier 2 variant named without consumer-evidence (premature variants) — §8 disposition: not introducing
 2. Any Path B revival (RootCost as separate variant — Practice-4 RED) — §9: explicitly not done
 3. Linear-Polynomial split decision authored without canvas (substrate-shape question goes through Mgr) — this canvas IS the §4 Q2 disposition
-4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-c addresses
+4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-α addresses via existing Field.compare
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation) — §6 STOP-SIGNAL text encodes
+6. **NEW (Director-ratified msg_676ad4e7)**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering`. Lens-local predicate derivation from Ordering pattern-match is the canonical path. — §3 Q1-α addresses
 
 ### Mgr-derived (encoded for worker review)
 
-6. `OrderedField<T>` witness landed without strict-mirror of `OrderedRing<T>` (Q1-c structural-mirror discipline)
-7. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+7. Multiplicative absorption rules where one variant absorbs another (`X · Y = X`) when X is asymptotically larger than Y additively — asymptotic absorption is sound for SUM but NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products must be `ProductCost` composite. §5 algebra rules table addresses (operator BLOCKING worker:140).
+8. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §11. Cost-of-change accounting
 
