@@ -459,6 +459,35 @@ register already reads `COMPLETE`. CI should already fail via
 names, or the SG-0 census when Rust wiring is wrong; this checklist is the human
 pre-merge mirror of those predicates.
 
+**4. Worker-facing lock**
+
+Before opening a PR that flips a lens to `BEHAVIORALLY COMPLETE`, adds a
+`LensRegistryEntry`, or expands gate-#87 cementing coverage, workers must confirm
+the concrete edit set in the PR body:
+
+- **Register row:** `docs/v3-lens-capability-register.md` and
+  `src/v3/std/verification.dag` agree on behavioral status, v2-counterpart
+  class, and residual drop column.
+- **Generated-lens row:** every changed `src/v3/compiler/regen.dag`
+  `LensRegistryEntry` has a matching
+  `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens_stem>.dag`
+  harness and a matching
+  `R3_GATE_87_CEMENTING_REGEN_SUITES` entry.
+- **Dispatch row:** `src/v3/compiler/tests/dag/cementing_dispatch.dag` names
+  the same `(registry_name, module_stem, kind)` receipt identity that the
+  runner table executes.
+- **Temporary Rust pin:** if the `.dag` predicate is still `Compiles` or
+  otherwise narrower than the published lens carrier, the same PR adds or
+  updates the paired Rust pin, keeps `EXPECTED_HAND_AUTHORED_TEST` accurate, and
+  names the missing carrier / owning lane that dissolves the pin.
+- **Verification:** run `cargo test -p v3-compiler r3_gate_87` for registry or
+  runner changes; add `cargo test -p v3-compiler sg0_census` when a Rust pin is
+  added, deleted, or moved.
+
+If any item above cannot move in the same PR, leave the row below
+`BEHAVIORALLY COMPLETE` and route the blocker to the owning lane. A follow-on
+receipt promise is not enough to merge a `COMPLETE` flip.
+
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
 substrate accessors or emitters. It only governs **explicit**

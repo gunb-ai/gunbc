@@ -33,6 +33,8 @@ These artifacts must move together when a `regen.dag` cementing row changes:
 
 `src/v3/std/verification.dag` and `docs/v3-lens-capability-register.md` are the data/prose mirrors. If a worker needs to edit one surface without the matching surfaces, STOP and ping the Coordinator.
 
+Worker-facing `COMPLETE` flips are locked by `TESTING.md` §"Cementing tests (Band C — lens subsumption)" → **Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`**. That checklist is the canonical pre-PR edit set and verification list for future gate-#87 / Band-C workers; do not create a second checklist in a worker brief.
+
 Registry-corpus drift smoke:
 
 ```bash
