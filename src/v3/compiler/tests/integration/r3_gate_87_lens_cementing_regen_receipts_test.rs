@@ -19,6 +19,9 @@
 //! `git diff origin/main...HEAD --stat` and path grep). Registry `name` inventory matches
 //! `r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table`
 //! derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` (single authority, no parallel hand list).
+//! A bounded **`regen_lens` CLI smoke** over that same inventory (`budgeted_test!` below) mirrors
+//! `sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift`
+//! so every cementing-registry lens exercises the real binary path against checked-in snapshots.
 //!
 //! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
 //! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite
@@ -35,8 +38,9 @@
 //! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
 //! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::process::Command;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
@@ -80,7 +84,7 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
         })
 }
 
-fn regen_lens_registry_names() -> BTreeSet<String> {
+fn regen_lens_registry_rows_name_and_generated_file() -> BTreeMap<String, String> {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -100,8 +104,16 @@ fn regen_lens_registry_names() -> BTreeSet<String> {
                 .clone()
                 .unwrap_or_else(|| "<anonymous>".to_string());
             let fields = structural_fields(decl);
-            string_field(fields, "name", &binding)
+            let name = string_field(fields, "name", &binding);
+            let generated_file = string_field(fields, "generated_file", &binding);
+            (name, generated_file)
         })
+        .collect()
+}
+
+fn regen_lens_registry_names() -> BTreeSet<String> {
+    regen_lens_registry_rows_name_and_generated_file()
+        .into_keys()
         .collect()
 }
 
@@ -141,6 +153,66 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+budgeted_test! {
+    120_000,
+    r3_gate_87_regen_lens_cli_smoke_cementing_inventory_without_drift,
+    {
+        let cementing_names = r3_gate_87_cementing_regen_lens_names_for_runner_table();
+        let generated_by_name = regen_lens_registry_rows_name_and_generated_file();
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = workspace_root();
+
+        for name in cementing_names.iter() {
+            let generated_file = generated_by_name.get(name).unwrap_or_else(|| {
+                panic!(
+                    "gate-#87 cementing inventory name `{name}` must resolve in `regen.dag` \
+                     (see `r3_gate_87_regen_lens_registry_names_match_fixture_inventory`)"
+                )
+            });
+            let out_path = root.join(generated_file);
+            let before = std::fs::read(&out_path)
+                .unwrap_or_else(|e| panic!("read {} for `regen_lens --lens {name}` smoke: {e}", out_path.display()));
+
+            let output = Command::new(env!("CARGO_BIN_EXE_regen_lens"))
+                .current_dir(&manifest_dir)
+                .arg("--lens")
+                .arg(name)
+                .output()
+                .unwrap_or_else(|e| panic!("run regen_lens --lens {name}: {e}"));
+
+            assert!(
+                output.status.success(),
+                "regen_lens --lens {name} failed:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+
+            let stdout = String::from_utf8(output.stdout).expect("regen_lens stdout should be utf-8");
+            assert_eq!(
+                stdout.trim(),
+                format!("wrote {}", out_path.display()),
+                "`regen_lens --lens {name}` should report the single generated target it rewrote",
+            );
+
+            let after = std::fs::read(&out_path).expect("read regenerated file");
+            if after != before {
+                std::fs::write(&out_path, &before).unwrap_or_else(|e| {
+                    panic!(
+                        "restore checked-in generated file `{}` after smoke drift: {e}",
+                        out_path.display()
+                    )
+                });
+            }
+            assert_eq!(
+                after, before,
+                "`regen_lens --lens {name}` changed `{generated_file}`. The smoke test expects the CLI path \
+                 to be clean against the checked-in snapshot; if this fails, regenerate in the same PR \
+                 that updates the snapshot.",
+            );
+        }
+    }
 }
 
 #[test]
