@@ -5917,6 +5917,51 @@ fn lower_structural_field_value(
             });
         }
 
+        if optional_disj.is_some()
+            && !surface_expr_is_authored_optional_none(expr)
+            && !optional_some_none_surface_form(expr)
+        {
+            if let Some(inner_ty) =
+                optional_element_type_with_subst(dag, expected_type, subst, 0)
+            {
+                match lower_structural_field_value(
+                    data_name,
+                    field_label,
+                    expr,
+                    inner_ty,
+                    subst,
+                    symbols,
+                    dag,
+                    None,
+                    span,
+                    pending_refined_function_refs,
+                ) {
+                    Some(inner_fv) => {
+                        let Some((_, some_payload_conj)) =
+                            variants.iter().find(|(label, _)| label == "Some")
+                        else {
+                            report_declaration_error(
+                                dag,
+                                Diagnostic::ResolveError {
+                                    name: format!(
+                                        "data `{data_name}` field `{field_label}`: optional match disj missing `Some` arm"
+                                    ),
+                                    span: span.clone(),
+                                    fixes: Vec::new(),
+                                },
+                            );
+                            return None;
+                        };
+                        return Some(crate::dag::FieldValue::Variant {
+                            constructor: *some_payload_conj,
+                            payload: vec![inner_fv],
+                        });
+                    }
+                    None => return None,
+                }
+            }
+        }
+
         let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) =
             match expr {
                 SurfaceExpr::Call { target, args, span } => {
@@ -5966,6 +6011,57 @@ fn lower_structural_field_value(
                     (
                         target.as_str(),
                         *variant_decl_id,
+                        None,
+                        Some(fields.as_slice()),
+                        span,
+                    )
+                }
+                SurfaceExpr::Record { fields, span } => {
+                    let authored: HashSet<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                    let mut matched: Option<(&str, DeclarationId)> = None;
+                    for (label, variant_decl_id) in &variants {
+                        let Some(payload_fields) = variant_payload_fields_for_lowering_with_subst(
+                            dag,
+                            *variant_decl_id,
+                            &disj_subst,
+                        ) else {
+                            continue;
+                        };
+                        let payload: HashSet<&str> =
+                            payload_fields.iter().map(|(l, _)| l.as_str()).collect();
+                        if authored == payload {
+                            if let Some((prev_label, _)) = matched {
+                                report_declaration_error(
+                                    dag,
+                                    Diagnostic::ResolveError {
+                                        name: format!(
+                                            "data `{data_name}` field `{field_label}` record literal is ambiguous: same field set matches sum variants `{prev_label}` and `{label}`"
+                                        ),
+                                        span: span.clone(),
+                                        fixes: Vec::new(),
+                                    },
+                                );
+                                return None;
+                            }
+                            matched = Some((label.as_str(), *variant_decl_id));
+                        }
+                    }
+                    let Some((label, variant_decl_id)) = matched else {
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "data `{data_name}` field `{field_label}` record literal field set does not match any variant of the declared sum type"
+                                ),
+                                span: span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                        return None;
+                    };
+                    (
+                        label,
+                        variant_decl_id,
                         None,
                         Some(fields.as_slice()),
                         span,
@@ -6321,10 +6417,41 @@ fn optional_at_most_one_cardinality_decl_with_subst(
     }
 }
 
+fn optional_element_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            optional_element_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_element_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => optional_element_type(dag, expected_type).map(|element| {
+            resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)
+        }),
+    }
+}
+
 fn surface_expr_is_authored_optional_none(expr: &SurfaceExpr) -> bool {
     match expr {
         SurfaceExpr::Path { segments, .. } => segments.len() == 1 && segments[0] == "none",
         SurfaceExpr::Var { name, .. } => name == "none",
+        _ => false,
+    }
+}
+
+fn optional_some_none_surface_form(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::VariantRecord { target, .. } => target == "Some" || target == "None",
+        SurfaceExpr::Call { target, .. } => target == "Some" || target == "None",
         _ => false,
     }
 }
