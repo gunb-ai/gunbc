@@ -139,21 +139,45 @@ type PositiveRational {
   denominator: PositiveInt
 }
 
-// PolyLogExponent: Rational > 1 (admits 2, 7.5, 3/2, ...; rejects ≤ 1).
-// Rejects exponent=1 to avoid semantic collision with LogCost.
-// Rejects exponent=0 to avoid collapse to ConstantCost.
-// Rational rather than Int because Tier-1 cites textbook log^7.5 n (AKS).
-// Implementation: PositiveRational with structural invariant numerator >
-// denominator. Worker authors as inductive carrier or refinement-typed
-// PositiveRational subset per DSL grammar support.
-type PolyLogExponent {
-  // numerator > denominator > 0 (strictly greater than 1)
-  numerator: PositiveInt
-  denominator: PositiveInt
-  // Invariant: numerator > denominator. Worker grep-verifies DSL refinement
-  // grammar; if not available, expresses as separate inductive carrier
-  // mirroring ExponentialBase shape (RationalGreaterThanOne).
-}
+// PolyLogExponent: Rational > 1. Admits 2, 7.5, 3/2; rejects ≤ 1.
+// Per codex BLOCKING 014544f4 finding #2: invalid exponents must be
+// structurally uninhabited, NOT expressed as a product-of-PositiveInts
+// with an extra "numerator > denominator" invariant (refinement-mixed-with-
+// product). The canonical inductive shape mirrors ExponentialBase:
+//
+//   type PolyLogExponent
+//     = PolyLogExponentSuccessor { previous: PolyLogExponent }
+//     | PolyLogExponentBase { fractional_part: FractionalPart }
+//
+// where FractionalPart is itself a structurally-constrained rational in
+// (0, 1] — admitting log^1.5, log^2, log^2.5, etc. — and PolyLogExponent
+// values START at the "≥ 1" base case with FractionalPart > 0 required
+// (to exclude exponent=1 collapse to LogCost).
+//
+// **Implementation note**: this requires either (i) DSL refinement-type
+// grammar supporting "Rational > 1" as a type-level predicate, OR (ii)
+// the inductive carrier above with FractionalPart > 0 invariant baked
+// into FractionalPart's own constructors. Worker grep-verifies DSL
+// refinement support at authoring time:
+//   - If (i) available: type PolyLogExponent = Rational where r > 1
+//   - If (ii) only: ratify the inductive shape before authoring; this
+//     surfaces back to Mgr/Director per §10 STOP-condition new entry.
+//
+// **HARD STOP**: do NOT author PolyLogExponent as `{ numerator, denominator
+// }` with a textual "numerator > denominator" comment — that's the exact
+// refinement-mixed-with-product pattern codex 014544f4 BLOCKING #2 forbids.
+type PolyLogExponent
+  = PolyLogExponentSuccessor { previous: PolyLogExponent }   // ≥ 2 case
+  | PolyLogExponentFractional { whole: PositiveInt, fraction: FractionalPart }
+    // whole ≥ 1 + fraction in (0, 1] → result > 1; whole = 1 + fraction
+    // close to 0 approaches exponent = 1 but never reaches it; fraction > 0
+    // strictly enforced by FractionalPart's own constructors
+
+// FractionalPart: rational in (0, 1]. Inductive: 1/n for n ≥ 1.
+// (Sketch — worker authors final shape per DSL refinement support.)
+type FractionalPart
+  = FractionalOne                                       // 1/1 = 1
+  | FractionalRecip { denominator: PositiveInt }        // 1/d for d ≥ 1 → value in (0, 1]
 ```
 
 These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` structurally impossible to construct — no fold-time enforcement required.
@@ -186,7 +210,11 @@ Reviewers MUST flag any attempt to use raw `Rational` / `Int` for these fields.
 
 ## §6. Phase D — Algebra interaction rules (Q3)
 
-Update sum + product fold logic to implement the Director-ratified rule table (canvas §5):
+Update sum + product fold logic to implement the Director-ratified rule table (canvas §5).
+
+**Variable-scoping precondition** (per codex BLOCKING 014544f4 finding #3): the rules below assume **same-variable operands**. Different-variable operations (e.g., `PolyCost(n, d1) + PolyCost(m, d2)` where n ≠ m) are NOT folded by dominance — they preserve as `SumCost` / `ProductCost` composite. Algebra dominance is variable-local; cross-variable dominance is undefined within Tier-1 substrate (requires Tier-2 or polynomial-multivariate ratification post-R3).
+
+Same-variable rules (operands share `SizeVariable`):
 
 | Operation | Result |
 |---|---|
@@ -269,7 +297,12 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 
 - `cargo test --workspace` green
 - New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveRational/PositiveInt/ExponentialBase/PolyLogExponent) / algebra rules sample / STOP-SIGNAL text)
-- **INVARIANTS P5 receipt for the new hand-Rust test file** (per claude APPROVE review 10773 exploratory observation): authoring `symbolic_cost_tier1_carrier_test.rs` adds new hand-Rust under `src/v3/compiler/tests/`. Per P5 "Pure Bootstrap" discipline, this PR's body MUST cite ONE of: (a) a concrete hand-Rust deletion of equivalent or greater LOC elsewhere; (b) SG-0 census shrink receipt; (c) named-lane deferral with explicit dissolution-trigger naming. Pre-wired here so worker doesn't re-derive; the canonical receipt is the cost-lens consumer migration Phase F (which deletes LinearCost variant + collapses fallback dispatch paths — that net hand-Rust deletion is the P5 receipt for the new test file).
+- **INVARIANTS P5 receipt for the new hand-Rust test file** (per claude APPROVE 10773 + codex BLOCKING 014544f4 finding #4): authoring `symbolic_cost_tier1_carrier_test.rs` adds new hand-Rust under `src/v3/compiler/tests/`. Per P5 "Pure Bootstrap" discipline, this PR's body MUST cite **exactly ONE P5 receipt category** with concrete path + LOC count:
+  - (a) **hand-Rust deletion of equivalent or greater LOC**: cite specific deleted file/lines + LOC count
+  - (b) **SG-0 census shrink receipt**: cite specific SG-0 cell + shrink delta
+  - (c) **named-lane T-PB-B ROADMAP row deferral**: cite the ROADMAP row by ID + explicit dissolution-trigger condition
+
+  **Worker MUST pick exactly one and document with concrete numbers, NOT narrative.** Phase F (LinearCost variant removal + fallback dispatch collapse) is the LIKELY (a) source — but worker measures actual LOC at authoring time. If Phase F deletion LOC < new test file LOC, worker MUST pick (b) or (c). Codex 014544f4 BLOCKING explicitly: "feature migration as debt receipt" is NOT a clean P5 receipt — concrete numbers required.
 - Pre-existing cost-lens behavioral tests still green (Phase F migration must preserve semantic equivalence: `LinearCost(v)` and `PolynomialCost { var: v, degree: 1 }` must produce identical lens output for all consumers)
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
