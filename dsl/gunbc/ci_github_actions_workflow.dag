@@ -18,11 +18,13 @@ import extdeps.github.actions {
 data gunbc_ci_github_actions_workflow: Workflow = {
   name: "ci",
   on: [Push { branches: ["main"], paths: [] }, PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened, ReadyForReview] }],
-  concurrency: ConcurrencyMappingQueueNotMax {
+  concurrency: Some {
+  value: ConcurrencyMappingQueueNotMax {
       group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
-      cancel_in_progress: CancelInProgressBool { value: true },
+      cancel_in_progress: Some { value: CancelInProgressBool { value: true } },
       explicit_single: none
-    },
+    }
+  },
   jobs: [{
       id: "fmt",
       name: none,
@@ -573,10 +575,12 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       concurrency: none
     }],
   env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" },
-  permissions: {
+  permissions: Some {
+  value: {
       contents: PermRead,
       pull_requests: PermRead,
       issues: PermNone,
       actions: PermNone
     }
+  }
 }

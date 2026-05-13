@@ -194,12 +194,16 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
         None => "none".to_string(),
-        Some(Value::Bool(true)) => "CancelInProgressBool { value: true }".to_string(),
-        Some(Value::Bool(false)) => "CancelInProgressBool { value: false }".to_string(),
+        Some(Value::Bool(true)) => {
+            "Some { value: CancelInProgressBool { value: true } }".to_string()
+        }
+        Some(Value::Bool(false)) => {
+            "Some { value: CancelInProgressBool { value: false } }".to_string()
+        }
         Some(other) => return Err(format!("unsupported cancel-in-progress: {other:?}").into()),
     };
     Ok(format!(
-        "ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}",
+        "Some {{\n  value: ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}\n  }}",
         dag_string(&group),
         cancel
     ))
@@ -271,7 +275,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "{{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}",
+        "Some {{\n  value: {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}\n  }}",
         contents, pull_requests, issues, actions
     ))
 }
