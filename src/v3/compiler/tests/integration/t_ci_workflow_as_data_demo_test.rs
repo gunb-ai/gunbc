@@ -5,15 +5,17 @@
 //! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
 //! via `evaluate_body` against bind ports resolved from **`generated_full_bootstrap_dag()`**.
 //!
-//! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** the recursive-flex
-//! thesis (*the compiler stack that compiles gunbc programs validates the workflow that produces
-//! gunbc itself*) lands here on the **emit-back** branch from `docs/r3-structure.md` §"Acceptance"
-//! (either YAML round-trip **or** direct execution): `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output`
-//! regression-locks the live GitHub Actions file `.github/workflows/ci.yml` against
-//! `dsl/gunbc/ci_github_actions_workflow.dag` through the `gen_gunbc_ci_workflow_dag` crate. Slice-4
-//! `project_github_actions` / `WorkflowRuntime` substrate lives in `dsl/gunbc/ci_emission.dag`
-//! (isolated `compile_to_dag` on gunbc CI modules is follow-on work — see §1.8 gate #59 row).
-//! The optional full-bootstrap
+//! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
+//! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
+//! **`.dag`-authoritative** `project_github_actions(ci_workflow_dag, YamlStatic)` surface (see
+//! `dsl/gunbc/ci_emission.dag`, `data gunbc_ci_yml_workflow`) **or** a **direct-execution** witness —
+//! not the YAML→generator drift lock alone. **Same-module supporting ratchet:**
+//! `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output` asserts the committed
+//! `dsl/gunbc/ci_github_actions_workflow.dag` file equals `gen_gunbc_ci_workflow_dag` output when fed
+//! **YAML authority** `.github/workflows/ci.yml` (YAML is upstream; the `.dag` row is a derived
+//! encoding that must track the generator's view of that YAML). Slice-4 `WorkflowRuntime` / emission
+//! substrate: `dsl/gunbc/ci_emission.dag`. Companion isolated `compile_to_dag` on gunbc CI workflow
+//! modules is deferred (M1(2.8) opaque-body path). The optional full-bootstrap
 //! `evaluate_body` receipt remains `#[ignore]` until the cold-cache amortization work called out
 //! inline on `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`.
 //!
@@ -544,10 +546,8 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
 /// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
 /// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
 ///
-/// **R3 gate #59 — `recursive_flex_demonstration_landed` (emit-back branch):** this is the
-/// checkable receipt that the repository's CI workflow bytes stay tied to the `.dag` workflow
-/// authority row (`dsl/gunbc/ci_github_actions_workflow.dag`) through gunbc's own generator — the
-/// narrative cash-out for "validate the workflow that produces gunbc" without hand-maintained drift.
+/// **R3 gate #59 (`recursive_flex_demonstration_landed`):** remains **DECLARED** in §1.8 — this test
+/// is **not** the emit-back consumer (that needs `.dag`-authoritative `project_github_actions(ci_workflow_dag, YamlStatic)` per `dsl/gunbc/ci_emission.dag` or a direct-execution witness). This test only ratchets **YAML authority → generator → derived `.dag` bytes:** the committed `dsl/gunbc/ci_github_actions_workflow.dag` file must equal `gen_gunbc_ci_workflow_dag` output when fed `.github/workflows/ci.yml` (first paragraph; `.dag` tracks YAML, not the reverse).
 #[test]
 fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
     use std::path::Path;
