@@ -167,6 +167,34 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 **Composes with R4.A/B/C**: R4.D is the meta-wish that makes the other three meaningful — without it, "many projections from one substrate" is descriptive, not load-bearing.
 
+### R4.E — Full-stack-from-one-`.dag` with React framework substrate
+
+**Promise** (operator directive 2026-05-13 + Director ratification msg_7d51b699 on R4 path-b canvas PR #2847 squash `1f88306a5d`): one `.dag` source program emits a complete full-stack application — Rust backend + TS client + React UI + OpenAPI wire contract + SQL DDL schema + Markdown docs — all sharing one canonical `Dag` per gate #28 invariant extension.
+
+**Phases** (per ratified canvas `docs/design-r4-full-stack-omni-emission-canvas.md` §10):
+- **R4-Phase-1**: TS LanguageSpec carrier landing (Q1-b ratified — `TypingDiscipline = Nominal | Structural` extension to `InhabitantDecl`)
+- **R4-Phase-1.5**: HookKind Practice-4-promotion canvas (pre-Phase-2 dispatch requirement per Director directive)
+- **R4-Phase-2**: React framework substrate carriers (Q2-a ratified — Shape-A; components ARE TS source code) + JSX emission
+- **R4-Phase-3**: Cross-target consistency invariant extension (Q4 ratified — EXTEND gate #28, NOT new parallel gate)
+- **R4-Phase-4**: Lens framework composition (Q5-a ratified — Component as Behavior::Bind)
+- **R4-Phase-5**: Visceral demo extension — extend R3 path (a) TODO demo with React UI + TS client deriving from same `.dag`
+
+**Authority chain**:
+- Operator directive 2026-05-13 verbatim: *"i wanted to generate a full stack program from one .dag program ... can we integrate with a common frontend framework like react, model the framework/language layers properly, and emit an entire full stack application - including db stuff like sql?"*
+- Operator ratification verbatim: *"lets do a + b - i think this is super help[ful] and doesn't seem too difficult - i have more than enough staffing avail"*
+- Director ratification msg_7d51b699: Q1-b / Q2-a / Q3-a / Q4-extend / Q5-a / Practice-4 🟡 YELLOW + 2 anti-patterns added
+- Director scope-extension msg_2c1bfb0e (gate #105 carrier negative-degree admission scope): Q6/Q7/anti-pattern #9 + 🟢 GREEN Practice-4 for signed-Rational extension (separate but adjacent ratification)
+
+**Composes with**:
+- R4.A omni-ingestion: bidirectional TS extdeps + React component-source ingest
+- R4.B Introspect-lens: TypeScript-aware queries (find component / hook usage / prop typing) via lens framework
+- R4.C low-level emission: R4.E is Shape-A high-level; orthogonal axis
+- R4.D faithfulness: full-stack faithfulness witness — Rust backend + TS client + React UI all proven coherent against one Dag
+
+**Connection to R3**: gates #25 / #26 / #27 / #28 / #29 are R4.E foundation; R3 path (a) demo (`adhoc-e9bb6ef1-b4d` / PR #2848) cashes 4-layer-from-one-.dag for the Rust + OpenAPI + Markdown + SQL DDL projections; R4.E extends to TS + React.
+
+**Distinct from R4.E-adjacent multi-program-coordination canvas** (deferred per Director ratification msg_3bf3df9c): R4.E covers single-program-multi-target; multi-program-network-coordinated emission gets its own R4 canvas authored post-path-b-implementation-firstphases. Interrogation forward-pointer at `docs/r3-close-interrogation.md` §3.8.
+
 ---
 
 ## R5+ — speculative
