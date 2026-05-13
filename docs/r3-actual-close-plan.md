@@ -143,13 +143,14 @@ The closure-ledger row currently stale @ #1191-#1231 era; close also requires th
 - #80 cost = **PASSING** ✓
 - #81 parallelism = **R3-LOAD-BEARING**, F-α sub-phase pending (Stage 2e walker port from `workflow_parallelism.rs` → `.dag`)
 - #82 effect_enum = **R3-LOAD-BEARING**, F-β.1 canvas + F-β.2 atomic-migration pending
-- #83 lens_capability_register_zero_proxy_zero_stub = **PASSING** ✓ (register has **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` for all four in-scope lenses in `docs/v3-lens-capability-register.md` + `std.verification` `lens_capability_register_rows`; parallelism + effect_enum remain **PARTIAL** until gates #81/#82 land — that is not the #83 axis)
+- #83 `lens_capability_register_zero_proxy_zero_stub` (**§1.8 program gate / Cluster F sub-phase F-γ.2**) = **DECLARED** — canonical receipt is the **post-all-four-BEHAVIORALLY-COMPLETE** register cascade per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.4.2 and `docs/r3-structure.md` §Acceptance (not merely "no PROXY/STUB" while two rows stay **PARTIAL**). `parallelism.dag` and `effect_enumeration.dag` remain **PARTIAL** in `docs/v3-lens-capability-register.md` and `std.verification` `lens_capability_register_rows` until **#81** / **#82** land; **§1.8 #83 PASSING** stays **downstream of F-γ.2** (INVARIANTS P2 — one close predicate; no dilution).
+- **Narrow CI ratchet (green at HEAD, necessary not sufficient):** `lens_register_correspondence_test::r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub` enforces **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` on the four T-LBP basenames in the markdown capability table — does **not** replace the F-γ.2 §1.8 gate.
 
 **What's missing**:
 - Complexity: `ComplexitySummary` TestClaim literals (bridge-Rust to native-.dag migration)
 - Parallelism: Cluster F sub-phase F-α (Stage 2e walker port)
 - Effect: Cluster F sub-phase F-β.1 (canvas) + F-β.2 (atomic-migration impl)
-- Register: **PARTIAL → COMPLETE** for parallelism + effect_enum post gates #81/#82 (distinct from #83, which is already green on the PROXY/STUB axis)
+- Register: **PARTIAL → COMPLETE** for parallelism + effect_enum via **#81** / **#82**, then **F-γ.2** register sweep for full **#83** closure (PROXY/STUB-zero sub-check above already green)
 
 **Plan to cash**:
 - **Owner**: warm-wolf-698 (Substrate Mgr) for canvases + worker dispatch
