@@ -53,7 +53,24 @@ Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` with **two** receipts:
 
 ### §4.1 Phase B.1 — Systematic Class 4 bridge inventory (predicate (b))
 
-Worker grep at HEAD for every Class 4 bridge site across **all authority surfaces** — Rust under `src/v3/`, DSL substrate under `dsl/`, and CI/scheduling configuration under `.github/workflows/` (Class 4 is workflow/scheduling; bridge sites are not confined to Rust):
+Two-pass audit (codex BLOCKING e9143f67 — content-keyword grep alone is insufficient because YAML workflow files contain workflow/scheduling FACTS that may not contain any of the keyword tokens; the inventory must be **authority-surface enumeration + all-lines / YAML-structural classification**, with the keyword grep used only as a cross-check).
+
+**Pass 1 — Class 4 authority-surface enumeration (closed file list)**: worker confirms each surface exists at HEAD; any moved/renamed surface is a STOP-and-surface to Mgr.
+
+| Surface | Path | Audit mode |
+|---|---|---|
+| extdeps GitHub Actions carriers | `dsl/extdeps/github/actions.dag` | every type/sum/record line classified |
+| gunbc CI workflow-as-dag substrate | `dsl/gunbc/ci.dag` | every type/sum/record line classified |
+| gunbc CI emission DSL | `dsl/gunbc/ci_emission.dag` | every type/sum/record line classified (incl. `type WorkflowRuntime`) |
+| gunbc CI GitHub Actions workflow producer | `dsl/gunbc/ci_github_actions_workflow.dag` | every producer node classified |
+| gunbc CI demo / evaluator entry | `src/v3/std/t_ci_workflow_as_data_demo.dag` | every node classified |
+| Compiler test integration | `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` | every `#[test]` fn classified |
+| Repo CI workflow YAML | `.github/workflows/*.yml` + `.github/workflows/*.yaml` (ALL FILES) | **all-lines / YAML-structural** — every top-level key (`name`, `on`, `jobs`, `concurrency`, `permissions`, `env`, `defaults`) AND every job-level key (`runs-on`, `steps`, `strategy`, `if`, `needs`, `outputs`, `env`, `concurrency`, `permissions`, `services`, `container`) is a workflow/scheduling fact requiring classification — NOT keyword-filtered |
+| Workflow-runtime sibling tests | `src/v3/compiler/tests/integration/` (any file mentioning workflow/ci_workflow/WorkflowRuntime/project_github_actions) | every `#[test]` fn classified |
+
+For YAML surfaces, the audit doc enumerates each file's structural facts (name + trigger shape + per-job `runs-on`/`strategy`?/`concurrency`?/`if`?/`needs`? table) — every YAML fact is a Class 4 fact, and every fact gets a row in the audit doc.
+
+**Pass 2 — Content-keyword cross-check (never the sole receipt)**:
 
 ```
 git grep -nE "ci_workflow|ci_emission|ci_github_actions|github_actions_workflow|project_github_actions|workflow_runtime|WorkflowRuntime|workflow_as_data|workflow_scheduling|CIWorkflowDag|WorkflowTrigger|WorkflowStep|WorkflowSecret|MatrixStrategy|RunnerSpec|RunnerLabel|concurrency" \
@@ -61,9 +78,9 @@ git grep -nE "ci_workflow|ci_emission|ci_github_actions|github_actions_workflow|
   | grep -v "^Binary file"
 ```
 
-Regex covers (a) §4.4-sketch carrier names (`WorkflowTrigger`/`WorkflowStep`/`WorkflowSecret`/`CIWorkflowDag`), (b) HEAD-canonical types where they differ from §4.4 sketch (`MatrixStrategy` ≡ §4.4 `WorkflowMatrix`; `RunnerSpec`/`RunnerLabel` ≡ §4.4 `RunnerResource` per §5 mapping table), (c) §1.8 ledger-row identifiers (`project_github_actions` for row #100; `workflow_scheduling` for row #63; `workflow_runtime` for row #99), (d) file-name stems (`ci_emission`/`ci_github_actions`/`github_actions_workflow`), (e) the GitHub Actions scheduling primitive `concurrency`. The grep MUST scope `dsl/gunbc/ci_emission.dag` + `dsl/gunbc/ci_github_actions_workflow.dag` + `dsl/extdeps/github/actions.dag` + `.github/workflows/*.yml` + every other Class 4 authority surface this brief cites at §5 — partial search confined to `src/v3/` or narrow regex would undermine §1.4 (b) "systematic enumeration" (codex BLOCKING 10885 + worker:59; INVARIANTS P2 / modeling-discipline "Facts flow forward").
+Pass 2 regex covers (a) §4.4-sketch carrier names (`WorkflowTrigger`/`WorkflowStep`/`WorkflowSecret`/`CIWorkflowDag`), (b) HEAD-canonical types where they differ from §4.4 sketch (`MatrixStrategy` ≡ §4.4 `WorkflowMatrix`; `RunnerSpec`/`RunnerLabel` ≡ §4.4 `RunnerResource` per §5 mapping table), (c) §1.8 ledger-row identifiers (`project_github_actions` for row #100; `workflow_scheduling` for row #63; `workflow_runtime` for row #99), (d) file-name stems (`ci_emission`/`ci_github_actions`/`github_actions_workflow`), (e) the GitHub Actions scheduling primitive `concurrency`. **Keyword hits OUTSIDE Pass-1 surfaces are themselves discoveries** — potential survivors missed at scoping time; worker MUST add such hits to the surface list and re-classify before the receipt closes (INVARIANTS P2 / modeling-discipline "Facts flow forward"; codex BLOCKING 10885 + e9143f67 + worker:59 + worker:112).
 
-For EACH hit, classify as one of:
+For EACH fact (Pass 1) and each keyword hit (Pass 2), classify as one of:
 - **Pass-through**: site executes through v3 cleanly (counts toward predicate (b) GREEN; cite line)
 - **Allocated survivor**: site is a known Class 4 bridge that doesn't currently execute through v3 but is **Director-allocated to another §1.8 row** (cite row number, e.g., #99/#100); count separately
 - **Unallocated survivor**: NOT allocated to any §1.8 row — **STOP and surface to Mgr**; this is the §1.4 (b) failure mode
