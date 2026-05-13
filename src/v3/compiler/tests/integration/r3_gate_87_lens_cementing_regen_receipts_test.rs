@@ -1,15 +1,15 @@
 //! **Layer:** integration
 //!
-//! R3 gate #87 (`lens_cementing_test_discipline_complete`) — paired **Rust** receipts for
-//! `src/v3/compiler/regen.dag` registry lenses while the `.dag`
-//! `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harnesses either use narrow behavioral
-//! `LensOutputEquals` / `DifferentialEquals` witnesses or remain explicit temporary `Compiles`
-//! placeholders where no public behavior carrier is authorable yet.
+//! R3 gate #87 (`lens_cementing_test_discipline_complete`) — residual **Rust** ratchets for
+//! `src/v3/compiler/regen.dag` registry lenses after the behavior receipts moved into
+//! `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harnesses. This module now holds only the
+//! registry-inventory ratchet plus helper source-compilation pins where no public behavior carrier
+//! is authorable yet.
 //!
 //! **Lane-E + symbolic-cost** `.dag` receipts are exercised by `t_pb_b_1_dag_runner_test`.
-//! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
-//! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
-//! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
+//! `effect_enumeration`, `provenance`, `cost_target_realization`, `unused_parameters`, and
+//! `structural_resolution` also use Int-projection `.dag` claims over their published runner
+//! projections, so they no longer need parallel Rust receipt tests here.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
@@ -41,12 +41,7 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
-use v3_compiler::lens_cost_target_realization::type_realization_meta;
-use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
-use v3_compiler::lens_provenance::{origin_of, Origin};
-use v3_compiler::lens_structural_resolution;
-use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
+use v3_compiler::dag::{Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::Dag;
 
 fn workspace_root() -> PathBuf {
@@ -122,15 +117,6 @@ fn assert_lens_dag_compiles(rel: &str) {
     );
 }
 
-fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
-    dag.nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|bind| bind.name == name)
-        .unwrap_or_else(|| panic!("bind `{name}` not found"))
-        .value
-}
-
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -140,49 +126,6 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
-    );
-}
-
-#[test]
-fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
-    let dag =
-        compile_to_dag("let lit: Int = 7", "r3_gate_87_effect_enum_receipt.v3").expect("compile");
-    let report = enumerate_effects(&dag);
-    assert!(
-        matches!(report.transaction, TransactionalPattern::NoTransaction),
-        "effect enumeration transaction scaffold must remain explicit"
-    );
-    assert!(
-        report.facts.len() <= dag.nodes().len(),
-        "effect facts should not exceed walked node count"
-    );
-}
-
-#[test]
-fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
-    let dag =
-        compile_to_dag("let lit: Int = 7", "r3_gate_87_provenance_receipt.v3").expect("compile");
-    let port = find_bind_value_port(&dag, "lit");
-    let got = origin_of(&dag, &port);
-    assert!(
-        matches!(got, Origin::Source { .. }),
-        "literal bind should classify as Source(..), got {got:?}"
-    );
-}
-
-#[test]
-fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row() {
-    let dag = compile_to_dag(
-        "let lit: Int = 7",
-        "r3_gate_87_cost_target_realization_receipt.v3",
-    )
-    .expect("compile");
-    let resolved_name = type_realization_meta(&dag).and_then(|d| d.name);
-    assert_eq!(
-        resolved_name.as_deref(),
-        Some("TypeRealization"),
-        "type_realization_meta must resolve the substrate `TypeRealization` declaration \
-         (declaration_by_name contract used by cost_target_realization.dag)"
     );
 }
 
@@ -199,32 +142,4 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
-}
-
-#[test]
-fn r3_gate_87_structural_resolution_rust_receipt_on_literal_program() {
-    let dag = compile_to_dag(
-        "let lit: Int = 7",
-        "r3_gate_87_structural_resolution_receipt.v3",
-    )
-    .expect("compile");
-    assert!(
-        lens_structural_resolution::check(&dag).is_empty(),
-        "clean literal program should surface zero Pending-arrow violations"
-    );
-}
-
-#[test]
-fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
-    let dag = compile_to_dag(
-        "let lit: Int = 7",
-        "r3_gate_87_unused_parameters_receipt.v3",
-    )
-    .expect("compile");
-    assert!(
-        UnusedParametersLens::new(&dag)
-            .query(&UnusedParametersConfig::default())
-            .is_empty(),
-        "literal bind should not surface unused-parameter findings"
-    );
 }
