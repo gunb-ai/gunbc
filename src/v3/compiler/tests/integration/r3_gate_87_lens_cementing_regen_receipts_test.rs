@@ -13,6 +13,12 @@
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
+//! **Frozen-oracle witness discipline (`cost` / `cost_symbolic`):** the `.dag` harnesses
+//! `tests/dag/t_r3_gate_87_cementing_regen_cost*.dag` pin `LensOutputEquals` / `DifferentialEquals` /
+//! `SymbolicCostExprEquals*` witnesses. The Rust tests below keep the same program text, the same
+//! `compile_to_dag` `file_name` markers, and the same structural witnesses so a drift-only edit to
+//! either side fails CI (paired receipt; no live v2 oracle in tests).
+//!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
 //! harness files under `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (confirm with
@@ -41,13 +47,19 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, Declaration, FieldValue, LiteralBits, SymbolicCost, ValueBody,
+};
+use v3_compiler::lens_cost::{cost_of, CostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Dag, Witness};
+
+use crate::common::assert_recursive_countdown_linear_semantics;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -130,6 +142,60 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
         .value
 }
+
+fn find_bind_node(dag: &Dag, name: &str) -> v3_compiler::dag::NodeId {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|bind| bind.name == name)
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
+        .id
+}
+
+/// Escape a V3 program fragment the way `TestClaim.source` string literals appear in `.dag` files.
+fn escape_dag_test_claim_source(source: &str) -> String {
+    source
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('"', "\\\"")
+}
+
+/// Same stack sizing as `cementing/cost_lens_symbolic_consumer_test` — recursive countdown under full
+/// bootstrap can overflow the default test thread.
+fn run_gate87_cost_symbolic_stack(f: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new()
+        .name("r3-gate-87-cost-symbolic-cementing".to_string())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn gate-87 cost_symbolic cementing thread")
+        .join()
+        .expect("gate-87 cost_symbolic cementing thread should not panic");
+}
+
+fn linear_size_ports(cost: &SymbolicCost, out: &mut Vec<v3_compiler::dag::PortId>) {
+    match cost {
+        SymbolicCost::LinearCost { _0: var } | SymbolicCost::LogCost { _0: var } => {
+            out.push(var.source_port);
+        }
+        SymbolicCost::PolynomialCost { var, .. } => {
+            out.push(var.source_port);
+        }
+        SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
+            for term in terms.iter() {
+                linear_size_ports(term.as_ref(), out);
+            }
+        }
+        SymbolicCost::ConstantCost { .. } | SymbolicCost::UnknownCost { .. } => {}
+    }
+}
+
+/// Program sources and `compile_to_dag` file markers paired with
+/// `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`.
+const GATE87_SYMBOLIC_LIT_SOURCE: &str = "let lit: Int = 7";
+const GATE87_SYMBOLIC_LIT_FILE: &str = "r3_gate_87_symbolic_lit.v3";
+const GATE87_SYMBOLIC_COUNTDOWN_SOURCE: &str =
+    "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)";
+const GATE87_SYMBOLIC_COUNTDOWN_FILE: &str = "r3_gate_87_symbolic_countdown.v3";
 
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
