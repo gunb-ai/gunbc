@@ -505,7 +505,7 @@ jobs:
           fi
           echo "::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter)."
 
-      # Build `gunbc-ci` (BinaryShim entrypoint + gate #102 warn-manifest projector).
+      # Build `gunbc-ci` (BinaryShim entrypoint + interim #102-path warn-manifest projector).
       - name: v3 gunbc-ci binary (wall-clock warn manifest + BinaryShim stub)
         if: always()
         run: cargo build -p v3-compiler --bin gunbc-ci
@@ -514,8 +514,8 @@ jobs:
       # Parses the timing log captured by the full-suite steps above; does not
       # re-run `cargo test`. Warn-policy rows are projected from
       # `dsl/gunbc/test_node_wall_clock_ratchet.dag` via `gunbc-ci wall-clock-warn-manifest`
-      # (R3 gate #102 substrate authority; same libtest tokens as `TestNodeCostDimension`
-      # / gate #101). Over-budget warn-listed tests log as warnings; any other test
+      # (**interim bridge** — not #102 closure; same libtest tokens as `TestNodeCostDimension`
+      # / gate #101 until policy routes off timing facts). Over-budget warn-listed tests log as warnings; any other test
       # above the threshold fails this step. See
       # `src/v3/compiler/tests/HANDOFF_PHASE0.md` (TESTING.md § test layers,
       # `feedback_test_timeout_2s`).

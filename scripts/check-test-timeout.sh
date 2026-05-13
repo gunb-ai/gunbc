@@ -7,7 +7,8 @@
 # if any single `#[test]` exceeded the budget (default 2000 ms, aligns
 # with `feedback_test_timeout_2s`). Warn-only policy rows are projected from
 # substrate (`dsl/gunbc/test_node_wall_clock_ratchet.dag`) via `gunbc-ci
-# wall-clock-warn-manifest` (R3 gate #102) into JSONL consumed here — same
+# wall-clock-warn-manifest` (**interim toward #102** — canonical #102 is timing-fact
+# authority via `TestNodeCostDimension`) into JSONL consumed here — same
 # `{"test":"<token>","policy":"warn"}` transport `jq` already understands.
 #
 # **Naming alignment (gates #101 / #102).** Row tokens match libtest

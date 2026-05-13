@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-test-timeout.sh.
 #
-# Pins the T-WAD Slice 6 / gate #102 behavior: `check-test-timeout.sh` accepts
+# Pins `check-test-timeout.sh` warn vs fail semantics (interim #102-path bridge; self-test uses `TEST_TIMEOUT_MANIFEST` JSONL).
 # `TEST_TIMEOUT_MANIFEST` JSONL (self-test fixture) and enforces warn vs fail
 # semantics. Production path projects rows from substrate via `gunbc-ci`.
 
