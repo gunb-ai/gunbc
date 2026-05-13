@@ -373,6 +373,16 @@ type TestPredicate
       expected: DeclarationRef
       param: BindParamRef
     }
+  // **🟢 TERMINAL — R3 gate #87 / PR-E E7.** On the compiled `TestClaim.source`
+  // program, locate the top-level value bind `bind_name` (scoped to
+  // `TestClaim.file_name` spans), then assert `analyze_complexity` agrees
+  // structurally with `analyze_symbolic_cost_dimension` on the shared
+  // `DimensionReport<SymbolicCost>` carrier at that workflow root (success path
+  // only — both arms must be `DimensionOk` with matching fields and
+  // `Witness::Inhabits(SymbolicCost)` spine).
+  | ComplexityCostDimensionReportsAgree {
+      bind_name: String
+    }
   // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
   // `PerfBaselineMeasurement` declaration against a declared baseline
   // measurement. The runner applies the ratified Tier-3 ratio budget:

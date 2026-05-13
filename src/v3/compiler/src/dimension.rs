@@ -258,6 +258,76 @@ pub fn analyze_complexity(dag: &Dag, workflow_root: NodeId) -> DimensionReport<S
     analyze_symbolic_cost_dimension(dag, workflow_root)
 }
 
+/// Gate-#87 / E7: assert the public `analyze_complexity` wrapper agrees with
+/// [`analyze_symbolic_cost_dimension`] on the same `(dag, workflow_root)` for
+/// the `DimensionReport<SymbolicCost>` success path (mirrors
+/// `tests/integration.rs::e7_analyze_complexity_integration` delegation pins).
+pub(crate) fn assert_analyze_complexity_matches_symbolic_cost_dimension_for_root(
+    dag: &Dag,
+    workflow_root: NodeId,
+) -> Result<(), String> {
+    let via_complexity = analyze_complexity(dag, workflow_root);
+    let via_dimension = analyze_symbolic_cost_dimension(dag, workflow_root);
+    match (&via_complexity, &via_dimension) {
+        (
+            DimensionReport::DimensionOk {
+                dimension_name: cn,
+                composed: cc,
+                witnesses: cw,
+            },
+            DimensionReport::DimensionOk {
+                dimension_name: dn,
+                composed: dc,
+                witnesses: dw,
+            },
+        ) => {
+            if cn != dn {
+                return Err(format!("dimension_name mismatch: {cn:?} vs {dn:?}"));
+            }
+            if cc != dc {
+                return Err(format!(
+                    "composed `SymbolicCost` mismatch between entrypoints: {cc:?} vs {dc:?}"
+                ));
+            }
+            if cw.len() != dw.len() {
+                return Err(format!(
+                    "witness spine length mismatch: {} vs {}",
+                    cw.len(),
+                    dw.len()
+                ));
+            }
+            for (idx, (cw_i, dw_i)) in cw.iter().zip(dw.iter()).enumerate() {
+                match (cw_i, dw_i) {
+                    (Witness::Inhabits(cc), Witness::Inhabits(dc)) => {
+                        if cc != dc {
+                            return Err(format!(
+                                "witness[{idx}] Inhabits(SymbolicCost) mismatch: {cc:?} vs {dc:?}"
+                            ));
+                        }
+                    }
+                    (Witness::Violates { .. }, Witness::Violates { .. }) => {
+                        return Err(
+                            "unexpected Violates witnesses on both arms for this predicate's \
+                             well-typed workflow scope"
+                                .to_string(),
+                        );
+                    }
+                    other => {
+                        return Err(format!(
+                            "witness[{idx}] arm mismatch between entrypoints: {other:?}"
+                        ));
+                    }
+                }
+            }
+            Ok(())
+        }
+        (other_c, other_d) => Err(format!(
+            "ComplexityCostDimensionReportsAgree: expected both DimensionOk; got {other_c:?} vs \
+             {other_d:?}"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod analyze_complexity_tests {
     use super::*;
