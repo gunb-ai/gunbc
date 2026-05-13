@@ -1325,14 +1325,14 @@ data rust_monoid_instantiation: TypeInstantiationRealization = {
 data rust_lens_enforcement_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: LensEnforcement
-  carrier: "LensEnforcement<{key}, {value}>"
+  carrier: "LensEnforcement<{key}, {value}, {extra}>"
   cost: 1
 }
 
 data rust_enforceable_lens_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: EnforceableLens
-  carrier: "EnforceableLens<{key}, {value}>"
+  carrier: "EnforceableLens<{key}, {value}, {extra}>"
   cost: 1
 }
 

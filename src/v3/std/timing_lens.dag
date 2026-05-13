@@ -11,6 +11,7 @@
 // durations) and passes `Unobserved` / `Ambiguous` / `Stale` through unchanged.
 module v3.std.timing_lens
 
+import std.algebra { Monoid }
 import std.list { List, is_empty }
 import std.nat { Nat }
 import std.types {
@@ -27,6 +28,7 @@ import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
+import v3.std.lens_application { LensEnforcement, EnforceableLens }
 import v3.std.workflows { behavior_spine }
 
 // DB-11 `FilePath` witness for this module (same narrowing discipline as
@@ -156,6 +158,24 @@ type TimingObservationEntry {
 type TimingBudget {
   max: Nanoseconds
 }
+
+// T-LAS timing enforcement: `project` codomain for `LensEnforcement<TimingMeasurement,
+// TimingBudget, TimingEnforcementProjected>`. Separates observed wall-clock usage (`TimedUsage`)
+// from non-evidence report states (`NonEvidenceUsage`) so `project` never encodes the latter as a
+// plausible `Nat` magnitude inside `TimingBudget` (P2 / illegal-states-unrepresentable; openai-pro
+// review on gate #58).
+//
+// PRACTICE 4 / INVARIANTS P1 (`docs/modeling-discipline.md` §4 coproduct checkpoint) — traffic light:
+// **🟢 GREEN (terminal)** — landed enforcement-projection coproduct: `TimedUsage` is the observed
+// wall-clock usage coordinate (same `Nanoseconds` shape as `TimingBudget.max`); `NonEvidenceUsage`
+// is a unit fact for `Unobserved` / `Ambiguous` / `Stale` (no `Nat` fault sentinel in `TimingBudget`).
+// **🟡 SCAFFOLD** — none on this sum (both variants are substrate-final at this layer). **🔴 BLOCKED**
+// — none. **Dissolution:** retire this sum only when every `project` consumer can thread full
+// `TimingMeasurement` without illegal-state collisions (gate #58 `.dag` `TestClaim` / T-PB-B SG-0
+// receipt per `INVARIANTS.md`).
+type TimingEnforcementProjected
+  = TimedUsage { max: Nanoseconds }
+  | NonEvidenceUsage
 
 // §1.8 / r3-program-plan `timing_lens_carrier_landed`: nominal `Lens<C>` surface at
 // `C = TimingMeasurement` (see `docs/design-timing-lens.md` §1). Hooks below remain
@@ -341,3 +361,63 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
         "timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment)."
       )
   }
+
+// ── T-LAS / T-Lens-Self-Application — gate #58 `apply_lens_self_application_demonstrated` ──
+//
+// Canonical `EnforceableLens` for timing contracts on workflow-shaped sections. Enforcement
+// fail-closes on `Unobserved` / `Ambiguous` / `Stale` (typed `NonEvidenceUsage` projection) and on
+// `Observed` durations strictly above the user `TimingBudget.max` ceiling (same reflexive edge as
+// gate #94 memory-peak: `>` not `>=`). Host consumer: `enforced_lens_application` (mirrors
+// `complexity_enforceable` wiring for gate #92).
+//
+// P2: `violates` takes the full `TimingMeasurement` (see `LensEnforcement` in
+// `lens_application.dag`) so non-evidence variants fail closed without comparing sentinels inside
+// `TimingBudget`. `project` returns `TimingEnforcementProjected` — never overloads
+// `TimingBudget.max.count` with a second meaning for faults (codex 10994 / openai-pro gate #58).
+//
+// `timing_enforcement_fault_sentinel_count` remains a substrate-named regression literal (unit
+// tests: observed wall ns equal to this magnitude is ordinary evidence, not a fault short-circuit).
+
+fn timing_enforcement_fault_sentinel_count() -> Nat =
+  999999999999999999
+
+fn timing_enforcement_project(m: TimingMeasurement) -> TimingEnforcementProjected =
+  match m {
+    Observed { duration: d } => TimedUsage { max: d }
+    Unobserved => NonEvidenceUsage
+    Ambiguous => NonEvidenceUsage
+    Stale => NonEvidenceUsage
+  }
+
+fn timing_enforcement_violates(m: TimingMeasurement, declared: TimingBudget) -> Bool =
+  match m {
+    Observed { duration: d } =>
+      if d.count > declared.max.count then 0 == 0 else 0 == 1
+    Unobserved => 0 == 0
+    Ambiguous => 0 == 0
+    Stale => 0 == 0
+  }
+
+data timing_lens_monoid: Monoid<TimingMeasurement> = {
+  op: timing_sequential_op
+  identity: Observed { duration: { count: 0 } }
+}
+
+data timing_lens: TimingLens = {
+  name: "timing"
+  read: timing_lens_read
+  sequential: timing_lens_monoid
+  branch: timing_branch_op
+  iterate: timing_measurement_iterate
+  validate: timing_lens_validate
+}
+
+data timing_enforcement: LensEnforcement<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
+  project: timing_enforcement_project
+  violates: timing_enforcement_violates
+}
+
+data timing_enforceable: EnforceableLens<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
+  lens: timing_lens
+  enforcement: timing_enforcement
+}
