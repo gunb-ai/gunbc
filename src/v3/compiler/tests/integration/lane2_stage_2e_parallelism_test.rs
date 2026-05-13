@@ -20,7 +20,7 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BreakingShape, CompositionVerdict, EffectShape, IdempotentShape, KeySource,
-    NonSingletonList, ParallelismUnsupportedKind, WorkflowEffect, Operation,
+    NonSingletonList, Operation, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowParallelismReport,
 };
 use v3_compiler::Dag;

@@ -147,10 +147,7 @@ impl BranchArm {
 }
 
 impl WorkflowEffect {
-    pub fn operation_at(
-        &self,
-        element: ElementRef<Operation>,
-    ) -> Option<&Operation> {
+    pub fn operation_at(&self, element: ElementRef<Operation>) -> Option<&Operation> {
         match self {
             Self::LinearEffect { ops } => element.get(ops),
             Self::ParallelEffect { branches } => {

@@ -35,8 +35,8 @@
 // Stage 2a follow-ups (cleared):
 //
 // 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521), and the
-// later OperationEffect retirement removed the transport-derived
-// `derive_op_effect` bridge entirely.
+// later operation-effect retirement removed the transport-derived
+// `transport-effect derivation` bridge entirely.
 // The previous shape carried `method` and `path_template` fields
 // alongside `operation_name` + `shape`, but nothing downstream ever
 // read the transport fields — the modifier check and obligation

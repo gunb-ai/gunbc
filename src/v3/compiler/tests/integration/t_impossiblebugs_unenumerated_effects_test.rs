@@ -35,8 +35,8 @@ fn effect_enumeration_lens_anchors_on_signature_shape_not_operation_effect() {
         "effect_enumeration lens must recognize returned-modified-resource shape without a primitive bool helper"
     );
     assert!(
-        !lens.contains("OperationEffect"),
-        "effect_enumeration lens must not re-anchor on the retired OperationEffect taxonomy"
+        !lens.contains("operation-effect"),
+        "effect_enumeration lens must not re-anchor on the retired operation-effect taxonomy"
     );
 }
 

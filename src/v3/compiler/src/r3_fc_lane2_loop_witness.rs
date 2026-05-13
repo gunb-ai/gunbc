@@ -28,7 +28,7 @@
 //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, WorkflowEffect, Operation};
+use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, Operation, WorkflowEffect};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
