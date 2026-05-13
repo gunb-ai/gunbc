@@ -598,7 +598,13 @@ data generated_from_dag_claim: TestClaim = {
   name: "pb_test_file_generated_from_dag",
   source: "let x: Int = 1",
   file_name: "pb_test_file_generated_from_dag.v3",
-  predicate: GeneratedFromDag(census_authority, ["src/v3/compiler/tests/integration.rs"]),
+  predicate: GeneratedFromDag(census_authority, [
+    {
+      output_path: "src/v3/compiler/tests/integration.rs",
+      dag_source: census_authority,
+      source_hash: "stub"
+    }
+  ]),
   requires: []
 }
 

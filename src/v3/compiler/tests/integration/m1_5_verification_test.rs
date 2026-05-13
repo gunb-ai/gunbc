@@ -286,7 +286,7 @@ fn bootstrap_loads_verification_authority_types() {
             ),
             (
                 String::from("GeneratedFromDag"),
-                vec![String::from("authority"), String::from("generated_paths")],
+                vec![String::from("authority"), String::from("manifest_entries")],
             ),
             (
                 String::from("ReleaseDeferredClaim"),

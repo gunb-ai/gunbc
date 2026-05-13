@@ -5015,9 +5015,18 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, FieldValue::List(generated_paths)] = payload else {
+        // R3 Cluster M substrate-shape-only migration (brief
+        // r3-cluster-m-generator-manifest-substrate-refinement-worker.md
+        // §2.1): payload now carries `manifest_entries: List<GeneratedManifestEntry>`
+        // where each entry records `(output_path, dag_source, source_hash)`. This
+        // PR reads only `output_path` for the existing set-membership semantics;
+        // `dag_source` + `source_hash` are carried forward for the follow-up
+        // Evaluator-Mgr-owned runtime PR that adds the 3-way byte-equality
+        // assertion + directory-walk orphan-output detection.
+        let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
-                "GeneratedFromDag payload should be (DeclarationRef, List<Path>)".to_string(),
+                "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
+                    .to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
@@ -5025,19 +5034,32 @@ impl<'a> TestRunner<'a> {
         }
         let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
         let mut named_paths = Vec::new();
-        for value in generated_paths {
-            match value {
-                FieldValue::Literal(LiteralBits::String(path)) => named_paths.push(path.as_str()),
-                other => {
+        for entry in manifest_entries {
+            let FieldValue::Record(fields) = entry else {
+                return ClaimResult::Fail(format!(
+                    "GeneratedFromDag manifest_entries must contain only GeneratedManifestEntry records, got {entry:?}"
+                ));
+            };
+            let output_path = fields.iter().find_map(|(name, value)| {
+                if name == "output_path" {
+                    if let FieldValue::Literal(LiteralBits::String(path)) = value {
+                        return Some(path.as_str());
+                    }
+                }
+                None
+            });
+            match output_path {
+                Some(path) => named_paths.push(path),
+                None => {
                     return ClaimResult::Fail(format!(
-                        "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
-                    ))
+                        "GeneratedFromDag GeneratedManifestEntry missing String `output_path` field: {entry:?}"
+                    ));
                 }
             }
         }
         if let Some(path) = named_paths.iter().find(|path| !generated.contains(**path)) {
             return ClaimResult::Fail(format!(
-                "GeneratedFromDag path `{path}` is not in the generated-file authority"
+                "GeneratedFromDag manifest_entries output_path `{path}` is not in the generated-file authority"
             ));
         }
         let test_count = match sg0_census_list_count("expected_hand_authored_test") {
@@ -5048,7 +5070,7 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside generated paths"
+                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside manifest_entries output_paths"
             ))
         }
     }
