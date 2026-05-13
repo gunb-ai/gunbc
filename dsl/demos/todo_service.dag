@@ -10,7 +10,7 @@
 module demos.todo_service
 
 import std.types { GET, POST, PUT, PATCH, DELETE, Int, String, Bool }
-import std.effects { PathTemplate, LiteralToken, ParamToken }
+import std.effects { LiteralToken, ParamToken }
 import v3.std.services { RestEndpointBinding }
 
 let todo_service_emit_anchor: Int = 0
