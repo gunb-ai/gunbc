@@ -31,9 +31,12 @@
 // pass; until then, the simple rule is sufficient.
 //
 // Staged `src/v3/std/*.dag` additionally uses a small rank list
-// (`list.dag`, `substrate*.dag`, …) plus one lexicographic tie-break:
-// `timing_lens.dag` before `t_ci_workflow_as_data_demo.dag` so PB-1
-// bootstrap lowering can resolve `timing_enforceable` references.
+// (`list.dag`, `substrate*.dag`, …) plus `V3_STD_STAGING_ORDER_EDGES`:
+// explicit (before, after) pairs among files that share the default rank
+// when lexicographic order would violate a cross-file reference (PB-1 gate
+// #58: `t_ci_workflow_as_data_demo.dag` → `timing_enforceable` in
+// `timing_lens.dag`). Append edges for new std cross-references; dissolution:
+// import-graph topo sort in this producer.
 //
 // **Output**: writes three Rust files:
 //
@@ -69,20 +72,24 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// `regen_bootstrap` / `STAGED_FILES` order is otherwise lexicographic on the file
-/// name within each rank bucket. `t_ci_workflow_as_data_demo.dag` sorts before
-/// `timing_lens.dag` (`t_ci…` < `tim…`), but the CI demo's `data` rows reference
-/// `timing_enforceable` from `timing_lens.dag`, which must already exist in the
-/// declaration table when `lower_bodies_phase` runs.
-fn v3_std_timing_lens_before_ci_workflow_demo(a: &Path, b: &Path) -> Ordering {
-    match (
-        a.file_name().and_then(|s| s.to_str()),
-        b.file_name().and_then(|s| s.to_str()),
-    ) {
-        (Some("timing_lens.dag"), Some("t_ci_workflow_as_data_demo.dag")) => Ordering::Less,
-        (Some("t_ci_workflow_as_data_demo.dag"), Some("timing_lens.dag")) => Ordering::Greater,
-        _ => Ordering::Equal,
+/// Directed edges among `src/v3/std/*.dag` files that share the default staging rank
+/// (`collect_dag_entries` priority miss) but must load in dependency order. Lexicographic
+/// order alone would put `t_ci_workflow_as_data_demo.dag` before `timing_lens.dag`
+/// (`t_ci…` < `tim…`), breaking PB-1 lowering of `timing_enforceable` references.
+const V3_STD_STAGING_ORDER_EDGES: &[(&str, &str)] = &[
+    ("timing_lens.dag", "t_ci_workflow_as_data_demo.dag"),
+];
+
+fn v3_std_staging_edge_order(name_a: &str, name_b: &str) -> Ordering {
+    for &(before, after) in V3_STD_STAGING_ORDER_EDGES {
+        if name_a == before && name_b == after {
+            return Ordering::Less;
+        }
+        if name_a == after && name_b == before {
+            return Ordering::Greater;
+        }
     }
+    Ordering::Equal
 }
 
 fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
@@ -137,20 +144,20 @@ fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -
         let ra = staged_file_rank(a);
         let rb = staged_file_rank(b);
         match ra.cmp(&rb) {
-            Ordering::Equal => match v3_std_timing_lens_before_ci_workflow_demo(a, b) {
-                Ordering::Equal => {
-                    let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    name_a.cmp(name_b).then_with(|| {
+            Ordering::Equal => {
+                let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                match v3_std_staging_edge_order(name_a, name_b) {
+                    Ordering::Equal => name_a.cmp(name_b).then_with(|| {
                         a.strip_prefix(dir)
                             .unwrap_or(a)
                             .display()
                             .to_string()
                             .cmp(&b.strip_prefix(dir).unwrap_or(b).display().to_string())
-                    })
+                    }),
+                    ord => ord,
                 }
-                ord => ord,
-            },
+            }
             ord => ord,
         }
     });
