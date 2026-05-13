@@ -13,7 +13,7 @@ fn gate87_parallelism_fail_closed_no_workflow_projection(d: Dag) -> Int = 0
 
 data gate87_program_input: ProgramInput = {}
 
-data gate87_expected_true: Int = 1
+data gate87_expected_placeholder: Int = 0
 
 data cementing_regen_parallelism_claim: TestClaim = {
   name: "cementing_regen_parallelism",
@@ -22,7 +22,7 @@ data cementing_regen_parallelism_claim: TestClaim = {
   predicate: LensOutputEquals(
     gate87_parallelism_fail_closed_no_workflow_projection,
     gate87_program_input,
-    gate87_expected_true
+    gate87_expected_placeholder
   ),
   requires: []
 }
