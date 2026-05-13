@@ -147,16 +147,39 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 
 ## §3. The emission promises
 
-### §3.1 Omni-emission (5 targets)
+### §3.1 Omni-emission (R3 = 3 Shape-A targets: Rust / Python / Go)
 
-**Promise** (THESIS.md:115 + WISHLIST.md R4.A): "automatic parallelism, memoization, omni-emission ... are consequences of the same structural commitments." R3 scope per recent ratification: Rust + Python + Go + C + C++ emission targets.
+**Promise** (THESIS.md:115 omni-emission claim + THESIS.md:180 L5 + r3-program-plan.md:185 gate #15 `l5_cross_target_consistency`): "automatic parallelism, memoization, omni-emission ... are consequences of the same structural commitments." R3 scope is **Rust + Python + Go** (Shape A — programming-language targets per THESIS.md:215). C/C++ are **R4.A**-scope (WISHLIST.md:67-73, operator ratification 2026-05-12), not R3. LLVM IR / assembly / machine-code are **R4.C**-scope (WISHLIST.md:107), not R3. Shape B targets (Markdown / OpenAPI / data-shapes) are tracked separately under T-Omni-Shape-B (r3-program-plan.md:430).
 
 **Probes**:
 
-- [ ] Show me a single `.dag` program. Emit it to all 5 targets. Are the outputs runnable?
-- [ ] Behavioral parity: same input through each output target. Do they produce equivalent results?
-- [ ] Pick the most complex emission target. Is there a non-trivial example that compiles and runs?
+- [ ] Show me a single `.dag` program. Emit it to all 3 Shape-A targets (Rust / Python / Go). Are the outputs runnable?
+- [ ] Behavioral parity: same input through each output target. Do they produce equivalent results? (THESIS.md:180 L5 claim.)
+- [ ] Pick the most complex Shape-A target (Go's goroutine substrate? Python's dynamic dispatch?). Is there a non-trivial example that compiles and runs?
 - [ ] **Falsification probe**: program with feature X. Does target Y handle X correctly, or punt to a stub?
+
+**Findings at HEAD (2026-05-13)**:
+
+- **Target substrate inventory** (`src/v3/spec/`): `rust.dag`, `python.dag`, `go.dag` — 3 declared targets matching R3 L5 scope. C/C++/LLVM/assembly correctly absent (R4-scope).
+- **L6 data-coverage substrate** (`src/v3/std/cross_target_coverage.dag`): 41-row `emission_path_projections` over (target × form × behavior) cross-product, populated for Rust/Python/Go. Phase-1 carrier-only per Director ratification gunbc#828 2026-05-05.
+- **L4 runtime equivalence at HEAD** (oracle-style stdout-parity: compiled emit-target binary stdout = expected fixture stdout; **not** literal artifact byte-equality):
+  - **CI integration-binary execution state** (`.github/workflows/ci.yml:478-501`): integration harness is **prebuilt** in CI but **execution is HOT-FIX-SKIPPED** via `__HOT_FIX_NONEXISTENT_FILTER__` (zero tests selected) per operator directive at gunbc#846 ("cut all demos and integration tests for now, get v3 to 10 minutes"). Lane2d (Stage 2d integration module, `m1_5_testgen`-class) also HOT-FIX-SKIPPED at `ci.yml:385`. Restore criteria at `ci.yml:501`: OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace nonexistent-filter with cluster-specific filter). **Until restore, in-CI L4 evidence at HEAD is: integration-binary compilation passes (structural exercise of emit code paths) + non-integration test surfaces (lib + bins + determinism_test + doc) only.**
+  - **Rust**: per-fixture stdout-parity tests EXIST + are unconditional in source (`src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs:995–1009` and following — `rustc_roundtrip_*` family) BUT live in the integration binary that is HOT-FIX zero-test-filtered above; **execution at HEAD is local-only** (`cargo test -p v3-compiler --test integration rustc_roundtrip` ... locally). Full-matrix `emit_rust_fixtures_rustc_green` at `#[ignore]` (lines 735, 764, 1199, 1218) — local-only, toolchain-gated.
+  - **Python**: roundtrip tests at `#[ignore]` (`m1_4_emit_python_test.rs:1003, 1070`) — toolchain-gated (python3); local-only.
+  - **Go**: roundtrip tests at `#[ignore]` (`m1_3_emit_go_test.rs:252, 279, 324`) — toolchain-gated (go); local-only.
+  - **Omni demo**: Rust-only slice (`emit_omni_demo_rust_roundtrip` at `m1_5_emit_omni_demo_test.rs:106`) **unconditional in source** BUT also lives in integration binary under the HOT-FIX zero-test-filter — execution at HEAD is local-only. Full 3-target receipt (`emit_omni_demo_fixtures_green` at `:125`, Rust + Python + Go) at `#[ignore]`, requires go + python3 toolchains.
+- **L5 corpus status** (gate #15 `l5_cross_target_consistency`): DECLARED, RED at HEAD (r3-program-plan.md:243 + :431) — waits on L4 corpus + Shape A grounding ready.
+
+**Open R3 question (PM-surfaced, not yet routed)**:
+
+What's the close-shape for the omni-emission promise?
+
+- **(a) L6 data-coverage interpretation**: 41 (target × form × behavior) rows declared in v3-side data = ✓ for Rust/Python/Go. Structural-fold property, no runtime evidence needed.
+- **(b) L4 runtime stdout-parity interpretation**: compiled emit-target binary stdout equals expected fixture stdout across the corpus. At HEAD this is **runnable locally** across all 3 targets (Rust unconditional + Python/Go via `--ignored`) but **not actually executed in CI for any target** because the integration binary is HOT-FIX zero-test-filtered (`ci.yml:478-501`). Three sub-shapes: (b1) restore integration harness CI execution per `ci.yml:501` restore-criteria before R3 close (depends on OnceLock/cached_compile amortization landing), (b2) explicit acceptance that R3-close evidence-bar is "data-coverage + local-runtime + integration-binary-compilation-passes" with full CI runtime tied to a separate fast-follow gate, (b3) gate-class promotion: add the integration-harness-execution-state restore to a new §1.8 gate explicitly anchored to R3-close.
+
+The two interpretations differ on whether locally-executable runtime roundtrips count as R3-closure-evidence when CI doesn't actually run them. THESIS.md:180 ("L5: **same .dag produces same behavior** in Rust/Python/Go") reads as runtime-shape; current **in-CI** evidence is L6 data-coverage-for-all-three + integration-binary-prebuild-passes; current **runnable** evidence is per-fixture Rust + (with toolchains) Python/Go locally.
+
+**Falsification candidate** (under interpretation (b) only): pick a non-trivial fixture with Python-specific or Go-specific structural sensitivity (e.g., variant-with-payload pattern-matching, fold composition). Run roundtrip locally via `cargo test ... -- --ignored`. Does it pass without toolchain-skip? If not, that's the gap shape.
 
 ### §3.2 Workflow-as-data
 
