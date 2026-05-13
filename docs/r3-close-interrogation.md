@@ -562,6 +562,84 @@ The compiler reads algebra declarations (`Monoid`, `Group`, `Field`, `OrderedRin
 
 **R3-close honest framing**: L7 is the algebraic-correctness anchor. If algebra-law tests are sparse or non-existent, "operations obey laws" is a claim without receipts. R3 close framing must either cite the per-axiom coverage or explicitly disposition this as R4-deferred.
 
+### §3.7 The verification-machinery promises (testgen / integration / mocks / dry-run)
+
+**Promise** (THESIS.md:166 + :348-368 + TESTING.md): "What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches by structurally deriving the proof or test." Testgen is downstream of code (structural coverage), integration tests are deliberate end-to-end, mocks are dependency-injection-by-construction (THESIS:367), and the pure-function posture admits structural dry-run by construction.
+
+§3.3 covers TestClaim-as-data form (the assertion). This section covers the **verification machinery** around it.
+
+#### §3.7.a Testgen — structural coverage derived from code
+
+**Promise** (THESIS.md:356-358): "Testgen is downstream of code: structural coverage derived from the program the user wrote." Every type declared in `dsl/std/` should yield inhabitant + coercion tests automatically (per SELF_HOSTING.md §2 L1.5 step 3).
+
+**Probes**:
+
+- [ ] Where does testgen live? Cite the file or pipeline-stage. Is it `.dag` or hand-Rust?
+- [ ] Pick a type from `dsl/std/` at random. Does testgen produce inhabitant + coercion tests for it? Cite the generated test count.
+- [ ] What's the testgen→TestClaim flow? Generated TestClaim declarations land where (in-tree, in-memory)?
+- [ ] **Coverage probe**: count types in `dsl/std/` vs count generated tests per type. Is coverage monotonic with declared structure?
+- [ ] **Reshape probe per TESTING.md:343**: `m1_5_testgen_test.rs` should be spot-check not exhaustive-compile-every-claim. Is this discipline applied at HEAD?
+- [ ] **Falsification probe**: declare a new type in `dsl/std/` with no consumer. Does testgen generate inhabitant tests for it, or does it skip? (Per §2.7 "every type has a structural consumer" — testgen IS a consumer if it's downstream of structure.)
+
+**R3-close honest framing**: testgen completeness is the bridge between Tier 1/2 (compile-time proofs) and Tier 3 (runtime verification). If testgen is sparse or per-test-hand-written, the "structurally derived test surface" thesis claim collapses to "we have some generated tests."
+
+#### §3.7.b Integration testing
+
+**Promise** (TESTING.md:128 + :118): integration tests are deliberate end-to-end coverage; the standard form is `compile_to_dag(small_fixture)` exercising multiple substrate carriers + emission targets in one test. Heavy integration tests are exception, not rule (TESTING.md:5).
+
+**Probes**:
+
+- [ ] Enumerate integration tests at HEAD. How many? In what file-locations? (`src/v3/compiler/tests/` etc.)
+- [ ] For each: is it `.dag` `TestClaim`-shaped or hand-authored `.rs`? Tabulate.
+- [ ] Pick 3 integration tests. For each, what fixture does it compile? What's the end-to-end coverage (which substrate carriers, which emission targets, which lenses)?
+- [ ] **Cross-target coverage**: are integration tests run for Rust + Python + Go targets independently? Or only one?
+- [ ] **Mock-over-compile anti-pattern probe (per TESTING.md:84)**: does any integration test mock its compile-result rather than actually compiling? Should be zero.
+- [ ] **Falsification probe**: introduce a regression that ONLY surfaces end-to-end (passes unit-level tests). Does any integration test catch it pre-merge?
+
+**R3-close honest framing**: integration tests should be the smallest set sufficient to catch class-of-bugs the structural Tier 1/2 proofs can't (cross-module composition, emission-runtime divergence). If the set is huge or growing, the Tier 1/2 surface has gaps.
+
+#### §3.7.c Mocks / dependency injection by construction
+
+**Promise** (THESIS.md:367 + TESTING.md:175-186): "Consequence of the pure-function posture: effects are explicit parameters, mocking is dependency-injection-by-construction, no hidden state means no flaky tests."
+
+The structural claim: every effectful operation takes its effect-source as a typed parameter; substituting a test double IS just substituting a different parameter value. No mock-framework, no test-double-DSL, no monkey-patching — the language gives mocking for free.
+
+**Probes**:
+
+- [ ] Pick a `.dag` program that performs I/O (e.g., HTTP call, file read). Show the effect-source as a typed parameter. Cite the carrier (e.g., `HttpClient`, `FileSystem`).
+- [ ] Write a test for that program substituting a fake effect-source. How much new code did you write — a fake `HttpClient` implementation, or a mock-framework invocation?
+- [ ] Run the test. Are there any hidden-state interactions (global state, ambient capabilities, environment dependencies)?
+- [ ] **"No flaky tests" probe**: enumerate test-flakiness incidents in CI history. For each, what was the root cause? Hidden state, time-dependency, race? Are any caused by mocking infrastructure?
+- [ ] **Falsification probe**: try to write a `.dag` program that uses an ambient capability (hidden state not in parameters). Does the substrate reject it, or admit it?
+- [ ] **Cross-test pollution probe**: run integration tests in randomized order. Does any test depend on order, or on prior test leftover state? Should be zero.
+
+**R3-close honest framing**: "mocking is dependency-injection-by-construction" is a strong claim — if the test substrate has mock-frameworks or test-double-DSLs at HEAD, the claim is false. R3 close MUST enumerate the test-doubling surface as evidence.
+
+#### §3.7.d Dry-run / structural execution traces
+
+**Promise** (derived from THESIS.md pure-function posture + bounded-execution invariant + §2.5.F affected-set lens): the compiler can answer "what would this program DO without running it" via structural analysis. The pure-function posture means effect-shapes are visible at the type level; bounded-execution means traces are computable.
+
+**Probes**:
+
+- [ ] What's the `dag run --dry-run` (or equivalent) invocation? Does it exist as a CLI flag, an `IntrospectApplication` lens, or implicit-via-purity?
+- [ ] Run dry-run on an example `.dag` workflow. What does it output? (Expected: execution-trace lens reading + effect-summary + cost-estimate.)
+- [ ] **Effect-shape preview probe**: pick a workflow with HTTP / DB / file effects. Can dry-run enumerate the effects it WOULD perform without performing them? Cite the lens / output.
+- [ ] **Cost-preview probe**: can dry-run report the symbolic cost (§1.2) of executing the workflow without executing it? (Should compose with cost-lens output.)
+- [ ] **Affected-set composition** (per §2.5.F): does dry-run compose with affected-set lens — i.e., "given this diff, what would actually re-execute"? Or are they separate query surfaces?
+- [ ] **Simulated-inputs probe**: can dry-run accept simulated input values + report what the program would compute? Distinguish from "running with fake values" (which is actual execution).
+- [ ] **Falsification probe**: a program performs an HTTP POST. Run dry-run. Does the actual HTTP request happen (failure) or is it captured as an effect-trace entry (success)?
+
+**R3-close honest framing**: dry-run isn't an explicit thesis-claim, but it falls out of the pure-function + bounded-execution + lens-framework structure. If dry-run requires special tooling distinct from the lens framework, that's a surface-debt finding. R3-close framing should disposition: is dry-run (a) by-construction-via-lenses, (b) a separate CLI surface, or (c) NYI for R3.
+
+#### §3.7.e Verification-machinery composition
+
+**Probe — the unified question**:
+
+- [ ] Run a single program through testgen + integration + mocks + dry-run. Do they share one substrate-read pass, or are they four separate pipelines? (Per `feedback_holistic_over_patches` + `feedback_compositional_not_templating`: should be one substrate-read with four lens-reads.)
+- [ ] **Falsification probe**: a bug surfaces in production. Could ANY of the four (testgen / integration / mocks / dry-run) have caught it pre-merge? Tabulate per bug class. If one surface ALWAYS misses, that's a gap class.
+
+**R3-close framing**: the four verification-machinery surfaces should be lens-compositions over the same substrate, not parallel pipelines. R3 close MUST demonstrate that adding a new verification dimension is one lens, not a separate pipeline.
+
 ---
 
 ## §4. The self-application promises
