@@ -1,10 +1,10 @@
 ---
-status: dispatchable-on-cascade (worker brief; ratified shape per canvas PR #2828 Director-ratified 2026-05-13 via PM msg_a055c38b relaying msg_d86a5987; dispatch gates on PR #2824 row #105 anchor + PR #2828 canvas landing — both AND)
+status: dispatchable-on-cascade (worker brief; ratified shape per canvas PR #2828 Director-ratified 2026-05-13 via composite ratification — PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8 base ratification) AS RECONCILED BY Director msg_676ad4e7 (Q1-α supersession of prior Q1-c); dispatch gates on PR #2824 row #105 anchor + PR #2828 canvas landing — both AND)
 authority parent: R3 Substrate Manager (warm-wolf-698)
 authoring date: 2026-05-13
 gate: §1.8 ledger row #105 `symbolic_cost_textbook_coverage_landed`
 parent canvas: PR #2828 / `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md` — Q1-Q5 + §8 Tier-2 RATIFIED
-ratification anchor: PM msg_a055c38b relaying Director msg_d86a5987
+ratification anchor: composite — PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8) AS RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c)
 row anchor: PM PR #2824
 ---
 
@@ -12,7 +12,7 @@ row anchor: PM PR #2824
 
 ## §0. Status — DISPATCH-READY (cascade-gated)
 
-Director ratified all Q1-Q5 + §8 Tier-2 dispositions per PM msg_a055c38b. Worker dispatch gates on:
+Director ratified all Q1-Q5 + §8 Tier-2 dispositions per **composite ratification**: PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8 base) AS RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c). Worker dispatch gates on:
 1. **PR #2824 merge** — §1.8 row #105 authority anchor lands
 2. **PR #2828 merge** — canvas authored shape lands (both PRs may merge in parallel)
 
@@ -46,7 +46,7 @@ Sibling substrate (Q1 — Rational ordering; **Director RATIFIED Q1-α per msg_6
 - `dsl/std/rational.dag:26` — `type Rational = Field<FieldOfFractions<Int>>`
 - `docs/design-symbolic-cost-algebra.md` — current algebra
 - Canvas: PR #2828 / `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md` §§3-9
-- Ratification: PM msg_a055c38b relaying Director msg_d86a5987
+- Ratification (composite): PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8) RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c)
 
 ## §3. Phase A — Rational ordering helpers (Q1-α; Director RATIFIED msg_676ad4e7)
 
@@ -107,7 +107,7 @@ Replace `src/v3/std/algebra.dag:60-72` block with (Director-ratified verbatim pe
 // #5 per gate #105.
 ```
 
-Cite gate #105 + PR #2828 + msg_d86a5987 in the comment block.
+Cite gate #105 + PR #2828 + composite ratification (msg_d86a5987 base RECONCILED BY msg_676ad4e7 Q1-α supersession) in the comment block.
 
 ## §5. Phase C — SymbolicCost carrier reshape (Q2-Y + variant additions)
 
@@ -236,7 +236,7 @@ Inventory required (worker greps at HEAD before authoring):
 
 ## §9. Phase G — §1.8 row #105 ledger update
 
-After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #105 from DECLARED (or CANVAS_RATIFIED if PM ledger-maintenance landed first) → **CONSUMER_LANDED** with cite to this PR + canvas PR #2828 + Director msg_d86a5987.
+After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #105 from DECLARED (or CANVAS_RATIFIED if PM ledger-maintenance landed first) → **CONSUMER_LANDED** with cite to this PR + canvas PR #2828 + composite ratification (Director msg_d86a5987 base + msg_676ad4e7 Q1-α supersession).
 
 ## §10. STOP conditions
 
@@ -283,7 +283,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - Pre-existing cost-lens behavioral tests still green (Phase F migration must preserve semantic equivalence: `LinearCost(v)` and `PolynomialCost { var: v, degree: 1 }` must produce identical lens output for all consumers)
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
-  - Canvas PR #2828 + Director disposition (PM msg_a055c38b) verbatim Q1-Q5 + §8
+  - Canvas PR #2828 + composite Director ratification verbatim Q1-Q5 + §8 (PM msg_a055c38b relaying msg_d86a5987 Q2-Q5/§8 base RECONCILED BY msg_676ad4e7 Q1-α supersession of prior Q1-c)
   - 10 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
@@ -301,7 +301,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 Closes gate #105 symbolic_cost_textbook_coverage_landed.
 
 Carrier extended per Director-ratified Path A Tier 1 (canvas PR #2828;
-ratification PM msg_a055c38b relaying msg_d86a5987 2026-05-13).
+ratification composite: PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8 base) RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c) 2026-05-13.
 
 Net 7 → 9 SymbolicCost variants (Q2-Y collapse Linear into
 PolynomialCost(degree=1)):
@@ -328,7 +328,7 @@ Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ## §16. Reference
 
 - Canvas: PR #2828 / `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md`
-- Director ratification relay: PM msg_a055c38b (relaying Director msg_d86a5987)
+- Director ratification (composite): PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8 base) RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c)
 - Row anchor: PM PR #2824
 - Sibling-witness precedent: `dsl/std/algebra.dag:268-286` (OrderedRing<T>)
 - Current SymbolicCost: `src/v3/std/algebra.dag:190-197`
