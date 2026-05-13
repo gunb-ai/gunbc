@@ -518,6 +518,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
+    // G87-D5 / gate-#84 handoff: Band-C register-doc ↔ `cementing_dispatch` structural
+    // correspondence — not a per-lens `t_r3_gate_87_cementing_regen_<lens>.dag` bulk-port
+    // pilot. Disposition: `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §3.1.
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
