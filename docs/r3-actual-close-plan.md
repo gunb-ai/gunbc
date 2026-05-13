@@ -431,6 +431,52 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 ---
 
+### Gap 12 — Property-based complexity-lens validation via `ProgramGenerator` (gate #79 / #85 / #86 join — coverage sub-promise)
+
+**Promise** (Gap 11 + gate #85 `forall_exists_quantifier_substrate_landed` + gate #86 `program_generator_carrier_landed` + thesis-facet-3: *"complexity lens behaviorally complete"* extended via the operator adversarial probe 2026-05-13: *"do we have testcases representing random combinations of functions, validating that the correct complexity result is generated?"*): the complexity lens is validated against **random program compositions** generated via the `ProgramGenerator` substrate, with per-composition expected complexity verified against an oracle. Behavioral completion is not just "passes 2 hand-authored cementing cases" but "passes N>>1 random compositions per run with zero divergence from oracle".
+
+**HEAD evidence** (operator probe 2026-05-13):
+
+- **`ProgramGenerator` substrate carrier LANDED** (gate #86; `src/v3/std/verification.dag`: `type ProgramGenerator { ... }`). **But** only used in **one** test — `m1_5_verification_test.rs::program_generator_authoring_surface_compiles_cleanly` — which verifies the carrier's surface compiles. **NOT** used to actually generate random programs for any lens.
+- **`ForAll` / `Exists` quantifiers** authored in `verification.dag` (gate #85 surface) but the `ForAll` variant is wired only for `ForAllTargets` (cross-target quantification per Gap 2 close criterion), NOT for `ForAll(random_program)` quantification per the property-based test class the operator probe targets.
+- **Complexity cementing test** (`src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`): **2 hand-authored test cases** at HEAD (`literal_bind_cements_constant_complexity_summary` + `recursive_countdown_cements_linear_work_and_span`). Zero random compositions; zero oracle comparison; zero quantifier-coverage.
+- **No `proptest` / `quickcheck` / random-program-generation tests** for the complexity lens anywhere in `src/v3/compiler/tests/`.
+- **Result**: gate #79 `lens_capability_register_zero_proxy_zero_stub` lens-completion for complexity can claim "behaviorally complete" while never having validated against arbitrary nested compositions (the substrate `SymbolicCost` algebra reach is **enormous** vs the 2 cementing cases covered).
+
+**What's missing** (substrate-driven validation pipeline + oracle + test infrastructure):
+
+1. **`ProgramGenerator` instance for complexity-test compositions**: a `.dag`-authored generator that produces random programs by combining function primitives (constant / linear-loop / log-search / poly-iteration / product-nested / sum-branched / log-of-... per Gap 11 substrate decision). Generator must be **structurally bounded** (no infinite recursion) and **complexity-oracle-paired** (each generated program has a known-correct asymptotic class).
+2. **Complexity oracle** (reference implementation): for the structurally-bounded composition class the generator produces, the oracle computes the expected `ComplexitySummary` (work + span) deterministically. Authored as a `.dag` function over the program-generator output, NOT a bridge-Rust oracle (per `feedback_no_textual_enforcement_bridges`).
+3. **Property-based `TestClaim` using `ForAll`**: a TestClaim that quantifies over the ProgramGenerator output, asserting `complexity_of(generated_program) == oracle(generated_program)` for all generated samples. Uses the existing `ForAll` quantifier surface from gate #85 (extended from `ForAllTargets` to `ForAll<ProgramGenerator>`).
+4. **Coverage discipline**: minimum N≥100 random compositions per CI run (or budgeted-N per CI-budget); explicit seed-pinning for reproducibility; fail-closed on any oracle/lens divergence; CI ratchet that monotonically increases sample size as confidence grows.
+5. **Cementing-cases preserved** (subset of property-based corpus): the 2 existing hand-authored cases (`literal_bind`, `recursive_countdown`) remain as low-N seeds; the property-based corpus extends rather than replaces them.
+
+**Plan to cash**:
+
+- **Owner**: Verification Mgr (still-moth-538) — owns the property-based testing infrastructure as a Verification lane extension (Gap 5 sibling); Substrate Mgr (warm-wolf-698) — co-owns the `ProgramGenerator`-instance authoring + oracle-function authoring; Director ratifies the property-based-TestClaim shape.
+- **Sub-program**:
+  1. **Author `ProgramGenerator` complexity-instance** (`dsl/std/test_generators/complexity_generator.dag` or similar): structurally-bounded composition generator producing programs of named asymptotic class
+  2. **Author complexity oracle** (`dsl/std/test_oracles/complexity_oracle.dag`): function from generated-program → expected `ComplexitySummary`
+  3. **Extend `ForAll` quantifier surface** from `ForAllTargets` to `ForAll<ProgramGenerator>` per gate #85 sub-promise; canvas-ratify with Director (or absorb if existing surface already supports the shape)
+  4. **Author property-based `TestClaim`** asserting `complexity_of(g) == oracle(g)` for ForAll g in ProgramGenerator output
+  5. **CI integration**: property-based test runs in regular CI with budgeted sample-size; fail-closed on divergence; seed-pinned for reproducibility
+- **Effort estimate**: 2-3 weeks (ProgramGenerator-instance authoring + oracle + test infrastructure + CI integration); parallelizable with Gap 11 substrate-shape canvas authoring.
+
+**Close criterion**:
+- (a) `ProgramGenerator` complexity-instance landed in `dsl/std/` (or appropriate test-generator path) with structural bound + named composition class coverage
+- (b) Complexity oracle authored as `.dag` function (no bridge-Rust oracle)
+- (c) Property-based `TestClaim` using `ForAll<ProgramGenerator>` lands + passes with N≥100 random compositions per CI run
+- (d) Zero oracle-vs-lens divergence across the random-composition corpus
+- (e) CI seed-pinning + reproducibility discipline ratcheted via test infrastructure
+
+**Connection to Gap 11**: Gap 11 (LogCost asymmetry) addresses substrate-shape CAPABILITY (what compositions can be expressed); Gap 12 addresses lens-COVERAGE VALIDATION (whether the lens correctly classifies what the substrate expresses). Both are needed for gate #79 complexity behavioral close to honestly mean "lens correctly handles arbitrary nested compositions". Gap 11 substrate canvas should land first so Gap 12 generator can produce the full composition class.
+
+**Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of property-based validation would scope-narrow gate #79 behavioral close to "passes hand-authored cementing cases only". The operator-adversarial probe 2026-05-13 surfaced this gap; gate #85 `forall_exists_quantifier_substrate_landed` + gate #86 `program_generator_carrier_landed` are R3-load-bearing per the Tests-as-Data-Completeness lane — using them for actual property-based validation (not just substrate-compile checks) is the natural R3 close shape.
+
+**Authority**: operator adversarial probe 2026-05-13 (this PR); gate #79 close criterion in close plan §1 Gap 4 "complexity behavioral parity"; gates #85 + #86 close criteria in close plan §1 Gap 5 "tests-as-data completeness"; substrate-shape decision routes through Director ratification (msg-routing TBD post-canvas).
+
+---
+
 ## §2. Dispatch sequencing (PM-recommended)
 
 Given the cross-gap dependencies, recommended dispatch order:
@@ -444,9 +490,10 @@ Given the cross-gap dependencies, recommended dispatch order:
 - Gap 7 (T-WAD): Slice 4 → 5 → 6 → 7 → 8 cascade (zesty-boar-261 + sharp-deer-576 lane)
 - **Gap 11 (Complexity composition completeness / LogCost asymmetry)**: substrate-shape canvas (LogCost recursive vs canonicalization-rule) + normalize() extension + lattice tier review + cementing corpus extension. **Sub-promise of gate #79 surfaced by operator adversarial probe 2026-05-13** post-§4-ratification.
 
-**Phase C — Verification Mgr lane (swift-deer-459, 4-8 weeks)**:
+**Phase C — Verification Mgr lane (still-moth-538, 4-8 weeks)**:
 - Gap 5 (Cluster M Phase 3): 99-Rust-test bulk-port dispatch
 - Gap 2 (L5 cross-target): certification corpus + Python/Go emitters
+- **Gap 12 (Property-based complexity-lens validation via ProgramGenerator)**: ProgramGenerator complexity-instance + complexity oracle + `ForAll<ProgramGenerator>` quantifier TestClaim + CI integration. **Sub-promise of gate #79/#85/#86 surfaced by operator adversarial probe 2026-05-13** post-§4-ratification. Gated on Gap 11 substrate-shape canvas landing first so generator can produce the full composition class.
 
 **Phase D — Debt-Paydown lane (zesty-boar-261, ~3-6 months)**:
 - Gap 1 (PB-0): 177-entry retirement campaign
@@ -556,6 +603,7 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 - [x] **Operator §4 sub-item 5 (subtree-shape decision)** — ratified 2026-05-13 (briansrls direct PM dispatch): **(a) re-spawn R3 Evaluator Mgr as 4th lane** confirmed. Director (zesty-bear-812) executes per pre-authorization at msg_d456b60d.
 - [x] **Operator authorizes Phase A immediate dispatch** — implicit in ratification 2026-05-13. Close-audit doc skeleton + §1.8 row #106 authoring proceeds PM-direct post-merge.
 - [ ] **Gap 11 (Complexity composition completeness / LogCost asymmetry — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79 sub-promise. Substrate-shape canvas decision required (LogCost recursive vs canonicalization-rule); routes through Substrate Mgr (warm-wolf-698) → Director ratification.
+- [ ] **Gap 12 (Property-based complexity-lens validation via ProgramGenerator — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79/#85/#86 join sub-promise. ProgramGenerator complexity-instance + oracle + `ForAll<ProgramGenerator>` TestClaim + CI integration; routes through Verification Mgr (still-moth-538). Gated on Gap 11 canvas landing first.
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [x] R2-Evaluator audit — **completed 2026-05-13 (msg_82b9c4bb)**; findings absorbed into Gap 3 expansion + §4 sub-item 5 + r3-program-plan.md lines 429/435 reframe at commits 85c230b4b + 97cfb9d4c
   - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
