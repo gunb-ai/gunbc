@@ -3143,6 +3143,17 @@ impl<'a> TestRunner<'a> {
                     Origin::Source { .. }
                 ))
             }
+            "gate87_provenance_sum_origin_computed" => {
+                let Some(bind) = find_bind(program_dag, "sum", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `sum` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    origin_of(program_dag, &bind.value),
+                    Origin::Computed { .. }
+                ))
+            }
             "gate87_structural_resolution_no_violations" => {
                 i64::from(lens_structural_resolution::check(program_dag).is_empty())
             }

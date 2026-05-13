@@ -379,8 +379,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
-    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
-    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
     // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`

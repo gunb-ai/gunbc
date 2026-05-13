@@ -105,7 +105,10 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_provenance.dag"),
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag",
         "r3_gate_87_cementing_regen_provenance_suite",
-        &["cementing_regen_provenance"],
+        &[
+            "cementing_regen_provenance_literal_origin_source",
+            "cementing_regen_provenance_sum_origin_computed",
+        ],
     ),
     (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag"),
