@@ -624,6 +624,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
+    // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
+    "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
     // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
