@@ -70,22 +70,24 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 
 ## §3. Closure-scope question — three candidates
 
-### Candidate A — minimal repair (fix demo evaluator receipt only)
+### Candidate A — minimal repair (un-ignore the passing test)
 
-Scope:
-- Diagnose + fix the 5 failures in `--include-ignored` run
-- Remove `#[ignore]` from test at `t_ci_workflow_as_data_demo_test.rs:581`
-- Close gate #63 on demo evaluator producing `DimensionReport<TimingMeasurement>` for the existing demo `.dag` program
+**Scope shifted per snappy-bear-502 msg_cef1340b correction**:
+
+- Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`)
+- Close gate #63 on the unblocked passing receipt
+- The 5 sibling-test failures from `--include-ignored` broader run are treated as **separately-scoped substrate-debt** (not gate #63 closure-blockers)
 
 Pros:
-- Smallest blast-radius; targets exactly the "modeled but not passing" gap
-- Demo already constructed; closure = make it work as advertised
-- Cost-of-change: 1-N file fixes within demo + ci_emission substrate
+- **Smallest possible blast-radius** — single `#[ignore]` removal + test promotion
+- Gate-criterion test is **already passing**; gate closure is administrative (un-ignore + ledger update)
+- Sibling-test substrate-debt is preserved as known-unknowns separately
+- No new substrate authoring needed
 
 Cons:
-- "Demo" closure may be too narrow if criterion intends broader scope
-- Doesn't address Python placeholder / opaque-body shapes
-- May leave structural debt (concurrency field mismatch) that re-opens later
+- "Already passing" status depends on the demo `.dag` exemplifying the criterion correctly — needs sanity check that the demo encodes "CI workflow as .dag data" faithfully
+- Sibling-test failures leave structural debt that may re-surface as separate gate failures
+- Closes gate #63 narrowly — operator may have intended broader scope per "executes through evaluator" criterion text
 
 ### Candidate B — full CIWorkflowDag/projection path execution
 
@@ -169,20 +171,25 @@ Director ratification on:
 - **Q3 — `#[ignore]` history**: was this `#[ignore]` planned-deferral (substrate-then-unignore) or regression-mask? Director may have grep visibility on the test's `#[ignore]` introduction commit; if so, that disambiguates A/B/C
 - **Q4 — Cross-lane coordination**: does Substrate Mgr coordinate with T-Lens-Self-Application Mgr for closure, or is gate #63 substrate-lane-owned end-to-end?
 
-## §10. Mgr recommendation
+## §10. Mgr recommendation (REVISED per snappy-bear-502 msg_cef1340b)
 
-**Q1: B with carve-outs for PythonShim** — the criterion text "CI workflow modeled as .dag data executes through evaluator" reads as production-grade, not demo-grade. Candidate A risks a P3 second-source-of-truth (demo green, production red). Candidate C defers indefinitely without T-Lens-Self-Application lane visibility.
+**Initial recommendation** (pre-correction): Candidate B with PythonShim carve-out.
 
-Recommended **scope-bound on B**:
-- Close YamlStatic + BinaryShim execution paths (both substrate landed)
-- Treat PythonShim placeholder as out-of-scope; document that Tier 1 closure of gate #63 covers 2 of 3 arms
-- Closure receipt: at least one real (non-demo) CI workflow executes through evaluator producing DimensionReport<TimingMeasurement>
+**Revised recommendation** (post-correction): **Candidate A with sibling-debt receipt** — given that the gate-criterion test passes in isolation, gate #63 closure is administrative (un-ignore + ledger). Candidate B would re-author already-working substrate; that's `feedback_no_short_term_solutions` inverted (don't redo passing work).
 
-**Q2: OR-semantics** — both lanes contribute; gate closes when sufficient substrate is present. T-Lens-Self-Application provides further consumer evidence but isn't a hard prereq.
+Recommended **revised scope**:
+- Q1=A: Un-ignore `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` (already passing per `9f22cbce-66ff-...`)
+- Document the 5 sibling-test failures as **separately-scoped substrate-debt**; surface to Mgr for follow-on triage but NOT block gate #63 closure
+- Close gate #63 on the unblocked passing receipt + ledger update
+- Optional follow-on canvas: if criterion text "executes through evaluator" requires more than demo-grade evidence, surface a Tier-2 expansion canvas after gate closure
 
-**Q3: defer to Director** — needs `git log src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` history check
+**Q2: OR-semantics** — both lanes contribute; gate closes when sufficient substrate is present.
 
-**Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring
+**Q3: defer to Director** — needs `git log` history check on the `#[ignore]` introduction commit. If `#[ignore]` was added pre-substrate-landing as planned-deferral, Candidate A is the correct receipt. If post-substrate as regression-mask, Candidate A still works but the regression-mask history should be archived.
+
+**Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring.
+
+**Sibling-debt note**: the 5 failures from `--include-ignored` are separately worth tracking. Worker brief Phase D could include "surface sibling-debt audit document" with the 5 specific failure modes as a Mgr-tier follow-on triage item, not a gate #63 closure-blocker.
 
 ## §11. Reference
 
