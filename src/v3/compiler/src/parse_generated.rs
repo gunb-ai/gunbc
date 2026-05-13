@@ -1639,9 +1639,7 @@ impl<'a> Parser<'a> {
         let cls = primary_atom_class(&token.kind).ok_or_else(|| Diagnostic::ParseError {
             message: format!("expected primary expression, got {:?}", token.kind),
             span: token.span.clone(),
-            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "ParseError",
-            ),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
         })?;
         match (cls, token.kind) {
             (PrimaryAtomClass::IntLiteral, TokenKind::IntLit(value)) => Ok(SurfaceExpr::Literal {

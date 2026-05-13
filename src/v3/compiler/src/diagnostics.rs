@@ -969,46 +969,35 @@ mod tests {
 
     fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
         let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
-        let fixes = Vec::new();
         let ty = TypeShape::new(DeclarationId::test_raw(0));
         vec![
             Diagnostic::TokenizerError {
                 message: String::new(),
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("TokenizerError"),
             },
             Diagnostic::ParseError {
                 message: String::new(),
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("ParseError"),
             },
             Diagnostic::TypeMismatch {
                 expected: ty,
                 actual: ty,
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("TypeMismatch"),
             },
             Diagnostic::ArityMismatch {
                 function: String::new(),
                 expected: 0,
                 actual: 0,
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("ArityMismatch"),
             },
             Diagnostic::ResolveError {
                 name: String::new(),
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
             },
             Diagnostic::UnitMismatch {
                 operator: String::new(),
@@ -1016,17 +1005,13 @@ mod tests {
                 expected: ty,
                 actual: ty,
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("UnitMismatch"),
             },
             Diagnostic::BranchConditionNotBool {
                 port: PortId::test_raw(0),
                 actual_type: None,
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("BranchConditionNotBool"),
             },
             Diagnostic::MagnitudeOutOfRange {
                 literal: String::new(),
@@ -1035,24 +1020,18 @@ mod tests {
                 range_max_inclusive: String::new(),
                 expected: ty,
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("MagnitudeOutOfRange"),
             },
             Diagnostic::MalformedIntegerRangeFact {
                 message: String::new(),
                 span: span.clone(),
-                correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("MalformedIntegerRangeFact"),
             },
             Diagnostic::NominalOpacityViolation {
                 declaration: DeclarationId::test_raw(0),
                 accessor: None,
                 span,
-                correction: fixes.into_iter().next().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
-                }),
+                correction: Correction::deferred_for_diagnostic_class("NominalOpacityViolation"),
             },
         ]
     }
@@ -1476,6 +1455,26 @@ mod tests {
     }
 
     #[test]
+    fn render_deferred_correction_does_not_emit_fix_header() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ParseError {
+                message: "not yet live-correctable".to_string(),
+                span: SourceSpan::new("deferred.v3", 0, 1),
+                correction: Correction::deferred_for_diagnostic_class("ParseError"),
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("ERROR at deferred.v3:0-1"));
+        assert!(
+            !rendered.contains("FIX (option"),
+            "deferred corrections are explicit residual carriers, not user-facing fixes: {rendered}"
+        );
+    }
+
+    #[test]
     fn render_go_diagnostic_uses_go_correction_style() {
         let dag = Dag::new();
         let rendered = render_diagnostic_for_target(
@@ -1595,14 +1594,14 @@ mod tests {
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "user".to_string(),
             span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("DiagnosticFixture"),
+            correction: Correction::deferred_for_diagnostic_class("ResolveError"),
         });
         dag.attach_bootstrap_diagnostic(
             key.clone(),
             Diagnostic::ResolveError {
                 name: "bootstrap".to_string(),
                 span,
-                correction: Correction::deferred_for_diagnostic_class("DiagnosticFixture"),
+                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
             },
         );
 

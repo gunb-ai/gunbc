@@ -901,9 +901,7 @@ fn int_literal_magnitude_narrow_merge(
                 IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
                     name: "(internal: integer literal out of range but no range fact)".to_string(),
                     span,
-                    correction: Correction::deferred_for_diagnostic_class(
-                        "InferenceDiagnostic",
-                    ),
+                    correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                 })
             }
         },
@@ -4299,9 +4297,7 @@ fn resolve_field_project(
                 )
             })
             .next()
-            .unwrap_or_else(|| {
-                Correction::deferred_for_diagnostic_class("InferenceDiagnostic")
-            });
+            .unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic"));
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
             name: format!(
                 "field `{field_label}` does not exist on `{}`",
