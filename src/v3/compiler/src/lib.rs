@@ -5592,10 +5592,21 @@ fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> b
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = if needs_variant_payload_lens_authority_prepended(&surface) {
-        lower::lower_prepending_variant_payload_lens_authority(&surface)
-    } else if needs_complexity_lens_authority_prepended(&surface) {
-        lower::lower_prepending_complexity_lens_authority(&surface)
+    let needs_vp = needs_variant_payload_lens_authority_prepended(&surface);
+    let needs_cx = needs_complexity_lens_authority_prepended(&surface);
+    let mut dag = if needs_vp || needs_cx {
+        let mut dag = Dag::new();
+        if needs_vp {
+            lower::append_variant_payload_lens_authority(&mut dag);
+        }
+        if needs_cx {
+            lower::append_complexity_lens_authority(&mut dag);
+        }
+        dag.seal_prepended_authority_fixture_range();
+        let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
+        lower::lower_into(&mut dag, &surface);
+        lower::finalize_strict_user_lower_range(&mut dag, user_start);
+        dag
     } else {
         lower::lower(&surface)
     };

@@ -65,7 +65,7 @@ const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
 const VARIANT_PAYLOAD_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/variant_payload.dag");
 const VARIANT_PAYLOAD_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/variant_payload.dag";
 
-fn append_variant_payload_lens_authority(dag: &mut Dag) {
+pub(crate) fn append_variant_payload_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
         VARIANT_PAYLOAD_LENS_AUTHORITY_DAG,
         VARIANT_PAYLOAD_LENS_AUTHORITY_FILE,
@@ -84,7 +84,7 @@ fn append_variant_payload_lens_authority(dag: &mut Dag) {
     lower_into(dag, &module);
 }
 
-fn append_complexity_lens_authority(dag: &mut Dag) {
+pub(crate) fn append_complexity_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
         COMPLEXITY_LENS_AUTHORITY_DAG,
         COMPLEXITY_LENS_AUTHORITY_FILE,
@@ -201,33 +201,6 @@ struct LambdaLoweringContext<'a> {
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     let user_start = dag.declarations().len();
-    lower_into(&mut dag, module);
-    finalize_strict_user_lower_range(&mut dag, user_start);
-    dag
-}
-
-/// Prepends `src/v3/lenses/complexity.dag` before lowering `module` (gate #92 T-LAS). Kept out of
-/// [`Dag::new`] and [`lower`] so emit tests that call [`crate::compile_to_dag`] on small programs
-/// without a `lenses.complexity` import do not load `Lookup<ComplexitySummary>` into the graph.
-pub(crate) fn lower_prepending_complexity_lens_authority(module: &SurfaceModule) -> Dag {
-    let mut dag = Dag::new();
-    append_complexity_lens_authority(&mut dag);
-    dag.seal_prepended_authority_fixture_range();
-    let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
-    lower_into(&mut dag, module);
-    finalize_strict_user_lower_range(&mut dag, user_start);
-    dag
-}
-
-/// Prepends `src/v3/lenses/variant_payload.dag` before lowering `module` (R3 gate #87 cementing).
-/// Mirrors [`lower_prepending_complexity_lens_authority`]: kept out of [`Dag::new`] so ordinary
-/// `compile_to_dag` callers do not load variant-payload carriers unless the surface imports
-/// `lenses.variant_payload`.
-pub(crate) fn lower_prepending_variant_payload_lens_authority(module: &SurfaceModule) -> Dag {
-    let mut dag = Dag::new();
-    append_variant_payload_lens_authority(&mut dag);
-    dag.seal_prepended_authority_fixture_range();
-    let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
     lower_into(&mut dag, module);
     finalize_strict_user_lower_range(&mut dag, user_start);
     dag
