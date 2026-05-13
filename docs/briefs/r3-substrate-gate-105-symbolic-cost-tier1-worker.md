@@ -39,7 +39,7 @@ Sibling substrate (Q1 — Rational ordering; **Director RATIFIED Q1-α per msg_6
 
 ## §2. Authority chain (verbatim)
 
-- `src/v3/std/algebra.dag:60-72` — current STOP SIGNAL (will be rewritten per §4)
+- `src/v3/std/algebra.dag:69-72` — current STOP SIGNAL (will be rewritten per §4)
 - `src/v3/std/algebra.dag:190-197` — current 7-variant `SymbolicCost`
 - `dsl/std/algebra.dag:268-286` — `OrderedRing<T>` precedent (`compare/lt/le/gt/ge` witness pattern)
 - `dsl/std/algebra.dag:287-295` — current `Field<T>` (carries `compare: fn(T, T) -> Ordering` at :294; missing derived predicates lt/le/gt/ge/eq/ne — see §3 Q1-α premise correction)
@@ -87,7 +87,9 @@ Q1-γ (OrderedField as Field-superset via inheritance) REJECTED by Director — 
 
 ## §4. Phase B — STOP SIGNAL rewrite (Q4)
 
-Replace `src/v3/std/algebra.dag:60-72` block with (Director-ratified verbatim per canvas §6):
+Replace `src/v3/std/algebra.dag:69-72` block — and ONLY that 4-line block — with (Director-ratified verbatim per canvas §6):
+
+**DO NOT** touch lines `:49-67`: those carry the 4-pattern dissolution receipt (Pattern 1/2/3/4 commentary) and are out-of-scope for this PR. Phase B is a surgical replacement of the STOP-SIGNAL paragraph only; the dissolution-receipt prose updates (if any) belong to a separate canvas + PR (codex BLOCKING 10904 explicit warning).
 
 ```
 // STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2
@@ -258,7 +260,7 @@ Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_len
 - Phase A Q1-α deliverables present: rational_lt/le/gt/ge/eq/ne free functions in cost-lens module; NO OrderedField type declared
 - `Rational = Field<FieldOfFractions<Int>>` UNCHANGED at `dsl/std/rational.dag:26` (Q1-α)
 - Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ProductCost([ExpCost(2,n), PolyCost(d)])` — multiplicative cross-class is NOT absorbed per §6 + anti-pattern #9 (asymptotic absorption is sound for SUM but unsound for PRODUCT); `ExpCost(2,n) + PolyCost(d)` produces `ExpCost(2,n)` — additive cross-class absorption is sound; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
-- STOP-SIGNAL text at `:60-72` contains new "10th variant" wording
+- STOP-SIGNAL text at `:69-72` contains new "10th variant" wording
 
 ## §8. Phase F — Consumer migration (atomic)
 
@@ -347,7 +349,7 @@ Companion substrate (Q1-α):
 - Cost-lens-local Rational ordering helpers (NO new OrderedField; derived from existing Field.compare)
 - Rational stays as Field<FieldOfFractions<Int>> (UNCHANGED)
 
-STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
+STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:69-72.
 
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
@@ -370,7 +372,7 @@ Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 - Row anchor: PM PR #2824
 - Sibling-witness precedent: `dsl/std/algebra.dag:268-286` (OrderedRing<T>)
 - Current SymbolicCost: `src/v3/std/algebra.dag:190-197`
-- Current STOP-SIGNAL: `src/v3/std/algebra.dag:60-72`
+- Current STOP-SIGNAL: `src/v3/std/algebra.dag:69-72`
 - Rational: `dsl/std/rational.dag:26`
 - `feedback_strict_mirror_vs_novel_substrate_fact` — Q1-α discipline (strict-mirror of existing Field.compare; novel only at lens-local helper layer)
 - `feedback_state_space_vs_behavioral_invariants` — Q2-Y refinement-vs-fold discipline

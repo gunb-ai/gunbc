@@ -7,7 +7,7 @@ ratification anchor: PM msg_4fd650b7 relaying Director msg_ad5e934d — Path A T
 operator framing: "current list looks very slim ... we need to land this all in R3 please" (2026-05-13)
 authority docs:
   - `src/v3/std/algebra.dag:190-197` — current 7-variant `SymbolicCost`
-  - `src/v3/std/algebra.dag:60-72` — `STOP SIGNAL: wanting an eighth variant` (will reset)
+  - `src/v3/std/algebra.dag:69-72` — `STOP SIGNAL: wanting an eighth variant` (will reset)
   - `docs/design-symbolic-cost-algebra.md` — current algebra
   - `dsl/std/algebra.dag:268-286` — existing `OrderedRing<T>` witness pattern
   - `dsl/std/algebra.dag:294` — `Field<T>` carries `compare: fn(T, T) -> Ordering` (foundational order primitive; derived predicates lt/le/gt/ge live lens-local under Q1-α)
@@ -43,7 +43,7 @@ Tier 2 R4-DEFERRED per Director with named-consumer-trigger requirement:
 ## §2. State at HEAD (grep-verified 2026-05-13)
 
 - `src/v3/std/algebra.dag:190-197`: current 7 variants (ConstantCost, LinearCost, PolynomialCost with `degree: DegreeAtLeastTwo`, ProductCost, SumCost, LogCost, UnknownCost)
-- `src/v3/std/algebra.dag:60-72`: STOP SIGNAL "wanting an eighth variant"
+- `src/v3/std/algebra.dag:69-72`: STOP SIGNAL "wanting an eighth variant"
 - `dsl/std/algebra.dag:268-286`: `OrderedRing<T>` witness with `compare/lt/le/gt/ge` already defined
 - `dsl/std/algebra.dag:287-295`: `Field<T>` — **CORRECTION per operator BLOCKING 2026-05-13 (canvas:48)**: Field ALREADY has `compare: fn(T, T) -> Ordering` (line 294). The earlier "defined WITHOUT order operations" claim was wrong. Field is missing the derived order predicates (lt/le/gt/ge/eq/ne) that `OrderedRing<T>` carries (lines 268-286), but the foundational `compare` operator IS already on Field.
 - `dsl/std/rational.dag:26`: `type Rational = Field<FieldOfFractions<Int>>`. Per above correction: Rational already carries `compare` via Field — order primitive is present. What's missing is the convenience-predicate set (lt/le/gt/ge/eq/ne). This invalidates the original Q1 premise; see §3 revised candidate set below.
@@ -322,7 +322,7 @@ For exotic (Tier-2) bounds: still requires UnknownCost("reason") at consumer sit
 
 - §1.8 row #105 (PM PR #2824 pending) — authority anchor
 - `src/v3/std/algebra.dag:190-197` — current 7-variant SymbolicCost
-- `src/v3/std/algebra.dag:60-72` — current STOP SIGNAL
+- `src/v3/std/algebra.dag:69-72` — current STOP SIGNAL
 - `dsl/std/algebra.dag:268-286` — OrderedRing<T> precedent
 - `dsl/std/algebra.dag:294` — Field<T> carries `compare: fn(T, T) -> Ordering`
 - `dsl/std/rational.dag:26` — Rational = Field<FieldOfFractions<Int>>
