@@ -38,7 +38,7 @@ Cells use compact `bool · evidence` form. `—` denotes not-yet-applicable (e.g
 
 | subsystem_id | catalog_row | algebra_landed | phase15_pr_merged | phase3_emission_landed | parity_passed | open_receipt_debt |
 |---|---|---|---|---|---|---|
-| `pr_digests` | 8 | `—` (non-consumer) | `false` | `true` · PR #2832 commit `6ce22a1fa970becacf717fe1c2e2f164bee421a3` (projection: `dsl/gunbc/digest_render.dag`; source facts: `dsl/extdeps/github/pulls.dag`; std render primitives: `dsl/std/render.dag`) | `false` | `false` |
+| `pr_digests` | 8 | `—` (non-consumer) | `true` · PR #2838 commit `b9f8a075f32904039c3e83a5efe0a34a920b4fe0` | `true` · PR #2832 commit `6ce22a1fa970becacf717fe1c2e2f164bee421a3` (projection: `dsl/gunbc/digest_render.dag`; source facts: `dsl/extdeps/github/pulls.dag`; std render primitives: `dsl/std/render.dag`) | `false` | `true` |
 
 (Wave-1 trio anchor — first row inserted on placeholder; flips begin when the Wave-1 worker lands `dsl/ctrl/pr_digests.dag`. Charter PR #2775 and Mgr brief PR #2777 are merged on main as of 2026-05-12.)
 
