@@ -108,6 +108,11 @@ self_test() {
   fi
   unset GATE87_CHANGED_FILES
 
+  if (unset PR_BASE_SHA PR_HEAD_SHA GATE87_CHANGED_FILES; changed_files >/dev/null 2>&1); then
+    echo "expected changed_files without PR_BASE_SHA to fail closed" >&2
+    return 1
+  fi
+
   local tmp base parent head range
   tmp=$(mktemp -d)
   (
@@ -149,7 +154,8 @@ if [[ "${1:-}" == "--self-test" ]]; then
   exit 0
 fi
 
-if ! requires_checklist < <(changed_files); then
+changed=$(changed_files)
+if ! requires_checklist <<<"$changed"; then
   exit 0
 fi
 
