@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
+    ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -3132,6 +3133,22 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(root) = program_dag.nodes().iter().find_map(|behavior| {
+                    matches!(behavior, Behavior::Value(_) | Behavior::Bind(_))
+                        .then(|| behavior.id())
+                }) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): program `{file_name}` has no Value/Bind root"
+                    )));
+                };
+                let report = crate::analyze_parallelism(program_dag, root);
+                i64::from(matches!(
+                    report,
+                    WorkflowParallelismReport::ParallelismUnsupported(ref detail)
+                        if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+                ))
+            }
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
