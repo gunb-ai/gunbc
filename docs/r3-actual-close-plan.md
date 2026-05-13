@@ -371,6 +371,66 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 ---
 
+### Gap 11 — Complexity composition completeness / `LogCost` asymmetry (gate #79 sub-promise)
+
+**Promise** (THESIS.md cost lens + design-cost-lens / `src/v3/lenses/complexity.dag` header: *"behavioral complexity summary lens for the v3 DAG ... structurally terminal; behaviorally complete"*): the complexity lens behaviorally computes asymptotic class for any program structure the substrate admits, including nested algorithms (composition of poly/log/linear/constant in any permutation expressible by `SymbolicCost`).
+
+**HEAD evidence** (operator adversarial probe 2026-05-13 — `n log(n^k)` + nested-log + polynomial-of-log probe):
+
+- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag`, 7 variants):
+  - `ProductCost(NonSingletonList<SymbolicCost>)` — **recursive composition over arbitrary `SymbolicCost`** ✓
+  - `SumCost(NonSingletonList<SymbolicCost>)` — **recursive composition over arbitrary `SymbolicCost`** ✓
+  - `PolynomialCost { var: SizeVariable, degree: Nat }` — **terminal: `SizeVariable` argument only** ✗
+  - `LogCost(SizeVariable)` — **terminal: `SizeVariable` argument only** ✗
+  - `LinearCost(SizeVariable)` / `ConstantCost(Int)` / `UnknownCost(String)` — terminal (expected)
+
+- **Structural asymmetry**: `Product` + `Sum` take recursive `SymbolicCost`; `Log` + `Polynomial` take only `SizeVariable`. The substrate cannot express `Log(Product(...))` directly. Per operator probe: *"shouldn't [LogCost] work for any arbitrary combination of cost?"* — the asymmetry is structural, not motivated by an algebra-level invariant.
+
+- **`normalize(c: SymbolicCost)` body** (`src/v3/std/algebra.dag:537-548`) handles only:
+  - Sum: drop `ConstantCost(0)` (additive identity)
+  - Product: collapse to `ConstantCost(0)` on multiplicative annihilator, drop `ConstantCost(1)` (multiplicative identity)
+  - Single-element Sum/Product: collapse to the element
+  - Product of two identical `LinearCost`s → `PolynomialCost(var, 2)` (n*n = n²)
+  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule** (`log(a*b) → log(a) + log(b)`), **NO nested-log handling**.
+
+- **What the compiler reports for nested algorithms at HEAD**:
+  - `n log(n^k)` — cannot be constructed directly (type error: `LogCost` doesn't take `PolynomialCost`). Either the cost-lens fold canonicalizes at construction time (UNVERIFIED at HEAD — lens body audit pending) or emits `UnknownCost(<reason>)` (fail-open) or fails-closed.
+  - `log(log(n))` — same: cannot be constructed (no `LogCost(LogCost(...))`).
+  - `n² log n` — representable as `ProductCost([PolynomialCost(n, 2), LogCost(n)])` but the `AsymptoticClass` enumerated lattice (`src/v3/compiler/src/complexity_lattice.rs`) ceilings to `ClassPolynomial { degree: 2 }` — **loses the log factor in classification**.
+  - `n log²n` — representable as `ProductCost([LinearCost(n), LogCost(n), LogCost(n)])` but lattice collapses to `ClassLinearithmic` — **loses the second log factor**.
+
+- **`STOP SIGNAL` discipline** (`src/v3/std/algebra.dag` Pattern-3 audit block): the 7 SymbolicCost variants are declared "terminal; the asymptotic surface the thesis reasons about; any new variant should carry its own load-bearing reason." This forbids an 8th variant, but does NOT address making existing variants (`LogCost`, `PolynomialCost`) recursive over `SymbolicCost` symmetric with `Product`/`Sum`.
+
+**What's missing** (substrate + lens-fold + lattice tiers):
+
+1. **`LogCost` recursive shape**: either ratify `LogCost(SymbolicCost)` for symmetric composition with Product/Sum, OR ratify a canonicalization rule (`.dag`-authored) that converts `Log(complex)` → `Log(SizeVariable)` of the dominant variable at expression-construction time.
+2. **`normalize()` log-rule extensions**: add log-power (`log(n^k) → k * log(n)`), log-product (`log(a*b) → log(a) + log(b)`), nested-log handling — OR mark these as out-of-scope with explicit rationale.
+3. **`AsymptoticClass` lattice tier coverage**: enumerate which compositions retain information vs collapse — e.g. `polynomial × log` is currently NOT a tier (collapses to `ClassPolynomial`). Either extend the lattice with `ClassPolyLog { poly_degree: Nat, log_degree: Nat }` style tiers OR ratify the collapse as intentional with named loss.
+4. **Cost-lens fold audit**: verify whether the cost-lens fold at `src/v3/lenses/complexity.dag` does construction-time canonicalization (would partially close the gap without substrate changes).
+
+**Plan to cash**:
+- **Owner**: Substrate Mgr (warm-wolf-698) authors the canvas decision (recursive `LogCost` vs canonicalization-rule); Verification Mgr (still-moth-538) audits cost-lens fold for current canonicalization behavior; Director ratifies the substrate-shape decision.
+- **Sub-program**:
+  1. **Audit**: Verification Mgr greps cost-lens fold body for nested-construction handling; reports actual behavior at HEAD on `log(complex)` inputs
+  2. **Substrate-shape canvas** (Substrate Mgr): two options — (A) ratify `LogCost(SymbolicCost)` recursive symmetric with Product/Sum, OR (B) ratify `.dag`-authored canonicalization rule that runs before LogCost construction with named log-algebra coverage (power-rule + product-rule + nested-log policy)
+  3. **`normalize()` extension** OR canonicalization-rule landing per (A)/(B)
+  4. **`AsymptoticClass` lattice review**: confirm which compositions retain information vs collapse; document the collapse rules with explicit rationale per `feedback_no_textual_enforcement_bridges` (every collapse traces to a structural reason)
+  5. **Lens cementing receipt update**: extend behavioral completion test corpus to cover nested compositions (n log n^k, n² log n, n log² n, log log n)
+- **Effort estimate**: 2-4 weeks substrate-canvas + lens-fold audit + normalize extension + lattice tier extension; gated on canvas ratification authority.
+
+**Close criterion**:
+- (a) `LogCost` shape ratified (either recursive over `SymbolicCost` or canonicalized at construction with named rule coverage)
+- (b) `normalize()` extended with log-rules OR canonicalization-rule layer landed
+- (c) `AsymptoticClass` lattice review complete with named collapse rationale
+- (d) Cementing test corpus extended to cover nested compositions per the operator probe (n log n^k, n² log n, n log² n, log log n) with explicit expected classification
+- (e) Complexity lens behavioral-completion test passes against the extended corpus
+
+**Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of nested-complexity completeness would scope-narrow gate #79 behavioral close to "only handles non-nested compositions". The operator-adversarial probe 2026-05-13 surfaced this gap; the gap is now operator-recorded and must close IN-R3 absent explicit operator override of the no-carves directive with named structural-unblockable reason. Substrate-shape canvas is the unblockable path.
+
+**Authority**: operator adversarial probe 2026-05-13 (this PR); gate #79 close criterion in close plan §1 Gap 4 "complexity behavioral parity"; substrate-shape decision routes through Director ratification (msg- routing TBD post-canvas).
+
+---
+
 ## §2. Dispatch sequencing (PM-recommended)
 
 Given the cross-gap dependencies, recommended dispatch order:
@@ -382,6 +442,7 @@ Given the cross-gap dependencies, recommended dispatch order:
 **Phase B — Substrate Mgr lane (warm-wolf-698, 4-8 weeks)**:
 - Gap 4 (lens behavioral parity): F-α → F-β.1 → F-β.2 → ComplexitySummary → F-γ.2 register sweep
 - Gap 7 (T-WAD): Slice 4 → 5 → 6 → 7 → 8 cascade (zesty-boar-261 + sharp-deer-576 lane)
+- **Gap 11 (Complexity composition completeness / LogCost asymmetry)**: substrate-shape canvas (LogCost recursive vs canonicalization-rule) + normalize() extension + lattice tier review + cementing corpus extension. **Sub-promise of gate #79 surfaced by operator adversarial probe 2026-05-13** post-§4-ratification.
 
 **Phase C — Verification Mgr lane (swift-deer-459, 4-8 weeks)**:
 - Gap 5 (Cluster M Phase 3): 99-Rust-test bulk-port dispatch
@@ -494,6 +555,7 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
   - [x] Gap 9 (show-correct-code): **IN-R3 confirmed** — 100% absolute (zero DeferredCorrection in test corpus per sum-variant carrier)
 - [x] **Operator §4 sub-item 5 (subtree-shape decision)** — ratified 2026-05-13 (briansrls direct PM dispatch): **(a) re-spawn R3 Evaluator Mgr as 4th lane** confirmed. Director (zesty-bear-812) executes per pre-authorization at msg_d456b60d.
 - [x] **Operator authorizes Phase A immediate dispatch** — implicit in ratification 2026-05-13. Close-audit doc skeleton + §1.8 row #106 authoring proceeds PM-direct post-merge.
+- [ ] **Gap 11 (Complexity composition completeness / LogCost asymmetry — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79 sub-promise. Substrate-shape canvas decision required (LogCost recursive vs canonicalization-rule); routes through Substrate Mgr (warm-wolf-698) → Director ratification.
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [x] R2-Evaluator audit — **completed 2026-05-13 (msg_82b9c4bb)**; findings absorbed into Gap 3 expansion + §4 sub-item 5 + r3-program-plan.md lines 429/435 reframe at commits 85c230b4b + 97cfb9d4c
   - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
