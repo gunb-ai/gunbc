@@ -117,3 +117,19 @@ D1 and D4 are the fail-closed invariant checks and can run first. D2 and D3 can 
 
 Completion of these children means gate #87 has a concrete, reviewable discipline package: the registry corpus stays complete, future COMPLETE flips have same-PR receipt requirements, placeholders have named dissolution paths, executable ratchets guard drift, and broader Band-C work is handed to #84 without duplicating authority.
 
+## Dashboard Dispatch Receipt
+
+Session `merry-fox-871` reconciled duplicate assignment `node://adhoc-b75b3d90-3d0`
+after this dispatch brief had already landed. Dashboard history shows the
+canonical D1-D5 children spawned from this brief and closed before the duplicate
+assignment:
+
+- `G87-D1` registry-invariant audit: `node://adhoc-0aed2137-224`
+- `G87-D2` COMPLETE-flip same-PR checklist: `node://adhoc-7fe5107b-eef`
+- `G87-D3` placeholder-dissolution ledger: `node://adhoc-f7e39cf5-03b`
+- `G87-D4` runner and SG-0 ratchet receipt: `node://adhoc-286bb4da-ff1`
+- `G87-D5` Band-C / #84 handoff classification: `node://adhoc-fe559a63-8b8`
+
+Do not create a second D1-D5 inventory for `node://adhoc-b75b3d90-3d0`; consume
+the completed child receipts above as the dispatch outcome for the duplicate
+node.
