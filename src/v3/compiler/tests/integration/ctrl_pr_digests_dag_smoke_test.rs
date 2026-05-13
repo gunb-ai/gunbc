@@ -29,6 +29,12 @@ fn ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface() {
         panic!("dsl/ctrl/pr_digests.dag should tokenize cleanly: {diag:?}");
     });
 
+    assert_eq!(
+        source.matches("PRACTICE 4 CHECKPOINT:").count(),
+        4,
+        "each N>=2 coproduct in pr_digests.dag must carry a Practice-4 checkpoint (docs/modeling-discipline.md §4)"
+    );
+
     for needle in [
         "module ctrl.pr_digests",
         "import extdeps.github.pulls { PullRequest, PullReview }",

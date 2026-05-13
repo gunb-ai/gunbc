@@ -82,11 +82,14 @@ type AttachedUrlTextContext
   = Prose
   | InlineCode
 
-// Practice 4 receipt: classifies GraphQL-vs-REST fallback reasons for the
-// session-dashboard REST paths. Terminal for the current GitHub error vocabulary
-// slice modeled in ctrl today.
-// Dissolution trigger: ctrl emission consumes structured `GitHubErrorShape`
-// extensions or new provider codes; add variants only in this file.
+// PRACTICE 4 CHECKPOINT: 🟢 TERMINAL (`docs/modeling-discipline.md` §4 GREEN)
+// Ledger (dissolution patterns 1–4 at this declaration): (1) fact placement —
+// not cheaper than this sum (single ctrl classifier returning this coproduct).
+// (2) variant-as-data — three arms are semantically distinct failure classes for
+// GraphQL-vs-REST fallback, not relabelings of one fact. (3) numeric/parametric
+// merge — N/A. (4) scatter — N/A (one consumer). Dissolution when ctrl emission
+// consumes richer `GitHubErrorShape` evidence and this enum grows or retires;
+// until then add variants only in this file.
 type RestFallbackReason
   = GraphqlIncomplete
   | GraphqlRateLimited
