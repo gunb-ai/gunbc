@@ -282,7 +282,10 @@ fn r3_gate_87_placeholder_dissolution_ledger_matches_authority() {
     let ledger_path =
         workspace_root().join("docs/r3-gate-87-cementing-placeholder-dissolution-ledger.md");
     let doc = std::fs::read_to_string(&ledger_path).unwrap_or_else(|e| {
-        panic!("read gate-#87 dissolution ledger {}: {e}", ledger_path.display());
+        panic!(
+            "read gate-#87 dissolution ledger {}: {e}",
+            ledger_path.display()
+        );
     });
 
     let ledger_dag_keys = parse_g87_ledger_marker_block(
