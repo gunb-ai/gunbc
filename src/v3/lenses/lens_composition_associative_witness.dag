@@ -1,7 +1,7 @@
 // lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for
 // `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).
 //
-// The runner checks associativity on every triple in `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`
+// The runner checks associativity on every triple in `lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES`
 // via `int_associativity_holds_all_triples` (not a single sample), not a structural
 // operator-shape recognizer.
 //
