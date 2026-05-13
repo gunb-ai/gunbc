@@ -14,7 +14,7 @@
 
 ## §1. Classification legend
 
-- **(a) RETIREABLE NOW** — no named structural blocker in §3; suitable for near-term cycle worker PRs under `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` (still subject to P5 / same-PR dissolution receipts).
+- **(a) RETIREABLE NOW** — no named structural blocker in §3 (**NON_TEST**) or §4 (**FRAGMENTS**); suitable for near-term cycle worker PRs under `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` (still subject to P5 / same-PR dissolution receipts).
 - **(b) BLOCKED ON NAMED PREREQ** — cite §1.8 row, Gap id, or audit doc anchor.
 - **(c) BLOCKED ON NEW CANVAS** — needs new or expanded Mgr canvas before census line can drop (or first-pass taxonomy bucket pending refinement).
 
@@ -89,9 +89,20 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | `src/v3/compiler/src/test_runner.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/wall_clock_ratchet_manifest.rs` | **(a)** | Ratchet manifest host; candidate for batch with timing/WAD receipts (Mgr provisional (a)). |
 
-## §4. Changelog
+## §4. `EXPECTED_HAND_AUTHORED_FRAGMENTS` (T-PB-A / §1.8 gate **#8** companion)
+
+Same **(a)/(b)/(c)** lens as §3; **2** rows at this snapshot (`awk` window on `EXPECTED_HAND_AUTHORED_FRAGMENTS`). These are **non-`.rs` scaffolds** counted in Σ alongside `NON_TEST` for pure-bootstrap inventory (`project_r3_close_load_bearing_non_test_inventory` framing) — **not** the **122** `EXPECTED_HAND_AUTHORED_TEST` slice.
+
+| Path | Class | Blocker / rationale |
+|------|-------|---------------------|
+| `src/v3/compiler/parse_parser_body.txt` | **(b)** | **SG-2b / SG-3f** parser-body reflection follow-on; census header ties dissolution to the same trigger as this scaffold’s own header (`parse_parser_body.txt` — not an opportunistic delete without SG program). |
+| `src/v3/compiler/src/lens_testgen_body.txt` | **(b)** | **Lens testgen** producer-body scaffold; dissolves when producer-owned/generated path owns the same surface (see census commentary on `lens_testgen` / gate **#6** retirement arc — not isolated fragment-only work). |
+
+**Director read (msg_5b04ea2c):** both rows classify under **(b) named prereq**-shaped blockers (SG / lens-testgen programs), **same debt grammar** as the bulk of the 55-row `NON_TEST` table — they **fold into Gap 1 / gate #8** ratchet work rather than minting a **third** parallel “fragment-only” close program. No separate Director sub-program request from this pass.
+
+## §5. Changelog
 
 | Date | Change |
 |------|--------|
 | 2026-05-13 | Initial taxonomy + Track A six-path dispatch list (Director msg_84abadad). |
-| 2026-05-13 | §0 count narrative aligned to Director msg_dda96d21 (55 NON_TEST + 122 TEST = 177; Σ 179). |
+| 2026-05-13 | §4: `EXPECTED_HAND_AUTHORED_FRAGMENTS` (2) classified (Director msg_5b04ea2c). |
