@@ -41,5 +41,5 @@ data r3_verification_l4_emit_eval_mixed_lineage_claim: TestClaim = {
 
 data r3_verification_l4_emit_eval_mixed_lineage_suite: TestSuite = {
   name: "r3_verification_l4_emit_eval_mixed_lineage_suite",
-  claims: [r3_verification_l4_emit_eval_mixed_lineage_claim]
+  claims: [Enumerated(r3_verification_l4_emit_eval_mixed_lineage_claim)]
 }

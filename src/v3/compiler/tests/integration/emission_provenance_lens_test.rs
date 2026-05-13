@@ -124,7 +124,7 @@ fn production_lens_module_compiles_cleanly() {
     // could drift syntactically or type-wise without any active test
     // failing. This smoke compiles the production .dag file directly
     // (it lives outside the bootstrap, like other `src/v3/lenses/*.dag`
-    // entries — compare `lens_apply.rs:1020` for `named_function_count.dag`),
+    // entries — compare `lens_declaration_apply.rs` for `named_function_count.dag` authority),
     // so syntactic / type drift fails this test instead of slipping
     // through.
     let _dag = cached_compile_to_dag(

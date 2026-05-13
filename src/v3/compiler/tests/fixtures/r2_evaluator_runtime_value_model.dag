@@ -20,5 +20,5 @@ data evaluator_runtime_value_model_landed: TestClaim = {
 
 data r2_evaluator_runtime_value_model_suite: TestSuite = {
   name: "r2_evaluator_runtime_value_model_suite",
-  claims: [evaluator_runtime_value_model_landed]
+  claims: [Enumerated(evaluator_runtime_value_model_landed)]
 }

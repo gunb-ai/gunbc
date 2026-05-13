@@ -12,18 +12,26 @@
 //! `TestClaim.source` is orthogonal). Still
 //! **not** a `pb_*` gate and still not a Rust-deletion signal.
 //!
+//! **R3 Cluster M #84 — R1C-D/E tests-as-data pilot:** R1C-D (`t_r1c_d_pb_census_gates.dag`)
+//! and R1C-E (`r1c_e_emit_gates.template.dag` + omni template) integration receipts
+//! live here with gate #74 (`t_r3_tests_as_data_demonstration.dag`), replacing dedicated
+//! `r1c_*_test.rs` shims. **Accounting:** SG-0 progress for #2715 is the **−3** census paths
+//! plus `.dag`-native predicates — not gate #84 / facet-3 'zero hand-Rust tests' closure; see
+//! `sg0_census_test.rs` on `t_pb_b_1_dag_runner_test.rs` (remaining obligation cites ROADMAP
+//! T-PB-B until the test census is empty).
+//!
 //! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
 //! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
-//! checkable receipt = **PR #2639 description**, not inferred deletes).
-
-use std::collections::BTreeSet;
+//! checkable receipt = **PR #2639 description**, not inferred deletes). Table lives in
+//! `v3_compiler::r3_gate_87_cementing_regen_runner_suites` (shared with `cementing_dispatch`).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES;
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
-fn lower(source: &'static str, file: &'static str) -> Dag {
+fn lower(source: &str, file: &str) -> Dag {
     // `compile_to_dag` returns `Ok` iff the module diagnostic table is empty
     // (`lib.rs` — any semantic issue is `Err(Semantic(dag))` with non-empty
     // diagnostics). The retired `t_pb_b_1_tests_dag_smoke_test` required the
@@ -87,6 +95,51 @@ fn run_suite_all_pass_with_expected_claim_names(
         !results.is_empty() && results.iter().all(|r| r.result == ClaimResult::Pass),
         "suite `{suite_name}`: expected every claim to pass, got {results:?}"
     );
+}
+
+fn claim_value_by_decl_name(dag: &Dag, declaration_name: &str) -> TestClaimValue {
+    let decl = dag
+        .declaration_by_name(declaration_name)
+        .unwrap_or_else(|| panic!("expected TestClaim declaration `{declaration_name}`"));
+    TestClaimValue::from_declaration(decl)
+        .unwrap_or_else(|reason| panic!("`{declaration_name}` should lower as TestClaim: {reason}"))
+}
+
+/// R1C-D receipt: six PB census claims must dispatch to wired evaluators (no `NotYetImplemented`)
+/// and evaluate to structural `Pass` or `Fail` — same acceptance as the former
+/// `r1c_d_pb_census_gates_test` shim (`docs/briefs/r1-closure-manager.md` §R1C-D).
+fn run_suite_r1c_d_pb_census_receipt(dag: &Dag, suite_name: &str) {
+    const EXPECTED_CLAIM_NAMES: &[&str] = &[
+        "pb_hand_rust_at_shim_floor",
+        "lens_producer_files_remaining",
+        "pb_self_compile_fixed_point",
+        "pb_compiler_std_ratchet_zero",
+        "pb_test_file_generated_from_dag",
+        "pb_rust_tests_outside_residual_zero",
+    ];
+    let results = TestRunner::new(dag).run_suite(suite_name);
+    let actual_names: Vec<&str> = results.iter().map(|r| r.claim_name.as_str()).collect();
+    assert_eq!(
+        actual_names, EXPECTED_CLAIM_NAMES,
+        "suite `{suite_name}`: claim order must match the declared deliverable list"
+    );
+    let unimplemented: Vec<_> = results
+        .iter()
+        .filter(|r| matches!(r.result, ClaimResult::NotYetImplemented(_)))
+        .collect();
+    assert!(
+        unimplemented.is_empty(),
+        "PB census predicates must dispatch to wired evaluators, not `NotYetImplemented`. Offenders:\n{unimplemented:#?}"
+    );
+    for result in &results {
+        match &result.result {
+            ClaimResult::Pass | ClaimResult::Fail(_) => {}
+            other => panic!(
+                "PB census claim `{}` must evaluate to Pass or Fail, got {:?}",
+                result.claim_name, other
+            ),
+        }
+    }
 }
 
 #[test]
@@ -153,8 +206,8 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
 /// R3 gate #74 — one Rust integration test ported to `.dag` `TestClaim` data and
 /// executed end-to-end through `TestRunner`.
 ///
-/// Port target: `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
-/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserts the
+/// Port target: retired `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
+/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserted the
 /// pipeline smoke fixture lowers cleanly; this carrier expresses the same
 /// surface as a `Compiles` claim over the embedded subject program.
 #[test]
@@ -167,6 +220,116 @@ fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
         &dag,
         "suite_tests_as_data_demonstration",
         &["tests-as-data port of pipeline smoke fixture compiles"],
+    );
+
+    let baseline = lower(
+        include_str!("../dag/t_pb_b_1_pipeline_smoke.dag"),
+        "src/v3/compiler/tests/dag/t_pb_b_1_pipeline_smoke.dag",
+    );
+    let baseline_claim = claim_value_by_decl_name(&baseline, "claim_pipe_unary_compiles");
+    let demonstration_claim =
+        claim_value_by_decl_name(&dag, "claim_tests_as_data_pipeline_smoke_compiles");
+    assert_eq!(
+        demonstration_claim.source, baseline_claim.source,
+        "gate #74 demonstration claim must stay byte-aligned with the pipeline-smoke subject"
+    );
+    assert_eq!(
+        demonstration_claim.file_name, baseline_claim.file_name,
+        "gate #74 demonstration claim must keep the same subject file authority"
+    );
+}
+
+const R1C_D_PB_CENSUS_GATES_PATH: &str = "src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag";
+const R1C_D_PB_CENSUS_SUITE: &str = "r1_pb_census_gates_suite";
+
+/// R1C-D integration receipt: the six PB census gates are `TestClaim` + predicate **data** in
+/// `t_r1c_d_pb_census_gates.dag` (path: `R1C_D_PB_CENSUS_GATES_PATH`), not in this Rust body. This
+/// `#[test]` only lowers the module and runs the suite through `TestRunner` (runner-only, same
+/// class as gate #74). **P5(b):** merge-visible SG-0 receipt is **−3** deleted census paths; **not**
+/// gate #84 / facet-3 closure — see `sg0_census_test.rs` on this file's `EXPECTED_HAND_AUTHORED_TEST`
+/// line and the module doc above.
+#[test]
+fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r1c_d_pb_census_gates.dag"),
+        R1C_D_PB_CENSUS_GATES_PATH,
+    );
+    run_suite_r1c_d_pb_census_receipt(&dag, R1C_D_PB_CENSUS_SUITE);
+}
+
+const R1C_E_EMIT_GATES_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates.template.dag");
+const R1C_E_EMIT_GATES_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates.template.dag";
+const R1C_E_EMIT_GATES_BIN_PATH: &str = env!("CARGO_BIN_EXE_r1c_e_emit_gates");
+const R1C_E_BIN_PLACEHOLDER: &str = "__R1C_E_BIN__";
+
+fn substituted_r1c_e_emit_gates_source() -> String {
+    assert!(
+        R1C_E_EMIT_GATES_TEMPLATE.contains(R1C_E_BIN_PLACEHOLDER),
+        "template must contain `{R1C_E_BIN_PLACEHOLDER}` placeholder for bin substitution \
+         (see manager guidance, #973): {R1C_E_EMIT_GATES_TEMPLATE_PATH}"
+    );
+    R1C_E_EMIT_GATES_TEMPLATE.replace(R1C_E_BIN_PLACEHOLDER, R1C_E_EMIT_GATES_BIN_PATH)
+}
+
+/// R1C-E: emit-gate claims live in `r1c_e_emit_gates.template.dag` (host path substituted in
+/// `substituted_r1c_e_emit_gates_source`). Runner-only wiring; same P5(b) / #84 accounting as
+/// `r1c_d_pb_census_gates_suite_evaluates_through_runner`.
+#[test]
+fn r1c_e_emit_gates_suite_passes_through_runner() {
+    let source = substituted_r1c_e_emit_gates_source();
+    let dag = lower(&source, R1C_E_EMIT_GATES_TEMPLATE_PATH);
+
+    let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_suite");
+    assert!(
+        !results.is_empty(),
+        "suite `r1c_e_emit_gates_suite` should contain at least one claim"
+    );
+    let failures: Vec<_> = results
+        .iter()
+        .filter(|r| r.result != ClaimResult::Pass)
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "r1c_e_emit_gates_suite: {} claim(s) did not Pass:\n{:#?}",
+        failures.len(),
+        failures
+    );
+}
+
+const R1C_E_OMNI_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates_omni.template.dag");
+const R1C_E_OMNI_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates_omni.template.dag";
+
+fn substituted_r1c_e_emit_gates_omni_source() -> String {
+    assert!(
+        R1C_E_OMNI_TEMPLATE.contains(R1C_E_BIN_PLACEHOLDER),
+        "omni template must contain `{R1C_E_BIN_PLACEHOLDER}`: {R1C_E_OMNI_TEMPLATE_PATH}"
+    );
+    R1C_E_OMNI_TEMPLATE.replace(R1C_E_BIN_PLACEHOLDER, R1C_E_EMIT_GATES_BIN_PATH)
+}
+
+/// Multi-target omni emit claim — requires **go** and **python3** on `PATH` (ignored in default CI).
+#[test]
+#[ignore]
+fn r1c_e_emit_gates_omni_suite_passes() {
+    let source = substituted_r1c_e_emit_gates_omni_source();
+    let dag = lower(&source, R1C_E_OMNI_TEMPLATE_PATH);
+
+    let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_omni_suite");
+    assert!(
+        !results.is_empty(),
+        "suite `r1c_e_emit_gates_omni_suite` should have claims"
+    );
+    let failures: Vec<_> = results
+        .iter()
+        .filter(|r| r.result != ClaimResult::Pass)
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "r1c_e_emit_gates_omni_suite: {} claim(s) did not Pass:\n{:#?}",
+        failures.len(),
+        failures
     );
 }
 
@@ -254,105 +417,31 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
     );
 }
 
-// R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
-// `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
-const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
-    "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_";
-const R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX: &str = ".dag";
-
-/// `LensRegistryEntry.name` values implied by `R3_GATE_87_CEMENTING_REGEN_SUITES` harness `file`
-/// paths (`t_r3_gate_87_cementing_regen_<name>.dag`). **Single authority** for the gate-#87
-/// inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test` compares live `regen.dag`
-/// names against this set so a new registry row cannot ship without a matching runner row.
-pub(crate) fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<String> {
-    R3_GATE_87_CEMENTING_REGEN_SUITES
-        .iter()
-        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
-        .collect()
-}
-
-fn lens_name_from_gate_87_harness_path(file: &str) -> String {
-    file.strip_prefix(R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX)
-        .and_then(|rest| rest.strip_suffix(R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX))
-        .unwrap_or_else(|| {
-            panic!(
-                "R3_GATE_87_CEMENTING_REGEN_SUITES: harness path must be \
-                 `{prefix}<lens_name>{suffix}`, got `{file}`",
-                prefix = R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX,
-                suffix = R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX,
-            )
-        })
-        .to_string()
-}
-
-const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost.dag",
-        "r3_gate_87_cementing_regen_cost_suite",
-        &["cementing_regen_cost"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag",
-        "r3_gate_87_cementing_regen_cost_symbolic_suite",
-        &["cementing_regen_cost_symbolic"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag",
-        "r3_gate_87_cementing_regen_cost_target_realization_suite",
-        &["cementing_regen_cost_target_realization"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag",
-        "r3_gate_87_cementing_regen_effect_enumeration_suite",
-        &["cementing_regen_effect_enumeration"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_infer_helpers.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
-        "r3_gate_87_cementing_regen_infer_helpers_suite",
-        &["cementing_regen_infer_helpers"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_lower_helpers.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
-        "r3_gate_87_cementing_regen_lower_helpers_suite",
-        &["cementing_regen_lower_helpers"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_provenance.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag",
-        "r3_gate_87_cementing_regen_provenance_suite",
-        &["cementing_regen_provenance"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_structural_resolution.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag",
-        "r3_gate_87_cementing_regen_structural_resolution_suite",
-        &["cementing_regen_structural_resolution"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_unused_parameters.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag",
-        "r3_gate_87_cementing_regen_unused_parameters_suite",
-        &["cementing_regen_unused_parameters"],
-    ),
-    (
-        include_str!("../dag/t_r3_gate_87_cementing_regen_variant_payload.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
-        "r3_gate_87_cementing_regen_variant_payload_suite",
-        &["cementing_regen_variant_payload"],
-    ),
-];
+// R3 gate #74 (`tests_as_data_demonstration`) — executable `.dag` `TestClaim` + runner receipt
+// lives in `r3_tests_as_data_demonstration_suite_passes_through_runner` above (and
+// `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
+// separate ratchet; do not conflate the two in PR titles or census expectations.
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
+    // One `compile_to_dag` per `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`
+    // harness — the on-disk file is the single authority for that row (INVARIANTS P2); no
+    // duplicated copy in a bundle module.
     for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
         let dag = lower(source, file);
         run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
     }
+}
+
+#[test]
+fn cementing_dispatch_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "cementing_dispatch_suite",
+        &["cementing_dispatch_projection_matches_register_and_regen"],
+    );
 }

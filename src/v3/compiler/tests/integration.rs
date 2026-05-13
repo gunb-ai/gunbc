@@ -45,17 +45,19 @@ mod anthropic_messages_wire_demo_test;
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
 mod anthropic_schema_lockstep_test;
+#[path = "integration/anthropic_tool_result_wire_demo_test.rs"]
+mod anthropic_tool_result_wire_demo_test;
 #[path = "integration/bridge_ledger_carrier_test.rs"]
 mod bridge_ledger_carrier_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
 mod bridge_lower_helpers_patch_zero_residual_test;
 #[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
 mod canonical_lens_bridge_ratchet_test;
-#[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
-mod cementing_lens_registry_dispatch_test;
+#[path = "integration/cementing/cementing_provenance_origin_integration_test.rs"]
+mod cementing_provenance_origin_integration_test;
 #[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
 mod complexity_lens_behavioral_completion;
-#[path = "integration/cost_lens_symbolic_consumer_test.rs"]
+#[path = "integration/cementing/cost_lens_symbolic_consumer_test.rs"]
 mod cost_lens_symbolic_consumer_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
@@ -67,6 +69,10 @@ mod e_i_lane_induction_preflight_test;
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
+#[path = "integration/extdeps_sql_transport_test.rs"]
+mod extdeps_sql_transport_test;
+#[path = "integration/file_attachment_substrate_carrier_test.rs"]
+mod file_attachment_substrate_carrier_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
@@ -165,12 +171,6 @@ mod pipe_desugar;
 mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
 mod r1_release_acceptance_test;
-#[path = "integration/r1c_d_pb_census_gates_test.rs"]
-mod r1c_d_pb_census_gates_test;
-#[path = "integration/r1c_e_emit_gates_dag_test.rs"]
-mod r1c_e_emit_gates_dag_test;
-#[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]
-mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/r3_class_2_function_valued_data_test.rs"]
@@ -179,6 +179,8 @@ mod r3_class_2_function_valued_data_test;
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
 mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_gate_60_phase2_width_nat_parser_test.rs"]
+mod r3_gate_60_phase2_width_nat_parser_test;
 #[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
 mod r3_gate_87_lens_cementing_regen_receipts_test;
 #[path = "integration/r3_lens_producer_retirement_executable_witness_test.rs"]
@@ -223,8 +225,6 @@ mod t_las_complexity_contract_compile_error_test;
 mod t_las_crdt_cost_basis_demo_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
-#[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
-mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
 mod tc1_substrate_lens_eta_equivalence_deferred_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs"]
@@ -247,6 +247,8 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
+#[path = "integration/common/wiring_scanner_test.rs"]
+mod wiring_scanner_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
 
@@ -1085,6 +1087,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/string_type.dag"),
             "dsl/std/string_type.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_process_algebra_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/process_algebra.dag"),
+            "dsl/std/process_algebra.dag",
         );
     }
 

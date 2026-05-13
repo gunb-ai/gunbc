@@ -14,7 +14,7 @@ Heuristic classification:
   - Comment cites "T-LensProducer" / "PB-Runtime" → Class E (gates #5/#6/#7)
   - Comment cites "substrate-gap" / "substrate-capability" → Class A
   - Comment cites "Pattern-A" / "NotYetImplemented" → Class B
-  - Comment cites "Rust mirror" / "typed-carrier" / "EmissionDiagnostic" → Class C
+  - Comment cites "Rust mirror" / "typed-carrier" / "EmissionDiagnostic" / typed expected-value carrier gaps → Class C
   - Comment cites "freshness gate" / "regenerated" / "bootstrap" → Class D
   - Comment cites "operator/algebra ontology" / "duplicate authority" → Class F
   - No comment OR generic dissolution → Class G (Mgr review)
@@ -45,6 +45,7 @@ CLASS_RULES = [
     (re.compile(r'substrate[- ]gap|substrate-capability|Class\s*[2-6]\s*Gap', re.I), 'A', 'Substrate-gap-blocked'),
     (re.compile(r'Pattern-A|NotYetImplemented|TC1|TC2|TC3|RustDagIsomorphism|BridgeLedgerZero|SymbolicCostExprEquals', re.I), 'B', 'Pattern-A NYI'),
     (re.compile(r'Rust mirror|typed[- ]carrier|EmissionDiagnostic|EvalStrategy|target-primitive', re.I), 'C', 'typed-carrier+Rust-mirror'),
+    (re.compile(r'ComplexitySummary|nested `?SymbolicCost`? expected values|STRUCTURAL_SYMBOLIC_COST_DATA', re.I), 'C', 'typed expected-value carrier gap'),
     (re.compile(r'freshness gate|regenerat|bootstrap|generated.*ratchet', re.I), 'D', 'Generated bridge with freshness gate'),
     (re.compile(r'operator.*ontology|OperatorSpec|OperatorKind|BinaryOpRow|duplicate authority', re.I), 'F', 'Operator/algebra ontology duplication'),
     (re.compile(r'bench|measurement|perf.*budget|Criterion harness|measur', re.I), 'STRUCTURAL', 'Measurement infrastructure (§3.A grandfathered)'),
@@ -148,7 +149,6 @@ def main():
     lines.append('2. For each Class A-F entry: confirm dissolution-trigger comment matches lane gate; surface drift to lane-Mgr if mismatch.')
     lines.append('3. For each untagged entry: add explicit dissolution-trigger comment per option-(c) discipline OR escalate as "no clear path" to Director.')
     lines.append('4. Classifications fold back into `docs/audit/r3-debt-sweep-2026-05-06.md` §1 Class A-G rows as per-entry sub-rows or row-aggregation.')
-    lines.append('')
 
     OUTPUT.write_text('\n'.join(lines) + '\n')
     print(f'wrote {OUTPUT} ({total} entries; {untagged} untagged)', file=sys.stderr)

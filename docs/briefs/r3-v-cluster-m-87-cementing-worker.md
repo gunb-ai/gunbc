@@ -1,8 +1,10 @@
 # R3 Cluster M Phase 2 — #87 Cementing-Test Discipline Worker Brief
 
-**Status:** PRE-AUTH DISPATCH-READY (worker-facing). Light port of the multi-gate PRE-AUTH brief [`r3-v-tests-as-data-v1-worker.md`](r3-v-tests-as-data-v1-worker.md) narrowed to gate #87 per Cluster M Phase 2 dispatch overlay.
+**Status:** **PATTERN LANDED** — `docs/r3-program-plan.md` §1.8 gate **#87** `lens_cementing_test_discipline_complete` is **CONSUMER_LANDED + PASSING** at HEAD (receipt stack **PR #2639** + **PR #2757**; see §7). **Do not dispatch** new workers against the pre-land “first migration / dispatch successor” checklist; Phase 3 bulk-port consumes this pattern via [`r3-v-cluster-m-84-bulkport-coordinator.md`](r3-v-cluster-m-84-bulkport-coordinator.md). Historical intent below is retained for audit trail.
 
-**Owner**: worker (TBD on dispatch); coordinator: Verification Mgr (wise-bear-525 / gunbc#2075).
+This file began as a PRE-AUTH worker-facing port of [`r3-v-tests-as-data-v1-worker.md`](r3-v-tests-as-data-v1-worker.md) narrowed to gate #87 per Cluster M Phase 2 dispatch overlay.
+
+**Owner**: Verification Mgr (historical coordinator: wise-bear-525 / gunbc#2075); **no active worker dispatch** for #87 Phase 2 at HEAD.
 
 **Authority**:
 - Locked design: [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §5 (Cementing test discipline) + §C5 (predicate-class table).
@@ -15,6 +17,8 @@
 ---
 
 ## §0. Scope
+
+**Historical scope** (pre-land checklist; execution complete per Status banner + §7):
 
 **Gate #87** `lens_cementing_test_discipline_complete`. Author the **discipline pattern** (`.dag` cementing-test shape), land the **first migration receipt** (smallest hand-Rust cementing test → `.dag` `TestClaim`), and prepare the **dispatch ratchet successor** that replaces `cementing_lens_registry_dispatch_test.rs`.
 
@@ -79,12 +83,13 @@ This dispatch successor lands in a follow-on slice within Phase 2 (after first-r
 
 ## §5. Receipt + ledger updates
 
-Per Phase 2 dispatch overlay §4:
-- #87 status DECLARED → CONSUMER_LANDED on first-migration receipt land (§3).
-- #87 status CONSUMER_LANDED → PASSING when dispatch-ratchet successor confirms 100% lens coverage in `.dag` cementing-test form.
-- Verification Mgr advances `docs/r3-program-plan.md` §1.8 row #87 per §10 cadence.
+**Achieved (ledger)**: `docs/r3-program-plan.md` §1.8 row #87 documents **CONSUMER_LANDED + PASSING** with the regen enumeration + runner + `LensOutputEquals` / `DifferentialEquals` / frozen-oracle witness stack (not re-argued here).
 
-Velocity context (per Phase 2 overlay §5): #87 dissolves ~20-25 of the SG-0 hand-Rust test entries (cementing-test class is the largest single class). Phase 2 is therefore a substantial bulk-dissolution sub-event en route to #84 close.
+Historical Phase 2 overlay milestones (for traceability):
+- ~~DECLARED → CONSUMER_LANDED on first-migration receipt~~
+- ~~CONSUMER_LANDED → PASSING when dispatch-ratchet successor confirms coverage~~ — superseded by the **§1.8** acceptance text tied to `regen.dag` + PR #2639 / #2757.
+
+Velocity context (per Phase 2 overlay §5): bulk SG-0 shrink for the full cementing-test **class** continues under **#84** Phase 3, not by re-opening #87.
 
 ## §6. Cross-Mgr signoff
 
@@ -93,6 +98,29 @@ When the first-receipt slice lands, original lane Mgr for the migrated lens revi
 - Verification Mgr (this lane): verification-tier cementing tests.
 
 This signoff workflow scales to Phase 3 per-class bulk-port (Phase 3 brief encodes the same pattern at scale).
+
+## §7. As-shipped pattern index (HEAD)
+
+Authoritative gate narrative: `docs/r3-program-plan.md` §1.8 row **#87** (grep at HEAD before citing Status).
+
+**Dispatch + runner (single authority for which `.dag` modules the runner loads)**:
+- `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` — `R3_GATE_87_CEMENTING_REGEN_SUITES` table + `r3_gate_87_cementing_regen_lens_names_for_runner_table`.
+- `src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs` — `r3_gate_87_cementing_regen_lens_suites_pass_through_runner` (PB-B-1 harness).
+
+**Per-lens regen harnesses** (`TestSuite` in each file; naming convention `t_r3_gate_87_cementing_regen_<lens>.dag`):
+- `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag` (10 lenses at HEAD; extend only with §1.8 / register + runner table updates in the same PR).
+
+**Band-C dispatch receipt** (register + regen projection vs receipt list):
+- `src/v3/compiler/tests/dag/cementing_dispatch.dag` — `CementingDispatchMatchesProjection` + `cementing_band_c_v2_complete_receipts`.
+- `src/v3/compiler/src/cementing_dispatch.rs` — host-side evaluation / wiring shared with the `.dag` claim.
+
+**Rust pin / behavioral contracts where `.dag` predicates stay intentionally narrower**:
+- `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`.
+
+**Design + ops prose** (cite-and-execute; not second authorities):
+- `docs/design-tests-as-data-completeness.md` §5 / §C5 (cementing discipline).
+- `TESTING.md` — *Cementing tests (Band C — lens subsumption)*.
+- `docs/v3-lens-capability-register.md` — human-readable mirror of `lens_capability_register_rows`.
 
 ---
 

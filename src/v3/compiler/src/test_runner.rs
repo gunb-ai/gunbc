@@ -3,6 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
@@ -16,13 +17,18 @@ use crate::evaluator::{
 };
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
-use crate::lens_apply::{
+use crate::lens_cost::{cost_of, CostLookup};
+use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_target_realization::type_realization_meta;
+use crate::lens_declaration_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     int_identity_witness_holds, reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
-use crate::lens_cost::{cost_of, CostLookup};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_provenance::{origin_of, Origin};
+use crate::lens_structural_resolution;
+use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
     analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
@@ -114,8 +120,8 @@ const L5_REQUIRED_TOOLCHAINS: &[&str] =
 /// fail if the generator drifts from the spec (P3 / api-review #764).
 ///
 /// D1 `apply_lens_declaration` on canonical `cost_of` is **not** used: lowering that lens
-/// introduces substrate `Loop` for list recursion, and [`crate::lens_apply::EvalCtx::eval_loop`]
-/// returns [`crate::lens_apply::LensApplyError::UnimplementedLoopBound`] until iteration semantics
+/// introduces substrate `Loop` for list recursion, and [`crate::lens_declaration_apply::EvalCtx::eval_loop`]
+/// returns [`crate::lens_declaration_apply::LensApplyError::UnimplementedLoopBound`] until iteration semantics
 /// land. **Dissolution:** delete this host mirror once D1 can interpret those `Loop` nodes and route
 /// `v3_program_cost` through `apply_lens_declaration` on `cost_of`.
 type LaneEHostCostAcc = Vec<(PortId, CostLookup)>;
@@ -886,13 +892,13 @@ pub enum AlgebraicLawProgramError {
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
 /// **`Associativity` / `Commutativity` / `Identity` — bounded operational witnesses, not substrate law proof:**
-/// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
-/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
+/// uses [`int_associativity_holds_all_triples`](crate::lens_declaration_apply::int_associativity_holds_all_triples)
+/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
 /// single lucky `(a,b,c)` cannot certify a false law; `Commutativity` uses
-/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way;
-/// `Identity` uses [`int_identity_witness_holds`](crate::lens_apply::int_identity_witness_holds)
-/// over [`IDENTITY_WITNESS_SAMPLES`](crate::lens_apply::IDENTITY_WITNESS_SAMPLES) /
-/// [`IDENTITY_WITNESS_CANDIDATES`](crate::lens_apply::IDENTITY_WITNESS_CANDIDATES), requiring a
+/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_declaration_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way;
+/// `Identity` uses [`int_identity_witness_holds`](crate::lens_declaration_apply::int_identity_witness_holds)
+/// over [`IDENTITY_WITNESS_SAMPLES`](crate::lens_declaration_apply::IDENTITY_WITNESS_SAMPLES) /
+/// [`IDENTITY_WITNESS_CANDIDATES`](crate::lens_declaration_apply::IDENTITY_WITNESS_CANDIDATES), requiring a
 /// **unique** candidate element so ambiguous finite-table fits fail closed.
 /// These paths do **not** consume quantified facts declared on `OrderedRing` / semigroup carriers
 /// in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here as full
@@ -974,7 +980,7 @@ pub fn eval_algebraic_law_for_claim_program(
 
 /// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
 /// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
-/// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
+/// material breadth (see `lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
 const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
 const _: () = assert!(IDENTITY_WITNESS_SAMPLES.len() > 1);
 
@@ -993,7 +999,7 @@ fn int_commutativity_holds_all_pairs(
     program_dag: &Dag,
     lens_decl_id: DeclarationId,
     pairs: &[(i64, i64)],
-) -> Result<bool, crate::lens_apply::LensApplyError> {
+) -> Result<bool, crate::lens_declaration_apply::LensApplyError> {
     let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n.to_string()));
     for &(a, b) in pairs {
         let left = apply_lens_declaration(program_dag, None, lens_decl_id, &[int(a), int(b)])?;
@@ -2447,28 +2453,82 @@ impl<'a> TestRunner<'a> {
         };
         claims
             .iter()
-            .map(|claim_ref| match claim_ref {
-                FieldValue::Reference(id) => {
-                    let decl = self.dag.declaration(*id);
-                    match TestClaimValue::from_declaration(decl) {
-                        Ok(claim) => self.run_claim(&claim),
-                        Err(reason) => ClaimEvaluation {
-                            claim_name: decl
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| format!("Declaration#{}", id.raw())),
-                            result: ClaimResult::Fail(reason),
-                        },
-                    }
-                }
-                other => ClaimEvaluation {
-                    claim_name: suite_name.to_string(),
-                    result: ClaimResult::Fail(format!(
-                        "TestSuite `{suite_name}` claim entry is not a reference: {other:?}"
-                    )),
-                },
-            })
+            .map(|entry| self.run_suite_entry(suite_name, entry))
             .collect()
+    }
+
+    fn run_suite_entry(&self, suite_name: &str, entry: &FieldValue) -> ClaimEvaluation {
+        let Some((label, payload)) = self.variant_value(entry) else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` claim entry is not a SuiteClaim variant: {entry:?}"
+                )),
+            };
+        };
+        // Both `SuiteClaim` variants are single-argument coproduct arms
+        // (`Enumerated(TestClaim)` / `Quantified(QuantifiedTestClaim)`) — any
+        // other payload arity is ill-shaped and must fail closed at the
+        // boundary (INVARIANTS P3).
+        if payload.len() != 1 {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` expects exactly 1 payload argument, got {}: {payload:?}",
+                    payload.len()
+                )),
+            };
+        }
+        let Some(FieldValue::Reference(id)) = payload.first() else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` payload is not a reference: {payload:?}"
+                )),
+            };
+        };
+        let decl = self.dag.declaration(*id);
+        let decl_label = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Declaration#{}", id.raw()));
+        match label.as_str() {
+            "Enumerated" => match TestClaimValue::from_declaration(decl) {
+                Ok(claim) => self.run_claim(&claim),
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            "Quantified" => match validate_quantified_claim_shape(decl) {
+                Ok(quantified_name) => ClaimEvaluation {
+                    // Single-authority claim identity (P2): use the
+                    // modeled `QuantifiedTestClaim.name`, matching
+                    // `obligation_for_quantified_claim`'s projection so
+                    // obligation-walk and runner reporting agree.
+                    claim_name: quantified_name,
+                    result: ClaimResult::NotYetImplemented(
+                        "QuantifiedTestClaim runner evaluation NotYetImplemented \
+                         (gate #85 substrate-only landing; quantifier evaluation deferred to \
+                         Cluster M Phase 2/3 per `docs/r3-structure.md` \
+                         §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline \
+                         + gate #84 bulk-port lanes; tracking row at \
+                         `docs/r3-program-plan.md` §1.8 row #85)"
+                            .to_string(),
+                    ),
+                },
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            other => ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` unknown SuiteClaim variant `{other}`"
+                )),
+            },
+        }
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
@@ -2501,7 +2561,10 @@ impl<'a> TestRunner<'a> {
                             self.eval_binary_dimension_report_equals(claim, &payload)
                         }
                         "SymbolicCostExprEquals" => {
-                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload, None)
+                        }
+                        "SymbolicCostExprEqualsForBindParam" => {
+                            self.eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload)
                         }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
@@ -2513,6 +2576,16 @@ impl<'a> TestRunner<'a> {
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
+                        "CementingDispatchMatchesProjection" => {
+                            match cementing_dispatch::evaluate_cementing_dispatch_projection(
+                                self.dag,
+                                claim.declaration_file.as_str(),
+                                &payload,
+                            ) {
+                                Ok(()) => ClaimResult::Pass,
+                                Err(reason) => ClaimResult::Fail(reason),
+                            }
+                        }
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
                         }
@@ -2779,6 +2852,17 @@ impl<'a> TestRunner<'a> {
             }
         };
 
+        if let Some(result) = self.eval_gate_87_cementing_projection(
+            lens_decl.name.as_deref(),
+            &lens_name,
+            &program_dag,
+            &claim.file_name,
+            expected_decl,
+            &expected_name,
+        ) {
+            return result;
+        }
+
         // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
         // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
         // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
@@ -3031,10 +3115,63 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_gate_87_cementing_projection(
+        &self,
+        lens_decl_name: Option<&str>,
+        lens_name: &str,
+        program_dag: &Dag,
+        file_name: &str,
+        expected_decl: &Declaration,
+        expected_name: &str,
+    ) -> Option<ClaimResult> {
+        let computed = match lens_decl_name? {
+            "gate87_cost_target_realization_meta_present" => {
+                i64::from(type_realization_meta(program_dag).is_some())
+            }
+            "gate87_effect_enumeration_no_transaction" => i64::from(matches!(
+                enumerate_effects(program_dag).transaction,
+                TransactionalPattern::NoTransaction
+            )),
+            "gate87_provenance_literal_origin_source" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    origin_of(program_dag, &bind.value),
+                    Origin::Source { .. }
+                ))
+            }
+            "gate87_structural_resolution_no_violations" => {
+                i64::from(lens_structural_resolution::check(program_dag).is_empty())
+            }
+            "gate87_unused_parameters_no_findings" => i64::from(
+                UnusedParametersLens::new(program_dag)
+                    .query(&UnusedParametersConfig::default())
+                    .is_empty(),
+            ),
+            _ => return None,
+        };
+
+        let expected = match expected_int_literal(expected_decl, expected_name, lens_name) {
+            Ok(v) => v,
+            Err(result) => return Some(result),
+        };
+        Some(if computed == expected {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected `{expected}`, computed `{computed}`"
+            ))
+        })
+    }
+
     fn eval_symbolic_cost_expr_equals_shape(
         &self,
         claim: &TestClaimValue,
         payload: &[FieldValue],
+        expected_param_index: Option<usize>,
     ) -> ClaimResult {
         let [expected_fv] = payload else {
             return ClaimResult::Fail(format!(
@@ -3071,7 +3208,15 @@ impl<'a> TestRunner<'a> {
                 Ok(p) => p,
                 Err(msg) => return ClaimResult::Fail(msg),
             };
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, expected_param_index)
+    }
 
+    fn eval_symbolic_cost_expr_equals_pattern(
+        &self,
+        claim: &TestClaimValue,
+        expected_pattern: SymbolicCostEqPattern,
+        expected_param_index: Option<usize>,
+    ) -> ClaimResult {
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
@@ -3092,13 +3237,31 @@ impl<'a> TestRunner<'a> {
         let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
             Ok(Some(name)) => name,
             Ok(None) => {
-                return ClaimResult::Fail(
-                    "SymbolicCostExprEquals: claim program has no top-level value bind — add at least \
-                     one top-level `let` / value declaration so the symbolic-cost lens has an output \
-                     port (same convention as emit-rust program-mode `main` per \
-                     `last_emit_rust_program_top_level_value_bind_name`)"
-                        .to_string(),
-                );
+                let bind_names: Vec<String> = program_dag
+                    .nodes()
+                    .iter()
+                    .filter_map(Behavior::as_bind)
+                    .filter(|bind| bind.span.file == claim.file_name)
+                    .filter(|bind| !bind.name.starts_with("<refinement:"))
+                    .map(|bind| bind.name.clone())
+                    .collect();
+                match bind_names.as_slice() {
+                    [name] => name.clone(),
+                    [] => {
+                        return ClaimResult::Fail(
+                            "SymbolicCostExprEquals: claim program has no top-level bind for the \
+                             symbolic-cost lens"
+                                .to_string(),
+                        );
+                    }
+                    names => {
+                        return ClaimResult::Fail(format!(
+                            "SymbolicCostExprEquals: claim program has no top-level value bind and \
+                             contains multiple function binds {names:?}; add a value bind or keep \
+                             the function-cost fixture to one bind"
+                        ));
+                    }
+                }
             }
             Err(err) => {
                 return ClaimResult::Fail(format!(
@@ -3112,6 +3275,14 @@ impl<'a> TestRunner<'a> {
                 "SymbolicCostExprEquals: bind `{bind_name}` not found in `{}`",
                 claim.file_name
             ));
+        };
+        let expected_pattern = match resolve_symbolic_cost_param_refs_for_bind(
+            expected_pattern,
+            bind,
+            expected_param_index,
+        ) {
+            Ok(pattern) => pattern,
+            Err(msg) => return ClaimResult::Fail(msg),
         };
 
         let computed = match symbolic_cost_of(&program_dag, &bind.value) {
@@ -3134,6 +3305,56 @@ impl<'a> TestRunner<'a> {
                 claim.file_name
             ))
         }
+    }
+
+    fn eval_symbolic_cost_expr_equals_for_bind_param(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv, param_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam payload should be exactly two fields \
+                 (expected, param); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let param_index = match bind_param_ref_index(param_fv) {
+            Ok(index) => index,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        let Some(expected_body) = expected_decl.value_body.as_ref() else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam: expected `{expected_name}` has no value body \
+                 to compare against"
+            ));
+        };
+        if let Err(reason) = self.validate_symbolic_cost_bind_param_expected_ref(expected_id) {
+            return ClaimResult::Fail(reason);
+        }
+        let expected_field = match field_value_from_value_body(self.dag, expected_body) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEqualsForBindParam: could not lower expected \
+                     `{expected_name}` to a structural value: {err:?}"
+                ));
+            }
+        };
+        let expected_pattern = match field_value_to_symbolic_cost_bind_param_expected_pattern(
+            self.dag,
+            &expected_field,
+        ) {
+            Ok(p) => p,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, Some(param_index))
     }
 
     /// Boundary check that `decl_id` references a declaration whose declared
@@ -3170,6 +3391,34 @@ impl<'a> TestRunner<'a> {
         Err(format!(
             "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
              `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
+    fn validate_symbolic_cost_bind_param_expected_ref(
+        &self,
+        decl_id: DeclarationId,
+    ) -> Result<(), String> {
+        let expected_id = self
+            .dag
+            .declaration_by_name("SymbolicCostBindParamExpected")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                "SymbolicCostExprEqualsForBindParam: `SymbolicCostBindParamExpected` type not \
+                 found in bootstrap"
+                    .to_string()
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == expected_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEqualsForBindParam `expected` must reference a declaration of type \
+             `SymbolicCostBindParamExpected`; `{}` does not.",
             decl_display_name(decl_id, decl)
         ))
     }
@@ -4037,7 +4286,7 @@ impl<'a> TestRunner<'a> {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(format!(
                 "AlgebraicLaw {law_label}: operational witness failed (must pass all fixed Int \
-                 samples in lens_apply; D1 apply — not a substrate declared-law check; see \
+                 samples in bounded D1 lens application; D1 apply — not a substrate declared-law check; see \
                  eval_algebraic_law_for_claim_program)"
             )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
@@ -4419,36 +4668,56 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if let Err(reason) = self.resolve_pb_marker_ref(
-            subset_predicate,
-            "subset_predicate",
-            "lens_producer_files_subset_predicate",
-            "LensProducerFilesSubsetPredicate",
-        ) {
-            return ClaimResult::Fail(reason);
-        }
-        let mut entries = match sg0_census_list_entries(&list_constant_name) {
+        let FieldValue::Reference(subset_id) = subset_predicate else {
+            return ClaimResult::Fail(format!(
+                "PB census predicate `subset_predicate` should be a DeclarationRef, got {subset_predicate:?}"
+            ));
+        };
+        let subset_name = self
+            .dag
+            .declaration(*subset_id)
+            .name
+            .as_deref()
+            .unwrap_or("");
+        let (predicate, subset_label): (fn(&str) -> bool, &str) = match subset_name {
+            "lens_producer_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "lens_producer_files_subset_predicate",
+                    "LensProducerFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_lens_producer_census_path, "lens-producer")
+            }
+            "bin_shim_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "bin_shim_files_subset_predicate",
+                    "BinShimFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_bin_shim_census_path, "bin-shim")
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "PB census predicate `subset_predicate` references unknown predicate `{other}`"
+                ));
+            }
+        };
+        let entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        // Gate #6: `lens_testgen.rs` retired into `lens_testgen_body.txt` (SG-0 fragment
-        // ratchet). The lens-producer census must still count that surface until `.dag`
-        // dissolution removes it (PB review #2392 — P5 progress-is-dissolution).
-        if list_constant_name == "expected_hand_authored_non_test" {
-            match sg0_census_list_entries("expected_hand_authored_fragments") {
-                Ok(fragments) => entries.extend(fragments),
-                Err(reason) => return ClaimResult::Fail(reason),
-            }
-        }
-        let count = entries
-            .iter()
-            .filter(|path| is_lens_producer_census_path(path))
-            .count() as i64;
+        let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "CensusSubsetCount `{list_constant_name}` lens-producer subset observed {count}"
+                "CensusSubsetCount `{list_constant_name}` {subset_label} subset observed {count}"
             ))
         }
     }
@@ -5234,6 +5503,34 @@ impl TestClaimValue {
     }
 }
 
+// Structural boundary validator for `QuantifiedTestClaim` declarations
+// referenced by `Quantified(...)` suite entries. Evaluation is deferred per
+// gate #85 but the declaration shape must still fail-closed at the boundary
+// (INVARIANTS P3 / fail-closed): only declarations matching the substrate
+// shape (`name`/`generator`/`quantifier`/`predicate`/`requires`) are accepted
+// as deferred quantified claims. Returns the modeled `name` field on success.
+fn validate_quantified_claim_shape(decl: &Declaration) -> Result<String, String> {
+    let fields = structural_fields(decl)
+        .ok_or_else(|| "QuantifiedTestClaim declaration is not structural".to_string())?;
+    let name = string_field(fields, "name")?;
+    field(fields, "generator")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `generator`".to_string())?;
+    field(fields, "quantifier")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `quantifier`".to_string())?;
+    field(fields, "predicate")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `predicate`".to_string())?;
+    match field(fields, "requires") {
+        Some(FieldValue::List(_)) => {}
+        Some(other) => {
+            return Err(format!(
+                "QuantifiedTestClaim `requires` is not a list: {other:?}"
+            ));
+        }
+        None => return Err("QuantifiedTestClaim is missing `requires`".to_string()),
+    }
+    Ok(name)
+}
+
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
@@ -5277,7 +5574,7 @@ fn decl_display_name(id: DeclarationId, decl: &Declaration) -> String {
 fn field_value_for_symbolic_cost_expected(
     fixture_dag: &Dag,
     body: &ValueBody,
-) -> Result<FieldValue, crate::lens_apply::LensApplyError> {
+) -> Result<FieldValue, crate::lens_declaration_apply::LensApplyError> {
     match body {
         ValueBody::Structural { fields } if fields.len() == 1 && fields[0].0 == "_" => {
             Ok(fields[0].1.clone())
@@ -5287,21 +5584,20 @@ fn field_value_for_symbolic_cost_expected(
 }
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
-/// fixture graph). [`PortId`] values are compared via stable numeric encoding (`FieldValue` literal
-/// `Int`, same as lens reflection). Per `algebra.dag`, [`crate::dag::SizeVariable`] identity is
-/// **`source_port` only** — `display_name` is parsed for structural validity but **must not**
-/// participate in equality (same rule as `SizeVariable`'s `PartialEq` implementation).
+/// fixture graph). Expected `.dag` fixtures may leave `SizeVariable.source_port` unresolved only
+/// when the predicate carries an explicit selected bind parameter. Otherwise identity follows
+/// `algebra.dag` / [`crate::dag::SizeVariable`]: `source_port` only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
     Linear {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Log {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Polynomial {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
         degree_raw: i64,
     },
     Product(Vec<SymbolicCostEqPattern>),
@@ -5309,17 +5605,23 @@ enum SymbolicCostEqPattern {
     Unknown(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SymbolicCostPortPattern {
+    Raw(u32),
+    ExpectedBindParam,
+}
+
 fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     match cost {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
         SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
-            source_port_raw: var.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
             degree_raw: degree.raw(),
         },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
@@ -5334,6 +5636,80 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         ),
         SymbolicCost::UnknownCost { _0: s } => SymbolicCostEqPattern::Unknown(s.clone()),
     }
+}
+
+fn resolve_symbolic_cost_param_refs_for_bind(
+    pattern: SymbolicCostEqPattern,
+    bind: &crate::dag::BindNode,
+    expected_param_index: Option<usize>,
+) -> Result<SymbolicCostEqPattern, String> {
+    fn resolve(
+        port: SymbolicCostPortPattern,
+        bind: &crate::dag::BindNode,
+        expected_param_index: Option<usize>,
+    ) -> Result<SymbolicCostPortPattern, String> {
+        match port {
+            SymbolicCostPortPattern::Raw(raw) => Ok(SymbolicCostPortPattern::Raw(raw)),
+            SymbolicCostPortPattern::ExpectedBindParam => {
+                let Some(param_index) = expected_param_index else {
+                    return Err(
+                        "SymbolicCostExprEquals: expected SymbolicCost contains an unresolved \
+                         SizeVariable.source_port; use SymbolicCostExprEqualsForBindParam to \
+                         provide the selected bind parameter"
+                            .to_string(),
+                    );
+                };
+                let port = bind_param_port_by_index(bind, param_index)?;
+                Ok(SymbolicCostPortPattern::Raw(port.raw()))
+            }
+        }
+    }
+    Ok(match pattern {
+        SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+        },
+        SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+        },
+        SymbolicCostEqPattern::Polynomial {
+            source_port,
+            degree_raw,
+        } => SymbolicCostEqPattern::Polynomial {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+            degree_raw,
+        },
+        SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
+            terms
+                .into_iter()
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, expected_param_index)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        SymbolicCostEqPattern::Sum(terms) => SymbolicCostEqPattern::Sum(
+            terms
+                .into_iter()
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, expected_param_index)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        other => other,
+    })
+}
+
+fn bind_param_port_by_index(
+    bind: &crate::dag::BindNode,
+    param_index: usize,
+) -> Result<PortId, String> {
+    bind.params.get(param_index).copied().ok_or_else(|| {
+        format!(
+            "SymbolicCostExprEqualsForBindParam: function bind `{}` has no lowered parameter port \
+             at index {param_index}; parameter count is {}",
+            bind.name,
+            bind.params.len()
+        )
+    })
 }
 
 fn symbolic_cost_variant_label_for_constructor(dag: &Dag, ctor: DeclarationId) -> Option<String> {
@@ -5376,16 +5752,18 @@ fn field_value_to_symbolic_cost_eq_pattern(
                 }
                 "LinearCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Linear {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Log {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "PolynomialCost" => {
@@ -5402,10 +5780,11 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let degree = field(fields, "degree").ok_or_else(|| {
                         "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
                     })?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
                     let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
-                        source_port_raw,
+                        source_port,
                         degree_raw,
                     })
                 }
@@ -5435,6 +5814,117 @@ fn field_value_to_symbolic_cost_eq_pattern(
             other
         )),
     }
+}
+
+fn field_value_to_symbolic_cost_bind_param_expected_pattern(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<SymbolicCostEqPattern, String> {
+    if let FieldValue::Record(fields) = fv {
+        if fields.len() == 1 && fields[0].0 == "_" {
+            return field_value_to_symbolic_cost_bind_param_expected_pattern(dag, &fields[0].1);
+        }
+    }
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: expected value must lower to a \
+             SymbolicCostBindParamExpected variant, got {fv:?}"
+        ));
+    };
+    let label_owned =
+        symbolic_cost_bind_param_expected_variant_label_for_constructor(dag, *constructor)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: constructor {constructor:?} is not a \
+             SymbolicCostBindParamExpected variant"
+                )
+            })?;
+    match label_owned.as_str() {
+        "LinearCostForBindParam" => {
+            parse_bind_param_size_variable_expected(
+                dag,
+                peel_single_underscore_record(single_payload(payload)?),
+            )?;
+            Ok(SymbolicCostEqPattern::Linear {
+                source_port: SymbolicCostPortPattern::ExpectedBindParam,
+            })
+        }
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: unsupported expected variant `{other}`"
+        )),
+    }
+}
+
+fn peel_single_underscore_record(fv: &FieldValue) -> &FieldValue {
+    match fv {
+        FieldValue::Record(fields) if fields.len() == 1 && fields[0].0 == "_" => &fields[0].1,
+        other => other,
+    }
+}
+
+fn symbolic_cost_bind_param_expected_variant_label_for_constructor(
+    dag: &Dag,
+    ctor: DeclarationId,
+) -> Option<String> {
+    let expected = dag.declaration_by_name("SymbolicCostBindParamExpected")?;
+    let TypeConnective::Disj { variants } = &expected.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
+}
+
+fn parse_bind_param_size_variable_expected(dag: &Dag, fv: &FieldValue) -> Result<(), String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable expected selected-bind-param \
+             variant, got {fv:?}"
+        ));
+    };
+    if !payload.is_empty() {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: SelectedBindParamSizeVariable takes no payload, \
+             got {} slot(s)",
+            payload.len()
+        ));
+    }
+    let Some(label) = bind_param_size_variable_variant_label_for_constructor(dag, *constructor)
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: constructor {constructor:?} is not a \
+             BindParamSizeVariable variant"
+        ));
+    };
+    if label != "SelectedBindParamSizeVariable" {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: unsupported BindParamSizeVariable variant `{label}`"
+        ));
+    }
+    Ok(())
+}
+
+fn bind_param_size_variable_variant_label_for_constructor(
+    dag: &Dag,
+    ctor: DeclarationId,
+) -> Option<String> {
+    let expected = dag.declaration_by_name("BindParamSizeVariable")?;
+    let TypeConnective::Disj { variants } = &expected.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
 }
 
 fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
@@ -5469,6 +5959,42 @@ fn one_string_payload(payload: &[FieldValue]) -> Result<String, String> {
     }
 }
 
+fn bind_param_ref_index(fv: &FieldValue) -> Result<usize, String> {
+    let FieldValue::Record(fields) = fv else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: param must be a BindParamRef record, got {fv:?}"
+        ));
+    };
+    if fields.len() != 1 {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamRef only supports `index`, got {fields:?}"
+        ));
+    }
+    let index = field(fields, "index").ok_or_else(|| {
+        "SymbolicCostExprEqualsForBindParam: BindParamRef missing `index`".to_string()
+    })?;
+    match index {
+        FieldValue::Literal(LiteralBits::Int(s)) => {
+            let n = s.parse::<i64>().map_err(|_| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: BindParamRef index is not a valid \
+                     integer: {s:?}"
+                )
+            })?;
+            usize::try_from(n).map_err(|_| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: BindParamRef index must be non-negative, \
+                     got {n}"
+                )
+            })
+        }
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamRef index must be an Int literal, got \
+             {other:?}"
+        )),
+    }
+}
+
 fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
     match fv {
         FieldValue::Literal(LiteralBits::Int(s)) => {
@@ -5495,19 +6021,20 @@ fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
 fn parse_size_variable_source_port_for_symbolic_cost_eq(
     dag: &Dag,
     fv: &FieldValue,
-) -> Result<u32, String> {
+) -> Result<SymbolicCostPortPattern, String> {
     let fields = record_fields(fv).ok_or_else(|| {
         format!(
             "SymbolicCostExprEquals: SizeVariable value must be a record, got {:?}",
             fv
         )
     })?;
-    let source_port_fv = field(fields, "source_port").ok_or_else(|| {
-        "SymbolicCostExprEquals: SizeVariable missing required field `source_port`".to_string()
-    })?;
-    let source_port_raw = port_id_raw_field_value(source_port_fv)?;
     let _ = optional_string_field_for_record(dag, fields, "display_name")?;
-    Ok(source_port_raw)
+    let Some(source_port_fv) = field(fields, "source_port") else {
+        return Ok(SymbolicCostPortPattern::ExpectedBindParam);
+    };
+    Ok(SymbolicCostPortPattern::Raw(port_id_raw_field_value(
+        source_port_fv,
+    )?))
 }
 
 fn optional_string_field_for_record(
@@ -5733,6 +6260,23 @@ fn find_bind<'a>(
     })
 }
 
+fn expected_int_literal(
+    expected_decl: &Declaration,
+    expected_name: &str,
+    lens_name: &str,
+) -> Result<i64, ClaimResult> {
+    match expected_decl.value_body.as_ref() {
+        Some(ValueBody::Scalar(LiteralBits::Int(s))) => s.parse::<i64>().map_err(|_| {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+            ))
+        }),
+        _ => Err(ClaimResult::Fail(format!(
+            "LensOutputEquals({lens_name}): expected_ref `{expected_name}` must be `data ...: Int = <literal>`"
+        ))),
+    }
+}
+
 fn diagnostic_matches_reference(
     diagnostic: &Diagnostic,
     reference: &(String, DiagnosticDetailFilter),
@@ -5784,13 +6328,20 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
     Some(trimmed[start..end].to_string())
 }
 
+/// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
+///
+/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
+/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
+/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/src/lens_apply.rs"
-            | "src/v3/compiler/src/lens_testgen_body.txt"
-            | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
+}
+
+fn is_bin_shim_census_path(path: &str) -> bool {
+    path.starts_with("src/v3/compiler/src/bin/")
 }
 
 fn compiler_std_positive_set_ratchet_count() -> i64 {

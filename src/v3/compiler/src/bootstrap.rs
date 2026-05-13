@@ -104,6 +104,7 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "dsl/extdeps/cron_schedule_model.dag",
     "dsl/extdeps/github/github.dag",
     "dsl/extdeps/github/actions.dag",
+    "dsl/extdeps/github/ci.dag",
 ];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).

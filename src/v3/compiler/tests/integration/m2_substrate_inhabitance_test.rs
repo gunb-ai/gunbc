@@ -1,13 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    algebra_profile_to_dimension, constant_bound_value, is_constant_bound, literal_bits_int,
+    lower_call_pattern, per_call_descent_evidence, per_call_pattern_at, positive_amount_from_i64,
+    size_bound_param, type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload,
+    CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
     IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
@@ -493,48 +491,106 @@ fn termination_lattice_functions_preserve_std_body_spans() {
 }
 
 #[test]
-fn termination_lattice_rust_mirror_matches_dag_authority() {
-    use DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-
-    assert_eq!(evidence_rank(Strict), 2);
-    assert_eq!(evidence_rank(NonIncreasing), 1);
-    assert_eq!(evidence_rank(DescentUnknown), 0);
-
-    for evidence in [Strict, NonIncreasing, DescentUnknown] {
-        assert_eq!(merge_evidence(Strict, evidence), evidence);
-        assert_eq!(merge_evidence(evidence, Strict), evidence);
-        assert_eq!(join_evidence(DescentUnknown, evidence), evidence);
-        assert_eq!(join_evidence(evidence, DescentUnknown), evidence);
+fn termination_lattice_rust_mirror_dissolved() {
+    // Gate `tier3_termination_mirror_dissolved` (R3 DAG gate #1,
+    // T-Tier3-Dissolution): the public hand-Rust lattice operations no
+    // longer live in `dag.rs`. The declarations in `std.termination.dag`
+    // remain the authority and their bootstrap body spans stay pinned by
+    // `termination_lattice_functions_preserve_std_body_spans`.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in [
+        "pub fn evidence_rank",
+        "pub fn merge_evidence",
+        "pub fn join_evidence",
+        "pub fn promote_to_strict",
+        "pub fn optional_evidence_meet",
+        "pub fn map_evidence_merge_at",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not export termination lattice mirror helper `{forbidden}`; \
+             `src/v3/std/termination.dag` is the authority"
+        );
     }
+}
 
-    assert_eq!(merge_evidence(Strict, Strict), Strict);
-    assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
-    assert_eq!(merge_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
+#[test]
+fn tier3_computation_mirror_trivial_constructors_dissolved() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 gate #2, narrow slice):
+    // the trivial host-Rust mirror entrypoints for `std.computation` declarations
+    // whose Rust definition added no information beyond direct variant construction
+    // (`tree_size_bound` returned `SizeBound::TreeSize { param }`;
+    //  `forever_iteration_bound` returned the `i64::MAX` literal) have been retired
+    // from `src/v3/compiler/src/dag.rs`. `src/v3/std/computation.dag` remains the
+    // single authority for these names and their bootstrap body spans stay pinned
+    // by `computation_lowering_functions_preserve_std_body_spans`.
+    //
+    // Wider mirror dissolution (`lower_call_pattern`, `type_iteration_dimension`,
+    // `size_bound_param`, `is_constant_bound`, `constant_bound_value`,
+    // `algebra_profile_to_dimension`) requires evaluated `std.computation` block
+    // bodies and stays tracked in the T-Tier3-Dissolution lane; this ratchet
+    // forbids only reintroduction of the trivial-constructor mirrors above.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in ["pub fn tree_size_bound", "pub fn forever_iteration_bound"] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not export trivial `std.computation` mirror helper `{forbidden}`; \
+             `src/v3/std/computation.dag` is the authority (R3 gate #2 narrow slice)"
+        );
+    }
+}
+
+#[test]
+fn tier3_computation_mirror_kernel_algebra_profile_substrate_authority() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 #2, T-Tier3-Dissolution) —
+    // slice receipt: `kernel_algebra_profile` must not be shadowed by a parallel
+    // hand-maintained type-name → profile table in Rust. `type_iteration_dimension`
+    // routes non-`Node` names through `BOOTSTRAPPED_DAG.kernel_algebra_profile`, which
+    // reads the lowered `data kernel_algebra_profile` map (see `Dag::kernel_algebra_profile`).
     assert_eq!(
-        merge_evidence(NonIncreasing, DescentUnknown),
-        DescentUnknown
+        type_iteration_dimension("Node"),
+        Some(IterationDimension::TreeDescent)
     );
-
-    assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
-    assert_eq!(join_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
-    assert_eq!(join_evidence(Strict, DescentUnknown), Strict);
-
-    assert_eq!(promote_to_strict(NonIncreasing), NonIncreasing);
-    assert_eq!(promote_to_strict(Strict), Strict);
-    assert_eq!(promote_to_strict(DescentUnknown), DescentUnknown);
-
-    assert_eq!(optional_evidence_meet(None, Some(Strict)), Some(Strict));
     assert_eq!(
-        optional_evidence_meet(Some(Strict), Some(NonIncreasing)),
-        Some(NonIncreasing)
+        type_iteration_dimension("Int"),
+        Some(IterationDimension::ArithmeticRepeat)
     );
+    assert_eq!(
+        type_iteration_dimension("String"),
+        Some(IterationDimension::CollectionFold)
+    );
+    assert_eq!(type_iteration_dimension("Bool"), None);
 
-    let mut base = HashMap::new();
-    base.insert(String::from("n"), Strict);
-    let merged = map_evidence_merge_at(base, String::from("n"), NonIncreasing);
-    assert_eq!(merged.get("n"), Some(&NonIncreasing));
-    let inserted = map_evidence_merge_at(merged, String::from("m"), Strict);
-    assert_eq!(inserted.get("m"), Some(&Strict));
+    let dag_rs = include_str!("../../src/dag.rs");
+    let fn_needle = "pub fn type_iteration_dimension";
+    let fn_start = dag_rs
+        .find(fn_needle)
+        .unwrap_or_else(|| panic!("expected `{fn_needle}` in dag.rs"));
+    let brace_start = dag_rs[fn_start..]
+        .find('{')
+        .map(|rel| fn_start + rel)
+        .expect("opening brace for type_iteration_dimension");
+    let mut depth = 0u32;
+    let mut fn_end = None;
+    for (idx, ch) in dag_rs[brace_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    fn_end = Some(brace_start + idx + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let fn_end = fn_end.expect("unterminated type_iteration_dimension");
+    let fn_slice = &dag_rs[fn_start..fn_end];
+    assert!(
+        fn_slice.contains("BOOTSTRAPPED_DAG") && fn_slice.contains(".kernel_algebra_profile(type_name)"),
+        "type_iteration_dimension must delegate through BOOTSTRAPPED_DAG.kernel_algebra_profile; got:\n{fn_slice}"
+    );
 }
 
 #[test]
@@ -1763,7 +1819,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
 
 #[test]
 fn computation_size_bound_helpers_match_dag_authority() {
-    let tree = tree_size_bound(String::from("node"));
+    let tree = SizeBound::TreeSize {
+        param: String::from("node"),
+    };
     let collection = SizeBound::CollectionSize {
         param: String::from("items"),
     };
@@ -2137,6 +2195,16 @@ fn substrate_coproducts_match_runtime_carriers() {
         vec![
             (String::from("Positional"), vec![String::from("_0")]),
             (String::from("Record"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "TypeAngleArg"),
+        vec![
+            (String::from("TypeExpr"), vec![String::from("ty")],),
+            (
+                String::from("WidthNatLiteral"),
+                vec![String::from("decimal"), String::from("span")],
+            ),
         ]
     );
     assert_eq!(
@@ -2928,7 +2996,11 @@ fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
                 parse_surface::SurfaceType::Parameterized { name, args, .. }
                     if name == "AlgebraExpr"
                         && args.len() == 1
-                        && matches!(&args[0], parse_surface::SurfaceType::Named { name, .. } if name == "T")
+                        && matches!(
+                            &args[0],
+                            parse_surface::TypeAngleArg::TypeExpr { ty }
+                                if matches!(ty.as_ref(), parse_surface::SurfaceType::Named { name, .. } if name == "T")
+                        )
             ));
             assert_eq!(variants.len(), 2);
             assert_eq!(variants[0].name, "Leaf");
