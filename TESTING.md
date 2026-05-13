@@ -459,6 +459,18 @@ register already reads `COMPLETE`. CI should already fail via
 names, or the SG-0 census when Rust wiring is wrong; this checklist is the human
 pre-merge mirror of those predicates.
 
+The PR description must also keep the review surface explicit. If the change
+promotes any row to `BEHAVIORALLY COMPLETE`, keep the PR-template section
+**Lens `BEHAVIORALLY COMPLETE` flip gate** and fill in:
+
+- the promoted lens row(s),
+- the selected receipt class from step 1,
+- the same-PR receipt paths from step 2.
+
+If no row is promoted, delete that PR-template section. A description that
+keeps the register flip but leaves the receipt paths blank is a review failure
+even if a follow-up work item exists.
+
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
 substrate accessors or emitters. It only governs **explicit**

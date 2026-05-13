@@ -138,6 +138,31 @@ retirement issue/PR.
 
 - **Exactly one disposition** (Debt paid **or** Debt found + routed **or** No debt touched): ___
 
+## Lens `BEHAVIORALLY COMPLETE` flip gate
+
+<!--
+Delete this section if the PR does not promote any row in
+`docs/v3-lens-capability-register.md` or `src/v3/std/verification.dag`
+`data lens_capability_register_rows` to `BEHAVIORALLY COMPLETE`.
+
+If the PR does promote a row, complete the same-PR checklist in
+`TESTING.md` under "Cementing tests (Band C — lens subsumption)" →
+"Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`".
+The key review question is whether the PR lands the register flip and the
+behavioral cementing receipt together, rather than relying on a follow-up.
+
+For `LensRegistryEntry` rows in `src/v3/compiler/regen.dag`, the checklist
+normally includes: the register prose row, `lens_capability_register_rows`,
+the gate-#87 `.dag` harness, `R3_GATE_87_CEMENTING_REGEN_SUITES`, and
+`cementing_dispatch.dag`. Temporary Rust cementing is allowed only with the
+Rust module, `tests/integration.rs` wiring, SG-0 census treatment, and named
+dissolution path in the same PR.
+-->
+
+- **Lens row(s) promoted** (or `n/a`): ___
+- **Receipt class** (`DifferentialEquals` / `LensOutputEquals` / helper `Compiles` + dissolution / temporary Rust with blocker): ___
+- **Same-PR receipt paths** (harnesses, dispatch rows, runner table, Rust pins if any): ___
+
 ## Test plan
 
 - [ ] (Bulleted checklist of TODOs for verifying the PR.)
