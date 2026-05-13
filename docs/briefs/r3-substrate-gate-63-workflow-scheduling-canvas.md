@@ -70,24 +70,36 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 
 ## §3. Closure-scope question — three candidates
 
-### Candidate A — minimal repair (un-ignore the passing test)
+### Candidate A — minimal repair (un-ignore the passing test) + §4.4 substrate-prereq reconciliation
 
 **Scope shifted per snappy-bear-502 msg_cef1340b correction**:
 
 - Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`)
-- Close gate #63 on the unblocked passing receipt
-- The 5 sibling-test failures from `--include-ignored` broader run are treated as **separately-scoped substrate-debt** (not gate #63 closure-blockers)
+- Close gate #63 on the unblocked passing receipt + §4.4 substrate-prereq reconciliation
+- The 5 sibling-test failures from `--include-ignored` broader run are treated as **separately-scoped substrate-debt** (not gate #63 closure-blockers); see §2 ledger-mapping under rows #99/#100 framing in worker brief
+
+**§1.4 + §4.4 substrate-prereq reconciliation** (per codex BLOCKING PR #2831 review 67dfd2d4 + operator BLOCKING worker:62): the representative gap-test text is the necessary-but-not-sufficient receipt; §4.4 also enumerates required substrate carriers. Worker brief Phase C performs the explicit reconciliation atomic with the §1.8 row #63 status flip:
+
+| §4.4 prereq | HEAD location |
+|---|---|
+| `Workflow<Trigger, Steps, Resources>` | `dsl/extdeps/github/actions.dag:29` |
+| `WorkflowTrigger` sum | `:51` |
+| `WorkflowStep` | `:222` (`type Step`) |
+| `WorkflowMatrix<Axes>` | `:300` (`MatrixStrategy`) |
+| `WorkflowSecret<Name>` | `:114` |
+| `RunnerResource<C>` | `:205` (`RunnerSpec`) + `:211` (`RunnerLabel`) |
+| `CIWorkflowDag` (workflow-as-dag canonical) | `dsl/gunbc/ci.dag:120-125,191-200` |
+
+All 6 §4.4 prereq carriers EXIST under different paths/names than §4.4 originally sketched. Phase C requires worker to footnote §4.4 with the path-mapping above, citing the closure PR — this dissolves the dual-closure-authority concern (INVARIANTS P2/P5) by making the §4.4 enumeration + §1.8 row #63 closure receipt explicitly consistent. Single closure authority, multi-receipt evidence.
 
 Pros:
-- **Smallest possible blast-radius** — single `#[ignore]` removal + test promotion
-- Gate-criterion test is **already passing**; gate closure is administrative (un-ignore + ledger update)
-- Sibling-test substrate-debt is preserved as known-unknowns separately
-- No new substrate authoring needed
+- **Smallest possible blast-radius** — single `#[ignore]` removal + §4.4 footnote + test promotion
+- Gate-criterion test is **already passing**; gate closure is administrative
+- Sibling-test substrate-debt preserved as separately-scoped (rows #99/#100 carry it)
+- No new substrate authoring needed (carriers already landed under different paths)
 
 Cons:
-- "Already passing" status depends on the demo `.dag` exemplifying the criterion correctly — needs sanity check that the demo encodes "CI workflow as .dag data" faithfully
-- Sibling-test failures leave structural debt that may re-surface as separate gate failures
-- Closes gate #63 narrowly — operator may have intended broader scope per "executes through evaluator" criterion text
+- §4.4 had to be reconciled in-PR rather than canonically aligned earlier; cleanup-of-canonical-§4.4-text is a separate doc-drift sweep
 
 ### Candidate B — full CIWorkflowDag/projection path execution
 
