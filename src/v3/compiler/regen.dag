@@ -66,6 +66,12 @@ data lens_effect_enumeration_entry: LensRegistryEntry = {
   generated_file: "src/v3/compiler/src/lens_effect_enumeration_generated.rs"
 }
 
+data lens_parallelism_entry: LensRegistryEntry = {
+  name: "parallelism"
+  lens_file: "src/v3/lenses/parallelism.dag"
+  generated_file: "src/v3/compiler/src/lens_parallelism_generated.rs"
+}
+
 data lens_provenance_entry: LensRegistryEntry = {
   name: "provenance"
   lens_file: "src/v3/lenses/provenance.dag"

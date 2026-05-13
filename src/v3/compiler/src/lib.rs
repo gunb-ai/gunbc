@@ -5159,6 +5159,36 @@ pub(crate) mod lower_helpers {
 pub mod lens_idempotency {
     pub use crate::dag::analyze_workflow;
 }
+
+/// Lane 2 Stage 2e parallelism lens. Authority lives in
+/// `src/v3/lenses/parallelism.dag`; the Rust projection is auto-emitted into
+/// `src/v3/compiler/src/lens_parallelism_generated.rs` and wrapped here so the
+/// crate-root compatibility exports use the `.dag` port directly.
+pub mod lens_parallelism {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_parallelism_generated.rs");
+    }
+
+    pub use generated::analyze_parallelism;
+
+    pub fn loop_iteration_parallel_emission_indicator(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> i64 {
+        generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
+    }
+}
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
@@ -5358,7 +5388,6 @@ pub(crate) mod variant_payload {
     }
 }
 mod r3_fc_lane2_loop_witness;
-pub(crate) mod workflow_parallelism;
 
 pub use cost_basis_declaration::{
     try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
@@ -5378,7 +5407,7 @@ pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
-pub use workflow_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
+pub use lens_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 
 /// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
