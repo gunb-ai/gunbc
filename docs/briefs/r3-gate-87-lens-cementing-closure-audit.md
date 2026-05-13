@@ -34,6 +34,16 @@ These registry rows are intentionally outside the complete-lens closure set: `co
 - `r3_gate_87_lens_cementing_regen_receipts_test.rs` requires the regen registry names to match the gate-87 `.dag` runner inventory.
 - This audit closed the only v3-native complete gap found during the walk: `variant_payload` had only a compile placeholder; it now has a behavioral Rust receipt for the published carrier.
 
+## Placeholder-Dissolution Ledger
+
+G87-D3 refresh date: 2026-05-13. The canonical ledger lives in `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §§2.1-2.2 so the pattern brief remains the single post-#87 handoff surface. This closure audit points to that ledger and records its scope:
+
+- Bare `Compiles` placeholders: `infer_helpers`, `lower_helpers`, and `variant_payload`. Each names the missing output carrier, the paired Rust source-compilation pin, the owning lane, and the stronger `LensOutputEquals` replacement trigger.
+- Narrow `.dag` predicates with host-side Rust pins: `cost`, `cost_symbolic`, `cost_target_realization`, `effect_enumeration`, `provenance`, `structural_resolution`, and `unused_parameters`. Each names the exact carrier or runner capability that prevents the full expected value from living in `.dag` data today.
+- Non-gate-87 residuals stay out of the ledger: `parallelism` remains a registry/suite drift follow-up per `docs/briefs/r3-gate-87-parallelism-fixture-fix-worker.md`, and hand-Rust rows outside the `regen.dag` corpus remain Band-C / #84 classification scope in the pattern brief §3.
+
+No row in the ledger is closure evidence by itself. The closure evidence is either the existing behavioral `.dag` predicate, the named temporary Rust pin, or a non-gate-87 residual routed to the owning lane. Dissolution means broadening the `.dag` predicate and deleting the paired Rust pin in the same PR.
+
 ## P5 Receipt
 
 Exactly one P5 checkable receipt applies to this PR: explicit deferral. Lane: `T-PB-B`. Concrete roadmap row: `ROADMAP.md` section `Nine lanes`, row `T-PB-B` (Rust-authored tests migrate to `.dag` `TestClaim` declarations). Deferral: the temporary `src/v3/compiler/src/lib.rs::variant_payload::tests` Rust receipts dissolve when `.dag` TestClaims can express `VariantPayloadShapeLookup` expected literals and the gate-87 `variant_payload` harness can replace `Compiles` with the corresponding behavioral `LensOutputEquals` claims.
