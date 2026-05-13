@@ -1,8 +1,14 @@
 // R3 gate #87 — `LensRegistryEntry` `parallelism`.
-// Int projection receipt: the runner applies the Stage 2e read-only pairwise-commute oracle
-// (`gate87_parallelism_read_only_two_branch_commutes` in `test_runner.rs`) over a cloned fixture
-// `Dag` with `try_register_lane2_workflow_effect` — the same commuting shape as
-// `lane2_stage_2e_parallelism_test::parallel_read_only_branches_commute`.
+// Int projection: `WorkflowParallelismReport` / `CompositionVerdict` literals are not yet
+// authorable as stable `.dag` data (see `docs/v3-lens-capability-register.md` — behavioral
+// PARTIAL until typed non-commute evidence lands on the public report). The runner applies the
+// Stage 2e read-only pairwise-commute oracle (`gate87_parallelism_read_only_two_branch_commutes` in
+// `test_runner.rs`) over a cloned fixture `Dag` with `try_register_lane2_workflow_effect` — same
+// commuting shape as `lane2_stage_2e_parallelism_test::parallel_read_only_branches_commute`.
+// **Dissolution:** replace this Int witness with a `.dag` `LensOutputEquals` (or successor predicate)
+// over a frozen `WorkflowParallelismReport` once Band-C carriers can express it under
+// `TESTING.md` *Cementing tests (Band C — lens subsumption)*; retire the `eval_gate_87` arm in the
+// same PR.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
 
