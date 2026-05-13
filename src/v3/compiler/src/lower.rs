@@ -6661,6 +6661,10 @@ fn realization_category_for_meta(
 ///     reflected handle equality, or the `FreeMonoid` template for
 ///     `OrderedRing.eq` after the monoid witness walk on `String` /
 ///     `List` element comparisons).
+///     Only `target` is validated in this pass (per-field lowering); pairing
+///     with `op: OrderedRing.eq` is spec discipline for current rows (e.g.
+///     `rust_free_monoid_eq`). Defer cross-field (`target` + `op`) enforcement
+///     until additional `OperatorRealization` carriers need a stricter gate.
 ///   - `OperatorRealization.op` — must walk to an Arrow
 ///     declaration that is a child of an algebra Conj (e.g.
 ///     OrderedRing.add). The constraint is "the resolved
