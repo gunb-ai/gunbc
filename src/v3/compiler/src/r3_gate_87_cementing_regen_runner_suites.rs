@@ -4,6 +4,11 @@
 //! inventory for which harnesses `t_pb_b_1_dag_runner_test` executes. `cementing_dispatch` and
 //! `r3_gate_87_lens_cementing_regen_receipts_test` consume the same table so `.dag` Band-C receipts
 //! cannot pass `CementingDispatchMatchesProjection` without a matching runner row.
+//!
+//! **`Compiles` placeholders:** [`R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER`] is the
+//! merge-visible dissolution ledger for harnesses still on source-compilation placeholders (P5
+//! scaffold discipline — each row names the paired Rust receipt and the audit substring for the
+//! harness `// Dissolution trigger:` comment).
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -126,3 +131,108 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         &["cementing_regen_variant_payload"],
     ),
 ];
+
+/// Gate-#87 regen harness row still carried as a `Compiles` receipt in `.dag` (not yet a public
+/// `LensOutputEquals` behavioral witness).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct R3Gate87CementingRegenPlaceholderDissolutionRow {
+    /// `LensRegistryEntry.name` in `regen.dag` for this harness stem.
+    pub lens_registry_name: &'static str,
+    /// Harness path under the workspace root (matches [`R3_GATE_87_CEMENTING_REGEN_SUITES`]).
+    pub harness_path: &'static str,
+    /// `#[test]` fn name in `r3_gate_87_lens_cementing_regen_receipts_test` cited by the harness.
+    pub temporary_rust_receipt_fn: &'static str,
+    /// Must appear in the harness header after `// Dissolution trigger:` (substring ratchet).
+    pub dissolution_trigger_substr: &'static str,
+}
+
+/// Dissolution ledger for gate-#87 `Compiles` cementing harnesses — must stay in lockstep with
+/// `predicate: Compiles` rows in [`R3_GATE_87_CEMENTING_REGEN_SUITES`].
+pub const R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER: &[R3Gate87CementingRegenPlaceholderDissolutionRow] = &[
+    R3Gate87CementingRegenPlaceholderDissolutionRow {
+        lens_registry_name: "infer_helpers",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
+        temporary_rust_receipt_fn: "r3_gate_87_infer_helpers_lens_source_compiles",
+        dissolution_trigger_substr:
+            "when an `infer_helpers` public output carrier is authorable as `.dag` data",
+    },
+    R3Gate87CementingRegenPlaceholderDissolutionRow {
+        lens_registry_name: "lower_helpers",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
+        temporary_rust_receipt_fn: "r3_gate_87_lower_helpers_lens_source_compiles",
+        dissolution_trigger_substr:
+            "when a `lower_helpers` public output carrier is authorable as `.dag` data",
+    },
+    R3Gate87CementingRegenPlaceholderDissolutionRow {
+        lens_registry_name: "variant_payload",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
+        temporary_rust_receipt_fn: "r3_gate_87_variant_payload_lens_source_compiles",
+        dissolution_trigger_substr:
+            "when a stable variant-declaration fixture and `VariantPayloadShapeLookup`",
+    },
+];
+
+#[cfg(test)]
+mod r3_gate_87_placeholder_dissolution_ledger_tests {
+    use super::*;
+
+    fn suite_source_for_harness_path(path: &str) -> &'static str {
+        R3_GATE_87_CEMENTING_REGEN_SUITES
+            .iter()
+            .find_map(|(source, p, _, _)| (*p == path).then_some(*source))
+            .unwrap_or_else(|| panic!("harness path not in R3_GATE_87_CEMENTING_REGEN_SUITES: {path}"))
+    }
+
+    #[test]
+    fn compiles_harness_paths_match_placeholder_dissolution_ledger() {
+        let compiles_paths: BTreeSet<&'static str> = R3_GATE_87_CEMENTING_REGEN_SUITES
+            .iter()
+            .filter(|(source, _, _, _)| source.contains("predicate: Compiles"))
+            .map(|(_, path, _, _)| *path)
+            .collect();
+        let ledger_paths: BTreeSet<&'static str> = R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER
+            .iter()
+            .map(|row| row.harness_path)
+            .collect();
+        assert_eq!(
+            compiles_paths, ledger_paths,
+            "`R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER` must list exactly the \
+             `predicate: Compiles` harnesses in `R3_GATE_87_CEMENTING_REGEN_SUITES`"
+        );
+    }
+
+    #[test]
+    fn placeholder_ledger_rows_are_consistent_with_harness_files() {
+        for row in R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER {
+            assert_eq!(
+                lens_name_from_gate_87_harness_path(row.harness_path),
+                row.lens_registry_name,
+                "ledger lens_registry_name must match harness stem for {}",
+                row.harness_path
+            );
+            let source = suite_source_for_harness_path(row.harness_path);
+            assert!(
+                source.contains("predicate: Compiles"),
+                "{} must remain a Compiles placeholder harness",
+                row.harness_path
+            );
+            assert!(
+                source.contains("// Dissolution trigger:"),
+                "{} must carry a `// Dissolution trigger:` header",
+                row.harness_path
+            );
+            assert!(
+                source.contains(row.dissolution_trigger_substr),
+                "{} must contain dissolution trigger substring {:?}",
+                row.harness_path,
+                row.dissolution_trigger_substr
+            );
+            assert!(
+                source.contains(row.temporary_rust_receipt_fn),
+                "{} must cite Rust receipt `{}`",
+                row.harness_path,
+                row.temporary_rust_receipt_fn
+            );
+        }
+    }
+}
