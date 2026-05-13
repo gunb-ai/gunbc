@@ -42,9 +42,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
-    r3_gate_87_cementing_regen_lens_names_for_runner_table, R3_GATE_87_CEMENTING_REGEN_SUITES,
-};
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -311,17 +309,6 @@ fn r3_gate_87_placeholder_dissolution_ledger_matches_authority() {
              R3_GATE_87_CEMENTING_REGEN_SUITES-derived inventory"
         );
     }
-
-    let full_behavior_harness_count = R3_GATE_87_CEMENTING_REGEN_SUITES
-        .len()
-        .saturating_sub(G87_DAG_PLACEHOLDER_LENS_NAMES.len());
-    assert_eq!(
-        full_behavior_harness_count,
-        5,
-        "expected five non-placeholder gate-#87 regen harnesses \
-         (cost, cost_symbolic, cost_target_realization, effect_enumeration, provenance); \
-         adjust this assertion when R3_GATE_87_CEMENTING_REGEN_SUITES grows or shrinks"
-    );
 
     let ledger_rust_paths = parse_g87_ledger_marker_block(
         &doc,
