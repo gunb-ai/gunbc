@@ -71,6 +71,8 @@ mod emission_provenance_lens_test;
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/extdeps_sql_transport_test.rs"]
 mod extdeps_sql_transport_test;
+#[path = "integration/file_attachment_substrate_carrier_test.rs"]
+mod file_attachment_substrate_carrier_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
