@@ -110,6 +110,19 @@ fn cementing_receipt_kind_wire_tag(sum_variant_label: &str) -> Result<&'static s
     }
 }
 
+fn cementing_predicate_kind_wire_tag(sum_variant_label: &str) -> Result<&'static str, String> {
+    match sum_variant_label {
+        "DifferentialEqualsReceipt" => Ok("DifferentialEquals"),
+        "LensOutputEqualsReceipt" => Ok("LensOutputEquals"),
+        "SymbolicCostExprEqualsReceipt" => Ok("SymbolicCostExprEquals"),
+        "SymbolicCostExprEqualsForBindParamReceipt" => Ok("SymbolicCostExprEqualsForBindParam"),
+        other => Err(format!(
+            "cementing receipt `required_predicates`: unknown `CementingBandCPredicateKind` \
+             variant `{other}`"
+        )),
+    }
+}
+
 fn decode_cementing_band_c_receipt_kind(
     dag: &Dag,
     value: &FieldValue,
@@ -125,11 +138,72 @@ fn decode_cementing_band_c_receipt_kind(
     cementing_receipt_kind_wire_tag(&label)
 }
 
+fn decode_cementing_band_c_predicate_kind(
+    dag: &Dag,
+    value: &FieldValue,
+    field_label: &str,
+) -> Result<&'static str, String> {
+    let label = decode_nullary_sum_variant(
+        dag,
+        "CementingBandCPredicateKind",
+        value,
+        field_label,
+        "cementing receipt row",
+    )?;
+    cementing_predicate_kind_wire_tag(&label)
+}
+
 fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
     match value {
         FieldValue::Record(fields) => Some(fields.as_slice()),
         _ => None,
     }
+}
+
+fn required_predicates_field(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    registry_name: &str,
+    module_stem: &str,
+    kind: &str,
+) -> Result<BTreeSet<String>, String> {
+    let value = record_field(fields, "required_predicates").ok_or_else(|| {
+        "cementing receipt row: missing `required_predicates` field (expected \
+         `List<CementingBandCPredicateKind>`)"
+            .to_string()
+    })?;
+    let FieldValue::List(items) = value else {
+        return Err(format!(
+            "cementing receipt row `{registry_name}`/`{module_stem}`: \
+             `required_predicates` must be a list, got {value:?}"
+        ));
+    };
+
+    let mut predicates = BTreeSet::new();
+    for item in items {
+        let predicate = decode_cementing_band_c_predicate_kind(dag, item, "required_predicates")?;
+        if !predicates.insert(predicate.to_string()) {
+            return Err(format!(
+                "cementing receipt row `{registry_name}`/`{module_stem}` repeats required \
+                 predicate `{predicate}`"
+            ));
+        }
+    }
+
+    if kind == "dag" && predicates.is_empty() {
+        return Err(format!(
+            "cementing receipt row `{registry_name}`/`{module_stem}` is a `.dag` Band-C \
+             receipt but declares no required behavioral predicate constructors"
+        ));
+    }
+    if kind != "dag" && !predicates.is_empty() {
+        return Err(format!(
+            "cementing receipt row `{registry_name}`/`{module_stem}` is `{kind}` but declares \
+             `.dag` required predicates {predicates:?}; only DagHarness receipts may use this field"
+        ));
+    }
+
+    Ok(predicates)
 }
 
 fn resolve_declaration_ref_id(
@@ -417,6 +491,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 .to_string()
         })?;
         let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        required_predicates_field(dag, fields, &registry_name, &module_stem, kind_str)?;
         let triple = (
             registry_name.clone(),
             module_stem.clone(),
@@ -464,6 +539,8 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 .to_string()
         })?;
         let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        let required_predicates =
+            required_predicates_field(dag, fields, &registry_name, &module_stem, kind_str)?;
         match kind_str {
             "dag" => {
                 if !pb_b1_gate87_dag_stems.contains(&module_stem) {
@@ -482,6 +559,26 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                     return Err(format!(
                         "registry lens `{registry_name}` lists v2-complete cementing receipt `{module_stem}` \
                          as a `.dag` harness; expected file {}",
+                        path.display()
+                    ));
+                }
+                let source = std::fs::read_to_string(&path).map_err(|err| {
+                    format!(
+                        "read `.dag` cementing receipt `{module_stem}` at {}: {err}",
+                        path.display()
+                    )
+                })?;
+                let missing_predicates: Vec<_> = required_predicates
+                    .iter()
+                    .filter(|predicate| !source.contains(predicate.as_str()))
+                    .cloned()
+                    .collect();
+                if !missing_predicates.is_empty() {
+                    return Err(format!(
+                        "registry lens `{registry_name}` lists `.dag` Band-C receipt `{module_stem}` \
+                         but {} is missing required behavioral predicate constructor(s) \
+                         {missing_predicates:?}; a wired file or `Compiles` placeholder is not a \
+                         sufficient Band-C receipt.",
                         path.display()
                     ));
                 }
