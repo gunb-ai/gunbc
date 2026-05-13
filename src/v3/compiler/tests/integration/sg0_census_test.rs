@@ -688,6 +688,21 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
+    // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
+    // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
+    // diagnostics (timing `EnforcedApplication` row in `t_ci_workflow_as_data_demo.dag`).
+    //
+    // **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
+    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
+    // `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test floor), same
+    // structural class as co-listed `t_ci_workflow_as_data_demo_test.rs` and
+    // `t_las_complexity_contract_compile_error_test.rs`: the obligation is still discharged via a
+    // hand-maintained Rust harness until the generic `.dag` `TestClaim` runner can assert the same
+    // bootstrap facts without this file. Lane context: **T-Lens-Self-Application** /
+    // `apply_lens_self_application_demonstrated` (`docs/r3-structure.md`, `docs/r3-program-plan.md`
+    // §1.8 gate #58). Dissolution: delete this path from the census when the receipt ports to a
+    // `.dag` TestClaim (or a generated test) with no remaining SG-0 hand-authored test delta.
+    "src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs",
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",

@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci release-doc-authority-check release-doc-authority-test manager-brief-authority-check manager-brief-authority-test
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci release-doc-authority-check release-doc-authority-test manager-brief-authority-check manager-brief-authority-test test-timeout-ratchet-test
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -84,6 +84,12 @@ manager-brief-authority-check:
 # the consumer.
 manager-brief-authority-test:
 	@bash scripts/test-check-manager-brief-authority.sh
+
+# Self-test for the per-test timeout ratchet consumer. Without this,
+# future JSONL manifest parsing changes could silently neuter fail-closed
+# behavior for slow-test policy.
+test-timeout-ratchet-test:
+	@bash scripts/test-check-test-timeout.sh
 
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
