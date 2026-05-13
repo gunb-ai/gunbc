@@ -345,7 +345,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 ### Gap 10 — Close-audit doc absent (interrogation §8)
 
-**Promise** (r3-close-interrogation.md §8): *"All 104 §1.8 predicates executed at HEAD within 24h of close ceremony. Execution log preserved as audit artifact."*
+**Promise** (r3-close-interrogation.md §8, count generalized by PR #3013 close-criterion discipline): all §1.8 predicates are executed at HEAD within 24h of close ceremony, with the row count derived from the live ledger. Execution log preserved as audit artifact.
 
 **HEAD evidence**:
 - No `docs/audit/r3-close-predicate-execution-2026-05-13.md` exists
@@ -356,12 +356,12 @@ plus #85 SuiteClaim wrapper consumer landed.
 **Plan to cash**:
 - **Owner**: PM (deep-wolf-155) authors the doc; Verification Mgr (swift-deer-459) executes predicates
 - **Sub-program**:
-  1. PM authors skeleton: 105 rows, one per §1.8 gate, with column for predicate execution status
+  1. PM authors skeleton: one row per live §1.8 gate, with column for predicate execution status
   2. Verification Mgr runs each predicate at HEAD; records pass/fail + output snippet
   3. PM closes out the doc with verdict per row + overall R3-close verdict
 - **Effort estimate** (Director feedback item 7 — calibrated):
-  - **Skeleton authoring (PM-direct)**: 1-2 days — 105-row table scaffold + per-row column shape + initial categorization
-  - **Predicate execution (Verification Mgr serial)**: 1-2 weeks — 105 individual `cargo test` / `grep` invocations + result capture + per-row writeup
+  - **Skeleton authoring (PM-direct)**: 1-2 days — ledger-derived table scaffold + per-row column shape + initial categorization
+  - **Predicate execution (Verification Mgr serial)**: 1-2 weeks — one `cargo test` / `grep` / predicate invocation per live §1.8 row + result capture + per-row writeup
   - **Predicate execution (Verification Mgr parallel via ctrl-build)**: 3-5 days compressed if remote BuildBuddy infra healthy + parallelism dispatch
   - **Overall**: 1-2 weeks for full landing, contingent on Verification Mgr capacity + ctrl-build availability
 
@@ -418,7 +418,7 @@ Given the cross-gap dependencies, recommended dispatch order:
 - Gap 2/3/5/6/7/9: PM-prior-cycle-experience-based, NOT cited against specific velocity data. Final ratified version (post-operator-§4-confirmations) should:
   1. Cite per-gap velocity reference (e.g., "Cluster M Phase 1 + 1a + 2 landed in N weeks per PR #2645/#2647/#2639/#2757 cadence; Phase 3 bulk-port estimate extrapolates")
   2. Update at first weekly closure-cadence message (§5 process discipline) once first-week dispatch lands actual delta-velocity data
-- Gap 10: source = direct execution count (105 predicates × {serial 1-2wk OR parallel 3-5d via ctrl-build})
+- Gap 10: source = direct execution count (live §1.8 predicate count × {serial 1-2wk OR parallel 3-5d via ctrl-build})
 
 This caveat applies to the entire §3 — estimates above are PM-best-guess at draft authorship; precision improves as dispatch progresses and weekly closure-cadence messages calibrate against actual landing dates.
 
