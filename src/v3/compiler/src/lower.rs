@@ -5387,9 +5387,108 @@ fn lower_record_to_structural(
         )?;
         structural_fields.push((type_label.clone(), field_value));
     }
+    if category == Some(RealizationCategoryTag::Operator)
+        && !validate_operator_realization_free_monoid_op_pairing(
+            dag,
+            data_name,
+            &structural_fields,
+            body_span,
+        )
+    {
+        return None;
+    }
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+/// `OperatorRealization.target: FreeMonoid` is only meaningful for the monoid
+/// witness equality path, which selects `OrderedRing.eq` after the walk.
+/// Enforce that pairing here (once both fields are lowered) so illegal
+/// `(FreeMonoid, op)` shapes fail closed at the realization boundary rather
+/// than relying on spec authors (INVARIANTS P2/P3).
+fn validate_operator_realization_free_monoid_op_pairing(
+    dag: &mut Dag,
+    data_name: &str,
+    structural_fields: &[(String, crate::dag::FieldValue)],
+    body_span: &SourceSpan,
+) -> bool {
+    let Some(free_monoid) = dag.declaration_by_name("FreeMonoid").map(|d| d.id) else {
+        return true;
+    };
+    let Some(crate::dag::FieldValue::Reference(target_id)) = structural_fields
+        .iter()
+        .find(|(label, _)| label == "target")
+        .map(|(_, v)| v)
+    else {
+        return true;
+    };
+    if *target_id != free_monoid {
+        return true;
+    }
+    let Some(crate::dag::FieldValue::Reference(op_id)) = structural_fields
+        .iter()
+        .find(|(label, _)| label == "op")
+        .map(|(_, v)| v)
+    else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires `op` as a resolved algebra field reference"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return false;
+    };
+    let Some(expected_eq) = canonical_ordered_ring_operator_field_arrow(
+        dag,
+        OperatorKind::Comparison(ComparisonOp::Eq),
+    ) else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires canonical `OrderedRing.eq`, but the `OrderedRing` algebra metadata is unavailable"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return false;
+    };
+    if *op_id != expected_eq {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` is only legal with `op: OrderedRing.eq` (fail-closed narrowing); resolved `op` does not match canonical `OrderedRing.eq`"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return false;
+    }
+    true
+}
+
+fn canonical_ordered_ring_operator_field_arrow(
+    dag: &Dag,
+    op: OperatorKind,
+) -> Option<DeclarationId> {
+    let ordered_ring_id = dag.ordered_ring_decl()?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
+    let TypeConnective::Conj { children } = &ordered_ring.connective else {
+        return None;
+    };
+    let label = crate::operators::algebra_field_name(op);
+    children
+        .iter()
+        .find(|field| field.label == label)
+        .map(|field| field.ty)
 }
 
 fn duplicate_record_field(
@@ -6660,11 +6759,9 @@ fn realization_category_for_meta(
 ///     realized operator, e.g. Int for `1 + 2` or PortId for
 ///     reflected handle equality, or the `FreeMonoid` template for
 ///     `OrderedRing.eq` after the monoid witness walk on `String` /
-///     `List` element comparisons).
-///     Only `target` is validated in this pass (per-field lowering); pairing
-///     with `op: OrderedRing.eq` is spec discipline for current rows (e.g.
-///     `rust_free_monoid_eq`). Defer cross-field (`target` + `op`) enforcement
-///     until additional `OperatorRealization` carriers need a stricter gate.
+///     `List` element comparisons). When `target` is `FreeMonoid`,
+///     `lower_record_to_structural` additionally requires `op` to resolve
+///     to the canonical `OrderedRing.eq` arrow (fail-closed pairing gate).
 ///   - `OperatorRealization.op` — must walk to an Arrow
 ///     declaration that is a child of an algebra Conj (e.g.
 ///     OrderedRing.add). The constraint is "the resolved
