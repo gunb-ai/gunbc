@@ -3136,9 +3136,9 @@ impl<'a> TestRunner<'a> {
                 TransactionalPattern::NoTransaction
             )),
             "gate87_parallelism_read_only_branches_commute" => {
-                let Some(root) = first_workflow_anchor(program_dag) else {
+                let Some(root) = program_dag.workflow_lane2_subject() else {
                     return Some(ClaimResult::Fail(format!(
-                        "LensOutputEquals({lens_name}): workflow anchor not found in `{file_name}`"
+                        "LensOutputEquals({lens_name}): workflow lane2 subject not found in `{file_name}`"
                     )));
                 };
                 let mut dag = program_dag.clone();
@@ -6295,13 +6295,6 @@ fn find_bind<'a>(
         }
         _ => None,
     })
-}
-
-fn first_workflow_anchor(dag: &Dag) -> Option<NodeId> {
-    dag.nodes()
-        .iter()
-        .find(|node| matches!(node, Behavior::Value(_) | Behavior::Bind(_)))
-        .map(Behavior::id)
 }
 
 fn expected_int_literal(

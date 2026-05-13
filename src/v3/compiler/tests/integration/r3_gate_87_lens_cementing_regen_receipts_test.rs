@@ -168,11 +168,8 @@ fn r3_gate_87_parallelism_rust_receipt_on_read_only_parallel_branches() {
     let mut dag = compile_to_dag("let anchor: Int = 1", "r3_gate_87_parallelism_receipt.v3")
         .expect("compile");
     let root = dag
-        .nodes()
-        .iter()
-        .find(|node| matches!(node, Behavior::Value(_) | Behavior::Bind(_)))
-        .expect("compiled fixture should contain a workflow anchor")
-        .id();
+        .workflow_lane2_subject()
+        .expect("compiled fixture should contain a workflow lane2 subject");
     let read = |operation_name: &str| OperationEffect {
         operation_name: operation_name.to_string(),
         shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
@@ -190,7 +187,7 @@ fn r3_gate_87_parallelism_rust_receipt_on_read_only_parallel_branches() {
     };
     assert!(
         dag.try_register_lane2_workflow_effect(root, workflow),
-        "parallelism receipt must stage the lane2 workflow fact at the anchor"
+        "parallelism receipt must stage the lane2 workflow fact at the workflow subject"
     );
     assert!(
         matches!(
