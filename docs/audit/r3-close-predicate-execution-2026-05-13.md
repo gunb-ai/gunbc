@@ -27,7 +27,7 @@ Gate rows are the markdown table body in `docs/r3-program-plan.md` immediately u
 grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 ```
 
-At authoring time of this skeleton (worktree HEAD), that count was **105**. Future §1.8 additions (e.g. post–Gap-9 row **#106**) must add matching rows here in the same PR that extends the ledger, or immediately follow so this doc stays the mechanical index §8 expects.
+At maintenance time of this revision (worktree HEAD), that count was **106**. Future §1.8 additions beyond **#106** must add matching rows here in the same PR that extends the ledger, or immediately follow so this doc stays the mechanical index §8 expects.
 
 ## §1.8 gate enumeration — predicate execution (one row per gate)
 
@@ -129,7 +129,7 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 | 94 | `memory_peak_cost_basis_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #94. | — |
 | 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #95. | — |
 | 96 | `value_body_substrate_mirror_isomorphism_executable` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #96. | — |
-| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #97. | — |
+| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **PASS** | Executed at `2026-05-13T21:21:20Z` on commit `217b2c0d105d3ba5104e666b33f60b11ef14194f`: `cargo test -p v3-compiler --test integration method_template_projection_emit_shim_coherence_test::method_template_projection_emit_shim_retirement_coherence -- --exact`; HEAD state: `src/v2/` absent, `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` absent, `src/v3/compiler/src/bin/emit_method_template_projection.rs` absent, and no `emit_method_template_projection` `[[bin]]` table remains in `src/v3/compiler/Cargo.toml`. | BuildBuddy invocation `741276d7-98b7-4a38-8574-2c8c7cc6ce1a`; `src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs` |
 | 98 | `ci_yml_hand_authority_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #98. | — |
 | 99 | `workflow_runtime_open_enum_landed` | substrate-shape | **NOT_EXECUTED** | `git grep -nE '^type WorkflowRuntime = YamlStatic \| BinaryShim \| PythonShim' dsl/gunbc/ci_emission.dag` (expect 1 hit); `cargo test -p v3-compiler gunbc_ci_emission_substrate_compiles` (expect green). | Ledger status (CONSUMER_LANDED + PASSING) tracked separately in `docs/r3-program-plan.md` §1.8 row #99; this row pending close-ceremony sweep. |
 | 100 | `project_github_actions_landed` | substrate-shape | **NOT_EXECUTED** | `git grep -nE 'fn project_github_actions\(dag: CIWorkflowDag, runtime: WorkflowRuntime\) -> Workflow' dsl/gunbc/ci_emission.dag` (expect 1 hit); pinned binding `gunbc_ci_yml_workflow` at line 95; `cargo test -p v3-compiler gunbc_ci_emission_substrate_compiles` (expect green). | Ledger status tracked separately in §1.8 row #100; this row pending close-ceremony sweep. |
@@ -138,6 +138,7 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 | 103 | `ci_uses_affected_set_selection` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #103. | — |
 | 104 | `lens_read_witness_shape_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #104. | — |
 | 105 | `symbolic_cost_textbook_coverage_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #105. | — |
+| 106 | `show_correct_code_diagnostic_coverage` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #106 + `docs/r3-actual-close-plan.md` Gap 9. | — |
 
 ## §1 second Pass surface (standing predicate, not a numbered §1.8 lane gate)
 
@@ -156,4 +157,3 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 - `docs/r3-program-plan.md` §1.8 — canonical gate table (Status / Notes authority for what “PASSING” means per gate).
 - `docs/r3-close-interrogation.md` §8 — requirement to preserve this execution log.
 - `docs/r3-actual-close-plan.md` — Gap 10 plan + close criterion (PR #3013).
-
