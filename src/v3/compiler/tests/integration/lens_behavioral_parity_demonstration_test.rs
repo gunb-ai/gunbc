@@ -195,7 +195,6 @@ fn r3_gate_73_demonstrates_complexity_classification_is_conservative() {
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
     run_with_parity_demo_stack(|| {
         let (complexity, _) = countdown_complexity();
@@ -213,7 +212,6 @@ fn r3_gate_73_demonstrates_symbolic_cost_is_linear() {
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_73_demonstrates_symbolic_cost_is_keyed_by_countdown_parameter() {
     run_with_parity_demo_stack(|| {
         let (symbolic_cost, parameter) = countdown_symbolic_cost();
