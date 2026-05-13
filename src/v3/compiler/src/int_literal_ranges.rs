@@ -306,6 +306,32 @@ fn integer_routing_witness_walk(
     }
 }
 
+/// Gate #60 Phase 2.1: `MachineWidth`'s phantom argument may be a literal decimal
+/// (`MachineWidth<64>`) naming the Nat magnitude; map to the existing `std.bit` width
+/// authority (`Byte` / `Word16` / …) for the same integer-routing witness as Word*-spelled rows.
+fn machine_width_inner_to_std_width_carrier_decl(
+    dag: &Dag,
+    inner_decl: DeclarationId,
+) -> Option<DeclarationId> {
+    if std_word_carrier_to_target_carrier_variant_ty(dag, inner_decl).is_some() {
+        return Some(inner_decl);
+    }
+    match &dag.declaration(inner_decl).connective {
+        TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(s))) => {
+            let n: u32 = s.parse().ok()?;
+            match n {
+                8 => Some(dag.declaration_by_name("Byte")?.id),
+                16 => Some(dag.declaration_by_name("Word16")?.id),
+                32 => Some(dag.declaration_by_name("Word32")?.id),
+                64 => Some(dag.declaration_by_name("Word64")?.id),
+                128 => Some(dag.declaration_by_name("Word128")?.id),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Fixed-width integers after gate #19: `Compose<Int, MachineWidth<Word*>>` (signed) or
 /// `Compose<UInt, MachineWidth<Word*>>` (unsigned). Maps to the same `(OrderedRing|Semiring, Word*)`
 /// pilot routing key as the legacy `OrderedRing<Word*>` / `Semiring<Word*>` instantiations.
@@ -332,7 +358,8 @@ fn compose_integer_routing_witness(
         } = &dag.declaration(v).connective
         {
             if *template == machine_width && mw_args.len() == 1 {
-                word_carrier = Some(mw_args[0].value);
+                let inner = mw_args[0].value;
+                word_carrier = Some(machine_width_inner_to_std_width_carrier_decl(dag, inner)?);
             }
         }
     }
