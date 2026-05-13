@@ -184,11 +184,26 @@ jobs:
       - name: v3 bootstrap snapshot freshness gate (--verify)
         run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
 
+      # Gate #103 / T-WAD Slice 7 — **explicit** CI callsites (not only via the full `v3` suite):
+      # - Canvas §5 dissolution evidence (b): static ratchet on `.github/workflows/*`.
+      # - Worker brief `docs/briefs/r3-wave1-s6-slice7-affected-set-impl-worker.md` §1 **Layer 1**:
+      #   gate-id `CiWorkflowDiff` plumbing + `select_affected_gates_for_binary_shim` integration tests.
+      # **Layer 2** (PR #2713 `Set<NodeRef>` / dimension receipts → emitted BinaryShim runner) waits on
+      # Slice 5 per canvas §6–§7; this job does not pretend that runner exists yet.
+      - name: "Gate #103 — path-regex inventory ratchet (canvas §5)"
+        run: bash scripts/check-workflow-path-regex-inventory.sh
+
+      - name: "Gate #103 — Layer 1 affected-set selection (BinaryShim receipt → gate plan)"
+        run: cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
+
   # Merge-blocking heavy compute always runs on non-draft PRs and on pushes to
-  # main. Docs-only skip was removed under gate `ci_uses_affected_set_selection`
-  # (program row 103): YAML path-regex selection is not authoritative; future
-  # narrowing belongs in the BinaryShim runner (`select_affected_gates_for_binary_shim`
-  # + PR #2713 lens receipts per `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md`).
+  # main. Docs-only skip was removed as **Layer 2 Phase C** hygiene under gate
+  # `ci_uses_affected_set_selection` (program row 103): YAML path-regex selection is
+  # not authoritative (`docs/briefs/r3-wave1-s6-slice7-affected-set-impl-worker.md` §1
+  # two-layer model + `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §5).
+  # **Layer 2** in-runner narrowing (`select_affected_gates_for_binary_shim` fed from PR #2713
+  # receipts inside the Slice 5 runner) is tracked on the canvas checklist §7; the `ci` job
+  # above runs the Layer 1 adapter tests + §5 ratchet explicitly.
   v3:
     if: github.event.pull_request.draft != true
     # Heavy compute (cargo release builds, full v3 test suite at the
