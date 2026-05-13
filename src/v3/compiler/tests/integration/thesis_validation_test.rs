@@ -8,7 +8,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
-use v3_compiler::diagnostics::{render_diagnostic_for_target, DiagnosticStyleTarget};
+use v3_compiler::diagnostics::{render_diagnostic_for_target, Correction, DiagnosticStyleTarget};
 use v3_compiler::lens_cost::cost_of;
 
 use crate::common::cached_compile_to_dag;
@@ -112,17 +112,18 @@ fn read(point: Point) -> Int = point.c
             )
         });
     assert!(
-        !diag.correction().description().is_empty(),
-        "missing-field diagnostic should carry a named correction"
+        matches!(diag.correction(), Correction::DeferredCorrection { .. }),
+        "ambiguous missing-field diagnostic should carry an explicit deferral, got {:?}",
+        diag.correction()
     );
     let rendered = rendered_rust_diagnostic(&dag, diag);
     assert!(
-        rendered.contains("FIX (option 1):"),
-        "rendered diagnostic should show FIX lines, got {rendered}"
+        !rendered.contains("FIX (option 1):"),
+        "ambiguous missing-field diagnostic should not render an arbitrary FIX line, got {rendered}"
     );
     assert!(
-        rendered.contains("\n    \"a\";"),
-        "rendered diagnostic should include pasteable .dag fix source, got {rendered}"
+        !rendered.contains("\n    \"a\";") && !rendered.contains("\n    \"b\";"),
+        "ambiguous missing-field diagnostic should not choose between fields, got {rendered}"
     );
 }
 
