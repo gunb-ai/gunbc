@@ -602,13 +602,29 @@ fn gunbc_ci_emission_substrate_compiles() {
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
+/// R3 gate #57 — `lens_self_application_demonstrated` (T-Lens-Self-Application).
+///
+/// Pins gunbc's CI workflow as `.dag` structural authority and exercises the repository's lens
+/// stack: timing via `DimensionReport<TimingMeasurement>` (`evaluate_body` on the bootstrap shell),
+/// symbolic-cost + E7 complexity entrypoints via `DimensionReport<SymbolicCost>`, structural
+/// `complexity_of` read, and lane-2 parallelism composition (`WorkflowParallelismReport` — the
+/// substrate report carrier until a `DimensionReport` projection lands for parallelism).
 #[test]
-// Deferred with explicit P5 anchor (not ad-hoc TBD): ROADMAP.md "Forward-Tracked Lane: T-Workflow-As-Data"
-// (~L57ff) + timing-lens / `WorkflowObservationAnchor` thread (~L75ff, `docs/design-timing-lens.md` section 2).
-// Dissolution: re-enable under default CI by amortizing this harness through `cached_compile_to_dag`
-// (`tests/integration/common/cached_compile.rs`) / OnceLock so cold v3 (~67m full-bootstrap + evaluator) stays bounded.
-#[ignore = "ROADMAP T-Workflow-As-Data lane + timing-lens anchor (ROADMAP.md ~L57, ~L75); cold v3 full-bootstrap+evaluator ~67m — dissolve via cached_compile_to_dag/OnceLock (tests/integration/common/cached_compile.rs); hot-fix 2026-05-12"]
-fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
+fn lens_self_application_demonstrated() {
+    // Use `compile_to_dag` (not the integration compile cache): `dsl/gunbc/ci.dag` participates in
+    // multi-module resolution; `cached_compile_to_dag` keys only `(source, file)` and can return a
+    // partial `Semantic` dag if this module is ever compiled without its `gunbc.ci.*` peers first.
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    assert!(
+        ci.diagnostics().is_empty(),
+        "gunbc CI authority dag must compile cleanly: {:?}",
+        ci.diagnostics()
+    );
+    ci.declaration_by_name("ci_workflow_dag")
+        .expect("dsl/gunbc/ci.dag must expose `ci_workflow_dag` as the CI topology authority");
+
+    // --- Timing lens: bootstrap `demo_ci_modeled_timing_dimension_report` (prior ignored receipt). ---
     let dag = demo_bootstrap_dag();
     assert!(
         dag.diagnostics().is_empty(),
@@ -701,4 +717,71 @@ fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
         &Value::LiteralValue(LiteralBits::String("ci_modeled_timing".to_string())),
         "dimension_name must match ci_modeled_timing_lens.name"
     );
+
+    // --- Cost + complexity + parallelism: same lens machinery the repo ships for user programs. ---
+    let prog = cached_compile_to_dag("let x = 1 + 2", "lens_self_application_dim.v3");
+    assert!(
+        prog.diagnostics().is_empty(),
+        "lens_self_application fixture diagnostics: {:?}",
+        prog.diagnostics()
+    );
+    let root = bind_node_id_named(&prog, "x");
+
+    let cost = analyze_symbolic_cost_dimension(&prog, root);
+    let complexity = analyze_complexity(&prog, root);
+    let (cost_composed, cost_name) = match &cost {
+        DimensionReport::DimensionOk {
+            composed,
+            dimension_name,
+            ..
+        } => (composed, dimension_name.as_str()),
+        other => panic!("expected symbolic-cost DimensionOk, got {other:?}"),
+    };
+    let (complexity_composed, complexity_name) = match &complexity {
+        DimensionReport::DimensionOk {
+            composed,
+            dimension_name,
+            ..
+        } => (composed, dimension_name.as_str()),
+        other => panic!("expected analyze_complexity DimensionOk, got {other:?}"),
+    };
+    assert_eq!(cost_name, "symbolic_cost");
+    assert_eq!(complexity_name, "symbolic_cost");
+    assert_eq!(
+        cost_composed, complexity_composed,
+        "analyze_complexity must delegate to the symbolic-cost dimension (single authority)"
+    );
+
+    let Behavior::Bind(bind_x) = prog.node(root) else {
+        panic!("workflow root must be a Bind for this fixture");
+    };
+    assert!(
+        matches!(
+            complexity_of(&prog, &bind_x.result_port()),
+            ComplexityLookup::Hit(_)
+        ),
+        "complexity lens read path must hit on the workflow bind result port"
+    );
+
+    let mut prog_parallel = prog.clone();
+    let workflow = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![lens_self_app_read_op("read_user")],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![lens_self_app_read_op("read_account")],
+            }),
+        ])
+        .expect("two branches satisfy NonSingletonList"),
+    };
+    assert!(prog_parallel.try_register_lane2_workflow_effect(root, workflow));
+
+    let par = analyze_parallelism(&prog_parallel, root);
+    assert!(matches!(
+        par,
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ));
 }
