@@ -59,6 +59,8 @@ Predicate-axis boundaries:
 
 The rows below are the complete Gate #87 `.dag` `Compiles` placeholder set at the G87-D3 refresh. They are helper or carrier-blocked placeholders, not behavioral cementing evidence. On dissolution, replace the placeholder with the named stronger predicate and remove the paired Rust pin in the same PR.
 
+For the broader gate-87 ledger, including rows that use a narrow `LensOutputEquals` projection plus a host-side Rust pin instead of `Compiles`, see [`r3-gate-87-lens-cementing-closure-audit.md`](r3-gate-87-lens-cementing-closure-audit.md) §"Placeholder-Dissolution Ledger". This section intentionally stays limited to the three literal `Compiles` placeholders so it does not become a second runner inventory.
+
 | Lens row | Placeholder file | Paired Rust pin | Dissolution trigger / owning lane |
 |---|---|---|---|
 | `infer_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals` over that carrier. Owning lane: PB / compiler-std helper carrier lane. |
