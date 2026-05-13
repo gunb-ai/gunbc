@@ -101,29 +101,58 @@ Cite gate #105 + PR #2828 + msg_d86a5987 in the comment block.
 
 ## §5. Phase C — SymbolicCost carrier reshape (Q2-Y + variant additions)
 
-Replace `src/v3/std/algebra.dag:190-197` variant set with:
+### §5.0 — Type-level refinement carriers (per codex BLOCKING on PR #2828)
+
+Before reshaping SymbolicCost, introduce three refinement carriers that make illegal field values **structurally unrepresentable** (Practice 2 + Practice 6; `docs/modeling-discipline.md`). Strict-mirror of `DegreeAtLeastTwo` precedent at `src/v3/std/algebra.dag:171-173`:
+
+```dag
+// Mirror of DegreeAtLeastTwo (lines 171-173): Peano-style inductive
+// carrier where illegal cases are structurally unrepresentable, not
+// normalizer-cleaned-up.
+type IntAtLeastTwo
+  = IntTwo
+  | IntSuccessor { previous: IntAtLeastTwo }
+
+type PositiveInt
+  = One
+  | PositiveSuccessor { previous: PositiveInt }
+
+// PositiveRational: strict-positive Rational. Constructor accepts only
+// numerator > 0 + denominator > 0 (excluding 0 and negative). Realization
+// follows OrderedField<Rational> from Phase A.
+type PositiveRational {
+  numerator: PositiveInt
+  denominator: PositiveInt
+}
+```
+
+These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` structurally impossible to construct — no fold-time enforcement required.
+
+### §5.1 — Replace SymbolicCost variant set
+
+Replace `src/v3/std/algebra.dag:190-197` with:
 
 ```dag
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
-  | PolynomialCost { var: SizeVariable, degree: Rational }       // Q2-Y: absorbs LinearCost via degree=1; degree > 0 invariant
-  | PolyLogCost { var: SizeVariable, exponent: Int }             // NEW: log^k n only (k integer)
+  | PolynomialCost { var: SizeVariable, degree: PositiveRational }   // Q2-Y: absorbs LinearCost via degree=1; degree > 0 by carrier
+  | PolyLogCost { var: SizeVariable, exponent: PositiveInt }         // NEW: log^k n; exponent ≥ 1 by carrier
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
   | LogCost(SizeVariable)
-  | ExponentialCost { base: Int, var: SizeVariable }             // NEW: c^n with c ≥ 2
-  | FactorialCost { var: SizeVariable }                          // NEW: n!
+  | ExponentialCost { base: IntAtLeastTwo, var: SizeVariable }       // NEW: c^n with c ≥ 2 by carrier
+  | FactorialCost { var: SizeVariable }                              // NEW: n!
   | UnknownCost(String)
 ```
 
 10 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
 
-Refinement constraints (state-space-vs-behavioral-invariant discipline per `feedback_state_space_vs_behavioral_invariants`):
-- `PolynomialCost.degree > 0` is an algebra invariant; degree=0 collapses to ConstantCost (existing behavior preserved)
-- `PolyLogCost.exponent ≥ 1` (exponent=0 collapses to ConstantCost; exponent=1 collapses to LogCost via canonicalization)
-- `ExponentialCost.base ≥ 2` (base=0 / base=1 collapse to ConstantCost)
+**Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
+- `PolynomialCost.degree: PositiveRational` — `degree ≤ 0` is structurally impossible
+- `PolyLogCost.exponent: PositiveInt` — `exponent ≤ 0` is structurally impossible
+- `ExponentialCost.base: IntAtLeastTwo` — `base ≤ 1` is structurally impossible
 
-These refinements live in the algebra fold normalizer, NOT as type-level `where` clauses (avoids Q2-X-style structural fudge).
+Reviewers MUST flag any attempt to use raw `Rational` / `Int` for these fields.
 
 ## §6. Phase D — Algebra interaction rules (Q3)
 

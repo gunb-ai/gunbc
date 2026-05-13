@@ -184,7 +184,15 @@ Current `src/v3/std/algebra.dag:69-72`:
 > STOP SIGNAL: wanting an eighth variant. Pause and escalate rather than extending; the thesis claim is that seven covers the asymptotic surface, and any new variant should carry its own dissolution receipt.
 
 **Post-extension proposed text** (Mgr recommendation):
-> STOP SIGNAL: wanting an 11th variant (or 12th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 10 variants covering ConstantCost / PolynomialCost(Rational ≥ 0) / PolyLogCost / LogCost / ProductCost / SumCost / ExponentialCost / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
+> STOP SIGNAL: wanting an 11th variant (or 12th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 10 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PositiveInt } / LogCost / ProductCost / SumCost / ExponentialCost { base: IntAtLeastTwo } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
+
+**Type-level refinement carriers** (per codex BLOCKING on PR #2828 — `docs/modeling-discipline.md` Practice 2 + Practice 6: invariants encoded in type system, NOT fold normalizer):
+
+- `PositiveRational` — strict-positive Rational; constructor accepts only `> 0` values. Follows `DegreeAtLeastTwo` precedent at `src/v3/std/algebra.dag:171-173` (inductive carrier where illegal cases are structurally unrepresentable).
+- `PositiveInt` — strict-positive Int; same Peano-style precedent.
+- `IntAtLeastTwo` — Int ≥ 2; strict-mirror of `DegreeAtLeastTwo` shape.
+
+These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` **structurally unrepresentable** at the carrier level — no normalizer-time enforcement required. Aligns with `feedback_state_space_vs_behavioral_invariants`.
 
 Variant count: **10** post-Q2-Y (recommended), or **11** if Q2-X is ratified.
 
