@@ -38,7 +38,10 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -140,6 +143,34 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_runner_table_matches_on_disk_harness_inventory() {
+    let dag_dir = workspace_root().join("src/v3/compiler/tests/dag");
+    let mut on_disk = BTreeSet::new();
+    for entry in std::fs::read_dir(&dag_dir)
+        .unwrap_or_else(|e| panic!("read gate-87 dag harness dir {}: {e}", dag_dir.display()))
+    {
+        let entry = entry.unwrap_or_else(|e| panic!("read gate-87 dag harness dir entry: {e}"));
+        let Some(file_name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if let Some(stem) = file_name
+            .strip_prefix("t_r3_gate_87_cementing_regen_")
+            .and_then(|rest| rest.strip_suffix(".dag"))
+        {
+            on_disk.insert(format!("t_r3_gate_87_cementing_regen_{stem}"));
+        }
+    }
+
+    let table = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+    assert_eq!(
+        on_disk, table,
+        "Gate-87 cementing harness files under `tests/dag/t_r3_gate_87_cementing_regen_*.dag` \
+         must exactly match `R3_GATE_87_CEMENTING_REGEN_SUITES`; add/remove the file and runner \
+         table row together. on_disk={on_disk:?} table={table:?}"
     );
 }
 
