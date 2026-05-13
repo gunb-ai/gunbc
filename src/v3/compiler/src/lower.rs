@@ -5879,7 +5879,14 @@ fn lower_structural_field_value(
     }
 
     let mut disj_subst = subst.clone();
-    if let Some(disj_id) = walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst) {
+    let optional_card =
+        optional_at_most_one_cardinality_decl_with_subst(dag, expected_type, subst, 0);
+    let optional_disj = optional_card
+        .and_then(|card| crate::infer::ensure_optional_match_disj(dag, card));
+    let disj_id = optional_disj.or_else(|| {
+        walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst)
+    });
+    if let Some(disj_id) = disj_id {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -5887,6 +5894,29 @@ fn lower_structural_field_value(
                 .collect(),
             _ => unreachable!("walk_to_disj_decl returned non-Disj"),
         };
+
+        if optional_disj.is_some() && surface_expr_is_authored_optional_none(expr) {
+            let Some((_, none_variant_payload_decl)) =
+                variants.iter().find(|(label, _)| label == "None")
+            else {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}`: optional match disj missing `None` arm"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            };
+            return Some(crate::dag::FieldValue::Variant {
+                constructor: *none_variant_payload_decl,
+                payload: vec![],
+            });
+        }
+
         let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) =
             match expr {
                 SurfaceExpr::Call { target, args, span } => {
@@ -6038,7 +6068,9 @@ fn lower_structural_field_value(
                 return None;
             }
             for field in fields {
-                if !payload_fields.iter().any(|(label, _)| label == &field.name) {
+                if !payload_fields.iter().any(|(label, _)| {
+                    surface_record_field_matches_variant_payload_label(&field.name, label)
+                }) {
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -6054,9 +6086,8 @@ fn lower_structural_field_value(
                 }
             }
             for (payload_field_label, payload_field_ty) in &payload_fields {
-                let Some(field) = fields
-                    .iter()
-                    .find(|field| field.name == *payload_field_label)
+                let Some(field) =
+                    surface_record_field_for_variant_payload(fields, payload_field_label)
                 else {
                     report_declaration_error(
                         dag,
@@ -6253,6 +6284,68 @@ fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Decl
         } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
+}
+
+/// If `expected_type` is (after alias / type-param peel) `Cardinality(_, AtMostOne)`,
+/// returns that cardinality declaration id. Used so structural `data` lowering can
+/// mint the `Some`/`None` optional-match disj before `infer::infer` runs.
+fn optional_at_most_one_cardinality_decl_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            optional_at_most_one_cardinality_decl_with_subst(
+                dag,
+                subst.lookup(expected_type)?,
+                subst,
+                depth + 1,
+            )
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_at_most_one_cardinality_decl_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            Some(expected_type)
+        }
+        TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+            optional_at_most_one_cardinality_decl_with_subst(dag, *template, subst, depth + 1)
+        }
+        _ => None,
+    }
+}
+
+fn surface_expr_is_authored_optional_none(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Path { segments, .. } => segments.len() == 1 && segments[0] == "none",
+        SurfaceExpr::Var { name, .. } => name == "none",
+        _ => false,
+    }
+}
+
+fn surface_record_field_for_variant_payload<'a>(
+    fields: &'a [crate::parse::SurfaceRecordField],
+    payload_label: &str,
+) -> Option<&'a crate::parse::SurfaceRecordField> {
+    fields.iter().find(|f| f.name == payload_label).or_else(|| {
+        (payload_label == "_0").then(|| fields.iter().find(|f| f.name == "value")).flatten()
+    })
+}
+
+fn surface_record_field_matches_variant_payload_label(
+    authored_field: &str,
+    payload_label: &str,
+) -> bool {
+    if authored_field == payload_label {
+        return true;
+    }
+    authored_field == "value" && payload_label == "_0"
 }
 
 fn list_element_type_with_subst(
