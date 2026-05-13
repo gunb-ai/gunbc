@@ -8,12 +8,13 @@
 //!
 //! Until now this was manual — a new `LensRegistryEntry` could land
 //! in `regen.dag` without a corresponding capability-register row,
-//! and the discipline held only by reviewer attention. This test
-//! automates it: every `LensRegistryEntry` in `regen.dag` must name
-//! a `lens_file` whose basename appears as a lens row in the
-//! capability table. On drift, the assert prints both the missing
-//! basenames (regen entries absent from the register) and the
-//! registry-visible set, so the fix is a single register edit.
+//! and the discipline held only by reviewer attention. These tests
+//! automate it: every `LensRegistryEntry` in `regen.dag` must name
+//! a `lens_file` whose basename appears in the structural register
+//! (`std.verification::lens_capability_register_rows`), and the
+//! markdown table must mirror that same structural row set. On drift,
+//! the asserts print both the missing basenames and the visible set,
+//! so the fix is a single register edit.
 //!
 //! **Band-C v2 cementing (mechanical doc ↔ structural register).** The
 //! markdown `## Capability table` rows that read `BEHAVIORALLY COMPLETE` with a
@@ -23,14 +24,12 @@
 //! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
 //! register body in `cementing_dispatch.dag`.
 //!
-//! Directionality is the one written into the register's Discipline
-//! section — regen → register is required; extra register rows are
-//! allowed. `idempotency.dag` and `parallelism.dag` are the current
-//! example: both have register rows (as `BEHAVIORALLY STUB` lenses
-//! whose authority lives in Rust) but no `regen.dag` entry, because
-//! they are not regenerated into a `lens_*_generated.rs`. That is
-//! exactly the posture the register documents; a bidirectional
-//! ratchet would misread those rows as drift.
+//! Directionality for the regen check is the one written into the
+//! register's Discipline section — regen → register is required; extra
+//! register rows are allowed. `idempotency.dag` and `named_function_count.dag`
+//! are current examples: both have register rows but no `regen.dag`
+//! entry. That is exactly the posture the register documents; a
+//! bidirectional regen ratchet would misread those rows as drift.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -263,20 +262,57 @@ fn register_lens_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn every_regen_lens_entry_has_a_capability_register_row() {
+fn structural_register_rows_match_markdown_capability_table() {
+    let structural = structural_register_lens_basenames();
+    let markdown = register_lens_basenames();
+    assert_eq!(
+        structural, markdown,
+        "`docs/v3-lens-capability-register.md` `## Capability table` must mirror the \
+         canonical `std.verification::lens_capability_register_rows` row set. Update both \
+         in the same PR when adding, retiring, or renaming a lens row. \
+         structural={structural:?} markdown={markdown:?}"
+    );
+}
+
+fn structural_register_lens_basenames() -> BTreeSet<String> {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `std.verification::lens_capability_register_rows` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let register_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .expect("bootstrap must declare `lens_capability_register_rows`");
+    let Some(ValueBody::List(rows)) = &register_decl.value_body else {
+        panic!("`lens_capability_register_rows` must be a List value");
+    };
+    rows.iter()
+        .map(|row| {
+            let FieldValue::Record(fields) = row else {
+                panic!("`lens_capability_register_rows` row must be a record, got {row:?}");
+            };
+            string_field(fields, "lens_basename", "lens_capability_register_rows")
+        })
+        .collect()
+}
+
+#[test]
+fn every_regen_lens_entry_has_a_structural_capability_register_row() {
     let regen = regen_lens_file_basenames();
-    let register = register_lens_basenames();
+    let register = structural_register_lens_basenames();
     let missing: Vec<&String> = regen.difference(&register).collect();
     assert!(
         missing.is_empty(),
         "Discipline rule #1 of `docs/v3-lens-capability-register.md` \
          requires every `LensRegistryEntry` in `src/v3/compiler/regen.dag` \
-         to have a matching row in the capability table. The following \
-         lens basename(s) are in `regen.dag` but have no register row: \
-         {missing:?}. Fix: add a row to the `## Capability table` section \
-         of `docs/v3-lens-capability-register.md` for each missing lens, \
-         declaring both its structural and behavioral status. Current \
-         register-visible basenames: {register:?}."
+         to have a matching row in the structural capability register. The \
+         following lens basename(s) are in `regen.dag` but have no \
+         `std.verification::lens_capability_register_rows` row: {missing:?}. \
+         Fix: add a row to `src/v3/std/verification.dag` for each missing lens, \
+         declaring its structural status, behavioral status, and v2 counterpart; \
+         then mirror it in `docs/v3-lens-capability-register.md`. Current \
+         structural register basenames: {register:?}."
     );
 }
 
