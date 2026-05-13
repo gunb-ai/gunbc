@@ -161,11 +161,10 @@ fn timing_section_row_type_declares_measurement_tm(
 /// `Observed` duration equal to the substrate fault sentinel `Nat` cannot be conflated with
 /// `Unobserved` / `Ambiguous` / `Stale` (INVARIANTS P2 / modeling-discipline Practice 2).
 ///
-/// Practice 4 (`docs/modeling-discipline.md`, coproduct checkpoint): **GREEN (terminal)** for this
-/// PR — internal host projection mirroring `timing_enforcement_project` / `timing_lens.dag` for
-/// executable `EnforcedApplication` checks only. Ledger: substrate `LensEnforcement` still carries
-/// `TimingBudget` until the named `.dag` fault-budget carrier dissolves the sentinel encoding (see
-/// `timing_lens.dag` gate #58 block).
+/// Practice 4 (`docs/modeling-discipline.md`, coproduct checkpoint): **GREEN (terminal)** — mirrors
+/// `timing_enforcement_project` / `timing_enforcement_violates` in `timing_lens.dag` on the lowered
+/// `TimingMeasurement` witness (substrate `LensEnforcement.violates` now takes `TimingMeasurement`
+/// × `TimingBudget` per `lens_application.dag`; gate #58 / codex 10994).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TimingMeasurementEnforcementUsage {
     NonObservedFault,
@@ -201,9 +200,9 @@ fn timing_measurement_enforcement_usage(
     }
 }
 
-/// Same reflexive edge as `timing_enforcement_violates` in `timing_lens.dag`, without collapsing
-/// [`TimingMeasurementEnforcementUsage::NonObservedFault`] into a sentinel `Nat` comparison on the
-/// `Observed` path.
+/// Same reflexive edge as `timing_enforcement_violates` in `timing_lens.dag` on the lowered witness,
+/// using the same `>` edge as substrate `Observed` enforcement (no `TimingBudget` sentinel equality
+/// on the observed path).
 pub(crate) fn timing_enforcement_violates(
     declared_max_ns: u64,
     usage: TimingMeasurementEnforcementUsage,

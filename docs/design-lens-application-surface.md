@@ -73,14 +73,16 @@ type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error 
 // - project: extracts the budget-comparable coordinate from the lens
 //   output (identity for lenses where Output = Budget; e.g.,
 //   summary.asymptotic_class for complexity).
-// - violates: per-lens violation relation. Given the user's declared
-//   budget and the projected lens-output, returns true iff the projected
-//   value EXCEEDS the budget. Each lens's enforcement declares its own
-//   violation semantics structurally (lattice ordering for complexity;
+// - violates: per-lens violation relation on `(output: Output, declared:
+//   Budget)`. The first argument is the **full lens output** (not only
+//   `project(output)`): relations that must distinguish sum variants before
+//   comparing budget-shaped coordinates (timing) take `Output` here. The
+//   second argument is the user-declared `Budget`. Returns true iff enforcement
+//   fails closed under the lens ordering (lattice dominance for complexity;
 //   dominance for cost; mode-mismatch for parallelism).
 type LensEnforcement<Output, Budget> {
   project: Output -> Budget
-  violates: (declared: Budget, observed: Budget) -> Bool
+  violates: (output: Output, declared: Budget) -> Bool
 }
 
 // EnforceableLens<Output, Budget> packages a lens with its CANONICAL
@@ -168,8 +170,8 @@ The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses 
 data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/asymptotic_class/work_certainty/span_certainty
 data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
   project: |summary| summary.asymptotic_class           // budget compares against class only
-  violates: |declared, observed|                         // per-lens violation relation
-    asymptotic_class_lattice.lt(declared, observed)      // observed exceeds declared in dominance order
+  violates: |summary, declared|                        // full summary + user budget (see LensEnforcement)
+    asymptotic_class_lattice.lt(declared, summary.asymptotic_class) // observed class exceeds declared
 }
 data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
   lens: complexity_lens
@@ -180,7 +182,7 @@ data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass>
 data cost_lens: Lens<SymbolicCost> = ...              // output IS the budget type
 data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost> = {
   project: |c| c                                        // identity projection
-  violates: |declared, observed|                         // observed dominates declared (worse cost)
+  violates: |observed, declared|                        // lens output (= projected) vs user budget
     dominates(observed, declared) && !dominates(declared, observed)
 }
 data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost> = {
@@ -192,7 +194,7 @@ data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost> = {
 data parallelism_lens: Lens<ParallelismMode> = ...    // output IS the budget type
 data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> = {
   project: |m| m                                        // identity projection
-  violates: |declared, observed|                         // mode-mismatch: user opted in to parallel but lens couldn't prove
+  violates: |observed, declared|                        // lens output vs user budget
     match (declared, observed) {
       (OptInIndependent, Sequential) => True
       _ => False
