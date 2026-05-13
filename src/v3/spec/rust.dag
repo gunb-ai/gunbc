@@ -1171,14 +1171,6 @@ data rust_string_eq: OperatorRealization = {
   cost: 1
 }
 
-data rust_free_monoid_eq: OperatorRealization = {
-  language: rust_language
-  target: FreeMonoid
-  op: OrderedRing.eq
-  carrier: "({lhs} == {rhs})"
-  cost: 1
-}
-
 data rust_int_ne: OperatorRealization = {
   language: rust_language
   target: Int

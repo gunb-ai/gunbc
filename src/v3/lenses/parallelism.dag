@@ -77,24 +77,6 @@ fn idempotent_shapes_commute(a: IdempotentShape, b: IdempotentShape) -> Bool =
       }
   }
 
-fn string_lists_equal(a: List<String>, b: List<String>) -> Bool =
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons(_) => false
-      }
-    Cons(pa) =>
-      match b {
-        Empty => false
-        Cons(pb) =>
-          if pa.head == pb.head then
-            string_lists_equal(pa.tail, pb.tail)
-          else
-            false
-      }
-  }
-
 fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
   match a {
     PathParam { param: pa } =>
@@ -109,11 +91,11 @@ fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
         InputField { field: fb } => fa == fb
         CompositeKey { fields: _ } => false
       }
-    CompositeKey { fields: fa } =>
+    CompositeKey { fields: _ } =>
       match b {
         PathParam { param: _ } => false
         InputField { field: _ } => false
-        CompositeKey { fields: fb } => string_lists_equal(fa, fb)
+        CompositeKey { fields: _ } => false
       }
   }
 
