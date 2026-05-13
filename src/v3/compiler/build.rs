@@ -658,6 +658,18 @@ fn main() {
         "src/v3/compiler/src/bootstrap_generated.rs",
         "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs",
         "src/v3/compiler/src/bootstrap_std_generated.rs",
+        // PB-0 cycle 3: bounded host shim outputs retained for live R3
+        // consumers, but no longer counted as SG-0 hand-authored
+        // non-test authority. Their owning programs/tests remain the
+        // behavioral receipts; this manifest is the census authority.
+        "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
+        "src/v3/compiler/src/memory_peak_cost.rs",
+        "src/v3/compiler/src/omni_shape_b_openapi.rs",
+        "src/v3/compiler/src/process_exit.rs",
+        "src/v3/compiler/src/r1c_e_gates.rs",
+        "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
+        "src/v3/compiler/src/self_host_receipt_p0.rs",
+        "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
         // SG-5 substrate / runtime-mirror projections, generated from
         // `src/v3/std/substrate.dag` + `src/v3/std/parse_surface.dag`
         // and consumed by hand-authored Rust via `include!(...)`.

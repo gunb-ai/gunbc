@@ -284,8 +284,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
-    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
-    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/enforced_lens_application.rs",
     // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
     // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
@@ -300,13 +298,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_t_las_carrier.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
-    "src/v3/compiler/src/memory_peak_cost.rs",
-    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
-    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
-    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
-    // `.dag` program owns the OpenAPI artifact projection end-to-end.
-    "src/v3/compiler/src/omni_shape_b_openapi.rs",
     // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
     // `MethodTemplateContract` rows from the full bootstrap `Dag` for
     // PB-zero / v2-retirement consumers (decision in
@@ -314,14 +305,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/pb_method_template_projection.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
-    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
-    "src/v3/compiler/src/process_exit.rs",
-    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
-    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
-    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
-    "src/v3/compiler/src/r1c_e_gates.rs",
-    // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
-    "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
     // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
     // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
     "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
@@ -329,9 +312,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
-    "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];
 
 // All test .rs files under `src/v3/compiler` that are currently
