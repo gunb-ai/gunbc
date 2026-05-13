@@ -498,6 +498,61 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 ---
 
+### Gap 13 — R2-Grounding T-Ground sub-lane residuals (no-coercion-engine architectural separation; emit.rs ~3992-line hand-Rust survivor)
+
+**Promise** (`docs/design-emission-model.md` title: *"Design — Emission Model (no separate coercion engine)"* + line 13: *"Coercion is structural projection, not a decision process. Emission reads declared substrate facts and returns either a unique target primitive or a fail-closed diagnostic. There is no parallel authority that 'picks up slack' when the substrate is incomplete; if the substrate under-determines, the substrate is incomplete and the right response is to extend the substrate, not bolt on a decider."*): emission separates into (a) **structural-projection coercion** (substrate fact lookup, fail-closed on under-determination) over (b) **DAG-modeled substrate** (`LanguageSpec` + `TypeRealization` per-target inhabitance + per-program structural intent derivation). NO hand-Rust coercion engine; emission is a `.dag`-authored fold over substrate facts.
+
+**HEAD evidence** (operator adversarial probe 2026-05-13 follow-on — emission architectural-separation completeness):
+
+- **`docs/design-emission-model.md`** explicitly retracts the v2 coercion-engine framing and ratifies the no-engine discipline. The 5 R2-T-Ground sub-lanes (per §"Recommended R2 lane structure update") implement the separation:
+  - **T-Ground-Coercion-Fold** — the structural-projection coercion itself
+  - **T-Ground-LanguageSpec** — per-target inhabitance facts as substrate (replaces hand-Rust target tables)
+  - **T-Ground-Lifetime-Analyzer** — derives ownership/lifetime from program structure (no annotations)
+  - **T-Ground-Diagnostic** — closed-axis emission-diagnostic carrier (replaces String-typed errors)
+  - **T-Ground-CrossTarget-Meta** — cross-target uniformity declarations + L6 structural-form coverage
+- **`src/v3/compiler/src/emit.rs` (3992 lines, hand-Rust)** is the legacy v2 coercion engine that the design retracts. Still active at HEAD. On the PB-0 retirement ratchet (`EXPECTED_HAND_AUTHORED_NON_TEST:279`).
+- **`src/v3/std/emit_model.dag`** exists but is explicitly marked **🟡 SCAFFOLD (Coercion-Fold dissolution — Slice B rows, Slice C consumer)**. Per-target inhabitance carrier (`TypeRealization`) is partially-stubbed; Slice B (per-target integer inhabitance rows) + Slice C (consumer wiring) not yet landed.
+- **`dsl/std/coercion.dag`** exists with the new coercion vocabulary (`TypeCheckpoint`, per-target inhabitance schema) BUT still names `v2/05_emit.dag` as a consumer in its header comment — transitional form; legacy coercion engine not yet retired.
+- **R2-Grounding closed-with-residuals 2026-04-29** (analogous shape to R2-Evaluator per Director audit msg_82b9c4bb). The 5 T-Ground sub-lanes are R2-residual work carried into R3 as r3-continuation. **Closure-ledger row state at HEAD UNVERIFIED** — `docs/r2-closure-ledger.md` analogous sub-lane rows for R2-Grounding have NOT been audited by Director (in contrast to R2-Evaluator which Director audited at msg_82b9c4bb with explicit 5-sub-lane status).
+- **Close plan §1 at HEAD** does NOT track these residuals as an explicit Gap. Operator adversarial probe 2026-05-13 surfaces this as a missed-during-original-sweep gap analogous to the R2-Evaluator residuals that Gap 3 absorbed.
+- **emit.rs retirement is structurally gated** on the 5 T-Ground sub-lanes + R2-Evaluator (which runs the `.dag`-authored emitter) + PB-0 retirement campaign. PB-0 ratchet (177 entries) tracks emit.rs entry-counting but NOT the architectural-shape verification.
+
+**What's missing**:
+
+1. **Director-tier R2-Grounding audit** (analogous to msg_82b9c4bb R2-Evaluator audit): grep + audit `docs/r2-closure-ledger.md` + r3-structure.md for R2-T-Ground 5 sub-lane status at HEAD; report current status (green / in-flight / not-started) per sub-lane; report any named-owner sessions in current subtree; report whether dispatch requires new Mgr lane or absorbs into existing Substrate Mgr lane.
+2. **5 R2-T-Ground sub-lane closures** (per the audit results): each sub-lane ratchets to green in `docs/r2-closure-ledger.md` (refreshed from R2-close-snapshot era to HEAD).
+3. **`emit_model.dag` SCAFFOLD marker removed**: Coercion-Fold dissolution Slice B rows + Slice C consumer lands; carrier (`TypeRealization`) becomes structurally complete.
+4. **`coercion.dag` schema dissolution complete**: `v2/05_emit.dag` consumer reference retired from header comment; new coercion vocabulary is single-authority for emission.
+5. **emit.rs retirement consumer ratchet**: as `.dag`-authored emission consumers land per the 5 sub-lanes, emit.rs entry on `EXPECTED_HAND_AUTHORED_NON_TEST` retires; ratchet ratchets toward 0 (Gap 1).
+6. **§1.8 ledger row** for "no-coercion-engine discipline cashed at HEAD" — currently no gate tracks the architectural-shape verification (PB-0 ratchet is mechanical entry-counting, not architectural). Either author new §1.8 row OR formally declare existing gate covers (per Director audit verdict).
+
+**Plan to cash**:
+- **Owner**: Director-tier coordination (analogous to Gap 3 cross-Mgr audit); R3 Substrate Mgr (warm-wolf-698) owns sub-lane execution; Director ratifies audit verdict + any new §1.8 row.
+- **Sub-program**:
+  1. **Director audit** (Director-tier deliverable): R2-Grounding T-Ground 5 sub-lane status audit per the analogous shape Director ran for R2-Evaluator at msg_82b9c4bb. Output: (a) current status per sub-lane; (b) named owner if any; (c) brief coverage; (d) dispatch shape recommendation.
+  2. **Per-sub-lane dispatch** (post-audit): warm-wolf-698 owns sub-lane execution; worker briefs per sub-lane.
+  3. **`emit_model.dag` SCAFFOLD dissolution**: Coercion-Fold Slice B + Slice C land; carrier becomes structurally complete.
+  4. **`coercion.dag` v2/05_emit.dag consumer reference retirement**: cleanup commit retiring the transitional reference once new coercion vocabulary is single-authority.
+  5. **§1.8 row decision**: author "no-coercion-engine discipline cashed" row OR formally declare existing gate covers per Director ratification.
+  6. **emit.rs entry retirement** (downstream of sub-lane completions): consumer ratchet to 0 per Gap 1 sub-program coordination.
+- **Effort estimate**: 6-12 weeks (analogous to Gap 3 R2-Evaluator joint precondition; substrate-canvas-tier work is the dominant cost; per-sub-lane execution parallel-able under Substrate Mgr).
+
+**Close criterion**:
+- (a) Director R2-Grounding T-Ground audit complete with 5 sub-lane status per HEAD evidence
+- (b) All 5 R2-T-Ground sub-lanes status=green in `docs/r2-closure-ledger.md` (refreshed against HEAD)
+- (c) `src/v3/std/emit_model.dag` 🟡 SCAFFOLD marker removed (Coercion-Fold dissolution Slice B + Slice C landed)
+- (d) `dsl/std/coercion.dag` v2/05_emit.dag transitional reference removed
+- (e) `src/v3/compiler/src/emit.rs` entry removed from `EXPECTED_HAND_AUTHORED_NON_TEST` (substrate retirement complete; ratchet ratchets toward Gap 1 close)
+- (f) §1.8 row for no-coercion-engine discipline either landed or formally declared-covered-by-existing-gate per Director ratification
+
+**Connection to Gap 1 + Gap 3**: Gap 13 is the architectural-shape sibling to Gap 1 (PB-0 mechanical retirement ratchet) — Gap 1 says "list empty"; Gap 13 says "the architectural separation that justifies the list-empty outcome is structurally complete". Gap 13 is the analogous R2-residual to Gap 3 (R2-Evaluator); both surfaced as post-§4-ratification adversarial findings (R2-Evaluator via Director audit msg_82b9c4bb; R2-Grounding via operator adversarial probe 2026-05-13 on emission architecture).
+
+**Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of architectural-separation completeness would leave emit.rs as a permanent hand-Rust dependency, contradicting both PB-0 ("0 hand-Rust") and the design-emission-model.md no-engine discipline. Operator-adversarial probe 2026-05-13 surfaced this gap; gap is now operator-recorded and must close IN-R3 absent explicit operator override of the no-carves directive with named structural-unblockable reason.
+
+**Authority**: operator adversarial probe 2026-05-13 (this PR); `docs/design-emission-model.md` no-engine discipline ratification; r3-structure.md §"Recommended R3 lane structure update" T-Ground-* lane enumeration; analogous structural shape to Gap 3 R2-Evaluator residuals per Director audit msg_82b9c4bb.
+
+---
+
 ## §2. Dispatch sequencing (PM-recommended)
 
 Given the cross-gap dependencies, recommended dispatch order:
@@ -522,6 +577,7 @@ Given the cross-gap dependencies, recommended dispatch order:
 
 **Phase E — Director-tier coordination (zesty-bear-812, parallel)**:
 - Gap 3 (self-host fixed point): 4-joint-precondition cross-Mgr audit
+- **Gap 13 (R2-Grounding T-Ground sub-lane residuals)**: Director-tier audit analogous to msg_82b9c4bb R2-Evaluator audit — 5 R2-T-Ground sub-lane status verification + named-owner audit + dispatch shape recommendation. Post-audit: Substrate Mgr executes sub-lane closures; PM authors §1.8 row per Director ratification. **Sub-promise of design-emission-model.md no-engine discipline + emit.rs retirement surfaced by operator adversarial probe 2026-05-13** post-§4-ratification.
 
 **Phase F — Final close ceremony (PM-direct + operator, 1-2 weeks)**:
 - Re-run close-audit doc with all gaps PROVEN or R4-DEFERRED-with-acceptance
@@ -625,6 +681,7 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 - [x] **Operator authorizes Phase A immediate dispatch** — implicit in ratification 2026-05-13. Close-audit doc skeleton + §1.8 row #106 authoring proceeds PM-direct post-merge.
 - [ ] **Gap 11 (Complexity composition completeness / LogCost asymmetry — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79 sub-promise. Substrate-shape canvas decision required (LogCost recursive vs canonicalization-rule); routes through Substrate Mgr (warm-wolf-698) → Director ratification.
 - [ ] **Gap 12 (Property-based complexity-lens validation via ProgramGenerator — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79/#85/#86 join sub-promise. ProgramGenerator complexity-instance + oracle + `ForAll<ProgramGenerator>` TestClaim + CI integration; routes through Verification Mgr (still-moth-538). Gated on Gap 11 canvas landing first.
+- [ ] **Gap 13 (R2-Grounding T-Ground sub-lane residuals / no-coercion-engine architectural separation — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as design-emission-model.md no-engine discipline + PB-0 architectural completion. Director-tier R2-Grounding audit needed (analogous to msg_82b9c4bb R2-Evaluator audit); 5 R2-T-Ground sub-lane closures + emit_model.dag SCAFFOLD dissolution + coercion.dag schema dissolution + emit.rs retirement; routes through Director-tier coordination → Substrate Mgr (warm-wolf-698) execution.
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [x] R2-Evaluator audit — **completed 2026-05-13 (msg_82b9c4bb)**; findings absorbed into Gap 3 expansion + §4 sub-item 5 + r3-program-plan.md lines 429/435 reframe at commits 85c230b4b + 97cfb9d4c
   - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
