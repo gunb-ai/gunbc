@@ -1,6 +1,8 @@
 # R3 Gate 87 Lens-Cementing Test-Discipline Dispatch — 2026-05-13
 
-**Owner:** Verification Mgr session `lively-raven-354`.
+**Owner:** Verification Mgr session `neat-gull-770`.
+
+**Dashboard node:** `adhoc-b75b3d90-3d0`.
 
 **Purpose:** decompose `lens_cementing_test_discipline_complete` into concrete child work that preserves the lens-completeness invariant while gate #87 stays tied to the `regen.dag` registry corpus.
 
@@ -18,6 +20,11 @@ For every `LensRegistryEntry` in `src/v3/compiler/regen.dag`, the gate-87 corpus
 Rows outside `regen.dag` remain Band-C / #84 bulk-port scope. Do not use them to prove or reopen gate #87.
 
 ## Child Work Items
+
+Dispatch from this session created the concrete dashboard work items below. The
+titles intentionally restate each acceptance surface so worker sessions can
+start from the dashboard item and then use this brief as the single shared
+scope packet.
 
 ### G87-D1 — Registry-Invariant Audit
 
@@ -116,4 +123,3 @@ rg -n "src/v3/compiler/tests/integration/cementing/|r3_gate_87_lens_cementing_re
 D1 and D4 are the fail-closed invariant checks and can run first. D2 and D3 can run in parallel once D1 confirms the current registry surface. D5 is the handoff slice for #84 and should consume D3's placeholder classifications where they overlap.
 
 Completion of these children means gate #87 has a concrete, reviewable discipline package: the registry corpus stays complete, future COMPLETE flips have same-PR receipt requirements, placeholders have named dissolution paths, executable ratchets guard drift, and broader Band-C work is handed to #84 without duplicating authority.
-
