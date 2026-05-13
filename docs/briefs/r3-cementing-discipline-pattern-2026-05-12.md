@@ -13,6 +13,7 @@
 - `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` `R3_GATE_87_CEMENTING_REGEN_SUITES`.
 - `src/v3/compiler/tests/dag/cementing_dispatch.dag`.
 - Prior #87 worker brief: [`r3-v-cluster-m-87-cementing-worker.md`](r3-v-cluster-m-87-cementing-worker.md), now historical for pattern bring-up.
+- Follow-on decomposition for dashboard dispatch: [`r3-gate-87-lens-cementing-test-discipline-decomposition-2026-05-13.md`](r3-gate-87-lens-cementing-test-discipline-decomposition-2026-05-13.md).
 
 ---
 
