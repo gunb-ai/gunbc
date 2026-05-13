@@ -380,9 +380,13 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 
 "Minimal" = **minimal among soundly-derivable affected-sets given the lens's provability surface**. NOT theoretically-optimal (which would need omniscient delta-proof). The lens fails OVER-inclusive (sound but not theoretically-complete), never UNDER-inclusive — fail-closed always.
 
-**Soundness**: every node in the set has at least one dimension where `delta ≠ ∅` OR `delta = UNKNOWN`. (No false-positive over-inclusion when delta IS provably empty.)
+**Two correctness properties** (named per the lens's two-direction failure modes — avoiding standard-static-analysis "sound/complete" labels because their conventional meanings invert under fail-closed over-approximation):
 
-**Completeness**: no node with `delta ≠ ∅` is excluded. (No false-negative under-inclusion.)
+**No-spurious-inclusion** (the "exclusion-correctness" direction): every node in the set has at least one dimension where `delta ≠ ∅` OR `delta = UNKNOWN`. If a node is in the set when every dimension it reads has `delta = ∅` provably, that's a spurious inclusion (lens over-included beyond the fail-closed mandate).
+
+**No-missed-inclusion** (the "coverage" direction): no node with `delta ≠ ∅` on a dimension it reads is excluded. Missing a node with a known non-empty delta is the UNSAFE failure mode — the lens missed an actual cross-module dependency.
+
+The lens is FAIL-CLOSED: when in doubt (UNKNOWN delta), include. This means the lens correctness target is **No-missed-inclusion (strict)** + **No-spurious-inclusion (relative to provability)** — over-inclusion on UNKNOWN is intentional and safe.
 
 **Comprehensive examples** — normal code-change scenarios + expected affected-set behavior:
 
@@ -426,8 +430,8 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 
 **Falsification-probe pattern**: for any scenario in the table, the lens's correctness is verified by:
 
-- **Soundness probe**: scenario expected to produce ∅ should produce ∅ at HEAD; if non-empty, identify over-inclusion class
-- **Completeness probe**: scenario expected to flag consumers should flag the EXPECTED set (not a strict subset); if missing, identify under-inclusion class
+- **No-spurious-inclusion probe**: scenario expected to produce ∅ should produce ∅ at HEAD; if non-empty, identify spurious-inclusion class (lens over-included beyond fail-closed mandate)
+- **No-missed-inclusion probe**: scenario expected to flag consumers should flag the EXPECTED set (not a strict subset); if missing, identify missed-inclusion class (unsafe failure mode)
 - **Provability boundary probe**: scenarios marked "fail-closed include downstream" should produce non-minimal but SAFE affected-sets; verify they don't UNDER-include (under-inclusion is the unsafe failure mode)
 
 **Honest framing** — as the lens's substrate-coverage improves (more dimensions provably-decidable), the affected-set shrinks toward theoretical-minimum. Current R3-scope substrate gives current observable minimum. R4 extensions (richer dimension grammar, finer-grained extdeps inhabitance) tighten it further. R3-close acceptance: cite affected-set sizes for canonical scenarios + identify the gap between observable and theoretical minimum.
