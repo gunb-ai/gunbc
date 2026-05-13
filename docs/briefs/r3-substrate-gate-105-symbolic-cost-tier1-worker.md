@@ -21,7 +21,7 @@ This brief encodes the ratified Tier-1 4-addition + 1-collapse + 1-promotion str
 ## §1. Ratified scope summary
 
 Net 7 → **9** SymbolicCost variants:
-- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational where degree > 0` (subsumes √n, ∛n, n^(2/3), non-Int 2.373, AND the absorbed Linear case at degree=1)
+- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational` (signed; **no `where` refinement** per Director msg_2c1bfb0e scope-extension) — subsumes positive (√n, ∛n, n^(2/3), n^2.373, absorbed Linear at degree=1) AND negative (1/n = n^(-1), 1/n² = n^(-2), asymptotic-decay coverage per operator directive 2026-05-13)
 - **REMOVE**: `LinearCost(SizeVariable)` — atomic migration to `PolynomialCost { var: v, degree: 1 }` (Q2-Y)
 - **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n cited Tier-1 AKS case)
 - **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
@@ -125,7 +125,9 @@ type ExponentialBase = Int where range(min: 2)
 // PositiveRational: Rational > 0. REQUIRES KNOWN_PREDICATES extension:
 // add `Rational` to gt_zero's allowed_carriers (currently Nat + Int).
 // Worker authors atomic with carrier landing per Phase A.
-type PositiveRational = Rational where gt_zero
+// (PositiveRational DROPPED per Director msg_2c1bfb0e scope-extension —
+//  PolynomialCost.degree is plain signed Rational; admits negative-degree decay.
+//  No gt_zero allowed_carriers extension needed for PolynomialCost.)
 
 // PolyLogExponent: Rational > 1. REQUIRES KNOWN_PREDICATES extension:
 // add NEW `gt_one` predicate (allowed_carriers: Rational + Int) to
@@ -158,7 +160,7 @@ Replace `src/v3/std/algebra.dag:190-197` with:
 ```dag
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
-  | PolynomialCost { var: SizeVariable, degree: PositiveRational }   // Q2-Y: absorbs LinearCost via degree=1; degree > 0 by carrier
+  | PolynomialCost { var: SizeVariable, degree: Rational }   // Q2-Y: absorbs LinearCost via degree=1; Q6 signed Rational (admits decay)
   | PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }     // NEW: log^k n; exponent > 1 by carrier (admits 2, 3/2, 7.5; rejects 0/1 collapses)
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
@@ -171,13 +173,46 @@ type SymbolicCost inhabits Semiring<SymbolicCost>
 9 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
 
 **Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
-- `PolynomialCost.degree: PositiveRational` — `degree ≤ 0` is structurally impossible
+- `PolynomialCost.degree: Rational` — **signed, no refinement** (Q6); negative degrees admitted for asymptotic-decay coverage. Asymptotic-dominance rule (Q6) is encoded in the algebra fold layer via `Field.compare` with reverse-sign-convention.
 - `PolyLogCost.exponent: PolyLogExponent` — `exponent ≤ 1` is structurally impossible (excludes 0=ConstantCost-collapse + 1=LogCost-collapse semantic dups); supports rational exponents like log^7.5 n (AKS primality cited Tier-1 case)
 - `ExponentialCost.base: ExponentialBase` — `base ≤ 1` is structurally impossible (excludes 0=degenerate + 1=ConstantCost-collapse)
 
 Reviewers MUST flag any attempt to use raw `Rational` / `Int` for these fields.
 
-## §6. Phase D — Algebra interaction rules (Q3)
+## §6. Phase D — Algebra interaction rules (Q3 + Q6 + Q7)
+
+### §6.0 — Q7 canonical-form preservation (Director RATIFIED msg_2c1bfb0e)
+
+**SymbolicCost preserves the full expression.** The same-variable algebra fold rules below apply to **derived-operation** projection (`dominant_term: SymbolicCost -> SymbolicCost`), NOT to canonical-form construction. Sum-canonicalization sorts terms by Q6 dominance ordering and preserves every term:
+
+```
+canonicalize(SumCost([n + log(n) + 1/n]))
+  = SumCost([PolyCost(n, 1), LogCost(n), PolyCost(n, -1)])  // dominance-sorted, all terms preserved
+```
+
+Big-O projection is a separate function applied by consumers:
+
+```
+fn dominant_term(c: SymbolicCost) -> SymbolicCost {
+  // Apply §6.1 dominance rules ONLY here, NOT during SumCost construction.
+}
+fn asymptotic_class(c: SymbolicCost) -> ComplexityClass { ... }
+```
+
+Worker MUST implement BOTH `canonicalize` (preserves all terms) and `dominant_term` (applies §6.1 dominance fold). Tests assert canonical-form preservation under mixed-sign (e.g., `n + 1/n` canonicalizes to 2-term SumCost, not 1-term PolyCost(n, 1)).
+
+### §6.1 — Q6 Asymptotic-dominance ordering with signed degrees (Director RATIFIED msg_2c1bfb0e)
+
+Dominance rule (used by `dominant_term`, NOT by canonicalize):
+
+- Positive degrees a, b > 0: `n^a > n^b` iff `a > b`
+- Positive vs negative: `n^a > n^(-b)` for a, b > 0 (positive grows; negative decays)
+- Constant vs negative: `1 > n^(-a)` for any a > 0 (constant dominates decay)
+- Two negatives: `n^(-a) > n^(-b)` iff `a < b` (least-negative dominates; 1/n > 1/n²)
+
+**Implementation**: encode as a derived ordering over `(SizeVariable, Rational)` pairs using `Field.compare` for the underlying Rational comparison — Q1-α authority. NO separate ordered carrier introduced.
+
+### §6.2 — Same-variable algebra fold rules (applied by `dominant_term`)
 
 Update sum + product fold logic to implement the Director-ratified rule table (canvas §5).
 
@@ -261,6 +296,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (`PositiveRational { num: PositiveInt; denom: PositiveInt }`, inductive `PolyLogExponentSuccessor | PolyLogExponentFractional`, or any fresh record/sum shape) when refinement over canonical `Rational = Field<FieldOfFractions<Int>>` carrier is available via ratified `type X = Y where predicate` mechanism (gunbc#828 issuecomment-4390333451 Path 3 RATIFIED; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`). Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 9. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
 10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+11. **Director-added msg_2c1bfb0e**: Introducing parallel `InverseCost(SymbolicCost)` / `ReciprocalCost` / `DecayCost` variants when carrier-extension via signed `degree: Rational` is structurally clean. Same Q1-α / Q1-c lesson class — don't bridge-wrap when carrier-extension dissolves the question (`feedback_dissolve_bridges` + `feedback_no_metadata_markers`).
 
 ## §12. 5 reviewer ratchets (Director-enumerated for PR review)
 
@@ -326,6 +362,8 @@ Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ```
 
 ## §16. Reference
+
+- Director scope-extension ratification msg_2c1bfb0e (Q6 signed-Rational + Q7 SymbolicCost preserves expression + anti-pattern #11)
 
 - Canvas: PR #2828 / `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md`
 - Director ratification (composite): PM msg_a055c38b relaying Director msg_d86a5987 (Q2-Q5 + §8 base) RECONCILED BY Director msg_676ad4e7 (Q1-α supersedes prior Q1-c)

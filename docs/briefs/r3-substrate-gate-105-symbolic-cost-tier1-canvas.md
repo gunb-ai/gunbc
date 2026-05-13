@@ -25,7 +25,7 @@ PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker b
 
 ## §1. Ratified Tier 1 variant list (verbatim per Director msg_ad5e934d)
 
-1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational }` (subsumes √n = n^(1/2), ∛n = n^(1/3), n^(2/3), and non-integer poly n^2.373 + n^2.807, plus existing integer poly)
+1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational }` — **signed Rational, no `where` refinement** (Director RATIFIED scope-extension msg_2c1bfb0e 2026-05-13). Subsumes positive degrees: √n = n^(1/2), ∛n = n^(1/3), n^(2/3), non-integer 2.373/2.807, existing integer poly. Subsumes negative degrees: 1/n = n^(-1), 1/√n = n^(-1/2), 1/n² = n^(-2) (asymptotic-decay coverage per operator directive 2026-05-13). Arbitrary roots + inverse roots covered uniformly.
 2. **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log² n, log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n / AKS Tier-1 case per operator BLOCKING PR #2824:333)
 3. **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for 2^n, c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
 4. **ADD**: `FactorialCost { var: SizeVariable }` for n!
@@ -135,9 +135,9 @@ Cons:
 ### Candidate Q2-Y — Collapse Linear into Polynomial(degree=1)
 
 ```dag
-| PolynomialCost { var: SizeVariable, degree: Rational where degree > 0 }
+| PolynomialCost { var: SizeVariable, degree: Rational }
 ```
-(LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`)
+(LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`. Per Director scope-extension msg_2c1bfb0e: **no `where` refinement** — signed Rational admits negative degrees for asymptotic-decay coverage.)
 
 Pros:
 - Single uniform variant for all positive-degree polynomial bounds
@@ -209,12 +209,37 @@ Current `src/v3/std/algebra.dag:69-72`:
 
 **Type-level refinement carriers (CORRECTED per PM msg_a52ed981)** — refinement-mechanism `type X = Y where predicate` is ALREADY RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2 (gunbc#828 issuecomment-4390199218). Precedent: `dsl/std/integer.dag:181` (`PositiveInt = Nat where gt_zero`). KNOWN_PREDICATES registry at `src/v3/compiler/src/lower.rs:798-862`: `range / non_empty / brand / gt_zero / unicode_scalar`. NO fresh-records / inductive-sum carriers — refinement over canonical carrier is the canonical path:
 
-- `PositiveRational = Rational where gt_zero` — REQUIRES `gt_zero` allowed_carriers extension to include `Rational` (atomic with carrier landing per Phase A)
+- ~~`PositiveRational = Rational where gt_zero`~~ — **DROPPED per Director msg_2c1bfb0e scope-extension**: PolynomialCost.degree is plain `Rational` (signed; admits negative-degree decay). No gt_zero allowed_carriers extension needed for PolynomialCost.
 - `ExponentialBase = Int where range(min: 2)` — IMMEDIATELY available via `range` predicate (allowed_carriers includes Int)
 - `PolyLogExponent = Rational where gt_one` — REQUIRES NEW `gt_one` predicate (allowed_carriers: Rational + Int; mirrors `gt_zero` shape; atomic with carrier landing per Phase A)
 - `PositiveInt = Nat where gt_zero` — ALREADY EXISTS at `dsl/std/integer.dag:181`; worker reuses
 
-These refinements make `degree ≤ 0` / `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved (no parallel rational/int authority).
+These refinements make `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved. PolynomialCost.degree intentionally has no refinement: signed Rational admits asymptotic decay (negative degrees) per Director msg_2c1bfb0e scope-extension.
+
+## §6.1 — Q6 Asymptotic-dominance ordering with signed degrees (Director RATIFIED msg_2c1bfb0e)
+
+Signed-Rational degrees require explicit dominance rules across the sign boundary. Director-verbatim conjecture (RATIFIED):
+
+> - For positive degree a, b > 0: `n^a > n^b` iff `a > b` (existing rule).
+> - Between positive + negative: any positive-degree term dominates any negative-degree term (`n^a > n^(-b)` for a, b > 0; positive grows → ∞, negative decays → 0).
+> - Between negative + constant: `1 > n^(-a)` for any a > 0 (constant dominates decay-to-zero in asymptotic-magnitude lattice).
+> - Between two negatives: `n^(-a) > n^(-b)` iff `a < b` (least-negative dominates; 1/n > 1/n²).
+>
+> **Conjecture**: the dominance rule is "compare degrees with reverse-sign-convention" — asymptotic dominance ≡ algebraic ordering of degrees, but the carrier-to-asymptotic-direction mapping handles sign.
+
+**Authority**: Q1-α already provides `Field.compare: fn(Rational, Rational) -> Ordering` on the signed-rational carrier. Worker encodes the dominance rule as a derived ordering on `(SizeVariable, Rational)` pairs using `Field.compare` for the magnitude comparison — no new ordering authority introduced.
+
+## §6.2 — Q7 SymbolicCost preserves full expression; Big-O is a derived operation (Director RATIFIED msg_2c1bfb0e)
+
+Director-verbatim disposition (RATIFIED):
+
+> SymbolicCost preserves the full expression ("symbolic" name commits to symbolic-representation, NOT pre-applied asymptotic-simplification). Sum-normalization rule: keep all terms in canonical sorted form (by dominance), DON'T drop sub-dominant terms during canonical-form construction.
+>
+> Big-O projection is a **derived operation** (separate function `dominant_term(SymbolicCost) -> SymbolicCost` or `asymptotic_class(SymbolicCost) -> ComplexityClass`); SymbolicCost itself is exact.
+
+**Rationale**: per `feedback_compositional_not_templating` — preserve info structurally; consumer projects as needed. Asymptotic-simplification at canonical-form construction would destroy info.
+
+**Implication for §5 algebra fold rules**: same-variable sums (e.g., `n + log(n) + 1/n`) canonicalize to `SumCost([PolyCost(n, 1), LogCost(n), PolyCost(n, -1)])` (dominance-sorted), NOT to the dominant term alone. The `+ ExpCost(c, v)` → `ExpCost(c, v)` style dominance rules in §5 are **derived-operation rules**, not canonical-form rules — they apply when computing `dominant_term`, not when constructing SymbolicCost. Worker brief Phase D encodes both: canonical-form preservation + dominant_term derivation.
 
 Variant count: **9** post-Q2-Y (Director-ratified; PolynomialCost.degree promotion is not a new variant), or **10** if Q2-X is ratified.
 
@@ -269,6 +294,7 @@ No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B reviva
 8. Multiplicative absorption rules where one variant absorbs another (`X · Y = X`) when X is asymptotically larger than Y additively — asymptotic absorption is sound for SUM but NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products must be `ProductCost` composite. §5 algebra rules table addresses (operator BLOCKING worker:140).
 9. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (fresh records like `{ num: PositiveInt; denom: PositiveInt }`, inductive sums, or any carrier shape OTHER than refinement) when the canonical refinement-mechanism (`type X = Y where predicate`) is RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2. Refinement over canonical `Rational = Field<FieldOfFractions<Int>>` is the canonical path; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`. Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+11. **Director-added msg_2c1bfb0e**: Introducing parallel `InverseCost(SymbolicCost)` / `ReciprocalCost` / `DecayCost` variants when carrier-extension via signed `degree: Rational` is structurally clean. Same Q1-α / Q1-c lesson class — don't bridge-wrap when carrier-extension dissolves the question (`feedback_dissolve_bridges` + `feedback_no_metadata_markers`).
 
 ## §11. Cost-of-change accounting
 
@@ -281,7 +307,7 @@ Per `INVARIANTS.md` "Cost of Change":
 
 For exotic (Tier-2) bounds: still requires UnknownCost("reason") at consumer site — that's the R4-deferral receipt.
 
-## §12. Ratified dispositions (audit trail; all Q1-Q5 Director-ratified)
+## §12. Ratified dispositions (audit trail; all Q1-Q7 Director-ratified)
 
 - **Q1**: **RATIFIED Q1-α** (msg_676ad4e7, supersedes msg_d86a5987 Q1-c) — use existing `Field.compare`; NO `OrderedField` introduction; cost-lens-local rational_lt/le/gt/ge/eq/ne free functions
 - **Q2**: **RATIFIED Q2-Y** (collapse LinearCost into PolynomialCost(degree=1))
@@ -289,6 +315,8 @@ For exotic (Tier-2) bounds: still requires UnknownCost("reason") at consumer sit
 - **Q4**: **RATIFIED** §6 STOP-SIGNAL text re-reset at 10th variant (9 ratified + 1 trigger)
 - **Q5**: **RATIFIED** this canvas (carrier-shape canvas before worker dispatch)
 - **§8 Tier-2 mechanism**: **RATIFIED defer to R4**; IteratedAlgebra rejected per §8 analysis
+- **Q6** (Director msg_2c1bfb0e): **RATIFIED** signed-Rational `PolynomialCost.degree` (drop `where gt_zero` refinement); asymptotic-dominance rule "compare degrees with reverse-sign-convention" using existing `Field.compare` authority. Practice 4 🟢 GREEN — no new sum-types; carrier extension.
+- **Q7** (Director msg_2c1bfb0e): **RATIFIED** SymbolicCost preserves full expression; canonical-form is dominance-sorted SumCost preserving all terms; Big-O is derived operation via `dominant_term` / `asymptotic_class` projection functions.
 
 ## §13. Reference
 
