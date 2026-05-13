@@ -425,6 +425,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
+    // R4 ctrl-migration Wave-1 catalog #8 (`dsl/ctrl/pr_digests.dag`): lexer + structural
+    // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
+    // way as expression programs (see INVARIANTS SG-0 receipt row).
+    "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
     // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
