@@ -1,4 +1,4 @@
-# R3 Gate 87 Placeholder-Dissolution Ledger — 2026-05-13
+# R3 Gate 87 Placeholder-Dissolution Ledger - 2026-05-13
 
 Scope: classify the remaining Gate 87 `Compiles` placeholders and Rust pins, with dissolution blockers and owning lanes. This is a routing ledger, not a second receipt inventory.
 
@@ -39,12 +39,11 @@ Non-`Compiles` Gate 87 harnesses already use behavioral predicates at HEAD:
 
 | Rust path | Classification | Blocker / dissolution trigger | Owning lane |
 |---|---|---|---|
-| `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` | Gate 87 aggregate Rust pin. It ratchets regen registry names against the runner inventory and covers host-side receipts for rows whose full carriers are not yet authorable in `.dag`. | Dissolves row-by-row as the corresponding `.dag` `LensOutputEquals` / stronger predicate can express the output carrier. The aggregate file should shrink only when the same PR updates the `.dag` harness and SG-0 census. | Mixed: T-PB-B for carrier authoring, plus the specific lens owner for each row. |
+| `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` | Gate 87 aggregate Rust pin. It ratchets regen registry names against the runner inventory and covers host-side receipts for rows whose full carriers are not yet authorable in `.dag`; its inventory-correspondence test is a single-authority guard, not a per-lens receipt. | Dissolves row-by-row as the corresponding `.dag` `LensOutputEquals` / stronger predicate can express the output carrier. The aggregate file should shrink only when the same PR updates the `.dag` harness and SG-0 census. It fully dissolves only when all host-only carrier projections represented there are expressible and exercised through `.dag` claims. | Mixed: T-PB-B for carrier authoring, T-Substrate / M1(2.8) strict-module carrier authoring, plus the specific lens owner for each row. |
 | `src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs` | Cementing Rust residual outside the simple Gate 87 `Compiles` placeholder set. | `.dag` expected-carrier authoring for the `Origin` sum variants (`NoProducer`, `MissingPort`, `MissingBehavior`, `Source`, `Computed`, `Selected`, `Accumulated`). | Tests-as-data carrier completeness for sum-typed lens outputs (`docs/design-tests-as-data-completeness.md` §C5). |
 | `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs` | Complete-lens frozen-oracle Rust receipt. | `Gate73_ReportPredicateCarriers`: `.dag` `TestClaim` predicates cannot yet consume `ComplexitySummary` / nested `SymbolicCost` report carriers. | T-LBP / gate #73 report-predicate carrier authoring. |
 | `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs` | Not a Band-C lens-cementing residual after the Gate 87 symbolic-cost `.dag` receipt landed. It is a host-wrapper pin for the gate #78 path. | Retire `per_call_pattern_at` / `symbolic_cost_of` host wrapper alias-collapse pin. | Gate #78 host-wrapper retirement, not Gate 87 cementing. |
 | `src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs` | Lens-application demonstration Rust pin, not a Gate 87 registry placeholder. | Parser-level `apply_lens(cost, DeclarationScope, Enforce { budget: SymbolicCost { dimension: Memory, ... } })` consumer. | T-LAS Slice B / gate #91, with gate #94 as the consumer-side demo. |
-| `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` inventory correspondence test | Single-authority ratchet, not a per-lens receipt. | Only dissolves when all host-only carrier projections represented there are expressible and exercised through `.dag` claims. | T-Substrate / M1(2.8) strict-module carrier authoring plus per-lens lanes. |
 
 ## Worker Rule
 
@@ -57,4 +56,4 @@ When a blocker clears, the implementation PR must update these surfaces together
 5. Remove the corresponding `EXPECTED_HAND_AUTHORED_TEST` entry when a Rust file dissolves.
 6. State the SG-0 hand-path delta in the PR body.
 
-Do not add a parallel “pending port” list. The only live inventories remain the runner table and SG-0 census.
+Do not add a parallel "pending port" list. The only live inventories remain the runner table and SG-0 census.
