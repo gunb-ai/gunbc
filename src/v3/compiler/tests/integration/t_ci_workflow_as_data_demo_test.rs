@@ -18,9 +18,9 @@
 //! modules is deferred (M1(2.8) opaque-body path).
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
-//! hosts the executable receipt: `dsl/gunbc/ci.dag` source markers + bootstrap `modeled_gunbc_ci_workflow`,
-//! **`compile_to_dag(dsl/gunbc/ci.dag)` once** to project structural `ci_workflow_dag` (pipeline name,
-//! prerequisite edges, parallel fan-out) **before** the timing-lens `evaluate_body` shell runs on the
+//! hosts the executable receipt: **`compile_to_dag(dsl/gunbc/ci.dag)` once** (via `OnceLock`) to load
+//! bootstrap `modeled_gunbc_ci_workflow` and project structural `ci_workflow_dag` (authority row,
+//! pipeline name, prerequisite edges, parallel fan-out) **before** the timing-lens `evaluate_body` shell runs on the
 //! full bootstrap (PB-1 still lowers `demo_ci_modeled_timing_dimension_report` only there — see
 //! `t_ci_workflow_as_data_demo.dag` note on wiring `modeled_gunbc_ci_workflow` through `evaluate_body`),
 //! then **split `#[test]` receipts** (TESTING.md §4 one-claim-per-test): structural carrier pins,
@@ -706,14 +706,15 @@ fn gunbc_ci_emission_substrate_compiles() {
 // `cargo test lens_self_application_demonstrated` matches the shared name prefix.
 
 #[test]
-fn lens_self_application_demonstrated_pins_ci_dag_source_markers() {
-    assert!(
-        GUNBC_CI_SOURCE.contains("data ci_workflow_dag"),
-        "dsl/gunbc/ci.dag must retain the `ci_workflow_dag` authority row"
+fn lens_self_application_demonstrated_ci_workflow_dag_authority_row_lowers() {
+    let g = gate57_ci_artifacts();
+    g.dag.declaration_by_name("ci_workflow_dag").expect(
+        "compiled gunbc.ci must surface `ci_workflow_dag` as the CI workflow-as-data authority row",
     );
+    let fields = structural_value_body(&g.dag, "ci_workflow_dag");
     assert!(
-        GUNBC_CI_SOURCE.contains("gunbc-ci"),
-        "dsl/gunbc/ci.dag must retain the `gunbc-ci` pipeline name"
+        !fields.is_empty(),
+        "`ci_workflow_dag` must lower with a non-empty structural body (pipeline + edges + transport fields)"
     );
 }
 
