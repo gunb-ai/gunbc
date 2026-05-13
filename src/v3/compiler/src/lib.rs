@@ -5163,11 +5163,25 @@ pub(crate) mod lower_helpers {
 
 /// Back-compat module path for the Stage 2b idempotency lens.
 ///
-/// The dedicated `lens_idempotency.rs` wrapper retired once the native-Dag
-/// bridge collapsed to a single re-export. Keep the module name as an API alias
-/// until callers move to the crate-root `analyze_workflow` export.
+/// Authority lives in `src/v3/lenses/idempotency.dag`; the Rust projection is
+/// auto-emitted into `src/v3/compiler/src/lens_idempotency_generated.rs`.
 pub mod lens_idempotency {
-    pub use crate::dag::analyze_workflow;
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_idempotency_generated.rs");
+    }
+
+    pub use generated::analyze_workflow;
 }
 
 /// Lane 2 Stage 2e parallelism lens. Authority lives in

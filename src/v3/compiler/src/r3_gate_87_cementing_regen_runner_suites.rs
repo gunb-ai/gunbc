@@ -90,6 +90,12 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         &["cementing_regen_effect_enumeration"],
     ),
     (
+        include_str!("../tests/dag/t_r3_gate_87_cementing_regen_idempotency.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_idempotency.dag",
+        "r3_gate_87_cementing_regen_idempotency_suite",
+        &["cementing_regen_idempotency"],
+    ),
+    (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag"),
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
         "r3_gate_87_cementing_regen_infer_helpers_suite",
@@ -100,6 +106,12 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
         "r3_gate_87_cementing_regen_lower_helpers_suite",
         &["cementing_regen_lower_helpers"],
+    ),
+    (
+        include_str!("../tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag",
+        "r3_gate_87_cementing_regen_parallelism_suite",
+        &["cementing_regen_parallelism"],
     ),
     (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_provenance.dag"),

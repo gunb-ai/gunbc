@@ -1,0 +1,21 @@
+// R3 gate #87 — `LensRegistryEntry` `parallelism` temporary source-compilation placeholder.
+// `parallelism.dag` is still BEHAVIORALLY PARTIAL, so this receipt only keeps the regenerated
+// lens source wired through PB-B-1. Behavioral completion must replace this with a public
+// `WorkflowParallelismReport` output witness when typed pairwise evidence lands.
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data cementing_regen_parallelism_claim: TestClaim = {
+  name: "cementing_regen_parallelism",
+  source: "let lit: Int = 7",
+  file_name: "r3_gate_87_parallelism_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_parallelism_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/parallelism",
+  claims: [Enumerated(cementing_regen_parallelism_claim)]
+}

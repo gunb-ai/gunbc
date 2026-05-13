@@ -7,6 +7,7 @@ use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    WorkflowIdempotencyReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -3132,6 +3133,17 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            "gate87_idempotency_missing_workflow_is_unsupported" => {
+                let Some(root) = program_dag.nodes().first().map(Behavior::id) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): `{file_name}` has no nodes"
+                    )));
+                };
+                i64::from(matches!(
+                    crate::analyze_workflow(program_dag, root),
+                    WorkflowIdempotencyReport::IdempotencyUnsupported(_)
+                ))
+            }
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
