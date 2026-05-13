@@ -313,6 +313,54 @@ fn v2_cementing_basenames_from_capability_rows(
     Ok(basenames)
 }
 
+fn behaviorally_complete_basenames_from_capability_rows(
+    dag: &Dag,
+    capability_rows: &[FieldValue],
+) -> Result<BTreeSet<String>, String> {
+    let mut basenames = BTreeSet::new();
+    for row in capability_rows {
+        let Some(fields) = record_fields(row) else {
+            return Err(format!(
+                "capability_register list: expected record row, got {row:?}"
+            ));
+        };
+        let lens_basename = string_field(fields, "lens_basename")?;
+        let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
+            "capability_register row: missing `behavioral` field (expected \
+             `LensCapabilityBehavioralStatus` variant)"
+                .to_string()
+        })?;
+        let behavioral_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityBehavioralStatus",
+            behavioral,
+            "behavioral",
+            "capability_register row",
+        )?;
+        if behavioral_label == "LensCapabilityBehavioralComplete" {
+            basenames.insert(lens_basename);
+        }
+    }
+    Ok(basenames)
+}
+
+/// Lens basenames whose canonical `std.verification` `lens_capability_register_rows` row carries
+/// `LensCapabilityBehavioralComplete` (any v2 counterpart axis). Used to ratchet the prose
+/// capability table against structural authority for Same-PR `COMPLETE` flips on `regen.dag`
+/// lenses (`lens_register_correspondence_test`).
+pub fn lens_capability_register_behaviorally_complete_basenames(
+    dag: &Dag,
+) -> Result<BTreeSet<String>, String> {
+    let reg_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .ok_or_else(|| {
+            "bootstrap must declare `lens_capability_register_rows` (std.verification)".to_string()
+        })?;
+    let capability_rows =
+        list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
+    behaviorally_complete_basenames_from_capability_rows(dag, &capability_rows)
+}
+
 /// Lens basenames that participate in Band-C v2 cementing: `LensCapabilityBehavioralComplete`
 /// plus `LensCapabilityV2RealV2` in the canonical `std.verification` `lens_capability_register_rows`
 /// list (same projection `CementingDispatchMatchesProjection` uses before intersecting `regen.dag`).
