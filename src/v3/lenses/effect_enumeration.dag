@@ -3,6 +3,56 @@
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PARTIAL.
 // See docs/v3-lens-capability-register.md.
 //
+// --- F-β.1 / gate #82 — migration-shape canvas (substrate prereq for F-β.2) ---
+//
+// Locked design: docs/design-effect-enumeration-resource-threading.md §3.2 + §6.2.
+// Sequencing: docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md §1.2 (F-β.1).
+// This section is ratification-facing documentation plus the
+// `EffectEnumerationAuthoritySite` sum below; `enumerate_effects` behavior is
+// unchanged until F-β.2 lands the atomic migration.
+//
+// **Caller-side effect-set pinning carrier** — no new substrate type. The
+// pinning surface is the existing `v3.std.services::Operation` row:
+//   type Operation { callable: CallableRef; inputs: Map<String, InputField>;
+//                    endpoint: RestEndpointBinding }
+//
+// **Which `Operation` fields the post-F-β.2 lens body reads for effect facts**
+// (Director ratification target — disposition is design-locked):
+//
+// - `callable: CallableRef` — PRIMARY authority. Resolve `callable.decl` to
+//   the arrow declaration. Effect *set*: resource types that appear in both the
+//   arrow's input record and its output (§2.4(a)). Effect *kind*: read from
+//   declared algebra inhabitance on that callable (`IdempotentRead<R>` /
+//   `Mutating<R>` / `Append<R>`), not from transport or signature-shape
+//   defaults (§2.4(b), §6.2).
+//
+// - `inputs: Map<String, InputField>` — keys enforce `ParamToken.name` /
+//   fixture-load single-authority for input field names (`services.dag` header).
+//   Not a parallel "requires { ... }" effect pin (design §3.3). The lens may
+//   touch this map only for boundary/coverage diagnostics, not as an alternate
+//   EffectShape derivation channel.
+//
+// - `endpoint: RestEndpointBinding` — E-9 per-target realization (`method`,
+//   `path` live here for emitters). Post-migration it MUST NOT feed effect-kind
+//   classification (retires `derive_effect_shape(method, path)` / Channel-B
+//   ambient metadata; design §6.2 + §8.3).
+//
+// **Resource-threading unified rule** (design §2.4) — two orthogonal structural
+// facts the F-β.2 kind-classifier consumes: (a) effect set from the threaded
+// arrow signature behind `Operation.callable`; (b) effect kind from
+// inhabitance on that callable. Signature alone cannot split read vs write;
+// missing kind inhabitance for a resource in the effect set is fail-closed
+// (`EffectKindUndeclared` in the design pseudocode), not a silent default.
+//
+// **Walker rewire surface** (F-β.2 implementation): effect facts currently fold
+// `Dag.nodes` / `Behavior` only. Post-migration the lens also discovers grounded
+// `Operation` rows (`List<Operation>` fixtures per PR-β..ω lineage in
+// `services.dag` header) and threads the same report carrier; exact merge order
+// and substrate hook for operation discovery are F-β.2 consumer wiring, not
+// F-β.1 canvas scope.
+//
+// ---
+//
 // This lens is the first closed-system unenumerated-effects surface:
 // it walks the five Behavior variants and derives effect facts from
 // callable type-signature shape, not from the legacy enumerated taxonomy.
@@ -37,6 +87,13 @@ import v3.std.substrate {
   resolve_producer,
   declaration_by_id
 }
+
+// Dual authority sites for the post-F-β.2 walker (F-β.1 canvas; see module
+// header). Variants are tag-only: they document the migration-shape rewire
+// surface for Director ratification without changing today's fold.
+type EffectEnumerationAuthoritySite =
+  SubstrateDagBehaviorNode
+  | ServicesOperationCarrier
 
 // `UnknownEffect` remains an explicit unknown-carrying variant while transaction
 // witness depth and read/write threading stabilize. This prevents format-driven
