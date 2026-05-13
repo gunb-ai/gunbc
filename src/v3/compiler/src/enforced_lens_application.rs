@@ -131,8 +131,11 @@ fn timing_measurement_enforcement_usage(
     };
     let variant = variants.iter().find(|v| v.ty == *constructor)?;
     match variant.label.as_str() {
-        "Observed" => observed_timing_payload_max_ns(payload).map(TimingMeasurementEnforcementUsage::ObservedWallNs),
-        "Unobserved" | "Ambiguous" | "Stale" => Some(TimingMeasurementEnforcementUsage::NonObservedFault),
+        "Observed" => observed_timing_payload_max_ns(payload)
+            .map(TimingMeasurementEnforcementUsage::ObservedWallNs),
+        "Unobserved" | "Ambiguous" | "Stale" => {
+            Some(TimingMeasurementEnforcementUsage::NonObservedFault)
+        }
         _ => None,
     }
 }
@@ -577,27 +580,30 @@ fn gate_58_raise_observed_duration_ns_in_measurement(
             let Some(FieldValue::Record(parts)) = payload.first_mut() else {
                 return false;
             };
-            for (label, field) in parts.iter_mut() {
-                if label != "duration" {
-                    continue;
-                }
-                let FieldValue::Record(duration_parts) = field else {
-                    return false;
-                };
-                for (dlabel, dfield) in duration_parts.iter_mut() {
-                    if dlabel == "count" {
-                        if let FieldValue::Literal(LiteralBits::Int(s)) = dfield {
-                            *s = duration_ns.to_string();
-                            return true;
-                        }
-                        return false;
-                    }
-                }
+            if let Some((_, FieldValue::Record(duration_parts))) =
+                parts.iter_mut().find(|(label, _)| label == "duration")
+            {
+                return gate_58_set_count_field_to_ns(duration_parts, duration_ns);
             }
-            false
+            // PB-1 bootstrap lowering: `Observed` payload can flatten to `{ count: Nat }` without
+            // a nested `duration` record (authoring uses `Observed { duration: { count } }`).
+            gate_58_set_count_field_to_ns(parts, duration_ns)
         }
         _ => false,
     }
+}
+
+fn gate_58_set_count_field_to_ns(parts: &mut [(String, FieldValue)], duration_ns: u64) -> bool {
+    for (dlabel, dfield) in parts.iter_mut() {
+        if dlabel == "count" {
+            if let FieldValue::Literal(LiteralBits::Int(s)) = dfield {
+                *s = duration_ns.to_string();
+                return true;
+            }
+            return false;
+        }
+    }
+    false
 }
 
 /// Integration receipt helper: mutates the PB-1 gate #58 witness row in a bootstrap [`Dag`].

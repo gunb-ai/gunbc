@@ -15,11 +15,11 @@ use std::path::PathBuf;
 use crate::common::cached_compile_outcome;
 use crate::common::CachedCompileOutcome;
 
+use v3_compiler::Diagnostic;
 use v3_compiler::{
     check_enforced_lens_applications, gate_58_test_raise_modeled_ci_timing_measurement_duration_ns,
     generated_full_bootstrap_dag,
 };
-use v3_compiler::Diagnostic;
 
 const VIOLATION_FIXTURE_REL: &str =
     "src/v3/compiler/tests/fixtures/t_gate_58_timing_enforcement_budget_violation.dag";
@@ -73,11 +73,11 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
         .iter()
         .map(|(_, d)| d)
         .filter(|d| {
-            matches!(d, Diagnostic::ParseError { .. })
+            d.layer1_kind_label() == "ParseError"
                 && d.message().contains("timing budget ceiling")
-                && d.message().contains(&format!("max_ns={PASS_BUDGET_MAX_NS}"))
-                && d
-                    .message()
+                && d.message()
+                    .contains(&format!("max_ns={PASS_BUDGET_MAX_NS}"))
+                && d.message()
                     .contains(&format!("usage_max_ns={OVER_BUDGET_NS}"))
         })
         .collect();
