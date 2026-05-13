@@ -235,26 +235,27 @@ plus #85 SuiteClaim wrapper consumer landed.
 **Promise** (interrogation §5.2): *"v2 fully retired."*
 
 **HEAD evidence**:
-- Gate #97 `method_template_projection_emit_shim_retirement_coherence` = **PASSING** for coherence-only
+- Gate #42 `v2_directory_deleted` = **CONSUMER_LANDED + PASSING** via PR #2693; `src/v2/` is absent at HEAD.
+- Gate #97 `method_template_projection_emit_shim_retirement_coherence` = **CONSUMER_LANDED + PASSING** for terminal coherence.
 - Per gate row verbatim: *"Terminal retirement = v2 tree absent ⇒ lib + bin table + bin source absent; coherence holds continuously."*
-- `src/v2/` exists at HEAD (terminal not reached)
+- The Gap-4 emit shim is absent at HEAD: no `pb_method_template_projection_dag_emit.rs`, no `emit_method_template_projection` bin source, and no `[[bin]]` manifest table.
 
-**What's missing**: actual deletion of `src/v2/` tree.
+**What's missing**: no implementation work remains for Gap 6 after PR #2693; only close-ceremony predicate receipts remain to be synchronized.
 
 **Plan to cash**:
-- **Owner**: zesty-boar-261 (R3 Debt-Paydown Mgr) — terminal-deletion sweep
-- **Sub-program**:
-  1. Final v2 consumer audit (any `src/v2/` consumers remaining?)
-  2. Delete `src/v2/` + dependent build manifests + workspace member
-  3. Verify gate #97 coherence: lib absent ✓ + bin table empty ✓ + bin source absent ✓
-- **Effort estimate**: 1-2 weeks (mostly audit; deletion is mechanical)
+- **Owner**: zesty-boar-261 (R3 Debt-Paydown Mgr) — terminal-deletion sweep completed by PR #2693.
+- **Sub-program receipt**:
+  1. Final v2 consumer audit completed before deletion.
+  2. `src/v2/` deleted by PR #2693.
+  3. Gate #97 coherence verified: lib absent ✓ + bin table empty ✓ + bin source absent ✓.
+- **Effort estimate**: complete; maintenance-only if the close predicate ledger drifts.
 - **Dependency** (Director feedback item 5 — explicit transitive depth call-out): Gap 6 has the deepest transitive chain in the program:
   - Gap 6 → depends on Gap 1 (PB-0 retirement complete) + Gap 3 (self-host fixed point R3-strong)
   - Gap 3 → depends on Gap 1 + R2-Evaluator + R2-Grounding-Rust+Python + Row-B materialization
   - Effective chain: **Gap 6 ← Gap 3 ← {Gap 1, R2-Evaluator, R2-Grounding, Row-B}** — 5+ deep
-- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). v2 tree deletion is the FINAL R3 dissolution; the entire ratchet → carrier → walker → emission → self-host → test-port cascade closes upstream first. Expect Gap 6 to land in the last 2 weeks of R3 close.
+- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). The §1.8 row #97 substrate-state predicate is already PASSING at HEAD after PR #2693; broader T-V2-Retirement lane closure still waits for the ratchet → carrier → walker → emission → self-host → test-port cascade to close upstream.
 
-**Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING.
+**Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING, with predicate execution recorded in `docs/audit/r3-close-predicate-execution-2026-05-13.md`.
 
 ---
 
