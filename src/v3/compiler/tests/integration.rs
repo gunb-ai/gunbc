@@ -61,6 +61,8 @@ mod complexity_lens_behavioral_completion;
 mod cost_lens_symbolic_consumer_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
+#[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
+mod ctrl_pr_digests_dag_smoke_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
@@ -1116,6 +1118,18 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../std/effects.dag"),
             "src/v3/std/effects.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_gunbc_digest_render_dag() {
+        // P5 receipt: this Rust harness is a narrow parser-acceptance consumer
+        // for the new `.dag` authority file. It does not introduce semantic
+        // authority; it keeps the Phase-3 render projection loadable until the
+        // parser corpus is generated from structural declarations.
+        parse_file(
+            include_str!("../../../../dsl/gunbc/digest_render.dag"),
+            "dsl/gunbc/digest_render.dag",
         );
     }
 }
