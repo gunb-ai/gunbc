@@ -171,6 +171,21 @@ fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
 }
 
 #[test]
+fn r3_gate_87_provenance_origin_rust_receipt_on_transform_bind() {
+    let dag = compile_to_dag(
+        "let sum: Int = 1 + 2",
+        "r3_gate_87_provenance_transform_receipt.v3",
+    )
+    .expect("compile");
+    let port = find_bind_value_port(&dag, "sum");
+    let got = origin_of(&dag, &port);
+    assert!(
+        matches!(got, Origin::Computed { .. }),
+        "operator transform bind should classify as Computed(..), got {got:?}"
+    );
+}
+
+#[test]
 fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row() {
     let dag = compile_to_dag(
         "let lit: Int = 7",
@@ -215,6 +230,19 @@ fn r3_gate_87_structural_resolution_rust_receipt_on_literal_program() {
 }
 
 #[test]
+fn r3_gate_87_structural_resolution_rust_receipt_on_user_function() {
+    let dag = compile_to_dag(
+        "fn id(x: Int) -> Int = x",
+        "r3_gate_87_structural_resolution_function_receipt.v3",
+    )
+    .expect("compile");
+    assert!(
+        lens_structural_resolution::check(&dag).is_empty(),
+        "lowered user functions must resolve to UserDefined bodies, not Pending-arrow violations"
+    );
+}
+
+#[test]
 fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
     let dag = compile_to_dag(
         "let lit: Int = 7",
@@ -226,5 +254,24 @@ fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
             .query(&UnusedParametersConfig::default())
             .is_empty(),
         "literal bind should not surface unused-parameter findings"
+    );
+}
+
+#[test]
+fn r3_gate_87_unused_parameters_rust_receipt_reports_ignored_parameter() {
+    let dag = compile_to_dag(
+        "fn first(a: Int, b: Int) -> Int = a",
+        "r3_gate_87_unused_parameters_positive_receipt.v3",
+    )
+    .expect("compile");
+    let findings = UnusedParametersLens::new(&dag).query(&UnusedParametersConfig::default());
+    assert_eq!(
+        findings.len(),
+        1,
+        "single ignored parameter fixture should produce exactly one finding, got {findings:?}"
+    );
+    assert_eq!(
+        findings[0].parameter_index, 1,
+        "the ignored second parameter must be reported by index"
     );
 }
