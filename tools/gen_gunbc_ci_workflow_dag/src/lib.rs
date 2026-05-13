@@ -273,7 +273,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "Some {{\n  value: WorkflowPermissions {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}\n  }}",
+        "WorkflowPermissions {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}",
         contents, pull_requests, issues, actions
     ))
 }
