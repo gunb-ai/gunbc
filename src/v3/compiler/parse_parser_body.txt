@@ -1286,7 +1286,7 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
             self.bump();
-            let args = self.parse_type_expr_list_until(TokenKind::Gt)?;
+            let args = self.parse_type_angle_arg_list_until_gt()?;
             let close = self.expect_kind(TokenKind::Gt)?;
             Ok(SurfaceType::Parameterized {
                 name,
@@ -1308,6 +1308,47 @@ impl<'a> Parser<'a> {
     /// callers and currently always returns true.
     fn looks_like_type_args(&self) -> bool {
         true
+    }
+
+    /// Decimal width literal permitted **only** inside `<…>` type-argument lists
+    /// (e.g. `Int<64>`). Standalone `let x: 64 = …` must stay a parse error — gate #60
+    /// (single authority: this fragment is spliced by `regen_parse`; do not edit only
+    /// `parse_generated.rs` without updating here).
+    fn parse_width_nat_type_argument(&mut self) -> Result<TypeAngleArg, Diagnostic> {
+        let token = self.bump().clone();
+        match token.kind {
+            TokenKind::IntLit(decimal) => Ok(TypeAngleArg::WidthNatLiteral {
+                decimal,
+                span: token.span,
+            }),
+            other => Err(Diagnostic::ParseError {
+                message: format!("expected decimal width literal, got {other:?}"),
+                span: token.span,
+                fixes: Vec::new(),
+            }),
+        }
+    }
+
+    fn parse_type_angle_arg_list_until_gt(&mut self) -> Result<Vec<TypeAngleArg>, Diagnostic> {
+        let end = TokenKind::Gt;
+        let mut args = Vec::new();
+        if self.peek().kind == end {
+            return Ok(args);
+        }
+        loop {
+            if matches!(self.peek().kind, TokenKind::IntLit(_)) {
+                args.push(self.parse_width_nat_type_argument()?);
+            } else {
+                let ty = self.parse_type_expr()?;
+                args.push(TypeAngleArg::TypeExpr { ty: Box::new(ty) });
+            }
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        Ok(args)
     }
 
     fn parse_type_expr_list_until(
