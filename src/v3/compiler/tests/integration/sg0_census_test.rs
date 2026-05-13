@@ -452,6 +452,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // when extdeps transport files are covered by a `.dag`-native parse/authority
     // suite or generated test harness.
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
+    "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
@@ -622,6 +623,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
+    // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
+    "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
     // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).

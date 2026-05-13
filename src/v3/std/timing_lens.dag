@@ -105,6 +105,42 @@ type WorkflowObservationAnchor {
   workflow_run_id: WorkflowRunId
 }
 
+// Gate #62 `substrate_gap_file_ingestion_closed` — T-Workflow-As-Data file-attachment
+// substrate carrier (Refined-B-1 ratification: `docs/briefs/r3-substrate-gate-62-file-attachment-carrier-sub-canvas.md`,
+// PR #2820; Director disposition relayed via PM msg_bc8c23f6 2026-05-13).
+//
+// **Refined-B-1 (strict 5-of-7 subset of `WorkflowObservationAnchor` above / gate #55):**
+// same provenance/run coordinates as the timing anchor, with `artifact_digest` renamed to
+// `content_digest` for file-ingestion vocabulary; drops `observer_id` + `prover_id` (timing-specific
+// roles). Sibling-carrier pattern with `WorkflowSecret` / `CronExpression` on gate #53 — no
+// `List<FileAttachment>` on Job/Step here (consumer-evidence deferral per Director Q4).
+type FileAttachment {
+  subject_node: NodeId
+  content_digest: ContentHash
+  producer_id: WorkflowProducerId
+  workflow_run_id: WorkflowRunId
+  attached_at_ns: Nanoseconds
+}
+
+// Gate #62 existence proof (`substrate_gap_file_ingestion_closed`): anonymous record literal
+// with `-> FileAttachment` expected type (same discipline as `timing_lens_degenerate_empty_dag_span`
+// → `SourceSpan`). Kept in this module so the return nominal resolves to the `FileAttachment` Conj
+// adjacent above — cross-module `import` return typing did not supply a conj witness for `{…}`.
+fn gate_62_file_attachment_demo_record(
+  subject: NodeId,
+  digest: ContentHash,
+  producer: WorkflowProducerId,
+  run: WorkflowRunId,
+  attached: Nanoseconds
+) -> FileAttachment =
+  {
+    subject_node: subject,
+    content_digest: digest,
+    producer_id: producer,
+    workflow_run_id: run,
+    attached_at_ns: attached,
+  }
+
 // Batched timing observations: each entry is anchor × measurement (typed edge).
 type TimingObservationSet {
   observations: List<TimingObservationEntry>

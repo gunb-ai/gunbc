@@ -71,6 +71,8 @@ mod emission_provenance_lens_test;
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/extdeps_sql_transport_test.rs"]
 mod extdeps_sql_transport_test;
+#[path = "integration/file_attachment_substrate_carrier_test.rs"]
+mod file_attachment_substrate_carrier_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
@@ -177,6 +179,8 @@ mod r3_class_2_function_valued_data_test;
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
 mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_gate_60_phase2_width_nat_parser_test.rs"]
+mod r3_gate_60_phase2_width_nat_parser_test;
 #[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
 mod r3_gate_87_lens_cementing_regen_receipts_test;
 #[path = "integration/r3_lens_producer_retirement_executable_witness_test.rs"]
