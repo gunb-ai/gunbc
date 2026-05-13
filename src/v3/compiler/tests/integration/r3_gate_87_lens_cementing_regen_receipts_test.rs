@@ -121,15 +121,6 @@ fn assert_lens_dag_compiles(rel: &str) {
     );
 }
 
-fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
-    dag.nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|bind| bind.name == name)
-        .unwrap_or_else(|| panic!("bind `{name}` not found"))
-        .value
-}
-
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
