@@ -97,21 +97,21 @@ plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cit
 **HEAD evidence**:
 - Gate #16 = **CONSUMER_LANDED (R1 horizon; R3 stronger interpretation pending)**
 - 4 joint preconditions deferred per parent brief:
-  - R2-Evaluator landed
+  - **R2-Evaluator** — **closed-with-residuals 2026-04-29 16:34Z per ROADMAP.md:512, NOT LANDED**. Per Director audit msg_82b9c4bb 2026-05-13: 5 sub-lanes at R2-close per docs/r2-closure-ledger.md:250-263 — `runtime_value_model_structural` in-flight (#1197 #1228 #1231); `body_evaluator_structural` not-started; `lens_application_complete_reflection` in-flight (#1191); `witness_construction_structural` not-started; `cross_target_equivalence_harness_structural` not-started. Sub-lanes carried into R3 as r3-continuation but closure-ledger row stale @ #1191-#1231 era (HEAD is #3013+). R3-tier slice landings (sampled merged PRs 2026-04 → 2026-05-13: #1813 E6-G0d / #1857 E6-G1.a / #2152 Phase 4 / #2190 E2 Descent / #2257 TC3 D1 / #2658/#2812 gate #5 lens_apply retire / #2681 std.computation lowering / #2825/#2827/#2826/#2941 gates #57-#59) PARTIAL coverage; do NOT discharge the 5 sub-lane ledger. **R3 Evaluator Mgr merry-gull-128 (#1743) ABSENT from current subtree at HEAD** — authority dispersed across 3 R3 Mgrs without single owner (`feedback_thesis_gate_state_drift` instance; r2-structure.md:73 anti-pattern reincarnation under R3-tier-slice procedural wrapper).
   - R2-Grounding-Rust+Python landed
   - T-LP/SG-0 landed (= Gap 1 above)
   - Row-B materialization landed
 
-**What's missing**: the 4 joint preconditions all need to land before R3-strong-form self-host can be claimed.
+**What's missing**: the 4 joint preconditions all need to land before R3-strong-form self-host can be claimed. **R2-Evaluator joint precondition itself decomposes into 5 sub-lane closures** per the Director audit; the closure-ledger needs refresh + sub-lane ratchet-to-PASSING via §1.8 gate ratifications.
 
 **Plan to cash**:
-- **Owner**: Director-tier coordination (cross-Mgr); PM tracks
+- **Owner**: Director-tier coordination (cross-Mgr); PM tracks. **R2-Evaluator joint precondition specifically requires a 5th R3 Mgr lane decision** (see §4 sub-item 5 below) — re-spawn evaluator Mgr / fold into existing R3 Mgrs / Director-direct ad-hoc dispatch.
 - **Sub-program**: each precondition has its own program; this gap is meta-blocked
-  - R2-Evaluator: separate program; current status unknown to PM (need Director audit)
+  - R2-Evaluator: 5 sub-lanes per Director audit (runtime_value_model + body_evaluator + lens_application_complete_reflection + witness_construction + cross_target_equivalence_harness); brief surface comprehensive per Director (c) (r2-evaluator-manager.md + 4 sub-briefs + 10+ PR-A-E + R3-tier per-slice briefs). Q-EVAL ratifications landed 2026-05-06/07 (G0d-Dispatch / Descent-Termination-Contract / Lens-Fold-First-Slice). **Owner pending §4 sub-item 5 operator decision**.
   - R2-Grounding-Rust+Python: gate #18 + extdeps work
   - T-LP/SG-0: same as Gap 1
   - Row-B materialization: T-LBP work
-- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4)
+- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure is the dominant tail — 2 not-started sub-lanes + 3 in-flight per audit.
 
 **Close criterion**:
 ```bash
@@ -119,9 +119,9 @@ plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cit
 self_host_fixed_point && diff -q <stage0_binary> <emitted_binary>
 # returns: byte-identical
 ```
-All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output.
+All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close**: all 5 sub-lanes (runtime_value_model_structural / body_evaluator_structural / lens_application_complete_reflection / witness_construction_structural / cross_target_equivalence_harness_structural) PASSING in docs/r2-closure-ledger.md or §1.8 (refresh closure-ledger from #1191-#1231 era to HEAD) AND R3 Evaluator Mgr lane owner identified per §4 sub-item 5 disposition.
 
-**Alternative disposition**: if operator accepts R1-horizon as R3-acceptable (compiler self-compiles but bit-identity only on R1-subset), record acceptance here + amend §4.2 promise text to scope-narrow the R3 claim.
+**Alternative disposition**: if operator accepts R1-horizon as R3-acceptable (compiler self-compiles but bit-identity only on R1-subset), record acceptance here + amend §4.2 promise text to scope-narrow the R3 claim. **R2-Evaluator-tier alternative**: if operator R4-carves the residual 5 sub-lanes per `project_no_r4_carves_directive` explicit override, record per-sub-lane R4-carve carrier with named structural-unblockable reason + retirement plan (substrate-shape symmetry with Gap 9 `DeferredCorrection` discipline).
 
 ---
 
@@ -417,9 +417,9 @@ This caveat applies to the entire §3 — estimates above are PM-best-guess at d
 
 ## §4. Operator decision points (request for ratification)
 
-**Standing directive context** (per `project_no_r4_carves_directive`, Brian 2026-05-08 verbatim: *"we are NOT moving anything to R4 as of now"*): R4-carve is **NOT freely available** as a default. The 4 decisions below default to **IN-R3** unless operator explicitly overrides the standing directive with a structural-unblockable-reason argument per-decision.
+**Standing directive context** (per `project_no_r4_carves_directive`, Brian 2026-05-08 verbatim: *"we are NOT moving anything to R4 as of now"*): R4-carve is **NOT freely available** as a default. The 4 scope decisions below default to **IN-R3** unless operator explicitly overrides the standing directive with a structural-unblockable-reason argument per-decision.
 
-**PM recommendation across all 4** (per claude review exploratory observation #1 — explicit per-gap PM view): **do not defer** any of Gaps 1/2/3/9. Each R4-carve materially dilutes a load-bearing R3 promise:
+**PM recommendation across all 4 scope decisions** (per claude review exploratory observation #1 — explicit per-gap PM view): **do not defer** any of Gaps 1/2/3/9. Each R4-carve materially dilutes a load-bearing R3 promise:
 - Gap 1 R4-carve = dilutes PB-0 thesis claim ("0 hand-Rust")
 - Gap 2 R4-carve = scope-narrows §3.1 from 3-Shape-A targets to Rust-only (defeats omni-emission story)
 - Gap 3 R4-carve = scope-narrows §4.2 self-host fixed point to R1-horizon (defeats self-host thesis claim)
@@ -433,7 +433,18 @@ PM requests operator confirmation (default IN-R3) or explicit override (R4-carve
 4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + Diagnostic-with-correction coverage at **100% absolute** (no threshold negotiation; codex BLOCKING PR #3013 2026-05-13 retracted prior `≥X%` pragmatic-relaxation framing as THESIS-promise-dilution). **PM-recommended: do not defer.** Single operator sub-decision:
    - (a) IN-R3 at 100% absolute (recommended) OR not-R3-promised reframe (= R4-carve per directive; requires explicit operator override of `project_no_r4_carves_directive`)
 
-**§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for these 4 items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive + PM-recommended)" — explicit override only if structurally unblockable.
+**5. R3 Evaluator Mgr dispatch (subtree-shape decision; surfaced per Director audit msg_82b9c4bb 2026-05-13)**: structurally distinct from the 4 scope decisions above — this decision changes Director subtree shape rather than R3 surface scope. Per Director audit findings: (a) R2-Evaluator closed-with-residuals with 5 sub-lanes carried into R3; (b) R3 Evaluator Mgr merry-gull-128 (#1743) ABSENT from current subtree at HEAD; (c) brief surface comprehensive; (d) Director-recommends re-spawn as 4th R3 Mgr lane. PM-recommendation **OPTION A: re-spawn evaluator Mgr** per:
+   - `feedback_standing_managers_need_owned_deliverables` — 5 named sub-lanes (runtime_value_model + body_evaluator + lens_application_complete_reflection + witness_construction + cross_target_equivalence_harness) is an owned-program count that justifies a Mgr lane.
+   - `feedback_pre_authored_brief_queue` — brief surface already comprehensive per Director (c); re-spawn does NOT bottleneck on Mgr-tier dispatch authoring.
+   - Operator standing directive *"staffing not a concern"* (2026-05-13 PR #3013 ratification thread) frames 4th R3 Mgr lane as IN-policy.
+   - Existing 3-Mgr R3 template (Substrate / Verification / Debt-Paydown) symmetry — 4th lane is structurally parallel, not a new Mgr-tier shape.
+
+   Operator sub-decisions:
+   - (a) **Re-spawn R3 Evaluator Mgr as 4th lane** (PM-recommended; Director-recommended primary option). Brief surface ready; sub-lanes named; owned-program count meets bar.
+   - (b) **Fold into existing R3 Mgrs**: witness_construction + cross_target_equivalence to Verification (swift-deer-459); runtime_value_model + body_evaluator to Substrate (warm-wolf-698); lens_application_complete_reflection to whichever has lower load. Lower agent-spawn cost; risk: scope-bloat under existing R3-lane load creates dual-program lane (the same anti-pattern that produced the dispersion).
+   - (c) **Director-direct ad-hoc dispatch**: structurally equivalent to retracted r2-structure.md:73 anti-pattern ("standing managers without owned deliverables degenerate into pass-through hops; concentrating brief-authoring on Director starved lanes"); PM does NOT recommend.
+
+**§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for the 4 scope items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive + PM-recommended)" — explicit override only if structurally unblockable. **Sub-item 5 (Mgr-dispatch) is NOT a scope question**; it asks operator to ratify subtree-shape change. Default state is "no decision recorded" — Gap 3 close-criterion is meta-blocked until operator ratifies one of (a)/(b)/(c).
 
 ---
 
@@ -454,11 +465,13 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 ## §6. Pending Director + operator decisions
 
 - [x] **Director ratifies this plan structure** — APPROVED 2026-05-13 (msg_cd2d8d7d) on structure + dispatch sequencing + §5 process discipline. 8 substantive notes integrated into this revision.
-- [ ] Operator §4 confirmations (4 decisions; default IN-R3 per `project_no_r4_carves_directive`):
+- [ ] Operator §4 confirmations (4 scope decisions; default IN-R3 per `project_no_r4_carves_directive`):
   - [ ] Gap 1 (PB-0): confirm IN-R3 OR override with named R4-carve subsets
   - [ ] Gap 2 (L5 cross-target): confirm IN-R3 (Python+Go) OR override with Rust-only-Shape-A scope
   - [ ] Gap 3 (self-host R3-strong): confirm IN-R3 (4-joint-precondition cascade) OR override with R1-horizon final
   - [ ] Gap 9 (show-correct-code): confirm IN-R3 at 100% absolute (no threshold negotiation per §4 + close criterion above) OR override with not-R3-promised reframe (= R4-carve; requires explicit operator override of `project_no_r4_carves_directive`)
+- [ ] Operator §4 sub-item 5 (subtree-shape decision; surfaced per Director audit msg_82b9c4bb 2026-05-13):
+  - [ ] R3 Evaluator Mgr dispatch: (a) re-spawn as 4th lane (PM + Director recommended) / (b) fold into existing R3 Mgrs / (c) Director-direct ad-hoc (PM does not recommend per r2-structure.md:73 anti-pattern)
 - [ ] Operator authorizes Phase A immediate dispatch (close-audit doc skeleton + §1.8 row #106 author)
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [ ] R2-Evaluator audit (Gap 3 precondition; this week)
