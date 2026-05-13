@@ -4801,6 +4801,11 @@ fn walk_to_disj_decl_with_subst_lower(
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Disj { .. } => return Some(current),
+            // Mirror `infer::walk_to_disj_decl`: `T?` optional fields lower through the synthetic
+            // `None` / `Some` match disj (`ensure_optional_match_disj`) before sum/record walks.
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                return dag.optional_match_disj(current);
+            }
             TypeConnective::Instantiation {
                 template,
                 arguments,
