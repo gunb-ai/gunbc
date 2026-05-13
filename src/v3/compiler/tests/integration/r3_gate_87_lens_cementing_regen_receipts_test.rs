@@ -294,3 +294,140 @@ fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
         "literal bind should not surface unused-parameter findings"
     );
 }
+
+#[test]
+fn r3_gate_87_cost_cementing_dag_merge_sort_program_locksteps_merge_sort_fixture() {
+    let program = include_str!("../fixtures/r1_merge_sort_pair.v3");
+    let dag_text = include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag");
+    let needle = escape_dag_test_claim_source(program);
+    assert!(
+        dag_text.contains(&needle),
+        "`tests/dag/t_r3_gate_87_cementing_regen_cost.dag` must embed the same merge-sort program \
+         text as `tests/fixtures/r1_merge_sort_pair.v3` so the gate-87 `.dag` receipt and the Rust \
+         pin share one frozen-oracle authority"
+    );
+}
+
+#[test]
+fn r3_gate_87_cost_merge_sort_lens_pins_frozen_v2_int_depth_oracle_witness() {
+    const FILE: &str = "r3_gate_87_merge_sort_pair.v3";
+    let dag = compile_to_dag(include_str!("../fixtures/r1_merge_sort_pair.v3"), FILE)
+        .unwrap_or_else(|e| panic!("{FILE}: expected clean compile, got {e:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{FILE}: expected no diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let port = find_bind_value_port(&dag, "merge_sort_out");
+    assert_eq!(
+        cost_of(&dag, &port),
+        CostLookup::Hit(3),
+        "Lane-E frozen int-depth oracle for merge-sort (matches \
+         `t_r3_gate_87_cementing_regen_cost.dag` `gate87_merge_sort_expected_cost: Int = 3`)"
+    );
+}
+
+#[test]
+fn r3_gate_87_cost_symbolic_cementing_dag_sources_lockstep_rust_authority() {
+    let dag_text = include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag");
+    assert!(
+        dag_text.contains(&format!(
+            "source: \"{}\"",
+            escape_dag_test_claim_source(GATE87_SYMBOLIC_LIT_SOURCE)
+        )),
+        "cost_symbolic harness must keep the literal `TestClaim.source` in lockstep with \
+         `GATE87_SYMBOLIC_LIT_SOURCE`"
+    );
+    assert!(
+        dag_text.contains(&format!(
+            "source: \"{}\"",
+            escape_dag_test_claim_source(GATE87_SYMBOLIC_COUNTDOWN_SOURCE)
+        )),
+        "cost_symbolic harness must keep the countdown `TestClaim.source` in lockstep with \
+         `GATE87_SYMBOLIC_COUNTDOWN_SOURCE`"
+    );
+}
+
+#[test]
+fn r3_gate_87_cost_symbolic_literal_pins_frozen_constant_witness() {
+    run_gate87_cost_symbolic_stack(|| {
+        let dag = compile_to_dag(GATE87_SYMBOLIC_LIT_SOURCE, GATE87_SYMBOLIC_LIT_FILE)
+            .unwrap_or_else(|e| panic!("{}: {e:?}", GATE87_SYMBOLIC_LIT_FILE));
+        assert!(
+            dag.diagnostics().is_empty(),
+            "{}: expected no diagnostics",
+            GATE87_SYMBOLIC_LIT_FILE
+        );
+        let port = find_bind_value_port(&dag, "lit");
+        let cost = match symbolic_cost_of(&dag, &port) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `lit`"),
+        };
+        assert!(
+            matches!(cost, SymbolicCost::ConstantCost { _0: 0 }),
+            "frozen witness: literal symbolic cost must stay ConstantCost(0) (matches \
+             `t_r3_gate_87_cementing_regen_cost_symbolic.dag` `gate87_symbolic_cost_expected`); \
+             got {cost:?}"
+        );
+
+        let report = analyze_symbolic_cost_dimension(&dag, find_bind_node(&dag, "lit"));
+        let DimensionReport::DimensionOk {
+            dimension_name,
+            composed,
+            witnesses,
+        } = report
+        else {
+            panic!("analyze_symbolic_cost_dimension should return DimensionOk for `lit`");
+        };
+        assert_eq!(dimension_name, "symbolic_cost");
+        assert_eq!(
+            composed, cost,
+            "dimension spine must agree with symbolic_cost_of for the same frozen witness"
+        );
+        assert!(
+            witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
+            "symbolic cost dimension should only emit Inhabits witnesses for gate-87 literal \
+             receipt, got {witnesses:?}"
+        );
+    });
+}
+
+#[test]
+fn r3_gate_87_cost_symbolic_countdown_pins_linear_bind_param_witness_discipline() {
+    run_gate87_cost_symbolic_stack(|| {
+        let dag = compile_to_dag(GATE87_SYMBOLIC_COUNTDOWN_SOURCE, GATE87_SYMBOLIC_COUNTDOWN_FILE)
+            .unwrap_or_else(|e| panic!("{}: {e:?}", GATE87_SYMBOLIC_COUNTDOWN_FILE));
+        assert!(
+            dag.diagnostics().is_empty(),
+            "{}: expected no diagnostics",
+            GATE87_SYMBOLIC_COUNTDOWN_FILE
+        );
+        let countdown = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == "countdown")
+            .expect("countdown bind");
+        let parameter = countdown
+            .params
+            .first()
+            .copied()
+            .expect("countdown should expose one parameter port for bind-param witness");
+
+        let port = find_bind_value_port(&dag, "countdown");
+        let cost = match symbolic_cost_of(&dag, &port) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
+        };
+        assert_recursive_countdown_linear_semantics(&cost);
+
+        let mut ports = Vec::new();
+        linear_size_ports(&cost, &mut ports);
+        assert!(
+            ports.contains(&parameter),
+            "frozen witness: linear cost must key the unary parameter port {parameter:?} (matches \
+             `SymbolicCostExprEqualsForBindParam` / `LinearCostForBindParam` in \
+             `t_r3_gate_87_cementing_regen_cost_symbolic.dag`); got cost={cost:?}"
+        );
+    });
+}
