@@ -2,7 +2,7 @@
 // in library code per clippy config).
 #![allow(clippy::disallowed_macros)]
 
-//! `gunbc-ci` — BinaryShim workflow runner entrypoint (T-WAD Slice 5) plus host
+//! `gunbc-ci` — BinaryShim workflow runner entrypoint (T-WAD Slice 6) plus host
 //! utilities used before full dispatch lands.
 //!
 //! Invocation (GitHub Actions thin shim per `dsl/gunbc/ci_emission.dag`):
@@ -10,7 +10,9 @@
 //!
 //! Subcommands:
 //! - `wall-clock-warn-manifest` — print JSONL warn-policy lines projected from
-//!   `dsl/gunbc/test_node_wall_clock_ratchet.dag` (R3 gate #102 substrate authority).
+//!   `dsl/gunbc/test_node_wall_clock_ratchet.dag` (**interim bridge** toward gate
+//!   **#102**; canonical pass target is policy from `TestNodeCostDimension` timing
+//!   facts — not a parallel warn-token table).
 //!
 //! **`--workflow` / `--event` dispatch:** not implemented yet (BinaryShim gate-matrix
 //! wiring is pending). That path exits **2** fail-closed unless

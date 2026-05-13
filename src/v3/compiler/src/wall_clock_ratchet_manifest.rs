@@ -1,6 +1,8 @@
-//! R3 gate **#102** (`slow_test_exemptions_dissolved`) — project per-test wall-clock
-//! warn policy from substrate (`dsl/gunbc/test_node_wall_clock_ratchet.dag`) instead
-//! of a checked-in JSONL side manifest.
+//! Interim per-test wall-clock **warn-token** projection for CI (`slow_test_exemptions`
+//! paydown path) — reads modeled rows in `dsl/gunbc/test_node_wall_clock_ratchet.dag`
+//! instead of a checked-in JSONL side file. **Not** R3 gate **#102** closure: #102’s
+//! pass target is ratchet policy from `TestNodeCostDimension` / modeled timing facts,
+//! not a maintained warn-name list.
 
 use crate::dag::{FieldValue, LiteralBits, ValueBody};
 use crate::Dag;

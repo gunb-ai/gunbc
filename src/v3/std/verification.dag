@@ -553,8 +553,8 @@ type QuantifiedTestClaim {
 // the modeled graph (`TestNodeCostDimension` on `TestNodeRef`) — not a
 // verification-local scalar dimension. CI projects warn-only libtest tokens from
 // `dsl/gunbc/test_node_wall_clock_ratchet.dag` via `gunbc-ci wall-clock-warn-manifest`
-// into the JSONL shape `scripts/check-test-timeout.sh` consumes (R3 gate #102
-// substrate authority — no checked-in JSONL manifest).
+// into the JSONL shape `scripts/check-test-timeout.sh` consumes (**interim bridge** —
+// not #102 closure; no checked-in JSONL manifest).
 // `TestNodeRef` is a closed test-typed edge: only modeled `TestClaim` /
 // `QuantifiedTestClaim` nodes can inhabit it, so arbitrary declarations cannot
 // masquerade as test nodes. The budget/report fields reuse T-WAD's existing
