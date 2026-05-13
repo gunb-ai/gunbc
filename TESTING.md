@@ -409,33 +409,44 @@ receipt stems). Temporary Rust cementing modules live under
 `tests/dag/<stem>.dag`. Drift between `regen.dag`, those on-disk artifacts,
 `verification.dag`, and `cementing_dispatch.dag` fails the structural predicate.
 
-### Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`
+### Same-PR checklist — `BEHAVIORALLY COMPLETE` flips and new `LensRegistryEntry` rows
 
-Use this list when flipping `docs/v3-lens-capability-register.md` **and**
+Use this list when (a) flipping `docs/v3-lens-capability-register.md` **and**
 `data lens_capability_register_rows` in `src/v3/std/verification.dag` to
-`BEHAVIORALLY COMPLETE`. Nothing here adds a new authority beyond the gate-#87
+`BEHAVIORALLY COMPLETE`, or (b) adding a new `LensRegistryEntry` row to
+`src/v3/compiler/regen.dag`. Nothing here adds a new authority beyond the gate-#87
 surfaces already wired; it sequences edits so Band-C cementing cannot slip to a
 follow-on PR.
+
+**Lens-completeness invariant (merge policy).** A register promotion to
+`BEHAVIORALLY COMPLETE`, or a new `regen.dag` registry name, without the receipt
+stack below moving in the **same PR** is **non-mergeable**: it breaks the
+closed-world gate-#87 corpus (`docs/r3-structure.md` acceptance for
+`lens_cementing_test_discipline_complete`). Treat “prose first, receipts later”
+as a process failure, not a modeling disagreement.
 
 **1. Pick the receipt class from the v2 counterpart column**
 
 | Register column | Expected Band-C shape in the gate-#87 harness | Notes |
 |---|---|---|
-| **Real v2 counterpart** (a concrete v2 path or oracle, not `None` / not `N/A`) | `DifferentialEquals` and/or frozen v2-oracle predicates already used for sibling regen lenses | Full behavioral parity is proven against v2-shaped output. |
-| **v3-native `N/A` / no v2 counterpart** | `LensOutputEquals` (or equivalent structural equality on the published v3 carrier) on minimal programs or constructed `Dag` shapes | No v2 oracle; still a behavioral receipt, not “structural TERMINAL only.” |
-| **Helper / intentionally partial registry surface** (`infer_helpers`, `lower_helpers`, …) | Narrow `.dag` claims (often `Compiles` / source-level checks) **plus** an explicit **dissolution trigger** in the harness or module doc | When `.dag` predicates stay intentionally narrower than the shipped API, pair a **Rust** compile or contract pin in `r3_gate_87_lens_cementing_regen_receipts_test` in the same change. |
+| **Real v2 counterpart** (a concrete v2 path or oracle, not `None` / not `N/A`) | `DifferentialEquals`, **or** a **reviewed** frozen-v2 projection carried by the same predicates used for sibling regen lenses | Full behavioral parity is proven against v2-shaped output; weaker claims belong in the register until the receipt exists. |
+| **v3-native `N/A` / no v2 counterpart** | `LensOutputEquals`, `SymbolicCostExprEquals` when the published carrier is symbolic-cost shaped, or equivalent structural equality on the published v3 carrier | No v2 oracle; still a behavioral receipt, not “structural TERMINAL only.” |
+| **Helper / intentionally partial registry surface** (`infer_helpers`, `lower_helpers`, …) | Narrow `.dag` claims (often `Compiles` / source-level checks) **plus** an explicit **dissolution trigger** (named carrier or runner capability + owning lane) in the harness comment, `.dag` header, or `r3_gate_87_lens_cementing_regen_receipts_test.rs` module docs | When `.dag` predicates stay intentionally narrower than the shipped API, pair a **Rust** compile or contract pin in `r3_gate_87_lens_cementing_regen_receipts_test` in the same change. |
 
 Temporary Rust-only cementing (carrier not yet authorable as `.dag` data) is
 still **same-PR** Band-C when the Rust module, `tests/integration.rs`
-`#[path]`, `EXPECTED_HAND_AUTHORED_TEST` census row, and the named blocker /
-dissolution path all land together — not a deferral ticket.
+`#[path]`, `EXPECTED_HAND_AUTHORED_TEST` census row, named blocker, and
+**dissolution note** (where the Rust pin retires when the `.dag` carrier lands)
+all move together — not a deferral ticket.
 
 **2. If the lens is a `LensRegistryEntry` in `src/v3/compiler/regen.dag`, touch
 these together**
 
 - `src/v3/compiler/regen.dag` — registry row for the generated consumer.
-- `docs/v3-lens-capability-register.md` — prose capability table (behavioral
-  marker + “What v2 has that v3 drops” cleared to `N/A` before `COMPLETE`).
+- `docs/v3-lens-capability-register.md` — prose capability table (for a
+  `COMPLETE` flip: behavioral marker + “What v2 has that v3 drops” cleared to
+  `N/A` before `COMPLETE`; for a **new** row: add the row honest to its initial
+  behavioral grade).
 - `src/v3/std/verification.dag` — `data lens_capability_register_rows` row
   aligned with the prose table (`cementing_dispatch` / structural predicates read
   this list).
@@ -449,7 +460,8 @@ these together**
 - `src/v3/compiler/tests/dag/cementing_dispatch.dag` — add the matching Band-C
   receipt row so `CementingDispatchMatchesProjection` stays fail-closed.
 - `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`
-  — extend when a Rust pin remains required alongside narrower `.dag` claims.
+  — extend when a Rust pin remains required alongside narrower `.dag` claims;
+  each pin names **why** it exists and **what** dissolves it (same PR as the pin).
 
 **3. Reviewer one-pass**
 
@@ -458,6 +470,10 @@ register already reads `COMPLETE`. CI should already fail via
 `CementingDispatchMatchesProjection`, the runner table vs live `regen.dag`
 names, or the SG-0 census when Rust wiring is wrong; this checklist is the human
 pre-merge mirror of those predicates.
+
+A **new** `LensRegistryEntry` without the mechanical rows in step 2 (harness +
+runner + dispatch + aligned register data) is equally incomplete: the registry
+name is not yet inside the gate-#87 closed world.
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
