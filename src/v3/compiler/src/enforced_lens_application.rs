@@ -22,14 +22,16 @@
 //! `DeclarationScope` subject (today: `gate_58_modeled_ci_timing_measurement` in
 //! `t_ci_workflow_as_data_demo.dag`, typed `gate_58_timing_enforcement_section`) and applies the
 //! same usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
-//! `timing_lens.dag` (fault states map to a sentinel usage budget in substrate; the host compares
-//! projected nanoseconds against `TimingBudget.max` with the same strict `>` edge as gate #94).
+//! `timing_lens.dag` (fault states map to the substrate `timing_enforcement_fault_sentinel_count`
+//! literal carried on the lowered nullary-fn bind; the host compares projected nanoseconds against
+//! `TimingBudget.max` with the same strict `>` edge as gate #94).
 
 use std::collections::HashMap;
 
 use crate::dag::{
-    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Dag, DeclarationId,
-    FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective, ValueBody,
+    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Behavior, Dag,
+    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -62,10 +64,31 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
     });
 }
 
-/// Sentinel nanoseconds carrier for non-`Observed` timing states in
-/// `timing_enforcement_fault_usage_budget` / `timing_enforcement_project` (`timing_lens.dag`).
-/// Host enforcement must stay aligned with that substrate literal.
-pub(crate) const TIMING_ENFORCEMENT_FAULT_SENTINEL_NS: u64 = 999_999_999_999_999_999;
+/// Reads [`timing_enforcement_fault_sentinel_count`](../../std/timing_lens.dag) from the lowered
+/// `timing_lens.dag` declaration body (nullary `fn` → bind → [`ValueNode`]), matching substrate
+/// authority instead of duplicating the decimal literal in Rust.
+fn timing_enforcement_fault_sentinel_ns_from_substrate(dag: &Dag) -> Option<u64> {
+    let decl = dag.declarations().iter().find(|d| {
+        d.name.as_deref() == Some("timing_enforcement_fault_sentinel_count")
+            && d.span.file.ends_with("timing_lens.dag")
+    })?;
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    else {
+        return None;
+    };
+    let bind = (*bind_id).bind_opt(dag)?;
+    let producer = dag.resolve_producer_opt(&bind.value)?;
+    let Behavior::Value(vn) = producer else {
+        return None;
+    };
+    let LiteralBits::Int(s) = &vn.data else {
+        return None;
+    };
+    s.parse().ok()
+}
 
 fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
     dag.declarations()
@@ -96,6 +119,7 @@ fn timing_measurement_variant_usage_max_ns(
     dag: &Dag,
     tm_disj: DeclarationId,
     value: &FieldValue,
+    fault_sentinel_ns: u64,
 ) -> Option<u64> {
     let TypeConnective::Disj { variants } = &dag.declaration(tm_disj).connective else {
         return None;
@@ -110,7 +134,7 @@ fn timing_measurement_variant_usage_max_ns(
     let variant = variants.iter().find(|v| v.ty == *constructor)?;
     match variant.label.as_str() {
         "Observed" => observed_timing_payload_max_ns(payload),
-        "Unobserved" | "Ambiguous" | "Stale" => Some(TIMING_ENFORCEMENT_FAULT_SENTINEL_NS),
+        "Unobserved" | "Ambiguous" | "Stale" => Some(fault_sentinel_ns),
         _ => None,
     }
 }
@@ -125,8 +149,12 @@ fn observed_timing_payload_max_ns(payload: &[FieldValue]) -> Option<u64> {
     field_value_nat_magnitude(&FieldValue::Record(parts.clone()))
 }
 
-pub(crate) fn timing_enforcement_violates(declared_max_ns: u64, usage_max_ns: u64) -> bool {
-    usage_max_ns == TIMING_ENFORCEMENT_FAULT_SENTINEL_NS || usage_max_ns > declared_max_ns
+pub(crate) fn timing_enforcement_violates(
+    declared_max_ns: u64,
+    usage_max_ns: u64,
+    fault_sentinel_ns: u64,
+) -> bool {
+    usage_max_ns == fault_sentinel_ns || usage_max_ns > declared_max_ns
 }
 
 fn field_value_nat_magnitude(value: &FieldValue) -> Option<u64> {
