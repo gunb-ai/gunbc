@@ -639,6 +639,39 @@ pub fn gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(
     Err("measurement field missing or not Observed with duration.count shape")
 }
 
+/// Parses `(declared_max_ns, projected_usage_max_ns)` from a timing lens **budget-ceiling**
+/// violation message produced by [`check_enforced_lens_applications`].
+///
+/// The template is owned next to [`timing_enforcement_violates`] / `violation_message` formatting
+/// in this module (`max_ns=` appears exactly twice: declared ceiling, then projected usage).
+/// Integration tests use this instead of pinning English prose (see repo `TESTING.md` anti-pattern).
+#[doc(hidden)]
+pub fn gate_58_test_parse_timing_budget_violation_max_ns_pair(message: &str) -> Option<(u64, u64)> {
+    const NEEDLE: &str = "max_ns=";
+    let mut found: Vec<u64> = Vec::with_capacity(2);
+    let mut rest = message;
+    while let Some(pos) = rest.find(NEEDLE) {
+        let after = pos + NEEDLE.len();
+        let tail = &rest[after..];
+        let digit_len = tail
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .map(|c| c.len_utf8())
+            .sum::<usize>();
+        if digit_len == 0 {
+            return None;
+        }
+        let n: u64 = tail[..digit_len].parse().ok()?;
+        found.push(n);
+        rest = &tail[digit_len..];
+    }
+    if found.len() == 2 {
+        Some((found[0], found[1]))
+    } else {
+        None
+    }
+}
+
 fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
     fields.iter().map(|(k, v)| (k.as_str(), v)).collect()
 }
@@ -1084,10 +1117,22 @@ mod polynomial_budget_class_policy_tests {
 #[cfg(test)]
 mod gate_58_timing_enforcement_unit_tests {
     use super::{
+        gate_58_test_parse_timing_budget_violation_max_ns_pair,
         timing_enforcement_fault_sentinel_ns_from_substrate, timing_enforcement_violates,
         TimingMeasurementEnforcementUsage,
     };
     use crate::dag::Dag;
+
+    #[test]
+    fn gate_58_parse_max_ns_pair_matches_timing_budget_violation_template() {
+        let msg = "lens enforcement violation: timing budget ceiling max_ns=1 exceeded \
+                 by projected wall-clock usage max_ns=999 (declared `EnforcedApplication` \
+                 at gate_58_enforcement_budget_violation)";
+        assert_eq!(
+            gate_58_test_parse_timing_budget_violation_max_ns_pair(msg),
+            Some((1, 999))
+        );
+    }
 
     #[test]
     fn non_observed_fault_always_violates_under_any_finite_budget() {
