@@ -638,7 +638,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
-    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
+    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)). INVARIANTS.md
+    // §P5 SG-0 hand-authored integration test receipts table row for this path is the
+    // planning-artifact receipt for expansions here (no new census path when adding tests).
     "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
     // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
     // that the `.dag` PB census claim executes through `TestRunner` and reports
