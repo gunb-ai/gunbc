@@ -82,9 +82,12 @@ fn gate_60_bare_numeric_type_is_parse_rejected() {
     let v3_compiler::Diagnostic::ParseError { message, .. } = err else {
         panic!("expected ParseError, got {err:?}");
     };
+    // `Diagnostic::ParseError` carries only `message` (no stable error code). Assert the
+    // `TokenKind::IntLit` variant label from `Debug` formatting — not the full human sentence
+    // (`TESTING.md`: avoid coupling tests to prose-only contracts where possible).
     assert!(
-        message.contains("expected type name") && message.contains("IntLit"),
-        "unexpected diagnostic: {message}"
+        message.contains("IntLit"),
+        "expected IntLit token kind in diagnostic, got {message:?}"
     );
 }
 
