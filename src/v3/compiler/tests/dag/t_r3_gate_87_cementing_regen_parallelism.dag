@@ -1,0 +1,24 @@
+// R3 gate #87 — `LensRegistryEntry` `parallelism` temporary source-compilation placeholder.
+// `parallelism.dag` remains structurally STUB for DB-20 free-consequences; Band-C cementing keeps
+// an explicit `Compiles` receipt until a narrow `LensOutputEquals` witness lands for the regen
+// lens surface.
+//
+// Dissolution trigger: replace with a behavioral `LensOutputEquals` / `DifferentialEquals` claim
+// over the real parallelism lens carrier and delete any paired temporary Rust receipt.
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data cementing_regen_parallelism_claim: TestClaim = {
+  name: "cementing_regen_parallelism",
+  source: "let lit: Int = 7",
+  file_name: "r3_gate_87_parallelism_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_parallelism_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/parallelism",
+  claims: [Enumerated(cementing_regen_parallelism_claim)]
+}
