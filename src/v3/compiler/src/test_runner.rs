@@ -5,8 +5,10 @@ use std::time::{Duration, Instant};
 
 use crate::cementing_dispatch;
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, CompositionVerdict, Dag, Declaration, DeclarationId,
+    EffectShape, FieldValue, IdempotentShape, LiteralBits, NodeId, NonSingletonList,
+    OperationEffect, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    WorkflowEffect, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -31,8 +33,9 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
-    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
+    analyze_parallelism, analyze_symbolic_cost_dimension, compare_stage_snapshots,
+    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
+    DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -3132,6 +3135,12 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            "gate87_parallelism_idempotent_parallel_composition" => {
+                match gate87_parallelism_idempotent_parallel_composition(program_dag) {
+                    Ok(matches) => i64::from(matches),
+                    Err(result) => return Some(result),
+                }
+            }
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
@@ -6245,6 +6254,55 @@ fn tc1_eta_equivalence_symbolic_cost_reports_equivalent(
              DimensionOk with identical composed `SymbolicCost`; left={left:?} right={right:?}"
         )),
     }
+}
+
+fn gate87_parallelism_idempotent_parallel_composition(dag: &Dag) -> Result<bool, ClaimResult> {
+    let mut dag = dag.clone();
+    let Some(root) = dag
+        .nodes()
+        .iter()
+        .find(|behavior| matches!(behavior, Behavior::Value(_) | Behavior::Bind(_)))
+        .map(Behavior::id)
+    else {
+        return Err(ClaimResult::Fail(
+            "LensOutputEquals(gate87_parallelism_idempotent_parallel_composition): \
+             expected a workflow root node in claim source"
+                .to_string(),
+        ));
+    };
+
+    let workflow = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "read_user".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "read_account".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+        ])
+        .expect("two branches satisfy NonSingletonList"),
+    };
+
+    if !dag.try_register_lane2_workflow_effect(root, workflow) {
+        return Err(ClaimResult::Fail(
+            "LensOutputEquals(gate87_parallelism_idempotent_parallel_composition): \
+             failed to register lane2 workflow fixture"
+                .to_string(),
+        ));
+    }
+
+    Ok(matches!(
+        analyze_parallelism(&dag, root),
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ))
 }
 
 fn find_bind<'a>(
