@@ -255,6 +255,103 @@ fn capability_md_v2_cementing_basenames() -> BTreeSet<String> {
     out
 }
 
+/// Lens stems for markdown rows that read **behaviorally complete** and explicitly identify as
+/// v3-native. These rows do not belong in the real-v2 Band-C projection, but the gate-87 closure
+/// audit still needs to receipt them so COMPLETE cannot mean "no v2 counterpart, no test".
+fn capability_md_complete_v3_native_stems() -> BTreeSet<String> {
+    let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
+    let md = std::fs::read_to_string(&md_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    assert!(
+        md.lines().any(|l| l.trim() == CAPABILITY_TABLE_HEADING),
+        "docs/v3-lens-capability-register.md must contain a `{CAPABILITY_TABLE_HEADING}` \
+         heading; this test scopes its table scan to that section and cannot run \
+         without it. If the heading was renamed, update `CAPABILITY_TABLE_HEADING` \
+         in this test in the same PR."
+    );
+    let mut in_capability_section = false;
+    let mut out = BTreeSet::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line == CAPABILITY_TABLE_HEADING {
+            in_capability_section = true;
+            continue;
+        }
+        if in_capability_section && line.starts_with("## ") {
+            in_capability_section = false;
+        }
+        if !in_capability_section {
+            continue;
+        }
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 5 {
+            continue;
+        }
+        let lens_cell = cells[1].trim();
+        if lens_cell == "Lens" {
+            continue;
+        }
+        let basename = lens_cell.trim_matches('`').trim();
+        if !basename.ends_with(".dag") {
+            continue;
+        }
+        let behavioral = normalize_capability_table_markdown_token(&cells[3]);
+        if behavioral != "COMPLETE" {
+            continue;
+        }
+        if !cells[4].to_ascii_lowercase().contains("none (v3-native)") {
+            continue;
+        }
+        let stem = basename
+            .strip_suffix(".dag")
+            .expect("basename ends with .dag by guard above");
+        out.insert(stem.to_string());
+    }
+    out
+}
+
+fn gate_87_closure_audit_registered_complete_lens_keys() -> BTreeSet<String> {
+    let audit_path =
+        workspace_root().join("docs/briefs/r3-gate-87-lens-cementing-closure-audit.md");
+    let audit = std::fs::read_to_string(&audit_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", audit_path.display()));
+    let mut in_registered_complete_lenses = false;
+    let mut out = BTreeSet::new();
+    for raw in audit.lines() {
+        let line = raw.trim();
+        if line == "## Registered Complete Lenses" {
+            in_registered_complete_lenses = true;
+            continue;
+        }
+        if in_registered_complete_lenses && line.starts_with("## ") {
+            break;
+        }
+        if !in_registered_complete_lenses {
+            continue;
+        }
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 2 {
+            continue;
+        }
+        let key_cell = cells[1].trim();
+        if key_cell == "Registry key" {
+            continue;
+        }
+        let key = key_cell.trim_matches('`').trim();
+        if key.is_empty() {
+            continue;
+        }
+        out.insert(key.to_string());
+    }
+    out
+}
+
 fn register_lens_basenames() -> BTreeSet<String> {
     capability_table_rows()
         .into_iter()
@@ -372,5 +469,19 @@ fn lens_capability_register_rows_match_md_v2_cementing_projection() {
          must match `std.verification` `lens_capability_register_rows` (`LensCapabilityBehavioralComplete` + \
          `LensCapabilityV2RealV2`). Update both in the same PR when promoting or narrowing a lens. \
          structural={structural:?} markdown={markdown:?}"
+    );
+}
+
+#[test]
+fn r3_gate_87_closure_audit_covers_complete_v3_native_register_rows() {
+    let expected = capability_md_complete_v3_native_stems();
+    let audited = gate_87_closure_audit_registered_complete_lens_keys();
+    let missing: Vec<_> = expected.difference(&audited).collect();
+    assert!(
+        missing.is_empty(),
+        "`docs/briefs/r3-gate-87-lens-cementing-closure-audit.md` must list every \
+         COMPLETE + `None (v3-native)` row from `docs/v3-lens-capability-register.md`, \
+         including rows outside the `regen.dag` runner inventory. Missing audit row(s): \
+         {missing:?}. expected={expected:?} audited={audited:?}"
     );
 }

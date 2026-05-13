@@ -23,6 +23,7 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 | `structural_resolution` | `src/v3/lenses/structural_resolution.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` plus Rust clean-program receipt. |
 | `unused_parameters` | `src/v3/lenses/unused_parameters.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` plus Rust clean-program receipt. |
 | `variant_payload` | `src/v3/lenses/variant_payload.dag` | v3-native | Green after this audit: unit cementing receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests` pin empty, positional-single, single named-field, multi named-field, missing-declaration, and non-product outcomes as one claim per test. The gate-87 `.dag` harness remains `Compiles` until `VariantPayloadShapeLookup` expected literals are authorable as `.dag` data. |
+| `idempotency` | `src/v3/lenses/idempotency.dag` | v3-native, non-`regen.dag` row | Green: `src/v3/compiler/tests/integration/m2_lens_idempotency_migration_test.rs` compiles `idempotency.dag`, emits Rust, links it into a harness, and asserts emitted `analyze_workflow` matches `v3_compiler::analyze_workflow` for both registered and missing workflow-effect cases; `m2_lens_idempotency_emit_test.rs` pins Rust/Go/Python emission. This row is outside the gate-87 `regen.dag` runner inventory but inside the COMPLETE v3-native register audit. |
 
 ## Non-Complete Registered Rows
 
@@ -32,7 +33,8 @@ These registry rows are intentionally outside the complete-lens closure set: `co
 
 - `cementing_lens_registry_dispatch_test.rs` derives real-v2 complete rows from the capability register plus `src/v3/compiler/regen.dag` and requires the v2 receipt slice to match exactly.
 - `r3_gate_87_lens_cementing_regen_receipts_test.rs` requires the regen registry names to match the gate-87 `.dag` runner inventory.
-- This audit closed the only v3-native complete gap found during the walk: `variant_payload` had only a compile placeholder; it now has a behavioral Rust receipt for the published carrier.
+- `lens_register_correspondence_test::r3_gate_87_closure_audit_covers_complete_v3_native_register_rows` derives COMPLETE + v3-native rows from the capability register and requires this audit table to list each one, including non-`regen.dag` rows such as `idempotency`.
+- This audit closed the `variant_payload` behavioral gap and re-checked the non-`regen.dag` COMPLETE v3-native row: `idempotency` already has a compile/emit/round-trip behavioral receipt, so it is listed here rather than added to the gate-87 runner inventory.
 
 ## P5 Receipt
 
