@@ -32,10 +32,10 @@
 //
 // Staged `src/v3/std/*.dag` additionally uses a small rank list
 // (`list.dag`, `substrate*.dag`, …). Among files sharing the default rank, load order
-// breaks ties using **`import v3.std.*` and `import std.*` edges** parsed from each staged `.dag`
-// (see `collect_std_staging_dependency_edges` in this file) so cross-file references follow the
-// same authority authors already wrote in-module. Dissolution: full import-graph topo when
-// ordering needs exceed flat single-segment `v3.std` / `std` imports.
+// breaks ties using **`import v3.std.*` edges** parsed from each staged `.dag` plus a tiny
+// [`V3_STD_BOOTSTRAP_STAGING_PRECEDES`] table for bootstrap-only holes (see
+// `collect_std_staging_dependency_edges`). Dissolution: host-side full import-graph topo when the
+// staged slice can consume the real `std` module graph without SCCs.
 //
 // **Output**: writes three Rust files:
 //
