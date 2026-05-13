@@ -69,9 +69,18 @@ enum ResponseContentBlock {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ServiceTier {
+    Standard,
+    Priority,
+    Batch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Usage {
     input_tokens: i64,
     output_tokens: i64,
+    service_tier: Option<ServiceTier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -175,12 +184,17 @@ fn anthropic_messages_demo_projection_is_locked_to_modeled_dag_surface() {
     }
 
     let usage_fields = conj_field_labels(&dag, "AnthropicMessages200Usage");
-    for field in ["input_tokens", "output_tokens"] {
+    for field in ["input_tokens", "output_tokens", "service_tier"] {
         assert!(
             usage_fields.iter().any(|actual| actual == field),
             "demo usage projection field `{field}` must exist on AnthropicMessages200Usage"
         );
     }
+    assert_eq!(
+        disj_variant_labels(&dag, "AnthropicMessages200ServiceTier"),
+        vec!["Standard", "Priority", "Batch"],
+        "demo response usage tier must stay locked to AnthropicMessages200ServiceTier"
+    );
 
     assert_eq!(
         disj_variant_labels(&dag, "AnthropicMessages200Role"),
@@ -277,7 +291,7 @@ fn anthropic_messages_typed_wire_cycle_executes_against_deterministic_mock() {
             "output_tokens": 3,
             "cache_creation_input_tokens": null,
             "cache_read_input_tokens": null,
-            "service_tier": null
+            "service_tier": "priority"
         },
         "container": null
     });
@@ -288,6 +302,7 @@ fn anthropic_messages_typed_wire_cycle_executes_against_deterministic_mock() {
     assert_eq!(typed.stop_reason, StopReason::EndTurn);
     assert_eq!(typed.usage.input_tokens, 11);
     assert_eq!(typed.usage.output_tokens, 3);
+    assert_eq!(typed.usage.service_tier, Some(ServiceTier::Priority));
     assert_eq!(
         typed.content,
         vec![ResponseContentBlock::Text {

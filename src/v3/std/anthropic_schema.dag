@@ -210,6 +210,14 @@ type AnthropicServerToolName
   | ToolSearchToolBm25
   | Advisor
 
+// 🟢 TERMINAL provider-domain enum mirroring `AnthropicMessages200ServiceTier`
+// in `dsl/extdeps/llm/anthropic.dag`. The response usage field is a closed
+// Anthropic string domain, so the mirror keeps it typed instead of free-form.
+type AnthropicMessages200ServiceTier
+  = Standard
+  | Priority
+  | Batch
+
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Usage`
 // in `dsl/extdeps/llm/anthropic.dag`.
 type AnthropicMessages200Usage {
@@ -217,7 +225,7 @@ type AnthropicMessages200Usage {
   output_tokens:               Int
   cache_creation_input_tokens: Int?
   cache_read_input_tokens:     Int?
-  service_tier:                String?
+  service_tier:                AnthropicMessages200ServiceTier?
 }
 
 // 🟢 TERMINAL provider-domain singleton for the Anthropic Messages 200 response

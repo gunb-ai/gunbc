@@ -56,12 +56,40 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 | **2026-05-10 (later)** | **cea1fbe87** | **53** | **108** | **2** | **163** | **+2 (vs f1588bcc8 intermediate; +1 vs 2026-05-09 EOD)** | PR #2506 [codex] add anthropic wire demo (1 test entry + 1 fragment re-added: `anthropic_messages_wire_demo_test.rs` + manifest fragment) | **velocity is steady, not anomalous** (prior +13 framing was a baseline-comparison artifact; Director's +11 framing was the same artifact against the 150 baseline). True 1-day delta vs 2026-05-09 EOD is +1 entry net; cumulative 10-day total is +43 (+30 prior + +12 retroactive 2026-05-09 evening + +1 today). Velocity tripwire (≥3:1 introduction:dissolution, 7-day): **status pending/uncomputed** — 7-day cumulative ratio not yet computed in this snapshot; will be computed once Cluster M Phase 1 lands |
 | **2026-05-11 (EOD row snapshot)** | **eed86ffc9** | **50** | **116** | **2** | **168** | **+5 vs visible prior §3 row (`cea1fbe87`, Σ=163)** | merge churn on `eed86ffc9` ancestry: net **−3** non_test / **+4** test | **Intraday +1 vs midday interim `31acf4357` (Σ=167)** — midday row not listed above (same pattern as **2026-05-09** mid-day vs EOD pairing). **True rolling 7 calendar UTC days** ending **2026-05-11** (start **2026-05-05**): baseline `4b156d839` (last `origin/main` before **2026-05-05 00:00 UTC**). Σ-count **`137→168 (+31)`**. **Velocity tripwire** (`EXPECTED_HAND_AUTHORED_*` path-set intros:dissolves vs that baseline): **37:6 → 6.17:1 (≥3:1, TRIPPED)**. Four gate/T-Workflow-As-Data tests landed on **`31acf4357`** lineage (+4 vs **`cea1fbe87`** on that ancestry); §1.8 promoter sweeps are still separate bookkeeping. Bulk-port shrink not yet inflecting SG-0. |
 | **2026-05-11 (later / `origin/main`)** | **e3ad91d12** | **50** | **117** | **2** | **169** | **+1 TEST vs documented §3 prior row (`eed86ffc9`, Σ=168)** | [PR **#2694** — R3 gate **#64** reflection closure substrate‑plumbing receipt](https://github.com/gunb-ai/gunbc/pull/2694) | Subsequent **PR #2712** (**`30da5fb1b`**) revises **`EXPECTED_HAND_AUTHORED_TEST`** **audit wiring** (**tests‑as‑data migration ratchet**) with **Σ count unchanged @ 169** (§2 procedure). Nominal timestamps **East**: **EOD row** **`eed86ffc9` ~16:51**, this row **~19:42** — labels are **authority-of-row**, not **UTC‑day exhaustion**. |
+| **2026-05-13** | **89df284e3** | **53** | **121** | **2** | **176** | **+7 vs §3 prior Σ-row (`e3ad91d12`, Σ=169)** | [PR **#2831** — gate **#63** workflow_scheduling Mgr canvas + worker brief](https://github.com/gunb-ai/gunbc/pull/2831) + intervening WAD / verification / ratchet landings on `main` | **Net +3 non_test / +4 test** vs `e3ad91d12` (fragments flat @ 2). **Not** bulk-dissolution inflection — census still climbing. §1.8 row **#63** → **CANVAS_RATIFIED** (ledger sync same cadence). **Intro-source decomposition** (path-level intros/dissolves, rename caveat): **§4.1**. |
 
 ## §4. Velocity-to-zero math
 
 **Archived trajectory math (seven‑day anchoring pinned to §3 snapshot `eed86ffc9`; not `HEAD`‑of‑`main`)**: **168** entries (50 non_test + 116 test + 2 fragments). Midday row (31acf4357) captured +4 vs 2026-05-10 cea1fbe87 on that SHA; HEAD advanced to **eed86ffc9** with **net +1** on the Σ-count (+4 test churn vs −3 non_test net). **Seven calendar UTC days** ending **2026-05-11** (inclusive): baseline **`4b156d839`** (last `origin/main` commit strictly before **2026-05-05 00:00 UTC**); head **eed86ffc9**. Σ-count **`137 → 168` (+31)**. **Introduction:dissolution path ratio** over that window (unique paths added vs removed within the three `EXPECTED_HAND_AUTHORED_*` slices): **37 : 6** (**6.17:1**) — **still fires the ≥3:1 standing tripwire** until bulk-dissolution events dominate. Census still accumulating (Cluster M Phase 3 bulk port not yet kicked in).
 
 **Immediately after that snapshot**, **`origin/main`** advanced **`168→169` (+1 `EXPECTED_HAND_AUTHORED_TEST` path)** at **`e3ad91d12`** — see **§3** row (**PR #2694**).
+
+**Latest `origin/main` (2026-05-13 §3 row):** **176** entries (**53** + **121** + **2**) at **`89df284e3`** — **+7** vs **`e3ad91d12`** (169). Paragraphs above stay pinned to historical SHAs for receipt integrity; see **§3** for the live row.
+
+**§4.1 — Intro-source decomposition (`e3ad91d12` → `89df284e3`, `feedback_intro_rate_vs_residual_share`)**
+
+**Anchor (when was Σ=169 logged?).** The prior §3 row reading **169** is **`e3ad91d12`**, labeled **`2026-05-11 (later / origin/main)`** in the §3 table (authority-of-row timestamp — **East wall-clock ~19:42** per that row’s note, **not** “UTC day exhausted”). This interval is **§3-row-to-row** (**~2026-05-11 later → 2026-05-13**), **distinct** from the **seven-day velocity-walk** block above (baseline **`4b156d839`**, head **`eed86ffc9`**, **2026-05-11** receipt). The **+7** here is **not** “another +7 inside the same 7d window” unless explicitly re-anchored.
+
+**Procedure:** sort-unique `"src/v3/..."` lines per **`EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}`** slice at each SHA; `comm` intros (`-13`) / dissolutions (`-23`).
+
+| Slice | Σ @ `e3ad91d12` | Σ @ `89df284e3` | Intros | Dissolutions | Net |
+|---|---:|---:|---:|---:|---:|
+| NON_TEST | 50 | 53 | 5 | 2 | **+3** |
+| TEST | 117 | 121 | 10 | 6 | **+4** |
+| FRAGMENTS | 2 | 2 | 0 | 0 | **0** |
+| **All** | **169** | **176** | 15 | 8 | **+7** |
+
+**NON_TEST intros (5):** `cementing_dispatch.rs`, `gunbc_ci.rs`, `integration_rs_wiring_scan.rs`, `lens_declaration_apply.rs`, `r3_gate_87_cementing_regen_runner_suites.rs` — all under **`src/v3/compiler/src/`** (compiler host / WAD / Cluster **#87** cementing harness surface). **No** `src/v2/` or `dsl/`‑only fragment intros in this delta set → **PB‑zero / v2‑stratum intro read:** **none observed** on this pair (does **not** prove absence elsewhere).
+
+**NON_TEST dissolutions (2):** `lens_apply.rs`, `workflow_parallelism.rs` — hand-path **removals** from the census (retirement / authority move off these files for SG‑0 purposes).
+
+**TEST intros (10):** `anthropic_tool_result_wire_demo_test.rs`, `cementing/cementing_provenance_origin_integration_test.rs`, `cementing/cost_lens_symbolic_consumer_test.rs`, `common/symbolic_cost_verification_fixture.rs`, `common/wiring_scanner_test.rs`, `ctrl_pr_digests_dag_smoke_test.rs`, `extdeps_sql_transport_test.rs`, `file_attachment_substrate_carrier_test.rs`, `r3_gate_60_phase2_width_nat_parser_test.rs`, `t_gate_58_apply_lens_self_application_test.rs`.
+
+**TEST dissolutions (6):** `cementing/cementing_lens_registry_dispatch_test.rs`, `cost_lens_symbolic_consumer_test.rs` *(root integration path)*, `r1c_d_pb_census_gates_test.rs`, `r1c_e_emit_gates_dag_test.rs`, `r1c_e_emit_gates_omni_dag_test.rs`, `t_pb_b_brief_d_fixture_smoke_test.rs`.
+
+**Relocation / rename caveat (intro-rate vs “economic” file moves):** **`cost_lens_symbolic_consumer_test.rs`** appears as **one dissolution** (old integration root path) **and** **one introduction** (new `cementing/` path) — **+0** net to Σ but **+2** path-churn events. At least one other churn pair may share this pattern inside the **10 / 6** TEST counts; **gross** intro rate **overstates** “new test files authored” vs **net** test Σ (**+4**).
+
+**Trajectory read (non-alarm framing for this row-pair alone):** **NON_TEST net +3** is **host-surface + cementing/CI instrumentation** (load-bearing for **R3 actual close** in the sense of `project_r3_close_load_bearing_non_test_inventory`, but **small magnitude** vs that inventory’s **scalar burst** examples). **TEST net +4** is **integration / gate / cementing subdirectory growth** with **partial churn offset** — **test-debt class** dominates the **gross** intro list; **fragments flat**. **Σ read:** mixed stratum; **not** a pure “NON_TEST spike only” signature.
 
 **Required for R3 close**: 0 + 0 + 0.
 
