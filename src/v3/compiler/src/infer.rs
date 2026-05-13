@@ -177,8 +177,8 @@ pub fn infer(dag: &mut Dag) {
                                     changed = true;
                                     continue;
                                 }
-                                IntLiteralNarrowMerge::reject(diag) => {
-                                    dag.mark_unresolved(port, diag);
+                                IntLiteralNarrowMerge::Reject(diag) => {
+                                    dag.mark_unresolved(port, *diag);
                                     changed = true;
                                     continue;
                                 }
@@ -228,9 +228,9 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Unresolved => unreachable!("guarded above"),
                     }
                 }
-                Decision::fail(port, diag) => {
+                Decision::Fail(port, diag) => {
                     if !matches!(dag.port(port).state(), PortState::Unresolved) {
-                        dag.mark_unresolved(port, diag);
+                        dag.mark_unresolved(port, *diag);
                         changed = true;
                     }
                 }
@@ -874,7 +874,13 @@ enum IntLiteralNarrowMerge {
     NotApplicable,
     /// Preserve typed diagnostics (e.g. [`Diagnostic::MagnitudeOutOfRange`]) like the
     /// annotated-`let` value-node path, not a silent fallback to `TypeMismatch`.
-    Reject(Diagnostic),
+    Reject(Box<Diagnostic>),
+}
+
+impl IntLiteralNarrowMerge {
+    fn reject(diagnostic: Diagnostic) -> Self {
+        Self::Reject(Box::new(diagnostic))
+    }
 }
 
 fn int_literal_magnitude_narrow_merge(
@@ -915,8 +921,14 @@ fn int_literal_magnitude_narrow_merge(
 
 enum Decision {
     Set(PortId, TypeShape),
-    Fail(PortId, Diagnostic),
+    Fail(PortId, Box<Diagnostic>),
     Retry,
+}
+
+impl Decision {
+    fn fail(port: PortId, diagnostic: Diagnostic) -> Self {
+        Self::Fail(port, Box::new(diagnostic))
+    }
 }
 
 fn decide(dag: &mut Dag, index: usize) -> Decision {
@@ -4226,8 +4238,14 @@ fn find_equivalent_anonymous_cardinality(
 
 enum FieldProjectResolution {
     Retry,
-    Fail(Diagnostic),
+    Fail(Box<Diagnostic>),
     Resolved { output_ty: TypeShape },
+}
+
+impl FieldProjectResolution {
+    fn fail(diagnostic: Diagnostic) -> Self {
+        Self::Fail(Box::new(diagnostic))
+    }
 }
 
 fn resolve_field_project(
@@ -4339,7 +4357,7 @@ fn first_nominal_opaque_on_conj_walk(
 fn decide_field_project(dag: &Dag, t: &TransformNode, field_label: &str) -> Decision {
     match resolve_field_project(dag, t, field_label) {
         FieldProjectResolution::Retry => Decision::Retry,
-        FieldProjectResolution::fail(diag) => Decision::fail(t.output, diag),
+        FieldProjectResolution::Fail(diag) => Decision::fail(t.output, *diag),
         FieldProjectResolution::Resolved { output_ty, .. } => Decision::Set(t.output, output_ty),
     }
 }
