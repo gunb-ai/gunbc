@@ -16,9 +16,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use v3_compiler::dag::{
     lower_call_pattern, positive_amount_from_i64, positive_descent_count, type_iteration_dimension,
-    CallPattern,
+    CallableRef, CallPattern, HttpMethodScalar, InputField, Operation, PathTemplate,
+    RestEndpointBinding,
 };
-use v3_compiler::dag::{EffectShape, IdempotentShape, OperationEffect, WorkflowEffect};
+use v3_compiler::dag::WorkflowEffect;
+use v3_compiler::Dag;
 use v3_compiler::lane2_workflow_idempotency_report;
 
 fn bench_computation_mirror(c: &mut Criterion) {
@@ -46,9 +48,18 @@ fn bench_induction_mirror(c: &mut Criterion) {
 }
 
 fn bench_effect_carrier_mirror(c: &mut Criterion) {
-    let read_op = OperationEffect {
-        operation_name: "read".into(),
-        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    let dag = Dag::new();
+    let callable = dag
+        .declaration_by_name("get_method")
+        .expect("bootstrap should provide get_method declaration")
+        .id;
+    let read_op = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: std::collections::BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Get,
+            path: PathTemplate { tokens: vec![] },
+        },
     };
     let workflow = WorkflowEffect::LinearEffect {
         ops: vec![
@@ -59,7 +70,8 @@ fn bench_effect_carrier_mirror(c: &mut Criterion) {
         ],
     };
     c.bench_function("tier3_effects_lane2_linear_read_chain", |bencher| {
-        bencher.iter(|| black_box(lane2_workflow_idempotency_report(black_box(&workflow))));
+        bencher
+            .iter(|| black_box(lane2_workflow_idempotency_report(black_box(&dag), black_box(&workflow))));
     });
 }
 

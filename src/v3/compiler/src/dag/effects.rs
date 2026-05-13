@@ -347,9 +347,11 @@ pub fn report_unsupported_workflow_variant(
 
 /// Native-Dag entry for the `std.effects::lane2_workflow_idempotency_report`
 /// algebra (same cases as the `.dag` `match`).
-pub fn lane2_workflow_idempotency_report(workflow: &WorkflowEffect) -> WorkflowIdempotencyReport {
-    let dag = Dag::new();
-    project_workflow_idempotency_report(&dag, workflow)
+pub fn lane2_workflow_idempotency_report(
+    dag: &Dag,
+    workflow: &WorkflowEffect,
+) -> WorkflowIdempotencyReport {
+    project_workflow_idempotency_report(dag, workflow)
 }
 
 pub(crate) fn project_workflow_idempotency_report(
