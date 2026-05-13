@@ -1,0 +1,143 @@
+// gunbc/digest_render.dag -- PR digest render/projection for ctrl migration catalog #8.
+//
+// Phase-3 receipt: this module is gunbc-owned rendering/projection over the
+// existing GitHub source facts in `dsl/extdeps/github/pulls.dag` plus shared
+// structured-text primitives from `dsl/std/render.dag`.
+//
+// Placement discipline:
+//   - extdeps.github.pulls owns provider source facts (`PullRequest`,
+//     `PullReview`, `PullRequestRef`).
+//   - this module owns repo-specific digest rendering.
+//   - no field is added to `PullRequest`; derived digest views stay here.
+//
+// Trio anchor: catalog #8 PR digests, paired with Phase 1.5
+// `dsl/ctrl/pr_digests.dag` modeling and the named parity harness.
+
+module gunbc.digest_render
+
+import extdeps.github.pulls { PullRequest, PullReview }
+import std.render { kv_pair, list_block }
+import std.types { Url }
+
+// -- Derived digest projection -----------------------------------------
+
+type PullRequestDigestSubject {
+  number: Int
+  title: String
+  url: Url
+  state: String
+  draft: Bool
+  head_sha: String
+  base_ref: String
+}
+
+type DigestReadinessProjection
+  = DigestReady
+  | DigestNotReady { first_reason: String, more_reasons: List<String> }
+
+// Practice-4 receipt: `DigestReadinessProjection` is a closed gunbc render
+// classification over existing GitHub PR/review facts. It is terminal for the
+// narrowed catalog #8 digest-render surface; a future CI/conflict/mergeability
+// source-fact landing extends this module or a sibling projection, not
+// `PullRequest`.
+
+type PullRequestDigestView {
+  subject: PullRequestDigestSubject
+  readiness: DigestReadinessProjection
+  review_states: List<String>
+}
+
+fn digest_subject(pr: PullRequest) -> PullRequestDigestSubject {
+  PullRequestDigestSubject {
+    number: pr.number,
+    title: pr.title,
+    url: pr.html_url,
+    state: pr.state,
+    draft: pr.draft,
+    head_sha: pr.head.sha,
+    base_ref: pr.base.ref
+  }
+}
+
+fn review_state_labels(reviews: List<PullReview>) -> List<String> {
+  map(reviews, r => r.state)
+}
+
+fn has_approval(reviews: List<PullReview>) -> Bool {
+  any(reviews, r => r.state == "APPROVED")
+}
+
+fn has_request_changes(reviews: List<PullReview>) -> Bool {
+  any(reviews, r => r.state == "CHANGES_REQUESTED")
+}
+
+fn readiness_projection(pr: PullRequest, reviews: List<PullReview>) -> DigestReadinessProjection {
+  if pr.draft {
+    DigestNotReady { first_reason: "draft", more_reasons: [] }
+  } else if pr.state != "open" {
+    DigestNotReady { first_reason: "not open", more_reasons: [] }
+  } else {
+    match pr.merged_at {
+      Some { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
+      None =>
+        if has_request_changes(reviews: reviews) {
+          DigestNotReady { first_reason: "changes requested", more_reasons: [] }
+        } else if has_approval(reviews: reviews) == false {
+          DigestNotReady { first_reason: "missing approval", more_reasons: [] }
+        } else {
+          DigestReady
+        }
+    }
+  }
+}
+
+fn project_pull_request_digest(pr: PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
+  PullRequestDigestView {
+    subject: digest_subject(pr: pr),
+    readiness: readiness_projection(pr: pr, reviews: reviews),
+    review_states: review_state_labels(reviews: reviews)
+  }
+}
+
+// -- Rendering ----------------------------------------------------------
+
+fn render_readiness(readiness: DigestReadinessProjection) -> String {
+  match readiness {
+    DigestReady => "ready"
+    DigestNotReady { first_reason, more_reasons } =>
+      if count(more_reasons) > 0 {
+        let rest = join(more_reasons, ", ")
+        "not ready: {first_reason}; {rest}"
+      } else {
+        "not ready: {first_reason}"
+      }
+  }
+}
+
+fn render_review_states(states: List<String>) -> String {
+  if count(states) > 0 {
+    join(states, ", ")
+  } else {
+    "none"
+  }
+}
+
+fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
+  let title = "#\{view.subject.number\} \{view.subject.title\}"
+  let status = render_readiness(readiness: view.readiness)
+  let reviews = render_review_states(states: view.review_states)
+  "\{title\} -- \{status\} -- reviews: \{reviews\} -- head: \{view.subject.head_sha\}"
+}
+
+fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
+  let entries = [
+    kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
+    kv_pair(key: "URL", sep: ": ", value: view.subject.url),
+    kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
+    kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
+    kv_pair(key: "State", sep: ": ", value: view.subject.state),
+    kv_pair(key: "Readiness", sep: ": ", value: render_readiness(readiness: view.readiness)),
+    kv_pair(key: "Reviews", sep: ": ", value: render_review_states(states: view.review_states))
+  ]
+  list_block(header: "Pull request digest", level: 0, unit: "  ", prefix: "- ", items: entries)
+}

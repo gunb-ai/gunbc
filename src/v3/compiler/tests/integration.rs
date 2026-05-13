@@ -1118,4 +1118,12 @@ mod parse_stage4_prep {
             "src/v3/std/effects.dag",
         );
     }
+
+    #[test]
+    fn handwritten_parser_accepts_gunbc_digest_render_dag() {
+        parse_file(
+            include_str!("../../../../dsl/gunbc/digest_render.dag"),
+            "dsl/gunbc/digest_render.dag",
+        );
+    }
 }
