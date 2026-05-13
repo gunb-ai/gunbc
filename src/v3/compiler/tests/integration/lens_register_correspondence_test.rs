@@ -25,10 +25,11 @@
 //!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
-//! allowed. `parallelism.dag` is a current example: it has a register
-//! row but no `regen.dag` entry because it is not regenerated into a
-//! `lens_*_generated.rs`. That is exactly the posture the register
-//! documents; a bidirectional ratchet would misread those rows as drift.
+//! allowed. `idempotency.dag` is a current example: it has a register row
+//! but no matching `LensRegistryEntry` in `regen.dag` (it is not wired
+//! through that registry's `regen_lens` / `lens_*_generated.rs` path).
+//! That is exactly the posture the register documents; a bidirectional
+//! ratchet would misread those rows as drift.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
