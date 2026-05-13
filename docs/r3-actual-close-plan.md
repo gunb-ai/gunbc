@@ -372,6 +372,144 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 ---
 
+### Gap 11 — Complexity composition completeness / `LogCost` asymmetry (gate #79 sub-promise)
+
+**Promise** (THESIS.md cost lens + design-cost-lens / `src/v3/lenses/complexity.dag` header: *"behavioral complexity summary lens for the v3 DAG ... structurally terminal; behaviorally complete"*): the complexity lens behaviorally computes asymptotic class for any program structure the substrate admits, including nested algorithms (composition of poly/log/linear/constant in any permutation expressible by `SymbolicCost`).
+
+**HEAD evidence** (operator adversarial probe 2026-05-13 — `n log(n^k)` + nested-log + polynomial-of-log probe; revised per briansrls BLOCKING comment-4445313478 PR #3037 2026-05-13: HEAD evidence verified against `src/v3/std/algebra.dag` + `src/v3/compiler/src/dag_cost_generated.rs` + `src/v3/compiler/src/complexity_lattice.rs` + `src/v3/compiler/src/enforced_lens_application.rs`):
+
+- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag` lines 191-197, 7 variant arms; `inhabits Semiring<SymbolicCost>` declaration at line 190):
+  - `ProductCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
+  - `SumCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
+  - `PolynomialCost { var: SizeVariable, degree: DegreeAtLeastTwo }` — terminal: `SizeVariable` argument only; degree carrier is `DegreeAtLeastTwo` (refinement type, NOT `Nat`) — substrate-level guarantee that polynomial degree ≥ 2 (degree 1 is redundant with `LinearCost`; degree 0 with `ConstantCost`); load-bearing for the `ClassPolynomial { degree: N }` classifier arm in `dag_cost_generated.rs:297-306` and string-arm decoding in `enforced_lens_application.rs`
+  - `LogCost(SizeVariable)` — terminal: `SizeVariable` argument only
+  - `LinearCost(SizeVariable)` / `ConstantCost(Int)` / `UnknownCost(String)` — terminal
+  - **No `ExponentialCost` variant in SymbolicCost** — exponential growth in source cost has no substrate representation.
+
+- **`AsymptoticClass` enum** (`src/v3/compiler/src/dag_cost_generated.rs:86-95`, 8 variants): `ClassConstant`, `ClassLog`, `ClassLinear`, `ClassLinearithmic`, `ClassQuadratic`, `ClassPolynomial { degree }`, `ClassExponential`, `ClassUnknown`.
+
+- **`classify_symbolic_cost` actual behavior** (`src/v3/compiler/src/dag_cost_generated.rs:289-312`):
+  ```rust
+  ConstantCost  → ClassConstant
+  LinearCost    → ClassLinear
+  LogCost       → ClassLog
+  PolynomialCost { degree=2 } → ClassQuadratic
+  PolynomialCost { degree=N>0 } → ClassPolynomial { degree=N }
+  ProductCost / SumCost / UnknownCost → ClassUnknown      // <-- composition handling absent
+  ```
+  Any composite `SymbolicCost` (`ProductCost`, `SumCost`) → **`ClassUnknown`**. The classifier has **zero composition handling** — only terminal-variant arms.
+
+- **`ClassLinearithmic` + `ClassExponential` are unreachable outputs from the classifier**. They are constructible only via the string-to-AsymptoticClass deserialization in `src/v3/compiler/src/enforced_lens_application.rs:960-962` (used when *users* declare an enforcement budget like `"ClassLinearithmic"`). Nothing in `classify_symbolic_cost` or `normalize` ever produces them. The lattice has 8 declared classes, but the classifier produces only 6.
+
+- **`normalize(c: SymbolicCost)` body** (`src/v3/std/algebra.dag:537-548`) — revised per codex BLOCKING on PR #3037 sha 797a6d91: PRIOR FRAMING missed that `reduce_sum` calls `drop_dominated` (Sum-side asymptotic dominance reduction is ALREADY-LANDED at normalize-tier; the gap is at the classifier-tier for post-normalize multi-term composites):
+  - Sum (top-level): drop `ConstantCost(0)` (additive identity)
+  - **Sum dominance reduction (already-landed)**: `reduce_sum` calls `drop_dominated` on multi-term lists — strips dominated terms by asymptotic ordering (e.g. `Sum([Linear(n), Constant(5)])` → `Linear(n)` because `Constant` is dominated by `Linear`); post-drop single-survivor unwraps via `wrap_sum` to avoid invalid singleton `SumCost`. This means many Sum expressions reduce to a terminal variant at normalize-time + classify correctly via terminal arms; the gap is for post-normalize multi-term Sums with no single dominator
+  - Product: collapse to `ConstantCost(0)` on multiplicative annihilator, drop `ConstantCost(1)` (multiplicative identity)
+  - Single-element Sum/Product: collapse to the element
+  - Product of two identical `LinearCost`s → `PolynomialCost(var, 2)` (n*n = n²) — the only Product-side composition fold
+  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule**, **NO nested-log handling**, **NO Product-side dominance reduction** (`reduce_product` only handles single-term unwrap + LinearCost² fold), **NO Product/Sum-to-named-tier normalization** for surviving composites (`Product([Linear, Log])` does NOT fold; stays `ProductCost` post-normalize, classifies to `ClassUnknown`).
+
+- **What the compiler actually reports for nested algorithms at HEAD** (further revised — Sum-dominance survivor cases classify correctly via terminal arms; only post-normalize multi-term composites + Product compositions fall to Unknown):
+  - **`Sum([Linear(n), Constant(5)])`** = single-dominator sum → normalize drops `Constant(5)` via `drop_dominated` → `Linear(n)` → **`ClassLinear`** ✓ (Sum-dominance flow handles this correctly)
+  - **`Sum([Linear(n), Linear(m)])`** = multi-var multi-term sum (no single dominator) → normalize keeps as `Sum([Linear(n), Linear(m)])` → classify → **`ClassUnknown`** ✗ (composition handling absent at classifier-tier for surviving Sums)
+  - `n log n` = `ProductCost([LinearCost(n), LogCost(n)])` → no Product-side reduction applies → **`ClassUnknown`** (classifier has no `n log n` arm; `ClassLinearithmic` is unreachable).
+  - `n log(n^k)` — cannot be constructed directly (type-level: `LogCost` doesn't take `PolynomialCost`). Cost-lens fold canonicalization at construction time is UNVERIFIED at HEAD (lens-body audit deferred to Gap 11 sub-program step 1). If unconstructible: lens emits `UnknownCost(<reason>)` → classifier `ClassUnknown`.
+  - `log(log(n))` — same: cannot be constructed (`LogCost` doesn't take `LogCost`).
+  - `n² log n` = `ProductCost([PolynomialCost(n, 2), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown).
+  - `n log²n` = `ProductCost([LinearCost(n), LogCost(n), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown).
+  - `2^n` — no `ExponentialCost` substrate variant; cannot be represented in source. Would fall to `UnknownCost(<reason>)`.
+
+- **`STOP SIGNAL` discipline** (`src/v3/std/algebra.dag` Pattern-3 audit block): the 7 SymbolicCost variants are declared "terminal; the asymptotic surface the thesis reasons about; any new variant should carry its own load-bearing reason." This forbids an 8th variant. It does NOT address (a) making existing variants (`LogCost`, `PolynomialCost`) recursive over `SymbolicCost` to be symmetric with `Product`/`Sum`, (b) the missing `ExponentialCost` variant, or (c) the classifier's lack of composition handling.
+
+**What's missing** (recalibrated per actual HEAD evidence above — classifier composition-handling is the root issue, not lattice tier coverage):
+
+1. **`classify_symbolic_cost` composition handling** (revised per codex BLOCKING on PR #3037 sha 797a6d91 — distinguishing already-landed Sum-side dominance from remaining classifier-tier gap): Sum-side dominance reduction is **ALREADY-LANDED at normalize-tier** (`reduce_sum` calls `drop_dominated` — multi-term sums where one term asymptotically dominates reduce to the survivor pre-classify, which then classifies correctly via terminal arms). The remaining gap is at the **classifier-tier for post-normalize surviving composites**: (a) `Product([Linear, Log])` → currently `ClassUnknown`, should be `ClassLinearithmic`, (b) `Product([Polynomial(k), Log])` → currently `ClassUnknown`, needs tier extension or named collapse, (c) post-normalize multi-term `Sum` with no single dominator (e.g. `Sum([Linear(n), Linear(m)])`) → currently `ClassUnknown`, needs classifier-tier handling (separate from the already-landed `drop_dominated` normalization). The dominant gap is **Product-side composition arms at the classifier-tier** + multi-var Sum survivors; Sum-side single-dominator flow already correctly produces terminal classes.
+2. **`LogCost` recursive shape (OR canonicalization rule)**: substrate cannot express `Log(complex)` directly (terminal `SizeVariable`-only argument). Either ratify `LogCost(SymbolicCost)` symmetric with Product/Sum, OR ratify a `.dag`-authored canonicalization rule that converts `Log(complex)` → `Log(SizeVariable)` of the dominant variable + multiplicative factors hoisted out (e.g. `log(n^k) → k * log(n)`) at expression-construction time.
+3. **`ExponentialCost` variant absence**: no substrate way to represent exponential growth in source cost. Either add the 8th variant (against STOP SIGNAL discipline — needs ratified motivation) or formally scope `ClassExponential` as enforcement-budget-only (input-not-output) with explicit rationale.
+4. **`ClassLinearithmic` / `ClassExponential` reachability gap**: 2 of 8 lattice classes are unreachable from `classify_symbolic_cost`; only constructible via string-deserialization for enforcement budgets. Either wire the classifier to produce them (per item 1) OR formally annotate them as input-only tiers with explicit reachability documentation.
+5. **`normalize()` log-rule extensions**: add log-power (`log(n^k) → k * log(n)`), log-product (`log(a*b) → log(a) + log(b)`), nested-log handling — OR mark these as out-of-scope with explicit rationale.
+6. **Cost-lens fold audit**: verify whether the cost-lens fold at `src/v3/lenses/complexity.dag` does construction-time canonicalization (would partially close the gap without substrate changes, but only if classifier composition handling also lands per item 1).
+
+**Plan to cash**:
+- **Owner**: Verification Mgr (still-moth-538) audits cost-lens fold + classifier behavior; Substrate Mgr (warm-wolf-698) authors the substrate-shape canvas decisions (classifier composition arms + LogCost recursive vs canonicalization-rule + ExponentialCost variant decision); Director ratifies the substrate-shape decisions.
+- **Sub-program**:
+  1. **Audit at HEAD** (Verification Mgr): grep cost-lens fold body for nested-construction handling; report actual behavior on `log(complex)` inputs; confirm `classify_symbolic_cost` Product/Sum → ClassUnknown behavior (per HEAD evidence above) is the dominant classification gap
+  2. **Classifier composition canvas** (Substrate Mgr): add composition arms to `classify_symbolic_cost` — minimum (a) `Product([Linear, Log])` → `ClassLinearithmic` (closes the reachability gap for the most common nested case), (b) `Product([Polynomial(k), Log])` → tier-extension OR named collapse decision, (c) `Sum` dominance reduction (drop dominated terms, classify the survivor), (d) `ExponentialCost` substrate variant decision (add 8th variant OR formally annotate `ClassExponential` as enforcement-budget-only)
+  3. **LogCost shape canvas** (Substrate Mgr): two options — (A) ratify `LogCost(SymbolicCost)` recursive symmetric with Product/Sum, OR (B) ratify `.dag`-authored canonicalization rule that runs before LogCost construction with named log-algebra coverage (power-rule + product-rule + nested-log policy)
+  4. **`normalize()` extension** OR canonicalization-rule landing per item 3 (A)/(B), plus log-power / log-product / nested-log rule coverage
+  5. **`AsymptoticClass` reachability review**: confirm classifier produces all 8 tiers or formally annotate the unreachable subset; document collapse rules with explicit rationale per `feedback_no_textual_enforcement_bridges`
+  6. **Lens cementing receipt update**: extend behavioral completion test corpus to cover nested compositions (n log n, n log(n^k), n² log n, n log² n, log log n, 2^n) with the expected classification per the canvas decisions
+- **Effort estimate**: 3-5 weeks (revised up from 2-4 per recalibration — classifier composition arms + ExponentialCost decision were not in the prior scope) — substrate canvas + lens-fold audit + classifier extension + normalize extension + lattice reachability review; gated on canvas ratification authority.
+
+**Close criterion**:
+- (a) `classify_symbolic_cost` produces all reachable `AsymptoticClass` tiers from `ProductCost`/`SumCost` compositions per the canvas decisions (at minimum: `n log n` classifies to `ClassLinearithmic` not `ClassUnknown`)
+- (b) `LogCost` shape ratified (either recursive over `SymbolicCost` or canonicalized at construction with named rule coverage)
+- (c) `ExponentialCost` substrate variant ratified-or-formally-excluded with named rationale
+- (d) `normalize()` extended with log-rules OR canonicalization-rule layer landed
+- (e) `AsymptoticClass` reachability review complete: every enumerated class is either produced by `classify_symbolic_cost` from valid `SymbolicCost` inputs OR formally annotated as enforcement-budget-input-only
+- (f) Cementing test corpus extended to cover nested compositions per the operator probe (n log n, n log(n^k), n² log n, n log² n, log log n, 2^n) with explicit expected classification
+- (g) Complexity lens behavioral-completion test passes against the extended corpus
+
+**Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of nested-complexity completeness would scope-narrow gate #79 behavioral close to "only handles non-nested compositions". The operator-adversarial probe 2026-05-13 surfaced this gap; the gap is now operator-recorded and must close IN-R3 absent explicit operator override of the no-carves directive with named structural-unblockable reason. Substrate-shape canvas is the unblockable path.
+
+**Authority**: operator adversarial probe 2026-05-13 (this PR); gate #79 close criterion in close plan §1 Gap 4 "complexity behavioral parity"; substrate-shape decision routes through Director ratification (msg- routing TBD post-canvas).
+
+---
+
+### Gap 12 — Property-based complexity-lens validation via `ProgramGenerator` (gate #79 / #85 / #86 join — coverage sub-promise)
+
+**Promise** (Gap 11 + gate #85 `forall_exists_quantifier_substrate_landed` + gate #86 `program_generator_carrier_landed` + thesis-facet-3: *"complexity lens behaviorally complete"* extended via the operator adversarial probe 2026-05-13: *"do we have testcases representing random combinations of functions, validating that the correct complexity result is generated?"*): the complexity lens is validated against **random program compositions** generated via the `ProgramGenerator` substrate, with per-composition expected complexity verified against an oracle. Behavioral completion is not just "passes 2 hand-authored cementing cases" but "passes N>>1 random compositions per run with zero divergence from oracle".
+
+**HEAD evidence** (operator probe 2026-05-13; revised per codex BLOCKING on PR #3037 sha 797a6d91 + briansrls BLOCKING on PR #3038 inline at `:463`: **prior framing pointed at wrong authority** — `Quantifier::ForAll` + `QuantifiedTestClaim` + `ProgramGenerator` surface ALREADY exists at HEAD as the property-based-testing authority; gap is the RUNNER, not the substrate):
+
+- **`ProgramGenerator` substrate carrier LANDED** (gate #86; `src/v3/std/verification.dag`: `type ProgramGenerator { ... }`). Used in carrier-surface compile test at `m1_5_verification_test.rs::program_generator_authoring_surface_compiles_cleanly` + bound into the existing `QuantifiedTestClaim` (see below).
+- **`Quantifier = ForAll | Exists` sum** authored at `src/v3/std/verification.dag` (gate #85 surface). This is the **claim-layer quantifier** for property-based testing (NOT `ForAllTargets` which is a separate cross-target authority per Gap 2). Per the comment block above the type: *"Closed quantifier over a generated program family. This lives at the claim layer, not inside `TestPredicate`, so predicates keep their 'property of one program' meaning."*
+- **`type QuantifiedTestClaim { name, generator: ProgramGenerator, quantifier: Quantifier, predicate: TestPredicate, requires: List<ResourceReference> }` LANDED at `src/v3/std/verification.dag:542`** — the existing single-authority for `ForAll<ProgramGenerator>` property-based claims. INVARIANTS P2 single-authority is structurally complete at the substrate level.
+- **Integration into Suite + TestNode surface LANDED**: `type SuiteClaim = Enumerated(TestClaim) | Quantified(QuantifiedTestClaim)` at `verification.dag:594` + `type TestNodeRef = EnumeratedTestNode(TestClaim) | QuantifiedTestNode(QuantifiedTestClaim)` at `verification.dag:574`. The quantified-claim shape is wired into suite-membership + cost-attachment + obligation-projection (`obligation_for_quantified_claim` at `verification.dag:627`). Test fixture proves authoring surface compiles (`test_runner_test.rs:1247` `data smoke_quantified_claim: QuantifiedTestClaim = { ... }`).
+- **Runner is `NotYetImplemented`** at `src/v3/compiler/src/test_runner.rs:2511`:
+  > `ClaimResult::NotYetImplemented("QuantifiedTestClaim runner evaluation NotYetImplemented (gate #85 substrate-only landing; quantifier evaluation deferred to Cluster M Phase 2/3 per docs/r3-structure.md §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline + gate #84 bulk-port lanes; tracking row at docs/r3-program-plan.md §1.8 row #85)")`
+  Per the inline citation, runner wiring is a named gate #85 dissolution trigger via Cluster M Phase 2/3 work.
+- **Complexity cementing test** (`src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`): **2 hand-authored test cases** at HEAD (`literal_bind_cements_constant_complexity_summary` + `recursive_countdown_cements_linear_work_and_span`). Zero random compositions; zero oracle comparison; zero quantifier-coverage.
+- **No `proptest` / `quickcheck` / random-program-generation tests** for the complexity lens anywhere in `src/v3/compiler/tests/`.
+- **Result**: gate #79 `lens_capability_register_zero_proxy_zero_stub` lens-completion for complexity can claim "behaviorally complete" while never having validated against arbitrary nested compositions (the substrate `SymbolicCost` algebra reach is **enormous** vs the 2 cementing cases covered). Closing gate #79 honestly requires (a) wiring the existing `QuantifiedTestClaim` runner (gate #85 follow-on per Cluster M Phase 2/3), (b) authoring a complexity-generator instance + oracle, (c) authoring property-based `QuantifiedTestClaim` data declarations against the wired runner.
+
+**What's missing** (runner wiring + complexity-specific generator + oracle + property-based fixtures — NOT extending `ForAllTargets` per prior framing):
+
+1. **`QuantifiedTestClaim` runner wiring** (replace `NotYetImplemented` at `test_runner.rs:2511`): the named gate #85 dissolution trigger; per the inline cite, deferred to Cluster M Phase 2/3 (gate #87 cementing-test discipline + gate #84 bulk-port lanes). Single-authority is the existing `QuantifiedTestClaim` — runner consumes `generator: ProgramGenerator` + `quantifier: Quantifier` + `predicate: TestPredicate` and evaluates the predicate over N samples drawn from the generator. NOT extending `ForAllTargets` (that's the cross-target quantifier on a different axis per Gap 2 close criterion).
+2. **`ProgramGenerator` complexity-instance** (`data` of type `ProgramGenerator` for complexity testing): authored as `.dag` substrate per emission discipline; produces structurally-bounded random programs combining function primitives (constant / linear-loop / log-search / poly-iteration / product-nested / sum-branched / log-of-... per Gap 11 substrate decision). Each generated program has a known-correct asymptotic class so oracle comparison is deterministic.
+3. **Complexity oracle** (reference implementation): for the structurally-bounded composition class the generator produces, computes expected `ComplexitySummary` (work + span). Authored as `.dag` function (NOT bridge-Rust oracle per `feedback_no_textual_enforcement_bridges`).
+4. **Property-based `QuantifiedTestClaim` instances**: data declarations of type `QuantifiedTestClaim` with `generator = <complexity-generator-instance>`, `quantifier = ForAll`, `predicate = <complexity-oracle-equivalence-predicate>`. These are direct `data` declarations against the existing substrate — no new claim-layer carrier required.
+5. **Coverage discipline at runner-wiring time**: runner accepts a sample-budget parameter (N≥100 per CI run; budgeted-N per CI capacity); explicit seed-pinning via `requires: List<ResourceReference>` if needed; fail-closed on oracle/lens divergence per `ClaimResult::Fail`; ratchet that monotonically increases sample size.
+6. **Cementing-cases preserved** (subset of property-based corpus): the 2 existing hand-authored cases (`literal_bind`, `recursive_countdown`) remain as low-N seeds; the property-based corpus extends rather than replaces them.
+
+**Plan to cash** (revised to target existing authority, NOT extension of wrong one):
+
+- **Owner**: Verification Mgr (still-moth-538) — owns runner-wiring work as part of Cluster M Phase 2/3 (per `test_runner.rs:2511` named-dissolution-trigger cite); Substrate Mgr (warm-wolf-698) — co-owns the `ProgramGenerator` complexity-instance authoring + complexity oracle authoring as `.dag` substrate; Director ratifies any substrate-shape additions to `QuantifiedTestClaim` if extension turns out needed (per `feedback_construction_over_ratchets` discipline — model first, extend only if existing shape inadequate).
+- **Sub-program**:
+  1. **Audit `QuantifiedTestClaim` shape** (Substrate Mgr): confirm the existing `{ name, generator, quantifier, predicate, requires }` shape is sufficient for complexity-validation use case OR identify needed substrate extension (e.g., explicit sample-budget field if `requires` doesn't carry that semantic).
+  2. **Author `ProgramGenerator` complexity-instance** (`dsl/std/test_generators/complexity_generator.dag` or similar): structurally-bounded composition generator producing programs of named asymptotic class.
+  3. **Author complexity oracle** (`dsl/std/test_oracles/complexity_oracle.dag`): function from generated-program → expected `ComplexitySummary`.
+  4. **Author property-based `QuantifiedTestClaim` instances** as `data` declarations against the existing substrate: `data complexity_property_validation: QuantifiedTestClaim = { name: ..., generator: <complexity-generator>, quantifier: ForAll, predicate: <oracle-equivalence>, requires: ... }`.
+  5. **Wire the runner** at `src/v3/compiler/src/test_runner.rs:2511` (replace `NotYetImplemented` per the named gate #85 dissolution trigger; this is Cluster M Phase 2/3 lane scope per the inline cite). Runner consumes the `QuantifiedTestClaim` substrate; draws N samples from `generator`; evaluates `predicate` over each sample; returns `ClaimResult::Pass` if all samples pass, `Fail` on first divergence with witness.
+  6. **CI integration**: property-based test runs in regular CI with budgeted sample-size; fail-closed on divergence; seed-pinned for reproducibility.
+- **Effort estimate**: 2-3 weeks (ProgramGenerator-instance + oracle + property-based-claim instances + runner wiring + CI integration); parallelizable with Gap 11 substrate-shape canvas authoring + Cluster M Phase 2/3 lane work (which already owns the runner-wiring dissolution trigger per `test_runner.rs:2511`).
+
+**Close criterion** (substrate-debt-shaped; targets existing authority):
+- (a) `ProgramGenerator` complexity-instance landed in `dsl/std/` (or appropriate test-generator path) with structural bound + named composition class coverage
+- (b) Complexity oracle authored as `.dag` function (no bridge-Rust oracle)
+- (c) Property-based `QuantifiedTestClaim` data declarations land using the **existing** substrate (no new claim-layer carrier required absent audit (1) finding extension needed)
+- (d) `QuantifiedTestClaim` runner wired at `test_runner.rs:2511` (replaces `NotYetImplemented`) — runs the property-based claim with N≥100 random compositions per CI run
+- (e) Zero oracle-vs-lens divergence across the random-composition corpus
+- (f) CI seed-pinning + reproducibility discipline ratcheted via test infrastructure
+
+**Connection to Gap 11**: Gap 11 (LogCost asymmetry) addresses substrate-shape CAPABILITY (what compositions can be expressed); Gap 12 addresses lens-COVERAGE VALIDATION (whether the lens correctly classifies what the substrate expresses). Both are needed for gate #79 complexity behavioral close to honestly mean "lens correctly handles arbitrary nested compositions". Gap 11 substrate canvas should land first so Gap 12 generator can produce the full composition class.
+
+**Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of property-based validation would scope-narrow gate #79 behavioral close to "passes hand-authored cementing cases only". The operator-adversarial probe 2026-05-13 surfaced this gap; gate #85 `forall_exists_quantifier_substrate_landed` + gate #86 `program_generator_carrier_landed` are R3-load-bearing per the Tests-as-Data-Completeness lane — using them for actual property-based validation (not just substrate-compile checks) is the natural R3 close shape.
+
+**Authority**: operator adversarial probe 2026-05-13 (this PR); gate #79 close criterion in close plan §1 Gap 4 "complexity behavioral parity"; gates #85 + #86 close criteria in close plan §1 Gap 5 "tests-as-data completeness"; substrate-shape decision routes through Director ratification (msg-routing TBD post-canvas).
+
+---
+
 ## §2. Dispatch sequencing (PM-recommended)
 
 Given the cross-gap dependencies, recommended dispatch order:
@@ -383,10 +521,12 @@ Given the cross-gap dependencies, recommended dispatch order:
 **Phase B — Substrate Mgr lane (warm-wolf-698, 4-8 weeks)**:
 - Gap 4 (lens behavioral parity): F-α → F-β.1 → F-β.2 → ComplexitySummary → F-γ.2 register sweep
 - Gap 7 (T-WAD): Slice 4 → 5 → 6 → 7 → 8 cascade (zesty-boar-261 + sharp-deer-576 lane)
+- **Gap 11 (Complexity composition completeness / LogCost asymmetry)**: substrate-shape canvas (LogCost recursive vs canonicalization-rule) + normalize() extension + lattice tier review + cementing corpus extension. **Sub-promise of gate #79 surfaced by operator adversarial probe 2026-05-13** post-§4-ratification.
 
-**Phase C — Verification Mgr lane (swift-deer-459, 4-8 weeks)**:
+**Phase C — Verification Mgr lane (still-moth-538, 4-8 weeks)**:
 - Gap 5 (Cluster M Phase 3): 99-Rust-test bulk-port dispatch
 - Gap 2 (L5 cross-target): certification corpus + Python/Go emitters
+- **Gap 12 (Property-based complexity-lens validation via ProgramGenerator)**: ProgramGenerator complexity-instance + complexity oracle + `ForAll<ProgramGenerator>` quantifier TestClaim + CI integration. **Sub-promise of gate #79/#85/#86 surfaced by operator adversarial probe 2026-05-13** post-§4-ratification. Gated on Gap 11 substrate-shape canvas landing first so generator can produce the full composition class.
 
 **Phase D — Debt-Paydown lane (zesty-boar-261, ~3-6 months)**:
 - Gap 1 (PB-0): 177-entry retirement campaign
@@ -495,6 +635,8 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
   - [x] Gap 9 (show-correct-code): **IN-R3 confirmed** — 100% absolute (zero DeferredCorrection in test corpus per sum-variant carrier)
 - [x] **Operator §4 sub-item 5 (subtree-shape decision)** — ratified 2026-05-13 (briansrls direct PM dispatch): **(a) re-spawn R3 Evaluator Mgr as 4th lane** confirmed. Director (zesty-bear-812) executes per pre-authorization at msg_d456b60d.
 - [x] **Operator authorizes Phase A immediate dispatch** — implicit in ratification 2026-05-13. Close-audit doc skeleton + §1.8 row #106 authoring proceeds PM-direct post-merge.
+- [ ] **Gap 11 (Complexity composition completeness / LogCost asymmetry — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79 sub-promise. Substrate-shape canvas decision required (LogCost recursive vs canonicalization-rule); routes through Substrate Mgr (warm-wolf-698) → Director ratification.
+- [ ] **Gap 12 (Property-based complexity-lens validation via ProgramGenerator — post-§4-ratification adversarial finding)** — surfaced by operator adversarial probe 2026-05-13; default IN-R3 per `project_no_r4_carves_directive` as gate #79/#85/#86 join sub-promise. ProgramGenerator complexity-instance + oracle + `ForAll<ProgramGenerator>` TestClaim + CI integration; routes through Verification Mgr (still-moth-538). Gated on Gap 11 canvas landing first.
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [x] R2-Evaluator audit — **completed 2026-05-13 (msg_82b9c4bb)**; findings absorbed into Gap 3 expansion + §4 sub-item 5 + r3-program-plan.md lines 429/435 reframe at commits 85c230b4b + 97cfb9d4c
   - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
