@@ -286,6 +286,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/enforced_lens_application.rs",
+    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
+    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
+    "src/v3/compiler/src/gunbc_ci.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
