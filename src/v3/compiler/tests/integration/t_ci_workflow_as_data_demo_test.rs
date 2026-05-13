@@ -391,23 +391,24 @@ fn assert_ci_prereq_graph_has_single_parallel_fanout(input: &CiWorkflowDagInput)
         outgoing.entry(from.clone()).or_default().push(to.clone());
     }
 
-    let mut parallel_parent: Option<(String, Vec<String>)> = None;
+    let mut two_branch: Vec<(String, Vec<String>)> = Vec::new();
     for (from, mut kids) in outgoing {
         kids.sort();
         kids.dedup();
         if kids.len() == 2 {
-            assert!(
-                parallel_parent.is_none(),
-                "expected at most one 2-branch prerequisite fan-out in gunbc ci_workflow_dag; \
-                 saw a second at `{from}` → {kids:?}"
-            );
-            parallel_parent = Some((from, kids));
+            two_branch.push((from, kids));
         }
     }
-
-    let (parent, kids) = parallel_parent.expect(
-        "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding)",
+    two_branch.sort_by(|a, b| a.0.cmp(&b.0));
+    assert!(
+        two_branch.len() <= 1,
+        "expected at most one 2-branch prerequisite fan-out in gunbc ci_workflow_dag; found {two_branch:?}"
     );
+
+    let (parent, kids) = two_branch
+        .into_iter()
+        .next()
+        .expect("ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding)");
     assert_eq!(parent.as_str(), "compile-gates");
     assert_eq!(kids, vec!["lint".to_string(), "tests".to_string()]);
 }
