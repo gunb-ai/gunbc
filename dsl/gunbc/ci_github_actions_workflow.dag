@@ -15,24 +15,22 @@ import extdeps.github.actions {
   ShellType, Bash
 }
 
-data gunbc_ci_github_actions_workflow: Workflow = Workflow {
+data gunbc_ci_github_actions_workflow: Workflow = {
   name: "ci",
   on: [Push { branches: ["main"], paths: [] }, PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened, ReadyForReview] }],
-  concurrency: Some {
-  value: ConcurrencyMappingQueueNotMax {
+  concurrency: ConcurrencyMappingQueueNotMax {
       group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
-      cancel_in_progress: Some { value: CancelInProgressBool { value: true } },
+      cancel_in_progress: CancelInProgressBool { value: true },
       explicit_single: none
-    }
-  },
-  jobs: [Job {
+    },
+  jobs: [{
       id: "fmt",
       name: none,
       runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
           with: { "fetch-depth": "1" },
           env: none,
           if_condition: none,
@@ -41,7 +39,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Rust" },
           id: none,
-          uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
           env: none,
           if_condition: none,
@@ -66,14 +64,14 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
       timeout_minutes: Some { value: 5 },
       continue_on_error: false,
       concurrency: none
-    }, Job {
+    }, {
       id: "ci",
       name: none,
       runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
           with: { "fetch-depth": "0" },
           env: none,
           if_condition: none,
@@ -202,7 +200,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Rust" },
           id: none,
-          uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt", "cache": "false", "rustflags": "" },
           env: none,
           if_condition: none,
@@ -211,7 +209,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Cache Cargo (ci bootstrap gate)" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-ci-${{ runner.os }}-\n" },
           env: none,
           if_condition: none,
@@ -236,14 +234,14 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
       timeout_minutes: Some { value: 25 },
       continue_on_error: false,
       concurrency: none
-    }, Job {
+    }, {
       id: "v3",
       name: none,
       runner: SelfHosted { labels: ["ubicloud-standard-8"] },
       steps: [UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
           with: { "fetch-depth": "1" },
           env: none,
           if_condition: none,
@@ -252,7 +250,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Rust" },
           id: none,
-          uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "components": "rustfmt, clippy", "cache": "false", "rustflags": "" },
           env: none,
           if_condition: none,
@@ -261,7 +259,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Zig C toolchain" },
           id: none,
-          uses: ActionRef { owner: "goto-bus-stop", repo: "setup-zig", ref: "v2" },
+          uses: { owner: "goto-bus-stop", repo: "setup-zig", ref: "v2" },
           with: { "version": "0.13.0", "cache": "false" },
           env: none,
           if_condition: none,
@@ -280,7 +278,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Python" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "setup-python", ref: "v6" },
+          uses: { owner: "actions", repo: "setup-python", ref: "v6" },
           with: { "python-version": "3.x" },
           env: none,
           if_condition: none,
@@ -289,7 +287,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Go" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "setup-go", ref: "v6" },
+          uses: { owner: "actions", repo: "setup-go", ref: "v6" },
           with: { "go-version": "stable" },
           env: none,
           if_condition: none,
@@ -298,7 +296,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Cache Cargo (v3)" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-v3-${{ runner.os }}-\n" },
           env: none,
           if_condition: none,
@@ -483,7 +481,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
       timeout_minutes: Some { value: 120 },
       continue_on_error: false,
       concurrency: none
-    }, Job {
+    }, {
       id: "self_host_ratchet",
       name: none,
       runner: SelfHosted { labels: ["ubicloud-standard-8"] },
@@ -500,7 +498,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+          uses: { owner: "actions", repo: "checkout", ref: "v4" },
           with: { "fetch-depth": "1" },
           env: none,
           if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
@@ -519,7 +517,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Setup Rust" },
           id: none,
-          uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
+          uses: { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
           with: { "cache": "false", "rustflags": "" },
           env: none,
           if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
@@ -528,7 +526,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, UsesStep {
           name: Some { value: "Cache Cargo (self_host_ratchet)" },
           id: none,
-          uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
+          uses: { owner: "actions", repo: "cache", ref: "v4" },
           with: { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}", "restore-keys": "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-self-host-${{ runner.os }}-\n" },
           env: none,
           if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
@@ -575,7 +573,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
       concurrency: none
     }],
   env: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" },
-  permissions: WorkflowPermissions {
+  permissions: {
       contents: PermRead,
       pull_requests: PermRead,
       issues: PermNone,

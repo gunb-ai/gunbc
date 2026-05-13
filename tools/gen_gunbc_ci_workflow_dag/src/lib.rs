@@ -75,7 +75,7 @@ fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let env = emit_env_map(m.get("env"))?;
     let permissions = emit_permissions(m.get("permissions"))?;
     Ok(format!(
-        "Workflow {{\n  name: {},\n  on: {},\n  concurrency: {},\n  jobs: {},\n  env: {},\n  permissions: {}\n}}",
+        "{{\n  name: {},\n  on: {},\n  concurrency: {},\n  jobs: {},\n  env: {},\n  permissions: {}\n}}",
         dag_string(&name),
         on,
         concurrency,
@@ -194,16 +194,12 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
         None => "none".to_string(),
-        Some(Value::Bool(true)) => {
-            "Some { value: CancelInProgressBool { value: true } }".to_string()
-        }
-        Some(Value::Bool(false)) => {
-            "Some { value: CancelInProgressBool { value: false } }".to_string()
-        }
+        Some(Value::Bool(true)) => "CancelInProgressBool { value: true }".to_string(),
+        Some(Value::Bool(false)) => "CancelInProgressBool { value: false }".to_string(),
         Some(other) => return Err(format!("unsupported cancel-in-progress: {other:?}").into()),
     };
     Ok(format!(
-        "Some {{\n  value: ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}\n  }}",
+        "ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}",
         dag_string(&group),
         cancel
     ))
@@ -275,7 +271,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "WorkflowPermissions {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}",
+        "{{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}",
         contents, pull_requests, issues, actions
     ))
 }
@@ -364,7 +360,7 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         Some(_) => return Err("job-level concurrency not supported".into()),
     };
     Ok(format!(
-        "Job {{\n      id: {},\n      name: {},\n      runner: {},\n      steps: {},\n      needs: {},\n      env: {},\n      outputs: {},\n      if_condition: {},\n      strategy: {},\n      timeout_minutes: {},\n      continue_on_error: {},\n      concurrency: {}\n    }}",
+        "{{\n      id: {},\n      name: {},\n      runner: {},\n      steps: {},\n      needs: {},\n      env: {},\n      outputs: {},\n      if_condition: {},\n      strategy: {},\n      timeout_minutes: {},\n      continue_on_error: {},\n      concurrency: {}\n    }}",
         dag_string(id),
         name,
         runner,
@@ -529,7 +525,7 @@ fn emit_action_ref(uses: &str) -> Result<String, Box<dyn std::error::Error>> {
     let (owner_repo, ref_part) = uses.rsplit_once('@').ok_or("uses must contain @")?;
     let (owner, repo) = owner_repo.split_once('/').ok_or("uses owner/repo")?;
     Ok(format!(
-        "ActionRef {{ owner: {}, repo: {}, ref: {} }}",
+        "{{ owner: {}, repo: {}, ref: {} }}",
         dag_string(owner),
         dag_string(repo),
         dag_string(ref_part)
