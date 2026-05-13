@@ -1,5 +1,7 @@
 # R3 Cluster M Phase 2 — Verification Discipline #87 Dispatch (2026-05-09)
 
+**2026-05-12 follow-up (eager-eagle-692)**: Gate **#87** is **CONSUMER_LANDED + PASSING** in `docs/r3-program-plan.md` §1.8 at HEAD (PR **#2639** + **#2757**). Treat this file as the **2026-05-09 dispatch overlay** plus historical §3–§4 milestones; concrete “where did it land?” lives in [`r3-v-cluster-m-87-cementing-worker.md`](r3-v-cluster-m-87-cementing-worker.md) §7 and in `docs/r3-remaining-work-dependency-graph.md` §retractions.
+
 **Owner**: Verification Mgr (wise-bear-525 / gunbc#2075)
 **Authority**: PM-tier dispatch coordination per Director ratification at gunbc#846 #issuecomment-4412309986 (Director answered Ask 1 with "(γ) hybrid"). Sequencing structure lives at [`docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-m-sequencing-plan-2026-05-09.md) §4 (in-flight via concurrent PR #2361; this brief is the dispatch overlay — substantive content here is self-contained and grounded in locked-design + live ledger authorities below). This brief is a light-touch dispatch surface.
 
