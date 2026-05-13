@@ -31,7 +31,7 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     assert!(
         dag.declaration_by_name("gate_58_apply_lens_self_application_pass")
             .is_some(),
-        "bootstrap must include gate #58 `EnforcedApplication<TimingMeasurement, TimingBudget>` witness"
+        "bootstrap must include gate #58 timing `EnforcedApplication` pass witness (`gate_58_apply_lens_self_application_pass`)"
     );
     assert!(
         dag.declaration_by_name("modeled_gunbc_ci_workflow")
