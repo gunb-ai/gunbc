@@ -349,7 +349,7 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 
 - Gate #103 `ci_uses_affected_set_selection` — **DECLARED** (NEW 2026-05-12 per PR #2744 §1); R3-load-bearing
 - Slice 7 in T-WAD lane sequencing: Slice 4 (#100 substrate) → Slice 5 (#98 ci.yml swap) → Slice 7 (#103 affected-set) → Slice 8 (substrate completion)
-- Design doc: `docs/design-affected-set-lens.md` — substrate-shape ratified; consumer pattern is CLI / agent / IDE invoking `IntrospectApplication`-carrier lens with `Set<NodeRef>` output
+- Design doc: `docs/design-affected-set-lens.md` — **design framing + 5 worked examples; NOT a substrate-shape ratification, NOT a §1.8 gate addition** (per design doc §"Scope" line 7 verbatim). Substrate-shape ratification + §1.8 gate landing pending. Consumer-pattern sketch: CLI / agent / IDE invoking `IntrospectApplication`-carrier lens with `Set<NodeRef>` output. Prototype scope at [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699).
 
 **Probes** (post-gate-#103-CONSUMER_LANDED):
 
