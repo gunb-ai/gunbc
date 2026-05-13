@@ -38,10 +38,12 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_harnesses, r3_gate_87_cementing_regen_lens_names_for_runner_table,
+};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -78,6 +80,77 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
         .unwrap_or_else(|| {
             panic!("lens registry entry `{binding}` is missing a String `{label}` field")
         })
+}
+
+fn sum_variant_label(dag: &Dag, sum_type_name: &str, value: &FieldValue) -> String {
+    let sum_decl = dag
+        .declaration_by_name(sum_type_name)
+        .unwrap_or_else(|| panic!("bootstrap must declare `{sum_type_name}`"));
+    let TypeConnective::Disj { variants } = &sum_decl.connective else {
+        panic!("`{sum_type_name}` must be a Disj coproduct");
+    };
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected `{sum_type_name}` variant value, got {value:?}");
+    };
+    assert!(
+        payload.is_empty(),
+        "`{sum_type_name}` status arms should remain nullary"
+    );
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
+        .unwrap_or_else(|| {
+            panic!("constructor id {constructor:?} is not a `{sum_type_name}` variant")
+        })
+}
+
+#[derive(Debug, Clone)]
+struct CapabilityRow {
+    lens_name: String,
+    behavioral: String,
+    v2_counterpart: String,
+}
+
+fn lens_capability_rows_by_runner_name() -> Vec<CapabilityRow> {
+    let dag = Dag::new();
+    let rows_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .expect("bootstrap must declare `lens_capability_register_rows`");
+    let Some(ValueBody::List(rows)) = &rows_decl.value_body else {
+        panic!("`lens_capability_register_rows` must be a list");
+    };
+    rows.iter()
+        .map(|row| {
+            let FieldValue::Record(fields) = row else {
+                panic!("lens capability row must be a record, got {row:?}");
+            };
+            let basename = string_field(fields, "lens_basename", "lens_capability_register_rows");
+            let lens_name = basename
+                .strip_suffix(".dag")
+                .unwrap_or_else(|| panic!("lens basename `{basename}` must end in `.dag`"))
+                .to_string();
+            let behavioral = fields
+                .iter()
+                .find(|(label, _)| label == "behavioral")
+                .map(|(_, value)| sum_variant_label(&dag, "LensCapabilityBehavioralStatus", value))
+                .expect("lens capability row must carry `behavioral`");
+            let v2_counterpart = fields
+                .iter()
+                .find(|(label, _)| label == "v2_counterpart")
+                .map(|(_, value)| sum_variant_label(&dag, "LensCapabilityV2Counterpart", value))
+                .expect("lens capability row must carry `v2_counterpart`");
+            CapabilityRow {
+                lens_name,
+                behavioral,
+                v2_counterpart,
+            }
+        })
+        .collect()
 }
 
 fn regen_lens_registry_names() -> BTreeSet<String> {
@@ -141,6 +214,80 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_v3_native_and_helper_placeholders_stay_explicit() {
+    let harnesses = r3_gate_87_cementing_regen_harnesses()
+        .map(|harness| {
+            (
+                harness
+                    .file
+                    .strip_prefix("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_")
+                    .and_then(|rest| rest.strip_suffix(".dag"))
+                    .unwrap_or_else(|| panic!("unexpected gate-87 harness path `{}`", harness.file))
+                    .to_string(),
+                harness,
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let allowed_compiles_placeholders = BTreeSet::from([
+        "infer_helpers".to_string(),
+        "lower_helpers".to_string(),
+        "variant_payload".to_string(),
+    ]);
+
+    for row in lens_capability_rows_by_runner_name() {
+        let Some(harness) = harnesses.get(&row.lens_name) else {
+            continue;
+        };
+        let uses_compiles = harness.source.contains("predicate: Compiles");
+        let uses_lens_output = harness.source.contains("LensOutputEquals");
+
+        if row.v2_counterpart == "LensCapabilityV2NotApplicable" {
+            assert!(
+                uses_compiles,
+                "helper-only `{}` must stay an explicit `Compiles` placeholder until a public \
+                 carrier exists",
+                row.lens_name
+            );
+        }
+
+        if row.v2_counterpart == "LensCapabilityV2NoneV3Native"
+            && row.behavioral == "LensCapabilityBehavioralComplete"
+            && !allowed_compiles_placeholders.contains(&row.lens_name)
+        {
+            assert!(
+                uses_lens_output,
+                "complete v3-native `{}` must use `LensOutputEquals`, not a source-compilation \
+                 placeholder",
+                row.lens_name
+            );
+            assert!(
+                !uses_compiles,
+                "complete v3-native `{}` must not also carry `Compiles`",
+                row.lens_name
+            );
+        }
+
+        if uses_compiles {
+            assert!(
+                allowed_compiles_placeholders.contains(&row.lens_name),
+                "`{}` uses `Compiles`; only named helper/v3-native temporary placeholders may do so",
+                row.lens_name
+            );
+            assert!(
+                harness
+                    .source
+                    .contains("temporary source-compilation placeholder")
+                    && harness.source.contains("Dissolution trigger:")
+                    && harness.source.contains("Temporary Rust receipt:"),
+                "`{}` `Compiles` placeholder must document the placeholder class, dissolution \
+                 trigger, and paired Rust pin receipt in the `.dag` harness",
+                row.lens_name
+            );
+        }
+    }
 }
 
 #[test]

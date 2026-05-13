@@ -8,14 +8,34 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy)]
+pub struct R3Gate87CementingHarness {
+    pub source: &'static str,
+    pub file: &'static str,
+    pub suite_name: &'static str,
+    pub claim_names: &'static [&'static str],
+}
+
+pub fn r3_gate_87_cementing_regen_harnesses() -> impl Iterator<Item = R3Gate87CementingHarness> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(
+            |(source, file, suite_name, claim_names)| R3Gate87CementingHarness {
+                source,
+                file,
+                suite_name,
+                claim_names,
+            },
+        )
+}
+
 /// `LensRegistryEntry.name` values implied by [`R3_GATE_87_CEMENTING_REGEN_SUITES`] harness `file`
 /// paths (`t_r3_gate_87_cementing_regen_<name>.dag`). **Single authority** for the gate-#87
 /// inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test` compares live `regen.dag`
 /// names against this set so a new registry row cannot ship without a matching runner row.
 pub fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<String> {
-    R3_GATE_87_CEMENTING_REGEN_SUITES
-        .iter()
-        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
+    r3_gate_87_cementing_regen_harnesses()
+        .map(|harness| lens_name_from_gate_87_harness_path(harness.file))
         .collect()
 }
 
@@ -24,14 +44,16 @@ pub fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<Stri
 /// `kind == "dag"` receipt in `cementing_dispatch.dag` to use one of these stems so the dispatch
 /// list cannot drift from the T-PB-B-1 runner.
 pub fn r3_gate_87_cementing_regen_pb_b1_dag_module_stems() -> BTreeSet<String> {
-    R3_GATE_87_CEMENTING_REGEN_SUITES
-        .iter()
-        .map(|(_, file, _, _)| {
-            Path::new(file)
+    r3_gate_87_cementing_regen_harnesses()
+        .map(|harness| {
+            Path::new(harness.file)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or_else(|| {
-                    panic!("R3_GATE_87_CEMENTING_REGEN_SUITES: invalid harness path `{file}`")
+                    panic!(
+                        "R3_GATE_87_CEMENTING_REGEN_SUITES: invalid harness path `{}`",
+                        harness.file
+                    )
                 })
                 .to_string()
         })
