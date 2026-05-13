@@ -26,7 +26,7 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 
 ## Non-Complete Registered Rows
 
-These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
+These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `parallelism` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`). `parallelism` has a Gate 87 runner-inventory placeholder at `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag`; behavioral Stage 2e coverage remains in Rust until typed pairwise evidence is public report data.
 
 ## Ratchets
 
