@@ -731,6 +731,81 @@ data rust_branch_path: TypeRealization = {
   cost: 1
 }
 
+data rust_key_source: TypeRealization = {
+  language: rust_language
+  target: KeySource
+  carrier: "KeySource"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_idempotent_shape: TypeRealization = {
+  language: rust_language
+  target: IdempotentShape
+  carrier: "IdempotentShape"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_effect_shape: TypeRealization = {
+  language: rust_language
+  target: EffectShape
+  carrier: "EffectShape"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_workflow_operation: TypeRealization = {
+  language: rust_language
+  target: WorkflowOperation
+  carrier: "WorkflowOperation"
+  is_copy: false
+  fields: [
+    { dag_name: "operation_name", access: DirectField("operation_name"), borrowed_read: false },
+    { dag_name: "shape", access: DirectField("shape"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_composition_verdict: TypeRealization = {
+  language: rust_language
+  target: CompositionVerdict
+  carrier: "CompositionVerdict"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_workflow_effect: TypeRealization = {
+  language: rust_language
+  target: WorkflowEffect
+  carrier: "WorkflowEffect"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_parallelism_unsupported_kind: TypeRealization = {
+  language: rust_language
+  target: ParallelismUnsupportedKind
+  carrier: "ParallelismUnsupportedKind"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_workflow_parallelism_report: TypeRealization = {
+  language: rust_language
+  target: WorkflowParallelismReport
+  carrier: "WorkflowParallelismReport"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data rust_loop_bound: TypeRealization = {
   language: rust_language
   target: LoopBound
