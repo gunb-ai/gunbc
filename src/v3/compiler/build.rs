@@ -102,11 +102,8 @@ fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, Str
             let t = line.trim_start();
             let rest_v3 = t.strip_prefix("import v3.std.");
             let rest_std = t.strip_prefix("import std.");
-            let rest = if let Some(r) = rest_v3 {
-                Some(r)
-            } else if let Some(r) = rest_std {
-                Some(r)
-            } else {
+            let rest = rest_v3.or(rest_std);
+            let Some(rest) = rest else {
                 continue;
             };
             let mod_suffix = rest.split([' ', '{']).next().unwrap_or("");
