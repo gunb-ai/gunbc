@@ -147,11 +147,13 @@ Worker audit didn't probe T-Lens-Self-Application substrate state. Canvas author
 
 No new sum-type proposed in this canvas. All three candidates work with existing carriers (CIWorkflowDag + WorkflowRuntime + DimensionReport). Practice 4 GREEN/YELLOW/RED not applicable.
 
-## §7. Cost-of-change accounting
+## §7. Cost-of-change accounting (REVISED per snappy-bear-502 msg_cef1340b)
+
+Cost-of-change is per the **revised Candidate A scope** (administrative un-ignore; 5 sibling failures excluded as separately-scoped substrate-debt). See §2 + §3.A + §10 for the revised framing.
 
 | Candidate | Files edited to close gate #63 |
 |---|---|
-| A (demo repair) | ~3-5 (fix 5 specific failures + remove `#[ignore]`) |
+| A (administrative un-ignore + ledger; revised) | ~1-3 (single `#[ignore]` removal + ledger row + sibling-debt audit doc) |
 | B (full path) | ~10-20 (close 3 WorkflowRuntime arms + repo workflow path + cross-cutting infra) |
 | C (defer) | 0 (now); unknowable later |
 
