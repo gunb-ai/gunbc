@@ -3772,8 +3772,8 @@ pub mod lens_declaration_apply {
         "/lens_declaration_apply_body.txt"
     ));
 }
-pub use lens_declaration_apply::lens_testgen;
 pub use lens_declaration_apply::lens_t_las_carrier;
+pub use lens_declaration_apply::lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
 /// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
