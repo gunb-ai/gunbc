@@ -45,17 +45,45 @@ Verification: `cargo test -p v3-compiler --test integration t_ci_workflow_as_dat
 
 **STOP if test does NOT pass without `--ignored`** — that would indicate the isolation-pass status has regressed since snappy-bear-502 audit; surface to Mgr.
 
-## §4. Phase B — Sibling-debt audit document
+## §4. Phase B — Class 4 systematic bridge inventory + sibling-debt audit document
 
-Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` (or similar audit-doc path) with:
+**§1.4 / §4 conjunctive predicate** requires gate #63 to receipt both **(a)** representative gap-test pass (Phase A) **AND (b)** systematic enumeration of Class 4 class-bridges with count = 0 OR explicit Director allocation (per `docs/r3-program-plan.md` §4 + §7.2 STRUCTURAL exception). Phase A alone is sample-of-class, NOT closure-of-class.
 
-- The 5 sibling failures enumerated with concrete file:line + BuildBuddy invocation `2e1d435a-a6fe-...` cite
-- Mapping table per §2 above (failure → owning §1.8 row)
-- Director's structural disambiguation quote (msg_804cdc93 verbatim)
-- Explicit framing: "these failures are NOT gate #63 closure blockers; they will close as rows #99 + #100 progress through their own DECLARED → CONSUMER_LANDED arcs"
+Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` with **two** receipts:
+
+### §4.1 Phase B.1 — Systematic Class 4 bridge inventory (predicate (b))
+
+Worker grep at HEAD for every Class 4 bridge site in `src/v3/`:
+
+```
+git grep -nE "ci_workflow|workflow_runtime|WorkflowRuntime|workflow_as_data" src/v3/ \
+  | grep -v "^Binary file"
+```
+
+For EACH hit, classify as one of:
+- **Pass-through**: site executes through v3 cleanly (counts toward predicate (b) GREEN; cite line)
+- **Allocated survivor**: site is a known Class 4 bridge that doesn't currently execute through v3 but is **Director-allocated to another §1.8 row** (cite row number, e.g., #99/#100); count separately
+- **Unallocated survivor**: NOT allocated to any §1.8 row — **STOP and surface to Mgr**; this is the §1.4 (b) failure mode
+
+Receipt asserts: **unallocated-survivor count = 0**. Allocated survivors are enumerated with row attributions.
+
+### §4.2 Phase B.2 — Sibling-debt audit document (allocation receipts)
+
+Within the same audit doc, enumerate:
+
+- The 5 sibling failures from snappy-bear-502 audit msg_cef1340b with concrete file:line + BuildBuddy invocation `2e1d435a-a6fe-...` cite
+- Mapping table per §2 above (failure → owning §1.8 row #99 or #100)
+- Director's structural disambiguation quote (msg_804cdc93 verbatim — establishes the Director allocation mechanism)
+- Explicit framing: "these failures are Class 4 bridge survivors with explicit Director allocation per msg_804cdc93; they will close as rows #99 + #100 progress through their own DECLARED → CONSUMER_LANDED arcs"
 - Note: out-of-scope for this PR; reference for downstream rows #99/#100 brief authoring (Mgr-tier follow-on)
 
-This doc is **substrate-progress audit-trail**, not substrate authoring. Cost-of-change: 1 new file, no existing-file edits beyond the `#[ignore]` removal in Phase A.
+### §4.3 STRUCTURAL exception clause
+
+Per `docs/r3-program-plan.md` §7.2 + `docs/audit/r3-debt-sweep-2026-05-06.md` §3.A: STRUCTURAL exception requires explicit Director allocation citing program shape; Mgr cannot self-classify. Director msg_804cdc93 IS that allocation citation — sibling failures are STRUCTURAL exceptions allocated to rows #99/#100 by Director ratification, not Mgr discretion.
+
+**STOP if Phase B.1 surfaces an unallocated survivor** — gate #63 cannot close on predicate (b) absent a count=0 OR full-allocation receipt; surface to Mgr for Director re-allocation routing.
+
+Cost-of-change: 1 new audit-doc file, no existing-file edits beyond the `#[ignore]` removal in Phase A.
 
 ## §5. Phase C — §1.8 row #63 ledger update + §4.4 substrate-prereq reconciliation
 
@@ -89,6 +117,7 @@ Worker brief Phase C MUST update §4.4 carrier-enumeration with a "substrate-pre
 3. **`feedback_load_bearing_ratchet_preservation` violation tempted** — if Phase A authoring tempts adding `#[ignore]` to mask any other failure, **STOP** — anti-pattern §7.2 fires
 4. **Scope-creep tempted** — if Phase A diagnosis tempts fixing any of the 5 sibling failures, **STOP** — anti-pattern §7.5 fires (those are rows #99/#100 scope, NOT gate #63)
 5. **Row #99 or #100 progress has changed status since 2026-05-13** in `docs/r3-program-plan.md` §1.8 — re-verify mapping table; surface to Mgr if rows are no longer DECLARED
+6. **Phase B.1 surfaces an unallocated Class 4 bridge survivor** (i.e., a site that doesn't execute through v3 AND has no §1.8 row attribution) — STOP and surface to Mgr; gate #63 cannot close on §1.4 predicate (b) absent count=0 OR full Director-allocated survivors
 
 ## §7. Anti-patterns (4 Director-ratified + 1 new Mgr-derived ratified)
 
@@ -102,13 +131,15 @@ PR body MUST cite verbatim + assert receipt-of-compliance:
 
 ## §8. Verification
 
-- `cargo test --workspace` green (must include the un-ignored gate-criterion test under default invocation)
+- `cargo test --workspace` green (must include the un-ignored gate-criterion test under default invocation) — predicate (a) receipt
 - `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` green WITHOUT `--ignored` flag (Phase A check)
-- Phase B audit doc lands at expected path
+- Phase B.1 bridge-inventory grep receipt: unallocated-survivor count = 0 — predicate (b) receipt (§1.4 conjunctive)
+- Phase B.2 audit doc lands at expected path with 5-survivor allocation table + Director msg_804cdc93 quote (STRUCTURAL exception receipt per §7.2)
 - §1.8 row #63 status updated to CONSUMER_LANDED + PASSING with all required cites
 - PR body cites:
   - Gate #63 closure (Phase C ledger update)
   - Canvas PR #2831 + Director disposition (PM msg_1e52a61b relaying msg_804cdc93) — the REVISED ratification; explicitly note supersession of prior msg_dbc2e5e0
+  - §1.4 conjunctive predicate (a)+(b) receipts (Phase A pass + Phase B.1 unallocated-survivor-count=0 + Phase B.2 STRUCTURAL allocation per §7.2)
   - 5 anti-patterns receipt-of-compliance (§7)
   - Phase B audit doc path
   - `#[ignore]`-anchor commit `73969f4a9` cite
