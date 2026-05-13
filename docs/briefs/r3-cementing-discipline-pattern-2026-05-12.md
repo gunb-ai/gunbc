@@ -68,9 +68,13 @@ Required same-PR surfaces:
    temporary host receipt remains, with the dissolution trigger and owning lane.
 
 Predicate selection is part of the same checklist: real v2 counterpart rows use
-`DifferentialEquals` or a reviewed frozen-v2 projection; v3-native / helper rows
-use `LensOutputEquals`, `SymbolicCostExprEquals`, or an explicit `Compiles`
-placeholder paired with a named blocker. A `BEHAVIORALLY COMPLETE` flip or new
+`DifferentialEquals` or a reviewed frozen-v2 projection. V3-native
+`BEHAVIORALLY COMPLETE` rows use `LensOutputEquals`,
+`SymbolicCostExprEquals`, or equivalent structural equality over the published
+carrier; a `Compiles` placeholder is not sufficient for a COMPLETE claim.
+Helper or intentionally partial rows may use an explicit `Compiles` placeholder
+only when it is paired with a named blocker, dissolution trigger, and any
+required Rust contract pin. A `BEHAVIORALLY COMPLETE` flip or new
 `LensRegistryEntry` without this receipt stack is non-mergeable for the
 lens-completeness invariant.
 
