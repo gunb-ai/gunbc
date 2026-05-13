@@ -56,12 +56,12 @@ Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` with **two** receipts:
 Worker grep at HEAD for every Class 4 bridge site across **all authority surfaces** — Rust under `src/v3/`, DSL substrate under `dsl/`, and CI/scheduling configuration under `.github/workflows/` (Class 4 is workflow/scheduling; bridge sites are not confined to Rust):
 
 ```
-git grep -nE "ci_workflow|workflow_runtime|WorkflowRuntime|workflow_as_data|CIWorkflowDag|WorkflowTrigger|WorkflowStep|WorkflowMatrix|WorkflowSecret|RunnerResource" \
+git grep -nE "ci_workflow|ci_emission|ci_github_actions|github_actions_workflow|project_github_actions|workflow_runtime|WorkflowRuntime|workflow_as_data|workflow_scheduling|CIWorkflowDag|WorkflowTrigger|WorkflowStep|WorkflowSecret|MatrixStrategy|RunnerSpec|RunnerLabel|concurrency" \
   src/v3/ dsl/ .github/workflows/ \
   | grep -v "^Binary file"
 ```
 
-The grep MUST include `dsl/gunbc/ci_emission.dag` + `dsl/gunbc/ci_github_actions_workflow.dag` + `dsl/extdeps/github/actions.dag` + every other Class 4 authority surface this brief cites at §5 (carrier mapping table) — partial search confined to `src/v3/` would undermine the §1.4 (b) "systematic enumeration" requirement (codex BLOCKING 10885; INVARIANTS P2 / modeling-discipline "Facts flow forward").
+Regex covers (a) §4.4-sketch carrier names (`WorkflowTrigger`/`WorkflowStep`/`WorkflowSecret`/`CIWorkflowDag`), (b) HEAD-canonical types where they differ from §4.4 sketch (`MatrixStrategy` ≡ §4.4 `WorkflowMatrix`; `RunnerSpec`/`RunnerLabel` ≡ §4.4 `RunnerResource` per §5 mapping table), (c) §1.8 ledger-row identifiers (`project_github_actions` for row #100; `workflow_scheduling` for row #63; `workflow_runtime` for row #99), (d) file-name stems (`ci_emission`/`ci_github_actions`/`github_actions_workflow`), (e) the GitHub Actions scheduling primitive `concurrency`. The grep MUST scope `dsl/gunbc/ci_emission.dag` + `dsl/gunbc/ci_github_actions_workflow.dag` + `dsl/extdeps/github/actions.dag` + `.github/workflows/*.yml` + every other Class 4 authority surface this brief cites at §5 — partial search confined to `src/v3/` or narrow regex would undermine §1.4 (b) "systematic enumeration" (codex BLOCKING 10885 + worker:59; INVARIANTS P2 / modeling-discipline "Facts flow forward").
 
 For EACH hit, classify as one of:
 - **Pass-through**: site executes through v3 cleanly (counts toward predicate (b) GREEN; cite line)
