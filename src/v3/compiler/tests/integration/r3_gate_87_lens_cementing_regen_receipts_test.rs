@@ -10,6 +10,8 @@
 //! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
+//! `parallelism` is v3-native / behavioral-partial, so its `.dag` harness stays an explicit
+//! `Compiles` placeholder until `WorkflowParallelismReport` exposes typed pairwise evidence.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
@@ -44,10 +46,11 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use v3_compiler::lens_parallelism::analyze_parallelism;
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{Dag, ParallelismUnsupportedKind, WorkflowParallelismReport};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -199,6 +202,26 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_on_literal_program() {
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
+    let root = dag
+        .nodes()
+        .last()
+        .unwrap_or_else(|| panic!("literal program should lower at least one node"))
+        .id();
+    let got = analyze_parallelism(&dag, root);
+    assert!(
+        matches!(
+            got,
+            WorkflowParallelismReport::ParallelismUnsupported(detail)
+                if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+        ),
+        "literal bind has no Lane-2 workflow projection, got {got:?}"
+    );
 }
 
 #[test]
