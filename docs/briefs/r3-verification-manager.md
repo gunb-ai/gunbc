@@ -8,7 +8,7 @@
 
 | Actual-close item | Verification obligation | Close predicate |
 |---|---|---|
-| Gap 2 — L5 cross-target consistency / gate #15 | Land the certification corpus and the three-target Rust/Python/Go runtime-behavior parity assertion. Coordinate with Substrate only for missing carrier/emitter support; the gate remains Verification-owned. | `cargo test --release -p v3-compiler --test l5_cross_target_consistency` passes with `N > 0` corpus programs and all three Shape-A targets agreeing on runtime behavior. |
+| Gap 2 — L5 cross-target consistency / gate #15 | Land the certification corpus and the three-target Rust/Python/Go runtime-behavior parity assertion. Coordinate with Substrate only for missing carrier/emitter support; the gate remains Verification-owned. | `cargo test --release -p v3-compiler --test integration l5_` passes with `N > 0` corpus programs and all three Shape-A targets agreeing on runtime behavior. |
 | Gap 5 — tests-as-data completeness / gates #84 + #85 | Drive Cluster M Phase 3 bulk-port to `.dag` `TestClaim` or generated test artifacts, including the generator-manifest authority for surviving generated Rust tests. | `EXPECTED_HAND_AUTHORED_TEST` is empty in `sg0_census_test.rs`; the generator manifest covers every surviving Rust test file and regeneration byte-comparison passes; SuiteClaim wrapper consumer for #85 is landed. |
 | T-WAD Slice 7 — affected-set integration | Consume the affected-set lens output in the BinaryShim CI path once Slice 5 exists; remove Layer-2 path-regex workflow selection authority from remaining workflow files. | `ci_uses_affected_set_selection` is PASSING: BinaryShim CI selection is driven by affected-set lens output, with no path-regex `if:` bridge remaining as CI authority. |
 
