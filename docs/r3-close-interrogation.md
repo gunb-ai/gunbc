@@ -372,6 +372,66 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 - Does R3 close require gate #103 CONSUMER_LANDED + PASSING, OR is DECLARED status with CI-integration deferred to the slice cascade?
 - Are the 4 in-R3 lenses (complexity / cost / parallelism / effect_enum) sufficient dimensions for the union, or does the affected-set need to surface user-defined-lens dimensions too?
 
+#### §2.5.F.1 Minimality definition + examples table
+
+**Minimality definition** (`docs/design-affected-set-lens.md:44`):
+
+> "Strictly smaller than transitive-downstream — but only relative to the structural dimensions whose values actually changed. If `delta(M, dim_M)` can be proven empty by the lens → consumer N reading `dim_M` is excluded from the affected-set for that dimension. If `delta(M, dim_M)` cannot be proven empty → consumer N is included by default (fail-closed)."
+
+"Minimal" = **minimal among soundly-derivable affected-sets given the lens's provability surface**. NOT theoretically-optimal (which would need omniscient delta-proof). The lens fails OVER-inclusive (sound but not theoretically-complete), never UNDER-inclusive — fail-closed always.
+
+**Soundness**: every node in the set has at least one dimension where `delta ≠ ∅` OR `delta = UNKNOWN`. (No false-positive over-inclusion when delta IS provably empty.)
+
+**Completeness**: no node with `delta ≠ ∅` is excluded. (No false-negative under-inclusion.)
+
+**Comprehensive examples** — normal code-change scenarios + expected affected-set behavior:
+
+| # | Change scenario | Expected affected-set | Why (which dimension) |
+|---|---|---|---|
+| 1 | **Whitespace / formatting only** in function body | **∅** | Every dimension provably-unchanged at AST/Node-tree level |
+| 2 | **Comment-only** changes (docstrings, inline comments) | **∅** | Comments are not structural; no Node-tree delta |
+| 3 | **Identity-only change** (rename local variable; rename function with no callers) | **∅** | Per design doc §63: "identity change alone is NOT sufficient for propagation" |
+| 4 | **Function rename WITH callers** (rename `f` → `g` everywhere) | **∅ on dimension surface** | If all callers update simultaneously, dimension shapes unchanged; identity change is invisible structurally |
+| 5 | **Pure value change** (constant 5 → 7) | Consumers reading **value** dimension | Value-dim consumers flagged; cost/complexity/effect-dim consumers NOT flagged (unchanged) |
+| 6 | **Algorithm swap, same complexity class** (different O(n log n) sort) | **∅** on cost dim; ∅ on complexity dim | Cost + complexity dimensions unchanged; effect may differ if I/O patterns shift |
+| 7 | **Algorithm swap, complexity class changed** (O(n²) → O(n log n)) | Consumers reading **cost / complexity** dim | Value-dim consumers NOT flagged (return values same); cost/complexity-asserting consumers flagged |
+| 8 | **Effect added** (pure → I/O — e.g., logging) | Consumers reading **effect** dim | Purity-asserting consumers flagged; value/cost-only consumers not |
+| 9 | **Effect removed** (I/O removed) | Consumers reading **effect** dim | Symmetric to #8 |
+| 10 | **Type signature change — argument added (required)** | Every **caller** | Type dim changed at the function's interface; every caller's call-site type-checks against the new shape |
+| 11 | **Type signature change — argument added (optional with default)** | Callers that rely on **arity-exact** assertions | Most callers ∅; only callers asserting strict arity flagged |
+| 12 | **Type signature change — argument removed** | Every caller | Symmetric to #10 |
+| 13 | **Field added to struct/type** | Consumers reading the **type's structural shape** | Structural-shape consumers flagged; consumers reading only specific other fields NOT flagged |
+| 14 | **Field removed from struct/type** | Consumers reading **that specific field** | Surgical scope; other-field consumers untouched |
+| 15 | **Field renamed** (with all references updated) | **∅** on dimension surface | If atomic rename, no structural-shape delta (just naming); per identity-vs-dimension distinction |
+| 16 | **Field type changed** (e.g., Int → Nat) | Consumers reading that field's **type** dim | Type-dim consumers; algebra-inhabitance consumers may surface (per §1.6 grounding-completeness) |
+| 17 | **Refactor: extract function** (one fn → two with same external surface) | **∅** | External surface unchanged on all dimensions; internal structure is private |
+| 18 | **Refactor: inline function** (collapse callsite) | **∅** | Symmetric to #17 |
+| 19 | **New code added** (new function with no callers yet) | **∅** | No consumers exist; affected-set is trivially empty |
+| 20 | **New code added WITH consumer call** | The consumer(s) that newly reference it | New edge in dependency graph; consumer's structural-shape may have changed |
+| 21 | **Deletion of unused code** (no references) | **∅** | No consumers; trivially safe |
+| 22 | **Deletion of code WITH consumers** (compile-error class) | Compile error; NOT affected-set's surface | The affected-set lens runs over compilable Dag pairs; uncompilable post-deletion = different surface (Diagnostic-class) |
+| 23 | **Parallelism shape change** (sequential → parallel-marked) | Consumers reading **parallelism** dim | Parallelism-asserting consumers flagged; others not |
+| 24 | **Test-only change** (test body / new test, no production code touched) | The changed test itself (in affected-set) | Tests don't propagate FORWARD (no production consumers of tests); test's affected-set entry triggers re-run, not transitive expansion |
+| 25 | **Doc-only change** (`.md` files, READMEs) | **∅** for code consumers; affects only Markdown-emit consumers | Per `feedback_no_textual_enforcement_bridges`: docs are not structural |
+| 26 | **CI / build config change** (`ci.yml`, `Cargo.toml`) | Affected-set as defined for **workflow substrate** (per gate #103 Slice 7 + T-WAD) | Workflow-as-data: CI changes have their own affected-set lens over the workflow graph |
+| 27 | **Cross-module import added / removed** | If import provides new substrate fact, consumers of that fact flagged | Typical case: re-import alone is identity-class (∅); substrate-providing import affects the introduced/removed facts' consumers |
+| 28 | **Dependency version bump** (Cargo.toml `serde 1.0.X → 1.0.Y`) | Consumers reading the dep's **structural surface** that changed | Depends on what changed in the dep; lens reads the dep's substrate facts post-update |
+| 29 | **Generated code regeneration** (regen `_generated.rs` from `.dag` source) | Same as source `.dag` change's affected-set | Generated outputs are derived; affected-set is computed from the source delta, not the regen artifact |
+| 30 | **Opaque `ExecuteCommand` / extdeps boundary modification** | **Fail-closed include downstream** | Lens can't prove delta empty across opaque boundary → over-inclusive but SAFE per §63 fail-closed discipline |
+| 31 | **PB-Runtime kernel change** | **Fail-closed include downstream** | Bounded kernel changes can affect any consumer; over-inclusive but safe |
+| 32 | **Compile-time-only change** (e.g., add `#[ignore]` to a test) | The changed test only; **∅** for production | Compile-time meta-attribute change; production-runtime dim unchanged |
+| 33 | **Lens / cementing-test addition** (add a new `.dag` lens) | Programs that the lens NOW reports on (run the lens on every `.dag` program → affected-set of the lens's classification function) | Lens addition is a NEW dimension; the affected-set for "did dimension X change" is over the NEW dim's read surface |
+| 34 | **Algebra-law refinement** (e.g., new `OrderedRing` instance for type T) | Consumers reading **algebra-inhabitance** of T | Per §1.6 grounding-completeness + §3.6 L7 algebraic-laws: algebra-inhabitance consumers flagged |
+| 35 | **Substrate-shape extension** (e.g., new variant in a sum type) | Consumers pattern-matching on that sum type **without `_` wildcard** | Exhaustiveness-asserting consumers flagged; wildcard consumers may be ∅ |
+
+**Falsification-probe pattern**: for any scenario in the table, the lens's correctness is verified by:
+
+- **Soundness probe**: scenario expected to produce ∅ should produce ∅ at HEAD; if non-empty, identify over-inclusion class
+- **Completeness probe**: scenario expected to flag consumers should flag the EXPECTED set (not a strict subset); if missing, identify under-inclusion class
+- **Provability boundary probe**: scenarios marked "fail-closed include downstream" should produce non-minimal but SAFE affected-sets; verify they don't UNDER-include (under-inclusion is the unsafe failure mode)
+
+**Honest framing** — as the lens's substrate-coverage improves (more dimensions provably-decidable), the affected-set shrinks toward theoretical-minimum. Current R3-scope substrate gives current observable minimum. R4 extensions (richer dimension grammar, finer-grained extdeps inhabitance) tighten it further. R3-close acceptance: cite affected-set sizes for canonical scenarios + identify the gap between observable and theoretical minimum.
+
 **PM read** (provisional): the affected-set lens is THE structural cash for cross-module subtle-dep detection — without it, the §2.5.E cross-module bug classes are theoretically-impossible but operationally-unverified. With it, the static (compile-time) lens read + the diff-driven (affected-set) lens read compose to give *both* "this single snapshot is consistent" AND "this change preserves consistency." That's the omni-correctness story the operator's directive 2026-05-13 was probing.
 
 ### §2.6 Substrate-shape specifics (6 connectives + 5 behaviors + C1 stop-signal)
