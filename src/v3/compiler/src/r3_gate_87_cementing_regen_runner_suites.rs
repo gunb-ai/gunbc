@@ -148,7 +148,8 @@ pub struct R3Gate87CementingRegenPlaceholderDissolutionRow {
 
 /// Dissolution ledger for gate-#87 `Compiles` cementing harnesses — must stay in lockstep with
 /// `predicate: Compiles` rows in [`R3_GATE_87_CEMENTING_REGEN_SUITES`].
-pub const R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER: &[R3Gate87CementingRegenPlaceholderDissolutionRow] = &[
+pub const R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER:
+    &[R3Gate87CementingRegenPlaceholderDissolutionRow] = &[
     R3Gate87CementingRegenPlaceholderDissolutionRow {
         lens_registry_name: "infer_helpers",
         harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
@@ -176,11 +177,46 @@ pub const R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER: &[R3Gate87C
 mod r3_gate_87_placeholder_dissolution_ledger_tests {
     use super::*;
 
+    /// Paired Rust receipts for gate-#87 placeholder harnesses (`INVARIANTS` P5).
+    ///
+    /// `temporary_rust_receipt_fn` in [`R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER`]
+    /// must name a real `#[test]` in this file — not only a string mention in the `.dag` harness.
+    const R3_GATE_87_LENS_CEMENTING_REGEN_RECEIPTS_TEST_RS: &str =
+        include_str!("../tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs");
+
     fn suite_source_for_harness_path(path: &str) -> &'static str {
         R3_GATE_87_CEMENTING_REGEN_SUITES
             .iter()
             .find_map(|(source, p, _, _)| (*p == path).then_some(*source))
-            .unwrap_or_else(|| panic!("harness path not in R3_GATE_87_CEMENTING_REGEN_SUITES: {path}"))
+            .unwrap_or_else(|| {
+                panic!("harness path not in R3_GATE_87_CEMENTING_REGEN_SUITES: {path}")
+            })
+    }
+
+    fn assert_placeholder_rust_receipt_is_live_test_fn(fn_name: &str) {
+        let needle = format!("fn {fn_name}(");
+        let Some(fn_pos) = R3_GATE_87_LENS_CEMENTING_REGEN_RECEIPTS_TEST_RS.find(&needle) else {
+            panic!(
+                "ledger `temporary_rust_receipt_fn` `{fn_name}` must exist as a `fn` item in \
+                 `r3_gate_87_lens_cementing_regen_receipts_test.rs` (a `.dag` comment citation alone \
+                 is not a receipt ratchet)"
+            );
+        };
+        let before = &R3_GATE_87_LENS_CEMENTING_REGEN_RECEIPTS_TEST_RS[..fn_pos];
+        let Some(attr_pos) = before.rfind("#[test]") else {
+            panic!(
+                "ledger `temporary_rust_receipt_fn` `{fn_name}` must be a `#[test]` function in \
+                 `r3_gate_87_lens_cementing_regen_receipts_test.rs`"
+            );
+        };
+        let after_attr = attr_pos + "#[test]".len();
+        let gap = &R3_GATE_87_LENS_CEMENTING_REGEN_RECEIPTS_TEST_RS[after_attr..fn_pos];
+        assert!(
+            gap.chars().all(|c| c.is_whitespace()),
+            "ledger `temporary_rust_receipt_fn` `{fn_name}` must be decorated directly by `#[test]` \
+             in `r3_gate_87_lens_cementing_regen_receipts_test.rs` (gap was non-whitespace-only: \
+             {gap:?})"
+        );
     }
 
     #[test]
@@ -190,10 +226,11 @@ mod r3_gate_87_placeholder_dissolution_ledger_tests {
             .filter(|(source, _, _, _)| source.contains("predicate: Compiles"))
             .map(|(_, path, _, _)| *path)
             .collect();
-        let ledger_paths: BTreeSet<&'static str> = R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER
-            .iter()
-            .map(|row| row.harness_path)
-            .collect();
+        let ledger_paths: BTreeSet<&'static str> =
+            R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER
+                .iter()
+                .map(|row| row.harness_path)
+                .collect();
         assert_eq!(
             compiles_paths, ledger_paths,
             "`R3_GATE_87_CEMENTING_REGEN_PLACEHOLDER_DISSOLUTION_LEDGER` must list exactly the \
@@ -233,6 +270,7 @@ mod r3_gate_87_placeholder_dissolution_ledger_tests {
                 row.harness_path,
                 row.temporary_rust_receipt_fn
             );
+            assert_placeholder_rust_receipt_is_live_test_fn(row.temporary_rust_receipt_fn);
         }
     }
 }
