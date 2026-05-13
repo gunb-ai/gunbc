@@ -26,7 +26,7 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 
 ## Non-Complete Registered Rows
 
-These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
+These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), `lower_helpers` (`N/A`), and `parallelism` (`PARTIAL`). Gate-#87 still requires each registry row to have a runner-wired `.dag` receipt; non-complete rows may use an explicit temporary `Compiles` placeholder with a per-file dissolution trigger rather than a behavioral completion claim.
 
 ## Ratchets
 
