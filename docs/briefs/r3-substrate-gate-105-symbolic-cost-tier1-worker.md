@@ -23,8 +23,8 @@ This brief encodes the ratified Tier-1 4-addition + 1-collapse + 1-promotion str
 Net 7 → **9** SymbolicCost variants:
 - **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational where degree > 0` (subsumes √n, ∛n, n^(2/3), non-Int 2.373, AND the absorbed Linear case at degree=1)
 - **REMOVE**: `LinearCost(SizeVariable)` — atomic migration to `PolynomialCost { var: v, degree: 1 }` (Q2-Y)
-- **ADD**: `PolyLogCost { var: SizeVariable, exponent: Int }` for log^k n
-- **ADD**: `ExponentialCost { base: Int, var: SizeVariable }` for c^n with c ≥ 2
+- **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n cited Tier-1 AKS case)
+- **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
 - **ADD**: `FactorialCost { var: SizeVariable }` for n!
 
 Sibling substrate (Q1 — Rational ordering; **Director RATIFIED Q1-α per msg_676ad4e7 2026-05-13**, retracting prior Q1-c msg_d86a5987):
@@ -94,8 +94,10 @@ Replace `src/v3/std/algebra.dag:60-72` block with (Director-ratified verbatim pe
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
 // escalate. Tier-1 textbook coverage (gate #105 carrier-extension
 // 2026-05-13, PR #<this PR>) lands 9 variants covering ConstantCost /
-// PolynomialCost(Rational > 0) / PolyLogCost / LogCost / ProductCost /
-// SumCost / ExponentialCost / FactorialCost / UnknownCost — sufficient
+// PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent:
+// PolyLogExponent (Rational > 1) } / LogCost / ProductCost / SumCost /
+// ExponentialCost { base: ExponentialBase (Int ≥ 2) } / FactorialCost /
+// UnknownCost — sufficient
 // for the asymptotic surface that R3-load-bearing lenses reason about.
 // Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is
 // R4-DEFERRED per Director ratification msg_d86a5987; new variants in
@@ -117,20 +119,40 @@ Before reshaping SymbolicCost, introduce three refinement carriers that make ill
 // Mirror of DegreeAtLeastTwo (lines 171-173): Peano-style inductive
 // carrier where illegal cases are structurally unrepresentable, not
 // normalizer-cleaned-up.
-type IntAtLeastTwo
-  = IntTwo
-  | IntSuccessor { previous: IntAtLeastTwo }
+// ExponentialBase: Int ≥ 2 (admits 2, 3, 4, ...; rejects 0, 1, negative).
+// Strict-mirror of DegreeAtLeastTwo precedent.
+type ExponentialBase
+  = ExponentialBaseTwo
+  | ExponentialBaseSuccessor { previous: ExponentialBase }
 
+// PositiveInt: strict-positive Int (admits 1, 2, ...; rejects 0, negative).
+// Used by PositiveRational realization.
 type PositiveInt
   = One
   | PositiveSuccessor { previous: PositiveInt }
 
-// PositiveRational: strict-positive Rational. Constructor accepts only
-// numerator > 0 + denominator > 0 (excluding 0 and negative). Realization
-// follows Rational compare via existing Field<FieldOfFractions<Int>>.compare (no OrderedField introduction; Q1-α).
+// PositiveRational: strict-positive Rational (numerator/denominator both
+// PositiveInt). Used as PolynomialCost.degree (any positive degree valid,
+// including degree=1 absorbing former LinearCost).
 type PositiveRational {
   numerator: PositiveInt
   denominator: PositiveInt
+}
+
+// PolyLogExponent: Rational > 1 (admits 2, 7.5, 3/2, ...; rejects ≤ 1).
+// Rejects exponent=1 to avoid semantic collision with LogCost.
+// Rejects exponent=0 to avoid collapse to ConstantCost.
+// Rational rather than Int because Tier-1 cites textbook log^7.5 n (AKS).
+// Implementation: PositiveRational with structural invariant numerator >
+// denominator. Worker authors as inductive carrier or refinement-typed
+// PositiveRational subset per DSL grammar support.
+type PolyLogExponent {
+  // numerator > denominator > 0 (strictly greater than 1)
+  numerator: PositiveInt
+  denominator: PositiveInt
+  // Invariant: numerator > denominator. Worker grep-verifies DSL refinement
+  // grammar; if not available, expresses as separate inductive carrier
+  // mirroring ExponentialBase shape (RationalGreaterThanOne).
 }
 ```
 
@@ -144,11 +166,11 @@ Replace `src/v3/std/algebra.dag:190-197` with:
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
   | PolynomialCost { var: SizeVariable, degree: PositiveRational }   // Q2-Y: absorbs LinearCost via degree=1; degree > 0 by carrier
-  | PolyLogCost { var: SizeVariable, exponent: PositiveInt }         // NEW: log^k n; exponent ≥ 1 by carrier
+  | PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }     // NEW: log^k n; exponent > 1 by carrier (admits 2, 3/2, 7.5; rejects 0/1 collapses)
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
   | LogCost(SizeVariable)
-  | ExponentialCost { base: IntAtLeastTwo, var: SizeVariable }       // NEW: c^n with c ≥ 2 by carrier
+  | ExponentialCost { base: ExponentialBase, var: SizeVariable }     // NEW: c^n with c ≥ 2 by carrier
   | FactorialCost { var: SizeVariable }                              // NEW: n!
   | UnknownCost(String)
 ```
@@ -157,8 +179,8 @@ type SymbolicCost inhabits Semiring<SymbolicCost>
 
 **Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
 - `PolynomialCost.degree: PositiveRational` — `degree ≤ 0` is structurally impossible
-- `PolyLogCost.exponent: PositiveInt` — `exponent ≤ 0` is structurally impossible
-- `ExponentialCost.base: IntAtLeastTwo` — `base ≤ 1` is structurally impossible
+- `PolyLogCost.exponent: PolyLogExponent` — `exponent ≤ 1` is structurally impossible (excludes 0=ConstantCost-collapse + 1=LogCost-collapse semantic dups); supports rational exponents like log^7.5 n (AKS primality cited Tier-1 case)
+- `ExponentialCost.base: ExponentialBase` — `base ≤ 1` is structurally impossible (excludes 0=degenerate + 1=ConstantCost-collapse)
 
 Reviewers MUST flag any attempt to use raw `Rational` / `Int` for these fields.
 
@@ -221,7 +243,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
-## §11. 8 anti-patterns (6 Director-enumerated + 2 Mgr-derived per canvas §10)
+## §11. 9 anti-patterns (7 Director-enumerated/pending + 2 Mgr-derived per canvas §10)
 
 PR body MUST cite each verbatim + assert receipt-of-compliance:
 
@@ -231,8 +253,9 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-α addresses via existing Field.compare
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation)
 6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering` — lens-local predicate derivation from Ordering pattern-match is the canonical path
-7. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
-8. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+7. **Pending Director ratification per operator BLOCKING PR #2824:333**: Tier-1 variant constructed with raw Int/Rational exponent/base admitting illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost; degree≤0 for PolynomialCost) bypassing refinement type — PolyLogExponent/ExponentialBase/PositiveRational required at carrier level (Practice 2/6)
+8. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
+9. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §12. 5 reviewer ratchets (Director-enumerated for PR review)
 
@@ -240,7 +263,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
 4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
-5. **All 8 anti-patterns enforceable** at PR review
+5. **All 9 anti-patterns enforceable** at PR review
 
 ## §13. Verification
 
@@ -250,7 +273,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
   - Canvas PR #2828 + Director disposition (PM msg_a055c38b) verbatim Q1-Q5 + §8
-  - 8 anti-patterns receipt-of-compliance (§11)
+  - 9 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
 ## §14. Out of scope
@@ -282,7 +305,7 @@ STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
 
-8 anti-patterns receipt-of-compliance:
+9 anti-patterns receipt-of-compliance:
 [enumerate each + cite that the implementation does not violate it]
 
 5 reviewer ratchets compliance:

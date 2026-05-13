@@ -26,8 +26,8 @@ PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker b
 ## §1. Ratified Tier 1 variant list (verbatim per Director msg_ad5e934d)
 
 1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational }` (subsumes √n = n^(1/2), ∛n = n^(1/3), n^(2/3), and non-integer poly n^2.373 + n^2.807, plus existing integer poly)
-2. **ADD**: `PolyLogCost { var: SizeVariable, exponent: Int }` for log² n, log^k n
-3. **ADD**: `ExponentialCost { base: Int, var: SizeVariable }` for 2^n, c^n with c ≥ 2
+2. **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log² n, log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n / AKS Tier-1 case per operator BLOCKING PR #2824:333)
+3. **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for 2^n, c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
 4. **ADD**: `FactorialCost { var: SizeVariable }` for n!
 
 Net `src/v3/std/algebra.dag:190-197` final variant count: **9** (was 7).
@@ -202,13 +202,14 @@ Current `src/v3/std/algebra.dag:69-72`:
 > STOP SIGNAL: wanting an eighth variant. Pause and escalate rather than extending; the thesis claim is that seven covers the asymptotic surface, and any new variant should carry its own dissolution receipt.
 
 **Post-extension proposed text** (Mgr recommendation):
-> STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 9 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PositiveInt } / LogCost / ProductCost / SumCost / ExponentialCost { base: IntAtLeastTwo } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
+> STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 9 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PolyLogExponent } / LogCost / ProductCost / SumCost / ExponentialCost { base: ExponentialBase } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
 
 **Type-level refinement carriers** (per codex BLOCKING on PR #2828 — `docs/modeling-discipline.md` Practice 2 + Practice 6: invariants encoded in type system, NOT fold normalizer):
 
 - `PositiveRational` — strict-positive Rational; constructor accepts only `> 0` values. Follows `DegreeAtLeastTwo` precedent at `src/v3/std/algebra.dag:171-173` (inductive carrier where illegal cases are structurally unrepresentable).
-- `PositiveInt` — strict-positive Int; same Peano-style precedent.
-- `IntAtLeastTwo` — Int ≥ 2; strict-mirror of `DegreeAtLeastTwo` shape.
+- `PositiveInt` — strict-positive Int; same Peano-style precedent. Used by `PositiveRational`.
+- `ExponentialBase` — Int ≥ 2; strict-mirror of `DegreeAtLeastTwo` shape. Used by `ExponentialCost.base`.
+- `PolyLogExponent` — Rational > 1; required to support log^7.5 n (AKS Tier-1 case) per operator BLOCKING PR #2824:333; excludes exponent=0 (collapse to ConstantCost) + exponent=1 (collapse to LogCost). Used by `PolyLogCost.exponent`.
 
 These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` **structurally unrepresentable** at the carrier level — no normalizer-time enforcement required. Aligns with `feedback_state_space_vs_behavioral_invariants`.
 
@@ -248,7 +249,7 @@ For each Tier-1 addition under §1:
 
 No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B revival (RootCost as separate variant — Practice-4 RED)" — explicitly NOT done; roots are PolynomialCost(degree=1/2 etc.).
 
-## §10. Anti-patterns (6 Director-enumerated + 2 derived)
+## §10. Anti-patterns (7 Director-enumerated/pending + 2 Mgr-derived)
 
 ### Director-enumerated
 
@@ -257,7 +258,8 @@ No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B reviva
 3. Linear-Polynomial split decision authored without canvas (substrate-shape question goes through Mgr) — this canvas IS the §4 Q2 disposition
 4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-α addresses via existing Field.compare
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation) — §6 STOP-SIGNAL text encodes
-6. **NEW (Director-ratified msg_676ad4e7)**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering`. Lens-local predicate derivation from Ordering pattern-match is the canonical path. — §3 Q1-α addresses
+6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering`. Lens-local predicate derivation from Ordering pattern-match is the canonical path. — §3 Q1-α addresses
+7. **NEW (pending Director ratification per operator BLOCKING PR #2824:333)**: Tier-1 variant constructed with raw Int/Rational exponent/base that admits illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost; degree≤0 for PolynomialCost) bypassing the refinement type. PolyLogExponent/ExponentialBase/PositiveRational are required at the type level (Practice 2/6; illegal-states-unrepresentable).
 
 ### Mgr-derived (encoded for worker review)
 
