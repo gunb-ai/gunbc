@@ -153,7 +153,7 @@ type PolyLogExponent = Rational where gt_one
 - `dsl/std/integer.dag:171-181` precedent (`PositiveInt = Nat where gt_zero`)
 - `src/v3/compiler/src/lower.rs:798-862` KNOWN_PREDICATES registry
 
-These refinements make `exponent ≤ 1` (PolyLogCost) and `base ≤ 1` (ExponentialCost) structurally impossible to construct — no fold-time enforcement required, no new authority. PolynomialCost.degree intentionally has no such refinement: Q6 signed Rational admits negative degrees for asymptotic-decay coverage.
+These refinements make `exponent ≤ 1` (PolyLogCost) and `base ≤ 1` (ExponentialCost) structurally impossible to construct — no fold-time enforcement required, no new authority. PolynomialCost.degree has **no positivity refinement** (admits ± per Q6 sign-admission msg_2c1bfb0e) but DOES carry the `where nonzero` refinement (msg_b80bcaa8 Practice-2 zero-exclusion to prevent ConstantCost collision).
 
 **HARD STOP**: do NOT author PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below). (PositiveRational is no longer in scope per Q6 scope-extension; PolynomialCost.degree is plain signed Rational.)
 

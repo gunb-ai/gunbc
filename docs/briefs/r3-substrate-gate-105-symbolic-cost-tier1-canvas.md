@@ -282,7 +282,7 @@ For each Tier-1 addition under §1:
 
 No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B revival (RootCost as separate variant — Practice-4 RED)" — explicitly NOT done; roots are PolynomialCost(degree=1/2 etc.).
 
-## §10. Anti-patterns (7 Director-enumerated/pending + 3 Mgr-derived)
+## §10. Anti-patterns (7 Director-enumerated + 5 Mgr-derived; 12 total)
 
 ### Director-enumerated
 
