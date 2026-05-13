@@ -34,7 +34,9 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use v3_compiler::generated_files::GENERATED_FILES;
+use v3_compiler::generated_files::{
+    GENERATED_FILES, GENERATED_RUST_TEST_FILES, GENERATED_RUST_TEST_FILE_BYTES,
+};
 
 // Relative to workspace root; mirrors the single census root
 // informally named in `dsl/gunbc/compiler.dag`.
@@ -349,418 +351,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
-const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
-    "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
-    "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
-    "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
-    "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
-    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
-    "src/v3/compiler/tests/determinism_test.rs",
-    "src/v3/compiler/tests/integration.rs",
-    "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
-    // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
-    // cycle over the Anthropic Messages wire surface using a deterministic mock.
-    "src/v3/compiler/tests/integration/anthropic_messages_wire_demo_test.rs",
-    // T-Ground services.dag PR-β anthropic_operations Phase 1 pilot
-    // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
-    "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
-    "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
-    // R3 coproduct slice 2: hermetic JSON for `tool_result.content` scalar vs block array.
-    "src/v3/compiler/tests/integration/anthropic_tool_result_wire_demo_test.rs",
-    "src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs",
-    // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
-    // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
-    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
-    // R2 PB canonical-lens bridge ratchet (PR #1183 — disposition for
-    // `bridge_canonical_lens_name_dispatch_retired`). Pins the remaining
-    // `include_str!` / name-dispatch surface in `test_runner.rs` per
-    // `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`. .dag-port
-    // / dissolution path is the same gate that closes the bridge itself
-    // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
-    // until then, this hand-Rust ratchet IS the slice's structural gate.
-    "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
-    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
-    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
-    // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
-    // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
-    // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
-    // report carrier (`Gate73_ReportPredicateCarriers`).
-    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture while the
-    // host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass. Gate #80 Band-C
-    // symbolic-cost cementing moved to
-    // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
-    // `cost_symbolic` COMPLETE receipt.
-    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
-    // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
-    "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
-    "src/v3/compiler/tests/integration/common/budgeted.rs",
-    "src/v3/compiler/tests/integration/common/cached_compile.rs",
-    "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
-    // E6-G1.a Option 3 static lens mechanism (#1853 worker brief + #1857):
-    // `find_list_empty_constructor_tag` helper for opaque-`Dag` harness tags
-    // (P1/P5 compile-time brief receipts live in `e6_g1a_option3_static_lens_test.rs`).
-    "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
-    "src/v3/compiler/tests/integration/common/mod.rs",
-    "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
-    "src/v3/compiler/tests/integration/common/rust_comment_strip.rs",
-    "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
-    // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
-    // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
-    "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
-    // R3 gates #40/#70: host-side `SymbolicCost` → v3 data-expression serializer for
-    // `SymbolicCostExprEquals` dynamic oracle fixtures (`m1_5_verification_test.rs`); stays
-    // until testgen/reflection can author the same `data …: SymbolicCost = …` literals without
-    // a Rust mirror of the algebra surface syntax.
-    "src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs",
-    // R3 gate #87: unit tests for `tests/integration.rs` wiring scanners (split from retired
-    // `cementing_lens_registry_dispatch_test.rs`).
-    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
-    // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
-    // Director Option 2 RATIFIED at
-    // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
-    // `cross_target_coverage.dag` (six type declarations exist;
-    // `emission_path_projections` Phase-1 populated with 41 rows —
-    // Rust 13 / Python 16 / Go 12). Stays hand-Rust alongside
-    // `method_template_contract_test.rs` until testgen covers
-    // reflected-Dag structural assertions over std/ row authorities.
-    "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
-    // R4 ctrl-migration Wave-1 catalog #8 (`dsl/ctrl/pr_digests.dag`): lexer + structural
-    // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
-    // way as expression programs (see INVARIANTS SG-0 receipt row).
-    "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
-    // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
-    // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
-    // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
-    "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
-    "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
-    // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing
-    // test (PR #1928). Per Director Q1(a) RATIFIED at gunbc#1739
-    // #issuecomment-4392562911. Hand-authored entry added per SG-0 census
-    // discipline; integration-test home (matches `mini_lens` /
-    // `e6_g1a_option3_static_lens_test` precedent for fixture-bound lens
-    // instances).
-    "src/v3/compiler/tests/integration/emission_provenance_lens_test.rs",
-    // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
-    // Path 2): hand-Rust integration test pinning
-    // `Dag::rust_pilot_primitives()` type-structure walk + the
-    // `ValueBody::Unparsed` boundary that flips when R2 T-Substrate's
-    // 4th sub-lane lands top-level `ValueBody::List`/aggregate.
-    // Dissolves into testgen authority when the testgen path covers
-    // the dsl/extdeps loader surface.
-    "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
-    // Ctrl-Migration Emission-Targets Phase 3 HTTP/SQL extdeps: narrow host-side
-    // parser receipt for `dsl/extdeps/transports/rest.dag` and
-    // `dsl/extdeps/transports/sql.dag`. Explicit P5 receipt lives
-    // in INVARIANTS.md § "SG-0 hand-authored integration test receipts"; dissolves
-    // when extdeps transport files are covered by a `.dag`-native parse/authority
-    // suite or generated test harness.
-    "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
-    "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
-    "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
-    // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
-    // hand-Rust receipt proving the actual idempotency lens instance must
-    // wait for generic function-valued data-field matching, while imported
-    // sum-return helper calls are not the current blocker. No substrate
-    // instance lands here; dissolves into the real idempotency Lens<C>
-    // instance/equivalence ratchet once the lowerer prerequisite is fixed.
-    "src/v3/compiler/tests/integration/idempotency_lens_instance_blocker_test.rs",
-    // T-Substrate cardinality subset for int literals: behavior receipt for
-    // range narrowing, explicit Int64 default, and MagnitudeOutOfRange.
-    // Dissolves into .dag-native/testgen coverage when diagnostic assertions
-    // can name this case without a host-side integration harness.
-    "src/v3/compiler/tests/integration/int_literal_cardinality_test.rs",
-    "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
-    "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
-    "src/v3/compiler/tests/integration/lane2_stage_2b_db18_test.rs",
-    "src/v3/compiler/tests/integration/lane2_stage_2c_db15_test.rs",
-    "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
-    "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
-    "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
-    // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
-    // receipt for the four-lens parity snapshot while LensOutputEquals /
-    // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
-    // tracked by `docs/r3-program-plan.md` §1.8 row 73, T-Tests-As-Data
-    // rows 84/87, and `ROADMAP.md` §"Post-merge debt" row "Hand-Rust census" /
-    // T-PB-B test subset; delete with the module's `tests/integration.rs`
-    // registration.
-    "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
-    // T-CostLens-Composition Slice 1a.1 (#2141 ε scope per gunbc#2181 ratification):
-    // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier
-    // consumer of `declaration_by_name` (introduced by Slice 1a.0 / PR #2194).
-    // P2 same-PR-consumer-evidence per codex BLOCKING surfaced post-merge.
-    //
-    // **Dissolution trigger (P5)**: retires when T-Tests-As-Data infrastructure
-    // expresses ".dag-fn-resolution-against-bootstrap" assertions and
-    // `cost_lens_demonstration` as structural `TestClaim` data instead of
-    // hand-Rust integration tests.
-    //
-    // **P5 explicit deferral receipt**: lane = T-Tests-As-Data-Completeness /
-    // T-PB-B test-census dissolution; concrete ROADMAP rows =
-    // `ROADMAP.md` T-PB-B test subset row at `ROADMAP.md:170` (Rust-authored
-    // tests migrate to `.dag` `TestClaim` declarations) plus SG-0 PR-window
-    // discipline at `ROADMAP.md:177`. Gate authority = `docs/r3-program-plan.md`
-    // row #70 (`cost_lens_demonstration`) and the T-CostLens worker brief's
-    // same-slice acceptance bullet. This is a strict deferral of the test
-    // harness shape, not of the gate behavior.
-    //
-    // The 6 resolver assertions here (one per `*Realization` meta-type —
-    // `assert meta.is_some() && name == "X"`) factor as `OutputEquals` /
-    // declaration-resolution claims under the T-Tests-As-Data umbrella (#1966
-    // §3 ratchet predicate scope). Gate #70 additionally factors into
-    // TestClaims over the representative recursive fixture: emitted target
-    // program contains the recursive call, lowered DAG has Add/Sub/Eq
-    // algebra-instance operator transforms, `per_call_descent_evidence` observes
-    // the self-call, and the Rust-side cost composition preserves the observable
-    // linear `SymbolicCost` bound. Until that landing, hand-Rust is the consumption
-    // path for `.dag`-fn-from-Rust and emitted-target cost-composition
-    // assertions; Mgr standing-authority approval at gunbc#2221
-    // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
-    // #70 window.
-    "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
-    "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
-    // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
-    // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
-    // Q6.5 two-layer diagnostic-kind authority. Five structural claims
-    // over the regenerated bootstrap Dag — Lens<C> 6-field shape,
-    // Diagnostic.kind widened to AnyDiagnosticKind, Layer-1 closed sum
-    // unchanged, AnyDiagnosticKind two-constructor shape, and Layer-2
-    // payload-intentionally-absent gap receipt. Dispatch (#1130 +
-    // `docs/design-lens-framework.md` Q6.5) accepted "focused structural
-    // acceptance tests" rather than a parallel testgen harness.
-    // Dissolves into .dag `TestClaim` form when testgen covers reflected-
-    // Dag structural assertions over std/ types.
-    "src/v3/compiler/tests/integration/lens_substrate_carrier_test.rs",
-    "src/v3/compiler/tests/integration/m0_acceptance.rs",
-    "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
-    "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
-    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): integration receipt
-    // for same-DAG Shape B OpenAPI projection. Dissolves into TestClaim /
-    // `.dag`-native Shape B demo coverage with the OpenAPI projector above.
-    "src/v3/compiler/tests/integration/m1_5_omni_shape_b_openapi_test.rs",
-    "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
-    "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
-    "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
-    "src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs",
-    "src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs",
-    "src/v3/compiler/tests/integration/m1_substrate_test.rs",
-    "src/v3/compiler/tests/integration/m2_feature_parity_test.rs",
-    "src/v3/compiler/tests/integration/m2_field_access_binding_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_cost_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_idempotency_emit_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_idempotency_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_provenance_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_structural_resolution_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
-    "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
-    // T-Ground-LanguageSpec / R2-Substrate: Director-approved hand-Rust
-    // acceptance for `MethodTemplateContract` substrate carrier (PR #1175).
-    // Three structural claims over the regenerated bootstrap Dag —
-    // distinct-from-§6a-MethodContract, no-cost-data field set,
-    // per-target-list `dag_method` uniqueness (vacuous over zero rows
-    // today; load-bearing once Grounding's row-population PR lands).
-    // Dispatch explicitly accepted "focused Rust tests over the reflected
-    // substrate" rather than a parallel testgen harness; dissolves into
-    // .dag `TestClaim` form when the testgen path covers reflected-Dag
-    // structural assertions over std/ types.
-    // Method-declaration registry (R2 Substrate, follow-up to #1175 +
-    // #1186): Director-approved hand-Rust acceptance for the minimal
-    // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
-    // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
-    // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
-    // Four structural claims: registry covers all 64 algebra-template
-    // names (drift-detection), `MethodDeclaration` identity-only,
-    // `MethodTemplateContract.dag_method` field type points at
-    // `MethodRef`, `MethodRef` is a single-field decl wrapper.
-    // Dispatch (#1130) accepted hand-Rust acceptance over the reflected
-    // bootstrap. Dissolves into .dag `TestClaim` form when testgen
-    // covers reflected-Dag structural assertions over std/ types.
-    "src/v3/compiler/tests/integration/method_registry_test.rs",
-    "src/v3/compiler/tests/integration/method_template_contract_test.rs",
-    // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
-    "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
-    "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
-    "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
-    // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
-    // `pb_method_template_projection` consumer hook. Stays hand-Rust
-    // alongside `method_template_contract_test.rs` until testgen covers
-    // reflected-Dag structural assertions over std/ row authorities.
-    "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
-    "src/v3/compiler/tests/integration/pipe_desugar.rs",
-    // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
-    // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
-    // docs/design-prereq-x-ho-field-call.md / PR #1264). Pins the parser
-    // diagnostic shape of X1 (`w.f(x)`) and X3 (`= { let g = w.f; g(x) }`)
-    // so the ratchet flips red when the implementation lane lands; retired
-    // by the lane owner at the same time as the parser/lowerer change.
-    "src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs",
-    // R1 release acceptance fixture: strict PB gate 3 plus Director-approved
-    // release deferral markers for the five concession-encoded gates.
-    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
-    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
-    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
-    // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
-    "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
-    // R3 §1.4 Class 2 / §1.8 row #61
-    // (`substrate_gap_function_valued_data_closed`): hand-Rust executable
-    // receipt for the narrowed gap-test ratified in Q-Class-2-Chain-Break
-    // option (a) and dispatched by
-    // `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`.
-    // P5 receipt: explicit deferral cites ROADMAP.md post-merge debt F8
-    // (`SymbolicCost` first-class `Semiring<SymbolicCost>` witness; function-
-    // valued data prerequisite) plus docs/r3-program-plan.md §1.8 row #61.
-    // This bounded host-side harness asserts "function-valued data is first-
-    // class" through public evaluator consumption; production code removes an
-    // opaque data-body scaffold and routes through existing substrate `Arrow`
-    // / `Callable`. Dissolves when §1.8 row #61 can be expressed as a `.dag`
-    // TestClaim over evaluator output without direct Rust DAG inspection.
-    "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
-    // R3 T-Free-Consequences first batch: hand-Rust driver for five
-    // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
-    // Dissolves when generic DimensionReport<C> evaluation can execute
-    // the claims without a host-side integration harness.
-    "src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs",
-    // R3 T-Free-Consequences second batch: hand-Rust driver for five
-    // author-now/fire-later TestClaims over ordinary-lens loop parallelism and
-    // `BinaryDimensionReportEquals` cross-target cost optimization.
-    // Dissolves when generic runner coverage can execute the claims without a
-    // host-side integration harness.
-    "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
-    // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
-    // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
-    "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
-    // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
-    // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
-    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
-    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
-    // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
-    // that the `.dag` PB census claim executes through `TestRunner` and reports
-    // the live lens-producer residual count while Row-4 / Item 4 retirement
-    // preconditions remain open.
-    "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
-    // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
-    // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
-    // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
-    // R2-Evaluator corpus comparison directly without this host-side harness.
-    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
-    // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
-    // non-canonical `.dag` residual-census receipt until the canonical
-    // PB-Runtime reflection consumer lands. P5 test-subset deferral:
-    // ROADMAP.md § "Nine lanes" row `T-PB-B` and § "Lane acceptance — .dag
-    // gates" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolves
-    // when the generic TestClaim runner can execute the receipt without this
-    // host-side harness.
-    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
-    // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
-    // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
-    // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
-    // + ignored end-to-end until v3 parses `compiler.dag` (T-FixedPoint promotion).
-    // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 SG-0 integration path;
-    // dissolution / deferral naming — ROADMAP.md § "Nine lanes" row `T-PB-B` /
-    // `pb_rust_tests_outside_residual_zero` and `docs/r3-program-plan.md` §1.8 gate #71 /
-    // `docs/r3-structure.md` §T-V2-Retirement; harness retires when equivalent obligations run as
-    // `.dag` data without this Rust splice or T-V2-Retirement closure ends the receipt class.
-    "src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs",
-    // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
-    // `DifferentialEquals` emit/eval pairing, Lane 1 `AlgebraicLaw` (`Associativity` /
-    // `Commutativity` / `Identity`) operational witnesses, and the T-V-L5-Corpus seed
-    // `ForAllTargets` Rust/Python/Go observation row Pass on honest Int rows only (trimmed matrix —
-    // not ROADMAP exhaustive L7/L5). Matrix rows pin enum-backed law receipts without adding
-    // missing-law variants. Explicit P5 deferral: this test entry belongs to ROADMAP.md § "Nine
-    // lanes" row `T-PB-B` and § "Lane acceptance — .dag gates" row `T-PB-B` /
-    // `pb_rust_tests_outside_residual_zero`; R3 tracks the same test-residual outcome as
-    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness / gate #84. It dissolves when the
-    // generic TestClaim runner can execute these claims directly without this host-side harness.
-    // Retirement must also fold the L5 program-text bridge
-    // (`fixtures/r3_l5_corpus/add_then_branch_seed.v3` vs embedded `TestClaim.source` — byte
-    // equality ratchet lives only in this harness today).
-    "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
-    "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
-    "src/v3/compiler/tests/integration/sg0_census_test.rs",
-    "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs",
-    "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
-    "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
-    "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
-    "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
-    "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
-    "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
-    // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
-    // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
-    // diagnostics (timing `EnforcedApplication` row in `t_ci_workflow_as_data_demo.dag`).
-    //
-    // **P5 receipt (INVARIANTS.md §P5 per-PR gate — SG-0 `EXPECTED_HAND_AUTHORED_TEST`):**
-    // explicit deferral to **ROADMAP.md** `### Nine lanes` row **T-PB-B** /
-    // `pb_rust_tests_outside_residual_zero` (tests-as-data / Pure Bootstrap test floor), same
-    // structural class as co-listed `t_ci_workflow_as_data_demo_test.rs` and
-    // `t_las_complexity_contract_compile_error_test.rs`: the obligation is still discharged via a
-    // hand-maintained Rust harness until the generic `.dag` `TestClaim` runner can assert the same
-    // bootstrap facts without this file. Lane context: **T-Lens-Self-Application** /
-    // `apply_lens_self_application_demonstrated` (`docs/r3-structure.md`, `docs/r3-program-plan.md`
-    // §1.8 gate #58). Dissolution: delete this path from the census when the receipt ports to a
-    // `.dag` TestClaim (or a generated test) with no remaining SG-0 hand-authored test delta.
-    "src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs",
-    "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
-    "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
-    "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
-    // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
-    // R1C-D/E runner receipts (co-located harness).
-    //
-    // **P5(b) / SG-0 accounting (#2715 pilot — not gate #84 closure):** the merge-visible
-    // receipt is **−3** paths removed from this list (deleted `r1c_*_gates*_test.rs` shims).
-    // R1C-D/E **predicates** live in `.dag` (`tests/dag/t_r1c_d_pb_census_gates.dag`,
-    // `r1c_e_emit_gates*.template.dag`); Rust here is runner-only (`compile_to_dag` +
-    // `TestRunner`), same structural class as gate #74 — consolidation must not be read as
-    // Pure Bootstrap / T-PB-B "zero hand-maintained Rust" progress. Gate #84 /
-    // `every_rust_test_ports_to_dag_or_generated` dissolution stays under ROADMAP T-PB-B +
-    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness until `EXPECTED_HAND_AUTHORED_TEST`
-    // reaches zero.
-    "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
-    // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
-    // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
-    // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
-    // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
-    // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
-    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
-    // TC1 V1 strict-fire — §1.8 gate #11 (`tc1_eta_equivalence_executable`); Q-PAFS Path A
-    // (E6-G1.a static representative) per Director ratification cascade 2026-05-06/07.
-    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
-    // TC2 strict-fire — §1.8 gate #12 (`tc2_church_rosser_executable`); Church-Rosser /
-    // strategy-order `BinaryDimensionReportEquals` pairing per `r3-v-pattern-a-tc2-v1-worker.md`.
-    "src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs",
-    "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
-    // TC3 strict-fire — §1.8 gate #13 (`tc3_pattern_a_second_mover_executable`); strong-
-    // normalization / Pattern-A second-mover `BinaryDimensionReportEquals` pairing per
-    // `r3-v-pattern-a-tc3-v1-worker.md` (two-stage gate; PASSING gated on T-FixedPoint stage (b)).
-    "src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs",
-    "src/v3/compiler/tests/integration/test_runner_test.rs",
-    "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
-    "src/v3/compiler/tests/integration/thesis_validation_test.rs",
-    "src/v3/compiler/tests/integration/timing_lens_substrate_carrier_test.rs",
-    // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
-    // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
-    "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
-    // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
-    // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
-    // constructor isomorphism. Dissolves when `ValueBody` no longer has a
-    // Rust mirror or when this assertion is expressible as a `.dag` TestClaim.
-    "src/v3/compiler/tests/integration/value_body_substrate_mirror_isomorphism_test.rs",
-    // R2-Substrate Prereq-3a (`workflow_root_port` accessor + `WorkflowRoot`
-    // sum) per merged audit `docs/design-lens-fold-prerequisites.md`.
-    // Director-locked α: last topological `Bind`. Three integration
-    // claims exercise the `SingleRoot` single/multi cases and the
-    // unreachable-under-α ambiguous drift trigger; the zero-Bind
-    // `NoRoot` case lives as a unit test in `dag.rs` (crate-private
-    // `Dag::empty` constructor). Dispatch (#1130) accepted hand-Rust
-    // acceptance over real `compile_to_dag` fixtures; dissolves into
-    // `.dag` `TestClaim` form when testgen covers compile-and-fold
-    // structural assertions.
-    "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
-];
-
+const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
 // hand-authored and text-inlined into generated Rust (or otherwise
 // dissolve when the corresponding `.dag` authority lands). The
@@ -1127,7 +718,71 @@ fn sg0_v3_test_hand_authored_subratchet() {
 }
 
 #[test]
+fn sg0_generated_rust_test_manifest_covers_every_test_rs() {
+    let ws = workspace_root();
+    let tests_root = ws.join("src/v3/compiler/tests");
+
+    let mut all_rs: BTreeSet<String> = BTreeSet::new();
+    walk_rs(&tests_root, &ws, &mut all_rs);
+
+    let manifest: BTreeSet<String> = GENERATED_RUST_TEST_FILES
+        .iter()
+        .map(|p| (*p).to_string())
+        .collect();
+
+    assert_eq!(
+        all_rs, manifest,
+        "gate #84 positive authority drift: every Rust test file must be present in \
+         GENERATED_RUST_TEST_FILES. Missing entries are orphaned tests; extra entries are stale \
+         generator-manifest rows."
+    );
+
+    let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
+    let missing_from_partition: Vec<&str> = GENERATED_RUST_TEST_FILES
+        .iter()
+        .copied()
+        .filter(|path| !generated.contains(path))
+        .collect();
+    assert!(
+        missing_from_partition.is_empty(),
+        "every generated Rust test manifest row must also be in GENERATED_FILES; missing: \
+         {missing_from_partition:?}"
+    );
+}
+
+#[test]
+fn sg0_generated_rust_test_manifest_bytes_match_checked_in_files() {
+    let ws = workspace_root();
+    let manifest_paths: BTreeSet<&str> = GENERATED_RUST_TEST_FILES.iter().copied().collect();
+    let byte_paths: BTreeSet<&str> = GENERATED_RUST_TEST_FILE_BYTES
+        .iter()
+        .map(|(path, _)| *path)
+        .collect();
+    assert_eq!(
+        manifest_paths, byte_paths,
+        "generated Rust test byte-comparison rows must match GENERATED_RUST_TEST_FILES exactly"
+    );
+
+    let mut drifted = Vec::new();
+    for (path, generated_bytes) in GENERATED_RUST_TEST_FILE_BYTES {
+        let checked_in =
+            fs::read_to_string(ws.join(path)).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        if checked_in != *generated_bytes {
+            drifted.push(*path);
+        }
+    }
+    assert!(
+        drifted.is_empty(),
+        "generated Rust tests drifted from the generator-manifest byte snapshot: {drifted:?}"
+    );
+}
+
+#[test]
 fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
+    if EXPECTED_HAND_AUTHORED_TEST.is_empty() {
+        return;
+    }
+
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
     let mut unclassified = Vec::new();
 
