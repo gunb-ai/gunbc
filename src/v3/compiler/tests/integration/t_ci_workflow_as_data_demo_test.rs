@@ -578,6 +578,34 @@ fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue
     panic!("unexpected {sum_name} constructor {constructor:?}");
 }
 
+fn disj_variant_labels(dag: &v3_compiler::dag::Dag, sum_name: &str) -> Vec<String> {
+    let mut decl_id = dag
+        .declaration_by_name(sum_name)
+        .unwrap_or_else(|| panic!("missing sum `{sum_name}`"))
+        .id;
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                decl_id = *template;
+            }
+            TypeConnective::Disj { variants } => {
+                return variants.iter().map(|v| v.label.clone()).collect();
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                decl_id = *next;
+            }
+            _ => panic!("unexpected connective while resolving `{sum_name}`"),
+        }
+    }
+    panic!("peel depth exceeded resolving `{sum_name}`");
+}
+
 fn structural_list(value: &FieldValue) -> &[FieldValue] {
     let FieldValue::List(items) = value else {
         panic!("expected structural list field, got {value:?}");
@@ -815,10 +843,42 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 }
 
 #[test]
-fn gunbc_ci_emission_substrate_compiles() {
-    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_EMISSION_FILE}: {err:?}"));
-    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+fn gunbc_ci_emission_substrate_contract_is_present() {
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE.contains(
+            "fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow"
+        ),
+        "{GUNBC_CI_EMISSION_FILE} must declare the T-WAD projection-function contract"
+    );
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE
+            .contains("data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)"),
+        "{GUNBC_CI_EMISSION_FILE} must pin the YamlStatic projection binding"
+    );
+}
+
+#[test]
+fn workflow_runtime_initial_enum_matches_t_wad_gate_99() {
+    let runtime_line = GUNBC_CI_EMISSION_SOURCE
+        .lines()
+        .find(|line| line.starts_with("type WorkflowRuntime ="))
+        .expect("WorkflowRuntime type declaration");
+    let dag = compile_to_dag(
+        runtime_line,
+        "dsl/gunbc/ci_emission.workflow_runtime.slice.dag",
+    )
+    .unwrap_or_else(|err| panic!("compile WorkflowRuntime slice: {err:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "WorkflowRuntime slice diagnostics: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "WorkflowRuntime"),
+        ["YamlStatic", "BinaryShim"],
+        "T-WAD gate #99 initial WorkflowRuntime surface must stay paired to real consumers; \
+         PythonShim and InlineGunbc remain design-only until their substrate-prereq PRs land"
+    );
 }
 
 // --- R3 gate #57 (`lens_self_application_demonstrated`) — split receipts per TESTING.md §4.
