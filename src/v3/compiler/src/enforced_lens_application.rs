@@ -19,19 +19,21 @@
 //! Gate #58 (`apply_lens_self_application_demonstrated`): when a program authors
 //! `EnforcedApplication<TimingMeasurement, TimingBudget>` referencing `timing_enforceable`
 //! (`v3.std.timing_lens`), infer reads the **lowered** `TimingMeasurement` from the
-//! `DeclarationScope` subject's structural `measurement` field (nominal section type is
-//! irrelevant — any lowered record body carrying that field is accepted) and applies the same
-//! usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
-//! `timing_lens.dag`: non-`Observed` reports are enforced via a **variant-shaped** fault path
-//! (never compared as ordinary wall-clock `Nat` against the fault sentinel), while `Observed`
-//! wall-clock nanoseconds use the same strict `>` edge as gate #94 against `TimingBudget.max`.
+//! `DeclarationScope` subject's structural `measurement` field **only after** verifying the
+//! subject row's **nominal** `data …: RowTy = …` type declares `measurement: TimingMeasurement`
+//! on `RowTy` (API-level contract; avoids unrelated records that merely spell a `measurement`
+//! label). The same usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates`
+//! in `timing_lens.dag` applies: non-`Observed` reports are enforced via a **variant-shaped**
+//! fault path (never compared as ordinary wall-clock `Nat` against the fault sentinel), while
+//! `Observed` wall-clock nanoseconds use the same strict `>` edge as gate #94 against
+//! `TimingBudget.max`.
 
 use std::collections::HashMap;
 
 use crate::dag::{
-    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Behavior, Dag,
-    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective,
-    ValueBody,
+    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, AtomPayload,
+    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -98,6 +100,59 @@ fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
                 && d.span.file.ends_with("timing_lens.dag")
         })
         .map(|d| d.id)
+}
+
+fn peel_type_declaration_head(dag: &Dag, mut id: DeclarationId) -> DeclarationId {
+    const MAX: usize = 64;
+    for _ in 0..MAX {
+        match &dag.declaration(id).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                id = *template;
+            }
+            TypeConnective::Atom(ap) => {
+                let Some(next) = ap.resolved_id() else {
+                    break;
+                };
+                id = next;
+            }
+            _ => break,
+        }
+    }
+    id
+}
+
+/// Returns the nominal `RowTy` declaration id for a lowered `data row: RowTy = …` value row.
+fn data_row_nominal_type_decl_id(dag: &Dag, value_decl_id: DeclarationId) -> Option<DeclarationId> {
+    match &dag.declaration(value_decl_id).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => Some(*template),
+        _ => None,
+    }
+}
+
+/// True when `RowTy` (after alias peel) is a conj that declares `measurement` with type peeling
+/// to the substrate `TimingMeasurement` sum at `tm_disj`.
+fn timing_section_row_type_declares_measurement_tm(
+    dag: &Dag,
+    section_value_decl_id: DeclarationId,
+    tm_disj: DeclarationId,
+) -> bool {
+    let Some(row_ty) = data_row_nominal_type_decl_id(dag, section_value_decl_id) else {
+        return false;
+    };
+    let ty_head = peel_type_declaration_head(dag, row_ty);
+    let TypeConnective::Conj { children } = &dag.declaration(ty_head).connective else {
+        return false;
+    };
+    let tm_head = peel_type_declaration_head(dag, tm_disj);
+    children.iter().any(|f| {
+        f.label == "measurement" && peel_type_declaration_head(dag, f.ty) == tm_head
+    })
 }
 
 /// Lowered `TimingMeasurement` usage for timing `EnforcedApplication` enforcement.
