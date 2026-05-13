@@ -172,9 +172,9 @@ Cost-of-change is per the **revised Candidate A scope** (administrative un-ignor
 ## §8. Anti-patterns (Mgr-derived for reviewer enforcement)
 
 1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline (§4); any closure must un-ignore the gate-criterion test
-2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (violates `INVARIANTS.md` P5 "Progress Is Dissolution / Pure Bootstrap"; atomic-migration discipline per `feedback_load_bearing_ratchet_preservation`)
+2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (violates `INVARIANTS.md` P5 "Progress Is Dissolution"; atomic-migration discipline per `feedback_load_bearing_ratchet_preservation`)
 3. **Parallel-authority on CIWorkflowDag execution path** — if T-Lens-Self-Application has a competing DimensionReport producer shape, canvas should surface, not duplicate
-4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P3 second-source-of-truth (demo passes; production doesn't)
+4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P2 boundary / duplicate-fact issue (demo passes; production doesn't — two sources of truth)
 
 ## §9. Open questions (RATIFIED 2026-05-13 per Director msg_804cdc93; preserved for audit trail)
 
@@ -201,7 +201,7 @@ Recommended **revised scope**:
 
 **Q2: OR-semantics** — both lanes contribute; gate closes when sufficient substrate is present.
 
-**Q3: defer to Director** — needs `git log` history check on the `#[ignore]` introduction commit. If `#[ignore]` was added pre-substrate-landing as planned-deferral, Candidate A is the correct receipt. If post-substrate as regression-mask, Candidate A still works but the regression-mask history should be archived.
+**Q3: RESOLVED planned-deferral** (see §9; anchor commit `73969f4a9` Director-verified) — `#[ignore]` was added pre-substrate-landing as planned-deferral, so Candidate A is the correct receipt. (Initial pre-ratification framing "defer to Director" is superseded; preserved in §9 audit trail only.)
 
 **Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring.
 
