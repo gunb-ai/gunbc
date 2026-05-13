@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 
 use v3_compiler::cementing_dispatch;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 const R3_LENS_BEHAVIORAL_PARITY_SCOPE: &[&str] = &[
     "complexity.dag",
@@ -372,5 +373,147 @@ fn lens_capability_register_rows_match_md_v2_cementing_projection() {
          must match `std.verification` `lens_capability_register_rows` (`LensCapabilityBehavioralComplete` + \
          `LensCapabilityV2RealV2`). Update both in the same PR when promoting or narrowing a lens. \
          structural={structural:?} markdown={markdown:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// R3 gate #87 — D3 complete-lens register ratchet for promoted R3 lenses.
+//
+// Discipline rule: when a `regen.dag` `LensRegistryEntry` lens is marked
+// `BEHAVIORALLY COMPLETE` in `docs/v3-lens-capability-register.md`, the gate-87
+// cementing closure must be in place: the entry's `name` is in the runner
+// inventory, and the per-lens `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag`
+// receipt exists. This fails closed on a PR that promotes a row to COMPLETE
+// without landing the matching cementing surfaces in the same PR.
+//
+// See `docs/briefs/r3-gate-87-lens-completeness-test-discipline-decomposition.md`
+// G87-D3 and `docs/briefs/r3-gate-87-lens-cementing-closure-audit.md`.
+
+/// Lens basenames whose capability-table `behavioral` cell is `COMPLETE`
+/// (any v2-counterpart column — Real v2 or v3-native). Bare `N/A`,
+/// `PARTIAL`, `PROXY`, `STUB` are excluded.
+fn capability_md_complete_basenames() -> BTreeSet<String> {
+    capability_table_rows()
+        .into_iter()
+        .filter_map(|(basename, behavioral)| {
+            (normalize_capability_table_markdown_token(&behavioral) == "COMPLETE")
+                .then_some(basename)
+        })
+        .collect()
+}
+
+/// Map from `lens_file` basename (e.g. `complexity.dag`) to registry `name`
+/// (e.g. `cost`) for every `LensRegistryEntry` in `regen.dag`.
+fn regen_basename_to_name() -> std::collections::BTreeMap<String, String> {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let entry_type_id = dag
+        .declaration_by_name("LensRegistryEntry")
+        .map(|decl| decl.id)
+        .expect("regen.dag must declare `LensRegistryEntry`");
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(entry_type_id))
+        .map(|decl| {
+            let binding = decl
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anonymous>".to_string());
+            let fields = structural_fields(decl);
+            let name = string_field(fields, "name", &binding);
+            let lens_file = string_field(fields, "lens_file", &binding);
+            let basename = Path::new(&lens_file)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_else(|| {
+                    panic!("registry entry `{binding}` has lens_file without basename: {lens_file}")
+                })
+                .to_string();
+            (basename, name)
+        })
+        .collect()
+}
+
+#[test]
+fn r3_gate_87_complete_md_regen_rows_have_runner_suite_and_receipt() {
+    let complete = capability_md_complete_basenames();
+    let regen = regen_basename_to_name();
+    let runner_names = r3_gate_87_cementing_regen_lens_names_for_runner_table();
+    let root = workspace_root();
+
+    let mut missing_runner: Vec<String> = Vec::new();
+    let mut missing_receipt: Vec<String> = Vec::new();
+    for basename in &complete {
+        let Some(name) = regen.get(basename) else {
+            // Non-`regen` complete lenses are scoped to G87-D5
+            // (`Non-regen Complete-Lens Census Reconciliation`), not this ratchet.
+            continue;
+        };
+        if !runner_names.contains(name) {
+            missing_runner.push(format!("{basename} (name={name})"));
+        }
+        let receipt_rel =
+            format!("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_{name}.dag");
+        if !root.join(&receipt_rel).is_file() {
+            missing_receipt.push(receipt_rel);
+        }
+    }
+    assert!(
+        missing_runner.is_empty() && missing_receipt.is_empty(),
+        "R3 gate #87 D3 complete-lens register ratchet: every `regen.dag` lens marked \
+         `BEHAVIORALLY COMPLETE` in `docs/v3-lens-capability-register.md` must have a \
+         matching runner suite (in `R3_GATE_87_CEMENTING_REGEN_SUITES`) and a \
+         `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` cementing TestClaim. \
+         Promoting a row to COMPLETE without landing both surfaces in the same PR is a \
+         process failure. \
+         missing_runner_entries={missing_runner:?} missing_receipt_files={missing_receipt:?}"
+    );
+}
+
+#[test]
+#[ignore = "strict-fire G87-D3 / G87-D1+D2; unignore when no `BEHAVIORALLY COMPLETE` \
+            regen row's `t_r3_gate_87_cementing_regen_<name>.dag` still uses the bare \
+            `Compiles` placeholder. Today `variant_payload.dag` (COMPLETE) remains \
+            `Compiles` pending `VariantPayloadShapeLookup` expected-literal authoring \
+            per `docs/briefs/r3-gate-87-lens-cementing-closure-audit.md` P5 deferral."]
+fn r3_gate_87_complete_md_regen_receipts_use_behavioral_predicate() {
+    let complete = capability_md_complete_basenames();
+    let regen = regen_basename_to_name();
+    let root = workspace_root();
+
+    let mut bare_compiles: Vec<String> = Vec::new();
+    for basename in &complete {
+        let Some(name) = regen.get(basename) else {
+            continue;
+        };
+        let receipt_rel =
+            format!("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_{name}.dag");
+        let path = root.join(&receipt_rel);
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let uses_bare_compiles = source
+            .lines()
+            .filter_map(|l| l.split("//").next())
+            .any(|code| {
+                code.split_whitespace()
+                    .collect::<Vec<_>>()
+                    .windows(2)
+                    .any(|w| w == ["predicate:", "Compiles,"] || w == ["predicate:", "Compiles"])
+            });
+        if uses_bare_compiles {
+            bare_compiles.push(receipt_rel);
+        }
+    }
+    assert!(
+        bare_compiles.is_empty(),
+        "R3 gate #87 D3 strict-fire: `BEHAVIORALLY COMPLETE` regen rows must cement with a \
+         behavioral `TestPredicate` (`DifferentialEquals` / `LensOutputEquals` / \
+         `SymbolicCostExprEquals` / `BinaryDimensionReportEquals`) — not bare `Compiles`. \
+         Receipts still on bare `Compiles`: {bare_compiles:?}"
     );
 }
