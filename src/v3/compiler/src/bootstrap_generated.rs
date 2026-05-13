@@ -64699,7 +64699,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 2117, 2212),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 2264, 2359),
         });
         declarations.push(Declaration {
             id: DeclarationId(1726),
@@ -64735,7 +64735,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 2214, 2387),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 2361, 2534),
         });
         declarations.push(Declaration {
             id: DeclarationId(1727),
@@ -64771,7 +64771,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 2389, 2577),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 2536, 2724),
         });
         declarations.push(Declaration {
             id: DeclarationId(1728),
@@ -64810,7 +64810,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 2579, 2816),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 2726, 2963),
         });
         declarations.push(Declaration {
             id: DeclarationId(1729),
@@ -64846,7 +64846,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 2818, 3035),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 2965, 3182),
         });
         declarations.push(Declaration {
             id: DeclarationId(1730),
@@ -64882,7 +64882,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 3037, 3226),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 3184, 3373),
         });
         declarations.push(Declaration {
             id: DeclarationId(1731),
@@ -64918,7 +64918,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 3228, 3413),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 3375, 3560),
         });
         declarations.push(Declaration {
             id: DeclarationId(1732),
@@ -64957,7 +64957,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 3415, 3644),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 3562, 3791),
         });
         declarations.push(Declaration {
             id: DeclarationId(1733),
@@ -64993,7 +64993,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 3646, 3859),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 3793, 4006),
         });
         declarations.push(Declaration {
             id: DeclarationId(1734),
@@ -65029,7 +65029,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 4486, 4678),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 4633, 4825),
         });
         declarations.push(Declaration {
             id: DeclarationId(1735),
@@ -65065,7 +65065,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 4680, 4880),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 4827, 5027),
         });
         declarations.push(Declaration {
             id: DeclarationId(1736),
@@ -65101,7 +65101,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/compiler/regen.dag", 5130, 5322),
+            span: SourceSpan::new("src/v3/compiler/regen.dag", 5277, 5469),
         });
         declarations.push(Declaration {
             id: DeclarationId(1737),
