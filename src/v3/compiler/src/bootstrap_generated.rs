@@ -62027,7 +62027,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String(
-                            "LensEnforcement<{key}, {value}>".to_string(),
+                            "LensEnforcement<{key}, {value}, {extra}>".to_string(),
                         )),
                     ),
                     (
@@ -62038,7 +62038,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 39266, 39449),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 39266, 39458),
         });
         declarations.push(Declaration {
             id: DeclarationId(1651),
@@ -62065,7 +62065,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String(
-                            "EnforceableLens<{key}, {value}>".to_string(),
+                            "EnforceableLens<{key}, {value}, {extra}>".to_string(),
                         )),
                     ),
                     (
@@ -62076,7 +62076,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 39451, 39634),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 39460, 39652),
         });
         declarations.push(Declaration {
             id: DeclarationId(1652),
@@ -62114,7 +62114,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 39636, 39786),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 39654, 39804),
         });
         declarations.push(Declaration {
             id: DeclarationId(1653),
@@ -62169,7 +62169,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 39788, 39980),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 39806, 39998),
         });
         declarations.push(Declaration {
             id: DeclarationId(1654),
@@ -62252,7 +62252,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 39982, 40243),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 40000, 40261),
         });
         declarations.push(Declaration {
             id: DeclarationId(1655),
@@ -62322,7 +62322,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 40245, 40463),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 40263, 40481),
         });
         declarations.push(Declaration {
             id: DeclarationId(1656),
@@ -62392,7 +62392,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 40465, 40692),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 40483, 40710),
         });
         declarations.push(Declaration {
             id: DeclarationId(1657),
@@ -62462,7 +62462,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 40694, 40927),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 40712, 40945),
         });
         declarations.push(Declaration {
             id: DeclarationId(1658),
@@ -62531,7 +62531,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 41155, 41459),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 41173, 41477),
         });
         declarations.push(Declaration {
             id: DeclarationId(1659),
@@ -62563,7 +62563,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 41461, 41599),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 41479, 41617),
         });
         declarations.push(Declaration {
             id: DeclarationId(1660),
@@ -62597,7 +62597,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 41601, 41754),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 41619, 41772),
         });
         declarations.push(Declaration {
             id: DeclarationId(1661),
@@ -62642,7 +62642,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 41756, 41946),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 41774, 41964),
         });
         declarations.push(Declaration {
             id: DeclarationId(1662),
@@ -62674,7 +62674,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 41948, 42060),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 41966, 42078),
         });
         declarations.push(Declaration {
             id: DeclarationId(1663),
@@ -62696,7 +62696,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 42062, 42122),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 42080, 42140),
         });
         declarations.push(Declaration {
             id: DeclarationId(1664),
@@ -62742,7 +62742,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 42124, 42402),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 42142, 42420),
         });
         declarations.push(Declaration {
             id: DeclarationId(1665),
@@ -62764,7 +62764,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 42404, 42492),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 42422, 42510),
         });
         declarations.push(Declaration {
             id: DeclarationId(1666),
@@ -62810,7 +62810,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 42494, 42796),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 42512, 42814),
         });
         declarations.push(Declaration {
             id: DeclarationId(1667),
@@ -62842,7 +62842,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 42798, 43011),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 42816, 43029),
         });
         declarations.push(Declaration {
             id: DeclarationId(1668),
@@ -62900,7 +62900,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 43013, 43348),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 43031, 43366),
         });
         declarations.push(Declaration {
             id: DeclarationId(1669),
@@ -62955,7 +62955,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 43350, 43720),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 43368, 43738),
         });
         declarations.push(Declaration {
             id: DeclarationId(1670),
@@ -63008,7 +63008,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 43722, 44016),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 43740, 44034),
         });
         declarations.push(Declaration {
             id: DeclarationId(1671),
@@ -63059,7 +63059,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 44187, 44482),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 44205, 44500),
         });
         declarations.push(Declaration {
             id: DeclarationId(1672),
@@ -63112,7 +63112,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 44484, 44804),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 44502, 44822),
         });
         declarations.push(Declaration {
             id: DeclarationId(1673),
@@ -63165,9 +63165,9 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 44806, 45134),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 44824, 45152),
         });
-        declarations.push(Declaration { id: DeclarationId(1674), name: Some("rust_collection_ops".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(1003), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(1003)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("concat_contract".to_string(), FieldValue::Reference(DeclarationId(1669))), ("length_contract".to_string(), FieldValue::Reference(DeclarationId(1670))), ("is_empty_contract".to_string(), FieldValue::Reference(DeclarationId(1671))), ("fold_contract".to_string(), FieldValue::Reference(DeclarationId(1672))), ("filter_contract".to_string(), FieldValue::Reference(DeclarationId(1135))), ("flat_map_contract".to_string(), FieldValue::Reference(DeclarationId(1138))), ("any_contract".to_string(), FieldValue::Reference(DeclarationId(1136))), ("all_contract".to_string(), FieldValue::Reference(DeclarationId(1137))), ("map_contract".to_string(), FieldValue::Reference(DeclarationId(1673))), ("filter".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }".to_string()))), ("contains".to_string(), FieldValue::Literal(LiteralBits::String("({recv}).contains({item})".to_string()))), ("empty_list".to_string(), FieldValue::Literal(LiteralBits::String("Vec::new()".to_string()))), ("list_literal".to_string(), FieldValue::Literal(LiteralBits::String("vec![{elements}]".to_string()))), ("cons".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __list = {tail}; __list.insert(0, {head}); __list }".to_string())))] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/spec/rust.dag", 45136, 46012) });
+        declarations.push(Declaration { id: DeclarationId(1674), name: Some("rust_collection_ops".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(1003), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(1003)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("concat_contract".to_string(), FieldValue::Reference(DeclarationId(1669))), ("length_contract".to_string(), FieldValue::Reference(DeclarationId(1670))), ("is_empty_contract".to_string(), FieldValue::Reference(DeclarationId(1671))), ("fold_contract".to_string(), FieldValue::Reference(DeclarationId(1672))), ("filter_contract".to_string(), FieldValue::Reference(DeclarationId(1135))), ("flat_map_contract".to_string(), FieldValue::Reference(DeclarationId(1138))), ("any_contract".to_string(), FieldValue::Reference(DeclarationId(1136))), ("all_contract".to_string(), FieldValue::Reference(DeclarationId(1137))), ("map_contract".to_string(), FieldValue::Reference(DeclarationId(1673))), ("filter".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }".to_string()))), ("contains".to_string(), FieldValue::Literal(LiteralBits::String("({recv}).contains({item})".to_string()))), ("empty_list".to_string(), FieldValue::Literal(LiteralBits::String("Vec::new()".to_string()))), ("list_literal".to_string(), FieldValue::Literal(LiteralBits::String("vec![{elements}]".to_string()))), ("cons".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __list = {tail}; __list.insert(0, {head}); __list }".to_string())))] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/spec/rust.dag", 45154, 46030) });
         declarations.push(Declaration {
             id: DeclarationId(1675),
             name: Some("rust_value_construction".to_string()),
@@ -63210,7 +63210,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 46014, 46286),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 46032, 46304),
         });
         declarations.push(Declaration {
             id: DeclarationId(1676),
@@ -63244,7 +63244,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 46288, 46369),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 46306, 46387),
         });
         declarations.push(Declaration {
             id: DeclarationId(1677),
@@ -63312,7 +63312,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 46371, 46816),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 46389, 46834),
         });
         declarations.push(Declaration {
             id: DeclarationId(1678),
@@ -63348,7 +63348,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 48240, 48379),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 48258, 48397),
         });
         declarations.push(Declaration {
             id: DeclarationId(1679),
@@ -63457,7 +63457,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 48381, 48994),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 48399, 49012),
         });
         declarations.push(Declaration {
             id: DeclarationId(1680),
@@ -63485,7 +63485,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 48996, 49126),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 49014, 49144),
         });
         declarations.push(Declaration {
             id: DeclarationId(1681),
@@ -63509,7 +63509,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50228, 50331),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50246, 50349),
         });
         declarations.push(Declaration {
             id: DeclarationId(1682),
@@ -63533,7 +63533,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50333, 50436),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50351, 50454),
         });
         declarations.push(Declaration {
             id: DeclarationId(1683),
@@ -63557,7 +63557,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50438, 50565),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50456, 50583),
         });
         declarations.push(Declaration {
             id: DeclarationId(1684),
@@ -63589,7 +63589,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50567, 50698),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50585, 50716),
         });
         declarations.push(Declaration {
             id: DeclarationId(1685),
@@ -63621,7 +63621,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50700, 50831),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50718, 50849),
         });
         declarations.push(Declaration {
             id: DeclarationId(1686),
@@ -63653,7 +63653,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 50833, 51000),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 50851, 51018),
         });
         declarations.push(Declaration {
             id: DeclarationId(1687),
@@ -63677,7 +63677,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 51511, 51640),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 51529, 51658),
         });
         declarations.push(Declaration {
             id: DeclarationId(1688),
@@ -63709,7 +63709,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 51642, 51809),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 51660, 51827),
         });
         declarations.push(Declaration {
             id: DeclarationId(1689),
@@ -63733,7 +63733,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 52504, 52618),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 52522, 52636),
         });
         declarations.push(Declaration {
             id: DeclarationId(1690),
@@ -63765,7 +63765,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 52620, 52793),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 52638, 52811),
         });
         declarations.push(Declaration {
             id: DeclarationId(1691),
@@ -63806,7 +63806,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 53205, 53366),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 53223, 53384),
         });
         declarations.push(Declaration {
             id: DeclarationId(1692),
@@ -63830,7 +63830,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 53693, 53816),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 53711, 53834),
         });
         declarations.push(Declaration {
             id: DeclarationId(1693),
@@ -63862,7 +63862,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 53818, 53988),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 53836, 54006),
         });
         declarations.push(Declaration {
             id: DeclarationId(1694),
@@ -63886,7 +63886,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 54335, 54464),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 54353, 54482),
         });
         declarations.push(Declaration {
             id: DeclarationId(1695),
@@ -63918,7 +63918,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 54466, 54642),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 54484, 54660),
         });
         declarations.push(Declaration {
             id: DeclarationId(1696),
@@ -63942,7 +63942,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 54862, 54982),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 54880, 55000),
         });
         declarations.push(Declaration {
             id: DeclarationId(1697),
@@ -63974,7 +63974,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 54984, 55160),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 55002, 55178),
         });
         declarations.push(Declaration {
             id: DeclarationId(1698),
@@ -63998,7 +63998,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 55346, 55486),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 55364, 55504),
         });
         declarations.push(Declaration {
             id: DeclarationId(1699),
@@ -64030,7 +64030,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 55488, 55694),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 55506, 55712),
         });
         declarations.push(Declaration {
             id: DeclarationId(1700),
