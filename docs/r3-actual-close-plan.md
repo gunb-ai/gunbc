@@ -144,7 +144,8 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
   4. F-β.2 (effect atomic-migration) — worker dispatch post-canvas-ratification
   5. ComplexitySummary TestClaim literals — substrate work to enable native-.dag complexity assertions
   6. F-γ.2 (post-all-4-lenses-complete register sweep) — gate #83 close
-- **Effort estimate**: 4-8 weeks for all 5 sub-phases (warm-wolf-698 sequential cadence per `feedback_parallel_canvas_sequential_authoring`)
+- **Effort estimate (single-Mgr sequential)**: 4-8 weeks for all 5 sub-phases (warm-wolf-698 sequential cadence per `feedback_parallel_canvas_sequential_authoring`)
+- **Effort estimate (parallelized — Director feedback item 3)**: F-α + F-β.1 + ComplexitySummary substrate can parallelize under a second Substrate Mgr per operator "staffing not a concern" framing. Tightens timeline to ~2-4 weeks at cost of one additional Mgr-tier dispatch. Sequential-cadence is a Mgr-bandwidth choice, not a hard constraint; surfacing as a tightening lever for operator/Director.
 
 **Close criterion**: §1.8 rows #79 (PASSING with native-.dag witness, no Rust cementing receipt), #81 PASSING, #82 PASSING, #83 PASSING, #87 ratchet-pass at HEAD.
 
@@ -175,13 +176,17 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
   - **Phase 3 (#84 bulk-port)**: 99 tests × per-class dispatch — per-class worker briefs needed
 - **Effort estimate**: 4-8 weeks per Cluster M plan (operator "staffing not a concern" allows parallel dispatch)
 
-**Close criterion**:
+**Close criterion** (Director feedback item 4 — header-marker filter):
 ```bash
-# Predicate at gate #84 close:
-find src/v3/compiler/tests/integration -name "*.rs" -not -path "*/common/*" -not -path "*/boundary/*" | wc -l
-# returns: 0 (or only generated-from-.dag survivors)
+# Predicate at gate #84 close — excludes generated-from-.dag tests via header marker:
+find src/v3/compiler/tests/integration -name "*.rs" -not -path "*/common/*" -not -path "*/boundary/*" \
+  | xargs grep -L "// AUTO-GENERATED FROM .dag" \
+  | wc -l
+# returns: 0 (only generated-from-.dag survivors carry the marker; hand-authored fail-closed)
 ```
 plus #85 SuiteClaim wrapper consumer landed.
+
+**Substrate prereq**: code-gen pipeline must emit `// AUTO-GENERATED FROM .dag` header line for every generated `*_test.rs` so the predicate can mechanically discriminate hand-authored vs generated. If not present at HEAD, lands in Gap 5 Phase 3 ratchet.
 
 ---
 
@@ -203,7 +208,11 @@ plus #85 SuiteClaim wrapper consumer landed.
   2. Delete `src/v2/` + dependent build manifests + workspace member
   3. Verify gate #97 coherence: lib absent ✓ + bin table empty ✓ + bin source absent ✓
 - **Effort estimate**: 1-2 weeks (mostly audit; deletion is mechanical)
-- **Dependency**: gates #16 (self-host fixed point) AND #84 (tests-as-data) precondition — can't delete v2 until v3 can self-host AND tests don't depend on v2 oracles
+- **Dependency** (Director feedback item 5 — explicit transitive depth call-out): Gap 6 has the deepest transitive chain in the program:
+  - Gap 6 → depends on Gap 1 (PB-0 retirement complete) + Gap 3 (self-host fixed point R3-strong)
+  - Gap 3 → depends on Gap 1 + R2-Evaluator + R2-Grounding-Rust+Python + Row-B materialization
+  - Effective chain: **Gap 6 ← Gap 3 ← {Gap 1, R2-Evaluator, R2-Grounding, Row-B}** — 5+ deep
+- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). v2 tree deletion is the FINAL R3 dissolution; the entire ratchet → carrier → walker → emission → self-host → test-port cascade closes upstream first. Expect Gap 6 to land in the last 2 weeks of R3 close.
 
 **Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING.
 
@@ -269,9 +278,13 @@ plus #85 SuiteClaim wrapper consumer landed.
   5. Worker brief dispatch to retrofit existing diagnostics
 - **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it)
 
-**Close criterion**: §1.8 row #106 PASSING; every Diagnostic in `src/v3/compiler/` has a `correction: Option<Witness>` field that is `Some(_)` for ≥80% of fired diagnostics in test corpus.
+**Close criterion** (Director feedback item 6 — threshold is operator-decision-shaped, NOT Director-decision):
+- **THESIS-correct (100%)**: every Diagnostic in `src/v3/compiler/` has `correction: Witness` field present + `Some(_)` for **every** fired diagnostic in test corpus. No threshold relaxation; THESIS:103-105 reads as absolute promise.
+- **Pragmatic relaxation (≥X%, X TBD)**: operator-set threshold + named-residual list for diagnostics not yet producing corrections. Requires explicit operator acceptance of threshold + retirement plan for residual.
 
-**Alternative disposition**: if operator accepts that show-correct-code is THESIS-aspirational not R3-promised, record explicit not-R3-scoped here + amend interrogation doc §6 to reflect.
+Surfacing both at §4 for operator ratification (Director feedback item 6 routed there).
+
+**Alternative disposition**: if operator accepts that show-correct-code is THESIS-aspirational not R3-promised, record explicit not-R3-scoped here + amend interrogation doc §6 to reflect. **Note per standing directive**: this alternative requires operator override of `project_no_r4_carves_directive` since "THESIS-aspirational-not-R3-promised" is structurally an R4-carve.
 
 ---
 
@@ -291,11 +304,15 @@ plus #85 SuiteClaim wrapper consumer landed.
   1. PM authors skeleton: 105 rows, one per §1.8 gate, with column for predicate execution status
   2. Verification Mgr runs each predicate at HEAD; records pass/fail + output snippet
   3. PM closes out the doc with verdict per row + overall R3-close verdict
-- **Effort estimate**: 1-2 days (execution-only; depends on remote build availability)
+- **Effort estimate** (Director feedback item 7 — calibrated):
+  - **Skeleton authoring (PM-direct)**: 1-2 days — 105-row table scaffold + per-row column shape + initial categorization
+  - **Predicate execution (Verification Mgr serial)**: 1-2 weeks — 105 individual `cargo test` / `grep` invocations + result capture + per-row writeup
+  - **Predicate execution (Verification Mgr parallel via ctrl-build)**: 3-5 days compressed if remote BuildBuddy infra healthy + parallelism dispatch
+  - **Overall**: 1-2 weeks for full landing, contingent on Verification Mgr capacity + ctrl-build availability
 
 **Close criterion**: `docs/audit/r3-close-predicate-execution-YYYY-MM-DD.md` exists on main with ALL 105 rows filled + overall verdict cited.
 
-**Note**: this gap is the *receipt* for the closure ceremony. It can land at any time (not blocked on other gaps). Authoring this should be PM's immediate next deliverable.
+**Note**: this gap is the *receipt* for the closure ceremony. Skeleton authoring (1-2 days) is not blocked on other gaps and is PM's immediate next deliverable; predicate execution (1-2 weeks) can run in parallel with other Phase B/C/D work.
 
 ---
 
@@ -325,7 +342,7 @@ Given the cross-gap dependencies, recommended dispatch order:
 **Phase F — Final close ceremony (PM-direct, 1 week)**:
 - Re-run close-audit doc with all gaps PROVEN or R4-DEFERRED-with-acceptance
 - Operator final ratification
-- Bookkeeping batch PR per Director's identified hygiene fix (105 stale §1.8 strings → sync to closed_at reality)
+- **Bookkeeping batch PR (Director feedback item 8 — downstream of predicate-execution verdict, NOT parallel to it)**: §1.8 manifest strings synchronize to **close-audit-doc predicate-execution outcome** (substantive View-4 authority per `feedback_r3_close_three_views_drift`), NOT to procedural `closed_at` markers. Strings sync as: row #N status = whatever the close-audit-doc row #N predicate evaluation returned. Sequencing: close-audit-doc lands first (Gap 10 execution complete); bookkeeping PR consumes that doc as authority + amends §1.8 strings to match. This avoids re-introducing the procedural-closure trap by always sourcing manifest state from predicate-execution outcome.
 
 ---
 
@@ -344,14 +361,16 @@ Given the cross-gap dependencies, recommended dispatch order:
 
 ## §4. Operator decision points (request for ratification)
 
-Before dispatching this plan, PM requests operator decision on:
+**Standing directive context** (per `project_no_r4_carves_directive`, Brian 2026-05-08 verbatim: *"we are NOT moving anything to R4 as of now"*): R4-carve is **NOT freely available** as a default. The 4 decisions below default to **IN-R3** unless operator explicitly overrides the standing directive with a structural-unblockable-reason argument per-decision.
 
-1. **Gap 1 (PB-0)**: full 177-entry retirement IN-R3, OR partial R4-deferral with explicit list?
-2. **Gap 2 (L5 cross-target)**: full 3-target Python+Go IN-R3, OR Rust-only-Shape-A with Python+Go R4-deferred?
-3. **Gap 3 (self-host R3-strong)**: 4-joint-precondition cascade IN-R3, OR R1-horizon acceptable with strong-form R4-deferred?
-4. **Gap 9 (show-correct-code)**: new §1.8 gate IN-R3, OR THESIS-aspirational-not-R3-promised reframe?
+PM requests operator confirmation (default IN-R3) or explicit override (R4-carve with stated reason) on:
 
-These 4 decisions determine the actual R3 scope. Without them, the plan above optimistically assumes all gaps cash IN-R3, which is the longer time horizon.
+1. **Gap 1 (PB-0)**: IN-R3 default = full 177-entry retirement; R4-carve override would require operator to name specific subsets + structural reason
+2. **Gap 2 (L5 cross-target)**: IN-R3 default = full 3-target Python+Go; R4-carve override would scope-narrow §3.1 promise to Rust-only Shape-A
+3. **Gap 3 (self-host R3-strong)**: IN-R3 default = 4-joint-precondition cascade; R4-carve override would accept R1-horizon as R3-final scope-narrowed
+4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + 100% Diagnostic-with-correction coverage per THESIS:103-105 absolute promise; **operator-decision sub-question**: if R3-IN, is acceptance threshold = 100% (THESIS-correct) OR a pragmatic relaxation (e.g., ≥80% with named-residual list)? PM's prior ≥80% framing is operator-decision-shaped, not Director-decision; surfacing here for explicit ratification (Director feedback item 6).
+
+**§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for these 4 items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive)" — explicit override only if structurally unblockable.
 
 ---
 
@@ -371,10 +390,19 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 
 ## §6. Pending Director + operator decisions
 
-- [ ] Director ratifies this plan structure (PM-recommended)
-- [ ] Operator approves §4 scope decisions (4 binary IN-R3 / R4-defer choices)
-- [ ] Operator authorizes Phase A immediate dispatch (close-audit doc + §1.8 row #106 author)
-- [ ] PM dispatches Phase B + Phase C briefs post-ratification
+- [x] **Director ratifies this plan structure** — APPROVED 2026-05-13 (msg_cd2d8d7d) on structure + dispatch sequencing + §5 process discipline. 8 substantive notes integrated into this revision.
+- [ ] Operator §4 confirmations (4 decisions; default IN-R3 per `project_no_r4_carves_directive`):
+  - [ ] Gap 1 (PB-0): confirm IN-R3 OR override with named R4-carve subsets
+  - [ ] Gap 2 (L5 cross-target): confirm IN-R3 (Python+Go) OR override with Rust-only-Shape-A scope
+  - [ ] Gap 3 (self-host R3-strong): confirm IN-R3 (4-joint-precondition cascade) OR override with R1-horizon final
+  - [ ] Gap 9 (show-correct-code): (a) confirm IN-R3 + ratify threshold = 100% (THESIS-correct) OR ≥X% (pragmatic, X TBD); (b) override with not-R3-promised reframe
+- [ ] Operator authorizes Phase A immediate dispatch (close-audit doc skeleton + §1.8 row #106 author)
+- [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
+  - [ ] R2-Evaluator audit (Gap 3 precondition; this week)
+  - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
+  - [ ] §1.8 row #106 substrate-shape canvas ratification when PM surfaces it
+  - [ ] Pre-execution review of close-audit-doc rows touching Director-tier ratification gates (gate #105 / canvas-ratified-class)
+- [ ] PM dispatches Phase B + Phase C briefs post-§4-ratification
 
 ---
 
