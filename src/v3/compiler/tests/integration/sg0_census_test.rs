@@ -1,13 +1,12 @@
 //! SG-0 — v3 Rust authority census + ratchet.
 //!
 //! Enumerates every `.rs` file under `src/v3/compiler` and partitions
-//! it into **producer-owned generated compiler artifacts** (listed in
-//! [`v3_compiler::generated_files::GENERATED_FILES`]), **testgen-owned
-//! Rust test artifacts** (listed in
-//! [`v3_compiler::generated_files::RUST_TEST_GENERATOR_MANIFEST`]), versus
+//! it into **generated** (listed in the producer-owned manifest at
+//! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
 //! **hand-authored** (everything else). The hand-authored set is
-//! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus
-//! [`EXPECTED_HAND_AUTHORED_TEST`] below — the ratchet. The split is
+//! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus the
+//! T-PB-B Rust test manifest emitted as
+//! [`v3_compiler::generated_files::RUST_TEST_GENERATOR_MANIFEST`] — the ratchet. The split is
 //! load-bearing: T-PB-A owns the non-test subset, while T-PB-B owns
 //! the test subset.
 //! Drift in either direction fails:
@@ -21,7 +20,7 @@
 //!   the entry from its expected sub-ratchet — this is the normal
 //!   shrinkage path and the primary success condition for SG-1..SG-7.
 //!
-//! **Producer-owned partition.** A non-test `.rs` file counts as generated iff
+//! **Producer-owned partition.** A `.rs` file counts as generated iff
 //! its workspace-relative path is a member of `GENERATED_FILES`, which
 //! is emitted by `src/v3/compiler/build.rs` on every build from the
 //! reviewed `REGEN_OUTPUTS` literal. Every codegen driver (the
@@ -30,18 +29,16 @@
 //! the list before writing — so a new generated file can only land if
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
-//! Rust test artifacts use the separate `RUST_TEST_GENERATOR_MANIFEST`
-//! emitted from `tests/rust_test_generator.manifest`; they deliberately
-//! do not enter `GENERATED_FILES`.
+//! Rust tests remain hand-authored until real generation/deletion lands;
+//! their explicit manifest is the T-PB-B expected-test ratchet, not a
+//! generated-file exemption.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use v3_compiler::generated_files::{
-    GENERATED_FILES, RUST_TEST_GENERATOR_MANIFEST, RUST_TEST_GENERATOR_MANIFEST_BYTES,
-};
+use v3_compiler::generated_files::{GENERATED_FILES, RUST_TEST_GENERATOR_MANIFEST};
 
 // Relative to workspace root; mirrors the single census root
 // informally named in `dsl/gunbc/compiler.dag`.
@@ -340,23 +337,23 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 ];
 
 // All test .rs files under `src/v3/compiler` that are currently
-// hand-authored. Sorted; one path per line, relative to the
-// workspace root. T-PB-B owns shrinking this subset toward the
-// TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
-// rely on this list moving.
-// Slice 1 census reconciliation (2026-05-02): sorted path list; update when
-// adding/removing hand-authored integration tests (SG-0 ratchet).
+// hand-authored live in `tests/rust_test_generator.manifest`, emitted
+// by build.rs as `RUST_TEST_GENERATOR_MANIFEST`. T-PB-B owns shrinking
+// that explicit manifest toward the TESTING.md §"Post-R2 shape"
+// residual. T-PB-A reductions must not rely on that list moving.
 //
 // **Cementing-test discipline ratchet (gate #87 `lens_cementing_test_discipline_complete`).**
 // New cementing receipts must follow `TESTING.md` §4 "One claim per test": one structural
 // claim per `#[test]` / per `data foo: TestClaim`, and runner-drive tests assert
 // `ClaimResult` by shape (`== ClaimResult::Pass` / `matches!(_, ClaimResult::Pass)`), never
 // by stringified message contents. When porting a Rust receipt below to a `.dag` `TestClaim`,
-// **the same PR removes the entry from this list** — `EXPECTED_HAND_AUTHORED_TEST` is the
+// **the same PR removes the entry from the manifest** — `RUST_TEST_GENERATOR_MANIFEST` is the
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
-const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
+fn expected_hand_authored_test() -> &'static [&'static str] {
+    RUST_TEST_GENERATOR_MANIFEST
+}
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
 // hand-authored and text-inlined into generated Rust (or otherwise
 // dissolve when the corresponding `.dag` authority lands). The
@@ -473,15 +470,7 @@ fn is_test_path(path: &str) -> bool {
 fn expected_hand_authored_rs() -> BTreeSet<String> {
     EXPECTED_HAND_AUTHORED_NON_TEST
         .iter()
-        .chain(EXPECTED_HAND_AUTHORED_TEST.iter())
-        .map(|p| (*p).to_string())
-        .collect()
-}
-
-fn generated_or_manifested_rs() -> BTreeSet<String> {
-    GENERATED_FILES
-        .iter()
-        .chain(RUST_TEST_GENERATOR_MANIFEST.iter())
+        .chain(expected_hand_authored_test().iter())
         .map(|p| (*p).to_string())
         .collect()
 }

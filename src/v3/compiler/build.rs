@@ -742,15 +742,6 @@ fn main() {
     for path in &test_regen_outputs {
         manifest.push_str(&format!("    \"{path}\",\n"));
     }
-    manifest.push_str("];\n\n");
-    manifest.push_str("pub static RUST_TEST_GENERATOR_MANIFEST_BYTES: &[(&str, &str)] = &[\n");
-    for path in &test_regen_outputs {
-        let absolute = repo_root.join(path);
-        manifest.push_str(&format!(
-            "    (\"{path}\", include_str!(r#\"{}\"#)),\n",
-            absolute.display()
-        ));
-    }
     manifest.push_str("];\n");
     let manifest_out = out_dir.join("v3_generated_files.rs");
     fs::write(&manifest_out, manifest)
