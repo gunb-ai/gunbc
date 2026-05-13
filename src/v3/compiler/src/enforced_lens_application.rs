@@ -30,8 +30,8 @@ use std::collections::HashMap;
 
 use crate::dag::{
     literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Behavior, Dag,
-    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount,
-    TypeConnective, ValueBody,
+    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective,
+    ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
