@@ -19,6 +19,8 @@
 //! `git diff origin/main...HEAD --stat` and path grep). Registry `name` inventory matches
 //! `r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table`
 //! derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` (single authority, no parallel hand list).
+//! This file is the **Rust-pin** leg of the same-PR **register · regen · receipt · runner ·
+//! dispatch · Rust-pin** bundle for `regen.dag` rows (`TESTING.md` Band C → **Same-PR checklist**).
 //!
 //! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
 //! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite

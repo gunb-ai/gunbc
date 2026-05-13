@@ -108,9 +108,11 @@ The register is a tool, not a document. If it is stale, it is worse than not exi
    vs helper `Compiles` + dissolution, and the exact gate-#87 files to edit
    together for `regen.dag` rows) lives in `TESTING.md` under *Cementing tests
    (Band C)* → **Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`**.
-   Use that subsection as the reviewer-facing gate before merging any register
-   promotion; it does not restate gate #87’s passing status, only the edit set
-   that must accompany a new `COMPLETE` claim.
+   That checklist names the six surfaces that must move atomically for enumerated
+   lenses: **register · regen · receipt · runner · dispatch · Rust-pin**. Use it
+   as the reviewer-facing gate before merging any register promotion; it does not
+   restate gate #87’s passing status, only the edit set that must accompany a new
+   `COMPLETE` claim.
 
 ## Related docs
 

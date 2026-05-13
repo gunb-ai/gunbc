@@ -34,7 +34,13 @@ import std.types { FilePath, NonEmptyStr }
 // extend `src/v3/std/verification.dag` (`data lens_capability_register_rows`) and
 // `src/v3/compiler/tests/dag/cementing_dispatch.dag` (receipt list) in the same PR
 // (runner receipt: `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
-// See `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
+// For rows enumerated here, a `COMPLETE` flip also moves **register · regen ·
+// receipt · runner · dispatch · Rust-pin** together: gate-#87 harness
+// `tests/dag/t_r3_gate_87_cementing_regen_<stem>.dag`, `r3_gate_87_cementing_regen_runner_suites.rs`,
+// `cementing_dispatch.dag` (+ `cementing_dispatch.rs` triple expansion when the
+// v2-complete projection grows), and `r3_gate_87_lens_cementing_regen_receipts_test.rs`
+// when `.dag` predicates stay intentionally narrower. See `TESTING.md`
+// ("Cementing tests (Band C — lens subsumption)" → **Same-PR checklist**).
 
 type LensRegistryEntry {
   name: NonEmptyStr
