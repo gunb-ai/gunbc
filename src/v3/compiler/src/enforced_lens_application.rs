@@ -18,10 +18,10 @@
 //!
 //! Gate #58 (`apply_lens_self_application_demonstrated`): when a program authors
 //! `EnforcedApplication<TimingMeasurement, TimingBudget>` referencing `timing_enforceable`
-//! (`v3.std.timing_lens`), infer reads the **lowered** `TimingMeasurement` carried on the
-//! `DeclarationScope` subject (today: `gate_58_modeled_ci_timing_measurement` in
-//! `t_ci_workflow_as_data_demo.dag`, typed `gate_58_timing_enforcement_section`) and applies the
-//! same usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
+//! (`v3.std.timing_lens`), infer reads the **lowered** `TimingMeasurement` from the
+//! `DeclarationScope` subject's structural `measurement` field (nominal section type is
+//! irrelevant — any lowered record body carrying that field is accepted) and applies the same
+//! usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
 //! `timing_lens.dag` (fault states map to the substrate `timing_enforcement_fault_sentinel_count`
 //! literal carried on the lowered nullary-fn bind; the host compares projected nanoseconds against
 //! `TimingBudget.max` with the same strict `>` edge as gate #94).
@@ -96,18 +96,6 @@ fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
         .find(|d| {
             d.name.as_deref() == Some("TimingMeasurement")
                 && d.span.file.ends_with("timing_lens.dag")
-        })
-        .map(|d| d.id)
-}
-
-/// PB-1 gate #58 witness row type (`t_ci_workflow_as_data_demo.dag`): one field `measurement`
-/// carrying lowered `TimingMeasurement` facts for [`check_enforced_lens_applications`].
-fn gate_58_timing_enforcement_section_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
-    dag.declarations()
-        .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("gate_58_timing_enforcement_section")
-                && d.span.file.ends_with("t_ci_workflow_as_data_demo.dag")
         })
         .map(|d| d.id)
 }
@@ -454,31 +442,6 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 continue;
             };
             let section_decl = dag.declaration(section_decl_id);
-            let Some(section_ty) = gate_58_timing_enforcement_section_type_decl_id(dag) else {
-                violations.push(Diagnostic::ParseError {
-                    message: "lens enforcement: could not resolve substrate \
-                              `gate_58_timing_enforcement_section` from \
-                              `t_ci_workflow_as_data_demo.dag` (modeled authority missing; fail-closed)"
-                        .to_string(),
-                    span: decl.span.clone(),
-                    fixes: Vec::new(),
-                });
-                continue;
-            };
-            if section_decl.meta_tag != Some(section_ty) {
-                violations.push(Diagnostic::ParseError {
-                    message: format!(
-                        "lens enforcement: timing `EnforcedApplication` section must be data typed \
-                         `gate_58_timing_enforcement_section` (carrying lowered `TimingMeasurement`); \
-                         got meta_tag {:?} for declaration `{}`",
-                        section_decl.meta_tag,
-                        section_decl.name.as_deref().unwrap_or("?")
-                    ),
-                    span: decl.span.clone(),
-                    fixes: Vec::new(),
-                });
-                continue;
-            };
             let Some(body) = section_decl.value_body.as_ref() else {
                 violations.push(Diagnostic::ParseError {
                     message: format!(
