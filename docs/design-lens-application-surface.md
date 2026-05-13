@@ -2,7 +2,7 @@
 
 > Part of: [`docs/lens-library-design.md`](lens-library-design.md), [`docs/r3-structure.md`](r3-structure.md), [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md), [`../INVARIANTS.md`](../INVARIANTS.md)
 >
-> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the violation-policy semantics under fail-closed discipline (resolved as **two separate top-level carriers** — `EnforcedApplication<Output, Budget>` and `IntrospectApplication<Output>` — sidestepping per-variant generics that v3's `.dag` substrate cannot currently express; see §2 + §3).
+> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the violation-policy semantics under fail-closed discipline (resolved as **two separate top-level carriers** — `EnforcedApplication<Output, Budget, Projected>` and `IntrospectApplication<Output>` — sidestepping per-variant generics that v3's `.dag` substrate cannot currently express; see §2 + §3).
 >
 > **Authority discipline:** this is a R3 design doc; the implementation lane is **T-Lens-Application-Surface** (see [`docs/r3-structure.md`](r3-structure.md) lane table). This doc resolves the design questions that block lane dispatch.
 
