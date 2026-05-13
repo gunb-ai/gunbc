@@ -298,7 +298,7 @@ fn last_path_param(template: PathTemplate) -> String? {
 // story). Lane 2 Stage 2e **parallel** scheduling does **not** treat
 // Upsert×Upsert as commuting on that key alone — concurrent-write commutativity
 // needs a value/merge witness not modeled here (fail-closed in
-// `workflow_parallelism` until the algebra grows one).
+// `lenses.parallelism` until the algebra grows one).
 type IdempotentShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
