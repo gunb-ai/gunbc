@@ -4130,7 +4130,7 @@ fn lower_data_item(
             ctx.pending_refined_function_refs,
         ),
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, ctx.dag) {
+            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, ctx.dag, ctx.symbols) {
                 LowerScalarLiteralOutcome::Literal(bits) => {
                     Some(crate::dag::ValueBody::Scalar(bits))
                 }
@@ -4171,11 +4171,14 @@ fn lower_data_item(
             })
         }
         Some(SurfaceExpr::Call { target, args, .. }) => {
-            if target == READ_UTF8_FILE_TARGET {
+            if dsl_std_read_utf8_file_decl_id(ctx.dag).is_some_and(|canonical| {
+                ctx.symbols.get(target).copied() == Some(canonical)
+            }) {
                 match lower_scalar_literal_for_type(
                     body.expect("call arm has body"),
                     ty_decl_id,
                     ctx.dag,
+                    ctx.symbols,
                 ) {
                     LowerScalarLiteralOutcome::Literal(bits) => {
                         Some(crate::dag::ValueBody::Scalar(bits))
@@ -4277,6 +4280,25 @@ fn dsl_std_render_repeat_string_decl_id(dag: &Dag) -> Option<DeclarationId> {
         .find(|d| {
             d.name.as_deref() == Some("repeat_string")
                 && REPEAT_STRING_AUTHORITY_SUFFIXES
+                    .iter()
+                    .any(|suffix| d.span.file.ends_with(suffix))
+        })
+        .map(|d| d.id)
+}
+
+fn dsl_std_read_utf8_file_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    // Same bootstrap bundle slice as `repeat_string` (render.dag excerpt emitted to
+    // `render_repeat_string_bootstrap.dag`); `read_utf8_file` is declared adjacent so
+    // lowering keys off declaration identity (INVARIANTS P5 mechanism (a)).
+    const READ_UTF8_FILE_AUTHORITY_SUFFIXES: &[&str] = &[
+        "dsl/std/render.dag",
+        "dsl/std/render_repeat_string_bootstrap.dag",
+    ];
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("read_utf8_file")
+                && READ_UTF8_FILE_AUTHORITY_SUFFIXES
                     .iter()
                     .any(|suffix| d.span.file.ends_with(suffix))
         })
@@ -5442,7 +5464,7 @@ fn lower_structural_field_value(
         }
     }
 
-    match lower_scalar_literal_for_type(expr, expected_type, dag) {
+    match lower_scalar_literal_for_type(expr, expected_type, dag, symbols) {
         LowerScalarLiteralOutcome::Literal(literal_bits) => {
             return Some(crate::dag::FieldValue::Literal(literal_bits));
         }
@@ -5891,17 +5913,54 @@ enum LowerScalarLiteralOutcome {
     Reject(Diagnostic),
 }
 
-const READ_UTF8_FILE_TARGET: &str = "read_utf8_file";
+/// Shared `String` typing + `where`-refinement gate for `read_utf8_file` expansion results.
+fn read_utf8_file_reject_untyped_string_use(
+    dag: &Dag,
+    literal_bits: &LiteralBits,
+    expected_type: DeclarationId,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+    let type_ok = string_decl_id
+        .map(|id| walks_to(dag, expected_type, id))
+        .unwrap_or(false)
+        || optional_element_type(dag, expected_type).is_some_and(|element| {
+            walks_to(dag, element, string_decl_id.unwrap_or(element))
+        });
+    if !type_ok {
+        return Err(Diagnostic::ResolveError {
+            name: "`read_utf8_file` expands to a String; the expected type is not String-compatible"
+                .to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+    }
+    if scalar_literal_must_reject_for_refinement(dag, literal_bits, expected_type) {
+        return Err(Diagnostic::ResolveError {
+            name: "`read_utf8_file` result does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+    }
+    Ok(())
+}
 
-/// Compile-time UTF-8 file ingestion: `read_utf8_file("relative/path")` expands to a
+/// Compile-time UTF-8 file ingestion: canonical `read_utf8_file("relative/path")` expands to a
 /// `String` literal after reading `path` relative to the compilation unit's directory
 /// (`SourceSpan.file`'s parent). Fail-closed on absolute paths, `..` segments, path
 /// escape (canonical-prefix check), and I/O errors. R3 §1.8 gate #62 receipt surface.
-fn read_utf8_file_expansion_literal(expr: &SurfaceExpr) -> Option<Result<LiteralBits, Diagnostic>> {
+fn read_utf8_file_try_expand(
+    expr: &SurfaceExpr,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &Dag,
+) -> Option<Result<LiteralBits, Diagnostic>> {
     let SurfaceExpr::Call { target, args, span } = expr else {
         return None;
     };
-    if target != READ_UTF8_FILE_TARGET {
+    let Some(canonical) = dsl_std_read_utf8_file_decl_id(dag) else {
+        return None;
+    };
+    if symbols.get(target).copied() != Some(canonical) {
         return None;
     }
     if args.len() != 1 {
@@ -6008,35 +6067,19 @@ fn lower_scalar_literal_for_type(
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
     dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
 ) -> LowerScalarLiteralOutcome {
-    if let Some(result) = read_utf8_file_expansion_literal(expr) {
+    if let Some(result) = read_utf8_file_try_expand(expr, symbols, dag) {
         return match result {
-            Ok(literal_bits) => {
-                let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
-                let type_ok = string_decl_id
-                    .map(|id| walks_to(dag, expected_type, id))
-                    .unwrap_or(false)
-                    || optional_element_type(dag, expected_type).is_some_and(|element| {
-                        walks_to(dag, element, string_decl_id.unwrap_or(element))
-                    });
-                if !type_ok {
-                    return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
-                        name: "`read_utf8_file` expands to a String; declared type is not String-compatible"
-                            .to_string(),
-                        span: surface_expr_span(expr).clone(),
-                        fixes: Vec::new(),
-                    });
-                }
-                let span = surface_expr_span(expr).clone();
-                if scalar_literal_must_reject_for_refinement(dag, &literal_bits, expected_type) {
-                    return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
-                        name: "`read_utf8_file` result does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
-                        span,
-                        fixes: Vec::new(),
-                    });
-                }
-                LowerScalarLiteralOutcome::Literal(literal_bits)
-            }
+            Ok(literal_bits) => match read_utf8_file_reject_untyped_string_use(
+                dag,
+                &literal_bits,
+                expected_type,
+                &surface_expr_span(expr),
+            ) {
+                Ok(()) => LowerScalarLiteralOutcome::Literal(literal_bits),
+                Err(diag) => LowerScalarLiteralOutcome::Reject(diag),
+            },
             Err(diag) => LowerScalarLiteralOutcome::Reject(diag),
         };
     }
@@ -8646,51 +8689,29 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            if target == READ_UTF8_FILE_TARGET {
-                if let Some(result) = read_utf8_file_expansion_literal(expr) {
+            if dsl_std_read_utf8_file_decl_id(dag).is_some_and(|canonical| {
+                symbols.get(target).copied() == Some(canonical)
+            }) {
+                if let Some(result) = read_utf8_file_try_expand(expr, symbols, dag) {
                     return match result {
                         Ok(literal_bits) => {
                             if let Some(exp) = expected_decl {
-                                let string_decl_id =
-                                    dag.declaration_by_name("String").map(|d| d.id);
-                                let type_ok = string_decl_id
-                                    .map(|id| walks_to(dag, exp, id))
-                                    .unwrap_or(false)
-                                    || optional_element_type(dag, exp).is_some_and(|element| {
-                                        walks_to(dag, element, string_decl_id.unwrap_or(element))
-                                    });
-                                if !type_ok {
-                                    let port = dag.alloc_port(None);
-                                    dag.mark_unresolved(
-                                        port,
-                                        Diagnostic::ResolveError {
-                                            name: "`read_utf8_file` expands to a String; context expects a non-String type"
-                                                .to_string(),
-                                            span: span.clone(),
-                                            fixes: Vec::new(),
-                                        },
-                                    );
-                                    return port;
-                                }
-                                if scalar_literal_must_reject_for_refinement(
+                                match read_utf8_file_reject_untyped_string_use(
                                     dag,
                                     &literal_bits,
                                     exp,
+                                    span,
                                 ) {
-                                    let port = dag.alloc_port(None);
-                                    dag.mark_unresolved(
-                                        port,
-                                        Diagnostic::ResolveError {
-                                            name: "`read_utf8_file` result does not satisfy the expected `where` refinement — no narrowing branch in scope"
-                                                .to_string(),
-                                            span: span.clone(),
-                                            fixes: Vec::new(),
-                                        },
-                                    );
-                                    return port;
+                                    Ok(()) => emit_literal_as_value_port(dag, literal_bits, span),
+                                    Err(diag) => {
+                                        let port = dag.alloc_port(None);
+                                        dag.mark_unresolved(port, diag);
+                                        port
+                                    }
                                 }
+                            } else {
+                                emit_literal_as_value_port(dag, literal_bits, span)
                             }
-                            emit_literal_as_value_port(dag, literal_bits, span)
                         }
                         Err(diag) => {
                             let port = dag.alloc_port(None);
