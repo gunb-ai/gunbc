@@ -213,12 +213,15 @@ fn demo_ci_modeled_timing_dimension_report(d: Dag, b: Behavior) -> DimensionRepo
   else
     dimension_report_tm_from_witness(d, ci_wad_modeled_workflow_timing_witness(d, b))
 
-// Gate #58 (`apply_lens_self_application_demonstrated`) — typed `DeclarationScope` witness for
-// timing enforcement: embeds authoritative lowered `TimingMeasurement` (same substrate as
-// `timing_enforcement_project` / `timing_lens.dag`) so the host consumer never keys usage off
-// declaration display names. `modeled_gunbc_ci_workflow` remains the CI-shaped demo carrier;
-// this row is the enforcement subject until workflow observations fold into the same lens path
-// as gate #92’s complexity fold.
+// Gate #58 (`apply_lens_self_application_demonstrated`) — **INTERIM PB-1 / host-enforcement
+// bridge** (not thesis-complete self-application over `modeled_gunbc_ci_workflow` as the
+// `EnforcedApplication` section): the timing lens is bundled canonically, but the witness row
+// below carries a lowered `TimingMeasurement` for `check_enforced_lens_applications` on the
+// bootstrap snapshot — same T-LAS **carrier** path as gate #92, while “apply timing enforcement
+// to the modeled `Workflow` table itself” remains dissolution work under T-Lens-Self-Application
+// (see `INVARIANTS.md` SG-0 / ROADMAP T-PB-B). `modeled_gunbc_ci_workflow` stays the CI-shaped
+// substrate demo; this row is the enforcement subject until observation-backed rows share that
+// path with gate #92’s complexity fold.
 //
 // Review thread 3231706686: `Observed { duration: { count: 0 } }` is a **lowered PB-1 receipt
 // placeholder** for the gate #58 `EnforcedApplication` harness (not a claim of external

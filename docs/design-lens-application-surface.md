@@ -65,66 +65,56 @@ type SectionRef
 
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-// LensEnforcement<Output, Budget> is the per-lens projection AND
-// violation relation. Both are required for the fold-pass enforcement
-// check; the projection alone would leave "did the observed value
-// exceed the declared budget?" as API-level convention.
+// LensEnforcement<Output, Budget, Projected> binds three type parameters:
+// - `Output`: lens-output carrier (`Lens<Output>`).
+// - `Budget`: user-authored contract on `EnforcedApplication.budget`.
+// - `Projected`: codomain of `project` — the usage coordinate for compositional / diagnostic
+//   consumers. Many lenses set `Projected = Budget` (identity projection or a class-shaped
+//   projection isomorphic to the budget type). **Timing** uses a dedicated sum
+//   (`TimingEnforcementProjected` in `timing_lens.dag`) so non-evidence never inhabits `TimingBudget`
+//   on the projection path (P2 / gate #58).
 //
-// - project: extracts the budget-comparable coordinate from the lens
-//   output (identity for lenses where Output = Budget; e.g.,
-//   summary.asymptotic_class for complexity).
-// - violates: per-lens violation relation on `(output: Output, declared:
-//   Budget)`. The first argument is the **full lens output** (not only
-//   `project(output)`): relations that must distinguish sum variants before
-//   comparing budget-shaped coordinates (timing) take `Output` here. The
-//   second argument is the user-declared `Budget`. Returns true iff enforcement
-//   fails closed under the lens ordering (lattice dominance for complexity;
-//   dominance for cost; mode-mismatch for parallelism).
-type LensEnforcement<Output, Budget> {
-  project: Output -> Budget
-  violates: (output: Output, declared: Budget) -> Bool
+// - `project`: extracts `Projected` from the lens output.
+// - `violates`: `(output: Output, declared: Budget) -> Bool`. The first argument is always the
+//   **full** lens output (not only `project(output)`); the second is the user-declared `Budget`.
+type LensEnforcement<Output, Budget, Projected> {
+  project: fn(Output) -> Projected
+  violates: fn(Output, Budget) -> Bool
 }
 
-// EnforceableLens<Output, Budget> packages a lens with its CANONICAL
-// enforcement (projection + violation relation) into ONE substrate
-// authority. Each lens declares its EnforceableLens once; users
-// referencing apply_lens cite the EnforceableLens (not lens +
+// EnforceableLens<Output, Budget, Projected> packages a lens with its CANONICAL enforcement
+// (projection + violation relation) into ONE substrate authority. Each lens declares its
+// EnforceableLens once; users referencing apply_lens cite the EnforceableLens (not lens +
 // enforcement separately).
 //
-// PARSER-LEVEL UNIQUENESS INVARIANT: the parser enforces "at most
-// ONE EnforceableLens<C, B> declaration per (Lens<C>, Budget B) pair
-// in the program". User code that declares a second EnforceableLens
-// referencing the same lens with a type-compatible Budget fails
-// parse-time with a Diagnostic naming both declarations as the
-// duplicate-canonical-enforcement violation. This is the same shape
-// as v3's other single-authority parser invariants (e.g., one
-// declaration per name; one BoundedLattice instance per type).
-// EnforcedApplication.enforceable_lens references resolve unambiguously
-// to the SOLE canonical EnforceableLens for that (lens, Budget) tuple.
+// PARSER-LEVEL UNIQUENESS INVARIANT: the parser enforces "at most ONE canonical
+// `EnforceableLens<Output, Budget, Projected>` declaration per compatible `(Lens<Output>, Budget,
+// Projected)` pairing in the program". User code that declares a second EnforceableLens for the
+// same lens with a type-compatible budget + projection fails parse-time with a Diagnostic naming
+// both declarations as the duplicate-canonical-enforcement violation. This is the same shape as
+// v3's other single-authority parser invariants (e.g., one declaration per name; one
+// BoundedLattice instance per type). `EnforcedApplication.enforceable_lens` references resolve
+// unambiguously to the SOLE canonical EnforceableLens for that bundle.
 //
-// Why parser-level, not type-level: full type-level enforcement
-// (preventing user code from EVER declaring a second EnforceableLens<C, B>)
-// would require existentials or singleton inhabitance — substrate
-// features v3 does not fully express today (per `src/v3/std/lens.dag`
-// and substrate.dag inhabitance support is sparse). The parser-level
-// uniqueness invariant achieves the same single-authority outcome
-// (no two competing canonical enforcements for a lens/budget pair)
-// at the only construction site v3 currently supports as a structural
-// gate. Future substrate hardening (existentials / dependent inhabitance)
-// would let this lift to type-level.
-type EnforceableLens<Output, Budget> {
+// Why parser-level, not type-level: full type-level enforcement (preventing user code from EVER
+// declaring a second competing bundle) would require existentials or singleton inhabitance —
+// substrate features v3 does not fully express today (per `src/v3/std/lens.dag` and substrate.dag
+// inhabitance support is sparse). The parser-level uniqueness invariant achieves the same
+// single-authority outcome at the only construction site v3 currently supports as a structural
+// gate. Future substrate hardening would let this lift to type-level.
+type EnforceableLens<Output, Budget, Projected> {
   lens: Lens<Output>
-  enforcement: LensEnforcement<Output, Budget>
+  enforcement: LensEnforcement<Output, Budget, Projected>
 }
 
-// EnforcedApplication<Output, Budget> is the carrier for enforce-mode
-// lens applications. References ONE EnforceableLens (the bundled
-// authority); cannot pair against arbitrary lens / enforcement
-// combinations.
-type EnforcedApplication<Output, Budget> {
-  enforceable_lens: EnforceableLens<Output, Budget>  // bundled lens+enforcement authority
+// EnforcedApplication<Output, Budget, Projected> is the carrier for enforce-mode lens applications.
+// References ONE EnforceableLens (the bundled authority); cannot pair against arbitrary lens /
+// enforcement combinations. The third parameter ties the `enforceable_lens.enforcement.project`
+// codomain to the same `Projected` type argument carried by the referenced `EnforceableLens`.
+type EnforcedApplication<Output, Budget, Projected> {
+  enforceable_lens: EnforceableLens<Output, Budget, Projected>  // bundled lens+enforcement authority
   section: SectionRef
-  budget: Budget                                      // matches enforceable_lens.enforcement.project's target
+  budget: Budget                                      // user-declared contract (matches `Budget` param)
   diagnostic_severity: DiagnosticSeverity
   span: SourceSpan                                    // user-authored site for diagnostic attribution
 }
@@ -168,31 +158,31 @@ The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses 
 ```dag
 // src/v3/lenses/complexity.dag
 data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/asymptotic_class/work_certainty/span_certainty
-data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
-  project: |summary| summary.asymptotic_class           // budget compares against class only
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
+  project: |summary| summary.asymptotic_class           // `Projected` = declared budget type
   violates: |summary, declared|                        // full summary + user budget (see LensEnforcement)
     asymptotic_class_lattice.lt(declared, summary.asymptotic_class) // observed class exceeds declared
 }
-data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
+data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   lens: complexity_lens
   enforcement: complexity_enforcement                    // canonical pairing — referenced by apply_lens
 }
 
 // src/v3/lenses/cost.dag
 data cost_lens: Lens<SymbolicCost> = ...              // output IS the budget type
-data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost> = {
-  project: |c| c                                        // identity projection
+data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost, SymbolicCost> = {
+  project: |c| c                                        // identity projection (`Projected = Budget`)
   violates: |observed, declared|                        // lens output (= projected) vs user budget
     dominates(observed, declared) && !dominates(declared, observed)
 }
-data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost> = {
+data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost, SymbolicCost> = {
   lens: cost_lens
   enforcement: cost_enforcement
 }
 
 // src/v3/lenses/parallelism.dag
 data parallelism_lens: Lens<ParallelismMode> = ...    // output IS the budget type
-data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> = {
+data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode, ParallelismMode> = {
   project: |m| m                                        // identity projection
   violates: |observed, declared|                        // lens output vs user budget
     match (declared, observed) {
@@ -200,9 +190,19 @@ data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> 
       _ => False
     }
 }
-data parallelism_enforceable: EnforceableLens<ParallelismMode, ParallelismMode> = {
+data parallelism_enforceable: EnforceableLens<ParallelismMode, ParallelismMode, ParallelismMode> = {
   lens: parallelism_lens
   enforcement: parallelism_enforcement
+}
+
+// src/v3/std/timing_lens.dag (gate #58 — `Projected` is a sum distinct from `TimingBudget`)
+data timing_enforcement: LensEnforcement<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
+  project: timing_enforcement_project
+  violates: timing_enforcement_violates
+}
+data timing_enforceable: EnforceableLens<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
+  lens: timing_lens
+  enforcement: timing_enforcement
 }
 ```
 
