@@ -177,6 +177,11 @@ fn compile_todo_service_repository_fixture() -> v3_compiler::Dag {
         .expect("larger-stack compile thread completes")
 }
 
+fn compile_todo_service_repository_fixture_counted(count: &mut usize) -> v3_compiler::Dag {
+    *count += 1;
+    compile_todo_service_repository_fixture()
+}
+
 fn expected_todo_service_routes() -> BTreeSet<RestRoute> {
     BTreeSet::from([
         RestRoute {
@@ -788,10 +793,7 @@ fn openapi_projection_ignores_same_shape_non_service_endpoint_binding() {
 #[test]
 fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
     let mut compile_count = 0usize;
-    let dag = {
-        compile_count += 1;
-        compile_todo_service_repository_fixture()
-    };
+    let dag = compile_todo_service_repository_fixture_counted(&mut compile_count);
 
     let canonical = extract_rest_routes(&dag).expect("canonical route projection extracts");
     assert_eq!(canonical, expected_todo_service_routes());
