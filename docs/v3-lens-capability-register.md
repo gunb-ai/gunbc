@@ -103,6 +103,15 @@ The register is a tool, not a document. If it is stale, it is worse than not exi
 5. **The two axes do not trade off.** `STRUCTURALLY TERMINAL` + `BEHAVIORALLY PROXY` is a valid, honest state — a well-formed file computing a weaker function than its name implies. It is not a contradiction. Claiming `COMPLETE` because the file is structurally clean is the mistake this register is named against.
 6. **Cementing tests have a canonical home in-tree.** In-repo dispatch (fixture layout, v2-oracle vs minimal-`Dag` contract tests, and the `regen.dag` → register → cementing-receipt ratchet) lives in `TESTING.md` under *Cementing tests (Band C — lens subsumption)*, in `src/v3/std/verification.dag` as `data lens_capability_register_rows` (structural authority per `docs/design-tests-as-data-completeness.md` §8.3), in `src/v3/compiler/tests/dag/cementing_dispatch.dag` (Band-C receipt list + `CementingDispatchMatchesProjection` claim), and in `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` (PB-B-1 harness table shared with that predicate). The runner receipt `cementing_dispatch_suite_passes_through_runner` keeps the `.dag` dispatch exercised; drift between the register, `regen.dag`, on-disk harnesses, and `cementing_dispatch.dag` fails closed. Promoting a row to `BEHAVIORALLY COMPLETE` with a non-`N/A` v2 counterpart without landing the cementing receipt in the same PR is a process failure, not a modeling disagreement.
 
+7. **Same-PR `COMPLETE` flip — mechanical order of operations.** Full step-by-step
+   (receipt class vs v2 counterpart, `DifferentialEquals` vs `LensOutputEquals`
+   vs helper `Compiles` + dissolution, and the exact gate-#87 files to edit
+   together for `regen.dag` rows) lives in `TESTING.md` under *Cementing tests
+   (Band C)* → **Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`**.
+   Use that subsection as the reviewer-facing gate before merging any register
+   promotion; it does not restate gate #87’s passing status, only the edit set
+   that must accompany a new `COMPLETE` claim.
+
 ## Related docs
 
 - `ROADMAP.md` — the scattered debt rows that share this root cause (2026-04-21 receipt-closure wave, P2 tracked debts on lattice instances, DB-20 workflow parallelism, complexity-receipt brief entry)
