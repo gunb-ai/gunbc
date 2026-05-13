@@ -1615,7 +1615,8 @@ pub mod evaluator {
             descent_proof_path_key, eval_loop_with_descent_execution_proof, eval_node, eval_port,
             eval_value, evaluate_body, DescentExecutionProof, DescentResidual, EvalError,
             EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder,
-            NonStrictEvidence, StrictEvidence, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
+            NonStrictEvidence, StrictEvidence, Value,
+            BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
         use crate::dag::{
