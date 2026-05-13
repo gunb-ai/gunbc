@@ -3,7 +3,8 @@
 //! **T-Workflow-As-Data** — `ci_workflow_modeled_as_dag` receipt (gunbc#1956): gunbc CI workflow
 //! carriers from `dsl/extdeps/github/actions.dag` are authored as `.dag` **data** alongside a
 //! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
-//! via `evaluate_body` against bind ports resolved from **`generated_full_bootstrap_dag()`**.
+//! via `evaluate_body` on the **merged gate #57 carrier fixture** (same lowered artifact as
+//! `dsl/gunbc/ci.dag`) and, orthogonally, on **`generated_full_bootstrap_dag()`** for the PB-1 embed path.
 //!
 //! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
 //! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
@@ -15,9 +16,20 @@
 //! **YAML authority** `.github/workflows/ci.yml` (YAML is upstream; the `.dag` row is a derived
 //! encoding that must track the generator's view of that YAML). Slice-4 `WorkflowRuntime` / emission
 //! substrate: `dsl/gunbc/ci_emission.dag`. Companion isolated `compile_to_dag` on gunbc CI workflow
-//! modules is deferred (M1(2.8) opaque-body path). The optional full-bootstrap
-//! `evaluate_body` receipt remains `#[ignore]` until the cold-cache amortization work called out
-//! inline on `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`.
+//! modules is deferred (M1(2.8) opaque-body path).
+//!
+//! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
+//! hosts the executable receipt: **`compile_to_dag(dsl/gunbc/ci.dag)` once** (via `OnceLock`) to load
+//! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
+//! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
+//! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
+//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt on a merged
+//! compile** (`tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag`) that **anchors
+//! `ci_workflow_dag`** from `gunbc.ci` in the same lowered artifact as
+//! `demo_ci_modeled_timing_dimension_report` (THESIS self-inspection on the modeled CI workflow carrier,
+//! not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
+//! still exercises the PB-1 bootstrap embed path for `modeled_gunbc_ci_workflow` / demo span wiring.
+//! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
@@ -30,14 +42,25 @@
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueNode,
+    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, Lookup, NodeId, TypeConnective,
+    ValueNode,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
+use v3_compiler::gunbc_ci::{
+    select_affected_gates, CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
+};
+use v3_compiler::lens_cost::complexity_of;
+use v3_compiler::{
+    analyze_complexity, analyze_symbolic_cost_dimension, compile_to_dag,
+    generated_full_bootstrap_dag, CompileError, DimensionReport,
+};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
@@ -47,6 +70,10 @@ const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
+const R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE: &str =
+    include_str!("../fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag");
+const R3_GATE57_CI_TIMING_LENS_CARRIER_FILE: &str =
+    "src/v3/compiler/tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
@@ -287,6 +314,101 @@ fn sample_demo_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         })
 }
 
+/// `evaluate_body` receipt for `demo_ci_modeled_timing_dimension_report` on `dag` (PB-1 / merged carrier).
+fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler::dag::Dag) {
+    assert!(
+        dag.diagnostics().is_empty(),
+        "dag diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    let (d_port, b_port) = {
+        let bind_node_id = bind_node_id_for_fn(dag, "demo_ci_modeled_timing_dimension_report");
+        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+            panic!("demo_ci_modeled_timing_dimension_report bind");
+        };
+        assert_eq!(
+            bind.params.len(),
+            2,
+            "demo_ci_modeled_timing_dimension_report expects Dag and Behavior"
+        );
+        (bind.params[0], bind.params[1])
+    };
+
+    let d_val = bootstrap_dag_runtime_carrier(dag);
+    let b_beh = sample_demo_value_behavior(dag);
+    let b_val = match &b_beh {
+        Behavior::Value(v) => behavior_value_variant(dag, v),
+        _ => unreachable!(),
+    };
+
+    let bind_node_id = bind_node_id_for_fn(dag, "demo_ci_modeled_timing_dimension_report");
+    let frame = EvalFrame::from_bindings([(d_port, d_val), (b_port, b_val)]).expect("frame");
+    let mut state = EvalStateStack::with_root_frame(frame);
+    let strategy = EvalStrategy::ApplicativeOrder {
+        input_order: InputEvaluationOrder::LeftFirst,
+    };
+    let out = evaluate_body(dag, bind_node_id, &mut state, strategy).expect("eval");
+
+    let Value::VariantValue { tag, payload } = &out else {
+        panic!("expected DimensionReport variant Value, got {out:?}");
+    };
+    let dim_ok = disj_variant_constructor_id(dag, "DimensionReport", "DimensionOk");
+    assert_eq!(*tag, dim_ok, "expected DimensionOk");
+
+    let Value::RecordValue(fields) = &**payload else {
+        panic!("DimensionOk payload record");
+    };
+    let composed = fields
+        .iter()
+        .find(|f| f.label == "composed")
+        .map(|f| &f.value)
+        .expect("composed");
+
+    let observed_tag = disj_variant_constructor_id(dag, "TimingMeasurement", "Observed");
+    let Value::VariantValue {
+        tag: ctag,
+        payload: cpayload,
+    } = composed
+    else {
+        panic!("composed must be TimingMeasurement variant, got {composed:?}");
+    };
+    assert_eq!(*ctag, observed_tag, "composed must be Observed");
+
+    let Value::RecordValue(duration_fields) = &**cpayload else {
+        panic!("Observed payload");
+    };
+    let duration = duration_fields
+        .iter()
+        .find(|f| f.label == "duration")
+        .map(|f| &f.value)
+        .expect("duration");
+    let Value::RecordValue(count_fields) = duration else {
+        panic!("Nanoseconds record");
+    };
+    let count = count_fields
+        .iter()
+        .find(|f| f.label == "count")
+        .map(|f| &f.value)
+        .expect("count");
+    assert_eq!(
+        count,
+        &Value::LiteralValue(LiteralBits::Int("0".to_string())),
+        "`timing_sequential_identity` pins Observed zero ns for this receipt"
+    );
+
+    let dim_name = fields
+        .iter()
+        .find(|f| f.label == "dimension_name")
+        .map(|f| &f.value)
+        .expect("dimension_name");
+    assert_eq!(
+        dim_name,
+        &Value::LiteralValue(LiteralBits::String("ci_modeled_timing".to_string())),
+        "dimension_name must match ci_modeled_timing_lens.name"
+    );
+}
+
 fn structural_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> &'a FieldValue {
     fields
         .iter()
@@ -300,6 +422,115 @@ fn literal_string(value: &FieldValue) -> &str {
         panic!("expected string literal field, got {value:?}");
     };
     value
+}
+
+fn literal_bool(value: &FieldValue) -> bool {
+    let FieldValue::Literal(LiteralBits::Bool(value)) = value else {
+        panic!("expected bool literal field, got {value:?}");
+    };
+    *value
+}
+
+fn ci_workflow_dag_input_from_compiled_ci(dag: &v3_compiler::dag::Dag) -> CiWorkflowDagInput {
+    let fields = structural_value_body(dag, "ci_workflow_dag");
+    let gate_records = workflow_gate_records(dag, fields);
+    let gates: Vec<CiGateMeta> = gate_records
+        .iter()
+        .map(|gate| CiGateMeta {
+            id: literal_string(structural_field(gate, "id")).to_string(),
+            blocking: literal_bool(structural_field(gate, "blocking")),
+        })
+        .collect();
+    let (_name, _node_ids, edge_pairs) = workflow_topology(dag, fields);
+    let edges: Vec<(String, String)> = edge_pairs
+        .into_iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+    CiWorkflowDagInput { gates, edges }
+}
+
+struct Gate57CiArtifacts {
+    dag: v3_compiler::dag::Dag,
+    input: CiWorkflowDagInput,
+    subject: NodeId,
+}
+
+fn gate57_ci_artifacts() -> &'static Gate57CiArtifacts {
+    static CACHE: OnceLock<Gate57CiArtifacts> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+        assert!(
+            dag.diagnostics().is_empty(),
+            "{GUNBC_CI_FILE}: {:?}",
+            dag.diagnostics()
+        );
+        let input = ci_workflow_dag_input_from_compiled_ci(&dag);
+        let subject = dag.workflow_lane2_subject().expect(
+            "compiled gunbc.ci must expose a workflow lane-2 subject bind for lens consumers",
+        );
+        Gate57CiArtifacts {
+            dag,
+            input,
+            subject,
+        }
+    })
+}
+
+fn gate57_bootstrap_dag() -> &'static v3_compiler::dag::Dag {
+    static BOOT: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
+    BOOT.get_or_init(demo_bootstrap_dag)
+}
+
+/// Merged `gunbc.ci` + `v3.std.t_ci_workflow_as_data_demo` — timing `evaluate_body` shares one compile
+/// with the `ci_workflow_dag` authority row (see `r3_gate57_ci_timing_carrier_anchor` in the fixture).
+fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
+    static CARRIER: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
+    CARRIER.get_or_init(|| {
+        let dag = compile_to_dag(
+            R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE,
+            R3_GATE57_CI_TIMING_LENS_CARRIER_FILE,
+        )
+        .unwrap_or_else(|err| panic!("compile {R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {err:?}"));
+        assert!(
+            dag.diagnostics().is_empty(),
+            "{R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {:?}",
+            dag.diagnostics()
+        );
+        dag
+    })
+}
+
+/// Single structural claim: `ci_workflow_dag` prerequisite edges expose exactly one 2-successor
+/// fan-out, and it matches gunbc-ci’s `compile-gates` → `lint` + `tests` fork (no `WorkflowEffect`
+/// staging — read-only mirror of the lowered `data ci_workflow_dag` carrier).
+fn assert_ci_prereq_graph_has_single_parallel_fanout(input: &CiWorkflowDagInput) {
+    let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
+    for (from, to) in &input.edges {
+        outgoing.entry(from.clone()).or_default().push(to.clone());
+    }
+
+    let mut two_branch: Vec<(String, Vec<String>)> = Vec::new();
+    for (from, mut kids) in outgoing {
+        kids.sort();
+        kids.dedup();
+        if kids.len() == 2 {
+            two_branch.push((from, kids));
+        }
+    }
+    two_branch.sort_by(|a, b| a.0.cmp(&b.0));
+    match two_branch.as_slice() {
+        [(parent, kids)] => {
+            assert_eq!(parent.as_str(), "compile-gates");
+            assert_eq!(kids, &vec!["lint".to_string(), "tests".to_string()]);
+        }
+        [] => panic!(
+            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found none"
+        ),
+        found => panic!(
+            "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding); found {found:?}"
+        ),
+    }
 }
 
 fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
@@ -590,103 +821,175 @@ fn gunbc_ci_emission_substrate_compiles() {
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
+// --- R3 gate #57 (`lens_self_application_demonstrated`) — split receipts per TESTING.md §4.
+// `cargo test lens_self_application_demonstrated` matches the shared name prefix.
+
 #[test]
-// Deferred with explicit P5 anchor (not ad-hoc TBD): ROADMAP.md "Forward-Tracked Lane: T-Workflow-As-Data"
-// (~L57ff) + timing-lens / `WorkflowObservationAnchor` thread (~L75ff, `docs/design-timing-lens.md` section 2).
-// Dissolution: re-enable under default CI by amortizing this harness through `cached_compile_to_dag`
-// (`tests/integration/common/cached_compile.rs`) / OnceLock so cold v3 (~67m full-bootstrap + evaluator) stays bounded.
-#[ignore = "ROADMAP T-Workflow-As-Data lane + timing-lens anchor (ROADMAP.md ~L57, ~L75); cold v3 full-bootstrap+evaluator ~67m — dissolve via cached_compile_to_dag/OnceLock (tests/integration/common/cached_compile.rs); hot-fix 2026-05-12"]
-fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
-    let dag = demo_bootstrap_dag();
+fn lens_self_application_demonstrated_ci_workflow_dag_authority_row_lowers() {
+    let g = gate57_ci_artifacts();
+    g.dag.declaration_by_name("ci_workflow_dag").expect(
+        "compiled gunbc.ci must surface `ci_workflow_dag` as the CI workflow-as-data authority row",
+    );
+    let fields = structural_value_body(&g.dag, "ci_workflow_dag");
     assert!(
-        dag.diagnostics().is_empty(),
-        "fixture diagnostics: {:?}",
-        dag.diagnostics()
+        !fields.is_empty(),
+        "`ci_workflow_dag` must lower with a non-empty structural body (pipeline + edges + transport fields)"
     );
+}
 
-    let (d_port, b_port) = {
-        let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
-        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
-            panic!("demo_ci_modeled_timing_dimension_report bind");
-        };
-        assert_eq!(
-            bind.params.len(),
-            2,
-            "demo_ci_modeled_timing_dimension_report expects Dag and Behavior"
+#[test]
+fn lens_self_application_demonstrated_bootstrap_ci_modeled_exclusivity() {
+    let boot = gate57_bootstrap_dag();
+    assert!(
+        boot.diagnostics().is_empty(),
+        "bootstrap diagnostics: {:?}",
+        boot.diagnostics()
+    );
+    boot.declaration_by_name("modeled_gunbc_ci_workflow")
+        .expect(
+            "bootstrap must load `modeled_gunbc_ci_workflow` from t_ci_workflow_as_data_demo.dag",
         );
-        (bind.params[0], bind.params[1])
-    };
+    assert!(
+        boot.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+            .is_none(),
+        "bootstrap demo must not author a second CI DAG topology authority"
+    );
+}
 
-    let d_val = bootstrap_dag_runtime_carrier(&dag);
-    let b_beh = sample_demo_value_behavior(&dag);
-    let b_val = match &b_beh {
-        Behavior::Value(v) => behavior_value_variant(&dag, v),
-        _ => unreachable!(),
-    };
+#[test]
+fn lens_self_application_demonstrated_ci_pipeline_name_is_gunbc_ci() {
+    let g = gate57_ci_artifacts();
+    let fields = structural_value_body(&g.dag, "ci_workflow_dag");
+    let (pipe_name, _, _) = workflow_topology(&g.dag, fields);
+    assert_eq!(
+        pipe_name, "gunbc-ci",
+        "`ci_workflow_dag.pipeline.name` must remain the gunbc-ci authority string"
+    );
+}
 
-    let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
-    let frame = EvalFrame::from_bindings([(d_port, d_val), (b_port, b_val)]).expect("frame");
-    let mut state = EvalStateStack::with_root_frame(frame);
-    let strategy = EvalStrategy::ApplicativeOrder {
-        input_order: InputEvaluationOrder::LeftFirst,
-    };
-    let out = evaluate_body(&dag, bind_node_id, &mut state, strategy).expect("eval");
+#[test]
+fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
+    let g = gate57_ci_artifacts();
+    let affected = select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll)
+        .expect("affected-set selection must succeed on gunbc-ci topology");
+    assert_eq!(
+        affected,
+        vec![
+            "compile-gates".to_string(),
+            "lint".to_string(),
+            "tests".to_string(),
+            "l1-ratchet".to_string(),
+        ],
+        "TouchAll must schedule the full gunbc-ci gate roster in prerequisite topo order"
+    );
+}
 
-    let Value::VariantValue { tag, payload } = &out else {
-        panic!("expected DimensionReport variant Value, got {out:?}");
-    };
-    let dim_ok = disj_variant_constructor_id(&dag, "DimensionReport", "DimensionOk");
-    assert_eq!(*tag, dim_ok, "expected DimensionOk");
+#[test]
+fn lens_self_application_demonstrated_ci_prereq_fanout_from_carrier() {
+    let g = gate57_ci_artifacts();
+    assert_ci_prereq_graph_has_single_parallel_fanout(&g.input);
+}
 
-    let Value::RecordValue(fields) = &**payload else {
-        panic!("DimensionOk payload record");
-    };
-    let composed = fields
-        .iter()
-        .find(|f| f.label == "composed")
-        .map(|f| &f.value)
-        .expect("composed");
+#[test]
+fn lens_self_application_demonstrated_ci_lane2_workflow_projection_absent() {
+    let g = gate57_ci_artifacts();
+    assert!(
+        g.dag.lane2_workflow_effect_at(&g.subject).is_none(),
+        "lane-2 workflow projection must come from lowering when available — do not inject a parallel \
+         `WorkflowEffect` mirror from Rust (P2 single authority)"
+    );
+}
 
-    let observed_tag = disj_variant_constructor_id(&dag, "TimingMeasurement", "Observed");
-    let Value::VariantValue {
-        tag: ctag,
-        payload: cpayload,
-    } = composed
+/// R3 gate #57 — primary lens receipt: paired symbolic-cost + E7 `DimensionOk` on the CI lane-2 subject.
+#[test]
+fn lens_self_application_demonstrated() {
+    let g = gate57_ci_artifacts();
+    let cost_ci = analyze_symbolic_cost_dimension(&g.dag, g.subject);
+    let complexity_ci = analyze_complexity(&g.dag, g.subject);
+    let (
+        DimensionReport::DimensionOk {
+            dimension_name: a,
+            composed: ca,
+            ..
+        },
+        DimensionReport::DimensionOk {
+            dimension_name: b,
+            composed: cb,
+            ..
+        },
+    ) = (&cost_ci, &complexity_ci)
     else {
-        panic!("composed must be TimingMeasurement variant, got {composed:?}");
+        panic!(
+            "gate #57 requires `DimensionOk` from both `analyze_symbolic_cost_dimension` and \
+             `analyze_complexity` on the CI lane-2 subject (fail-closed); got cost={cost_ci:?} \
+             complexity={complexity_ci:?}"
+        );
     };
-    assert_eq!(*ctag, observed_tag, "composed must be Observed");
+    assert_eq!(a, b);
+    assert_eq!(ca, cb);
+    assert_eq!(a.as_str(), "symbolic_cost");
 
-    let Value::RecordValue(duration_fields) = &**cpayload else {
-        panic!("Observed payload");
+    let Behavior::Bind(bind_ci) = g.dag.node(g.subject) else {
+        panic!("lane-2 subject must remain a Bind shell");
     };
-    let duration = duration_fields
-        .iter()
-        .find(|f| f.label == "duration")
-        .map(|f| &f.value)
-        .expect("duration");
-    let Value::RecordValue(count_fields) = duration else {
-        panic!("Nanoseconds record");
+    let cx = complexity_of(&g.dag, &bind_ci.result_port());
+    let Lookup::Hit(ref summary) = cx else {
+        panic!(
+            "gate #57 requires `complexity_of` Hit on the CI lane-2 bind result_port; got {cx:?}"
+        );
     };
-    let count = count_fields
-        .iter()
-        .find(|f| f.label == "count")
-        .map(|f| &f.value)
-        .expect("count");
     assert_eq!(
-        count,
-        &Value::LiteralValue(LiteralBits::Int("0".to_string())),
-        "`timing_sequential_identity` pins Observed zero ns for this receipt"
+        &summary.work, ca,
+        "`complexity_of`.work must match `analyze_symbolic_cost_dimension` composed (single-authority with E7 complexity DimensionOk)"
     );
+}
 
-    let dim_name = fields
-        .iter()
-        .find(|f| f.label == "dimension_name")
-        .map(|f| &f.value)
-        .expect("dimension_name");
+#[test]
+fn lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow() {
+    let handle = std::thread::Builder::new()
+        .name(
+            "lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow"
+                .into(),
+        )
+        .stack_size(32 * 1024 * 1024)
+        .spawn(
+            lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow_body,
+        )
+        .expect("spawn timing body");
+    handle
+        .join()
+        .expect("lens_self_application_demonstrated CI-modeled timing thread panicked");
+}
+
+fn lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow_body() {
+    let g = gate57_ci_artifacts();
+    let merged = gate57_ci_timing_lens_carrier_dag();
+    let merged_input = ci_workflow_dag_input_from_compiled_ci(merged);
     assert_eq!(
-        dim_name,
-        &Value::LiteralValue(LiteralBits::String("ci_modeled_timing".to_string())),
-        "dimension_name must match ci_modeled_timing_lens.name"
+        merged_input, g.input,
+        "merged timing-lens carrier fixture must preserve `dsl/gunbc/ci.dag` `ci_workflow_dag` topology \
+         (single authority — timing receipt is not scoped to a parallel CI mirror)"
     );
+    merged
+        .workflow_lane2_subject()
+        .expect("merged gunbc.ci surface must expose the lane-2 CI workflow bind shell");
+    assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(merged);
+}
+
+/// T-Workflow-As-Data / PB-1 — bootstrap embed path for `demo_ci_modeled_timing_dimension_report`
+/// (orthogonal to gate #57’s merged-carrier timing receipt).
+#[test]
+fn ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell() {
+    let handle = std::thread::Builder::new()
+        .name("ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell".into())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell_body)
+        .expect("spawn timing body");
+    handle
+        .join()
+        .expect("ci_workflow_as_data_demo bootstrap timing thread panicked");
+}
+
+fn ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell_body() {
+    assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(gate57_bootstrap_dag());
 }
