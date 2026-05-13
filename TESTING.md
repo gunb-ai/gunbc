@@ -413,16 +413,24 @@ receipt stems). Temporary Rust cementing modules live under
 
 Use this list when flipping `docs/v3-lens-capability-register.md` **and**
 `data lens_capability_register_rows` in `src/v3/std/verification.dag` to
-`BEHAVIORALLY COMPLETE`. Nothing here adds a new authority beyond the gate-#87
-surfaces already wired; it sequences edits so Band-C cementing cannot slip to a
-follow-on PR.
+`BEHAVIORALLY COMPLETE`, **or** when adding a new `LensRegistryEntry` that is
+authored as behaviorally complete from the first merge. Nothing here adds a new
+authority beyond the gate-#87 surfaces already wired; it sequences edits so
+Band-C cementing cannot slip to a follow-on PR.
+
+**Lens-completeness invariant (merge bar).** A pull request that moves a lens to
+`BEHAVIORALLY COMPLETE` (or lands a new `LensRegistryEntry` with that status) **without**
+the full receipt stack in §2 below — register + `regen.dag` + gate-#87 harness +
+runner table + `cementing_dispatch.dag` + any required Rust pin with dissolution
+note — is **not mergeable** for lens completeness, independent of unrelated CI
+green. Reviewers treat missing rows the same way as a failing ratchet.
 
 **1. Pick the receipt class from the v2 counterpart column**
 
 | Register column | Expected Band-C shape in the gate-#87 harness | Notes |
 |---|---|---|
-| **Real v2 counterpart** (a concrete v2 path or oracle, not `None` / not `N/A`) | `DifferentialEquals` and/or frozen v2-oracle predicates already used for sibling regen lenses | Full behavioral parity is proven against v2-shaped output. |
-| **v3-native `N/A` / no v2 counterpart** | `LensOutputEquals` (or equivalent structural equality on the published v3 carrier) on minimal programs or constructed `Dag` shapes | No v2 oracle; still a behavioral receipt, not “structural TERMINAL only.” |
+| **Real v2 counterpart** (a concrete v2 path or oracle, not `None` / not `N/A`) | `DifferentialEquals` and/or a **reviewer-approved** frozen v2-oracle projection (same PR as the register flip) | Full behavioral parity is proven against v2-shaped output; ad hoc string oracles without review are not a substitute for `DifferentialEquals` when the predicate is structurally available. |
+| **v3-native `N/A` / no v2 counterpart** | `LensOutputEquals` (or equivalent structural equality on the published v3 carrier), **`SymbolicCostExprEquals` / `SymbolicCostExprEqualsForBindParam`** when the published receipt is symbolic cost (see `t_r3_gate_87_cementing_regen_cost_symbolic.dag`), on minimal programs or constructed `Dag` shapes | No v2 oracle; still a behavioral receipt, not “structural TERMINAL only.” |
 | **Helper / intentionally partial registry surface** (`infer_helpers`, `lower_helpers`, …) | Narrow `.dag` claims (often `Compiles` / source-level checks) **plus** an explicit **dissolution trigger** in the harness or module doc | When `.dag` predicates stay intentionally narrower than the shipped API, pair a **Rust** compile or contract pin in `r3_gate_87_lens_cementing_regen_receipts_test` in the same change. |
 
 Temporary Rust-only cementing (carrier not yet authorable as `.dag` data) is
@@ -449,7 +457,11 @@ these together**
 - `src/v3/compiler/tests/dag/cementing_dispatch.dag` — add the matching Band-C
   receipt row so `CementingDispatchMatchesProjection` stays fail-closed.
 - `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`
-  — extend when a Rust pin remains required alongside narrower `.dag` claims.
+  — extend when a Rust pin remains required alongside narrower `.dag` claims, and
+  add or refresh an explicit **dissolution note** wherever the pin is not
+  trivially removable in the same PR: name the missing `.dag` predicate/carrier or
+  runner capability, the owning lane or substrate dependency that unblocks it,
+  and what evidence replaces the pin when the blocker clears.
 
 **3. Reviewer one-pass**
 
@@ -457,7 +469,9 @@ A `COMPLETE` promotion is incomplete if any row in steps 1 and 2 above is missin
 register already reads `COMPLETE`. CI should already fail via
 `CementingDispatchMatchesProjection`, the runner table vs live `regen.dag`
 names, or the SG-0 census when Rust wiring is wrong; this checklist is the human
-pre-merge mirror of those predicates.
+pre-merge mirror of those predicates. If prose or the register reads `COMPLETE`
+first, the change still fails the lens-completeness invariant until the receipt
+stack lands in the **same** PR — do not split “docs now, harness later.”
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
