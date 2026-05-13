@@ -103,14 +103,28 @@ React components are TS source-code generation that happens to produce a tree-sh
 ### Candidate carriers
 
 ```dag
-type Component { name, props: List<PropSpec>, state: List<StateSpec>, body: ComponentBody }
+type Component { name, props: List<PropSpec>, state: List<StateSpec>, body: JSXTree }
 type PropSpec { name, type_ref: TypeRef, required: Bool }
 type StateSpec { name, type_ref: TypeRef, initial: Expression }
 type Hook { name, kind: HookKind, dependencies: List<Reference> }
-type HookKind = UseState | UseEffect | UseMemo | UseCallback | UseContext | UseRef | Custom(Identifier)
+// React 18 built-in hooks (authority anchor: react.dev/reference/react @ React 18.3 — 15 standard hooks):
+type HookKind =
+    UseState | UseReducer | UseEffect | UseLayoutEffect | UseInsertionEffect
+  | UseContext | UseRef | UseImperativeHandle | UseMemo | UseCallback
+  | UseDebugValue | UseDeferredValue | UseTransition | UseId | UseSyncExternalStore
+  | Custom(Identifier)
 type Lifecycle = OnMount | OnUnmount | OnUpdate { triggers: List<Reference> }
 type Effect { hook: Hook, body: Expression, cleanup: Expression? }
-type ComponentBody = Render { jsx: JSXTree } | Composite { sub_components: List<ComponentRef> }
+// Component body IS a JSXTree. Subcomponents are nodes within the tree (ComponentRef
+// arm), NOT an alternate body mode. JSXNode coproduct dissolves the prior Render vs
+// Composite split — one render tree with component references as tree nodes.
+type JSXTree { root: JSXNode }
+type JSXNode =
+    HtmlElement { tag: Identifier, attrs: List<JSXAttr>, children: List<JSXNode> }
+  | ComponentRef { component: ComponentRef, props: List<JSXAttr>, children: List<JSXNode> }
+  | TextNode { text: String }
+  | ExpressionSlot { expr: Expression }
+  | FragmentNode { children: List<JSXNode> }
 ```
 
 Sketch (Director ratified §12 dispositions msg_7d51b699 2026-05-13). HookKind 🟡 YELLOW confirmed — R4-Phase-1.5 Practice-4-promotion canvas required before Phase-2 dispatch per §10.
@@ -250,8 +264,8 @@ New sum-types proposed in canvas:
 
 | Sum type | Practice 4 |
 |---|---|
-| `HookKind = UseState \| UseEffect \| UseMemo \| UseCallback \| UseContext \| UseRef \| Custom(Identifier)` | 🟡 YELLOW — 6 standard-hook arms (UseState/UseEffect/UseMemo/UseCallback/UseContext/UseRef) covering React 18 + 1 user-input boundary arm (Custom(Identifier)); Custom requires Practice-4-promotion canvas per §10 Phase-1.5 |
-| `ComponentBody = Render \| Composite` | 🟢 GREEN — distinct semantic axes |
+| `HookKind` — 15 React-18.3 built-in arms + `Custom(Identifier)` (authority: react.dev/reference/react) | 🟡 YELLOW — full React-versioned roster enumerated (UseState/UseReducer/UseEffect/UseLayoutEffect/UseInsertionEffect/UseContext/UseRef/UseImperativeHandle/UseMemo/UseCallback/UseDebugValue/UseDeferredValue/UseTransition/UseId/UseSyncExternalStore) covering React 18.3 + 1 user-input boundary arm (Custom(Identifier)); Custom requires Practice-4-promotion canvas per §10 Phase-1.5. Dissolution trigger: React version-anchor changes (new built-in hook in 18.x or 19.x) → re-ratify roster on the version-anchor PR. |
+| `JSXNode = HtmlElement \| ComponentRef \| TextNode \| ExpressionSlot \| FragmentNode` | 🟢 GREEN — JSX tree-node coproduct (subcomponents as tree nodes, not alternate body mode; dissolves prior Render/Composite split per codex 10817 finding #2) |
 | `Lifecycle = OnMount \| OnUnmount \| OnUpdate { triggers }` | 🟢 GREEN — distinct lifecycle phases |
 | `TypingDiscipline = Nominal \| Structural` (Q1-b) | 🟢 GREEN — captures genuine semantic difference |
 
@@ -298,7 +312,7 @@ Each phase = separate worker brief; standard canvas → ratification → worker 
 - **Q3**: **RATIFIED Q3-a** — `.dag` → JSX single-authority; aligns with INVARIANTS P1 + gate #28 omni-emission pattern.
 - **Q4**: **RATIFIED EXTEND gate #28** (NOT new parallel gate). Director rationale: gate #28 NAME `omni_layers_share_one_node_tree` is layer-count-agnostic — the invariant is general; current description's layer-enumeration is incidental. New parallel gate would create parallel authority on the same invariant — direct INVARIANTS P1 violation. **Extension shape**: update gate #28 row description to enumerate 5/6 projections (Rust + TS + React + OpenAPI + SQL DDL + Markdown); extend `m1_5_omni_shape_b_openapi_test.rs` (or rename to `omni_layers_consistency_test.rs`) test to assert N-target consistency from same Dag.
 - **Q5**: **RATIFIED Q5-a** — Component is `Behavior::Bind`. Strict-mirror per `feedback_recursion_is_emergent` + `feedback_compiler_is_dag_processor`. All 4 Cluster F lenses (complexity/cost/parallelism/effect) apply uniformly without new substrate-kind.
-- **Practice 4 HookKind**: **RATIFIED 🟡 YELLOW** with R4-Phase-1.5 Practice-4-promotion canvas requirement. 6-arm closed enumeration (UseState | UseEffect | UseMemo | UseCallback | UseContext | UseRef) covers React 18 standard hooks. `Custom(Identifier)` arm IS user-input boundary per `feedback_coproduct_dissolution` — appropriate stopping point. **R4-Phase-2 prerequisite (Director directive)**: Mgr authors Practice-4-promotion canvas before Phase-2 worker dispatch to enumerate what lens framework needs to differentiate about Custom hooks. If lenses treat Custom opaquely → Custom stays as-is. If lenses need structural differentiation (effect-class vs computation-class) → Custom requires field-level extension.
+- **Practice 4 HookKind**: **RATIFIED 🟡 YELLOW** with R4-Phase-1.5 Practice-4-promotion canvas requirement. **15-arm closed enumeration** of React 18.3 built-in hooks (authority anchor: react.dev/reference/react; UseState/UseReducer/UseEffect/UseLayoutEffect/UseInsertionEffect/UseContext/UseRef/UseImperativeHandle/UseMemo/UseCallback/UseDebugValue/UseDeferredValue/UseTransition/UseId/UseSyncExternalStore) + `Custom(Identifier)` user-input boundary arm. Dissolution trigger: React version-anchor change (new built-in in 18.x or 19.x) re-ratifies the roster on the version-anchor PR. **R4-Phase-2 prerequisite (Director directive)**: Mgr authors Practice-4-promotion canvas before Phase-2 worker dispatch to enumerate what lens framework needs to differentiate about Custom hooks. If lenses treat Custom opaquely → Custom stays as-is. If lenses need structural differentiation (effect-class vs computation-class) → Custom requires field-level extension.
 
 ## §13. Reference
 
