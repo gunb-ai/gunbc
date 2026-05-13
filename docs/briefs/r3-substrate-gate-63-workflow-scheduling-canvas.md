@@ -70,15 +70,18 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 
 ## §3. Closure-scope question — three candidates
 
-### Candidate A — minimal repair (un-ignore the passing test) + §4.4 substrate-prereq reconciliation
+### Candidate A — minimal repair (un-ignore the passing test) + §1.4 conjunctive predicate (a)+(b) receipts + §4.4 substrate-prereq reconciliation
 
 **Scope shifted per snappy-bear-502 msg_cef1340b correction**:
 
-- Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`)
-- Close gate #63 on the unblocked passing receipt + §4.4 substrate-prereq reconciliation
-- The 5 sibling-test failures from `--include-ignored` broader run are treated as **separately-scoped substrate-debt** (not gate #63 closure-blockers); see §2 ledger-mapping under rows #99/#100 framing in worker brief
+- Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`) — **§1.4 predicate (a) receipt**
+- Worker Phase B.1 systematic Class 4 bridge inventory: grep `src/v3/` for every Class 4 bridge site; classify pass-through / allocated-survivor (cite §1.8 row #) / unallocated-survivor; assert **unallocated-survivor count = 0** — **§1.4 predicate (b) receipt**
+- Worker Phase B.2 sibling-debt audit doc: 5 snappy-bear-502 failures enumerated as Director-allocated to rows #99/#100 per Director msg_804cdc93 (the STRUCTURAL exception citation per §7.2 + debt-sweep §3.A); these are Class 4 bridge survivors with explicit Director allocation, not unallocated
+- Close gate #63 on **conjunctive (a) + (b) receipts** + §4.4 substrate-prereq reconciliation
 
-**§1.4 + §4.4 substrate-prereq reconciliation** (per codex BLOCKING PR #2831 review 67dfd2d4 + operator BLOCKING worker:62): the representative gap-test text is the necessary-but-not-sufficient receipt; §4.4 also enumerates required substrate carriers. Worker brief Phase C performs the explicit reconciliation atomic with the §1.8 row #63 status flip:
+**§1.4 conjunctive predicate receipts** (per operator BLOCKING worker:81 + codex BLOCKING 36bb8237): Class 4 closure requires both **(a)** representative gap-test pass AND **(b)** systematic bridge inventory count=0 OR explicit Director allocation per §7.2 STRUCTURAL exception. Phase A satisfies (a); Phase B.1 + B.2 satisfy (b); sample-of-class disqualified.
+
+**§4.4 substrate-prereq reconciliation** (per codex BLOCKING PR #2831 review 67dfd2d4 + operator BLOCKING worker:62): the representative gap-test text is the necessary-but-not-sufficient receipt; §4.4 also enumerates required substrate carriers. Worker brief Phase C performs the explicit reconciliation atomic with the §1.8 row #63 status flip:
 
 | §4.4 prereq | HEAD location |
 |---|---|
@@ -93,7 +96,7 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 All 6 §4.4 prereq carriers EXIST under different paths/names than §4.4 originally sketched. Phase C requires worker to footnote §4.4 with the path-mapping above, citing the closure PR — this dissolves the dual-closure-authority concern (INVARIANTS P2/P5) by making the §4.4 enumeration + §1.8 row #63 closure receipt explicitly consistent. Single closure authority, multi-receipt evidence.
 
 Pros:
-- **Smallest possible blast-radius** — single `#[ignore]` removal + §4.4 footnote + test promotion
+- **Smallest possible blast-radius** — single `#[ignore]` removal + Phase B.1/B.2 grep-and-doc receipts + §4.4 footnote + test promotion
 - Gate-criterion test is **already passing**; gate closure is administrative
 - Sibling-test substrate-debt preserved as separately-scoped (rows #99/#100 carry it)
 - No new substrate authoring needed (carriers already landed under different paths)
