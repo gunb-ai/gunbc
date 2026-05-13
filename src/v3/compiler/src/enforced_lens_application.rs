@@ -17,7 +17,7 @@
 //! through `complexity_lens_generated`) and attaches a compile diagnostic on violation.
 //!
 //! Gate #58 (`apply_lens_self_application_demonstrated`): when a program authors
-//! `EnforcedApplication<TimingMeasurement, TimingBudget>` referencing `timing_enforceable`
+//! `EnforcedApplication<TimingMeasurement, TimingBudget, TimingEnforcementProjected>` referencing `timing_enforceable`
 //! (`v3.std.timing_lens`), infer reads the **lowered** `TimingMeasurement` from the
 //! `DeclarationScope` subject's structural `measurement` field **only after** verifying the
 //! subject row's **nominal** `data …: RowTy = …` type declares `measurement: TimingMeasurement`
