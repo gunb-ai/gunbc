@@ -71,7 +71,7 @@ Cons:
 
 ### Candidate Q1-b — Extended LanguageSpec carrier with structural-vs-nominal axis
 
-Extend `dsl/std/coercion.dag` (or wherever `InhabitantDecl` lives) with a `TypingDiscipline = Nominal | Structural` field. Rust inhabitants set `Nominal`; TS inhabitants set `Structural`. Emit logic branches on discipline.
+Extend `dsl/std/coercion.dag` (or wherever `InhabitantDecl` lives) with a `TypingDiscipline = Nominal | Structural` field. **No implicit default — missing field MUST fail compilation** (P3 fail-closed + Practice 6). Phase-1 worker brief encodes atomic migration: same PR adds the carrier extension AND sets every existing inhabitant's `typing_discipline = Nominal` explicitly (Rust + Python + Go rows) AND adds a compile-time test asserting no `InhabitantDecl` row lacks the field. TS inhabitants set `Structural` explicitly. Emit logic branches on discipline.
 
 Pros:
 - Encodes the genuine semantic difference at the type level (Practice 2/6)
@@ -86,7 +86,7 @@ Cons:
 
 (Reserved per Director's pattern in gate #62 / gate #105 canvas chains; not pre-proposed.)
 
-**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q1-b. The structural-vs-nominal distinction is load-bearing for TS emission (any TS emit must respect it); encoding it in the carrier is cleaner than burying it in lang-specific files. Migration scope is bounded (Rust adds `TypingDiscipline = Nominal` field, structural new TS rows set `Structural`).
+**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q1-b. The structural-vs-nominal distinction is load-bearing for TS emission (any TS emit must respect it); encoding it in the carrier is cleaner than burying it in lang-specific files. **Migration is fail-closed atomic** (per codex 10864 + INVARIANTS P3): existing Rust/Python/Go rows get `typing_discipline = Nominal` explicitly set in the same PR as the carrier extension — no implicit-default fallback; missing field MUST fail compilation. New TS rows set `Structural` explicitly. Scope is bounded (carrier extension + per-row explicit-set + compile-time exhaustiveness test, all in one atomic PR).
 
 ## §4. Q2 — React-as-framework-substrate carriers (Shape-A vs Shape-B)
 
@@ -284,7 +284,7 @@ Per `INVARIANTS.md` "Cost of Change":
 
 ## §10. R4 phase plan (canvas-only; for ratification framing)
 
-1. **R4-Phase-1**: TS LanguageSpec carrier landing (Q1-b ratified: `TypingDiscipline = Nominal | Structural` on `InhabitantDecl`)
+1. **R4-Phase-1**: TS LanguageSpec carrier landing (Q1-b ratified: `TypingDiscipline = Nominal | Structural` on `InhabitantDecl`) — **fail-closed atomic migration**: same PR adds carrier + sets `typing_discipline = Nominal` on every existing inhabitant + adds compile-time test asserting no row lacks the field (P3 + Practice 6)
 2. **R4-Phase-1.5** (Director directive msg_7d51b699): Practice-4-promotion canvas on `HookKind` Custom arm — Mgr authors before Phase-2 dispatch; enumerates what lens framework needs to differentiate about Custom hooks
 3. **R4-Phase-2**: React framework substrate carriers (Q2-a Shape-A; Q5-a Component=Behavior::Bind) + JSX emission
 4. **R4-Phase-3**: Cross-target consistency invariant extension via gate #28 EXTEND (Q4 ratified) — update row description to enumerate 5/6 projections; extend/rename `m1_5_omni_shape_b_openapi_test.rs` to assert N-target consistency
@@ -304,10 +304,11 @@ Each phase = separate worker brief; standard canvas → ratification → worker 
 7. **Director-added (msg_7d51b699)**: Adding `TypingDiscipline` arms beyond `Nominal | Structural` without ratified consumer evidence (e.g., speculative `Refinement` arm for hypothetical Liquid Haskell)
 8. **Director-added (msg_7d51b699)**: Custom `HookKind` landing in R4-Phase-2 without the Practice-4-promotion canvas enumerated in §10 (Phase-1.5)
 9. **Director-added (msg_7d51b699)**: Introducing parallel `omni_*_share_one_node_tree` gate when the invariant is already cashed at gate #28 — direct INVARIANTS P1 violation (gate #28's NAME is layer-count-agnostic; the layer-enumeration in the description is incidental, not load-bearing)
+10. **Mgr-derived per codex 10864 (INVARIANTS P3 + Practice 6)**: Landing the `TypingDiscipline` carrier extension with an implicit `Nominal` default for existing rows — missing field interpreted as a plausible value reintroduces convention-fallback semantics in place of API-level enforcement. R4-Phase-1 migration MUST be atomic: same PR sets every existing inhabitant's field explicitly + adds a compile-time exhaustiveness test asserting no row lacks the field.
 
 ## §12. Ratified dispositions (audit trail; all Director-ratified msg_7d51b699 via PM msg_1faad154 2026-05-13)
 
-- **Q1**: **RATIFIED Q1-b** — `TypingDiscipline = Nominal | Structural` extension to `InhabitantDecl` (`dsl/std/coercion.dag:59`). Migration safe: Rust/Python/Go default to Nominal; structural new TS rows set Structural. Practice 4 🟢 GREEN per §8.
+- **Q1**: **RATIFIED Q1-b** — `TypingDiscipline = Nominal | Structural` extension to `InhabitantDecl` (`dsl/std/coercion.dag:59`). **Migration: fail-closed, no implicit default** (INVARIANTS P3 + Practice 6 per codex 10864): every existing `InhabitantDecl` row (Rust + Python + Go inhabitants) MUST carry an explicit `typing_discipline: Nominal` field setting in the same PR that introduces the carrier extension. Missing field MUST fail compilation (no fallback to plausible value); Phase-1 worker brief encodes atomic migration receipt — extension PR includes the per-row `typing_discipline = Nominal` explicit-set across all existing rows + a compile-time test asserting no inhabitant lacks the field. New TS rows set `typing_discipline: Structural` explicitly. Practice 4 🟢 GREEN per §8.
 - **Q2**: **RATIFIED Q2-a** — Shape-A (components ARE TS source code). Director-cited counter-example: Rust web frameworks (Axum/Actix) fit "framework-tier-emitting-through-language" in Shape-A without Shape-F; Vue/Svelte/Express/Django symmetrically Shape-A. Cluster F lens framework lives in Shape-A space; composes naturally via Q5-a.
 - **Q3**: **RATIFIED Q3-a** — `.dag` → JSX single-authority; aligns with INVARIANTS P1 + gate #28 omni-emission pattern.
 - **Q4**: **RATIFIED EXTEND gate #28** (NOT new parallel gate). Director rationale: gate #28 NAME `omni_layers_share_one_node_tree` is layer-count-agnostic — the invariant is general; current description's layer-enumeration is incidental. New parallel gate would create parallel authority on the same invariant — direct INVARIANTS P1 violation. **Extension shape**: update gate #28 row description to enumerate 5/6 projections (Rust + TS + React + OpenAPI + SQL DDL + Markdown); extend `m1_5_omni_shape_b_openapi_test.rs` (or rename to `omni_layers_consistency_test.rs`) test to assert N-target consistency from same Dag.
