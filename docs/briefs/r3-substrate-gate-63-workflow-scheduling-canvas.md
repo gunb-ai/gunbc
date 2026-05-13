@@ -1,0 +1,194 @@
+---
+status: Mgr canvas (substrate-shape question for Director ratification; surfaced per feedback_substrate_shape_belongs_in_mgr_canvas after snappy-bear-502 audit msg_140d9bc7 2026-05-13)
+authority parent: R3 Substrate Manager (warm-wolf-698)
+authoring date: 2026-05-13
+gate: §1.8 ledger row #63 `substrate_gap_workflow_scheduling_closed`
+authority docs:
+  - `docs/r3-program-plan.md:291` — gate #63 row (DECLARED 2026-05-06)
+  - `docs/r3-program-plan.md:77` + §4.4 — Class 4 (workflow/scheduling) criterion: "CI workflow modeled as .dag data executes through evaluator + produces DimensionReport<TimingMeasurement>"
+  - `docs/r3-structure.md` — T-Workflow-As-Data + T-Lens-Self-Application lane assignment
+snappy-bear-502 audit anchor: msg_140d9bc7-6417-45bf-b541-41cba1ea98cd
+---
+
+# Gate #63 — workflow_scheduling substrate-shape canvas
+
+## §0. Status
+
+DECLARED at `docs/r3-program-plan.md:291` (NEW 2026-05-06). T-WAD Wave-1 substrate just landed extensively in this Substrate-mgr lane (PR #2774 Slice 4 YamlStatic, PR #2808 Slice 5 BinaryShim, PR #2798 Slice 7 affected-set, PR #2823 gate #62 FileAttachment). snappy-bear-502 was auto-spawned without authored brief and surfaced a clean STOP-condition audit revealing partial-landing state.
+
+This canvas frames the **closure-scope substrate-shape question** for Director ratification before worker brief authoring.
+
+## §1. Source authority (verbatim)
+
+### Class 4 criterion (`docs/r3-program-plan.md:77`)
+
+> CI workflow modeled as `.dag` data executes through evaluator
+
+### Gate #63 row (`docs/r3-program-plan.md:291`)
+
+> `substrate_gap_workflow_scheduling_closed` — substrate-gap-class — T-Workflow-As-Data + T-Lens-Self-Application — DECLARED (NEW 2026-05-06) — CI workflow as `.dag` data; substrate prereqs in §4.4
+
+### Class 4 §4.4 (full closure criterion per snappy-bear-502 grep)
+
+> "CI workflow modeled as .dag data executes through evaluator + produces DimensionReport<TimingMeasurement>"
+
+The closure has **two conjuncts**: (a) execution-through-evaluator + (b) DimensionReport<TimingMeasurement> production.
+
+## §2. State at HEAD — partial-landing inventory (snappy-bear-502 audit)
+
+### What exists
+
+- **CIWorkflowDag carrier**: `dsl/gunbc/ci.dag:120-125` with canonical `ci_workflow_dag` at `:191-200`; includes pipeline/edges + `github_actions_workflow` pinned transport
+- **WorkflowRuntime 3-arm**: `dsl/gunbc/ci_emission.dag:27` (per ratified Slice 4 canvas) + `project_github_actions` at `:87-92`
+  - YamlStatic arm: returns `dag.github_actions_workflow` (PR #2774 landed)
+  - BinaryShim arm: concrete thin-shim Workflow body (PR #2808 landed)
+  - PythonShim arm: placeholder data
+- **Demo evaluator entrypoint**: `src/v3/std/t_ci_workflow_as_data_demo.dag:206-210` returns `DimensionReport<TimingMeasurement>` — the criterion (b) shape exists
+- **Integration evaluator receipt**: `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:582` exists
+
+### What's broken (the smoking gun)
+
+- Integration test at line 582 is **`#[ignore]` at line 581**
+- `--include-ignored` run: 3 passed, **5 failed** (BuildBuddy invocation `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`)
+- Failure modes:
+  - `dsl/gunbc/ci_emission.dag` unresolved `CIWorkflowDag` / unknown type
+  - `gunbc_ci_emission_binary_shim_workflow` opaque body
+  - PythonShim placeholder opaque body
+  - `dsl/gunbc/ci_github_actions_workflow.dag` opaque body + `concurrency` field type mismatch
+  - `ci_workflow_as_data_demo_pins_*` topology/command tests fail
+  - `gunbc_ci_emission_substrate_compiles` fails
+  - `gunbc_ci_github_actions_workflow_authority_compiles` fails
+
+**Reading**: substrate-shape is **modeled but not closed-loop**. The `.dag` carriers exist, the demo entrypoint exists, the test exists — but the substrate doesn't compile cleanly + the demo doesn't pass + `#[ignore]` masks the state.
+
+## §3. Closure-scope question — three candidates
+
+### Candidate A — minimal repair (fix demo evaluator receipt only)
+
+Scope:
+- Diagnose + fix the 5 failures in `--include-ignored` run
+- Remove `#[ignore]` from test at `t_ci_workflow_as_data_demo_test.rs:581`
+- Close gate #63 on demo evaluator producing `DimensionReport<TimingMeasurement>` for the existing demo `.dag` program
+
+Pros:
+- Smallest blast-radius; targets exactly the "modeled but not passing" gap
+- Demo already constructed; closure = make it work as advertised
+- Cost-of-change: 1-N file fixes within demo + ci_emission substrate
+
+Cons:
+- "Demo" closure may be too narrow if criterion intends broader scope
+- Doesn't address Python placeholder / opaque-body shapes
+- May leave structural debt (concurrency field mismatch) that re-opens later
+
+### Candidate B — full CIWorkflowDag/projection path execution
+
+Scope:
+- Wire the full repo `.github/workflows/ci.yml`-equivalent CIWorkflowDag through evaluator (not just the synthetic demo)
+- All 3 WorkflowRuntime arms (YamlStatic + BinaryShim + PythonShim) must execute end-to-end
+- DimensionReport<TimingMeasurement> production for at least one real workflow execution
+- Fix all 5 failures + remove `#[ignore]`
+
+Pros:
+- "Executes through evaluator" reads as production-grade, not demo-grade
+- Closes Python placeholder + opaque body shapes structurally
+- Forward-compatible with downstream T-Lens-Self-Application
+
+Cons:
+- Significantly larger scope (3-5x Candidate A)
+- Risk of substrate-shape questions surfacing during implementation (cascades)
+- May need cross-lane coordination with T-Lens-Self-Application Mgr
+- Cost-of-change-1 satisfied only at the per-workflow level
+
+### Candidate C — wait for T-Lens-Self-Application
+
+Scope:
+- Gate #63 closure waits on T-Lens-Self-Application landing first
+- T-Lens-Self-Application provides the generic `DimensionReport` producer route that gate #63's evaluator path consumes
+- Once T-Lens-Self-Application gates close, return to gate #63 with substrate-prereqs satisfied
+
+Pros:
+- Avoids re-doing work if T-Lens-Self-Application changes the DimensionReport producer shape
+- Acknowledges the gate row's dual-lane assignment (T-WAD + T-Lens-Self-Application)
+- Preserves the partial-landing as substrate-progress receipt
+
+Cons:
+- T-Lens-Self-Application lane status unknown at this canvas authoring; may be R4-bound
+- Operator may have intended Class 4 to close IN-R3 (cf. operator framing from msg_4fd650b7 on gate #105: "we need to land this all in R3 please")
+- Defers known-broken state (`#[ignore]`-masked 5 failures) instead of repairing
+
+## §4. Key load-bearing finding — `#[ignore]` masking
+
+The `#[ignore]` at `t_ci_workflow_as_data_demo_test.rs:581` is the substrate-closure-state load-bearing fact:
+- If it was added when the demo was authored (pre-Wave-1 substrate landing), it represents **deferred fail-closed receipt** awaiting the substrate landing
+- If it was added after a regression, it represents **silently-masked broken state**
+- Worker audit at HEAD shows the substrate IS landed; therefore the `#[ignore]` should be removable IF Candidate A repair is in scope
+
+**Per `feedback_load_bearing_ratchet_preservation` discipline**, `#[ignore]` masking on gate-criterion tests is a fail-closed-discipline anti-pattern; any closure-scope choice should plan for `#[ignore]` removal.
+
+## §5. Cross-lane coupling — T-Lens-Self-Application
+
+Gate row says lane = `T-Workflow-As-Data + T-Lens-Self-Application`. Two lane interpretations:
+
+1. **AND semantics**: gate #63 requires both lanes' substrate to land before closure → Candidate C
+2. **OR / contributory semantics**: either lane's substrate contributes to closure; closure proceeds when sufficient substrate is present → Candidate A or B
+
+Worker audit didn't probe T-Lens-Self-Application substrate state. Canvas authoring at HEAD doesn't have visibility into that lane's progress. Director-tier disposition needed.
+
+## §6. Practice 4 (coproduct dissolution) check
+
+No new sum-type proposed in this canvas. All three candidates work with existing carriers (CIWorkflowDag + WorkflowRuntime + DimensionReport). Practice 4 GREEN/YELLOW/RED not applicable.
+
+## §7. Cost-of-change accounting
+
+| Candidate | Files edited to close gate #63 |
+|---|---|
+| A (demo repair) | ~3-5 (fix 5 specific failures + remove `#[ignore]`) |
+| B (full path) | ~10-20 (close 3 WorkflowRuntime arms + repo workflow path + cross-cutting infra) |
+| C (defer) | 0 (now); unknowable later |
+
+## §8. Anti-patterns (Mgr-derived for reviewer enforcement)
+
+1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline (§4); any closure must un-ignore the gate-criterion test
+2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (§P5 atomic-migration violation)
+3. **Parallel-authority on CIWorkflowDag execution path** — if T-Lens-Self-Application has a competing DimensionReport producer shape, canvas should surface, not duplicate
+4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P3 second-source-of-truth (demo passes; production doesn't)
+
+## §9. Open questions for ratification
+
+Director ratification on:
+
+- **Q1 — Closure-scope candidate**: A (demo repair) / B (full path) / C (defer to T-Lens-Self-Application)
+- **Q2 — Lane semantics**: T-WAD + T-Lens-Self-Application AND vs OR-semantics
+- **Q3 — `#[ignore]` history**: was this `#[ignore]` planned-deferral (substrate-then-unignore) or regression-mask? Director may have grep visibility on the test's `#[ignore]` introduction commit; if so, that disambiguates A/B/C
+- **Q4 — Cross-lane coordination**: does Substrate Mgr coordinate with T-Lens-Self-Application Mgr for closure, or is gate #63 substrate-lane-owned end-to-end?
+
+## §10. Mgr recommendation
+
+**Q1: B with carve-outs for PythonShim** — the criterion text "CI workflow modeled as .dag data executes through evaluator" reads as production-grade, not demo-grade. Candidate A risks a P3 second-source-of-truth (demo green, production red). Candidate C defers indefinitely without T-Lens-Self-Application lane visibility.
+
+Recommended **scope-bound on B**:
+- Close YamlStatic + BinaryShim execution paths (both substrate landed)
+- Treat PythonShim placeholder as out-of-scope; document that Tier 1 closure of gate #63 covers 2 of 3 arms
+- Closure receipt: at least one real (non-demo) CI workflow executes through evaluator producing DimensionReport<TimingMeasurement>
+
+**Q2: OR-semantics** — both lanes contribute; gate closes when sufficient substrate is present. T-Lens-Self-Application provides further consumer evidence but isn't a hard prereq.
+
+**Q3: defer to Director** — needs `git log src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` history check
+
+**Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring
+
+## §11. Reference
+
+- snappy-bear-502 audit: msg_140d9bc7-6417-45bf-b541-41cba1ea98cd
+- BuildBuddy diagnostic invocation: `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`
+- Gate #63 row: `docs/r3-program-plan.md:291`
+- Class 4 framing: `docs/r3-program-plan.md:77` + §4.4
+- CIWorkflowDag: `dsl/gunbc/ci.dag:120-125`
+- WorkflowRuntime: `dsl/gunbc/ci_emission.dag:27`
+- Demo entrypoint: `src/v3/std/t_ci_workflow_as_data_demo.dag:206-210`
+- `#[ignore]`-masked test: `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581-582`
+
+---
+
+**Authored by**: warm-wolf-698 (R3 Substrate Mgr)
+**Date**: 2026-05-13
