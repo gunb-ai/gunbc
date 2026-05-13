@@ -352,26 +352,19 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
 // gate #94 memory-peak: `>` not `>=`). Host consumer: `enforced_lens_application` (mirrors
 // `complexity_enforceable` wiring for gate #92).
 //
-// P2 / host parity: `enforced_lens_application` mirrors this relation using a variant-shaped
-// `TimingMeasurement` projection so `Observed` wall-clock `Nat` is never compared for equality
-// against the fault sentinel (review thread 3231515819); dissolution remains a dedicated fault
-// budget carrier in `.dag` once the substrate grows one.
-//
-// Operational bound (PB-1 / gate #58): `timing_enforcement_fault_sentinel_count` is astronomically
-// larger than any staged workflow `Observed.duration.count` used as timing evidence (ns in the
-// 1e9–1e12 band), so the `TimingBudget` sentinel collision class is **out of band** for admitted
-// witness data. Declared `LensEnforcement<TimingMeasurement, TimingBudget>` below is substrate
-// algebra; **PB-1 executable** `EnforcedApplication` enforcement is the host pass (must preserve
-// variant facts when lowering still carries `TimingMeasurement`).
+// P2: `violates` takes the full `TimingMeasurement` (see `LensEnforcement` in
+// `lens_application.dag`) so non-evidence variants fail closed **without** encoding that fact as
+// `TimingBudget.max.count == timing_enforcement_fault_sentinel_count()` — that shape collided with
+// legitimate `Observed` magnitudes equal to the sentinel (codex review 10994). `project` still
+// maps non-evidence to a sentinel-marked `TimingBudget` for any downstream surface that only
+// carries budgets; enforcement compares `Observed.duration.count > declared.max.count` with the
+// same strict `>` edge as gate #94.
 
 fn timing_enforcement_fault_sentinel_count() -> Nat =
   999999999999999999
 
 fn timing_enforcement_fault_usage_budget() -> TimingBudget =
   { max: { count: timing_enforcement_fault_sentinel_count() } }
-
-fn timing_usage_is_fault_sentinel(usage: TimingBudget) -> Bool =
-  usage.max.count == timing_enforcement_fault_sentinel_count()
 
 fn timing_enforcement_project(m: TimingMeasurement) -> TimingBudget =
   match m {
@@ -381,10 +374,14 @@ fn timing_enforcement_project(m: TimingMeasurement) -> TimingBudget =
     Stale => timing_enforcement_fault_usage_budget()
   }
 
-fn timing_enforcement_violates(declared: TimingBudget, usage: TimingBudget) -> Bool =
-  if timing_usage_is_fault_sentinel(usage) then 0 == 0
-  else if usage.max.count > declared.max.count then 0 == 0
-  else 0 == 1
+fn timing_enforcement_violates(m: TimingMeasurement, declared: TimingBudget) -> Bool =
+  match m {
+    Observed { duration: d } =>
+      if d.count > declared.max.count then 0 == 0 else 0 == 1
+    Unobserved => 0 == 0
+    Ambiguous => 0 == 0
+    Stale => 0 == 0
+  }
 
 data timing_lens_monoid: Monoid<TimingMeasurement> = {
   op: timing_sequential_op

@@ -87,17 +87,20 @@ type DiagnosticSeverity = Error
 //                  lens output. Identity for lenses where Output = Budget
 //                  (cost, parallelism); for complexity, projects
 //                  `ComplexitySummary -> AsymptoticClass`.
-//   - `violates` — per-lens violation relation. Returns true iff the
-//                  observed (projected) value EXCEEDS the user's
-//                  declared budget under the lens's own ordering
-//                  (lattice dominance for complexity; cost dominance
-//                  for cost; mode-mismatch for parallelism). The
-//                  projection alone would leave "did observed exceed
-//                  declared?" as API-level convention; the relation
-//                  field makes it substrate authority.
+//   - `violates` — per-lens violation relation. First argument is the
+//                  **full lens output** `Output` (not only `project(o)`):
+//                  relations that must distinguish sum variants before
+//                  comparing budget-shaped coordinates (timing gate #58:
+//                  `Observed` wall ns vs non-evidence) cannot be expressed
+//                  as pure `Budget × Budget` predicates without illegal-state
+//                  collisions (see `timing_lens.dag`). Second argument is the
+//                  user-declared `Budget`. Returns true iff enforcement fails
+//                  closed under the lens ordering (lattice dominance for
+//                  complexity; strict `>` on nanoseconds for timing observed
+//                  evidence; etc.).
 type LensEnforcement<Output, Budget> {
   project: fn(Output) -> Budget
-  violates: fn(Budget, Budget) -> Bool
+  violates: fn(Output, Budget) -> Bool
 }
 
 // 🟢 TERMINAL at the per-lens canonical-pairing scope. Bundles a lens

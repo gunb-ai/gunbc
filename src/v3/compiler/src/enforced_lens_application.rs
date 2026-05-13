@@ -443,8 +443,8 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     continue;
                 };
 
-                let observed = match complexity_of(dag, &port) {
-                    Lookup::Hit(s) => complexity_enforcement_project(&s),
+                let summary = match complexity_of(dag, &port) {
+                    Lookup::Hit(s) => s,
                     Lookup::Miss => {
                         violations.push(Diagnostic::ParseError {
                             message:
@@ -457,9 +457,10 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         continue;
                     }
                 };
-                if !complexity_enforcement_violates(&budget_class, &observed) {
+                if !complexity_enforcement_violates(&summary, &budget_class) {
                     continue;
                 }
+                let observed = complexity_enforcement_project(&summary);
                 let severity_val = match fm.get("diagnostic_severity") {
                     Some(v) => *v,
                     _ => {
