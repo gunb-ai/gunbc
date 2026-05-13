@@ -169,6 +169,41 @@ fn gcp_style_linear_chain_idempotent() {
 }
 
 #[test]
+fn keyless_upsert_fails_closed_as_breaking() {
+    let mut dag = compile_to_dag("let _ = 1", "lane2_keyless_upsert.v3").expect("compile");
+    let root = lane2_anchor(&dag);
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let keyless_upsert = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate { tokens: vec![] },
+        },
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &keyless_upsert),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        })
+    ));
+    let wf = WorkflowEffect::LinearEffect {
+        ops: vec![keyless_upsert],
+    };
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
+    assert!(matches!(
+        r,
+        WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy { .. })
+    ));
+}
+
+#[test]
 fn append_effect_breaks_linear_chain() {
     let mut dag = compile_to_dag("let _ = 1", "lane2_append.v3").expect("compile");
     let root = lane2_anchor(&dag);

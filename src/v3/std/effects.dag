@@ -480,17 +480,31 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
        op.callable.decl == replace_method ||
        op.callable.decl == with_method then
       if method_is_upsert(op.endpoint.method) then
-      IsIdempotent(UpsertEffect {
-        key_source: PathParam { param: operation_resource_key(op) }
-      })
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(UpsertEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
       else
         transport_effect_shape(op)
     else
     if op.callable.decl == diff_method then
       if method_is_delete(op.endpoint.method) then
-      IsIdempotent(DeleteEffect {
-        key_source: PathParam { param: operation_resource_key(op) }
-      })
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(DeleteEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
       else
         transport_effect_shape(op)
     else
@@ -502,14 +516,28 @@ fn transport_effect_shape(op: Operation) -> EffectShape {
     IsIdempotent(ReadEffect)
   else
     if method_is_upsert(op.endpoint.method) then
-      IsIdempotent(UpsertEffect {
-        key_source: PathParam { param: operation_resource_key(op) }
-      })
+      match operation_resource_key(op) {
+        Some(key) =>
+          IsIdempotent(UpsertEffect {
+            key_source: PathParam { param: key }
+          })
+        None =>
+          IsBreaking(CreateEffect {
+            cause: KeylessFallback { method: op.endpoint.method }
+          })
+      }
     else
       if method_is_delete(op.endpoint.method) then
-        IsIdempotent(DeleteEffect {
-          key_source: PathParam { param: operation_resource_key(op) }
-        })
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(DeleteEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
       else
         if method_is_post(op.endpoint.method) then
           IsBreaking(CreateEffect { cause: PostAlways })
@@ -563,11 +591,8 @@ fn method_is_delete(method: HttpMethod) -> Bool =
     OPTIONS => false
   }
 
-fn operation_resource_key(op: Operation) -> String =
-  match last_path_param(op.endpoint.path) {
-    Some(param) => param
-    None => "resource"
-  }
+fn operation_resource_key(op: Operation) -> String? =
+  last_path_param(op.endpoint.path)
 
 fn breaker_ref(index: Int) -> ElementRef<Operation> {
   { index: index }

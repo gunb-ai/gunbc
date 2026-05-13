@@ -287,18 +287,10 @@ pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
         Some("map_insert_method" | "replace_method" | "with_method")
             if method_is_upsert(effect.endpoint.method) =>
         {
-            EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-                key_source: KeySource::PathParam {
-                    param: operation_resource_key(effect),
-                },
-            })
+            keyed_upsert_or_keyless_break(effect)
         }
         Some("diff_method") if effect.endpoint.method == HttpMethodScalar::Delete => {
-            EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
-                key_source: KeySource::PathParam {
-                    param: operation_resource_key(effect),
-                },
-            })
+            keyed_delete_or_keyless_break(effect)
         }
         _ => transport_effect_shape(effect),
     }
@@ -309,22 +301,38 @@ fn transport_effect_shape(effect: &Operation) -> EffectShape {
         HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
         }
-        HttpMethodScalar::Put | HttpMethodScalar::Patch => {
-            EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-                key_source: KeySource::PathParam {
-                    param: operation_resource_key(effect),
-                },
-            })
-        }
-        HttpMethodScalar::Delete => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
-            key_source: KeySource::PathParam {
-                param: operation_resource_key(effect),
-            },
-        }),
+        HttpMethodScalar::Put | HttpMethodScalar::Patch => keyed_upsert_or_keyless_break(effect),
+        HttpMethodScalar::Delete => keyed_delete_or_keyless_break(effect),
         HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
         }),
     }
+}
+
+fn keyed_upsert_or_keyless_break(effect: &Operation) -> EffectShape {
+    match operation_resource_key(effect) {
+        Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::PathParam { param },
+        }),
+        None => keyless_break(effect),
+    }
+}
+
+fn keyed_delete_or_keyless_break(effect: &Operation) -> EffectShape {
+    match operation_resource_key(effect) {
+        Some(param) => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::PathParam { param },
+        }),
+        None => keyless_break(effect),
+    }
+}
+
+fn keyless_break(effect: &Operation) -> EffectShape {
+    EffectShape::IsBreaking(BreakingShape::CreateEffect {
+        cause: CreateCause::KeylessFallback {
+            method: effect.endpoint.method,
+        },
+    })
 }
 
 fn method_is_read(method: HttpMethodScalar) -> bool {
@@ -343,8 +351,8 @@ fn callable_method_name(dag: &Dag, callable: DeclarationId) -> Option<&str> {
         .and_then(|decl| decl.name.as_deref())
 }
 
-fn operation_resource_key(effect: &Operation) -> String {
-    last_path_param(&effect.endpoint.path).unwrap_or_else(|| "resource".to_string())
+fn operation_resource_key(effect: &Operation) -> Option<String> {
+    last_path_param(&effect.endpoint.path)
 }
 
 fn last_path_param(path: &PathTemplate) -> Option<String> {
