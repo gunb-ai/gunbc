@@ -72,6 +72,7 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         &[
             "cementing_regen_cost_symbolic",
             "cementing_regen_cost_symbolic_countdown",
+            "cementing_regen_cost_symbolic_dimension_report_agrees",
         ],
     ),
     (

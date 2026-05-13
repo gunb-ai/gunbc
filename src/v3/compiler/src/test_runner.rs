@@ -31,9 +31,8 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_complexity, analyze_symbolic_cost_dimension, compare_stage_snapshots,
-    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
-    DimensionReport,
+    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
+    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -2567,6 +2566,9 @@ impl<'a> TestRunner<'a> {
                         "SymbolicCostExprEqualsForBindParam" => {
                             self.eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload)
                         }
+                        "ComplexityCostDimensionReportsAgree" => {
+                            self.eval_complexity_cost_dimension_reports_agree(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -2777,6 +2779,76 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Fail(format!(
                 "DeclarationHasRefinement: declaration `{name}` has no lowered `refinement` edge"
             ))
+        }
+    }
+
+    fn eval_complexity_cost_dimension_reports_agree(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let bind_name = match payload {
+            [FieldValue::Literal(LiteralBits::String(name))] => name.clone(),
+            [single] => {
+                let Some(fields) = record_fields(single) else {
+                    return ClaimResult::Fail(
+                        "ComplexityCostDimensionReportsAgree: expected `{ bind_name: String }` record \
+                         or a bare String payload"
+                            .to_string(),
+                    );
+                };
+                match string_field(fields, "bind_name") {
+                    Ok(s) => s,
+                    Err(e) => return ClaimResult::Fail(e),
+                }
+            }
+            _ => {
+                return ClaimResult::Fail(format!(
+                    "ComplexityCostDimensionReportsAgree: expected one payload field, got {}",
+                    payload.len()
+                ));
+            }
+        };
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "ComplexityCostDimensionReportsAgree: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "ComplexityCostDimensionReportsAgree: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+
+        let Some(workflow_root) = program_dag.nodes().iter().find_map(|behavior| {
+            if let Behavior::Bind(bind) = behavior {
+                if bind.name == bind_name && bind.span.file == claim.file_name {
+                    return Some(behavior.id());
+                }
+            }
+            None
+        }) else {
+            return ClaimResult::Fail(format!(
+                "ComplexityCostDimensionReportsAgree: bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+
+        match crate::dimension::assert_analyze_complexity_matches_symbolic_cost_dimension_for_root(
+            &program_dag,
+            workflow_root,
+        ) {
+            Ok(()) => ClaimResult::Pass,
+            Err(reason) => ClaimResult::Fail(format!(
+                "ComplexityCostDimensionReportsAgree({bind_name:?}): {reason}"
+            )),
         }
     }
 
