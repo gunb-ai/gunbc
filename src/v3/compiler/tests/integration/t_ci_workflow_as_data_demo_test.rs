@@ -46,7 +46,7 @@ use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, NodeId, TypeConnective,
+    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, Lookup, NodeId, TypeConnective,
     ValueNode,
 };
 use v3_compiler::evaluator::{
@@ -811,7 +811,16 @@ fn lens_self_application_demonstrated() {
     let Behavior::Bind(bind_ci) = g.dag.node(g.subject) else {
         panic!("lane-2 subject must remain a Bind shell");
     };
-    let _cx = complexity_of(&g.dag, &bind_ci.result_port());
+    let cx = complexity_of(&g.dag, &bind_ci.result_port());
+    let Lookup::Hit(ref summary) = cx else {
+        panic!(
+            "gate #57 requires `complexity_of` Hit on the CI lane-2 bind result_port; got {cx:?}"
+        );
+    };
+    assert_eq!(
+        &summary.work, ca,
+        "`complexity_of`.work must match `analyze_symbolic_cost_dimension` composed (single-authority with E7 complexity DimensionOk)"
+    );
 }
 
 #[test]
