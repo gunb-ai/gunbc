@@ -3,6 +3,11 @@
 // receipt compares a narrow Int projection: 1 means the generated parallelism lens reports
 // `ParallelCompositionVerdict(IdempotentComposition)` for a two-branch read-only workflow.
 // This is behavior-bearing over `analyze_parallelism`, not a source-compilation placeholder.
+//
+// Dissolution pointer: `docs/v3-lens-capability-register.md` keeps the parallelism row PARTIAL
+// until `WorkflowParallelismReport` exposes typed pairwise evidence instead of reason strings.
+// Once that carrier is authorable as `.dag` data under ROADMAP T-PB-B / gate #84, replace this
+// Int projection with a direct `WorkflowParallelismReport` fixture and delete the host projection.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
 
