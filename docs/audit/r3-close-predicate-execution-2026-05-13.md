@@ -16,8 +16,8 @@ This document is the **predicate-execution index** for `docs/r3-close-interrogat
 
 Phase 2 (this PR) is an **index population**, not a close-time execution receipt. It populates each row with:
 
-- For every §1.8 row whose **Status** is `PASSING` or `SATISFIED-BY-CONSTRUCTION`: predicate execution status = `HARNESS_NAMED`. The close-time harness (canonical: workspace ratchet sweep) is named so the §10 close-ceremony 24h re-sweep has a mechanical command to run; **no execution receipt is claimed by this PR**.
-- For every §1.8 row whose Status is `DECLARED`, `CONSUMER_LANDED`, `INTEGRATION_RECEIPT`, `CANVAS_RATIFIED`, or `R3-LOAD-BEARING` (declaration-stage): predicate execution status = `N/A_NOT_PASSING`. Per `r3-close-interrogation.md` §8 the predicate-execution requirement attaches only to PASSING gates; non-PASSING gates carry forward as open R3 work and will be re-swept when their Status transitions to PASSING in advance of the close ceremony.
+- For every §1.8 row whose **Status** contains `PASSING` (i.e. `PASSING` or the composite `CONSUMER_LANDED + PASSING`) or is `SATISFIED-BY-CONSTRUCTION`: predicate execution status = `HARNESS_NAMED`. The close-time harness (canonical: workspace ratchet sweep) is named so the §10 close-ceremony 24h re-sweep has a mechanical command to run; **no execution receipt is claimed by this PR**.
+- For every §1.8 row whose Status is `DECLARED`, `CONSUMER_LANDED` *(without the `+ PASSING` qualifier)*, `INTEGRATION_RECEIPT`, `CANVAS_RATIFIED`, or `R3-LOAD-BEARING` (declaration-stage): predicate execution status = `N/A_NOT_PASSING`. Per `r3-close-interrogation.md` §8 the predicate-execution requirement attaches only to PASSING gates; non-PASSING gates carry forward as open R3 work and will be re-swept when their Status transitions to PASSING in advance of the close ceremony.
 
 The actual `EXECUTED` receipts (PASS/FAIL per gate, ratchet output / log pointer, merge-commit SHA) are produced by the §10 close ceremony 24h workspace re-sweep and recorded in the aggregate `docs/audit/r3-close-YYYY-MM-DD.md` artifact.
 
