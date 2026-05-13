@@ -743,6 +743,11 @@ fn anthropic_server_tool_name_lockstep() {
 }
 
 #[test]
+fn anthropic_messages_200_service_tier_lockstep() {
+    assert_disj_lockstep("AnthropicMessages200ServiceTier");
+}
+
+#[test]
 fn anthropic_messages_200_usage_lockstep() {
     assert_record_lockstep("AnthropicMessages200Usage");
 }
