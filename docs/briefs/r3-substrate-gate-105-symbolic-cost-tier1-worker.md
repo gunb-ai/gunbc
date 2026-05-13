@@ -268,7 +268,8 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 ## §13. Verification
 
 - `cargo test --workspace` green
-- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveRational/PositiveInt/IntAtLeastTwo) / algebra rules sample / STOP-SIGNAL text)
+- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveRational/PositiveInt/ExponentialBase/PolyLogExponent) / algebra rules sample / STOP-SIGNAL text)
+- **INVARIANTS P5 receipt for the new hand-Rust test file** (per claude APPROVE review 10773 exploratory observation): authoring `symbolic_cost_tier1_carrier_test.rs` adds new hand-Rust under `src/v3/compiler/tests/`. Per P5 "Pure Bootstrap" discipline, this PR's body MUST cite ONE of: (a) a concrete hand-Rust deletion of equivalent or greater LOC elsewhere; (b) SG-0 census shrink receipt; (c) named-lane deferral with explicit dissolution-trigger naming. Pre-wired here so worker doesn't re-derive; the canonical receipt is the cost-lens consumer migration Phase F (which deletes LinearCost variant + collapses fallback dispatch paths — that net hand-Rust deletion is the P5 receipt for the new test file).
 - Pre-existing cost-lens behavioral tests still green (Phase F migration must preserve semantic equivalence: `LinearCost(v)` and `PolynomialCost { var: v, degree: 1 }` must produce identical lens output for all consumers)
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
