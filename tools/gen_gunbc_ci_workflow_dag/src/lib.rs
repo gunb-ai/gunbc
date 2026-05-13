@@ -225,7 +225,7 @@ fn emit_optional_string_map(v: Option<&Value>) -> Result<String, Box<dyn std::er
     if m.is_empty() {
         return Ok("none".to_string());
     }
-    Ok(string_map_literal_body(v)?)
+    string_map_literal_body(v)
 }
 
 fn string_map_literal_body(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
