@@ -180,23 +180,25 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
   - **Phase 3 (#84 bulk-port)**: 99 tests × per-class dispatch — per-class worker briefs needed
 - **Effort estimate**: 4-8 weeks per Cluster M plan (operator "staffing not a concern" allows parallel dispatch)
 
-**Close criterion** (Director feedback item 4 — header-marker filter; **codex BLOCKING PR #3013 2026-05-13 enforcement: boundary-test carve-out RETRACTED** per `TESTING.md` post-PR-#678 cascade + `docs/design-pure-bootstrap-zero.md` 0-floor target — class-5 boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations, NOT preserved as hand-authored survivors):
-```bash
-# Predicate at gate #84 close — ALL hand-authored *_test.rs counted; only generated-from-.dag tests survive:
-find src/v3/compiler/tests -name "*.rs" -not -path "*/common/*" \
-  | xargs grep -L "// AUTO-GENERATED FROM .dag" \
-  | wc -l
-# returns: 0 (only generated-from-.dag survivors carry the marker; hand-authored fail-closed; boundary tests ARE included, must migrate to ExecuteCommand-based .dag TestClaim per TESTING.md cascade)
+**Close criterion** (briansrls BLOCKING PR #3013 2026-05-13T18:22:57Z enforcement: **textual `// AUTO-GENERATED FROM .dag` marker predicate RETRACTED** per `feedback_no_textual_enforcement_bridges` — "never propose grep/regex as interim enforcement; text-gating 'be structural' defeats itself". A textual comment is gameable: hand-authored Rust carrying the marker would pass the predicate without satisfying the THESIS tests-as-data claim. The structural authority for "no hand-authored tests" is the same ratchet Gap 1 uses):
+```rust
+// in src/v3/compiler/tests/integration/sg0_census_test.rs at HEAD when gate #84 closes:
+const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 ```
+plus `cargo test --release sg0_census_test` passes with predicate = 0
 plus #85 SuiteClaim wrapper consumer landed.
 
-**Authority for no-carve-out** (codex BLOCKING PR #3013 receipt):
+**Why structural-list-emptied beats textual-marker** (briansrls BLOCKING PR #3013 receipt):
+- `feedback_no_textual_enforcement_bridges`: textual gating defeats itself; a `// AUTO-GENERATED FROM .dag` comment can be hand-authored
+- `EXPECTED_HAND_AUTHORED_TEST` is the existing structural ratchet — every hand-authored test entry must be named on the list (PR-template enforcement); migrations remove entries; close fires when list empties
+- The list-emptied predicate IS the THESIS tests-as-data claim: "every Rust test ports to .dag or is generated" ⇔ "no entry remains on the hand-authored ratchet"
+- Generated tests (if any are checked-in as trampolines per `docs/design-pure-bootstrap-zero.md` "trampolines are 0 if their content is generated") are NOT named on `EXPECTED_HAND_AUTHORED_TEST`; the list discriminates structurally, not textually
+
+**Authority for no-boundary-carve-out** (separate codex BLOCKING PR #3013 receipt; preserved):
 - `TESTING.md` "🔄 RETRACTED 2026-04-25 (cascade promotion of `docs/design-pure-bootstrap-zero.md`)": *"the previous 'two residual categories' framing (compiler-internal unit tests + external-toolchain boundary tests stay Rust-authored permanently) is retracted under the 0-floor target. Both categories dissolve"*
 - `TESTING.md` "0-residual is the target. Until v3's source tree reaches 0 hand-authored files..."
 - `docs/design-pure-bootstrap-zero.md`:41 *"Goal: zero hand-authored files in v3's source tree."*
-- `docs/design-pure-bootstrap-zero.md`:138 boundary-tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations per cascade-named successor pattern (PR #678 schema landed; bulk migration is Gap 5 Phase 3 scope)
-
-**Substrate prereq**: code-gen pipeline must emit `// AUTO-GENERATED FROM .dag` header line for every generated `*_test.rs` so the predicate can mechanically discriminate hand-authored vs generated. If not present at HEAD, lands in Gap 5 Phase 3 ratchet.
+- `docs/design-pure-bootstrap-zero.md`:138 boundary-tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations per cascade-named successor pattern (PR #678 schema landed; bulk migration is Gap 5 Phase 3 scope) — boundary entries are named on `EXPECTED_HAND_AUTHORED_TEST` and dissolve through migration like any other entry, no separate boundary carve-out
 
 ---
 
