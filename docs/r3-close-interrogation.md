@@ -147,16 +147,38 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 
 ## §3. The emission promises
 
-### §3.1 Omni-emission (5 targets)
+### §3.1 Omni-emission (R3 = 3 Shape-A targets: Rust / Python / Go)
 
-**Promise** (THESIS.md:115 + WISHLIST.md R4.A): "automatic parallelism, memoization, omni-emission ... are consequences of the same structural commitments." R3 scope per recent ratification: Rust + Python + Go + C + C++ emission targets.
+**Promise** (THESIS.md:115 omni-emission claim + THESIS.md:180 L5 + r3-program-plan.md:185 gate #15 `l5_cross_target_consistency`): "automatic parallelism, memoization, omni-emission ... are consequences of the same structural commitments." R3 scope is **Rust + Python + Go** (Shape A — programming-language targets per THESIS.md:215). C/C++ are **R4.A**-scope (WISHLIST.md:67-73, operator ratification 2026-05-12), not R3. LLVM IR / assembly / machine-code are **R4.C**-scope (WISHLIST.md:107), not R3. Shape B targets (Markdown / OpenAPI / data-shapes) are tracked separately under T-Omni-Shape-B (r3-program-plan.md:430).
 
 **Probes**:
 
-- [ ] Show me a single `.dag` program. Emit it to all 5 targets. Are the outputs runnable?
-- [ ] Behavioral parity: same input through each output target. Do they produce equivalent results?
-- [ ] Pick the most complex emission target. Is there a non-trivial example that compiles and runs?
+- [ ] Show me a single `.dag` program. Emit it to all 3 Shape-A targets (Rust / Python / Go). Are the outputs runnable?
+- [ ] Behavioral parity: same input through each output target. Do they produce equivalent results? (THESIS.md:180 L5 claim.)
+- [ ] Pick the most complex Shape-A target (Go's goroutine substrate? Python's dynamic dispatch?). Is there a non-trivial example that compiles and runs?
 - [ ] **Falsification probe**: program with feature X. Does target Y handle X correctly, or punt to a stub?
+
+**Findings at HEAD (2026-05-13)**:
+
+- **Target substrate inventory** (`src/v3/spec/`): `rust.dag`, `python.dag`, `go.dag` — 3 declared targets matching R3 L5 scope. C/C++/LLVM/assembly correctly absent (R4-scope).
+- **L6 data-coverage substrate** (`src/v3/std/cross_target_coverage.dag`): 41-row `emission_path_projections` over (target × form × behavior) cross-product, populated for Rust/Python/Go. Phase-1 carrier-only per Director ratification gunbc#828 2026-05-05.
+- **L4 runtime byte-identity at HEAD**:
+  - **Rust**: per-fixture **unconditional** byte-identity tests in CI ✓ (`src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs:995`); full `rustc` roundtrip at `#[ignore]` (lines 735, 764, 1199, 1218) — local-only, toolchain-gated.
+  - **Python**: roundtrip tests at `#[ignore]` (`m1_4_emit_python_test.rs:1003, 1070`) — toolchain-gated (python3); **NOT in CI**.
+  - **Go**: roundtrip tests at `#[ignore]` (`m1_3_emit_go_test.rs:252, 279, 324`) — toolchain-gated (go); **NOT in CI**.
+  - **Omni demo** (5-target combined): at `#[ignore]` (`m1_5_emit_omni_demo_test.rs:124`) — requires both go + python3; **NOT in CI**.
+- **L5 corpus status** (gate #15 `l5_cross_target_consistency`): DECLARED, RED at HEAD (r3-program-plan.md:243 + :431) — waits on L4 corpus + Shape A grounding ready.
+
+**Open R3 question (PM-surfaced, not yet routed)**:
+
+What's the close-shape for the omni-emission promise?
+
+- **(a) L6 data-coverage interpretation**: 41 (target × form × behavior) rows declared in v3-side data = ✓ for Rust/Python/Go. Structural-fold property, no runtime evidence needed.
+- **(b) L4 runtime byte-identity interpretation**: emit-target output equals .dag-eval output across the corpus = ✓ for Rust in CI, **toolchain-gated for Python/Go** (locally-only). Requires either (b1) running Python/Go roundtrips in CI behind a toolchain-gate, or (b2) explicit acceptance that R3-close evidence-bar is "data-coverage + Rust-runtime" with Python/Go runtime tied to a separate fast-follow gate.
+
+The two interpretations differ on whether `#[ignore]`'d Python/Go runtime roundtrips count as R3-closure-evidence. THESIS.md:180 ("L5: **same .dag produces same behavior** in Rust/Python/Go") reads as runtime-shape; current CI evidence is Rust-only-runtime + data-coverage-for-all-three.
+
+**Falsification candidate** (under interpretation (b) only): pick a non-trivial fixture with Python-specific or Go-specific structural sensitivity (e.g., variant-with-payload pattern-matching, fold composition). Run roundtrip locally via `cargo test ... -- --ignored`. Does it pass without toolchain-skip? If not, that's the gap shape.
 
 ### §3.2 Workflow-as-data
 
