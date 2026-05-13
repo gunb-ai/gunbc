@@ -8,6 +8,8 @@
 // `CementingDispatchMatchesProjection` against that authority + `regen.dag`.
 //
 // Human-readable mirror: `docs/v3-lens-capability-register.md` (not a second authority).
+// Band-C v2-complete rows: keep in lockstep with `BAND_C_V2_EXPANSIONS` in
+// `src/v3/compiler/src/cementing_dispatch.rs` (dispatch projection triples + unit coherence test).
 
 module v3.compiler.tests.cementing_dispatch
 

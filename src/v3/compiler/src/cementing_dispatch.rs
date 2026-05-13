@@ -14,8 +14,8 @@
 //! reflected wiring facts at the runner edge so Band-C dispatch does not depend on crate layout
 //! + host FS for this check.
 //!
-//! **Interim projection bridge:** `expected_cementing_receipt_triples` is a fail-closed Rust match
-//! from `(registry_name, regen lens_file basename)` to the canonical receipt triples the
+//! **Interim projection bridge:** `BAND_C_V2_EXPANSIONS` is the fail-closed Rust expansion from
+//! `(registry_name, regen lens_file basename)` to the canonical receipt triples the
 //! `cementing_band_c_v2_complete_receipts` list must equal. Dissolution: move that expansion into
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
@@ -196,9 +196,38 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
     Ok(pairs)
 }
 
+/// One row of the Band-C v2-complete receipt expansion: `regen.dag` registry `name` ×
+/// `lens_file` basename maps to one `.dag` harness stem (PB-B-1) plus one temporary Rust module.
+///
+/// **Lockstep:** `cementing_band_c_v2_complete_receipts` in `tests/dag/cementing_dispatch.dag`
+/// must list exactly these four receipts (two `DagHarness`, two `TemporaryRustModule`) in any
+/// order; [`evaluate_cementing_dispatch_projection`] compares the lowered `.dag` list against
+/// triples derived here.
+struct BandCV2ReceiptExpansion {
+    registry_name: &'static str,
+    lens_basename: &'static str,
+    dag_harness_stem: &'static str,
+    temporary_rust_stem: &'static str,
+}
+
+const BAND_C_V2_EXPANSIONS: &[BandCV2ReceiptExpansion] = &[
+    BandCV2ReceiptExpansion {
+        registry_name: "cost",
+        lens_basename: "complexity.dag",
+        dag_harness_stem: "t_r3_gate_87_cementing_regen_cost",
+        temporary_rust_stem: "complexity_lens_behavioral_completion",
+    },
+    BandCV2ReceiptExpansion {
+        registry_name: "cost_symbolic",
+        lens_basename: "cost.dag",
+        dag_harness_stem: "t_r3_gate_87_cementing_regen_cost_symbolic",
+        temporary_rust_stem: "cost_lens_symbolic_consumer_test",
+    },
+];
+
 /// Closed roster of Band-C `(registry_name, module_stem, kind)` receipts implied by the
 /// current `regen.dag` × v2-complete register projection. When a new v2-complete lens
-/// lands in `regen.dag`, extend this expansion in the same PR as `cementing_dispatch.dag`
+/// lands in `regen.dag`, extend [`BAND_C_V2_EXPANSIONS`] in the same PR as `cementing_dispatch.dag`
 /// receipt rows — otherwise the dispatch predicate fail-closes with an explicit error.
 fn expected_cementing_receipt_triples(
     registry_pairs: &[(String, String)],
@@ -216,42 +245,28 @@ fn expected_cementing_receipt_triples(
         if !basenames.contains(&basename) {
             continue;
         }
-        match (name.as_str(), basename.as_str()) {
-            ("cost", "complexity.dag") => {
-                out.insert((
-                    name.clone(),
-                    "t_r3_gate_87_cementing_regen_cost".to_string(),
-                    "dag".to_string(),
-                ));
-                out.insert((
-                    name.clone(),
-                    "complexity_lens_behavioral_completion".to_string(),
-                    "temporary-rust".to_string(),
-                ));
-            }
-            ("cost_symbolic", "cost.dag") => {
-                out.insert((
-                    name.clone(),
-                    "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
-                    "dag".to_string(),
-                ));
-                out.insert((
-                    name.clone(),
-                    "cost_lens_symbolic_consumer_test".to_string(),
-                    "temporary-rust".to_string(),
-                ));
-            }
-            _ => {
-                return Err(format!(
-                    "Band-C v2 cementing projection includes `LensRegistryEntry` \
-                     (`name={name}`, `lens_file` basename `{basename}`) but \
-                     `expected_cementing_receipt_triples` has no receipt expansion — \
-                     land matching `cementing_band_c_v2_complete_receipts` rows in \
-                     `cementing_dispatch.dag` and extend the expansion table in \
-                     `cementing_dispatch.rs` in the same PR."
-                ));
-            }
-        }
+        let Some(row) = BAND_C_V2_EXPANSIONS.iter().find(|row| {
+            row.registry_name == name.as_str() && row.lens_basename == basename.as_str()
+        }) else {
+            return Err(format!(
+                "Band-C v2 cementing projection includes `LensRegistryEntry` \
+                 (`name={name}`, `lens_file` basename `{basename}`) but \
+                 `BAND_C_V2_EXPANSIONS` has no receipt expansion — \
+                 land matching `cementing_band_c_v2_complete_receipts` rows in \
+                 `cementing_dispatch.dag` and extend `BAND_C_V2_EXPANSIONS` in \
+                 `cementing_dispatch.rs` in the same PR."
+            ));
+        };
+        out.insert((
+            name.clone(),
+            row.dag_harness_stem.to_string(),
+            "dag".to_string(),
+        ));
+        out.insert((
+            name.clone(),
+            row.temporary_rust_stem.to_string(),
+            "temporary-rust".to_string(),
+        ));
     }
     Ok(out)
 }
@@ -521,4 +536,24 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod band_c_projection_coherence_tests {
+    use super::BAND_C_V2_EXPANSIONS;
+    use crate::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_pb_b1_dag_module_stems;
+
+    #[test]
+    fn band_c_v2_dag_harness_stems_are_pb_b1_gate87_runner_rows() {
+        let runner = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+        for row in BAND_C_V2_EXPANSIONS {
+            assert!(
+                runner.contains(row.dag_harness_stem),
+                "Band-C `DagHarness` receipt `{}` must be listed in \
+                 `R3_GATE_87_CEMENTING_REGEN_SUITES` so `CementingDispatchMatchesProjection` and \
+                 `t_pb_b_1_dag_runner_test` stay coherent (gate #87 / cementing_dispatch projection).",
+                row.dag_harness_stem
+            );
+        }
+    }
 }
