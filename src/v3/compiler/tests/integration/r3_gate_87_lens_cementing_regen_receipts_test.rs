@@ -40,8 +40,13 @@ use std::path::PathBuf;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
+use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, CompositionVerdict, Declaration, EffectShape, FieldValue, IdempotentShape,
+    LiteralBits, NonSingletonList, OperationEffect, ValueBody, WorkflowEffect,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -156,6 +161,42 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
     );
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_on_read_read_parallel_workflow() {
+    let mut dag = compile_to_dag("let anchor: Int = 1", "r3_gate_87_parallelism_receipt.v3")
+        .expect("compile");
+    let root = dag
+        .nodes()
+        .iter()
+        .find(|behavior| matches!(behavior, Behavior::Value(_) | Behavior::Bind(_)))
+        .expect("anchor fixture should contain a behavior node")
+        .id();
+    let workflow = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "read_user".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "read_account".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+        ])
+        .expect("two branches satisfy NonSingletonList"),
+    };
+    assert!(dag.try_register_lane2_workflow_effect(root, workflow));
+    assert!(matches!(
+        analyze_parallelism(&dag, root),
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ));
 }
 
 #[test]
