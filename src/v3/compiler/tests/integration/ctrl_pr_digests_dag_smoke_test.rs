@@ -23,8 +23,8 @@ fn workspace_root() -> PathBuf {
 #[test]
 fn ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface() {
     let path = workspace_root().join("dsl/ctrl/pr_digests.dag");
-    let source = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let source =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     tokenize_for_test(&source, "dsl/ctrl/pr_digests.dag").unwrap_or_else(|diag| {
         panic!("dsl/ctrl/pr_digests.dag should tokenize cleanly: {diag:?}");
     });
