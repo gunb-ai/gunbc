@@ -19,6 +19,11 @@
 //! `cementing_band_c_v2_complete_receipts` list must equal. Dissolution: move that expansion into
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
+//!
+//! **Real-v2 COMPLETE trace hardening:** every projected receipt row must also classify its
+//! evidence as `DifferentialEqualsReceipt` or `FrozenOracleReceipt`; frozen-oracle rows must name
+//! a non-empty blocker/dissolution path. This prevents a future real-v2 COMPLETE register row from
+//! passing Band-C dispatch with only an unclassified harness stem.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path as FsPath;
@@ -110,6 +115,16 @@ fn cementing_receipt_kind_wire_tag(sum_variant_label: &str) -> Result<&'static s
     }
 }
 
+fn cementing_receipt_evidence_wire_tag(sum_variant_label: &str) -> Result<&'static str, String> {
+    match sum_variant_label {
+        "DifferentialEqualsReceipt" => Ok("differential-equals"),
+        "FrozenOracleReceipt" => Ok("frozen-oracle"),
+        other => Err(format!(
+            "cementing receipt `evidence`: unknown `CementingBandCReceiptEvidence` variant `{other}`"
+        )),
+    }
+}
+
 fn decode_cementing_band_c_receipt_kind(
     dag: &Dag,
     value: &FieldValue,
@@ -123,6 +138,21 @@ fn decode_cementing_band_c_receipt_kind(
         "cementing receipt row",
     )?;
     cementing_receipt_kind_wire_tag(&label)
+}
+
+fn decode_cementing_band_c_receipt_evidence(
+    dag: &Dag,
+    value: &FieldValue,
+    field_label: &str,
+) -> Result<&'static str, String> {
+    let label = decode_nullary_sum_variant(
+        dag,
+        "CementingBandCReceiptEvidence",
+        value,
+        field_label,
+        "cementing receipt row",
+    )?;
+    cementing_receipt_evidence_wire_tag(&label)
 }
 
 fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
@@ -254,6 +284,49 @@ fn expected_cementing_receipt_triples(
         }
     }
     Ok(out)
+}
+
+fn validate_receipt_evidence_trace(
+    dag: &Dag,
+    registry_name: &str,
+    module_stem: &str,
+    fields: &[(String, FieldValue)],
+) -> Result<(), String> {
+    let evidence_field = record_field(fields, "evidence").ok_or_else(|| {
+        "cementing receipt row: missing `evidence` field (expected \
+         `CementingBandCReceiptEvidence` variant)"
+            .to_string()
+    })?;
+    let evidence = decode_cementing_band_c_receipt_evidence(dag, evidence_field, "evidence")?;
+    let blocker_path = string_field(fields, "blocker_path")?;
+    match evidence {
+        "differential-equals" => {
+            if !blocker_path.is_empty() {
+                return Err(format!(
+                    "registry lens `{registry_name}` receipt `{module_stem}` is classified as \
+                     DifferentialEqualsReceipt but carries blocker_path `{blocker_path}`; \
+                     DifferentialEquals receipts must leave blocker_path empty."
+                ));
+            }
+        }
+        "frozen-oracle" => {
+            if blocker_path.trim().is_empty() {
+                return Err(format!(
+                    "registry lens `{registry_name}` receipt `{module_stem}` is classified as \
+                     FrozenOracleReceipt but has an empty blocker_path; name the blocker or \
+                     dissolution path that prevents a DifferentialEquals receipt."
+                ));
+            }
+        }
+        _ => {
+            return Err(
+                "cementing receipt `evidence`: internal error — wire tag not \
+                 `differential-equals` or `frozen-oracle`"
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
 }
 
 fn v2_cementing_basenames_from_capability_rows(
@@ -417,6 +490,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 .to_string()
         })?;
         let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        validate_receipt_evidence_trace(dag, &registry_name, &module_stem, fields)?;
         let triple = (
             registry_name.clone(),
             module_stem.clone(),
@@ -464,6 +538,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 .to_string()
         })?;
         let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        validate_receipt_evidence_trace(dag, &registry_name, &module_stem, fields)?;
         match kind_str {
             "dag" => {
                 if !pb_b1_gate87_dag_stems.contains(&module_stem) {
