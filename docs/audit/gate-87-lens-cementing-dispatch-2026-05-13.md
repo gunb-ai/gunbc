@@ -38,7 +38,13 @@ The concrete closure surface is:
    Acceptance: every `LensCapabilityBehavioralComplete` row with a non-`N/A`
    v2 counterpart has matching `.dag` and, where needed, temporary Rust receipt
    entries wired through `cementing_band_c_v2_complete_receipts`, with witness
-   shape matching the v2-counterpart column.
+   shape matching the v2-counterpart column. Any new or expanded Rust receipt
+   under `src/v3/compiler/tests/**` must carry the same-PR P5 hand-Rust receipt
+   required by `INVARIANTS.md` §"Dispatch-Discipline Mechanisms" and §"SG-0
+   hand-authored integration test receipts": exactly one checkable receipt
+   (deleted file/scaffold, SG-0 census shrink, or explicit deferral naming a
+   lane plus concrete `ROADMAP.md` row), with the matching
+   `sg0_census_test.rs` census entry when a new hand-authored test path is added.
 
 3. `node://adhoc-e04ebf89-738` — pin v3-native, `N/A`, and helper-scope rows
    with explicit `Compiles` placeholders plus Rust receipts where the Band-C
@@ -47,7 +53,10 @@ The concrete closure surface is:
    Acceptance: helper rows such as `infer_helpers`, `lower_helpers`, and
    `variant_payload` are deliberately marked as placeholders with dissolution
    triggers, and Rust pin receipts cover the narrow contracts not yet expressible
-   as full `.dag` lens-output witnesses.
+   as full `.dag` lens-output witnesses. Each Rust pin receipt must either reuse
+   an existing SG-0/P5 receipt row for that exact path or add the same-PR
+   `INVARIANTS.md` receipt plus census update described above; placeholder text
+   alone is not an acceptable deferral.
 
 4. `node://adhoc-80274b5f-3fa` — verify final dispatch closure across
    `cementing_dispatch.dag`, the PB-B-1 runner, and receipt ratchets.
@@ -65,3 +74,5 @@ The concrete closure surface is:
   the dispatch mechanism.
 - Do not treat `Compiles` placeholders as behavioral completion for rows whose
   register entry requires a frozen v2-oracle witness.
+- Do not add or expand hand-written Rust tests for this gate without the P5
+  receipt required for `src/v3/compiler/tests/**` hand-Rust.
