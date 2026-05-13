@@ -139,9 +139,10 @@ type PolyLogExponent = Rational where gt_one
 ```
 
 **Phase A KNOWN_PREDICATES extensions** (Mgr-tier scope; required for refinement-mechanism authority):
-1. Extend `gt_zero`'s `allowed_carriers` to include `Rational` (was `Nat + Int`)
-2. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`)
-3. Both extensions land in same PR as carrier-shape changes — atomic per §P5
+1. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`) — required for `PolyLogExponent = Rational where gt_one`
+2. Extension lands in same PR as carrier-shape changes — atomic per §P5
+
+(`gt_zero` allowed_carriers extension is **NOT** required: PolynomialCost.degree is plain signed Rational per Q6 — no refinement uses `gt_zero` on Rational. `ExponentialBase = Int where range(min: 2)` uses the existing `range` predicate (allowed_carriers already includes Int). Only `gt_one` is genuinely new.)
 
 **ZERO new authority introduced**: PolyLogExponent is a refinement of canonical Rational; ExponentialBase is a refinement of canonical Int. PolynomialCost.degree uses plain signed Rational (no refinement; Q6 scope-extension). Practice 4 / P1 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
 
