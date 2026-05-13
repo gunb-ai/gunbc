@@ -1852,11 +1852,11 @@ structural knowledge of what's valid:
 |---|---|---|
 | NonExhaustiveMatch | LiveCorrection: add all missing arms in one edit | Compiler knows the Disj's full variant set |
 | TypeMismatch | LiveCorrection when one source-level rewrite is known; otherwise DeferredCorrection | Compiler knows both types and the valid coercions, but not every semantic choice has one canonical edit yet |
-| FieldNotFound | Exact: suggest closest field by edit distance, or show available fields | Compiler knows the Conj's field set |
-| ArityMismatch | Exact: add/remove arguments to match signature | Compiler knows the Arrow's parameter count |
-| UnboundedRecursion | Exact: show the descent argument needed | Compiler knows the input type's sub-structure |
-| ComplexityUnknown | Exact: show which argument should be the sub-value | Compiler knows the cost algebra |
-| LayerOpacityViolation | Exact: replace string literal with DeclarationId lookup | Lens knows the typed alternative |
+| FieldNotFound | LiveCorrection when one field repair is canonical; otherwise DeferredCorrection | Compiler knows the Conj's field set |
+| ArityMismatch | LiveCorrection when arity repair is canonical; otherwise DeferredCorrection | Compiler knows the Arrow's parameter count |
+| UnboundedRecursion | LiveCorrection when descent evidence is derivable; otherwise DeferredCorrection | Compiler knows the input type's sub-structure |
+| ComplexityUnknown | LiveCorrection when the sub-value argument is derivable; otherwise DeferredCorrection | Compiler knows the cost algebra |
+| LayerOpacityViolation | LiveCorrection when the typed replacement is known; otherwise DeferredCorrection | Lens knows the typed alternative |
 
 **The test pattern (three assertions per diagnostic):**
 
