@@ -2,8 +2,8 @@
 # Self-test for scripts/check-test-timeout.sh.
 #
 # Pins the T-WAD Slice 6 bridge behavior: slow-test policy comes from the
-# structured JSONL manifest, and over-budget tests missing from that manifest
-# fail closed. The retired slow-test-exemptions.txt count floor must not be
+# structured JSONL manifest, and over-budget tests not warn-listed in the
+# manifest fail closed. The retired slow-test-exemptions.txt count floor must not be
 # required for the consumer to run.
 
 set -euo pipefail
@@ -13,7 +13,10 @@ cd "$ROOT"
 
 CONSUMER="$ROOT/scripts/check-test-timeout.sh"
 TMPDIR="$(mktemp -d)"
-trap "rm -rf $TMPDIR" EXIT
+cleanup() {
+  rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
 
 MANIFEST="$TMPDIR/test-node-wall-clock-ratchet.jsonl"
 LOG="$TMPDIR/libtest.log"
