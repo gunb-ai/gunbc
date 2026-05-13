@@ -19,6 +19,8 @@
 //! `git diff origin/main...HEAD --stat` and path grep). Registry `name` inventory matches
 //! `r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table`
 //! derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` (single authority, no parallel hand list).
+//! On-disk drift: `r3_gate_87_on_disk_cementing_regen_harnesses_match_pb_b1_runner_table` requires the
+//! glob `tests/dag/t_r3_gate_87_cementing_regen_*.dag` stems to match that same table (no orphan harness).
 //!
 //! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
 //! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite
@@ -38,7 +40,10 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -78,6 +83,30 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
         .unwrap_or_else(|| {
             panic!("lens registry entry `{binding}` is missing a String `{label}` field")
         })
+}
+
+fn on_disk_gate_87_cementing_regen_pb_b1_dag_module_stems() -> BTreeSet<String> {
+    const PREFIX: &str = "t_r3_gate_87_cementing_regen_";
+    const SUFFIX: &str = ".dag";
+    let dir = workspace_root().join("src/v3/compiler/tests/dag");
+    let entries =
+        std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
+    let mut stems = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| panic!("read_dir entry: {e}"));
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with(PREFIX) && name.ends_with(SUFFIX)) {
+            continue;
+        }
+        let stem = name[..name.len() - SUFFIX.len()].to_string();
+        assert!(
+            stems.insert(stem.clone()),
+            "duplicate gate-#87 harness filename `{name}` under {}",
+            dir.display()
+        );
+    }
+    stems
 }
 
 fn regen_lens_registry_names() -> BTreeSet<String> {
@@ -140,6 +169,18 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_on_disk_cementing_regen_harnesses_match_pb_b1_runner_table() {
+    let on_disk = on_disk_gate_87_cementing_regen_pb_b1_dag_module_stems();
+    let runner = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+    assert_eq!(
+        on_disk, runner,
+        "on-disk `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag` module stems must \
+         equal `R3_GATE_87_CEMENTING_REGEN_SUITES` (INVARIANTS P2). Remove orphan harness files or \
+         extend the shared runner table + `t_pb_b_1_dag_runner_test` in the same PR."
     );
 }
 
