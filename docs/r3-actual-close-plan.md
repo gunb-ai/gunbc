@@ -81,7 +81,7 @@ Neither override alone is sufficient. The PB-0 design doc admits no escape hatch
 **Close criterion**:
 ```bash
 # Predicate at gate #15 close:
-cargo test --release -p v3-compiler --test l5_cross_target_consistency
+cargo test --release -p v3-compiler --test integration l5_
 # returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on stdout
 ```
 plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cited.
