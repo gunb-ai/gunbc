@@ -3,8 +3,8 @@
 //! **T-Workflow-As-Data** — `ci_workflow_modeled_as_dag` receipt (gunbc#1956): gunbc CI workflow
 //! carriers from `dsl/extdeps/github/actions.dag` are authored as `.dag` **data** alongside a
 //! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
-//! via `evaluate_body` on the **merged gate #57 carrier fixture** (same lowered artifact as
-//! `dsl/gunbc/ci.dag`) and, orthogonally, on **`generated_full_bootstrap_dag()`** for the PB-1 embed path.
+//! via `evaluate_body` on the **gate-57 linked `gunbc.ci` compile** (see `GUNBC_CI_LINKED_COMPILE_*`)
+//! and, orthogonally, on **`generated_full_bootstrap_dag()`** for the PB-1 embed path.
 //!
 //! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
 //! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
@@ -24,11 +24,9 @@
 //! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
 //! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
 //! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
-//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt on a merged
-//! compile** (`tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag`) that **anchors
-//! `ci_workflow_dag`** from `gunbc.ci` in the same lowered artifact as
-//! `demo_ci_modeled_timing_dimension_report` (THESIS self-inspection on the modeled CI workflow carrier,
-//! not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
+//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt** on that
+//! same linked artifact (bootstrap supplies `demo_ci_modeled_timing_dimension_report` — THESIS
+//! self-inspection on the modeled CI workflow carrier, not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
 //! still exercises the PB-1 bootstrap embed path for `modeled_gunbc_ci_workflow` / demo span wiring.
 //! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
@@ -487,25 +485,11 @@ fn gate57_bootstrap_dag() -> &'static v3_compiler::dag::Dag {
     BOOT.get_or_init(demo_bootstrap_dag)
 }
 
-/// Merged `gunbc.ci` + `v3.std.t_ci_workflow_as_data_demo` — timing `evaluate_body` shares one compile
-/// with the `ci_workflow_dag` authority row (see `r3_gate57_ci_timing_carrier_anchor` in the fixture).
+/// Same lowered artifact as [`gate57_ci_artifacts`]: linked `gunbc.ci` (`ci_github_actions_workflow`
+/// + `ci.dag`) on the embedded bootstrap DAG, which already includes `v3.std.t_ci_workflow_as_data_demo`
+/// for `evaluate_body(demo_ci_modeled_timing_dimension_report, …)`.
 fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
-    static CARRIER: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
-    CARRIER.get_or_init(|| {
-        let dag = compile_to_dag(
-            R3_GATE57_TIMING_LENS_LINKED_COMPILE_SOURCE,
-            R3_GATE57_TIMING_LENS_LINKED_COMPILE_FILE,
-        )
-        .unwrap_or_else(|err| {
-            panic!("compile {R3_GATE57_TIMING_LENS_LINKED_COMPILE_FILE}: {err:?}")
-        });
-        assert!(
-            dag.diagnostics().is_empty(),
-            "{R3_GATE57_TIMING_LENS_LINKED_COMPILE_FILE}: {:?}",
-            dag.diagnostics()
-        );
-        dag
-    })
+    &gate57_ci_artifacts().dag
 }
 
 /// Single structural claim: `ci_workflow_dag` prerequisite edges expose exactly one 2-successor
