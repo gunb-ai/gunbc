@@ -1,6 +1,6 @@
 # R3 Gate 87 Lens-Cementing Test-Discipline Dispatch — 2026-05-13
 
-**Owner:** Verification Mgr session `keen-bee-278`.
+**Owner:** Verification Mgr session `royal-cat-755`.
 
 **Purpose:** decompose `lens_cementing_test_discipline_complete` into concrete child work that preserves the lens-completeness invariant while gate #87 stays tied to the `regen.dag` registry corpus.
 
@@ -19,15 +19,24 @@ Rows outside `regen.dag` remain Band-C / #84 bulk-port scope. Do not use them to
 
 ## Child Work Items
 
-Dashboard dispatch created 2026-05-13 from `keen-bee-278`:
+Dashboard dispatch refreshed 2026-05-13 from `royal-cat-755` for node
+`node://adhoc-b75b3d90-3d0`:
 
 | Slice | Dashboard node |
 | --- | --- |
-| G87-D1 — Registry-Invariant Audit | `node://adhoc-a60be69f-0c9` |
-| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-2dc8915c-5fa` |
-| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-8d1d77d8-512` |
-| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-e0fb8865-bf3` |
-| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-37f8d943-e31` |
+| G87-D1 — Registry-Invariant Audit | `node://adhoc-9943f035-fe2` |
+| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-47fd0184-212` |
+| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-9eaf7a7f-586` |
+| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-a7627420-8a9` |
+| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-292b6cf6-c33` |
+
+Each child owns one verification surface and must preserve the same
+lens-completeness invariant: a `BEHAVIORALLY COMPLETE` lens row is not complete
+unless the matching receipt stack is visible in the registry data, the
+`regen.dag` lens corpus, the per-lens `.dag` harness, the shared runner table,
+and the Band-C dispatch projection. The children may tighten or replace a
+temporary Rust pin, but they must not introduce a second hand-maintained
+inventory.
 
 ### G87-D1 — Registry-Invariant Audit
 
@@ -38,6 +47,9 @@ Acceptance:
 - Every registry lens name appears in the runner inventory.
 - Every runner inventory lens has a corresponding `t_r3_gate_87_cementing_regen_<lens>.dag` file.
 - `cementing_dispatch.dag` covers the same registry names and does not introduce a parallel hand list.
+- The audit records the exact current lens-name set and distinguishes
+  `BEHAVIORALLY COMPLETE`, `PARTIAL`, and `N/A` rows without upgrading a row by
+  prose.
 - Any mismatch is fixed in the same PR or escalated with the specific missing surface.
 
 Verification:
@@ -56,6 +68,8 @@ Acceptance:
 - Real v2 counterpart rows require `DifferentialEquals` or a reviewed frozen-v2 projection.
 - v3-native / helper rows require `LensOutputEquals`, `SymbolicCostExprEquals`, or an explicit `Compiles` placeholder plus named blocker.
 - The checklist states that a COMPLETE flip without the receipt stack is non-mergeable for the lens-completeness invariant.
+- The checklist names the review-time query workers should run before marking a
+  COMPLETE flip ready, so the invariant is executable rather than only prose.
 
 Verification:
 
@@ -74,6 +88,8 @@ Acceptance:
 - Each placeholder names the owning lane that can unblock it.
 - No placeholder is treated as a silent exception to Band-C; it is either a temporary receipt or a non-gate-87 residual.
 - The result updates the existing pattern/closure-audit docs rather than creating a new independent inventory.
+- The ledger explicitly says which placeholder replacement would delete or
+  narrow each Rust pin.
 
 Verification:
 
@@ -95,6 +111,8 @@ Acceptance:
 - `r3_gate_87_lens_cementing_regen_receipts_test` rejects registry / receipt drift.
 - `sg0_census_test.rs` comments continue to point workers at the single cementing inventory and forbid parallel hand lists.
 - Any failing or stale ratchet is fixed in the same PR.
+- If the worker changes no code, the closeout still reports the latest command
+  result or the concrete blocker that prevented running it.
 
 Verification:
 
@@ -112,6 +130,8 @@ Acceptance:
 - Every `src/v3/compiler/tests/integration/cementing/*.rs` row that remains in `EXPECTED_HAND_AUTHORED_TEST` is classified as gate-87 residual, Band-C bulk-port candidate, host-wrapper retirement, or T-LAS demonstration scope.
 - The classification names the owning lane and the expected SG-0 census delta.
 - The table stays in `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md`; no duplicate inventory is introduced.
+- Rows classified outside gate #87 must name the handoff lane and explain why
+  they do not satisfy, block, or reopen `lens_cementing_test_discipline_complete`.
 
 Verification:
 
