@@ -19,7 +19,8 @@
 //! modules is deferred (M1(2.8) opaque-body path).
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
-//! hosts the executable receipt: **`compile_to_dag(dsl/gunbc/ci.dag)` once** (via `OnceLock`) to load
+//! hosts the executable receipt: **`compile_to_dag` on a linked bundle** (`ci_github_actions_workflow.dag`
+//! then `ci.dag` — see `GUNBC_CI_LINKED_COMPILE_*` in this file) once (via `OnceLock`) to load
 //! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
 //! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
 //! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
@@ -64,8 +65,15 @@ use v3_compiler::{
 };
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
-const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
-const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
+/// [`compile_to_dag`] loads a single surface module — imports do not pull sibling files from
+/// disk. Merge the regenerated GitHub Actions workflow module before `gunbc.ci` so
+/// `ci_workflow_dag.github_actions_workflow` resolves to `gunbc_ci_github_actions_workflow`.
+const GUNBC_CI_LINKED_COMPILE_SOURCE: &str = concat!(
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag"),
+    "\n\n",
+    include_str!("../../../../../dsl/gunbc/ci.dag"),
+);
+const GUNBC_CI_LINKED_COMPILE_FILE: &str = "dsl/gunbc/ci_with_github_actions_workflow.dag";
 const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
@@ -459,11 +467,11 @@ struct Gate57CiArtifacts {
 fn gate57_ci_artifacts() -> &'static Gate57CiArtifacts {
     static CACHE: OnceLock<Gate57CiArtifacts> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+        let dag = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
         assert!(
             dag.diagnostics().is_empty(),
-            "{GUNBC_CI_FILE}: {:?}",
+            "{GUNBC_CI_LINKED_COMPILE_FILE}: {:?}",
             dag.diagnostics()
         );
         let input = ci_workflow_dag_input_from_compiled_ci(&dag);
@@ -685,8 +693,8 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let (name, node_ids, edges) = workflow_topology(&ci, fields);
 
@@ -718,8 +726,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_interim_command_shape() {
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let gate_records = workflow_gate_records(&ci, fields);
 
@@ -762,8 +770,8 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
 #[test]
 fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
     let demo = demo_bootstrap_dag();
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
 
     assert!(
         demo.declaration_by_name("modeled_gunbc_ci_workflow_dag")
@@ -973,7 +981,8 @@ fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
     };
     let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
         .expect("binary shim selection must succeed on gunbc-ci topology");
-    let full = select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll).expect("TouchAll baseline");
+    let full =
+        select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll).expect("TouchAll baseline");
     assert_eq!(plan, full);
 }
 

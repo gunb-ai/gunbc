@@ -5648,34 +5648,6 @@ fn lower_structural_field_value(
             return None;
         }
         let referenced = dag.declaration(decl_id);
-        // Structural `data` alias: reference another top-level `data` item whose
-        // declared type matches the field (e.g. pinned `Workflow` carriers split across
-        // modules). Distinct from `DeclarationRef` / `DeclarationId` substrate rows and
-        // from `meta_tag`-backed realization references.
-        if referenced.value_body.is_some()
-            && !is_value_level_arrow_declaration(referenced)
-            && referenced.meta_tag.is_none()
-            && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
-        {
-            if let Some(cat) = category {
-                if let Err(reason) =
-                    validate_realization_field_target(dag, cat, field_label, decl_id)
-                {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
-                            ),
-                            span: span.clone(),
-                            fixes: Vec::new(),
-                        },
-                    );
-                    return None;
-                }
-            }
-            return Some(crate::dag::FieldValue::Reference(decl_id));
-        }
         if is_value_level_arrow_declaration(referenced)
             && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
         {
@@ -5909,11 +5881,10 @@ fn lower_structural_field_value(
     let mut disj_subst = subst.clone();
     let optional_card =
         optional_at_most_one_cardinality_decl_with_subst(dag, expected_type, subst, 0);
-    let optional_disj = optional_card
-        .and_then(|card| crate::infer::ensure_optional_match_disj(dag, card));
-    let disj_id = optional_disj.or_else(|| {
-        walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst)
-    });
+    let optional_disj =
+        optional_card.and_then(|card| crate::infer::ensure_optional_match_disj(dag, card));
+    let disj_id = optional_disj
+        .or_else(|| walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst));
     if let Some(disj_id) = disj_id {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
@@ -5949,9 +5920,7 @@ fn lower_structural_field_value(
             && !surface_expr_is_authored_optional_none(expr)
             && !optional_some_none_surface_form(expr)
         {
-            if let Some(inner_ty) =
-                optional_element_type_with_subst(dag, expected_type, subst, 0)
-            {
+            if let Some(inner_ty) = optional_element_type_with_subst(dag, expected_type, subst, 0) {
                 match lower_structural_field_value(
                     data_name,
                     field_label,
@@ -6087,13 +6056,7 @@ fn lower_structural_field_value(
                         );
                         return None;
                     };
-                    (
-                        label,
-                        variant_decl_id,
-                        None,
-                        Some(fields.as_slice()),
-                        span,
-                    )
+                    (label, variant_decl_id, None, Some(fields.as_slice()), span)
                 }
                 SurfaceExpr::Var { name, span } => {
                     let Some((_, variant_decl_id)) =
@@ -6438,7 +6401,10 @@ fn optional_at_most_one_cardinality_decl_with_subst(
         TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
             Some(expected_type)
         }
-        TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
             optional_at_most_one_cardinality_decl_with_subst(dag, *template, subst, depth + 1)
         }
         _ => None,
@@ -6489,7 +6455,9 @@ fn surface_record_field_for_variant_payload<'a>(
     payload_label: &str,
 ) -> Option<&'a crate::parse::SurfaceRecordField> {
     fields.iter().find(|f| f.name == payload_label).or_else(|| {
-        (payload_label == "_0").then(|| fields.iter().find(|f| f.name == "value")).flatten()
+        (payload_label == "_0")
+            .then(|| fields.iter().find(|f| f.name == "value"))
+            .flatten()
     })
 }
 
