@@ -88,7 +88,7 @@ data stage0: GeneratedCrate = {
     "rust_target.rs",
     "infer.rs",
     // R3 gate #6: `lens_testgen.rs` retired — body is this hand-authored include fragment
-    // (`lens_apply.rs` `include!`). Must stay in `hand_maintained_src` so stage0 recursive
+    // (`lens_declaration_apply.rs` `include!`). Must stay in `hand_maintained_src` so stage0 recursive
     // freshness diff does not treat it as generated drift (P2 boundary discipline).
     "lens_testgen_body.txt",
     "lib.rs",
