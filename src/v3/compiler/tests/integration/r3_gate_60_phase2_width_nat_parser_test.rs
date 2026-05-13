@@ -4,7 +4,7 @@
 //! Full gate #60 closure still requires follow-on slices Z/D/E/F per `docs/audit/r3-gate-60-decomposition.md`.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Dag, DeclarationId, TypeConnective};
+use v3_compiler::dag::{AtomPayload, Dag, LiteralBits, TypeConnective};
 use v3_compiler::parse_surface;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
