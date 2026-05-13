@@ -97,6 +97,19 @@ fn run_suite_all_pass_with_expected_claim_names(
     );
 }
 
+fn run_single_claim_failure_reason(dag: &Dag, suite_name: &str) -> String {
+    let results = TestRunner::new(dag).run_suite(suite_name);
+    assert_eq!(
+        results.len(),
+        1,
+        "suite `{suite_name}` should contain exactly one drift-check claim"
+    );
+    let ClaimResult::Fail(reason) = &results[0].result else {
+        panic!("suite `{suite_name}` should fail closed, got {results:?}");
+    };
+    reason.clone()
+}
+
 fn claim_value_by_decl_name(dag: &Dag, declaration_name: &str) -> TestClaimValue {
     let decl = dag
         .declaration_by_name(declaration_name)
@@ -443,5 +456,93 @@ fn cementing_dispatch_suite_passes_through_runner() {
         &dag,
         "cementing_dispatch_suite",
         &["cementing_dispatch_projection_matches_register_and_regen"],
+    );
+}
+
+#[test]
+fn r3_gate_87_cementing_dispatch_rejects_receipt_list_drift() {
+    let drifted_source = include_str!("../dag/cementing_dispatch.dag").replace(
+        r#"  {
+    registry_name: "cost_symbolic"
+    module_stem: "cost_lens_symbolic_consumer_test"
+    kind: TemporaryRustModule
+  }
+"#,
+        "",
+    );
+    let dag = lower(
+        &drifted_source,
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    let reason = run_single_claim_failure_reason(&dag, "cementing_dispatch_suite");
+    assert!(
+        reason.contains(
+            "cementing_receipts `(registry_name, module_stem, kind)` triples must exactly match"
+        ),
+        "receipt-list drift should fail via exact triple equality, got {reason:?}"
+    );
+}
+
+#[test]
+fn r3_gate_87_cementing_dispatch_rejects_register_projection_drift() {
+    let drifted_source = r#"
+module v3.compiler.tests.cementing_dispatch
+
+import std.list { List }
+import std.verification {
+  CementingDispatchMatchesProjection,
+  LensCapabilityBehavioralComplete,
+  LensCapabilityRegisterRow,
+  LensCapabilityStructuralTerminal,
+  LensCapabilityV2RealV2,
+  TestClaim,
+  TestSuite
+}
+
+type CementingBandCReceiptKind
+  = DagHarness
+  | TemporaryRustModule
+
+type CementingBandCReceipt {
+  registry_name: String
+  module_stem: String
+  kind: CementingBandCReceiptKind
+}
+
+data drifted_lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
+  {
+    lens_basename: "definitely_not_in_regen.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2RealV2
+  }
+]
+
+data empty_receipts: List<CementingBandCReceipt> = []
+
+data claim_cementing_dispatch_projection: TestClaim = {
+  name: "cementing_dispatch_projection_rejects_register_drift"
+  source: "let _: Int = 0\n"
+  file_name: "cementing_dispatch_projection_gate.v3"
+  predicate: CementingDispatchMatchesProjection {
+    capability_register: drifted_lens_capability_register_rows
+    cementing_receipts: empty_receipts
+  }
+  requires: []
+}
+
+data cementing_dispatch_suite: TestSuite = {
+  name: "cementing_dispatch_suite"
+  claims: [Enumerated(claim_cementing_dispatch_projection)]
+}
+"#;
+    let dag = lower(
+        drifted_source,
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    let reason = run_single_claim_failure_reason(&dag, "cementing_dispatch_suite");
+    assert!(
+        reason.contains("no `LensRegistryEntry` in bootstrap names those files"),
+        "register projection drift should fail before receipt comparison, got {reason:?}"
     );
 }
