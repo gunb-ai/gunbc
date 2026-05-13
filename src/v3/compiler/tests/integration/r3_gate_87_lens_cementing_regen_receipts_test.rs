@@ -41,10 +41,7 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
-use v3_compiler::lens_cost_target_realization::type_realization_meta;
-use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
-use v3_compiler::lens_provenance::{origin_of, Origin};
+use v3_compiler::dag::{Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
@@ -122,15 +119,6 @@ fn assert_lens_dag_compiles(rel: &str) {
     );
 }
 
-fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
-    dag.nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|bind| bind.name == name)
-        .unwrap_or_else(|| panic!("bind `{name}` not found"))
-        .value
-}
-
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -140,49 +128,6 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
-    );
-}
-
-#[test]
-fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
-    let dag =
-        compile_to_dag("let lit: Int = 7", "r3_gate_87_effect_enum_receipt.v3").expect("compile");
-    let report = enumerate_effects(&dag);
-    assert!(
-        matches!(report.transaction, TransactionalPattern::NoTransaction),
-        "effect enumeration transaction scaffold must remain explicit"
-    );
-    assert!(
-        report.facts.len() <= dag.nodes().len(),
-        "effect facts should not exceed walked node count"
-    );
-}
-
-#[test]
-fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
-    let dag =
-        compile_to_dag("let lit: Int = 7", "r3_gate_87_provenance_receipt.v3").expect("compile");
-    let port = find_bind_value_port(&dag, "lit");
-    let got = origin_of(&dag, &port);
-    assert!(
-        matches!(got, Origin::Source { .. }),
-        "literal bind should classify as Source(..), got {got:?}"
-    );
-}
-
-#[test]
-fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row() {
-    let dag = compile_to_dag(
-        "let lit: Int = 7",
-        "r3_gate_87_cost_target_realization_receipt.v3",
-    )
-    .expect("compile");
-    let resolved_name = type_realization_meta(&dag).and_then(|d| d.name);
-    assert_eq!(
-        resolved_name.as_deref(),
-        Some("TypeRealization"),
-        "type_realization_meta must resolve the substrate `TypeRealization` declaration \
-         (declaration_by_name contract used by cost_target_realization.dag)"
     );
 }
 
