@@ -269,7 +269,7 @@ Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_len
 `src/v3/compiler/tests/integration/cementing/symbolic_cost_tier1_carrier_test.rs` asserting:
 - 9 variant count (assert against `cost.dag` or `algebra.dag` source); REMOVED LinearCost (PolynomialCost.degree promotion to Rational is not a new variant)
 - All 9 variant names + field shapes structurally present
-- **NEW (Director msg_b80bcaa8)**: type-rejection negative test asserts `PolynomialCost { var, degree: Rational(0) }` is structurally REJECTED at carrier level (`where nonzero` refinement). Admits positive (`Rational(2)` → ok) + negative (`Rational(-1)` → ok); rejects only zero.
+- **NEW (Director msg_b80bcaa8 + codex worker:167)**: type-rejection negative test asserts `PolynomialCost { var, degree: Rational(0) }` is structurally REJECTED at carrier level via `NonZeroRational` named-alias refinement. Test also asserts `type NonZeroRational = Rational where nonzero` is declared at the type-alias layer (NOT inline). Admits positive (`Rational(2)` → ok via NonZeroRational construction) + negative (`Rational(-1)` → ok); rejects only zero.
 - Phase A Q1-α deliverables present: rational_lt/le/gt/ge/eq/ne free functions in cost-lens module; NO OrderedField type declared
 - Phase A KNOWN_PREDICATES extension: both `gt_one` AND `nonzero` predicates added to lower.rs registry; bootstrap test asserts both predicates present with correct allowed_carriers.
 - `Rational = Field<FieldOfFractions<Int>>` UNCHANGED at `dsl/std/rational.dag:26` (Q1-α)
@@ -326,7 +326,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 ## §13. Verification
 
 - `cargo test --workspace` green
-- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveInt/ExponentialBase/PolyLogExponent — NOT PositiveRational; PolynomialCost.degree is plain signed Rational per Q6) / algebra rules sample / STOP-SIGNAL text)
+- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveInt/ExponentialBase/PolyLogExponent/NonZeroRational — all named type aliases per HEAD parser constraint; NOT PositiveRational) / algebra rules sample / STOP-SIGNAL text)
 - **INVARIANTS P5 receipt for the new hand-Rust test file** (per claude APPROVE 10773 + codex BLOCKING 014544f4 finding #4): authoring `symbolic_cost_tier1_carrier_test.rs` adds new hand-Rust under `src/v3/compiler/tests/`. Per P5 "Pure Bootstrap" discipline, this PR's body MUST cite **exactly ONE P5 receipt category** with concrete path + LOC count:
   - (a) **hand-Rust deletion of equivalent or greater LOC**: cite specific deleted file/lines + LOC count
   - (b) **SG-0 census shrink receipt**: cite specific SG-0 cell + shrink delta
