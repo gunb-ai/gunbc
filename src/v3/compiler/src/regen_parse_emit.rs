@@ -84,7 +84,8 @@ fn emit_parse_module(parser_body: &str) -> String {
     out.push_str(
         "pub use crate::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, \
          SurfaceMapEntry, SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, \
-         SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload};\n",
+         SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant, TypeAngleArg, \
+         VariantPayload};\n",
     );
     out.push_str(
         "use crate::parse_tables::{binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, \
@@ -101,9 +102,17 @@ fn emit_parse_module(parser_body: &str) -> String {
         match self {
             SurfaceType::Named { span, .. }
             | SurfaceType::Parameterized { span, .. }
-            | SurfaceType::WidthNatLiteral { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
+        }
+    }
+}
+
+impl TypeAngleArg {
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            TypeAngleArg::TypeExpr { ty } => ty.span(),
+            TypeAngleArg::WidthNatLiteral { span, .. } => span,
         }
     }
 }

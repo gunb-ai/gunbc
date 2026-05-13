@@ -3604,7 +3604,7 @@ fn compose_algebra_machine_width_connective(
 }
 
 /// When `surface_name` is `Int` / `UInt` / `Real` / `Nat` and there is exactly one
-/// [`SurfaceType::WidthNatLiteral`] argument with a gate-60 bit width, lower to
+/// [`TypeAngleArg::WidthNatLiteral`] argument with a gate-60 bit width, lower to
 /// `Compose<Algebra, MachineWidth<N>>` per Q-MC sub-decision 3. `Nat<N>` uses `UInt`
 /// in slot-1 (same unsigned width-refinement axis as `UInt<N>`; `UInt = Nat` in std).
 fn materialize_algebra_machine_width_width_nat(
@@ -3612,13 +3612,13 @@ fn materialize_algebra_machine_width_width_nat(
     symbols: &HashMap<String, DeclarationId>,
     local: &HashMap<String, DeclarationId>,
     surface_name: &str,
-    args: &[SurfaceType],
+    args: &[TypeAngleArg],
     _span: &SourceSpan,
 ) -> Option<TypeConnective> {
     if args.len() != 1 {
         return None;
     }
-    let SurfaceType::WidthNatLiteral {
+    let TypeAngleArg::WidthNatLiteral {
         decimal,
         span: lit_span,
     } = &args[0]
@@ -3720,9 +3720,6 @@ fn type_to_declaration_id(
             });
             id
         }
-        SurfaceType::WidthNatLiteral { decimal, span } => {
-            alloc_literal_width_nat_decl(dag, decimal, span.clone())
-        }
         SurfaceType::Optional { inner, span } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
             dag.alloc_cardinality_decl(element, CardinalityBound::AtMostOne, span.clone())
@@ -3807,9 +3804,6 @@ fn type_to_connective(
                 template,
                 arguments,
             }
-        }
-        SurfaceType::WidthNatLiteral { decimal, .. } => {
-            TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(decimal.clone())))
         }
         SurfaceType::Optional { inner, .. } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
