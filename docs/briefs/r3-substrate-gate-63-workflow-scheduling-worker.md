@@ -17,15 +17,15 @@ Key structural framing (Director verbatim per msg_804cdc93):
 
 > The sibling failures are NOT 'directly load-bearing for modeled as .dag data criterion' — they're load-bearing for rows #99 + #100 substrate-shape closure paths, which have their own §1.8 ledger entries + closure scopes. Gate #63 closing via Candidate A does NOT hide substrate-debt because rows #99 + #100 carry that debt explicitly with their own DECLARED → CONSUMER_LANDED arc.
 
-Gate #63 closure is **administrative** (un-ignore the already-passing test + ledger flip). The 5 sibling failures from snappy-bear-502's `--include-ignored` run are owned by rows #99/#100, NOT gate #63.
+Gate #63 closure is **administrative** (un-ignore the already-passing test + ledger flip). The 6 sibling failures from snappy-bear-502's `--include-ignored` run are owned by rows #99/#100, NOT gate #63.
 
 ## §1. Ratified scope (Q1=A administrative)
 
 1. Remove `#[ignore]` at `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581`
 2. §1.8 row #63 status flip DECLARED → **CONSUMER_LANDED + PASSING** (Director specifies BOTH; `#[ignore]`-removal IS the closure receipt per Q3 planned-deferral anchor commit `73969f4a9`)
-3. Audit doc enumerating 5 sibling failures as **"scoped under rows #99 + #100"** — separate Mgr-tier follow-on, NOT R3-close-blocking for #63
+3. Audit doc enumerating 6 sibling failures as **"scoped under rows #99 + #100"** — separate Mgr-tier follow-on, NOT R3-close-blocking for #63
 
-## §2. The 5 sibling failures — ledger-mapping (Director-verified)
+## §2. The 6 sibling failures — ledger-mapping (Director-verified)
 
 | BuildBuddy failure (msg_140d9bc7) | Owning §1.8 row |
 |---|---|
@@ -33,6 +33,7 @@ Gate #63 closure is **administrative** (un-ignore the already-passing test + led
 | `gunbc_ci_emission_binary_shim_workflow` opaque body | #99 `workflow_runtime_open_enum_landed` (BinaryShim arm) |
 | PythonShim placeholder opaque body | #99 (PythonShim arm) |
 | `dsl/gunbc/ci_github_actions_workflow.dag` opaque body + `concurrency` type mismatch | #100 |
+| `ci_workflow_as_data_demo_pins_*` topology/command tests fail (per canvas §1 sibling-failure inventory) | #99 (workflow-runtime topology/command emission arms) + #100 (Actions-projection topology dispatch) — added per openai-pro REQUEST_CHANGES 11242 to close PM-intent narrowing |
 | `gunbc_ci_emission_substrate_compiles` + `..._authority_compiles` | #99 + #100 substrate-shape close path |
 
 These are **not gate #63 scope**. Audit doc records the mapping for downstream rows #99/#100 brief authoring.
@@ -92,7 +93,7 @@ Receipt asserts: **unallocated-survivor count = 0**. Allocated survivors are enu
 
 Within the same audit doc, enumerate:
 
-- The 5 sibling failures from snappy-bear-502 audit msg_cef1340b with concrete file:line + BuildBuddy invocation `2e1d435a-a6fe-...` cite
+- The 6 sibling failures from snappy-bear-502 audit msg_cef1340b with concrete file:line + BuildBuddy invocation `2e1d435a-a6fe-...` cite
 - Mapping table per §2 above (failure → owning §1.8 row #99 or #100)
 - Director's structural disambiguation quote (msg_804cdc93 verbatim — establishes the Director allocation mechanism)
 - Explicit framing: "these failures are Class 4 bridge survivors with explicit Director allocation per msg_804cdc93; they will close as rows #99 + #100 progress through their own DECLARED → CONSUMER_LANDED arcs"
@@ -104,7 +105,7 @@ Per `docs/r3-program-plan.md` §7.2 + `docs/audit/r3-debt-sweep-2026-05-06.md` �
 
 **STOP if Phase B.1 surfaces an unallocated survivor** — gate #63 cannot close on predicate (b) absent a count=0 OR full-allocation receipt; surface to Mgr for Director re-allocation routing.
 
-Cost-of-change: 1 new audit-doc file, no existing-file edits beyond the `#[ignore]` removal in Phase A.
+Cost-of-change: 1 new audit-doc file + Phase C ledger update at `docs/r3-program-plan.md` §1.8 row #63 (status flip DECLARED → CONSUMER_LANDED + PASSING + cite block) + Phase A `#[ignore]` removal at `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581`. No other existing-file edits (openai-pro 11242 minor: prior "no existing-file edits beyond #[ignore]" framing missed the §1.8 ledger edit; now accurate).
 
 ## §5. Phase C — §1.8 row #63 ledger update + §4.4 substrate-prereq reconciliation
 
@@ -136,7 +137,7 @@ Worker brief Phase C MUST update §4.4 carrier-enumeration with a "substrate-pre
 1. **Gate-criterion test FAILS without `--ignored`** at HEAD — isolation-pass regressed since snappy-bear-502 audit (msg_cef1340b 2026-05-13T04:21Z); surface to Mgr immediately
 2. **Director-anchored `#[ignore]` commit at `73969f4a9` has been amended/replaced** — git log audit at HEAD before authoring; if commit history changed, surface and re-verify
 3. **`feedback_load_bearing_ratchet_preservation` violation tempted** — if Phase A authoring tempts adding `#[ignore]` to mask any other failure, **STOP** — anti-pattern §7.2 fires
-4. **Scope-creep tempted** — if Phase A diagnosis tempts fixing any of the 5 sibling failures, **STOP** — anti-pattern §7.5 fires (those are rows #99/#100 scope, NOT gate #63)
+4. **Scope-creep tempted** — if Phase A diagnosis tempts fixing any of the 6 sibling failures, **STOP** — anti-pattern §7.5 fires (those are rows #99/#100 scope, NOT gate #63)
 5. **Row #99 or #100 progress has changed status since 2026-05-13** in `docs/r3-program-plan.md` §1.8 — re-verify mapping table; surface to Mgr if rows are no longer DECLARED
 6. **Phase B.1 surfaces an unallocated Class 4 bridge survivor** (i.e., a site that doesn't execute through v3 AND has no §1.8 row attribution) — STOP and surface to Mgr; gate #63 cannot close on §1.4 predicate (b) absent count=0 OR full Director-allocated survivors
 
@@ -148,14 +149,14 @@ PR body MUST cite verbatim + assert receipt-of-compliance:
 2. **Silent-mask preservation** — NO new `#[ignore]` added (atomic-migration; Phase A only removes)
 3. **Parallel-authority on CIWorkflowDag execution path** — N/A under Q1=A (no substrate authoring)
 4. **Demo-bound closure pretending to be production** — the criterion text "CI workflow modeled as `.dag` data executes through evaluator + produces `DimensionReport<TimingMeasurement>`" is **acknowledged strictly broader than a synthetic demo**. The Q1=A narrowing (demo + gate-criterion test pass = §1.8 closure receipt, with broader production-CI-workflow-as-data scope explicitly deferred) is **Director-ratified scope-narrowing** per msg_804cdc93 (revised disposition; supersedes msg_4b13e93f) — NOT Mgr self-classification. The demo is the receipt instrument Director allocated to gate #63; the residual broader production-CI-workflow scope is Director-allocated to rows #99 (workflow_runtime_open_enum_landed) + #100 (project_github_actions_landed) per Phase B.2 STRUCTURAL allocation doc + §7.2 / debt-sweep §3.A. PR body MUST cite msg_804cdc93 as the explicit narrowing-ratification anchor (codex BLOCKING worker:132); no implicit "demo IS production" claim — the narrowing is an explicit Director scope decision.
-5. **NEW — scope-broadening a gate closure to absorb sibling-test substrate-debt with own ledger rows** (Director-ratified per msg_804cdc93 + msg_1e52a61b) — Phase A explicitly does NOT fix any of the 5 sibling failures; they're owned by rows #99/#100
+5. **NEW — scope-broadening a gate closure to absorb sibling-test substrate-debt with own ledger rows** (Director-ratified per msg_804cdc93 + msg_1e52a61b) — Phase A explicitly does NOT fix any of the 6 sibling failures; they're owned by rows #99/#100
 
 ## §8. Verification
 
 - `cargo test --workspace` green (must include the un-ignored gate-criterion test under default invocation) — predicate (a) receipt
 - `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` green WITHOUT `--ignored` flag (Phase A check)
 - Phase B.1 two-pass bridge-inventory receipt (Pass-1 authority-surface enumeration + all-lines / YAML-structural classification authoritative; Pass-2 keyword grep cross-check only — see §4.1): unallocated-survivor count = 0 — predicate (b) receipt (§1.4 conjunctive)
-- Phase B.2 audit doc lands at expected path with 5-survivor allocation table + Director msg_804cdc93 quote (STRUCTURAL exception receipt per §7.2)
+- Phase B.2 audit doc lands at expected path with 6-survivor allocation table + Director msg_804cdc93 quote (STRUCTURAL exception receipt per §7.2)
 - §1.8 row #63 status updated to CONSUMER_LANDED + PASSING with all required cites
 - PR body cites:
   - Gate #63 closure (Phase C ledger update)
@@ -164,11 +165,11 @@ PR body MUST cite verbatim + assert receipt-of-compliance:
   - 5 anti-patterns receipt-of-compliance (§7)
   - Phase B audit doc path
   - `#[ignore]`-anchor commit `73969f4a9` cite
-  - 5-row sibling-debt mapping table (§2)
+  - 6-row sibling-debt mapping table (§2)
 
 ## §9. Out of scope
 
-- **Fixing any of the 5 sibling failures** — owned by rows #99 + #100; explicitly NOT this PR
+- **Fixing any of the 6 sibling failures** — owned by rows #99 + #100; explicitly NOT this PR
 - **PythonShim arm closure** — owned by row #99 (PythonShim sub-arm); not gate #63
 - **Real CI workflow evaluator receipt beyond demo** — the prior Q1=B framing required this; under Q1=A the demo passing receipt is sufficient
 - **T-Lens-Self-Application coordination** — Q4 informational-only; cross-Mgr notice already sent by Mgr (msg_a35ec43c to swift-deer-459)
@@ -180,7 +181,7 @@ PR body MUST cite verbatim + assert receipt-of-compliance:
 - Director ratification (REVISED, supersedes prior): PM msg_1e52a61b (relaying Director msg_804cdc93)
 - Prior superseded ratification: PM msg_dbc2e5e0 (relaying Director msg_4b13e93f) — note explicit supersession in PR body
 - snappy-bear-502 audit anchor: msg_140d9bc7 + correction msg_cef1340b
-- BuildBuddy invocations: `2e1d435a-a6fe-...` (5 sibling failures), `9f22cbce-66ff-...` (isolation pass)
+- BuildBuddy invocations: `2e1d435a-a6fe-...` (6 sibling failures), `9f22cbce-66ff-...` (isolation pass)
 - `#[ignore]`-anchor commit: `73969f4a9` (2026-05-12T22:23Z)
 - Gate #63 row: `docs/r3-program-plan.md:291`
 - Sibling-debt ledger rows: #99 `workflow_runtime_open_enum_landed`, #100 `project_github_actions_landed`, #53 `workflow_substrate_carriers_landed` (partial)
