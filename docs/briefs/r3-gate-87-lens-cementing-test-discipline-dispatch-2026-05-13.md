@@ -6,6 +6,8 @@
 
 This is a dispatch artifact, not a second gate authority. The acceptance authority remains `docs/r3-structure.md` §"T-Tests-As-Data-Completeness" and `docs/r3-program-plan.md` §1.8 row #87. Pattern details live in `docs/briefs/r3-v-cluster-m-87-cementing-worker.md` §7 and `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md`.
 
+**Dispatch receipt:** session `fierce-boar-384` dispatched the five child work items below on 2026-05-13. The parent node `node://adhoc-b75b3d90-3d0` is blocked on these children until they close.
+
 ## Dispatch Invariant
 
 For every `LensRegistryEntry` in `src/v3/compiler/regen.dag`, the gate-87 corpus must have one visible cementing path:
@@ -20,6 +22,8 @@ Rows outside `regen.dag` remain Band-C / #84 bulk-port scope. Do not use them to
 ## Child Work Items
 
 ### G87-D1 — Registry-Invariant Audit
+
+Dashboard node: `node://adhoc-98651eef-7ed`.
 
 Audit `src/v3/compiler/regen.dag`, `docs/v3-lens-capability-register.md`, `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`, and `src/v3/compiler/tests/dag/cementing_dispatch.dag` for exact row alignment.
 
@@ -38,6 +42,8 @@ cargo test -p v3-compiler r3_gate_87
 
 ### G87-D2 — COMPLETE-Flip Same-PR Checklist
 
+Dashboard node: `node://adhoc-911287f8-aa4`.
+
 Author a checklist for future work that changes a lens row to `BEHAVIORALLY COMPLETE` or adds a new `LensRegistryEntry`.
 
 Acceptance:
@@ -55,6 +61,8 @@ rg -n "COMPLETE|LensRegistryEntry|R3_GATE_87_CEMENTING_REGEN_SUITES|cementing_di
 ```
 
 ### G87-D3 — Placeholder-Dissolution Ledger
+
+Dashboard node: `node://adhoc-816059ea-94a`.
 
 Audit all gate-87 receipts that still use `Compiles` or a host-side Rust pin because the exact expected carrier cannot yet be authored as `.dag` data.
 
@@ -77,6 +85,8 @@ rg -n "Compiles|dissolve|dissolution|placeholder|Rust pin|blocked" \
 
 ### G87-D4 — Runner and SG-0 Ratchet Receipt
 
+Dashboard node: `node://adhoc-6d5e0931-e53`.
+
 Verify that the executable tests enforce the gate-87 inventory rather than relying on prose.
 
 Acceptance:
@@ -94,6 +104,8 @@ cargo test -p v3-compiler sg0_census
 ```
 
 ### G87-D5 — Band-C / #84 Handoff Classification
+
+Dashboard node: `node://adhoc-5dbcdd61-f3a`.
 
 Refresh the post-#87 handoff table for remaining hand-Rust cementing-looking tests so #84 workers do not consume gate-87 registry receipts incorrectly.
 
@@ -116,4 +128,3 @@ rg -n "src/v3/compiler/tests/integration/cementing/|r3_gate_87_lens_cementing_re
 D1 and D4 are the fail-closed invariant checks and can run first. D2 and D3 can run in parallel once D1 confirms the current registry surface. D5 is the handoff slice for #84 and should consume D3's placeholder classifications where they overlap.
 
 Completion of these children means gate #87 has a concrete, reviewable discipline package: the registry corpus stays complete, future COMPLETE flips have same-PR receipt requirements, placeholders have named dissolution paths, executable ratchets guard drift, and broader Band-C work is handed to #84 without duplicating authority.
-
