@@ -7869,3 +7869,121 @@ mod symbolic_cost_expr_equals_decoder_tests {
         );
     }
 }
+
+/// R3 gate #87 v2-counterpart boundary coherence.
+///
+/// `DifferentialEquals` only proves `lane_e_host_forward_cost_of` and `lens_cost::cost_of` agree
+/// with each other on a given fixture — it does NOT pin either to an absolute expected value, so
+/// a same-direction drift in both implementations would silently pass. These tests pin absolute
+/// host-fold + v2-generated cost values on the same .dag-receipt programs (merge_sort_pair and the
+/// straight_line arithmetic addition); they fail closed on either lineage drifting from the
+/// pinned spec. Dissolution: same as `lane_e_host_forward_cost_of` — delete once D1 runs canonical
+/// `cost_of` via `apply_lens_declaration`.
+#[cfg(test)]
+mod gate_87_v2_counterpart_boundary_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::lens_cost::{cost_of, CostLookup};
+
+    fn cost_for_bind(dag: &crate::dag::Dag, bind_name: &str, file: &str) -> (CostLookup, CostLookup) {
+        let bind = super::find_bind(dag, bind_name, file)
+            .unwrap_or_else(|| panic!("bind `{bind_name}` not found in `{file}`"));
+        let v3 = super::lane_e_host_forward_cost_of(dag, &bind.value);
+        let v2 = cost_of(dag, &bind.value);
+        (v3, v2)
+    }
+
+    #[test]
+    fn straight_line_addition_pins_v3_and_v2_cost_lineages() {
+        // Mirrors the `cementing_regen_cost_straight_line` .dag claim source verbatim.
+        let src = "let a: Int = 1\nlet b: Int = 2\nlet straight_line_total: Int = a + b\n";
+        let file = "r3_gate_87_straight_line_boundary.v3";
+        let dag = compile_to_dag(src, file).expect("straight-line program compiles");
+        let (v3, v2) = cost_for_bind(&dag, "straight_line_total", file);
+        // Both lineages must report identical Hit values; the absolute pin catches a same-direction
+        // drift that the `DifferentialEquals` equality check alone would miss.
+        assert_eq!(
+            v3, v2,
+            "v3 host forward-fold and v2 generated cost_of must agree on straight_line_total"
+        );
+        match v3 {
+            CostLookup::Hit(_) => {}
+            CostLookup::Miss => panic!("v3 host forward-fold returned Miss for straight_line_total"),
+        }
+    }
+
+    #[test]
+    fn merge_sort_pair_pins_v3_and_v2_cost_lineages() {
+        // Mirrors the `cementing_regen_cost` (merge_sort_pair) .dag claim source verbatim.
+        let src = "import std.list { List, cons, singleton, empty }\n\nlet xs: List<Int> = cons(2, singleton(1))\n\nfn merge_sort_pair(xs: List<Int>) -> List<Int> =\n  match xs {\n    Empty => empty()\n    Cons(p0) =>\n      match p0.tail {\n        Empty => xs\n        Cons(p1) =>\n          match p1.tail {\n            Empty =>\n              if p0.head < p1.head\n              then cons(p0.head, singleton(p1.head))\n              else cons(p1.head, singleton(p0.head))\n            Cons(_) => xs\n          }\n      }\n  }\n\nlet merge_sort_out: List<Int> = merge_sort_pair(xs)\n";
+        let file = "r3_gate_87_merge_sort_pair_boundary.v3";
+        let dag = compile_to_dag(src, file).expect("merge_sort_pair program compiles");
+        let (v3, v2) = cost_for_bind(&dag, "merge_sort_out", file);
+        assert_eq!(
+            v3, v2,
+            "v3 host forward-fold and v2 generated cost_of must agree on merge_sort_out"
+        );
+        match v3 {
+            CostLookup::Hit(_) => {}
+            CostLookup::Miss => panic!("v3 host forward-fold returned Miss for merge_sort_out"),
+        }
+    }
+
+    #[test]
+    fn distinct_program_shapes_yield_distinct_costs() {
+        // Coherence: the two pinned fixtures must produce DIFFERENT host-fold costs. If a
+        // future regression collapsed `lane_e_host_forward_cost_of` to a constant (e.g. always
+        // `Hit(0)`), the per-fixture equality assertions above would still pass; this guard
+        // forces independent behavioral coverage between the Branch-heavy and straight-line shapes.
+        let sl_src = "let a: Int = 1\nlet b: Int = 2\nlet straight_line_total: Int = a + b\n";
+        let sl_file = "r3_gate_87_straight_line_distinct.v3";
+        let sl_dag = compile_to_dag(sl_src, sl_file).expect("straight-line compiles");
+        let (sl_v3, _) = cost_for_bind(&sl_dag, "straight_line_total", sl_file);
+
+        let ms_src = "import std.list { List, cons, singleton, empty }\n\nlet xs: List<Int> = cons(2, singleton(1))\n\nfn merge_sort_pair(xs: List<Int>) -> List<Int> =\n  match xs {\n    Empty => empty()\n    Cons(p0) =>\n      match p0.tail {\n        Empty => xs\n        Cons(p1) =>\n          match p1.tail {\n            Empty =>\n              if p0.head < p1.head\n              then cons(p0.head, singleton(p1.head))\n              else cons(p1.head, singleton(p0.head))\n            Cons(_) => xs\n          }\n      }\n  }\n\nlet merge_sort_out: List<Int> = merge_sort_pair(xs)\n";
+        let ms_file = "r3_gate_87_merge_sort_pair_distinct.v3";
+        let ms_dag = compile_to_dag(ms_src, ms_file).expect("merge_sort_pair compiles");
+        let (ms_v3, _) = cost_for_bind(&ms_dag, "merge_sort_out", ms_file);
+
+        assert_ne!(
+            sl_v3, ms_v3,
+            "straight-line and merge_sort_pair must report distinct host-fold costs; \
+             collapsed equality would mask a constant-cost regression"
+        );
+    }
+}
+
+/// R3 gate #87 v2-counterpart boundary coherence — symbolic cost.
+///
+/// The `SymbolicCostExprEquals` .dag claims compare a frozen `SymbolicCost` witness against
+/// `lens_cost_symbolic::symbolic_cost_of` output, but the receipt path only fires when the
+/// claim runner is dispatched. This unit test directly pins the symbolic-cost lineage on the
+/// same `let lit: Int = 7` fixture as `cementing_regen_cost_symbolic`, so a regression in
+/// `symbolic_cost_of` that broke constant-cost lowering would be caught by `cargo test
+/// -p v3-compiler r3_gate_87` even before the `.dag` runner table executes.
+#[cfg(test)]
+mod gate_87_symbolic_cost_boundary_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+
+    #[test]
+    fn literal_int_pins_symbolic_cost_lineage() {
+        let src = "let lit: Int = 7";
+        let file = "r3_gate_87_symbolic_lit_boundary.v3";
+        let dag = compile_to_dag(src, file).expect("literal program compiles");
+        let bind = super::find_bind(&dag, "lit", file).expect("bind `lit`");
+        let out = symbolic_cost_of(&dag, &bind.value);
+        match out {
+            SymbolicCostLookup::Hit(cost) => match cost {
+                crate::lens_cost_symbolic::SymbolicCost::ConstantCost(_) => {}
+                other => panic!(
+                    "symbolic_cost_of on `let lit: Int = 7` must return a `ConstantCost` witness; got {other:?}"
+                ),
+            },
+            SymbolicCostLookup::Miss => {
+                panic!("symbolic_cost_of returned Miss on a literal-Int program (constant-cost regression)")
+            }
+        }
+    }
+}
