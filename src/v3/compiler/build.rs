@@ -32,10 +32,10 @@
 //
 // Staged `src/v3/std/*.dag` additionally uses a small rank list
 // (`list.dag`, `substrate*.dag`, …). Among files sharing the default rank, load order
-// breaks ties using **`import v3.std.*` edges** parsed from each staged `.dag` (see
-// `collect_std_v3_import_dependency_edges` in this file) so cross-file references follow the
+// breaks ties using **`import v3.std.*` and `import std.*` edges** parsed from each staged `.dag`
+// (see `collect_std_staging_dependency_edges` in this file) so cross-file references follow the
 // same authority authors already wrote in-module. Dissolution: full import-graph topo when
-// ordering needs exceed flat `v3.std` single-segment imports.
+// ordering needs exceed flat single-segment `v3.std` / `std` imports.
 //
 // **Output**: writes three Rust files:
 //
@@ -72,13 +72,20 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// For `src/v3/std` only: scan each staged `.dag` for `import v3.std.<module>` lines and derive
-/// `(dependency.dag, importer.dag)` edges when both files exist in the same staging directory.
-/// `collect_dag_entries` applies these edges among co-ranked files so load order respects the
-/// same cross-module references the authors already declared (single authority: import surface),
-/// instead of a hand-maintained parallel edge list. Dissolution: replace with full import-graph
-/// topo in this producer if `v3.std` nesting or non-`v3.std` std edges need ordering too.
-fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, String)> {
+/// For `src/v3/std` only: scan each staged `.dag` for cross-module imports and derive
+/// `(dependency.dag, importer.dag)` edges when both files exist in the staging directory.
+///
+/// - `import v3.std.<module>` — explicit v3 staging edges (same as authors' module paths).
+/// - `import std.<module>` — **mirror** edges for `module std.*` files: `induction.dag` imports
+///   `std.algebra { … }` must order after `algebra.dag` even when no `import v3.std.*` line is
+///   present; otherwise Kahn topo can emit `induction.dag` before `algebra.dag` while
+///   `algebra.dag` still waits on `lookup.dag`, leaving `UnknownCost` / `ConstantCost` resolve
+///   failures baked into the PB-1 bootstrap snapshot (PR #2827 / CI).
+///
+/// `collect_dag_entries` applies these edges among co-ranked files. Dissolution: full
+/// import-graph topo (including `dsl/std` prefixes) in this producer if ordering needs exceed
+/// these single-segment `std.` / `v3.std.` forms.
+fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, String)> {
     let names: HashSet<String> = entries
         .iter()
         .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
@@ -93,7 +100,13 @@ fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, S
         };
         for line in src.lines() {
             let t = line.trim_start();
-            let Some(rest) = t.strip_prefix("import v3.std.") else {
+            let rest_v3 = t.strip_prefix("import v3.std.");
+            let rest_std = t.strip_prefix("import std.");
+            let rest = if let Some(r) = rest_v3 {
+                Some(r)
+            } else if let Some(r) = rest_std {
+                Some(r)
+            } else {
                 continue;
             };
             let mod_suffix = rest.split([' ', '{']).next().unwrap_or("");
@@ -223,7 +236,7 @@ fn collect_dag_entries_impl(
 
     let import_edges_storage: Vec<(String, String)> =
         if scan_std_v3_import_edges && !recursive && !entries.is_empty() {
-            collect_std_v3_import_dependency_edges(&entries)
+            collect_std_staging_dependency_edges(&entries)
         } else {
             Vec::new()
         };
