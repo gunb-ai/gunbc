@@ -47,12 +47,12 @@ import std.types { Url }
 // `PullReview.state` string from `github.Pulls.ListReviews`); it does not
 // declare new extdeps fields.
 //
-// Practice 4 receipt: `Ready` is the terminal merge-queue success leaf.
-// `NotReady` is a terminal refusal bundle for this slice (reasons drawn only
-// from the fields above; CI/conflict axes are out of scope per worker brief).
-// Dissolution trigger: follow-up Phase 1.5 + extdeps carriers when CI/conflict
-// mergeability reasons must join this verdict. Classification trigger: ctrl
-// cut-over PR for pr_merge_ready_digest.mjs once fully modeled.
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD (`docs/modeling-discipline.md` §4)
+// Named trigger: follow-up Phase 1.5 + extdeps carriers when CI/conflict
+// mergeability reasons must join this verdict (worker brief
+// `docs/briefs/r4-ctrl-migration-pr-digests-worker.md`); ctrl cut-over PR for
+// `pr_merge_ready_digest.mjs` once fully modeled. `Ready` / `NotReady` reasons
+// stay drawn only from existing `PullRequest` / `PullReview` fields until then.
 type MergeReadinessVerdict
   = Ready
   | NotReady { first_reason: String, more_reasons: List<String> }
@@ -66,19 +66,18 @@ type AttachedUrl {
   context: AttachedUrlTextContext
 }
 
-// Practice 4 receipt: source-container axis for URL extraction. Each variant
-// matches an imported body carrier (`PullRequest.body`, `PullReview.body`).
-// Dissolution trigger: extdeps `pulls.dag` gains list outputs for issue-level
-// or line-level comment bodies; then add variants only here (cost-of-change 1).
-// Classification: staged extension surface until new list operations land.
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD (`docs/modeling-discipline.md` §4)
+// Named trigger: extdeps `pulls.dag` gains list outputs for issue-level or
+// line-level comment bodies; add variants only in this file (cost-of-change 1).
+// Each current variant matches an imported body carrier (`PullRequest.body`,
+// `PullReview.body`).
 type AttachedUrlContainer
   = PrBody
   | PullReviewBody
 
-// Practice 4 receipt: prose vs inline-code fence context for extracted URLs.
-// Dissolution trigger: richer Markdown context (e.g. fenced blocks) is modeled
-// structurally and consumers migrate off the binary split.
-// Classification: staged Markdown-context axis.
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD (`docs/modeling-discipline.md` §4)
+// Named trigger: richer Markdown context (e.g. fenced blocks) is modeled
+// structurally and consumers migrate off the `Prose` / `InlineCode` split.
 type AttachedUrlTextContext
   = Prose
   | InlineCode
