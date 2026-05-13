@@ -253,7 +253,7 @@ plus #85 SuiteClaim wrapper consumer landed.
   - Gap 6 → depends on Gap 1 (PB-0 retirement complete) + Gap 3 (self-host fixed point R3-strong)
   - Gap 3 → depends on Gap 1 + R2-Evaluator + R2-Grounding-Rust+Python + Row-B materialization
   - Effective chain: **Gap 6 ← Gap 3 ← {Gap 1, R2-Evaluator, R2-Grounding, Row-B}** — 5+ deep
-- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). v2 tree deletion is the FINAL R3 dissolution; the entire ratchet → carrier → walker → emission → self-host → test-port cascade closes upstream first. Expect Gap 6 to land in the last 2 weeks of R3 close.
+- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). The §1.8 row #97 substrate-state predicate is already PASSING at HEAD after PR #2693; broader T-V2-Retirement lane closure still waits for the ratchet → carrier → walker → emission → self-host → test-port cascade to close upstream.
 
 **Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING, with predicate execution recorded in `docs/audit/r3-close-predicate-execution-2026-05-13.md`.
 
