@@ -204,14 +204,14 @@ Current `src/v3/std/algebra.dag:69-72`:
 **Post-extension proposed text** (Mgr recommendation):
 > STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 9 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PolyLogExponent } / LogCost / ProductCost / SumCost / ExponentialCost { base: ExponentialBase } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
 
-**Type-level refinement carriers** (per codex BLOCKING on PR #2828 — `docs/modeling-discipline.md` Practice 2 + Practice 6: invariants encoded in type system, NOT fold normalizer):
+**Type-level refinement carriers (CORRECTED per PM msg_a52ed981)** — refinement-mechanism `type X = Y where predicate` is ALREADY RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2 (gunbc#828 issuecomment-4390199218). Precedent: `dsl/std/integer.dag:181` (`PositiveInt = Nat where gt_zero`). KNOWN_PREDICATES registry at `src/v3/compiler/src/lower.rs:798-862`: `range / non_empty / brand / gt_zero / unicode_scalar`. NO fresh-records / inductive-sum carriers — refinement over canonical carrier is the canonical path:
 
-- `PositiveRational` — strict-positive Rational; constructor accepts only `> 0` values. Follows `DegreeAtLeastTwo` precedent at `src/v3/std/algebra.dag:171-173` (inductive carrier where illegal cases are structurally unrepresentable).
-- `PositiveInt` — strict-positive Int; same Peano-style precedent. Used by `PositiveRational`.
-- `ExponentialBase` — Int ≥ 2; strict-mirror of `DegreeAtLeastTwo` shape. Used by `ExponentialCost.base`.
-- `PolyLogExponent` — Rational > 1; required to support log^7.5 n (AKS Tier-1 case) per operator BLOCKING PR #2824:333; excludes exponent=0 (collapse to ConstantCost) + exponent=1 (collapse to LogCost). Used by `PolyLogCost.exponent`.
+- `PositiveRational = Rational where gt_zero` — REQUIRES `gt_zero` allowed_carriers extension to include `Rational` (atomic with carrier landing per Phase A)
+- `ExponentialBase = Int where range(min: 2)` — IMMEDIATELY available via `range` predicate (allowed_carriers includes Int)
+- `PolyLogExponent = Rational where gt_one` — REQUIRES NEW `gt_one` predicate (allowed_carriers: Rational + Int; mirrors `gt_zero` shape; atomic with carrier landing per Phase A)
+- `PositiveInt = Nat where gt_zero` — ALREADY EXISTS at `dsl/std/integer.dag:181`; worker reuses
 
-These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` **structurally unrepresentable** at the carrier level — no normalizer-time enforcement required. Aligns with `feedback_state_space_vs_behavioral_invariants`.
+These refinements make `degree ≤ 0` / `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved (no parallel rational/int authority).
 
 Variant count: **10** post-Q2-Y (recommended), or **11** if Q2-X is ratified.
 
@@ -249,7 +249,7 @@ For each Tier-1 addition under §1:
 
 No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B revival (RootCost as separate variant — Practice-4 RED)" — explicitly NOT done; roots are PolynomialCost(degree=1/2 etc.).
 
-## §10. Anti-patterns (7 Director-enumerated/pending + 2 Mgr-derived)
+## §10. Anti-patterns (7 Director-enumerated/pending + 3 Mgr-derived)
 
 ### Director-enumerated
 
@@ -264,6 +264,7 @@ No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B reviva
 ### Mgr-derived (encoded for worker review)
 
 7. Multiplicative absorption rules where one variant absorbs another (`X · Y = X`) when X is asymptotically larger than Y additively — asymptotic absorption is sound for SUM but NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products must be `ProductCost` composite. §5 algebra rules table addresses (operator BLOCKING worker:140).
+8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (fresh records like `{ num: PositiveInt; denom: PositiveInt }`, inductive sums, or any carrier shape OTHER than refinement) when the canonical refinement-mechanism (`type X = Y where predicate`) is RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2. Refinement over canonical `Rational = Field<FieldOfFractions<Int>>` is the canonical path; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`. Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 8. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §11. Cost-of-change accounting

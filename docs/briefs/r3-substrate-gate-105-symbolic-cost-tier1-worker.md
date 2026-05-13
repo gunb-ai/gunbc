@@ -113,74 +113,43 @@ Cite gate #105 + PR #2828 + msg_d86a5987 in the comment block.
 
 ### §5.0 — Type-level refinement carriers (per codex BLOCKING on PR #2828)
 
-Before reshaping SymbolicCost, introduce three refinement carriers that make illegal field values **structurally unrepresentable** (Practice 2 + Practice 6; `docs/modeling-discipline.md`). Strict-mirror of `DegreeAtLeastTwo` precedent at `src/v3/std/algebra.dag:171-173`:
+**Refinement-mechanism path (CORRECT per PM msg_a52ed981)**: the substrate refinement-mechanism `type X = Y where predicate` is **already ratified** at HEAD per gunbc#828 issuecomment-4390333451 (Path 3) + Director Option 2 ratification at gunbc#828 issuecomment-4390199218. Precedent: `dsl/std/integer.dag:181` — `type PositiveInt = Nat where gt_zero`. The `KNOWN_PREDICATES` registry at `src/v3/compiler/src/lower.rs:798-862` carries: `range` / `non_empty` / `brand` / `gt_zero` / `unicode_scalar`.
+
+This **invalidates** the prior product-shape carriers (codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104). Canonical shape uses refinement over existing carriers:
 
 ```dag
-// Mirror of DegreeAtLeastTwo (lines 171-173): Peano-style inductive
-// carrier where illegal cases are structurally unrepresentable, not
-// normalizer-cleaned-up.
-// ExponentialBase: Int ≥ 2 (admits 2, 3, 4, ...; rejects 0, 1, negative).
-// Strict-mirror of DegreeAtLeastTwo precedent.
-type ExponentialBase
-  = ExponentialBaseTwo
-  | ExponentialBaseSuccessor { previous: ExponentialBase }
+// ExponentialBase: Int ≥ 2. range(min: 2) — `range` predicate at
+// lower.rs:817 with allowed_carriers Int + Nat.
+type ExponentialBase = Int where range(min: 2)
 
-// PositiveInt: strict-positive Int (admits 1, 2, ...; rejects 0, negative).
-// Used by PositiveRational realization.
-type PositiveInt
-  = One
-  | PositiveSuccessor { previous: PositiveInt }
+// PositiveRational: Rational > 0. REQUIRES KNOWN_PREDICATES extension:
+// add `Rational` to gt_zero's allowed_carriers (currently Nat + Int).
+// Worker authors atomic with carrier landing per Phase A.
+type PositiveRational = Rational where gt_zero
 
-// PositiveRational: strict-positive Rational (numerator/denominator both
-// PositiveInt). Used as PolynomialCost.degree (any positive degree valid,
-// including degree=1 absorbing former LinearCost).
-type PositiveRational {
-  numerator: PositiveInt
-  denominator: PositiveInt
-}
-
-// PolyLogExponent: Rational > 1. Admits 2, 7.5, 3/2; rejects ≤ 1.
-// Per codex BLOCKING 014544f4 finding #2: invalid exponents must be
-// structurally uninhabited, NOT expressed as a product-of-PositiveInts
-// with an extra "numerator > denominator" invariant (refinement-mixed-with-
-// product). The canonical inductive shape mirrors ExponentialBase:
-//
-//   type PolyLogExponent
-//     = PolyLogExponentSuccessor { previous: PolyLogExponent }
-//     | PolyLogExponentBase { fractional_part: FractionalPart }
-//
-// where FractionalPart is itself a structurally-constrained rational in
-// (0, 1] — admitting log^1.5, log^2, log^2.5, etc. — and PolyLogExponent
-// values START at the "≥ 1" base case with FractionalPart > 0 required
-// (to exclude exponent=1 collapse to LogCost).
-//
-// **Implementation note**: this requires either (i) DSL refinement-type
-// grammar supporting "Rational > 1" as a type-level predicate, OR (ii)
-// the inductive carrier above with FractionalPart > 0 invariant baked
-// into FractionalPart's own constructors. Worker grep-verifies DSL
-// refinement support at authoring time:
-//   - If (i) available: type PolyLogExponent = Rational where r > 1
-//   - If (ii) only: ratify the inductive shape before authoring; this
-//     surfaces back to Mgr/Director per §10 STOP-condition new entry.
-//
-// **HARD STOP**: do NOT author PolyLogExponent as `{ numerator, denominator
-// }` with a textual "numerator > denominator" comment — that's the exact
-// refinement-mixed-with-product pattern codex 014544f4 BLOCKING #2 forbids.
-type PolyLogExponent
-  = PolyLogExponentSuccessor { previous: PolyLogExponent }   // ≥ 2 case
-  | PolyLogExponentFractional { whole: PositiveInt, fraction: FractionalPart }
-    // whole ≥ 1 + fraction in (0, 1] → result > 1; whole = 1 + fraction
-    // close to 0 approaches exponent = 1 but never reaches it; fraction > 0
-    // strictly enforced by FractionalPart's own constructors
-
-// FractionalPart: rational in (0, 1]. Inductive: 1/n for n ≥ 1.
-// (Sketch — worker authors final shape per DSL refinement support.)
-type FractionalPart
-  = FractionalOne                                       // 1/1 = 1
-  | FractionalRecip { denominator: PositiveInt }        // 1/d for d ≥ 1 → value in (0, 1]
+// PolyLogExponent: Rational > 1. REQUIRES KNOWN_PREDICATES extension:
+// add NEW `gt_one` predicate (allowed_carriers: Rational + Int) to
+// the registry. Mirrors `gt_zero` shape. Worker authors atomic with
+// carrier landing per Phase A.
+type PolyLogExponent = Rational where gt_one
 ```
 
-These types make `degree ≤ 0`, `exponent ≤ 0`, `base ≤ 1` structurally impossible to construct — no fold-time enforcement required.
+**Phase A KNOWN_PREDICATES extensions** (Mgr-tier scope; required for refinement-mechanism authority):
+1. Extend `gt_zero`'s `allowed_carriers` to include `Rational` (was `Nat + Int`)
+2. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`)
+3. Both extensions land in same PR as carrier-shape changes — atomic per §P5
+
+**ZERO new authority introduced**: PositiveRational + PolyLogExponent are refinements of canonical Rational; ExponentialBase is refinement of canonical Int. Practice 4 / P1 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
+
+**Authority chain for refinement mechanism**:
+- gunbc#828 issuecomment-4390333451 (Path 3 RATIFIED)
+- gunbc#828 issuecomment-4390199218 (Director Option 2)
+- `dsl/std/integer.dag:171-181` precedent (`PositiveInt = Nat where gt_zero`)
+- `src/v3/compiler/src/lower.rs:798-862` KNOWN_PREDICATES registry
+
+These types make `degree ≤ 0`, `exponent ≤ 1`, `base ≤ 1` structurally impossible to construct via the ratified refinement mechanism — no fold-time enforcement required, no new authority.
+
+**HARD STOP**: do NOT author PositiveRational / PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below).
 
 ### §5.1 — Replace SymbolicCost variant set
 
@@ -274,11 +243,11 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 1. **`OrderedRing<T>` shape drift** at HEAD — if `dsl/std/algebra.dag:268-286` no longer carries the exact 14-field signature this brief mirrors, **STOP** and surface — strict-mirror authority broken.
 2. **Existing `LinearCost`-consumer surface differs from canvas assumption** — if grep reveals consumer paths that can't migrate to `PolynomialCost(degree=1)` losslessly (e.g., type-level dispatches on LinearCost variant-tag), **STOP** — anti-pattern #7 atomic-migration discipline requires lossless migration.
 3. **`Rational` carrier not at `dsl/std/rational.dag:26`** — if Rational has moved / changed shape since 2026-05-13 grep, **STOP** — Q1-c re-declaration target is wrong.
-4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `PositiveRational` / `IntAtLeastTwo` / `PositiveInt` appear from parallel landing, **STOP** for de-duplication.
+4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `PositiveRational` / `ExponentialBase` / `PolyLogExponent` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse.)
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
-## §11. 9 anti-patterns (7 Director-enumerated/pending + 2 Mgr-derived per canvas §10)
+## §11. 10 anti-patterns (7 Director-enumerated/pending + 3 Mgr-derived per canvas §10)
 
 PR body MUST cite each verbatim + assert receipt-of-compliance:
 
@@ -289,6 +258,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation)
 6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering` — lens-local predicate derivation from Ordering pattern-match is the canonical path
 7. **Pending Director ratification per operator BLOCKING PR #2824:333**: Tier-1 variant constructed with raw Int/Rational exponent/base admitting illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost; degree≤0 for PolynomialCost) bypassing refinement type — PolyLogExponent/ExponentialBase/PositiveRational required at carrier level (Practice 2/6)
+8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (`PositiveRational { num: PositiveInt; denom: PositiveInt }`, inductive `PolyLogExponentSuccessor | PolyLogExponentFractional`, or any fresh record/sum shape) when refinement over canonical `Rational = Field<FieldOfFractions<Int>>` carrier is available via ratified `type X = Y where predicate` mechanism (gunbc#828 issuecomment-4390333451 Path 3 RATIFIED; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`). Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 8. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
 9. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
@@ -298,7 +268,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
 4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
-5. **All 9 anti-patterns enforceable** at PR review
+5. **All 10 anti-patterns enforceable** at PR review
 
 ## §13. Verification
 
@@ -314,7 +284,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
   - Canvas PR #2828 + Director disposition (PM msg_a055c38b) verbatim Q1-Q5 + §8
-  - 9 anti-patterns receipt-of-compliance (§11)
+  - 10 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
 ## §14. Out of scope
@@ -346,7 +316,7 @@ STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
 
-9 anti-patterns receipt-of-compliance:
+10 anti-patterns receipt-of-compliance:
 [enumerate each + cite that the implementation does not violate it]
 
 5 reviewer ratchets compliance:
