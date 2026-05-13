@@ -235,11 +235,6 @@ fn expected_cementing_receipt_triples(
                     "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
                     "dag".to_string(),
                 ));
-                out.insert((
-                    name.clone(),
-                    "cost_lens_symbolic_consumer_test".to_string(),
-                    "temporary-rust".to_string(),
-                ));
             }
             _ => {
                 return Err(format!(
