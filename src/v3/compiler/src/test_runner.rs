@@ -4708,10 +4708,24 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let entries = match sg0_census_list_entries(&list_constant_name) {
+        let mut entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
+        // Lens-producer paths may live on `EXPECTED_HAND_AUTHORED_FRAGMENTS` after a path-only
+        // retirement (e.g. `lens_declaration_apply_body.txt`). `CensusSubsetCount` for
+        // `lens_producer_files_remaining` still names `expected_hand_authored_non_test` in `.dag`
+        // claims — union the fragment list so the subset predicate cannot silently drop to zero.
+        if list_constant_name == "expected_hand_authored_non_test"
+            && subset_name == "lens_producer_files_subset_predicate"
+        {
+            match sg0_census_list_entries("expected_hand_authored_fragments") {
+                Ok(fragments) => entries.extend(fragments),
+                Err(reason) => return ClaimResult::Fail(reason),
+            }
+            entries.sort();
+            entries.dedup();
+        }
         let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
