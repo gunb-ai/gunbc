@@ -643,20 +643,33 @@ jobs:
     steps:
       # **Fail-closed gate-evidence validation** (codex BLOCKING on PR #2718 line 579 fix).
       # Reports explicit step FAILURE → job FAILURE → required-check RED when the
-      # Layer 1 filter (`changes`) failed or was cancelled, or when `v3` failed/cancelled.
+      # Layer 1 filter (`changes`) **failed** (real error) or when `v3` **failed**.
+      #
+      # `cancelled` on `changes` / `v3` is treated as **non-evidence**: workflow-level
+      # `concurrency: cancel-in-progress` (same PR + same `head.sha`) or a superseding
+      # `ready_for_review` run cancels in-flight jobs without invalidating the newer run.
+      # Failing this step on that alone leaves a sticky red `self_host_ratchet` on the
+      # commit while another run is green (merge blocked incorrectly).
+      #
       # Job conclusion FAILURE propagates to branch protection (skipped does NOT — that's
       # the bug this fixes). No `continue-on-error` on this step; its failure must surface.
       #
       # Allowed `v3.result` values that the validation accepts:
       #   - `success`: v3 ran cleanly (CI green)
       #   - `skipped`: v3 was skipped because `changes` proved docs-only (`code=false`)
+      #   - `cancelled`: superseded run — not used as merge evidence (see above)
       # Allowed `changes.result` values:
       #   - `success`: filter completed (regardless of `code` value)
+      #   - `cancelled`: superseded run — not used as merge evidence
       # Anything else → fail with explicit diagnostic (P3 fail-closed / C-8).
       - name: Validate gate evidence (fail-closed under filter/v3 failure)
         run: |
           echo "Gate evidence: changes.result=${{ needs.changes.result }} v3.result=${{ needs.v3.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
+            if [ "${{ needs.changes.result }}" = "cancelled" ]; then
+              echo "::notice::changes job cancelled (superseded workflow run); not treating as Layer-1 filter failure."
+              exit 0
+            fi
             echo "::error::Layer 1 filter (changes job) did not succeed (result=${{ needs.changes.result }})."
             echo "::error::Cannot determine v3 skip legitimacy — skipped required-checks default to SUCCESS"
             echo "::error::in GitHub branch protection (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks),"
@@ -664,9 +677,13 @@ jobs:
             echo "::error::per P3 fail-closed / C-8 discipline."
             exit 1
           fi
-          if [ "${{ needs.v3.result }}" = "failure" ] || [ "${{ needs.v3.result }}" = "cancelled" ]; then
+          if [ "${{ needs.v3.result }}" = "failure" ]; then
             echo "::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green."
             exit 1
+          fi
+          if [ "${{ needs.v3.result }}" = "cancelled" ]; then
+            echo "::notice::v3 job cancelled (superseded workflow run); not treating as v3 failure."
+            exit 0
           fi
           # Either v3.result == success (ran cleanly) or v3.result == skipped (legit docs-only via changes.code=false)
           echo "Gate evidence validated; ratchet may proceed."
