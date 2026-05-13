@@ -13,6 +13,8 @@
 //!
 //! Extracted from `dag.rs` (L4b). No behavior change.
 
+use std::collections::BTreeMap;
+
 use super::{BoolPortRef, Dag, ElementRef, NodeId, NonSingletonList};
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
@@ -70,12 +72,52 @@ pub enum EffectShape {
     IsBreaking(BreakingShape),
 }
 
-/// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
-/// `Operation` record in `effects.dag`.
+/// 🟢 **TERMINAL.** Path token used by `Operation.endpoint.path`; mirrors the
+/// path-template authority imported by `services.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UrlPathToken {
+    LiteralToken { text: String },
+    ParamToken { name: String },
+}
+
+/// 🟢 **TERMINAL.** REST path template carried by `Operation.endpoint`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PathTemplate {
+    pub tokens: Vec<UrlPathToken>,
+}
+
+/// 🟢 **TERMINAL.** Per-input metadata slot keyed by `Operation.inputs`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct InputField {}
+
+/// 🟡 **TRANSITIONAL.** Native mirror of `services.dag::CallableRef`.
+///
+/// The `.dag` carrier stores `decl: DeclarationRef`; the native Stage 2 tests
+/// cannot manufacture declaration refs without a fixture boundary, so this
+/// bridge stores the resolved callable display name only for diagnostics. The
+/// operation-effect authority does not read it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallableRef {
+    pub decl_name: String,
+}
+
+/// 🟢 **TERMINAL.** Native mirror of `services.dag::RestEndpointBinding`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestEndpointBinding {
+    pub method: HttpMethodScalar,
+    pub path: PathTemplate,
+}
+
+/// 🟢 **TERMINAL.** Canonical service operation row.
+///
+/// This intentionally has no authored effect-shape field. Stage 2 derives the
+/// effect partition from `endpoint` until callable inhabitance facts are
+/// executable through the bootstrapped evaluator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Operation {
-    pub operation_name: String,
-    pub shape: EffectShape,
+    pub callable: CallableRef,
+    pub inputs: BTreeMap<String, InputField>,
+    pub endpoint: RestEndpointBinding,
 }
 
 /// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
@@ -232,9 +274,47 @@ pub enum WorkflowParallelismReport {
 // co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
+pub fn operation_effect_shape(effect: &Operation) -> EffectShape {
+    match effect.endpoint.method {
+        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        }
+        HttpMethodScalar::Put | HttpMethodScalar::Patch => match last_path_param(&effect.endpoint.path) {
+            Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                key_source: KeySource::PathParam { param },
+            }),
+            None => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+                cause: CreateCause::KeylessFallback {
+                    method: effect.endpoint.method,
+                },
+            }),
+        },
+        HttpMethodScalar::Delete => match last_path_param(&effect.endpoint.path) {
+            Some(param) => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+                key_source: KeySource::PathParam { param },
+            }),
+            None => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+                cause: CreateCause::KeylessFallback {
+                    method: HttpMethodScalar::Delete,
+                },
+            }),
+        },
+        HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        }),
+    }
+}
+
+fn last_path_param(path: &PathTemplate) -> Option<String> {
+    path.tokens.iter().rev().find_map(|token| match token {
+        UrlPathToken::ParamToken { name } => Some(name.clone()),
+        UrlPathToken::LiteralToken { .. } => None,
+    })
+}
+
 pub(crate) fn compose_operation_effects(effects: &[Operation]) -> CompositionVerdict {
     for (index, effect) in effects.iter().enumerate() {
-        if matches!(effect.shape, EffectShape::IsBreaking(_)) {
+        if matches!(operation_effect_shape(effect), EffectShape::IsBreaking(_)) {
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
             return CompositionVerdict::BrokenBy { first_breaker };
