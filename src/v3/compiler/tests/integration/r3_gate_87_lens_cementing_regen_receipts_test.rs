@@ -31,9 +31,9 @@
 //! description**; module comments must not assert deletes for paths that never existed on
 //! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
-//! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
-//! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
-//! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
+//! (`lens_cementing_test_discipline_complete`). Broader Band-C work for generated
+//! and non-generated lenses continues through `docs/v3-lens-capability-register.md`,
+//! `src/v3/std/verification.dag`, and the `cementing_dispatch.dag` projection.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

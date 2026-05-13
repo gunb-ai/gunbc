@@ -25,12 +25,11 @@
 //!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
-//! allowed. `idempotency.dag` and `parallelism.dag` are the current
-//! example: both have register rows (as `BEHAVIORALLY STUB` lenses
-//! whose authority lives in Rust) but no `regen.dag` entry, because
-//! they are not regenerated into a `lens_*_generated.rs`. That is
-//! exactly the posture the register documents; a bidirectional
-//! ratchet would misread those rows as drift.
+//! allowed. `idempotency.dag` and `named_function_count.dag` are examples:
+//! both have register rows but no `regen.dag` entry, because they are not
+//! regenerated into a `lens_*_generated.rs`. That is exactly the posture the
+//! register documents; a bidirectional ratchet would misread those rows as
+//! drift.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -297,7 +296,7 @@ fn r3_gate_83_lens_capability_register_scope_is_explicit() {
 }
 
 #[test]
-#[ignore = "strict-fire gate #83; unignore when cost/parallelism sibling slices remove PROXY/STUB"]
+#[ignore = "strict-fire gate #83; unignore when sibling slices remove PARTIAL/PROXY/STUB blockers"]
 fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
     let rows = capability_table_rows();
     let blockers: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
@@ -350,7 +349,7 @@ fn r3_gate_83_current_register_blockers_are_explicit() {
         blockers,
         Vec::<String>::new(),
         "Gate #83 is not ready to strict-fire until sibling lens-completion slices \
-         remove all PROXY/STUB statuses. If this changed, update the strict-fire \
+         remove all PARTIAL/PROXY/STUB statuses. If this changed, update the strict-fire \
          posture in `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`."
     );
 }

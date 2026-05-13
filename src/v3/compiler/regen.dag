@@ -25,16 +25,19 @@ import std.types { FilePath, NonEmptyStr }
 // closing the "illegal states representable" hole that a raw
 // `String` would leave open across all three fields.
 //
-// **Band-C cementing dispatch.** Each new `LensRegistryEntry` must
-// update `docs/v3-lens-capability-register.md` (see its Discipline
-// section). If the register row is `BEHAVIORALLY COMPLETE` and names
-// a concrete v2 counterpart, add a matching behavioral cementing
-// module under `src/v3/compiler/tests/integration/cementing/`, wire it
-// in `tests/integration.rs` via `#[path = "integration/cementing/<stem>.rs"]`,
-// extend `src/v3/std/verification.dag` (`data lens_capability_register_rows`) and
-// `src/v3/compiler/tests/dag/cementing_dispatch.dag` (receipt list) in the same PR
-// (runner receipt: `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
-// See `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
+// **Band-C cementing dispatch.** Each new `LensRegistryEntry` must update
+// `docs/v3-lens-capability-register.md` and the structural mirror at
+// `src/v3/std/verification.dag` (`data lens_capability_register_rows`) in the
+// same PR. Add or extend the gate-#87 harness
+// `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<name>.dag`, wire it
+// through `R3_GATE_87_CEMENTING_REGEN_SUITES`, and, when the row is
+// `BEHAVIORALLY COMPLETE`, land the matching behavioral receipt in that same
+// change. Real-v2 COMPLETE rows also extend
+// `src/v3/compiler/tests/dag/cementing_dispatch.dag`
+// (`cementing_band_c_v2_complete_receipts`); temporary Rust receipts are allowed
+// only with `tests/integration.rs` wiring plus a named blocker/dissolution path.
+// See `TESTING.md` ("Cementing tests (Band C — lens subsumption)" →
+// "Same-PR checklist — promoting a row to `BEHAVIORALLY COMPLETE`").
 
 type LensRegistryEntry {
   name: NonEmptyStr
