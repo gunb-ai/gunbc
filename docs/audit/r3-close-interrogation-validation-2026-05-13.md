@@ -63,7 +63,7 @@ The following have landed in-doc but do **not** count as probe answers under §0
 - **§3.1 Omni-emission** — "Findings at HEAD" inline note landed (commit 7cd49195f7,
   refined 9613b9e4be + 1f56e6544c) flagging integration-binary CI hot-fix skip and
   open R3 close-shape question (a)/(b1)/(b2)/(b3). Probe checkboxes remain empty;
-  PM-surfaced close-shape question (line 199) is **unrouted**.
+  PM-surfaced close-shape question (lines 315–317 at HEAD post-#2839) is **unrouted**.
 
 These are **scoping refinements**, not interrogation execution. The §0 disposition
 vocabulary (PROVEN / WEAK-EVIDENCE / GAP / R4-DEFERRED / NOT-PROMISED) has not been
@@ -77,7 +77,7 @@ applied to any §1–§6 probe.
    "show correct code" PROVEN bar). Until ratified, the close criteria are
    underspecified — probe dispositions can't be authoritatively assigned.
 
-2. **No §3.1 close-shape disposition.** PM-surfaced open question (line 199): the omni
+2. **No §3.1 close-shape disposition.** PM-surfaced open question (lines 315–317 at HEAD post-#2839): the omni
    promise's L4 runtime-parity evidence is currently runnable locally but
    HOT-FIX-skipped in CI (`ci.yml:478-501`). Three candidate close-shapes (b1 restore
    in-CI execution / b2 acceptance of local + integration-binary-build evidence /
