@@ -377,10 +377,10 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **HEAD evidence** (operator adversarial probe 2026-05-13 — `n log(n^k)` + nested-log + polynomial-of-log probe; revised per briansrls BLOCKING comment-4445313478 PR #3037 2026-05-13: HEAD evidence verified against `src/v3/std/algebra.dag` + `src/v3/compiler/src/dag_cost_generated.rs` + `src/v3/compiler/src/complexity_lattice.rs` + `src/v3/compiler/src/enforced_lens_application.rs`):
 
-- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag` lines 190-196, 7 variants):
+- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag` lines 191-197, 7 variant arms; `inhabits Semiring<SymbolicCost>` declaration at line 190):
   - `ProductCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
   - `SumCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
-  - `PolynomialCost { var: SizeVariable, degree: Nat }` — terminal: `SizeVariable` argument only
+  - `PolynomialCost { var: SizeVariable, degree: DegreeAtLeastTwo }` — terminal: `SizeVariable` argument only; degree carrier is `DegreeAtLeastTwo` (refinement type, NOT `Nat`) — substrate-level guarantee that polynomial degree ≥ 2 (degree 1 is redundant with `LinearCost`; degree 0 with `ConstantCost`); load-bearing for the `ClassPolynomial { degree: N }` classifier arm in `dag_cost_generated.rs:297-306` and string-arm decoding in `enforced_lens_application.rs`
   - `LogCost(SizeVariable)` — terminal: `SizeVariable` argument only
   - `LinearCost(SizeVariable)` / `ConstantCost(Int)` / `UnknownCost(String)` — terminal
   - **No `ExponentialCost` variant in SymbolicCost** — exponential growth in source cost has no substrate representation.
