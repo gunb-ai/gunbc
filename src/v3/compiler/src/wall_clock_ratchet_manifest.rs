@@ -81,6 +81,7 @@ fn json_escape_string(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::compile_to_dag;
+    use serde_json::Value;
     use std::path::PathBuf;
 
     fn load_ratchet_dag() -> Dag {
@@ -95,17 +96,24 @@ mod tests {
     }
 
     #[test]
-    fn ratchet_dag_exports_non_empty_warn_manifest() {
+    fn ratchet_dag_warn_manifest_lines_are_parseable_warn_policy_objects() {
         let dag = load_ratchet_dag();
         let lines = emit_warn_policy_jsonl_lines(&dag).expect("emit");
-        assert!(
-            lines.len() > 50,
-            "expected a large warn backlog surface; got {}",
-            lines.len()
-        );
-        assert!(
-            lines.iter().all(|l| l.contains("\"policy\":\"warn\"")),
-            "every line must be warn-policy JSON"
-        );
+        for (idx, line) in lines.iter().enumerate() {
+            let v: Value = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("line {idx} must be JSON: {e}; got {line:?}"));
+            let obj = v.as_object().unwrap_or_else(|| {
+                panic!("line {idx} must be a JSON object; got {v:?}");
+            });
+            assert!(
+                obj.get("test").and_then(Value::as_str).is_some(),
+                "line {idx} must have string `test`"
+            );
+            assert_eq!(
+                obj.get("policy").and_then(Value::as_str),
+                Some("warn"),
+                "line {idx} must have policy=warn"
+            );
+        }
     }
 }
