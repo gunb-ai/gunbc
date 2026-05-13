@@ -322,7 +322,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
     "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
     // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
-    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
+    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority). Every
+    // `LensRegistryEntry.name` in `regen.dag` must have a matching row here or
+    // `r3_gate_87_regen_lens_registry_names_match_fixture_inventory` fails on main.
     "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
@@ -349,6 +351,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
+//
+// Gate-#87 registry parity: new `regen.dag` lens rows land a harness under
+// `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` plus a `R3_GATE_87_CEMENTING_REGEN_SUITES`
+// row in the same PR (`r3_gate_87_lens_cementing_regen_receipts_test` compares live names).
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
