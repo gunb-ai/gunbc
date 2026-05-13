@@ -139,13 +139,14 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
 - **Owner**: warm-wolf-698 (Substrate Mgr) for canvases + worker dispatch
 - **Sub-program** (in dependency order):
   1. F-α (parallelism walker port) — worker brief pending dispatch
-  2. F-β.1 (effect canvas) — Substrate Mgr canvas authoring
-  3. F-β.2 (effect atomic-migration) — worker dispatch post-canvas-ratification
-  4. ComplexitySummary TestClaim literals — substrate work to enable native-.dag complexity assertions
-  5. F-γ.2 (post-all-4-lenses-complete register sweep) — gate #83 close
-- **Effort estimate**: 4-8 weeks for all 4 sub-phases (warm-wolf-698 sequential cadence per `feedback_parallel_canvas_sequential_authoring`)
+  2. **Gate-#87 cementing-receipt re-launch for parallelism** — content-source from **closed PR #2860** (`session/crisp-owl-183`, closed 2026-05-13T16:45:44Z under operator cleanup directive; flagged by Director msg_b3324a05 as load-bearing): `regen.dag` parallelism row needs matching gate-#87 cementing harness; `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_regen_lens_registry_names_match_fixture_inventory` fails closed at HEAD on inventory mismatch (`{"parallelism"}` extra in regen.dag without paired test). PR #2860 disposition: parallelism is `LensCapabilityBehavioralPartial` + `LensCapabilityV2NoneV3Native` per `src/v3/std/verification.dag:213-218` + `docs/v3-lens-capability-register.md:45`; G87-C-disciplined receipt = explicit `Compiles` placeholder + paired Rust pin + named dissolution trigger naming public `WorkflowParallelismReport` / `ParallelismUnsupportedDetail` typed-pairwise-evidence routing; mirrors infer_helpers / lower_helpers / variant_payload pattern. Concrete artifact: `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag`. Retrieve via `gh pr view 2860 --json body` or `gh pr diff 2860`.
+  3. F-β.1 (effect canvas) — Substrate Mgr canvas authoring
+  4. F-β.2 (effect atomic-migration) — worker dispatch post-canvas-ratification
+  5. ComplexitySummary TestClaim literals — substrate work to enable native-.dag complexity assertions
+  6. F-γ.2 (post-all-4-lenses-complete register sweep) — gate #83 close
+- **Effort estimate**: 4-8 weeks for all 5 sub-phases (warm-wolf-698 sequential cadence per `feedback_parallel_canvas_sequential_authoring`)
 
-**Close criterion**: §1.8 rows #79 (PASSING with native-.dag witness, no Rust cementing receipt), #81 PASSING, #82 PASSING, #83 PASSING.
+**Close criterion**: §1.8 rows #79 (PASSING with native-.dag witness, no Rust cementing receipt), #81 PASSING, #82 PASSING, #83 PASSING, #87 ratchet-pass at HEAD.
 
 ---
 
