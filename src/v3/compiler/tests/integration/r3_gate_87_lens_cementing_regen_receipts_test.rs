@@ -35,10 +35,13 @@
 //! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
 //! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_rows,
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -80,7 +83,16 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
         })
 }
 
-fn regen_lens_registry_names() -> BTreeSet<String> {
+fn duplicate_values(values: impl IntoIterator<Item = String>) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for value in values {
+        *counts.entry(value).or_insert(0) += 1;
+    }
+    counts.retain(|_, count| *count > 1);
+    counts
+}
+
+fn regen_lens_registry_name_rows() -> Vec<String> {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -103,6 +115,10 @@ fn regen_lens_registry_names() -> BTreeSet<String> {
             string_field(fields, "name", &binding)
         })
         .collect()
+}
+
+fn regen_lens_registry_names() -> BTreeSet<String> {
+    regen_lens_registry_name_rows().into_iter().collect()
 }
 
 fn read_lens_source(rel: &str) -> String {
@@ -133,7 +149,24 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
 
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
-    let actual = regen_lens_registry_names();
+    let registry_rows = regen_lens_registry_name_rows();
+    let runner_rows = r3_gate_87_cementing_regen_lens_names_for_runner_rows();
+    let duplicate_registry_names = duplicate_values(registry_rows.clone());
+    let duplicate_runner_names = duplicate_values(runner_rows.clone());
+    assert!(
+        duplicate_registry_names.is_empty(),
+        "`src/v3/compiler/regen.dag` must not contain duplicate `LensRegistryEntry.name` \
+         rows; duplicates would collapse before the gate-#87 runner-table inventory compare: \
+         {duplicate_registry_names:?}"
+    );
+    assert!(
+        duplicate_runner_names.is_empty(),
+        "`R3_GATE_87_CEMENTING_REGEN_SUITES` must not contain duplicate \
+         `t_r3_gate_87_cementing_regen_<lens>.dag` rows; duplicates would collapse before \
+         the gate-#87 `regen.dag` inventory compare: {duplicate_runner_names:?}"
+    );
+
+    let actual: BTreeSet<String> = registry_rows.into_iter().collect();
     let expected = r3_gate_87_cementing_regen_lens_names_for_runner_table();
     assert_eq!(
         actual, expected,

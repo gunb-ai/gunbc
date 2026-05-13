@@ -8,14 +8,23 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// `LensRegistryEntry.name` values implied by [`R3_GATE_87_CEMENTING_REGEN_SUITES`] in table
+/// order. Consumers that audit row-level inventory should use this before collapsing to a set, so
+/// duplicate runner rows cannot disappear during comparison.
+pub fn r3_gate_87_cementing_regen_lens_names_for_runner_rows() -> Vec<String> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
+        .collect()
+}
+
 /// `LensRegistryEntry.name` values implied by [`R3_GATE_87_CEMENTING_REGEN_SUITES`] harness `file`
 /// paths (`t_r3_gate_87_cementing_regen_<name>.dag`). **Single authority** for the gate-#87
 /// inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test` compares live `regen.dag`
 /// names against this set so a new registry row cannot ship without a matching runner row.
 pub fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<String> {
-    R3_GATE_87_CEMENTING_REGEN_SUITES
-        .iter()
-        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
+    r3_gate_87_cementing_regen_lens_names_for_runner_rows()
+        .into_iter()
         .collect()
 }
 
