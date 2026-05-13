@@ -46,7 +46,6 @@
 {"test":"cost_lens_symbolic_consumer_test::recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture","policy":"warn"}
 {"test":"cost_lens_symbolic_consumer_test::e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_pattern_query","policy":"warn"}
 {"test":"e6_g1a_option3_static_lens_test::e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports","policy":"warn"}
-{"test":"bootstrap::tests::kernel_bool_path_a_attaches_diagnostic_when_boolean_algebra_unresolvable","policy":"warn"}
 {"test":"lens_behavioral_parity_demonstration_test::r3_gate_73_demonstrates_complexity_certainty_is_proven","policy":"warn"}
 {"test":"sg2_parse_authority_test::parse_surface_dag_compiles_cleanly_for_regen_parse","policy":"warn"}
 {"test":"sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked_in_snapshot","policy":"warn"}
