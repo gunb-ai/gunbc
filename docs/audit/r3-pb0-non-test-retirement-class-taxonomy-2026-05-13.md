@@ -18,6 +18,29 @@
 - **(b) BLOCKED ON NAMED PREREQ** — cite §1.8 row, Gap id, or audit doc anchor.
 - **(c) BLOCKED ON NEW CANVAS** — needs new or expanded Mgr canvas before census line can drop (or first-pass taxonomy bucket pending refinement).
 
+## §1.1 Bootstrap / regen `(b)` cluster — canonical ownership anchors
+
+Several §3 rows share the same **substrate class**: `build.rs`, `src/.../bin/regen_*`, `src/.../bin/{gunbc_ci,r1c_e_emit_gates,self_host_fixed_point}.rs`, `bootstrap*.rs`, `regen_*emit.rs`, and `src/v3/compiler/src/regen_tokenize.rs` — **P5 atomic migration** + **Cluster M**–sequenced regen/bootstrap authority (not opportunistic single-PR census drops).
+
+**Program / gap hooks**
+
+- `docs/r3-program-plan.md` §1.8 — **T-Tests-As-Data-Completeness** rows **#84–#87** (bulk-port, cementing harness, `regen.dag` corpus where cited).
+- `docs/r3-actual-close-plan.md` — **Gap 5** (Cluster M Phase **3** bulk-port + generator-manifest narrative).
+
+**Sequencing + lane ownership**
+
+- `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` — Cluster **M** phase ordering vs gate **#84/#85/#87** work.
+
+**Regen / lens-producer retirement briefs (artifact-specific entry points)**
+
+- `docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md` — `regen_lens` / gate **#7** retirement thread.
+- `docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md` + `docs/briefs/r3-pb-regen-lens-consumer-audit.md` — regen_lens readiness + consumer audit.
+- `docs/briefs/pb1-e-parse-surface-free-bootstrap-regen-p5-receipt.md` — parse-surface / bootstrap regen **P5** receipt discipline.
+
+**Census authority note:** SG-6 `regen_lens.rs` consolidation + `REGEN_OUTPUTS` / `regen.dag` pairing is documented in the preamble above `EXPECTED_HAND_AUTHORED_NON_TEST` in `src/v3/compiler/tests/integration/sg0_census_test.rs` (line numbers drift; grep the const).
+
+In §3, rows that reference **§1.1** inherit this anchor set instead of repeating a generic “Cluster M + `regen_*` briefs” sentence per line.
+
 ## §2. Track A — Cycle-2 named scope (immediate dispatch)
 
 Per Director Track A, the first cycle-2 worker batch **names** these **6** paths (also marked **(a)** in §3):
@@ -34,18 +57,18 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | Path | Class | Blocker / rationale |
 |------|-------|---------------------|
 | `src/v3/compiler/benches/tier3_mirror_perf.rs` | **(b)** | §1.8 #2 `tier3_computation_mirror_dissolved` PASSING + Evaluator/`std.computation`; see `docs/audit/r3-tier3-computation-mirror-consumer-prestage-2026-05-13.md`. |
-| `src/v3/compiler/build.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/gunbc_ci.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/r1c_e_emit_gates.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_bootstrap.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_lens.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_parse.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_parse_tables.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_tokenize.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/regen_v3.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bin/self_host_fixed_point.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bootstrap.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/bootstrap_regen_fresh.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
+| `src/v3/compiler/build.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/gunbc_ci.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/r1c_e_emit_gates.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_bootstrap.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_lens.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_parse.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_parse_tables.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_tokenize.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/regen_v3.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bin/self_host_fixed_point.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bootstrap.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/bootstrap_regen_fresh.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/cementing_dispatch.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
 | `src/v3/compiler/src/complexity_lattice.rs` | **(b)** | Cost/complexity lattice host; couples to cementing + cost lenses — retire with owning `.dag` lens programs. |
 | `src/v3/compiler/src/cost_basis_declaration.rs` | **(b)** | Cost basis declaration host; couples to cost-lens / cementing migration. |
@@ -81,10 +104,10 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | `src/v3/compiler/src/r1c_e_gates.rs` | **(b)** | R1C-E shared check API; scaffold until R1 close per census comment. |
 | `src/v3/compiler/src/r3_fc_lane2_loop_witness.rs` | **(a)** | Narrow T-Free-Consequences staging witness; candidate for cycle-3+ scoped dissolution once lowering owns lane2 text (Mgr provisional (a)). |
 | `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
-| `src/v3/compiler/src/regen_bootstrap_emit.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/regen_parse_emit.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/regen_parse_tables_emit.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
-| `src/v3/compiler/src/regen_tokenize.rs` | **(b)** | Bootstrap / regen toolchain + P5 atomic migration; substrate owned by Cluster M + `regen_*` briefs — not a single-PR retirement without canvas. |
+| `src/v3/compiler/src/regen_bootstrap_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/regen_parse_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/regen_parse_tables_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
+| `src/v3/compiler/src/regen_tokenize.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/self_host_receipt_p0.rs` | **(b)** | DB-8 receipt schema host mirror; dissolve when `.dag`/generated owns schema per census header comment. |
 | `src/v3/compiler/src/test_runner.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/wall_clock_ratchet_manifest.rs` | **(a)** | Ratchet manifest host; candidate for batch with timing/WAD receipts (Mgr provisional (a)). |
