@@ -217,7 +217,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // `dag.rs` itself replaces these submodules simultaneously.
 //
 // T-Substrate cardinality subset for int literals (2026-04-25): the
-// range-comparison shim in `int_literal_ranges.rs` is host-side
+// range-comparison shim in `int_literal_ranges_generated.rs` (build.rs-spliced
 // reconciliation glue over already-declared String-decimal range facts
 // while `rust_pilot_primitives.value_body` remains an unparsed top-level
 // list. It intentionally compares only source literals that already fit
@@ -281,28 +281,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
-<<<<<<< HEAD
-    "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
-    "src/v3/compiler/src/int_literal_ranges.rs",
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
     // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
     // re-exports). Bounded lens application body lives in `lens_declaration_apply_body.txt`
     // (see `EXPECTED_HAND_AUTHORED_FRAGMENTS`). Dissolution: substrate-owned CI + cementing
     // receipts; PB-Runtime for lens application (R3 §1.8).
-=======
-    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
-    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
-    "src/v3/compiler/src/gunbc_ci.rs",
-    "src/v3/compiler/src/infer.rs",
-    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
-    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
-    // `tests/integration/common/mod.rs`).
-    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
-    "src/v3/compiler/src/lens_declaration_apply.rs",
-    "src/v3/compiler/src/lens_t_las_carrier.rs",
->>>>>>> e79e73838 (WIP: PB-0 cycle-4 NON_TEST retirement (msg_5d7f3491): 7 paths — complexity_la)
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
