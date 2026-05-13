@@ -29,7 +29,7 @@ module std.process_algebra
 
 import std.algebra { FreeMonoid }
 import std.effects { OperationEffect }
-import std.types { NonEmptyStr, Timestamp }
+import std.types { Map, NonEmptyStr, Timestamp }
 
 type ProcessNodeId = NonEmptyStr where brand("ProcessNodeId")
 type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
@@ -73,13 +73,12 @@ type AttestationEvidence
 // 🟡 STAGED record — human/process intent attached to an operation. This is
 // not a proof carrier and does not compete with `Witness<C>`.
 //
-// Dissolution trigger: when ctrl audit-event emission lands, `author`,
-// `timestamp`, and `evidence` are populated by emitted audit events rather
-// than handwritten API payloads.
+// Dissolution trigger: when ctrl audit-event emission lands, `author` and
+// `evidence` are populated by emitted audit events rather than handwritten API
+// payloads. Event time is owned by `ProcessEvent.timestamp`, not duplicated here.
 type Attestation {
   author: ProcessSessionId
   text: NonEmptyStr
-  timestamp: Timestamp
   evidence: List<AttestationEvidence>
 }
 
@@ -307,9 +306,10 @@ type ProcessNodeDeclarationState
   | ProcessBucketDeclared { drain: BucketDrainState }
 
 // 🟡 STAGED node facts for closure projection. Identity is carried by the
-// graph entry below, not by this closure-fact row, so mode/close facts cannot
-// treat ProcessNodeId as another mutable sibling field. Missing mode declaration
-// is represented as declaration absence, not by storing a fourth mode here.
+// `ProcessGraph.nodes` map key below, not by this closure-fact row, so mode/close
+// facts cannot treat ProcessNodeId as another mutable sibling field. Missing
+// mode declaration is represented as declaration absence, not by storing a
+// fourth mode here.
 //
 // Dissolution trigger: when `state(log: ProcessEventLog)` is emitted, this
 // snapshot is generated from the event log and no longer hand-authored.
@@ -318,19 +318,8 @@ type ProcessNodeFacts {
   close: ProcessCloseState
 }
 
-// 🟡 STAGED keyed-carrier scaffold — `id` is the graph row key for these node
-// facts until a generic keyed map / graph-storage substrate exists in std.
-//
-// Dissolution trigger: replace `List<ProcessNodeEntry>` with the shared keyed
-// graph carrier once it lands; consumers continue to address nodes by
-// `ProcessNodeId`.
-type ProcessNodeEntry {
-  id: ProcessNodeId
-  facts: ProcessNodeFacts
-}
-
 type ProcessGraph {
-  nodes: List<ProcessNodeEntry>
+  nodes: Map<ProcessNodeId, ProcessNodeFacts>
 }
 
 // Projection surfaces intentionally remain comments in this Phase-1 substrate:
