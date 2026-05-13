@@ -122,14 +122,12 @@ When this PR touches any gate-87 lens/register/cementing surface, the GitHub PR
 - `n/a - <reason>` when the touched surface is a docs/ratchet clarification or
   other non-promotion edit.
 
-The gate triggers on:
-`docs/v3-lens-capability-register.md`, `src/v3/std/verification.dag`,
-`src/v3/compiler/regen.dag`, `src/v3/compiler/tests/dag/cementing_dispatch.dag`,
-`src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`,
-`src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`,
-and `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag`.
+The machine trigger list lives in
+`scripts/check-gate87-same-pr-checklist.sh` (`TRIGGER_PATHS` plus the
+`t_r3_gate_87_cementing_regen_*.dag` glob), not in this template comment.
 
-**Delete this entire section** if none of those surfaces changed.
+**Delete this entire section** only when the checker's trigger list does not
+match any changed path in this PR.
 -->
 
 **CI reads raw PR description text.** The gate line must start at column 0; a
