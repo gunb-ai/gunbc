@@ -39,9 +39,10 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -105,6 +106,73 @@ fn regen_lens_registry_names() -> BTreeSet<String> {
         .collect()
 }
 
+fn runner_table_claims_by_stem() -> std::collections::BTreeMap<String, BTreeSet<String>> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(|(_, file, _, claims)| {
+            let stem = std::path::Path::new(file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_else(|| panic!("invalid gate-87 runner-table file path `{file}`"))
+                .to_string();
+            (
+                stem,
+                claims.iter().map(|claim| (*claim).to_string()).collect(),
+            )
+        })
+        .collect()
+}
+
+fn declaration_list<'a>(dag: &'a Dag, name: &str) -> &'a [FieldValue] {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("expected declaration `{name}`"));
+    let Some(ValueBody::List(items)) = &decl.value_body else {
+        panic!("`{name}` must be a List data declaration");
+    };
+    items.as_slice()
+}
+
+fn record_fields_for_test<'a>(row: &'a FieldValue, list_name: &str) -> &'a [(String, FieldValue)] {
+    let FieldValue::Record(fields) = row else {
+        panic!("`{list_name}` rows must be records, got {row:?}");
+    };
+    fields.as_slice()
+}
+
+fn required_string_field_for_test(fields: &[(String, FieldValue)], label: &str) -> String {
+    match fields.iter().find(|(candidate, _)| candidate == label) {
+        Some((_, FieldValue::Literal(LiteralBits::String(value)))) => value.clone(),
+        Some((_, other)) => panic!("field `{label}` must be String, got {other:?}"),
+        None => panic!("record missing field `{label}`"),
+    }
+}
+
+fn nullary_variant_label_for_test(dag: &Dag, value: &FieldValue, sum_type: &str) -> String {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected `{sum_type}` variant, got {value:?}");
+    };
+    assert!(
+        payload.is_empty(),
+        "`{sum_type}` placeholder kind variants must remain nullary"
+    );
+    let sum_decl = dag
+        .declaration_by_name(sum_type)
+        .unwrap_or_else(|| panic!("expected sum declaration `{sum_type}`"));
+    let TypeConnective::Disj { variants } = &sum_decl.connective else {
+        panic!("`{sum_type}` must be a disjoint sum");
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
+        .unwrap_or_else(|| panic!("constructor {constructor:?} is not a `{sum_type}` variant"))
+}
+
 fn read_lens_source(rel: &str) -> String {
     let path = workspace_root().join(rel);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
@@ -140,6 +208,81 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_placeholder_dissolution_ledger_matches_live_runner_claims() {
+    let dag = compile_to_dag(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    )
+    .expect("cementing dispatch fixture should compile");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "cementing dispatch fixture should have no diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    let registry_names = regen_lens_registry_names();
+    let claims_by_stem = runner_table_claims_by_stem();
+    let mut seen = BTreeSet::new();
+    let mut compiles_placeholders = 0;
+    let mut int_projection_placeholders = 0;
+
+    for row in declaration_list(&dag, "gate_87_placeholder_dissolution_ledger") {
+        let fields = record_fields_for_test(row, "gate_87_placeholder_dissolution_ledger");
+        let registry_name = required_string_field_for_test(fields, "registry_name");
+        let module_stem = required_string_field_for_test(fields, "module_stem");
+        let claim_name = required_string_field_for_test(fields, "claim_name");
+        let dissolution_trigger = required_string_field_for_test(fields, "dissolution_trigger");
+        let placeholder_kind = fields
+            .iter()
+            .find(|(candidate, _)| candidate == "placeholder_kind")
+            .map(|(_, value)| {
+                nullary_variant_label_for_test(&dag, value, "Gate87PlaceholderReceiptKind")
+            })
+            .expect("placeholder ledger row missing `placeholder_kind`");
+
+        assert!(
+            registry_names.contains(&registry_name),
+            "placeholder ledger row `{registry_name}` must name a live `LensRegistryEntry`"
+        );
+        let claims = claims_by_stem.get(&module_stem).unwrap_or_else(|| {
+            panic!("placeholder ledger row `{registry_name}` names unwired module `{module_stem}`")
+        });
+        assert!(
+            claims.contains(&claim_name),
+            "placeholder ledger row `{registry_name}` names claim `{claim_name}` not wired in \
+             `R3_GATE_87_CEMENTING_REGEN_SUITES` for `{module_stem}`"
+        );
+        assert!(
+            dissolution_trigger.contains("Replace "),
+            "placeholder ledger row `{registry_name}` must name a concrete replacement trigger"
+        );
+        assert!(
+            !dissolution_trigger.contains("TBD") && !dissolution_trigger.contains("TODO"),
+            "placeholder ledger row `{registry_name}` must not use vague placeholder text"
+        );
+        assert!(
+            seen.insert((registry_name.clone(), module_stem.clone(), claim_name.clone())),
+            "duplicate placeholder ledger identity for `{registry_name}` / `{module_stem}` / `{claim_name}`"
+        );
+
+        match placeholder_kind.as_str() {
+            "CompilesPlaceholder" => compiles_placeholders += 1,
+            "IntProjectionPlaceholder" => int_projection_placeholders += 1,
+            other => panic!("unexpected placeholder ledger kind `{other}`"),
+        }
+    }
+
+    assert_eq!(
+        compiles_placeholders, 4,
+        "gate-87 helper/partial-lens Compiles placeholders must stay explicitly ledgered"
+    );
+    assert_eq!(
+        int_projection_placeholders, 5,
+        "gate-87 narrow Int projection placeholders must stay explicitly ledgered"
     );
 }
 
