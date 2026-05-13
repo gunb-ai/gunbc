@@ -1640,8 +1640,24 @@ impl<'a> Ctx<'a> {
                             &[("key", &key_name), ("value", &value_name)],
                         ))
                     }
+                    [key, value, extra] => {
+                        let key_name =
+                            self.python_type_name_for_decl_at_depth(key.value, depth + 1)?;
+                        let value_name =
+                            self.python_type_name_for_decl_at_depth(value.value, depth + 1)?;
+                        let extra_name =
+                            self.python_type_name_for_decl_at_depth(extra.value, depth + 1)?;
+                        Ok(render_named_template(
+                            carrier,
+                            &[
+                                ("key", &key_name),
+                                ("value", &value_name),
+                                ("extra", &extra_name),
+                            ],
+                        ))
+                    }
                     _ => Err(EmitPythonError::Unsupported(
-                        "python type instantiation supports arities 1 and 2".to_string(),
+                        "python type instantiation supports arities 1, 2, and 3".to_string(),
                     )),
                 }
             }

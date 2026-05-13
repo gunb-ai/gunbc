@@ -20,14 +20,17 @@
 // issue. "SectionedLensApplication" is a collective noun for the pair;
 // it is NOT a substrate declaration.
 //
-// Why the per-lens `LensEnforcement<Output, Budget>` projection rather
-// than `Output = Budget` everywhere: complexity's lens-output is rich
+// Why the per-lens `LensEnforcement<Output, Budget, Projected>` projection
+// rather than `Output = Budget` everywhere: complexity's lens-output is rich
 // (`ComplexitySummary { work, span, asymptotic_class, ... }`) — required
 // for compositional folds — but the user-authored budget is typically a
 // single class (`O_log_n`). The projection separates the two: lens
 // output stays rich (load-bearing for composition); budget stays simple
 // (load-bearing for user authoring). Lenses where Output = Budget (cost,
-// parallelism) declare the identity projection.
+// parallelism) declare the identity projection with `Projected = Budget`.
+// Timing enforcement uses a `Projected` sum distinct from `TimingBudget`
+// so non-evidence reports are not encoded as plausible nanosecond magnitudes
+// on the projection boundary (P2 / gate #58; see `timing_lens.dag`).
 //
 // Per-lens `LensEnforcement` and `EnforceableLens` data declarations
 // land alongside each lens (`src/v3/lenses/complexity.dag`, etc.) in
@@ -83,21 +86,23 @@ type DiagnosticSeverity = Error
 // 🟢 TERMINAL at the per-lens projection scope. The two fields are the
 // irreducible contract a per-lens enforcement must publish:
 //
-//   - `project`  — extracts the budget-comparable coordinate from the
-//                  lens output. Identity for lenses where Output = Budget
-//                  (cost, parallelism); for complexity, projects
-//                  `ComplexitySummary -> AsymptoticClass`.
-//   - `violates` — per-lens violation relation. Returns true iff the
-//                  observed (projected) value EXCEEDS the user's
-//                  declared budget under the lens's own ordering
-//                  (lattice dominance for complexity; cost dominance
-//                  for cost; mode-mismatch for parallelism). The
-//                  projection alone would leave "did observed exceed
-//                  declared?" as API-level convention; the relation
-//                  field makes it substrate authority.
-type LensEnforcement<Output, Budget> {
-  project: fn(Output) -> Budget
-  violates: fn(Budget, Budget) -> Bool
+//   - `project`  — extracts the **usage / comparable projection** from the
+//                  lens output (may equal `Budget` — complexity, cost — or be
+//                  a dedicated sum — timing `TimingEnforcementProjected`).
+//   - `violates` — per-lens violation relation. First argument is the
+//                  **full lens output** `Output` (not only `project(o)`):
+//                  relations that must distinguish sum variants before
+//                  comparing budget-shaped coordinates (timing gate #58:
+//                  `Observed` wall ns vs non-evidence) cannot be expressed
+//                  as pure `Budget × Budget` predicates without illegal-state
+//                  collisions (see `timing_lens.dag`). Second argument is the
+//                  user-declared `Budget`. Returns true iff enforcement fails
+//                  closed under the lens ordering (lattice dominance for
+//                  complexity; strict `>` on nanoseconds for timing observed
+//                  evidence; etc.).
+type LensEnforcement<Output, Budget, Projected> {
+  project: fn(Output) -> Projected
+  violates: fn(Output, Budget) -> Bool
 }
 
 // 🟢 TERMINAL at the per-lens canonical-pairing scope. Bundles a lens
@@ -134,9 +139,9 @@ type LensEnforcement<Output, Budget> {
 // `EnforceableLens<C, B>`) would require existentials or singleton
 // inhabitance — substrate features v3 does not currently express.
 // Future substrate hardening lifts this to type-level.
-type EnforceableLens<Output, Budget> {
+type EnforceableLens<Output, Budget, Projected> {
   lens: Lens<Output>
-  enforcement: LensEnforcement<Output, Budget>
+  enforcement: LensEnforcement<Output, Budget, Projected>
 }
 
 // 🟢 TERMINAL at the enforce-mode application scope. Carrier for
@@ -148,10 +153,11 @@ type EnforceableLens<Output, Budget> {
 // principles 2/6: Enforce-without-budget / Introspect-with-budget /
 // Introspect-with-enforcement / lens-projection-budget mismatch are
 // all illegal states; all unrepresentable in this carrier shape. The
-// shared `Output` and `Budget` type parameters tie
+// shared `Output`, `Budget`, and `Projected` type parameters tie
 // `enforceable_lens.lens` (`Lens<Output>`),
-// `enforceable_lens.enforcement` (`LensEnforcement<Output, Budget>`),
-// and `budget` (`Budget`) structurally. Mismatched triples are
+// `enforceable_lens.enforcement` (`LensEnforcement<Output, Budget, Projected>`),
+// `budget` (`Budget`), and the enforcement `project` codomain (`Projected`)
+// structurally. Mismatched instantiations are
 // rejected at parse/inference time, not via a separate type-checker
 // rule.
 //
@@ -167,8 +173,8 @@ type EnforceableLens<Output, Budget> {
 //                              attribution. Required (not Optional) —
 //                              every Enforce application has an
 //                              authoring site.
-type EnforcedApplication<Output, Budget> {
-  enforceable_lens: EnforceableLens<Output, Budget>
+type EnforcedApplication<Output, Budget, Projected> {
+  enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
   budget: Budget
   diagnostic_severity: DiagnosticSeverity

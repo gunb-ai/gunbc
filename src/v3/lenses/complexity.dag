@@ -483,9 +483,9 @@ fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass
 // so stored `asymptotic_class` stays comparable to classified work under the same lattice.
 // **Budget enforcement** must follow this named bridge (single consumer:
 // `enforced_lens_application`); do not conflate it with substrate `meet`/`join` alone.
-fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
-  if asymptotic_dominates(observed, declared) then
-    if asymptotic_dominates(declared, observed) then 0 == 1 else 0 == 0
+fn complexity_enforcement_violates(summary: ComplexitySummary, declared: AsymptoticClass) -> Bool =
+  if asymptotic_dominates(summary.asymptotic_class, declared) then
+    if asymptotic_dominates(declared, summary.asymptotic_class) then 0 == 1 else 0 == 0
   else
     0 == 1
 
@@ -568,17 +568,18 @@ data complexity_lens: Lens<ComplexitySummary> = {
   validate: complexity_lens_validate
 }
 
-data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   project: complexity_enforcement_project
   violates: complexity_enforcement_violates
 }
 
-data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
+data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   lens: complexity_lens
   enforcement: complexity_enforcement
 }
 
-type ComplexityEnforcedApplication = EnforcedApplication<ComplexitySummary, AsymptoticClass>
+type ComplexityEnforcedApplication =
+  EnforcedApplication<ComplexitySummary, AsymptoticClass, AsymptoticClass>
 
 // CostBound projection authority lives in `std.induction::cost_bound_to_symbolic`.
 // This lens consumes the live CallPattern query directly because structural
