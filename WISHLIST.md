@@ -186,7 +186,7 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 - Director scope-extension msg_2c1bfb0e (gate #105 carrier negative-degree admission scope): Q6/Q7/anti-pattern #9 + 🟢 GREEN Practice-4 for signed-Rational extension (separate but adjacent ratification)
 
 **Composes with**:
-- R4.A omni-ingestion: bidirectional TS extdeps + React component-source ingest
+- R4.A omni-ingestion: orthogonal axis. R4.E itself stays `.dag` → JSX single-authority per ratified Q3-a (canvas §5 + §12; INVARIANTS P2); any TS-source / React-component-source ingest is R4.A scope (or separate migration-tooling concern per Q3-c rationale) with no source-of-truth authority over `.dag`. R4.A landing later would extend ingest coverage to TS/React the same way it would to any other emitted language — without changing R4.E's emit-authority direction.
 - R4.B Introspect-lens: TypeScript-aware queries (find component / hook usage / prop typing) via lens framework
 - R4.C low-level emission: R4.E is Shape-A high-level; orthogonal axis
 - R4.D faithfulness: full-stack faithfulness witness — Rust backend + TS client + React UI all proven coherent against one Dag
