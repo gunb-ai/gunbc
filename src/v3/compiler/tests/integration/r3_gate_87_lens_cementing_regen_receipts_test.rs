@@ -228,3 +228,45 @@ fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
         "literal bind should not surface unused-parameter findings"
     );
 }
+
+// Discriminating non-vacuity pin: a no-finding witness alone cannot detect
+// a lens that silently degrades to "always empty"; this pin freezes that
+// `UnusedParametersLens` actually fires on a designed fixture. Pairs with
+// the no-finding pin above so the gate-87 dispatch is sensitive in both
+// directions for the `unused_parameters` carrier.
+#[test]
+fn r3_gate_87_unused_parameters_rust_receipt_fires_on_discriminating_fixture() {
+    let dag = compile_to_dag(
+        "fn f(x: Int, y: Int) -> Int = x",
+        "r3_gate_87_unused_parameters_discriminator.v3",
+    )
+    .expect("compile");
+    let findings = UnusedParametersLens::new(&dag).query(&UnusedParametersConfig::default());
+    let indexes: Vec<usize> = findings.iter().map(|f| f.parameter_index).collect();
+    assert_eq!(
+        indexes,
+        vec![1],
+        "fn `f(x, y) = x` should surface exactly the second parameter as unused"
+    );
+}
+
+// Discriminating non-vacuity pin: the `Source` no-op witness only proves
+// literal-bind classification; this pin freezes that `origin_of` walks
+// through a `Transform` to report `Computed` for an arithmetic bind value,
+// matching the in-crate `transform_port_reports_computed_origin` unit pin
+// but driven by `compile_to_dag` so a regression in the source-lowering
+// or generated lens projection both fail this gate-87 dispatch.
+#[test]
+fn r3_gate_87_provenance_origin_rust_receipt_on_computed_bind() {
+    let dag = compile_to_dag(
+        "let sum: Int = 1 + 2",
+        "r3_gate_87_provenance_computed_receipt.v3",
+    )
+    .expect("compile");
+    let port = find_bind_value_port(&dag, "sum");
+    let got = origin_of(&dag, &port);
+    assert!(
+        matches!(got, Origin::Computed { .. }),
+        "`let sum = 1 + 2` should classify as Computed(..), got {got:?}"
+    );
+}
