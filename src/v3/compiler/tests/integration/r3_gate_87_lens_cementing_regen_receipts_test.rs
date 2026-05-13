@@ -10,8 +10,14 @@
 //! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
+//! Registry **PARTIAL** `effect_enumeration` uses a narrow `LensOutputEquals` Int witness in
+//! `t_r3_gate_87_cementing_regen_effect_enumeration.dag` plus an auxiliary Rust receipt; dissolution
+//! triggers live in that harness file (do not treat the Int projection alone as full lens behavior).
+//! Registry **PARTIAL** `parallelism` stays an explicit `Compiles` placeholder until a behavioral
+//! witness is authorable; see `t_r3_gate_87_cementing_regen_parallelism.dag`.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! placeholders with per-harness dissolution triggers and paired Rust pins (this module and/or
+//! `lib.rs` unit tests — see each `t_r3_gate_87_cementing_regen_*.dag` header).
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
@@ -143,6 +149,8 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     );
 }
 
+/// Auxiliary gate-#87 pin paired with `t_r3_gate_87_cementing_regen_effect_enumeration.dag`
+/// (dissolution: same harness file + T-PB-B migration notes).
 #[test]
 fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
     let dag =
@@ -186,6 +194,8 @@ fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row
     );
 }
 
+/// Temporary lens-source `Compiles` pin; paired unit behavior: `infer_helpers::tests` in `lib.rs`
+/// (see `t_r3_gate_87_cementing_regen_infer_helpers.dag` header).
 #[test]
 fn r3_gate_87_infer_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/infer_helpers.dag");
@@ -196,9 +206,18 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/variant_payload.dag");
 }
 
+/// Temporary lens-source `Compiles` pin; paired unit behavior: `lower_helpers::tests` in `lib.rs`
+/// (see `t_r3_gate_87_cementing_regen_lower_helpers.dag` header).
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+/// Temporary lens-source pin paired with `t_r3_gate_87_cementing_regen_parallelism.dag`
+/// (dissolution: that harness header).
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
