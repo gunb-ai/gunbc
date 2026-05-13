@@ -3137,38 +3137,20 @@ impl<'a> TestRunner<'a> {
                     )));
                 }
             };
-            let Some(expected_body) = expected_decl.value_body.as_ref() else {
+            let Some(expected_body) = gate87_variant_payload_expected_value_body(self.dag, expected_decl)
+            else {
                 return Some(ClaimResult::Fail(format!(
-                    "LensOutputEquals({lens_name}): expected_ref `{expected_name}` has no value body"
+                    "LensOutputEquals({lens_name}): expected_ref `{expected_name}` has no lowered value body \
+                     (duplicate `import lenses.variant_payload` can shadow `gate87_cementing_variant_payload_declaration_missing_expected` \
+                     with an M1(2.8) unparsed stub — the prepended lens authority copy must lower structurally)"
                 )));
             };
             let expected_fv = match field_value_from_value_body(self.dag, expected_body) {
                 Ok(v) => v,
                 Err(err) => {
-                    // `gate87_cementing_variant_payload_declaration_missing_expected` lives in the
-                    // prepended `lenses.variant_payload` authority slice; merged harness graphs can
-                    // retain its `data` body as `ValueBody::Unparsed` after the strict-user opaque-body
-                    // sweep. Fall back to the same structural carrier the oracle produces for this
-                    // witness (R3 gate #87 / `DeclarationMissing` on an absent `DeclarationId`).
-                    if expected_decl.name.as_deref()
-                        == Some("gate87_cementing_variant_payload_declaration_missing_expected")
-                    {
-                        match field_value_variant_payload_shape_lookup(
-                            self.dag,
-                            crate::variant_payload::VariantPayloadShapeLookup::DeclarationMissing,
-                        ) {
-                            Ok(v) => v,
-                            Err(msg) => {
-                                return Some(ClaimResult::Fail(format!(
-                                    "LensOutputEquals({lens_name}): expected carrier fallback: {msg}"
-                                )));
-                            }
-                        }
-                    } else {
-                        return Some(ClaimResult::Fail(format!(
-                            "LensOutputEquals({lens_name}): could not lower expected `{expected_name}`: {err:?}"
-                        )));
-                    }
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): could not lower expected `{expected_name}`: {err:?}"
+                    )));
                 }
             };
             return Some(if computed_fv == expected_fv {
@@ -6406,6 +6388,40 @@ fn field_value_variant_payload_shape_lookup(
             })
         }
     }
+}
+
+/// R3 gate #87 / `variant_payload` cementing: the harness imports
+/// `gate87_cementing_variant_payload_declaration_missing_expected` from `lenses.variant_payload`, which
+/// is also prepended as authority — duplicate top-level `data` declarations can appear at different
+/// [`DeclarationId`]s. [`Dag::declaration_by_name`] tie-breaks equal `src/v3/` preference by **max**
+/// id, so a `DeclarationRef` edge can resolve to the later re-import stub (`ValueBody::Unparsed`).
+/// This helper prefers the **lowest-id** copy whose body lowered structurally (the prepended lens
+/// authority), keeping the `.dag` literal the single carrier authority (INVARIANTS P2) without
+/// reconstructing the expected carrier in Rust.
+fn gate87_variant_payload_expected_value_body<'a>(
+    dag: &'a Dag,
+    expected_decl: &'a Declaration,
+) -> Option<&'a ValueBody> {
+    const WITNESS: &str = "gate87_cementing_variant_payload_declaration_missing_expected";
+    if expected_decl.name.as_deref() == Some(WITNESS) {
+        if let Some(body) = expected_decl.value_body.as_ref() {
+            if !matches!(body, ValueBody::Unparsed(_)) {
+                return Some(body);
+            }
+        }
+        return dag
+            .declarations()
+            .iter()
+            .filter(|d| d.name.as_deref() == Some(WITNESS))
+            .filter(|d| {
+                d.value_body
+                    .as_ref()
+                    .is_some_and(|b| !matches!(b, ValueBody::Unparsed(_)))
+            })
+            .min_by_key(|d| d.id.raw())
+            .and_then(|d| d.value_body.as_ref());
+    }
+    expected_decl.value_body.as_ref()
 }
 
 fn find_bind<'a>(
