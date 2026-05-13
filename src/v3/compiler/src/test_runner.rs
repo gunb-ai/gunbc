@@ -6344,9 +6344,11 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 
 /// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
 ///
-/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
-/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
-/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
+/// `lens_apply.rs` → `lens_declaration_apply.rs` → `lens_declaration_apply_body.txt` is a **path**
+/// retirement chain only; the bounded lens host remains a lens-producer residual until PB-Runtime
+/// owns application/reflection (Row-4 / §7.1). `eval_census_subset_count_shape` unions
+/// `EXPECTED_HAND_AUTHORED_FRAGMENTS` when applying this predicate to `expected_hand_authored_non_test`
+/// so a fragment move cannot fake census progress.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
