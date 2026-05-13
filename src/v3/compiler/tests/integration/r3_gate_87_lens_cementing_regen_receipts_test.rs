@@ -206,8 +206,8 @@ fn r3_gate_87_lower_helpers_lens_source_compiles() {
 
 #[test]
 fn r3_gate_87_parallelism_rust_receipt_on_literal_program_without_workflow_projection() {
-    let dag = compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3")
-        .expect("compile");
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
     let root = dag
         .nodes()
         .iter()
