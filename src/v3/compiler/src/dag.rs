@@ -342,11 +342,12 @@ pub use computation::{
 pub(crate) use effects::compose_operation_effects;
 
 pub use effects::{
-    analyze_workflow, lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
-    BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
-    IdempotencyUnsupportedDetail, IdempotentShape, KeySource, Operation,
-    ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
-    WorkflowIdempotencyReport, WorkflowParallelismReport,
+    analyze_workflow, lane2_workflow_idempotency_report, operation_effect_shape,
+    report_unsupported_workflow_variant, BranchArm, BreakingShape, CallableRef, CompositionVerdict,
+    CreateCause, EffectShape, HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape,
+    InputField, KeySource, Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind,
+    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
+    WorkflowParallelismReport,
 };
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,

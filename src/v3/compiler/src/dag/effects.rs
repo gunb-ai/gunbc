@@ -279,16 +279,18 @@ pub fn operation_effect_shape(effect: &Operation) -> EffectShape {
         HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
         }
-        HttpMethodScalar::Put | HttpMethodScalar::Patch => match last_path_param(&effect.endpoint.path) {
-            Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-                key_source: KeySource::PathParam { param },
-            }),
-            None => EffectShape::IsBreaking(BreakingShape::CreateEffect {
-                cause: CreateCause::KeylessFallback {
-                    method: effect.endpoint.method,
-                },
-            }),
-        },
+        HttpMethodScalar::Put | HttpMethodScalar::Patch => {
+            match last_path_param(&effect.endpoint.path) {
+                Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                    key_source: KeySource::PathParam { param },
+                }),
+                None => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+                    cause: CreateCause::KeylessFallback {
+                        method: effect.endpoint.method,
+                    },
+                }),
+            }
+        }
         HttpMethodScalar::Delete => match last_path_param(&effect.endpoint.path) {
             Some(param) => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
                 key_source: KeySource::PathParam { param },

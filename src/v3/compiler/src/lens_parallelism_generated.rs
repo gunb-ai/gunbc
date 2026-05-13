@@ -36,7 +36,7 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
 fn operations_commute(a: &Operation, b: &Operation) -> bool {
     match (&operation_effect_shape(a), &operation_effect_shape(b)) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
-            idempotent_shapes_commute(ia, ib)
+            idempotent_shapes_commute(&ia, &ib)
         }
         _ => false,
     }

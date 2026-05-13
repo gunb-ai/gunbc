@@ -31,11 +31,15 @@
 use std::collections::BTreeMap;
 
 use crate::dag::{
-    operation_effect_shape, CallableRef, Dag, HttpMethodScalar, InputField, Operation,
-    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect,
+    CallableRef, Dag, HttpMethodScalar, InputField, Operation, PathTemplate, RestEndpointBinding,
+    UrlPathToken, WorkflowEffect,
 };
 
-fn lane2_witness_operation(name: &str, method: HttpMethodScalar, tokens: Vec<UrlPathToken>) -> Operation {
+fn lane2_witness_operation(
+    name: &str,
+    method: HttpMethodScalar,
+    tokens: Vec<UrlPathToken>,
+) -> Operation {
     Operation {
         callable: CallableRef {
             decl_name: name.to_string(),
@@ -187,7 +191,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
 #[cfg(test)]
 mod tests {
     use crate::compile_to_dag;
-    use crate::dag::{EffectShape, IdempotentShape, WorkflowEffect};
+    use crate::dag::{operation_effect_shape, EffectShape, IdempotentShape, WorkflowEffect};
     use crate::diagnostics::Diagnostic;
     use crate::CompileError;
 

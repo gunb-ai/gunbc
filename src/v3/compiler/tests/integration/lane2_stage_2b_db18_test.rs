@@ -1,8 +1,8 @@
 //! DB-18 / Lane 2 Stage 2b — `WorkflowEffect`, `bool_port_of`, and idempotency analysis.
 
+use std::collections::BTreeMap;
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
-use std::collections::BTreeMap;
 
 use v3_compiler::dag::{
     operation_effect_shape, ArrowBody, Behavior, BreakingShape, CallableRef, CompositionVerdict,
@@ -30,7 +30,10 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::PathParam { param },
-        }) => (HttpMethodScalar::Put, vec![UrlPathToken::ParamToken { name: param }]),
+        }) => (
+            HttpMethodScalar::Put,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
         EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
             key_source: KeySource::PathParam { param },
         }) => (

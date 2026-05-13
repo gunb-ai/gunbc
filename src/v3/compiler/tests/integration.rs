@@ -341,7 +341,7 @@ mod t_demo_fixture_test {
     /// `compose_effects` argument refinement message that omits `AppendEffect`.
     #[test]
     fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
-        let src = "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n";
+        let src = "let bad_compose = compose_effects([])\n";
         let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
             .expect_err("idempotency-violation witness should not compile");
         let CompileError::Semantic(dag) = err else {

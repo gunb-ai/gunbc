@@ -14,16 +14,16 @@
 //! fixture — cold runners multiply that into minutes (see #543 / v3 full-suite wall-clock ratchet).
 //! One `OnceLock` compile + `Dag::clone` per test keeps `try_register_lane2_workflow_effect` isolated.
 
-use std::sync::OnceLock;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    operation_effect_shape, Behavior, BreakingShape, CallableRef, CompositionVerdict,
-    CreateCause, EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource,
-    NonSingletonList, Operation, ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding,
-    UrlPathToken, WorkflowEffect, WorkflowParallelismReport,
+    operation_effect_shape, Behavior, BreakingShape, CallableRef, CompositionVerdict, CreateCause,
+    EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource, NonSingletonList,
+    Operation, ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding, UrlPathToken,
+    WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
@@ -54,7 +54,10 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::PathParam { param },
-        }) => (HttpMethodScalar::Put, vec![UrlPathToken::ParamToken { name: param }]),
+        }) => (
+            HttpMethodScalar::Put,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
         EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
             key_source: KeySource::PathParam { param },
         }) => (

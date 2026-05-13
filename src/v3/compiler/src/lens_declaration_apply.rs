@@ -1613,11 +1613,10 @@ mod substrate_reflection {
     use crate::dag::{
         AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
         BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
-        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldMap, FieldValue, HttpMethodScalar,
-        IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
-        Operation, OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget,
-        UrlPathToken,
-        TypeConnective, ValueNode, WorkflowEffect,
+        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldMap, FieldValue,
+        HttpMethodScalar, IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId,
+        NonSingletonList, Operation, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
+        TransformTarget, TypeConnective, UrlPathToken, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
 
