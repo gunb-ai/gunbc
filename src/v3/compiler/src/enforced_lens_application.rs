@@ -22,9 +22,9 @@
 //! `DeclarationScope` subject's structural `measurement` field (nominal section type is
 //! irrelevant — any lowered record body carrying that field is accepted) and applies the same
 //! usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
-//! `timing_lens.dag` (fault states map to the substrate `timing_enforcement_fault_sentinel_count`
-//! literal carried on the lowered nullary-fn bind; the host compares projected nanoseconds against
-//! `TimingBudget.max` with the same strict `>` edge as gate #94).
+//! `timing_lens.dag`: non-`Observed` reports are enforced via a **variant-shaped** fault path
+//! (never compared as ordinary wall-clock `Nat` against the fault sentinel), while `Observed`
+//! wall-clock nanoseconds use the same strict `>` edge as gate #94 against `TimingBudget.max`.
 
 use std::collections::HashMap;
 
@@ -100,15 +100,25 @@ fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
         .map(|d| d.id)
 }
 
+/// Lowered `TimingMeasurement` usage for timing `EnforcedApplication` enforcement.
+///
+/// Separates non-evidence variants from `Observed` wall-clock nanoseconds so a legitimate
+/// `Observed` duration equal to the substrate fault sentinel `Nat` cannot be conflated with
+/// `Unobserved` / `Ambiguous` / `Stale` (INVARIANTS P2 / modeling-discipline Practice 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TimingMeasurementEnforcementUsage {
+    NonObservedFault,
+    ObservedWallNs(u64),
+}
+
 /// Interprets a lowered `TimingMeasurement` value the same way `timing_enforcement_project` does
-/// on the substrate (`timing_lens.dag`): `Observed` → `duration.count` nanoseconds; other report
-/// variants map to the fault usage budget sentinel.
-fn timing_measurement_variant_usage_max_ns(
+/// on the substrate (`timing_lens.dag`): `Observed` → wall-clock nanoseconds; other report variants
+/// classify as [`TimingMeasurementEnforcementUsage::NonObservedFault`] (not as a raw `Nat`).
+fn timing_measurement_enforcement_usage(
     dag: &Dag,
     tm_disj: DeclarationId,
     value: &FieldValue,
-    fault_sentinel_ns: u64,
-) -> Option<u64> {
+) -> Option<TimingMeasurementEnforcementUsage> {
     let TypeConnective::Disj { variants } = &dag.declaration(tm_disj).connective else {
         return None;
     };
@@ -121,9 +131,22 @@ fn timing_measurement_variant_usage_max_ns(
     };
     let variant = variants.iter().find(|v| v.ty == *constructor)?;
     match variant.label.as_str() {
-        "Observed" => observed_timing_payload_max_ns(payload),
-        "Unobserved" | "Ambiguous" | "Stale" => Some(fault_sentinel_ns),
+        "Observed" => observed_timing_payload_max_ns(payload).map(TimingMeasurementEnforcementUsage::ObservedWallNs),
+        "Unobserved" | "Ambiguous" | "Stale" => Some(TimingMeasurementEnforcementUsage::NonObservedFault),
         _ => None,
+    }
+}
+
+/// Same reflexive edge as `timing_enforcement_violates` in `timing_lens.dag`, without collapsing
+/// [`TimingMeasurementEnforcementUsage::NonObservedFault`] into a sentinel `Nat` comparison on the
+/// `Observed` path.
+pub(crate) fn timing_enforcement_violates(
+    declared_max_ns: u64,
+    usage: TimingMeasurementEnforcementUsage,
+) -> bool {
+    match usage {
+        TimingMeasurementEnforcementUsage::NonObservedFault => true,
+        TimingMeasurementEnforcementUsage::ObservedWallNs(ns) => ns > declared_max_ns,
     }
 }
 
@@ -135,14 +158,6 @@ fn observed_timing_payload_max_ns(payload: &[FieldValue]) -> Option<u64> {
         return field_value_nat_magnitude(v);
     }
     field_value_nat_magnitude(&FieldValue::Record(parts.clone()))
-}
-
-pub(crate) fn timing_enforcement_violates(
-    declared_max_ns: u64,
-    usage_max_ns: u64,
-    fault_sentinel_ns: u64,
-) -> bool {
-    usage_max_ns == fault_sentinel_ns || usage_max_ns > declared_max_ns
 }
 
 fn field_value_nat_magnitude(value: &FieldValue) -> Option<u64> {
@@ -271,8 +286,6 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     let positive_descent_disj = dag
         .declaration_by_name("PositiveDescentAmount")
         .map(|d| d.id);
-
-    let timing_fault_sentinel_ns = timing_enforcement_fault_sentinel_ns_from_substrate(dag);
 
     let mut violations: Vec<Diagnostic> = Vec::new();
 
@@ -418,17 +431,6 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
             timing_lens_id,
             timing_enforcement_id,
         ) {
-            let Some(fault_sentinel_ns) = timing_fault_sentinel_ns else {
-                violations.push(Diagnostic::ParseError {
-                    message:
-                        "lens enforcement: could not resolve substrate `timing_enforcement_fault_sentinel_count` \
-                         from `timing_lens.dag` (modeled authority missing; fail-closed)"
-                            .to_string(),
-                    span: decl.span.clone(),
-                    fixes: Vec::new(),
-                });
-                continue;
-            };
             let Some(section_decl_id) =
                 resolve_declaration_scope_declaration_id(section, declaration_scope_conj)
             else {
@@ -487,12 +489,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 });
                 continue;
             };
-            let Some(usage_max_ns) = timing_measurement_variant_usage_max_ns(
-                dag,
-                tm_disj,
-                measurement,
-                fault_sentinel_ns,
-            ) else {
+            let Some(usage_projection) =
+                timing_measurement_enforcement_usage(dag, tm_disj, measurement)
+            else {
                 violations.push(Diagnostic::ParseError {
                     message: format!(
                         "lens enforcement: could not interpret `measurement` as lowered \
@@ -514,9 +513,26 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 });
                 continue;
             };
-            if !timing_enforcement_violates(declared_max_ns, usage_max_ns, fault_sentinel_ns) {
+            if !timing_enforcement_violates(declared_max_ns, usage_projection) {
                 continue;
-            }
+            };
+            let usage_max_ns_for_message = match usage_projection {
+                TimingMeasurementEnforcementUsage::ObservedWallNs(ns) => ns,
+                TimingMeasurementEnforcementUsage::NonObservedFault => {
+                    let Some(s) = timing_enforcement_fault_sentinel_ns_from_substrate(dag) else {
+                        violations.push(Diagnostic::ParseError {
+                            message:
+                                "lens enforcement: could not resolve substrate `timing_enforcement_fault_sentinel_count` \
+                                 from `timing_lens.dag` (needed for fault-path diagnostic text; fail-closed)"
+                                    .to_string(),
+                            span: decl.span.clone(),
+                            fixes: Vec::new(),
+                        });
+                        continue;
+                    };
+                    s
+                }
+            };
             let severity_val = match fm.get("diagnostic_severity") {
                 Some(v) => *v,
                 _ => {
@@ -532,7 +548,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
             };
             let violation_message = format!(
                 "lens enforcement violation: timing budget ceiling max_ns={declared_max_ns} exceeded \
-                 by projected wall-clock usage max_ns={usage_max_ns} (declared `EnforcedApplication` \
+                 by projected wall-clock usage max_ns={usage_max_ns_for_message} (declared `EnforcedApplication` \
                  at {})",
                 decl.name.as_deref().unwrap_or("?")
             );
@@ -551,7 +567,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     }
 }
 
-#[cfg(test)]
+#[doc(hidden)]
 fn gate_58_raise_observed_duration_ns_in_measurement(
     value: &mut FieldValue,
     duration_ns: u64,
@@ -584,11 +600,11 @@ fn gate_58_raise_observed_duration_ns_in_measurement(
     }
 }
 
-/// Test-only: raise `gate_58_modeled_ci_timing_measurement.measurement` Observed nanoseconds above
-/// the gate #58 pass `EnforcedApplication` budget so a subsequent [`check_enforced_lens_applications`]
-/// run must surface a timing violation — executable receipt that the timing branch evaluated the
-/// witness (declaration presence + empty diagnostics alone are insufficient).
-#[cfg(test)]
+/// Integration receipt helper: mutates the PB-1 gate #58 witness row in a bootstrap [`Dag`].
+///
+/// **Not a supported production API** — only [`crate::tests::integration`] gate #58 receipts
+/// should call this (kept `pub` so the integration test crate can link it).
+#[doc(hidden)]
 pub fn gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(
     dag: &mut Dag,
     duration_ns: u64,
@@ -1060,32 +1076,56 @@ mod polynomial_budget_class_policy_tests {
 
 #[cfg(test)]
 mod gate_58_timing_enforcement_unit_tests {
-    use super::{timing_enforcement_fault_sentinel_ns_from_substrate, timing_enforcement_violates};
+    use super::{
+        timing_enforcement_fault_sentinel_ns_from_substrate, timing_enforcement_violates,
+        TimingMeasurementEnforcementUsage,
+    };
     use crate::dag::Dag;
 
     #[test]
-    fn fault_sentinel_always_violates_under_any_finite_budget() {
-        let dag = Dag::new();
-        let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
-            .expect("bootstrap should carry timing_lens fault sentinel");
-        assert!(timing_enforcement_violates(s - 1, s, s));
-        assert!(timing_enforcement_violates(1, s, s));
+    fn non_observed_fault_always_violates_under_any_finite_budget() {
+        assert!(timing_enforcement_violates(
+            1,
+            TimingMeasurementEnforcementUsage::NonObservedFault
+        ));
+        assert!(timing_enforcement_violates(
+            u64::MAX - 1,
+            TimingMeasurementEnforcementUsage::NonObservedFault
+        ));
     }
 
     #[test]
     fn observed_usage_strictly_exceeding_budget_violates() {
-        let dag = Dag::new();
-        let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
-            .expect("bootstrap should carry timing_lens fault sentinel");
-        assert!(timing_enforcement_violates(500, 1000, s));
+        assert!(timing_enforcement_violates(
+            500,
+            TimingMeasurementEnforcementUsage::ObservedWallNs(1000)
+        ));
     }
 
     #[test]
     fn observed_usage_within_or_equal_budget_is_clean() {
+        assert!(!timing_enforcement_violates(
+            1000,
+            TimingMeasurementEnforcementUsage::ObservedWallNs(500)
+        ));
+        assert!(!timing_enforcement_violates(
+            1000,
+            TimingMeasurementEnforcementUsage::ObservedWallNs(1000)
+        ));
+    }
+
+    #[test]
+    fn observed_wall_at_substrate_fault_sentinel_is_not_fault_short_circuit() {
         let dag = Dag::new();
         let s = timing_enforcement_fault_sentinel_ns_from_substrate(&dag)
             .expect("bootstrap should carry timing_lens fault sentinel");
-        assert!(!timing_enforcement_violates(1000, 500, s));
-        assert!(!timing_enforcement_violates(1000, 1000, s));
+        assert!(!timing_enforcement_violates(
+            s + 1,
+            TimingMeasurementEnforcementUsage::ObservedWallNs(s)
+        ));
+        assert!(timing_enforcement_violates(
+            s - 1,
+            TimingMeasurementEnforcementUsage::ObservedWallNs(s)
+        ));
     }
 }
