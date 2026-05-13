@@ -10,6 +10,8 @@
 //! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
+//! `parallelism` is `LensCapabilityBehavioralPartial` (no v2 counterpart) and stays a `Compiles`
+//! placeholder until a public report carrier is authorable as `.dag` data; see its harness header.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
@@ -189,6 +191,11 @@ fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row
 #[test]
 fn r3_gate_87_infer_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/infer_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
