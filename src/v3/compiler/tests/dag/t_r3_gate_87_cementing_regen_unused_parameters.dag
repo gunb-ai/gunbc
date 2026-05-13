@@ -1,6 +1,19 @@
 // R3 gate #87 — `LensRegistryEntry` `unused_parameters`.
-// The full `List<UnusedParameter>` expected carrier is not yet stable as authored `.dag` data,
-// so this claim freezes the minimal no-finding witness through a named Int projection.
+//
+// **Why not `LensOutputEquals(lenses.unused_parameters::check, …, empty())` yet:** same bridge
+// limitation as `t_r3_gate_87_cementing_regen_structural_resolution.dag`: `ProgramInput` only
+// supplies reflected behavior `nodes`, while `check(d: Dag)` uses `d.nodes`, `d.ports`, and
+// `port`/`node` lookups across the lowered graph. Promoting to structural list equality without a
+// full-`Dag` `FieldValue` input would either require runner work or would silently shrink coverage.
+// This claim stays on the Int projection plus the paired Rust pin in
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_unused_parameters_rust_receipt_on_literal_program`
+// (`UnusedParametersLens::query`, host parity with the `.dag` lens).
+//
+// Dissolution trigger: full `Dag` reflection for `ProgramInput` (or equivalent) lands and
+// `apply_lens_declaration` can run `lenses.unused_parameters::check` from the claim program alone;
+// then replace `gate87_unused_parameters_no_findings` / `eval_gate_87_cementing_projection` with
+// `LensOutputEquals` over `check` + authored `List<UnusedParameter>` expected, and retire the Rust pin
+// in the same PR if fully subsumed.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_unused_parameters
 

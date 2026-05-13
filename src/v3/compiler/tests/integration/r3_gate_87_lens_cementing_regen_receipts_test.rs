@@ -7,11 +7,18 @@
 //! placeholders where no public behavior carrier is authorable yet.
 //!
 //! **Lane-E + symbolic-cost** `.dag` receipts are exercised by `t_pb_b_1_dag_runner_test`.
-//! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
-//! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
-//! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
+//! `structural_resolution` and `unused_parameters` use Int-projection `LensOutputEquals` rows in
+//! `.dag` (named stubs dispatched by `eval_gate_87_cementing_projection`) because the generic
+//! `LensOutputEquals` + `ProgramInput` bridge only reflects behavior `nodes` from the claim
+//! program, while both lenses' `check(d: Dag)` require a full lowered `Dag` (`declarations` /
+//! `ports` / …). A stronger structural `LensOutputEquals` over `List<…>` would need runner support
+//! for a substrate-faithful `Dag` input (or would weaken the test) — see harness headers on
+//! `tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` and
+//! `t_r3_gate_87_cementing_regen_unused_parameters.dag`. Rust receipts below pin
+//! `lens_structural_resolution::check` and `UnusedParametersLens::query` on the same literal program.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! placeholders with per-file dissolution triggers in their `.dag` harness comments plus the paired
+//! `assert_lens_dag_compiles` receipts in this module.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the

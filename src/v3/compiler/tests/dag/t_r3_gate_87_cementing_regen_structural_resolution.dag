@@ -1,6 +1,21 @@
 // R3 gate #87 — `LensRegistryEntry` `structural_resolution`.
-// The full `List<UnresolvedArrowBody>` expected carrier is not yet stable as authored `.dag`
-// data, so this claim freezes the minimal no-violation witness through a named Int projection.
+//
+// **Why not `LensOutputEquals(lenses.structural_resolution::check, …, empty())` yet:** the
+// generic `LensOutputEquals` + `ProgramInput` bridge supplies only `reflect_program_dag_nodes_in_file`
+// (behavior `nodes` from the claim program, reflected into the harness `id_space`). The lens
+// `check(d: Dag)` walks `d.declarations` for `Arrow { body: Pending }` — it needs a substrate-faithful
+// `Dag`, not the nodes-only carrier. Authoring a non-vacuous `List<UnresolvedArrowBody>` expected
+// literal in this harness would not fix that mismatch without either (a) widening the runner to
+// reflect a full `Dag` `FieldValue` for `ProgramInput`, or (b) weakening the receipt to a predicate
+// that ignores declarations (unacceptable). This row therefore stays on the named Int projection
+// below plus the paired Rust pin in
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt_on_literal_program`.
+//
+// Dissolution trigger: `ProgramInput` (or an equivalent single authority) lowers to a full `Dag`
+// input usable by `apply_lens_declaration` for `lenses.structural_resolution::check`, then replace
+// `gate87_structural_resolution_no_violations` / `eval_gate_87_cementing_projection` with structural
+// `LensOutputEquals` over `check` + an authored `List<UnresolvedArrowBody>` expected (and delete the
+// Rust pin if fully subsumed — same PR per `TESTING.md` Band-C / SG-0 census honesty).
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_structural_resolution
 
