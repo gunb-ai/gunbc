@@ -47,9 +47,7 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{
-    Behavior, Declaration, FieldValue, LiteralBits, SymbolicCost, ValueBody,
-};
+use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, SymbolicCost, ValueBody};
 use v3_compiler::lens_cost::{cost_of, CostLookup};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
@@ -57,7 +55,7 @@ use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPatte
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Dag, Witness};
+use v3_compiler::{analyze_symbolic_cost_dimension, Dag, DimensionReport, Witness};
 
 use crate::common::assert_recursive_countdown_linear_semantics;
 
@@ -417,8 +415,11 @@ fn r3_gate_87_cost_symbolic_literal_pins_frozen_constant_witness() {
 #[test]
 fn r3_gate_87_cost_symbolic_countdown_pins_linear_bind_param_witness_discipline() {
     run_gate87_cost_symbolic_stack(|| {
-        let dag = compile_to_dag(GATE87_SYMBOLIC_COUNTDOWN_SOURCE, GATE87_SYMBOLIC_COUNTDOWN_FILE)
-            .unwrap_or_else(|e| panic!("{}: {e:?}", GATE87_SYMBOLIC_COUNTDOWN_FILE));
+        let dag = compile_to_dag(
+            GATE87_SYMBOLIC_COUNTDOWN_SOURCE,
+            GATE87_SYMBOLIC_COUNTDOWN_FILE,
+        )
+        .unwrap_or_else(|e| panic!("{}: {e:?}", GATE87_SYMBOLIC_COUNTDOWN_FILE));
         assert!(
             dag.diagnostics().is_empty(),
             "{}: expected no diagnostics",
