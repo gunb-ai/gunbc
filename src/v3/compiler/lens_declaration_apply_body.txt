@@ -1152,7 +1152,7 @@ mod tests {
 
     #[test]
     fn named_function_count_on_trivial_program() {
-        let src = include_str!("../../lenses/named_function_count.dag");
+        let src = include_str!("../lenses/named_function_count.dag");
         let lens_dag =
             compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
         let prog = compile_to_dag("let x: Int = 1", "lens_apply_prog.v3").expect("prog compiles");
