@@ -67,11 +67,7 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(&mut dag, OVER_BUDGET_NS)
         .expect("raise gate #58 modeled timing measurement over pass budget");
     check_enforced_lens_applications(&mut dag);
-    let msgs: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, d)| d.message())
-        .collect();
+    let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
     assert_eq!(
         msgs.len(),
         1,
@@ -87,7 +83,7 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
         "expected declared budget {PASS_BUDGET_MAX_NS} in diagnostic: {m:?}"
     );
     assert!(
-        m.contains(&format!("usage_max_ns={OVER_BUDGET_NS}")),
+        m.contains(&format!("usage max_ns={OVER_BUDGET_NS}")),
         "expected projected usage {OVER_BUDGET_NS} in diagnostic: {m:?}"
     );
 }
