@@ -334,13 +334,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
+    "src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
-    "src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
