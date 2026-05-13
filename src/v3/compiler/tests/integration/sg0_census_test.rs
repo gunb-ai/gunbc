@@ -4,9 +4,8 @@
 //! it into **generated** (listed in the producer-owned manifest at
 //! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
 //! **hand-authored** (everything else). The hand-authored set is
-//! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus the
-//! T-PB-B Rust test manifest emitted as
-//! [`v3_compiler::generated_files::RUST_TEST_GENERATOR_MANIFEST`] — the ratchet. The split is
+//! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus
+//! [`EXPECTED_HAND_AUTHORED_TEST`] below — the ratchet. The split is
 //! load-bearing: T-PB-A owns the non-test subset, while T-PB-B owns
 //! the test subset.
 //! Drift in either direction fails:
@@ -29,16 +28,13 @@
 //! the list before writing — so a new generated file can only land if
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
-//! Rust tests remain hand-authored until real generation/deletion lands;
-//! their explicit manifest is the T-PB-B expected-test ratchet, not a
-//! generated-file exemption.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use v3_compiler::generated_files::{GENERATED_FILES, RUST_TEST_GENERATOR_MANIFEST};
+use v3_compiler::generated_files::GENERATED_FILES;
 
 // Relative to workspace root; mirrors the single census root
 // informally named in `dsl/gunbc/compiler.dag`.
@@ -337,23 +333,146 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 ];
 
 // All test .rs files under `src/v3/compiler` that are currently
-// hand-authored live in `tests/rust_test_generator.manifest`, emitted
-// by build.rs as `RUST_TEST_GENERATOR_MANIFEST`. T-PB-B owns shrinking
-// that explicit manifest toward the TESTING.md §"Post-R2 shape"
-// residual. T-PB-A reductions must not rely on that list moving.
+// hand-authored. Sorted; one path per line, relative to the
+// workspace root. T-PB-B owns shrinking this subset toward the
+// TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
+// rely on this list moving.
+// Slice 1 census reconciliation (2026-05-02): sorted path list; update when
+// adding/removing hand-authored integration tests (SG-0 ratchet).
 //
 // **Cementing-test discipline ratchet (gate #87 `lens_cementing_test_discipline_complete`).**
 // New cementing receipts must follow `TESTING.md` §4 "One claim per test": one structural
 // claim per `#[test]` / per `data foo: TestClaim`, and runner-drive tests assert
 // `ClaimResult` by shape (`== ClaimResult::Pass` / `matches!(_, ClaimResult::Pass)`), never
 // by stringified message contents. When porting a Rust receipt below to a `.dag` `TestClaim`,
-// **the same PR removes the entry from the manifest** — `RUST_TEST_GENERATOR_MANIFEST` is the
+// **the same PR removes the entry from this list** — `EXPECTED_HAND_AUTHORED_TEST` is the
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
-fn expected_hand_authored_test() -> &'static [&'static str] {
-    RUST_TEST_GENERATOR_MANIFEST
-}
+const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
+    "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
+    "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
+    "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
+    "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
+    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
+    "src/v3/compiler/tests/determinism_test.rs",
+    "src/v3/compiler/tests/integration.rs",
+    "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
+    "src/v3/compiler/tests/integration/anthropic_messages_wire_demo_test.rs",
+    "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
+    "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
+    "src/v3/compiler/tests/integration/anthropic_tool_result_wire_demo_test.rs",
+    "src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs",
+    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
+    "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
+    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
+    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+    "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
+    "src/v3/compiler/tests/integration/common/budgeted.rs",
+    "src/v3/compiler/tests/integration/common/cached_compile.rs",
+    "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
+    "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
+    "src/v3/compiler/tests/integration/common/mod.rs",
+    "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
+    "src/v3/compiler/tests/integration/common/rust_comment_strip.rs",
+    "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
+    "src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs",
+    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
+    "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
+    "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
+    "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
+    "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
+    "src/v3/compiler/tests/integration/emission_provenance_lens_test.rs",
+    "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
+    "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
+    "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
+    "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    "src/v3/compiler/tests/integration/idempotency_lens_instance_blocker_test.rs",
+    "src/v3/compiler/tests/integration/int_literal_cardinality_test.rs",
+    "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
+    "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
+    "src/v3/compiler/tests/integration/lane2_stage_2b_db18_test.rs",
+    "src/v3/compiler/tests/integration/lane2_stage_2c_db15_test.rs",
+    "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
+    "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
+    "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
+    "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
+    "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
+    "src/v3/compiler/tests/integration/lens_substrate_carrier_test.rs",
+    "src/v3/compiler/tests/integration/m0_acceptance.rs",
+    "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
+    "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_omni_shape_b_openapi_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
+    "src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs",
+    "src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs",
+    "src/v3/compiler/tests/integration/m1_substrate_test.rs",
+    "src/v3/compiler/tests/integration/m2_feature_parity_test.rs",
+    "src/v3/compiler/tests/integration/m2_field_access_binding_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_cost_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_idempotency_emit_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_idempotency_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_provenance_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_structural_resolution_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
+    "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
+    "src/v3/compiler/tests/integration/method_registry_test.rs",
+    "src/v3/compiler/tests/integration/method_template_contract_test.rs",
+    "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
+    "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
+    "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
+    "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
+    "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    "src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs",
+    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
+    "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
+    "src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs",
+    "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
+    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+    "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
+    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
+    "src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs",
+    "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
+    "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
+    "src/v3/compiler/tests/integration/sg0_census_test.rs",
+    "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs",
+    "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
+    "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
+    "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
+    "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
+    "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
+    "src/v3/compiler/tests/integration/t_gate_58_apply_lens_self_application_test.rs",
+    "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
+    "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
+    "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
+    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
+    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
+    "src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs",
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs",
+    "src/v3/compiler/tests/integration/test_runner_test.rs",
+    "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
+    "src/v3/compiler/tests/integration/thesis_validation_test.rs",
+    "src/v3/compiler/tests/integration/timing_lens_substrate_carrier_test.rs",
+    "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
+    "src/v3/compiler/tests/integration/value_body_substrate_mirror_isomorphism_test.rs",
+    "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
+];
+
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
 // hand-authored and text-inlined into generated Rust (or otherwise
 // dissolve when the corresponding `.dag` authority lands). The
@@ -470,7 +589,7 @@ fn is_test_path(path: &str) -> bool {
 fn expected_hand_authored_rs() -> BTreeSet<String> {
     EXPECTED_HAND_AUTHORED_NON_TEST
         .iter()
-        .chain(expected_hand_authored_test().iter())
+        .chain(EXPECTED_HAND_AUTHORED_TEST.iter())
         .map(|p| (*p).to_string())
         .collect()
 }
@@ -614,7 +733,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
             "EXPECTED_HAND_AUTHORED_NON_TEST",
             EXPECTED_HAND_AUTHORED_NON_TEST,
         ),
-        ("EXPECTED_HAND_AUTHORED_TEST", expected_hand_authored_test()),
+        ("EXPECTED_HAND_AUTHORED_TEST", EXPECTED_HAND_AUTHORED_TEST),
     ] {
         let mut prev: Option<&str> = None;
         for p in list {
@@ -629,7 +748,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
         }
     }
     let non_test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_NON_TEST.iter().copied().collect();
-    let test: BTreeSet<&str> = expected_hand_authored_test().iter().copied().collect();
+    let test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
     let overlap: Vec<&&str> = non_test.intersection(&test).collect();
     assert!(
         overlap.is_empty(),
@@ -651,7 +770,7 @@ fn sg0_expected_rs_entries_match_test_partition() {
          EXPECTED_HAND_AUTHORED_TEST: {misplaced_non_test:?}"
     );
 
-    let misplaced_test: Vec<&str> = expected_hand_authored_test()
+    let misplaced_test: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .copied()
         .filter(|p| !is_test_path(p))
@@ -706,7 +825,7 @@ fn sg0_v3_test_hand_authored_subratchet() {
         .filter(|p| is_test_path(p))
         .cloned()
         .collect();
-    let expected: BTreeSet<String> = expected_hand_authored_test()
+    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_TEST
         .iter()
         .map(|p| (*p).to_string())
         .collect();
@@ -720,49 +839,15 @@ fn sg0_v3_test_hand_authored_subratchet() {
 }
 
 #[test]
-fn sg0_rust_test_generator_manifest_covers_every_test_rs() {
-    let ws = workspace_root();
-    let tests_root = ws.join("src/v3/compiler/tests");
-
-    let mut all_rs: BTreeSet<String> = BTreeSet::new();
-    walk_rs(&tests_root, &ws, &mut all_rs);
-
-    let manifest: BTreeSet<String> = RUST_TEST_GENERATOR_MANIFEST
-        .iter()
-        .map(|p| (*p).to_string())
-        .collect();
-
-    assert_eq!(
-        all_rs, manifest,
-        "gate #84 positive authority drift: every Rust test file must be present in \
-         RUST_TEST_GENERATOR_MANIFEST. Missing entries are orphaned tests; extra entries are stale \
-         generator-manifest rows."
-    );
-
-    let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
-    let misclassified_tests: Vec<&str> = RUST_TEST_GENERATOR_MANIFEST
-        .iter()
-        .copied()
-        .filter(|path| generated.contains(path))
-        .collect();
-    assert!(
-        misclassified_tests.is_empty(),
-        "Rust test generator-manifest rows must not be in GENERATED_FILES, which is reserved for \
-         codegen-produced compiler artifacts; misclassified: {misclassified_tests:?}"
-    );
-}
-
-#[test]
 fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
-    let expected_hand_authored_test = expected_hand_authored_test();
-    if expected_hand_authored_test.is_empty() {
+    if EXPECTED_HAND_AUTHORED_TEST.is_empty() {
         return;
     }
 
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
     let mut unclassified = Vec::new();
 
-    for path in expected_hand_authored_test {
+    for path in EXPECTED_HAND_AUTHORED_TEST {
         match tests_as_data_migration_class(path) {
             Some(class) => by_class.entry(class).or_default().push(*path),
             None => unclassified.push(*path),
