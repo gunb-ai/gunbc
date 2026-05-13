@@ -24,14 +24,16 @@ Band-C cementing is the broader discipline: any claim that v3 subsumes, matches,
 
 ## §1. Single-Authority Surfaces
 
-These artifacts must move together when a `regen.dag` cementing row changes:
+These artifacts must move together when a `regen.dag` cementing row changes or when a register row flips to `LensCapabilityBehavioralComplete` (same-PR checklist: [`r3-gate-87-lens-cementing-test-discipline-dispatch-2026-05-13.md`](r3-gate-87-lens-cementing-test-discipline-dispatch-2026-05-13.md) §G87-D2):
 
 1. `src/v3/compiler/regen.dag` — `LensRegistryEntry` row.
-2. `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` — runner inventory.
+2. `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` — `R3_GATE_87_CEMENTING_REGEN_SUITES` runner inventory.
 3. `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag` — per-lens receipt.
-4. `src/v3/compiler/tests/dag/cementing_dispatch.dag` — Band-C dispatch list.
+4. `src/v3/compiler/tests/dag/cementing_dispatch.dag` — Band-C dispatch list (`CementingDispatchMatchesProjection`).
+5. `src/v3/std/verification.dag` — `data lens_capability_register_rows` row (structural authority for dispatch predicates).
+6. `docs/v3-lens-capability-register.md` — prose capability table mirror.
 
-`src/v3/std/verification.dag` and `docs/v3-lens-capability-register.md` are the data/prose mirrors. If a worker needs to edit one surface without the matching surfaces, STOP and ping the Coordinator.
+When a temporary Rust pin remains required, `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` (and any `EXPECTED_HAND_AUTHORED_TEST` delta) moves in the **same** PR with an explicit dissolution note. If a worker needs to edit one surface without the matching surfaces, STOP and ping the Coordinator.
 
 Registry-corpus drift smoke:
 
