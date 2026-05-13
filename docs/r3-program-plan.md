@@ -220,7 +220,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 - **CI-discipline**: CI-enforced PR-authoring contract gate
 - **substrate-gap-class**: conjunctive closure-criterion over existing lane work (per §1.4)
 
-**Status legend** (per §1.7): DECLARED (doc-level only) / CONSUMER_LANDED (executable consumer for gate id — coverage may be partial for corpus gates; see §1.7) / PASSING (consumer + §Acceptance condition true).
+**Status legend** (per §1.7): DECLARED (doc-level only) / **CANVAS_RATIFIED** (Director/operator-ratified Mgr canvas — substrate/dispatch shape fixed; **not** `CONSUMER_LANDED` / not `PASSING`) / CONSUMER_LANDED (executable consumer for gate id — coverage may be partial for corpus gates; see §1.7) / PASSING (consumer + §Acceptance condition true).
 
 **§1.8 Status vs Notes (corpus gates):** For corpus-quantified §Acceptance predicates, the **Status** cell states **ledger closure progress only** (`CONSUMER_LANDED` → `PASSING`). **Slice receipts** (e.g. “N seeds Pass in CI”) live in **Notes** as implementation evidence — never substitute a slice receipt for **PASSING**, and do not mint a duplicate §1.8 row for the same gate id (P2).
 
