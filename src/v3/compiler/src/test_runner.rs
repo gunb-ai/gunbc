@@ -7881,11 +7881,14 @@ mod symbolic_cost_expr_equals_decoder_tests {
 /// `cost_of` via `apply_lens_declaration`.
 #[cfg(test)]
 mod gate_87_v2_counterpart_boundary_tests {
-    use super::*;
     use crate::compile_to_dag;
     use crate::lens_cost::{cost_of, CostLookup};
 
-    fn cost_for_bind(dag: &crate::dag::Dag, bind_name: &str, file: &str) -> (CostLookup, CostLookup) {
+    fn cost_for_bind(
+        dag: &crate::dag::Dag,
+        bind_name: &str,
+        file: &str,
+    ) -> (CostLookup, CostLookup) {
         let bind = super::find_bind(dag, bind_name, file)
             .unwrap_or_else(|| panic!("bind `{bind_name}` not found in `{file}`"));
         let v3 = super::lane_e_host_forward_cost_of(dag, &bind.value);
@@ -7908,7 +7911,9 @@ mod gate_87_v2_counterpart_boundary_tests {
         );
         match v3 {
             CostLookup::Hit(_) => {}
-            CostLookup::Miss => panic!("v3 host forward-fold returned Miss for straight_line_total"),
+            CostLookup::Miss => {
+                panic!("v3 host forward-fold returned Miss for straight_line_total")
+            }
         }
     }
 
@@ -7963,9 +7968,9 @@ mod gate_87_v2_counterpart_boundary_tests {
 /// -p v3-compiler r3_gate_87` even before the `.dag` runner table executes.
 #[cfg(test)]
 mod gate_87_symbolic_cost_boundary_tests {
-    use super::*;
     use crate::compile_to_dag;
-    use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+    use crate::dag::{Lookup, SymbolicCost};
+    use crate::lens_cost_symbolic::symbolic_cost_of;
 
     #[test]
     fn literal_int_pins_symbolic_cost_lineage() {
@@ -7975,13 +7980,11 @@ mod gate_87_symbolic_cost_boundary_tests {
         let bind = super::find_bind(&dag, "lit", file).expect("bind `lit`");
         let out = symbolic_cost_of(&dag, &bind.value);
         match out {
-            SymbolicCostLookup::Hit(cost) => match cost {
-                crate::lens_cost_symbolic::SymbolicCost::ConstantCost(_) => {}
-                other => panic!(
-                    "symbolic_cost_of on `let lit: Int = 7` must return a `ConstantCost` witness; got {other:?}"
-                ),
-            },
-            SymbolicCostLookup::Miss => {
+            Lookup::Hit(SymbolicCost::ConstantCost { _0: _ }) => {}
+            Lookup::Hit(other) => panic!(
+                "symbolic_cost_of on `let lit: Int = 7` must return a `ConstantCost` witness; got {other:?}"
+            ),
+            Lookup::Miss => {
                 panic!("symbolic_cost_of returned Miss on a literal-Int program (constant-cost regression)")
             }
         }
