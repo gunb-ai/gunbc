@@ -366,7 +366,7 @@ impl Diagnostic {
     }
 
     pub fn fixes(&self) -> &[Correction] {
-        std::slice::from_ref(self.correction())
+        self.live_corrections()
     }
 
     pub fn live_corrections(&self) -> &[Correction] {

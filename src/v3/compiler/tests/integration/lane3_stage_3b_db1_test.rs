@@ -27,10 +27,10 @@ fn assert_fixes_apply_and_recompile(
     require_clean_compile: bool,
 ) {
     assert!(
-        !diagnostic.fixes().is_empty(),
+        !diagnostic.live_corrections().is_empty(),
         "fixture should carry corrections"
     );
-    for fix in diagnostic.fixes() {
+    for fix in diagnostic.live_corrections() {
         let repaired = apply_correction_and_reparse(source, file, fix).unwrap_or_else(|error| {
             panic!("correction should apply and reparse for {file}: {fix:?}\nerror: {error:?}")
         });

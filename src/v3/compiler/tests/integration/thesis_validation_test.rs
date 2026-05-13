@@ -112,8 +112,8 @@ fn read(point: Point) -> Int = point.c
             )
         });
     assert!(
-        !diag.fixes().is_empty(),
-        "missing-field diagnostic should carry at least one correction"
+        !diag.correction().description().is_empty(),
+        "missing-field diagnostic should carry a named correction"
     );
     let rendered = rendered_rust_diagnostic(&dag, diag);
     assert!(
@@ -428,8 +428,8 @@ fn t1_5_missing_descent_is_rejected() {
             )
         });
     assert!(
-        !diag.fixes().is_empty(),
-        "termination diagnostic should carry at least one correction"
+        !diag.correction().description().is_empty(),
+        "termination diagnostic should carry a named correction"
     );
 }
 
@@ -473,8 +473,8 @@ fn bad(m: Maybe<Int>) -> Int = m
             )
         });
     assert!(
-        !diag.fixes().is_empty(),
-        "declared-signature diagnostic should carry at least one correction"
+        !diag.correction().description().is_empty(),
+        "declared-signature diagnostic should carry a named correction"
     );
 }
 
@@ -507,8 +507,8 @@ fn bad(m: Maybe<Int>) -> Int = unwrap(m)
             )
         });
     assert!(
-        !diag.fixes().is_empty(),
-        "unresolved callable diagnostic should carry at least one correction"
+        !diag.correction().description().is_empty(),
+        "unresolved callable diagnostic should carry a named correction"
     );
 }
 
