@@ -265,10 +265,7 @@ fn capability_table_normalized_axes_by_basename() -> BTreeMap<String, (String, S
         let structural = normalize_capability_table_markdown_token(&cells[2]);
         let behavioral = normalize_capability_table_markdown_token(&cells[3]);
         let v2_bucket = md_v2_bucket_for_register_axes_alignment(&cells[4]);
-        out.insert(
-            basename.to_string(),
-            (structural, behavioral, v2_bucket),
-        );
+        out.insert(basename.to_string(), (structural, behavioral, v2_bucket));
     }
     out
 }
@@ -361,10 +358,9 @@ fn every_regen_lens_register_axes_match_verification_single_authority() {
         "bootstrap Dag should load cleanly for register axes ratchet, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-    let verification = cementing_dispatch::lens_capability_register_normalized_axes_by_basename(
-        &dag,
-    )
-    .expect("read normalized register axes from lens_capability_register_rows");
+    let verification =
+        cementing_dispatch::lens_capability_register_normalized_axes_by_basename(&dag)
+            .expect("read normalized register axes from lens_capability_register_rows");
     let markdown = capability_table_normalized_axes_by_basename();
     for basename in regen.iter() {
         let Some(v) = verification.get(basename) else {
