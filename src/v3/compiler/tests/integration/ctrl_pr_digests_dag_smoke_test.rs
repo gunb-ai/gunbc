@@ -30,14 +30,19 @@ fn ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface() {
     });
 
     assert_eq!(
-        source.matches("PRACTICE 4 CHECKPOINT:").count(),
-        4,
-        "each N>=2 coproduct in pr_digests.dag must carry a Practice-4 checkpoint (docs/modeling-discipline.md §4)"
+        source.matches("// 🟡 STAGED — Practice 4").count(),
+        3,
+        "three staged coproducts must carry 🟡 STAGED Practice-4 markers (dsl/ctrl/README.md)"
+    );
+    assert_eq!(
+        source.matches("// 🟢 TERMINAL — Practice 4").count(),
+        1,
+        "RestFallbackReason must carry 🟢 TERMINAL Practice-4 marker (dsl/ctrl/README.md)"
     );
 
     for needle in [
         "module ctrl.pr_digests",
-        "import extdeps.github.pulls { PullRequest, PullReview }",
+        "import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }",
         "import std.errors { GitHubErrorShape }",
         "import std.types { Url }",
         "type MergeReadinessVerdict",
@@ -45,6 +50,8 @@ fn ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface() {
         "type AttachedUrlContainer",
         "type AttachedUrlTextContext",
         "type RestFallbackReason",
+        "ReviewCommentBody",
+        "review_line_comments: List<ReviewComment>",
         "service ctrl.PrDigests",
         "operation ExtractAttachedUrls",
         "operation RenderPrSummaryLine",
