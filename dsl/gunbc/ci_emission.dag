@@ -28,25 +28,23 @@ import extdeps.github.actions {
 
 type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
 
-// Slice 5: BinaryShim thin-shim `Workflow` (design-ci-workflow-emitter-dispatch.md §5.2).
+// Slice 5: BinaryShim thin-shim `Workflow` projection (design-ci-workflow-emitter-dispatch.md §5.2).
 //
-// The shim YAML is intentionally minimal — bootstrap (checkout) + a single `run:` that
-// invokes the compiled `gunbc-ci` runner, which at runtime reads `CIWorkflowDag` and
+// Single-authority discipline (brief Phase C): every workflow-level field
+// (`name`, `on`, `concurrency`, `env`, `permissions`) is forwarded from the
+// `CIWorkflowDag` source — same trigger / permissions / concurrency envelope
+// as the YamlStatic arm per emitter-dispatch §7 (1)–(2). The structural
+// deviation between the two targets is `jobs`: BinaryShim collapses the full
+// gate matrix into a single bootstrap job whose only `run:` invokes the
+// compiled `gunbc-ci` runner. The binary at runtime reads `CIWorkflowDag` and
 // dispatches the gate matrix (Slice 7 / PR #2713 affected-set lens territory).
 //
-// Single-authority discipline: every field here is structural projection from the
-// emitter-dispatch canvas §5.2 example (no second source of truth, no fabricated
-// policy beyond runner bootstrap). Binary `main()` and affected-set selection are
-// out of scope for this slice — the arm emits a `Workflow` value that *references*
-// the binary, not the binary itself.
-//
-// Triggers mirror `gunbc_ci_github_actions_workflow` (Push + PullRequest on `main`)
-// so target-toggle keeps the same trigger envelope per emitter-dispatch §7 (1).
-data gunbc_ci_emission_binary_shim_workflow: Workflow = Workflow {
-  name: "ci",
-  on: [Push { branches: ["main"], paths: [] },
-       PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened, ReadyForReview] }],
-  concurrency: none,
+// Binary `main()` and affected-set selection are out of scope — the arm
+// emits a `Workflow` that *references* the binary, not the binary itself.
+fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = Workflow {
+  name: dag.github_actions_workflow.name,
+  on: dag.github_actions_workflow.on,
+  concurrency: dag.github_actions_workflow.concurrency,
   jobs: [Job {
       id: "ci",
       name: none,
@@ -80,8 +78,8 @@ data gunbc_ci_emission_binary_shim_workflow: Workflow = Workflow {
       continue_on_error: false,
       concurrency: none
     }],
-  env: none,
-  permissions: none
+  env: dag.github_actions_workflow.env,
+  permissions: dag.github_actions_workflow.permissions
 }
 
 // PythonShim placeholder retained until that arm body lands (separate slice / brief).
@@ -91,7 +89,7 @@ data gunbc_ci_emission_python_shim_placeholder_workflow: Workflow = gunbc_ci_git
 fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
   match runtime {
     YamlStatic => dag.github_actions_workflow
-    BinaryShim => gunbc_ci_emission_binary_shim_workflow
+    BinaryShim => gunbc_ci_emission_binary_shim_workflow(dag)
     PythonShim => gunbc_ci_emission_python_shim_placeholder_workflow
   }
 
