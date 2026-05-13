@@ -143,13 +143,13 @@ The closure-ledger row currently stale @ #1191-#1231 era; close also requires th
 - #80 cost = **PASSING** ✓
 - #81 parallelism = **R3-LOAD-BEARING**, F-α sub-phase pending (Stage 2e walker port from `workflow_parallelism.rs` → `.dag`)
 - #82 effect_enum = **R3-LOAD-BEARING**, F-β.1 canvas + F-β.2 atomic-migration pending
-- #83 lens_capability_register_zero_proxy_zero_stub = **DECLARED** (proxies/stubs still exist for 3 of 4 lenses)
+- #83 lens_capability_register_zero_proxy_zero_stub = **PASSING** ✓ (register has **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` for all four in-scope lenses in `docs/v3-lens-capability-register.md` + `std.verification` `lens_capability_register_rows`; parallelism + effect_enum remain **PARTIAL** until gates #81/#82 land — that is not the #83 axis)
 
 **What's missing**:
 - Complexity: `ComplexitySummary` TestClaim literals (bridge-Rust to native-.dag migration)
 - Parallelism: Cluster F sub-phase F-α (Stage 2e walker port)
 - Effect: Cluster F sub-phase F-β.1 (canvas) + F-β.2 (atomic-migration impl)
-- Register: zero-proxy-zero-stub for all 4 lenses post-sub-phase landings
+- Register: **PARTIAL → COMPLETE** for parallelism + effect_enum post gates #81/#82 (distinct from #83, which is already green on the PROXY/STUB axis)
 
 **Plan to cash**:
 - **Owner**: warm-wolf-698 (Substrate Mgr) for canvases + worker dispatch
