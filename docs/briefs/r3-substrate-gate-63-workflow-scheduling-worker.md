@@ -1,138 +1,128 @@
 ---
-status: dispatchable (worker brief; ratified shape per canvas PR #2831 Director-ratified Q1=B 2026-05-13 via PM msg_dbc2e5e0 relaying msg_4b13e93f)
+status: dispatchable (worker brief; ratified Q1=A per Director msg_804cdc93 relayed via PM msg_1e52a61b 2026-05-13 — SUPERSEDES prior B-shape relay msg_dbc2e5e0)
 authority parent: R3 Substrate Manager (warm-wolf-698)
 authoring date: 2026-05-13
 gate: §1.8 ledger row #63 `substrate_gap_workflow_scheduling_closed`
-parent canvas: PR #2831 / `docs/briefs/r3-substrate-gate-63-workflow-scheduling-canvas.md` — Q1=B RATIFIED with PythonShim carve-out
-ratification anchor: PM msg_dbc2e5e0 relaying Director msg_4b13e93f
+parent canvas: PR #2831 / `docs/briefs/r3-substrate-gate-63-workflow-scheduling-canvas.md` — Q1=A RATIFIED (revised)
+ratification anchor: PM msg_1e52a61b relaying Director msg_804cdc93
 ---
 
-# Gate #63 — workflow_scheduling closure worker brief
+# Gate #63 — workflow_scheduling closure worker brief (Q1=A administrative)
 
 ## §0. Status — DISPATCH-READY (canvas-merge-gated)
 
-Director ratified Candidate B with PythonShim carve-out per PM msg_dbc2e5e0. Worker dispatch gates on **PR #2831 (canvas) merging**.
+Director ratified Candidate A (revised, supersedes prior B-disposition msg_dbc2e5e0). Worker dispatch gates on **PR #2831 (canvas) merging**.
 
-Key structural Director-ratified framing (verbatim per relay): "The 5 sibling failures ARE in-scope: they're substrate-compile failures in workflow-as-data ... directly load-bearing for 'modeled as .dag data' criterion. **Cannot be triaged out as 'separately-scoped'; the criterion requires structural-validity-of-the-substrate.**"
+Key structural framing (Director verbatim per msg_804cdc93):
 
-The snappy-bear-502 isolation-pass finding is structurally insufficient — passes-in-isolation does NOT establish substrate-validity-of-CIWorkflowDag. Closure requires the substrate compiles + the gate-criterion test passes in the broader `--include-ignored` run + `#[ignore]` is removed.
+> The sibling failures are NOT 'directly load-bearing for modeled as .dag data criterion' — they're load-bearing for rows #99 + #100 substrate-shape closure paths, which have their own §1.8 ledger entries + closure scopes. Gate #63 closing via Candidate A does NOT hide substrate-debt because rows #99 + #100 carry that debt explicitly with their own DECLARED → CONSUMER_LANDED arc.
 
-## §1. Ratified scope (Q1=B with PythonShim carve-out)
+Gate #63 closure is **administrative** (un-ignore the already-passing test + ledger flip). The 5 sibling failures from snappy-bear-502's `--include-ignored` run are owned by rows #99/#100, NOT gate #63.
 
-- Close YamlStatic + BinaryShim execution paths (both substrate landed)
-- **PythonShim out-of-scope** — Tier 1 closure covers 2 of 3 arms
-- Closure receipt: at least one **real (non-demo) CI workflow** executes through evaluator → `DimensionReport<TimingMeasurement>`
-- All 5 sibling substrate-compile failures resolved
-- `#[ignore]` removed at `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581`
-
-## §2. The 5 in-scope sibling failures
-
-Per snappy-bear-502 audit (msg_140d9bc7) + Director structural framing:
-
-1. `dsl/gunbc/ci_emission.dag` unresolved `CIWorkflowDag` / unknown type
-2. `gunbc_ci_emission_binary_shim_workflow` opaque body
-3. `dsl/gunbc/ci_github_actions_workflow.dag` opaque body + `concurrency` field type mismatch
-4. `ci_workflow_as_data_demo_pins_*` topology/command tests fail
-5. `gunbc_ci_emission_substrate_compiles` + `gunbc_ci_github_actions_workflow_authority_compiles` fail
-
-(Items 4-5 may be multiple sub-tests; worker audits + enumerates concretely.)
-
-**PythonShim placeholder opaque body** is OUT-OF-SCOPE per PythonShim carve-out — that one specific failure can stay if it's PythonShim-attributable. Worker must distinguish PythonShim failures (out-of-scope) from YamlStatic/BinaryShim failures (in-scope).
-
-## §3. Q3 `#[ignore]` history (Director-verified)
-
-Anchor commit: `73969f4a9` "test(ci): anchor ignored timing demo ignore to ROADMAP P5 deferral" (Brian Searls, 2026-05-12T22:23Z). `#[ignore]` was explicitly anchored to T-WAD substrate-landing arc; removal IS the planned closure receipt. Substrate is now landed; `#[ignore]` removal is the structural closure path.
-
-## §4. Phase A — Diagnose + fix the 5 in-scope failures
-
-1. Run `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test -- --include-ignored --nocapture` and capture full diagnostic output (BuildBuddy invocation cite in PR body)
-2. For each of the 5 failures (or 4 if PythonShim-only):
-   - Diagnose root cause (unresolved type / opaque body / type mismatch)
-   - Identify whether YamlStatic-side, BinaryShim-side, or PythonShim-side (the latter is out-of-scope)
-   - Fix at the substrate level — do NOT mask via `#[ignore]` or `#[cfg]` (anti-pattern §6.2)
-3. After each fix, re-run the failing test in isolation to confirm green before moving to next
-4. Final state: all in-scope failures pass; PythonShim-attributable failures may remain (document explicitly in PR body)
-
-## §5. Phase B — Real CI workflow evaluator receipt
-
-The criterion text "CI workflow modeled as .dag data executes through evaluator" requires evidence beyond the existing demo. Per Director Q1=B:
-- At least ONE real (non-demo) CI workflow `.dag` value must execute through evaluator producing `DimensionReport<TimingMeasurement>`
-- The repo's own `.github/workflows/ci.yml`-equivalent `CIWorkflowDag` is the natural candidate (`dsl/gunbc/ci.dag:191-200` canonical `ci_workflow_dag`)
-- New hermetic test asserts: real CIWorkflowDag → evaluator → DimensionReport<TimingMeasurement> produces non-empty report
-
-## §6. Phase C — `#[ignore]` removal + ratchet
+## §1. Ratified scope (Q1=A administrative)
 
 1. Remove `#[ignore]` at `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581`
-2. Verify the gate-criterion test (`ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`) passes under normal `cargo test --workspace` invocation (not just `--ignored`)
-3. Add the new Phase-B real-workflow evaluator test alongside (mirrors existing structure)
+2. §1.8 row #63 status flip DECLARED → **CONSUMER_LANDED + PASSING** (Director specifies BOTH; `#[ignore]`-removal IS the closure receipt per Q3 planned-deferral anchor commit `73969f4a9`)
+3. Audit doc enumerating 5 sibling failures as **"scoped under rows #99 + #100"** — separate Mgr-tier follow-on, NOT R3-close-blocking for #63
 
-## §7. Phase D — §1.8 row #63 ledger update
+## §2. The 5 sibling failures — ledger-mapping (Director-verified)
 
-After Phases A+B+C land + tests green:
-- Update `docs/r3-program-plan.md` §1.8 row #63 from DECLARED (or CANVAS_RATIFIED if PM ledger-maintenance landed first) → **CONSUMER_LANDED**
-- Cite this PR + canvas PR #2831 + Director msg_4b13e93f in the row
-- Document PythonShim carve-out explicitly: "2 of 3 WorkflowRuntime arms (YamlStatic + BinaryShim) close gate #63 Tier 1; PythonShim arm R4-deferred"
+| BuildBuddy failure (msg_140d9bc7) | Owning §1.8 row |
+|---|---|
+| `dsl/gunbc/ci_emission.dag` unresolved `CIWorkflowDag` | #100 `project_github_actions_landed` |
+| `gunbc_ci_emission_binary_shim_workflow` opaque body | #99 `workflow_runtime_open_enum_landed` (BinaryShim arm) |
+| PythonShim placeholder opaque body | #99 (PythonShim arm) |
+| `dsl/gunbc/ci_github_actions_workflow.dag` opaque body + `concurrency` type mismatch | #100 |
+| `gunbc_ci_emission_substrate_compiles` + `..._authority_compiles` | #99 + #100 substrate-shape close path |
 
-## §8. Phase E — Cross-Mgr informational notice (Mgr-owned, NOT worker)
+These are **not gate #63 scope**. Audit doc records the mapping for downstream rows #99/#100 brief authoring.
 
-Already authored by Mgr (warm-wolf-698) per Q4 ratification. Worker not responsible for this phase; it's recorded here for completeness.
+## §3. Phase A — `#[ignore]` removal
 
-## §9. STOP conditions
+Remove `#[ignore]` directive at `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581`. The test below it (`ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`) passes in isolation per BuildBuddy `9f22cbce-66ff-...`; un-ignored, it now runs under default `cargo test --workspace` invocation as well.
 
-1. **Substrate-compile fix surfaces substrate-shape question** (e.g., `CIWorkflowDag` carrier shape is wrong; `concurrency` field type needs structural redesign) — **STOP** and surface to Mgr. Substrate-shape questions go through canvas-tier ratification, not direct-author fix.
-2. **PythonShim failure cannot be cleanly distinguished from YamlStatic/BinaryShim failure** — if a failure has cross-arm dependencies that break the carve-out, **STOP** — surface to Mgr for scope re-ratification.
-3. **Director-anchored `#[ignore]` commit at `73969f4a9` has been amended/replaced since 2026-05-12T22:23Z** — git log audit at HEAD before authoring; if commit history has changed, **STOP** and surface.
-4. **`feedback_load_bearing_ratchet_preservation` violation tempted** — if Phase A authoring tempts adding `#[ignore]` to mask any other failure, **STOP** — anti-pattern §6.2 (silent-mask preservation) fires.
-5. **No real CI workflow available for Phase B** — if `dsl/gunbc/ci.dag:191-200` canonical `ci_workflow_dag` is not evaluator-ready, **STOP** — substrate-shape question.
-6. **Parallel-authority risk** — if T-Lens-Self-Application Mgr (swift-deer-459) is in-flight on a competing DimensionReport producer route that touches the same evaluator surface, **STOP** and coordinate before authoring.
+Verification: `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` (no `--ignored` flag needed) passes.
 
-## §10. Anti-patterns (4 Director-ratified per canvas §8)
+**STOP if test does NOT pass without `--ignored`** — that would indicate the isolation-pass status has regressed since snappy-bear-502 audit; surface to Mgr.
+
+## §4. Phase B — Sibling-debt audit document
+
+Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` (or similar audit-doc path) with:
+
+- The 5 sibling failures enumerated with concrete file:line + BuildBuddy invocation `2e1d435a-a6fe-...` cite
+- Mapping table per §2 above (failure → owning §1.8 row)
+- Director's structural disambiguation quote (msg_804cdc93 verbatim)
+- Explicit framing: "these failures are NOT gate #63 closure blockers; they will close as rows #99 + #100 progress through their own DECLARED → CONSUMER_LANDED arcs"
+- Note: out-of-scope for this PR; reference for downstream rows #99/#100 brief authoring (Mgr-tier follow-on)
+
+This doc is **substrate-progress audit-trail**, not substrate authoring. Cost-of-change: 1 new file, no existing-file edits beyond the `#[ignore]` removal in Phase A.
+
+## §5. Phase C — §1.8 row #63 ledger update
+
+Update `docs/r3-program-plan.md` §1.8 row #63 from DECLARED (or CANVAS_RATIFIED if PM ledger-maintenance landed first) → **CONSUMER_LANDED + PASSING**:
+
+- Cite this PR + canvas PR #2831 + Director msg_804cdc93 (the revised ratification, NOT msg_4b13e93f which it supersedes)
+- Cite anchor commit `73969f4a9` for `#[ignore]`-planned-deferral receipt
+- Cite Phase B audit doc for sibling-debt mapping
+- Reference rows #99 + #100 as the rows that carry the sibling-debt explicitly
+
+## §6. STOP conditions
+
+1. **Gate-criterion test FAILS without `--ignored`** at HEAD — isolation-pass regressed since snappy-bear-502 audit (msg_cef1340b 2026-05-13T04:21Z); surface to Mgr immediately
+2. **Director-anchored `#[ignore]` commit at `73969f4a9` has been amended/replaced** — git log audit at HEAD before authoring; if commit history changed, surface and re-verify
+3. **`feedback_load_bearing_ratchet_preservation` violation tempted** — if Phase A authoring tempts adding `#[ignore]` to mask any other failure, **STOP** — anti-pattern §7.2 fires
+4. **Scope-creep tempted** — if Phase A diagnosis tempts fixing any of the 5 sibling failures, **STOP** — anti-pattern §7.5 fires (those are rows #99/#100 scope, NOT gate #63)
+5. **Row #99 or #100 progress has changed status since 2026-05-13** in `docs/r3-program-plan.md` §1.8 — re-verify mapping table; surface to Mgr if rows are no longer DECLARED
+
+## §7. Anti-patterns (4 Director-ratified + 1 new Mgr-derived ratified)
 
 PR body MUST cite verbatim + assert receipt-of-compliance:
 
-1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline; un-ignore IS the closure receipt
-2. **Silent-mask preservation** — NO new `#[ignore]` added to mask Phase-A failures (§P5 atomic-migration violation)
-3. **Parallel-authority on CIWorkflowDag execution path** — if T-Lens-Self-Application has a competing DimensionReport producer shape, surface (do not duplicate)
-4. **Demo-bound closure pretending to be production** — Phase B real-workflow receipt prevents this; PR body explicitly cites "non-demo" evidence
+1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline; un-ignore IS the closure receipt (Phase A satisfies)
+2. **Silent-mask preservation** — NO new `#[ignore]` added (atomic-migration; Phase A only removes)
+3. **Parallel-authority on CIWorkflowDag execution path** — N/A under Q1=A (no substrate authoring)
+4. **Demo-bound closure pretending to be production** — the criterion text "modeled as .dag data executes through evaluator" is satisfied by the existing demo + the gate-criterion test passing receipt; no claim of "production grade" being made
+5. **NEW — scope-broadening a gate closure to absorb sibling-test substrate-debt with own ledger rows** (Director-ratified per msg_804cdc93 + msg_1e52a61b) — Phase A explicitly does NOT fix any of the 5 sibling failures; they're owned by rows #99/#100
 
-## §11. Verification
+## §8. Verification
 
-- `cargo test --workspace` green (NOT just `cargo test -p v3-compiler --test integration`)
-- `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test -- --include-ignored --nocapture` shows ≥ 7 passed (was 3 passed, 5 failed; minus PythonShim-attributable remainder)
-- Gate-criterion test runs WITHOUT `--ignored` flag (Phase C un-ignore)
-- New Phase-B test asserts real CIWorkflowDag → DimensionReport receipt
+- `cargo test --workspace` green (must include the un-ignored gate-criterion test under default invocation)
+- `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` green WITHOUT `--ignored` flag (Phase A check)
+- Phase B audit doc lands at expected path
+- §1.8 row #63 status updated to CONSUMER_LANDED + PASSING with all required cites
 - PR body cites:
-  - Gate #63 closure (Phase D ledger update)
-  - Canvas PR #2831 + Director disposition (PM msg_dbc2e5e0) verbatim Q1=B + PythonShim carve-out
-  - 4 anti-patterns receipt-of-compliance (§10)
-  - 5 in-scope failure resolutions (or 4 if PythonShim-only) — concrete file:line citations
-  - `#[ignore]` removal at `t_ci_workflow_as_data_demo_test.rs:581`
-  - Director-anchored history commit `73969f4a9` cite
+  - Gate #63 closure (Phase C ledger update)
+  - Canvas PR #2831 + Director disposition (PM msg_1e52a61b relaying msg_804cdc93) — the REVISED ratification; explicitly note supersession of prior msg_dbc2e5e0
+  - 5 anti-patterns receipt-of-compliance (§7)
+  - Phase B audit doc path
+  - `#[ignore]`-anchor commit `73969f4a9` cite
+  - 5-row sibling-debt mapping table (§2)
 
-## §12. Out of scope
+## §9. Out of scope
 
-- **PythonShim arm closure** — R4-deferred per Director carve-out
-- **T-Lens-Self-Application substrate work** — OR-semantics; not a prereq, but if competing-shape-risk surfaces, coordinate
-- **Cost-lens or other lens consumers of DimensionReport** beyond TimingMeasurement — separate scope
-- **Doc-drift sweep on `docs/r3-program-plan.md` §1.7 vs §1.8 row alignment** — separate (Wave-2 doc-drift batch tracked)
-- **CI workflow Python integration** — out-of-scope; PythonShim arm carve-out
+- **Fixing any of the 5 sibling failures** — owned by rows #99 + #100; explicitly NOT this PR
+- **PythonShim arm closure** — owned by row #99 (PythonShim sub-arm); not gate #63
+- **Real CI workflow evaluator receipt beyond demo** — the prior Q1=B framing required this; under Q1=A the demo passing receipt is sufficient
+- **T-Lens-Self-Application coordination** — Q4 informational-only; cross-Mgr notice already sent by Mgr (msg_a35ec43c to swift-deer-459)
+- **Doc-drift sweep on §1.7 vs §1.8** — separate Wave-2 batch
 
-## §13. Reference
+## §10. Reference
 
 - Canvas: PR #2831 / `docs/briefs/r3-substrate-gate-63-workflow-scheduling-canvas.md`
-- Director ratification: PM msg_dbc2e5e0 (relaying Director msg_4b13e93f)
-- snappy-bear-502 audit: msg_140d9bc7 + correction msg_cef1340b
-- BuildBuddy invocations: `2e1d435a-a6fe-...` (5 failures), `9f22cbce-66ff-...` (isolation pass)
+- Director ratification (REVISED, supersedes prior): PM msg_1e52a61b (relaying Director msg_804cdc93)
+- Prior superseded ratification: PM msg_dbc2e5e0 (relaying Director msg_4b13e93f) — note explicit supersession in PR body
+- snappy-bear-502 audit anchor: msg_140d9bc7 + correction msg_cef1340b
+- BuildBuddy invocations: `2e1d435a-a6fe-...` (5 sibling failures), `9f22cbce-66ff-...` (isolation pass)
 - `#[ignore]`-anchor commit: `73969f4a9` (2026-05-12T22:23Z)
 - Gate #63 row: `docs/r3-program-plan.md:291`
-- Class 4 framing: `docs/r3-program-plan.md:77` + §4.4
-- CIWorkflowDag canonical: `dsl/gunbc/ci.dag:191-200`
-- WorkflowRuntime arms: `dsl/gunbc/ci_emission.dag:27`
-- Demo entrypoint: `src/v3/std/t_ci_workflow_as_data_demo.dag:206-210`
+- Sibling-debt ledger rows: #99 `workflow_runtime_open_enum_landed`, #100 `project_github_actions_landed`, #53 `workflow_substrate_carriers_landed` (partial)
 - Gate-criterion test: `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs:581-582`
+- `feedback_canvas_recommendations_are_preliminary` (Director-cited as Mgr discipline lesson)
+- `feedback_grep_substrate_before_naming_ratification` (Director-cited as own discipline lesson)
 
 ---
 
 **Authored by**: warm-wolf-698 (R3 Substrate Mgr)
 **Date**: 2026-05-13
 **Dispatch gate**: PR #2831 (canvas) merged.
+**Note**: prior B-shape worker brief at commit `cf163e240d` (this same file) is **SUPERSEDED** by Director's revised Q1=A disposition; this rewrite captures the administrative-closure shape.
