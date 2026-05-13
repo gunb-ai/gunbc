@@ -23,8 +23,12 @@
 //! prerequisite edges, parallel fan-out) **before** the timing-lens `evaluate_body` shell runs on the
 //! full bootstrap (PB-1 still lowers `demo_ci_modeled_timing_dimension_report` only there — see
 //! `t_ci_workflow_as_data_demo.dag` note on wiring `modeled_gunbc_ci_workflow` through `evaluate_body`),
-//! then cost / complexity / parallelism + `gunbc_ci::select_affected_gates` on that same lowered CI dag.
-//! Symbolic-cost and E7 complexity must both return `DimensionOk` (fail-closed).
+//! then **split `#[test]` receipts** (TESTING.md §4 one-claim-per-test): structural carrier pins,
+//! `gunbc_ci::select_affected_gates`, paired symbolic-cost + E7 complexity on the lowered lane-2 subject,
+//! prerequisite **graph** fan-out read from the same structural carrier (no hand-staged `WorkflowEffect`),
+//! absence of a lowered lane-2 workflow projection until the compiler owns it (P2), and the bootstrap
+//! timing `evaluate_body` shell (PB-1 embed only — see `t_ci_workflow_as_data_demo.dag`).
+//! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
@@ -38,12 +42,11 @@
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, CompositionVerdict, DeclarationId, EffectShape, FieldValue,
-    IdempotentShape, LiteralBits, NonSingletonList, OperationEffect, TypeConnective, ValueNode,
-    WorkflowEffect, WorkflowParallelismReport,
+    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, NodeId, TypeConnective, ValueNode,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
@@ -345,11 +348,39 @@ fn ci_workflow_dag_input_from_compiled_ci(dag: &v3_compiler::dag::Dag) -> CiWork
     CiWorkflowDagInput { gates, edges }
 }
 
-/// Stages a read-only [`WorkflowEffect::ParallelEffect`] from [`CiWorkflowDagInput::edges`] alone
-/// (prerequisite graph carried by `data ci_workflow_dag` in `dsl/gunbc/ci.dag`). Gunbc CI today has
-/// exactly one two-way fan-out: `compile-gates` → `lint` and `tests`. Operation names are the
-/// downstream gate ids so the receipt cannot drift from the structural carrier.
-fn parallel_read_effect_from_ci_prerequisite_fanout(input: &CiWorkflowDagInput) -> WorkflowEffect {
+struct Gate57CiArtifacts {
+    dag: v3_compiler::dag::Dag,
+    input: CiWorkflowDagInput,
+    subject: NodeId,
+}
+
+fn gate57_ci_artifacts() -> &'static Gate57CiArtifacts {
+    static CACHE: OnceLock<Gate57CiArtifacts> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+        assert!(
+            dag.diagnostics().is_empty(),
+            "{GUNBC_CI_FILE}: {:?}",
+            dag.diagnostics()
+        );
+        let input = ci_workflow_dag_input_from_compiled_ci(&dag);
+        let subject = dag.workflow_lane2_subject().expect(
+            "compiled gunbc.ci must expose a workflow lane-2 subject bind for lens consumers",
+        );
+        Gate57CiArtifacts { dag, input, subject }
+    })
+}
+
+fn gate57_bootstrap_dag() -> &'static v3_compiler::dag::Dag {
+    static BOOT: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
+    BOOT.get_or_init(demo_bootstrap_dag)
+}
+
+/// Single structural claim: `ci_workflow_dag` prerequisite edges expose exactly one 2-successor
+/// fan-out, and it matches gunbc-ci’s `compile-gates` → `lint` + `tests` fork (no `WorkflowEffect`
+/// staging — read-only mirror of the lowered `data ci_workflow_dag` carrier).
+fn assert_ci_prereq_graph_has_single_parallel_fanout(input: &CiWorkflowDagInput) {
     let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
     for (from, to) in &input.edges {
         outgoing.entry(from.clone()).or_default().push(to.clone());
@@ -370,36 +401,10 @@ fn parallel_read_effect_from_ci_prerequisite_fanout(input: &CiWorkflowDagInput) 
     }
 
     let (parent, kids) = parallel_parent.expect(
-        "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out for lane-2 parallelism staging",
+        "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out (parallel pair encoding)",
     );
-    assert_eq!(
-        parent.as_str(),
-        "compile-gates",
-        "parallelism receipt: fan-out parent must remain `compile-gates`",
-    );
-    assert_eq!(
-        kids,
-        vec!["lint".to_string(), "tests".to_string()],
-        "parallelism receipt: `compile-gates` must fan out only to `lint` + `tests` per gunbc-ci authority",
-    );
-
-    WorkflowEffect::ParallelEffect {
-        branches: NonSingletonList::from_vec(vec![
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![OperationEffect {
-                    operation_name: kids[0].clone(),
-                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-                }],
-            }),
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![OperationEffect {
-                    operation_name: kids[1].clone(),
-                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-                }],
-            }),
-        ])
-        .expect("two parallel branches"),
-    }
+    assert_eq!(parent.as_str(), "compile-gates");
+    assert_eq!(kids, vec!["lint".to_string(), "tests".to_string()]);
 }
 
 fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
