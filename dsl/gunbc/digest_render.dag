@@ -32,14 +32,16 @@ type PullRequestDigestSubject {
 }
 
 type DigestReadinessProjection
-  = DigestReady
+  = DigestOpenForReview
   | DigestNotReady { first_reason: String, more_reasons: List<String> }
 
 // Practice-4 receipt: `DigestReadinessProjection` is a closed gunbc render
-// classification over existing GitHub PR/review facts. It is terminal for the
+// classification over current `PullRequest` facts. Review states remain raw
+// rendered history below because `PullReview` is a flat review-event carrier,
+// not an authoritative current-review-decision model. It is terminal for the
 // narrowed catalog #8 digest-render surface; a future CI/conflict/mergeability
-// source-fact landing extends this module or a sibling projection, not
-// `PullRequest`.
+// or current-review-decision source-fact landing extends this module or a
+// sibling projection, not `PullRequest`.
 
 type PullRequestDigestView {
   subject: PullRequestDigestSubject
@@ -63,29 +65,17 @@ fn review_state_labels(reviews: List<PullReview>) -> List<String> {
   map(reviews, r => r.state)
 }
 
-fn has_approval(reviews: List<PullReview>) -> Bool {
-  any(reviews, r => r.state == "APPROVED")
-}
-
-fn has_request_changes(reviews: List<PullReview>) -> Bool {
-  any(reviews, r => r.state == "CHANGES_REQUESTED")
-}
-
-fn readiness_projection(pr: PullRequest, reviews: List<PullReview>) -> DigestReadinessProjection {
+fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
   if pr.draft {
     DigestNotReady { first_reason: "draft", more_reasons: [] }
-  } else if pr.state != "open" {
-    DigestNotReady { first_reason: "not open", more_reasons: [] }
   } else {
     match pr.merged_at {
       Some { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
       None =>
-        if has_request_changes(reviews: reviews) {
-          DigestNotReady { first_reason: "changes requested", more_reasons: [] }
-        } else if has_approval(reviews: reviews) == false {
-          DigestNotReady { first_reason: "missing approval", more_reasons: [] }
+        if pr.state != "open" {
+          DigestNotReady { first_reason: "not open", more_reasons: [] }
         } else {
-          DigestReady
+          DigestOpenForReview
         }
     }
   }
@@ -94,7 +84,7 @@ fn readiness_projection(pr: PullRequest, reviews: List<PullReview>) -> DigestRea
 fn project_pull_request_digest(pr: PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
   PullRequestDigestView {
     subject: digest_subject(pr: pr),
-    readiness: readiness_projection(pr: pr, reviews: reviews),
+    readiness: readiness_projection(pr: pr),
     review_states: review_state_labels(reviews: reviews)
   }
 }
@@ -103,7 +93,7 @@ fn project_pull_request_digest(pr: PullRequest, reviews: List<PullReview>) -> Pu
 
 fn render_readiness(readiness: DigestReadinessProjection) -> String {
   match readiness {
-    DigestReady => "ready"
+    DigestOpenForReview => "open for review"
     DigestNotReady { first_reason, more_reasons } =>
       if count(more_reasons) > 0 {
         let rest = join(more_reasons, ", ")
