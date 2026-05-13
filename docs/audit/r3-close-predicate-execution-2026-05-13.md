@@ -27,7 +27,7 @@ Gate rows are the markdown table body in `docs/r3-program-plan.md` immediately u
 grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 ```
 
-At authoring time of this skeleton (worktree HEAD), that count was **105**. Future §1.8 additions (e.g. post–Gap-9 row **#106**) must add matching rows here in the same PR that extends the ledger, or immediately follow so this doc stays the mechanical index §8 expects.
+At maintenance time of this revision (worktree HEAD), that count was **106**. Future §1.8 additions beyond **#106** must add matching rows here in the same PR that extends the ledger, or immediately follow so this doc stays the mechanical index §8 expects.
 
 ## §1.8 gate enumeration — predicate execution (one row per gate)
 
@@ -138,6 +138,7 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 | 103 | `ci_uses_affected_set_selection` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #103. | — |
 | 104 | `lens_read_witness_shape_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #104. | — |
 | 105 | `symbolic_cost_textbook_coverage_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #105. | — |
+| 106 | `show_correct_code_diagnostic_coverage` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #106 + `docs/r3-actual-close-plan.md` Gap 9. | — |
 
 ## §1 second Pass surface (standing predicate, not a numbered §1.8 lane gate)
 
