@@ -82,9 +82,10 @@ fn r3_gate_62_substrate_gap_file_ingestion_claim_passes() {
     };
 
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
-    let result = results.iter().find(|r| r.claim_name == CLAIM_NAME).unwrap_or_else(|| {
-        panic!("missing `{CLAIM_NAME}` in `{SUITE_NAME}` results: {results:?}")
-    });
+    let result = results
+        .iter()
+        .find(|r| r.claim_name == CLAIM_NAME)
+        .unwrap_or_else(|| panic!("missing `{CLAIM_NAME}` in `{SUITE_NAME}` results: {results:?}"));
     assert!(
         matches!(result.result, ClaimResult::Pass),
         "`{CLAIM_NAME}` should Pass (Compiles over read_utf8_file program), got {:?}",

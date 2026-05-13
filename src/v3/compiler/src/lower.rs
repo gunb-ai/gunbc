@@ -5898,12 +5898,7 @@ const READ_UTF8_FILE_TARGET: &str = "read_utf8_file";
 /// (`SourceSpan.file`'s parent). Fail-closed on absolute paths, `..` segments, path
 /// escape (canonical-prefix check), and I/O errors. R3 §1.8 gate #62 receipt surface.
 fn read_utf8_file_expansion_literal(expr: &SurfaceExpr) -> Option<Result<LiteralBits, Diagnostic>> {
-    let SurfaceExpr::Call {
-        target,
-        args,
-        span,
-    } = expr
-    else {
+    let SurfaceExpr::Call { target, args, span } = expr else {
         return None;
     };
     if target != READ_UTF8_FILE_TARGET {
@@ -5911,8 +5906,9 @@ fn read_utf8_file_expansion_literal(expr: &SurfaceExpr) -> Option<Result<Literal
     }
     if args.len() != 1 {
         return Some(Err(Diagnostic::ResolveError {
-            name: "`read_utf8_file` expects exactly one string literal argument (relative UTF-8 path)"
-                .to_string(),
+            name:
+                "`read_utf8_file` expects exactly one string literal argument (relative UTF-8 path)"
+                    .to_string(),
             span: span.clone(),
             fixes: Vec::new(),
         }));
@@ -5928,7 +5924,11 @@ fn read_utf8_file_expansion_literal(expr: &SurfaceExpr) -> Option<Result<Literal
             fixes: Vec::new(),
         }));
     };
-    Some(read_utf8_file_at_module_relative(span.file.as_str(), rel_path, span))
+    Some(read_utf8_file_at_module_relative(
+        span.file.as_str(),
+        rel_path,
+        span,
+    ))
 }
 
 fn read_utf8_file_at_module_relative(
@@ -5939,7 +5939,8 @@ fn read_utf8_file_at_module_relative(
     let rel = std::path::Path::new(rel_path);
     if rel.is_absolute() {
         return Err(Diagnostic::ResolveError {
-            name: "`read_utf8_file` path must be relative (absolute paths are rejected)".to_string(),
+            name: "`read_utf8_file` path must be relative (absolute paths are rejected)"
+                .to_string(),
             span: call_span.clone(),
             fixes: Vec::new(),
         });
@@ -5954,10 +5955,7 @@ fn read_utf8_file_at_module_relative(
         }
     }
     let module_path = std::path::Path::new(module_file);
-    let Some(parent) = module_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-    else {
+    let Some(parent) = module_path.parent().filter(|p| !p.as_os_str().is_empty()) else {
         return Err(Diagnostic::ResolveError {
             name: format!(
                 "`read_utf8_file` requires `file` in `compile_to_dag(source, file)` to name a path \
@@ -5968,11 +5966,15 @@ fn read_utf8_file_at_module_relative(
         });
     };
     let joined = parent.join(rel);
-    let joined = joined.canonicalize().map_err(|err| Diagnostic::ResolveError {
-        name: format!("`read_utf8_file`: could not resolve `{rel_path}` from `{module_file}`: {err}"),
-        span: call_span.clone(),
-        fixes: Vec::new(),
-    })?;
+    let joined = joined
+        .canonicalize()
+        .map_err(|err| Diagnostic::ResolveError {
+            name: format!(
+                "`read_utf8_file`: could not resolve `{rel_path}` from `{module_file}`: {err}"
+            ),
+            span: call_span.clone(),
+            fixes: Vec::new(),
+        })?;
     let base_canon = parent.canonicalize().map_err(|err| Diagnostic::ResolveError {
         name: format!(
             "`read_utf8_file`: could not canonicalize compilation unit directory for `{module_file}`: {err}"
@@ -5993,10 +5995,13 @@ fn read_utf8_file_at_module_relative(
     std::fs::read_to_string(&joined)
         .map(LiteralBits::String)
         .map_err(|err| Diagnostic::ResolveError {
-        name: format!("`read_utf8_file`: failed to read `{}`: {err}", joined.display()),
-        span: call_span.clone(),
-        fixes: Vec::new(),
-    })
+            name: format!(
+                "`read_utf8_file`: failed to read `{}`: {err}",
+                joined.display()
+            ),
+            span: call_span.clone(),
+            fixes: Vec::new(),
+        })
 }
 
 fn lower_scalar_literal_for_type(
@@ -8646,7 +8651,8 @@ fn lower_expr(
                     return match result {
                         Ok(literal_bits) => {
                             if let Some(exp) = expected_decl {
-                                let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+                                let string_decl_id =
+                                    dag.declaration_by_name("String").map(|d| d.id);
                                 let type_ok = string_decl_id
                                     .map(|id| walks_to(dag, exp, id))
                                     .unwrap_or(false)
@@ -8666,7 +8672,11 @@ fn lower_expr(
                                     );
                                     return port;
                                 }
-                                if scalar_literal_must_reject_for_refinement(dag, &literal_bits, exp) {
+                                if scalar_literal_must_reject_for_refinement(
+                                    dag,
+                                    &literal_bits,
+                                    exp,
+                                ) {
                                     let port = dag.alloc_port(None);
                                     dag.mark_unresolved(
                                         port,
