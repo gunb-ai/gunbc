@@ -336,9 +336,10 @@ mod t_demo_fixture_test {
         }
     }
 
-    /// ROADMAP T-Demo / PR #764: `FailsWithDiagnostic.detail_contains` must pin the **sum
-    /// constructor** failure (`AppendEffect()` is not an `IdempotentShape` case), not a generic
-    /// `compose_effects` argument refinement message that omits `AppendEffect`.
+    /// ROADMAP T-Demo / PR #764: this must pin the **sum-constructor** mismatch
+    /// (`AppendEffect()` is not an `IdempotentShape` case) by requiring diagnostics for both
+    /// endpoints, not a generic `compose_effects` argument refinement message that omits either
+    /// `AppendEffect` or `IsIdempotent`.
     #[test]
     fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
         let src = "let bad_shape = IsIdempotent(AppendEffect())\n";
@@ -348,10 +349,12 @@ mod t_demo_fixture_test {
             panic!("expected Semantic(Dag) handoff, got {err:?}");
         };
         let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
-        let needle = "AppendEffect";
+        let append_needle = "AppendEffect";
+        let idempotent_needle = "IsIdempotent";
         assert!(
-            msgs.iter().any(|m| m.contains(needle)),
-            "expected nullary-call lowering to reject AppendEffect as IdempotentShape payload; got: {msgs:?}"
+            msgs.iter().any(|m| m.contains(append_needle))
+                && msgs.iter().any(|m| m.contains(idempotent_needle)),
+            "expected nullary-call lowering to reject AppendEffect as IsIdempotent payload; got: {msgs:?}"
         );
     }
 
