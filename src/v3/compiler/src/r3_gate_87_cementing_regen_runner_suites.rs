@@ -8,6 +8,52 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// Temporary `Compiles` placeholders in the gate-#87 `.dag` cementing suite.
+///
+/// Each row is an explicit dissolution ledger entry: the `.dag` harness must name why
+/// behavior is not authorable yet, and the paired Rust receipt must exist until the
+/// placeholder is replaced by a behavioral `LensOutputEquals`/`DifferentialEquals` claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gate87CompilesPlaceholder {
+    pub claim_name: &'static str,
+    pub harness_path: &'static str,
+    pub rust_receipt_test: &'static str,
+}
+
+pub const GATE_87_COMPILES_PLACEHOLDER_LEDGER: &[Gate87CompilesPlaceholder] = &[
+    Gate87CompilesPlaceholder {
+        claim_name: "cementing_regen_infer_helpers",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
+        rust_receipt_test:
+            "r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles",
+    },
+    Gate87CompilesPlaceholder {
+        claim_name: "cementing_regen_lower_helpers",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
+        rust_receipt_test:
+            "r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles",
+    },
+    Gate87CompilesPlaceholder {
+        claim_name: "cementing_regen_parallelism",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag",
+        rust_receipt_test:
+            "r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_parallelism_lens_source_compiles",
+    },
+    Gate87CompilesPlaceholder {
+        claim_name: "cementing_regen_variant_payload",
+        harness_path: "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
+        rust_receipt_test:
+            "r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_variant_payload_lens_source_compiles",
+    },
+];
+
+pub fn r3_gate_87_compiles_placeholder_claim_names() -> BTreeSet<String> {
+    GATE_87_COMPILES_PLACEHOLDER_LEDGER
+        .iter()
+        .map(|row| row.claim_name.to_string())
+        .collect()
+}
+
 /// `LensRegistryEntry.name` values implied by [`R3_GATE_87_CEMENTING_REGEN_SUITES`] harness `file`
 /// paths (`t_r3_gate_87_cementing_regen_<name>.dag`). **Single authority** for the gate-#87
 /// inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test` compares live `regen.dag`
@@ -100,6 +146,12 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
         "r3_gate_87_cementing_regen_lower_helpers_suite",
         &["cementing_regen_lower_helpers"],
+    ),
+    (
+        include_str!("../tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag",
+        "r3_gate_87_cementing_regen_parallelism_suite",
+        &["cementing_regen_parallelism"],
     ),
     (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_provenance.dag"),

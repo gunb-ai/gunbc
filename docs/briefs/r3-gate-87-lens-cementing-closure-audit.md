@@ -26,12 +26,13 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 
 ## Non-Complete Registered Rows
 
-These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
+These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `parallelism` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
 
 ## Ratchets
 
 - `cementing_lens_registry_dispatch_test.rs` derives real-v2 complete rows from the capability register plus `src/v3/compiler/regen.dag` and requires the v2 receipt slice to match exactly.
 - `r3_gate_87_lens_cementing_regen_receipts_test.rs` requires the regen registry names to match the gate-87 `.dag` runner inventory.
+- `GATE_87_COMPILES_PLACEHOLDER_LEDGER` in `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` is the checkable dissolution ledger for every gate-87 `.dag` `Compiles` placeholder; the integration ratchet derives actual `Compiles` claims from the runner table and requires each row to cite a dissolution trigger plus a paired Rust receipt.
 - This audit closed the only v3-native complete gap found during the walk: `variant_payload` had only a compile placeholder; it now has a behavioral Rust receipt for the published carrier.
 
 ## P5 Receipt

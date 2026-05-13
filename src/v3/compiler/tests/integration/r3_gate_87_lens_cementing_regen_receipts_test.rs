@@ -39,6 +39,10 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_compiles_placeholder_claim_names, GATE_87_COMPILES_PLACEHOLDER_LEDGER,
+    R3_GATE_87_CEMENTING_REGEN_SUITES,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -131,6 +135,29 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .value
 }
 
+fn compiles_claim_names_from_harness(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut current_claim_name = None;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("name: \"") {
+            if let Some((name, _)) = rest.split_once('"') {
+                current_claim_name = Some(name.to_string());
+            }
+        }
+        if trimmed.trim_end_matches(',') == "predicate: Compiles" {
+            names.push(
+                current_claim_name
+                    .clone()
+                    .expect("Compiles claim must declare `name` before `predicate`"),
+            );
+        }
+    }
+
+    names
+}
+
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -141,6 +168,58 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_compiles_placeholders_have_dissolution_ledger_and_rust_receipts() {
+    let actual: BTreeSet<String> = R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .flat_map(|(source, _, _, _)| compiles_claim_names_from_harness(source))
+        .collect();
+    let expected = r3_gate_87_compiles_placeholder_claim_names();
+    assert_eq!(
+        actual, expected,
+        "Every gate-87 `Compiles` placeholder must be listed in \
+         GATE_87_COMPILES_PLACEHOLDER_LEDGER with a dissolution trigger and paired Rust receipt."
+    );
+
+    let this_file = include_str!("r3_gate_87_lens_cementing_regen_receipts_test.rs");
+    for row in GATE_87_COMPILES_PLACEHOLDER_LEDGER {
+        let harness = read_lens_source(row.harness_path);
+        assert!(
+            harness.contains(&format!("name: \"{}\"", row.claim_name)),
+            "{} must declare ledger claim `{}`",
+            row.harness_path,
+            row.claim_name
+        );
+        assert!(
+            harness.contains("predicate: Compiles"),
+            "{} must remain visibly marked as a temporary `Compiles` placeholder",
+            row.harness_path
+        );
+        assert!(
+            harness.contains("Dissolution trigger:"),
+            "{} must explain the concrete replacement trigger for its `Compiles` placeholder",
+            row.harness_path
+        );
+        let rust_fn = row
+            .rust_receipt_test
+            .rsplit("::")
+            .next()
+            .expect("rust receipt test path contains function name");
+        assert!(
+            this_file.contains(&format!("fn {rust_fn}(")),
+            "ledger row `{}` points at missing Rust receipt `{}`",
+            row.claim_name,
+            row.rust_receipt_test
+        );
+        assert!(
+            harness.contains(row.rust_receipt_test),
+            "{} must cite paired Rust receipt `{}`",
+            row.harness_path,
+            row.rust_receipt_test
+        );
+    }
 }
 
 #[test]
@@ -199,6 +278,11 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
