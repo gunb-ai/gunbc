@@ -1,6 +1,7 @@
 # R3 Gate 87 Lens-Cementing Test-Discipline Dispatch — 2026-05-13
 
-**Owner:** Verification Mgr session `lively-raven-354`.
+**Owner:** Verification Mgr session `lively-raven-354`; dispatch execution
+recorded by session `crisp-hawk-789` for dashboard node `adhoc-b75b3d90-3d0`.
 
 **Purpose:** decompose `lens_cementing_test_discipline_complete` into concrete child work that preserves the lens-completeness invariant while gate #87 stays tied to the `regen.dag` registry corpus.
 
@@ -117,3 +118,19 @@ D1 and D4 are the fail-closed invariant checks and can run first. D2 and D3 can 
 
 Completion of these children means gate #87 has a concrete, reviewable discipline package: the registry corpus stays complete, future COMPLETE flips have same-PR receipt requirements, placeholders have named dissolution paths, executable ratchets guard drift, and broader Band-C work is handed to #84 without duplicating authority.
 
+## Dispatch Execution — 2026-05-13
+
+Session `crisp-hawk-789` dispatched the five concrete children above as
+dashboard work items:
+
+| Slice | Dashboard work item |
+|---|---|
+| G87-D1 — Registry-Invariant Audit | `node://adhoc-40a718a6-af3` |
+| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-fff845ce-a14` |
+| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-b1f6b2d3-d5c` |
+| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-86ea07e5-178` |
+| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-3f1a9235-0de` |
+
+These child nodes inherit the acceptance criteria and verification commands from
+the sections above; this table is only the dispatch receipt tying the concrete
+dashboard work to the gate-87 decomposition.
