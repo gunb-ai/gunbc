@@ -89,6 +89,37 @@ fn gate_60_bare_numeric_type_is_parse_rejected() {
 }
 
 #[test]
+fn gate_60_int_disallowed_width_fails_closed_without_malformed_template_args() {
+    // When `Int<N>` sugar rejects `N` (not in {8, 16, 32, 64, 128}), lowering must not
+    // silently attach a literal-width decl as a `TemplateArgument` to `Int` (arity-0
+    // template); expect an authoritative arity mismatch instead.
+    let source = "\
+import std.integer { Int }
+
+let probe: Int<5> = 0
+";
+    let err = compile_to_dag(source, FILE).expect_err("Int<5> must be rejected");
+    let v3_compiler::CompileError::Semantic(dag) = err else {
+        panic!("expected semantic failure, got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                v3_compiler::Diagnostic::ArityMismatch {
+                    function,
+                    expected: 0,
+                    actual: 1,
+                    ..
+                } if function == "type `Int`"
+            )
+        }),
+        "expected ArityMismatch for `Int` (0 params, 1 arg), got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn gate_60_phase2_parse_accepts_algebra_angle_width_nat() {
     let source = "\
 import std.integer { Int, UInt }
