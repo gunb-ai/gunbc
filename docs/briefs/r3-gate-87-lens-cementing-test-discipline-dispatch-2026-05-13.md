@@ -29,6 +29,24 @@ Dashboard dispatch created 2026-05-13 from `keen-bee-278`:
 | G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-e0fb8865-bf3` |
 | G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-37f8d943-e31` |
 
+Successor refresh dispatch created 2026-05-13 from `swift-raven-219`
+after the row-87 pattern landed on `main`. These nodes are intentionally
+mapped to the same invariant slices rather than creating a new authority:
+
+| Slice | Dashboard node | Existing slice consumed |
+| --- | --- | --- |
+| G87-D1 — Regen Corpus Drift Audit | `node://adhoc-5671501a-a3a` | G87-D1 / G87-D4 |
+| G87-D2 — Helper Placeholder Dissolution Readiness | `node://adhoc-2db969e3-771` | G87-D3 |
+| G87-D3 — Rust Cementing Residual Classification Refresh | `node://adhoc-c1048e91-11d` | G87-D5 |
+| G87-D4 — Real-V2 Counterpart Promotion Guard | `node://adhoc-f63cd39e-3e4` | G87-D2 / G87-D4 |
+| G87-D5 — Worker-Facing Checklist Lock | `node://adhoc-effadd07-6e3` | G87-D2 |
+
+Closeout rule for lifecycle-closed child PRs: do not count a child complete
+only because its implementation PR was closed by manager/operator lifecycle.
+The child is complete only if the required content is on `main`, superseded by
+an equivalent landed artifact, or explicitly accepted as a no-code audit with
+the exact unlanded paths and blocker named.
+
 ### G87-D1 — Registry-Invariant Audit
 
 Audit `src/v3/compiler/regen.dag`, `docs/v3-lens-capability-register.md`, `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`, and `src/v3/compiler/tests/dag/cementing_dispatch.dag` for exact row alignment.
