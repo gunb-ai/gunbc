@@ -35,7 +35,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use v3_compiler::generated_files::{
-    GENERATED_FILES, GENERATED_RUST_TEST_FILES, GENERATED_RUST_TEST_FILE_BYTES,
+    GENERATED_FILES, RUST_TEST_GENERATOR_MANIFEST, RUST_TEST_GENERATOR_MANIFEST_BYTES,
 };
 
 // Relative to workspace root; mirrors the single census root
