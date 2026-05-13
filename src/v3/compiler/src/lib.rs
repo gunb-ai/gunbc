@@ -3765,7 +3765,8 @@ pub mod evaluator {
 }
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
-/// (module body: `lens_declaration_apply_body.txt`, included here for SG-0 census path retirement).
+/// (R3 gate #5: `lens_apply.rs` retired; body in `lens_declaration_apply_body.txt`, included here
+/// for SG-0 census path retirement until PB-Runtime / Row-4).
 pub mod lens_declaration_apply {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),

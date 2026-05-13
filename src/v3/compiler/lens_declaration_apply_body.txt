@@ -1,15 +1,15 @@
-//! PB-0 cycle-2: bounded lens application module body (`lens_declaration_apply_body.txt`), included
-//! from `lib.rs` so `src/v3/compiler/src/lens_declaration_apply.rs` retires from SG-0 NON_TEST census
-//! (path-only retirement; same semantics per gate #5 notes). Dissolution: PB-Runtime / Row-4.
-//!
-//! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
-//! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
-//!
-//! **R3 gate #5 (`lens_apply_dot_rs_retired`):** the legacy path
-//! `src/v3/compiler/src/lens_apply.rs` is **retired** (path absent from the tree).
-//! Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
-//! readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
-//! `INVARIANTS` P5(b) deferral language on the tracking PR.
+// PB-0 cycle-2: bounded lens application module body (`lens_declaration_apply_body.txt`), included
+// from `lib.rs` so `src/v3/compiler/src/lens_declaration_apply.rs` retires from SG-0 NON_TEST census
+// (path-only retirement; same semantics per gate #5 notes). Dissolution: PB-Runtime / Row-4.
+//
+// Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
+// over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
+//
+// R3 gate #5 (`lens_apply_dot_rs_retired`): the legacy path
+// `src/v3/compiler/src/lens_apply.rs` is retired (path absent from the tree).
+// Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
+// readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
+// `INVARIANTS` P5(b) deferral language on the tracking PR.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
