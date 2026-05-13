@@ -7,9 +7,11 @@
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
 //! hosts the executable receipt: `dsl/gunbc/ci.dag` source markers + bootstrap `modeled_gunbc_ci_workflow`,
-//! timing via `evaluate_body` (large-stack thread for debug builds), and cost / complexity /
-//! parallelism checks on the **compiled gunbc CI workflow dag** (`compile_to_dag` on `dsl/gunbc/ci.dag`)
-//! plus `gunbc_ci::select_affected_gates` over the structural `ci_workflow_dag` carrier.
+//! **`compile_to_dag(dsl/gunbc/ci.dag)` once** to project structural `ci_workflow_dag` (pipeline name,
+//! prerequisite edges, parallel fan-out) **before** the timing-lens `evaluate_body` shell runs on the
+//! full bootstrap (PB-1 still lowers `demo_ci_modeled_timing_dimension_report` only there — see
+//! `t_ci_workflow_as_data_demo.dag` note on wiring `modeled_gunbc_ci_workflow` through `evaluate_body`),
+//! then cost / complexity / parallelism + `gunbc_ci::select_affected_gates` on that same lowered CI dag.
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
@@ -21,6 +23,8 @@
 //! **INVARIANTS P5 — checkable receipt:** hand-Rust integration coverage here is transitional T-PB-B
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
+
+use std::collections::HashMap;
 
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
@@ -328,10 +332,60 @@ fn ci_workflow_dag_input_from_compiled_ci(dag: &v3_compiler::dag::Dag) -> CiWork
     CiWorkflowDagInput { gates, edges }
 }
 
-fn lens_self_app_read_op(name: &str) -> OperationEffect {
-    OperationEffect {
-        operation_name: name.to_string(),
-        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+/// Stages a read-only [`WorkflowEffect::ParallelEffect`] from [`CiWorkflowDagInput::edges`] alone
+/// (prerequisite graph carried by `data ci_workflow_dag` in `dsl/gunbc/ci.dag`). Gunbc CI today has
+/// exactly one two-way fan-out: `compile-gates` → `lint` and `tests`. Operation names are the
+/// downstream gate ids so the receipt cannot drift from the structural carrier.
+fn parallel_read_effect_from_ci_prerequisite_fanout(input: &CiWorkflowDagInput) -> WorkflowEffect {
+    let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
+    for (from, to) in &input.edges {
+        outgoing.entry(from.clone()).or_default().push(to.clone());
+    }
+
+    let mut parallel_parent: Option<(String, Vec<String>)> = None;
+    for (from, mut kids) in outgoing {
+        kids.sort();
+        kids.dedup();
+        if kids.len() == 2 {
+            assert!(
+                parallel_parent.is_none(),
+                "expected at most one 2-branch prerequisite fan-out in gunbc ci_workflow_dag; \
+                 saw a second at `{from}` → {kids:?}"
+            );
+            parallel_parent = Some((from, kids));
+        }
+    }
+
+    let (parent, kids) = parallel_parent.expect(
+        "ci_workflow_dag must expose exactly one 2-branch prerequisite fan-out for lane-2 parallelism staging",
+    );
+    assert_eq!(
+        parent.as_str(),
+        "compile-gates",
+        "parallelism receipt: fan-out parent must remain `compile-gates`",
+    );
+    assert_eq!(
+        kids,
+        vec!["lint".to_string(), "tests".to_string()],
+        "parallelism receipt: `compile-gates` must fan out only to `lint` + `tests` per gunbc-ci authority",
+    );
+
+    WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: kids[0].clone(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: kids[1].clone(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+        ])
+        .expect("two parallel branches"),
     }
 }
 
@@ -622,11 +676,11 @@ fn gunbc_ci_emission_substrate_compiles() {
 
 /// R3 gate #57 — `lens_self_application_demonstrated` (T-Lens-Self-Application).
 ///
-/// Pins gunbc's CI workflow as `.dag` authority (`compile_to_dag` on `dsl/gunbc/ci.dag`) and
-/// exercises the repository's lens stack: timing via `DimensionReport<TimingMeasurement>`
-/// (`evaluate_body` on the bootstrap shell), symbolic-cost + E7 complexity entrypoints plus
-/// structural `complexity_of` on the **CI workflow dag**, lane-2 parallelism on that same subject,
-/// and `gunbc_ci::select_affected_gates` over the structural `ci_workflow_dag` carrier.
+/// Pins gunbc's CI workflow as `.dag` authority (`compile_to_dag` on `dsl/gunbc/ci.dag`), projects
+/// structural `ci_workflow_dag` **before** the bootstrap timing shell (`evaluate_body` on
+/// `demo_ci_modeled_timing_dimension_report` — PB-1 embed only; see module file comment), then runs
+/// symbolic-cost + E7 complexity + `complexity_of`, lane-2 parallelism staged from **prerequisite
+/// edges** of that same carrier, and `gunbc_ci::select_affected_gates`.
 #[test]
 fn lens_self_application_demonstrated() {
     assert!(
@@ -672,7 +726,26 @@ fn lens_self_application_demonstrated_body() {
         "bootstrap demo must not author a second CI DAG topology authority"
     );
 
-    // --- Timing lens: bootstrap `demo_ci_modeled_timing_dimension_report` (prior ignored receipt). ---
+    // --- Structural `ci_workflow_dag` from compiled gunbc.ci (single `compile_to_dag` for the gate).
+    let ci_dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    assert!(
+        ci_dag.diagnostics().is_empty(),
+        "{GUNBC_CI_FILE}: {:?}",
+        ci_dag.diagnostics()
+    );
+    let ci_fields = structural_value_body(&ci_dag, "ci_workflow_dag");
+    let (pipe_name, _gate_ids, _edge_pairs) = workflow_topology(&ci_dag, ci_fields);
+    assert_eq!(
+        pipe_name, "gunbc-ci",
+        "`ci_workflow_dag.pipeline.name` must remain the gunbc-ci authority string"
+    );
+    let ci_input = ci_workflow_dag_input_from_compiled_ci(&ci_dag);
+
+    // --- Timing lens: bootstrap `demo_ci_modeled_timing_dimension_report` (PB-1 shell only; see
+    // `t_ci_workflow_as_data_demo.dag` — `modeled_gunbc_ci_workflow` is not yet threaded through
+    // `evaluate_body` on the lowered `gunbc.ci` graph). Structural pins above already loaded the
+    // authoritative `ci_workflow_dag` carrier this gate's other lenses consume.
     let dag = boot;
     let (d_port, b_port) = {
         let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
@@ -760,17 +833,7 @@ fn lens_self_application_demonstrated_body() {
         "dimension_name must match ci_modeled_timing_lens.name"
     );
 
-    // --- `dsl/gunbc/ci.dag` as the lens subject: structural affected-set dispatch + program lens
-    // folds on the same lowered graph that carries `ci_workflow_dag` (no toy program authority). ---
-    let ci_dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
-    assert!(
-        ci_dag.diagnostics().is_empty(),
-        "{GUNBC_CI_FILE}: {:?}",
-        ci_dag.diagnostics()
-    );
-
-    let ci_input = ci_workflow_dag_input_from_compiled_ci(&ci_dag);
+    // --- Affected-set + program lenses on the same `ci_dag` / `ci_input` compiled above.
     let affected = select_affected_gates(&ci_input, &CiWorkflowDiff::TouchAll)
         .expect("affected-set selection must succeed on gunbc-ci topology");
     assert_eq!(
@@ -817,17 +880,7 @@ fn lens_self_application_demonstrated_body() {
     let _cx = complexity_of(&ci_dag, &bind_ci.result_port());
 
     let mut ci_parallel = ci_dag.clone();
-    let workflow = WorkflowEffect::ParallelEffect {
-        branches: NonSingletonList::from_vec(vec![
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![lens_self_app_read_op("read_user")],
-            }),
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![lens_self_app_read_op("read_account")],
-            }),
-        ])
-        .expect("two branches satisfy NonSingletonList"),
-    };
+    let workflow = parallel_read_effect_from_ci_prerequisite_fanout(&ci_input);
     assert!(ci_parallel.try_register_lane2_workflow_effect(ci_subject, workflow));
 
     let par = analyze_parallelism(&ci_parallel, ci_subject);
