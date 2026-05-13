@@ -116,6 +116,58 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 - [ ] **Compositional vs named-variant**: if the user-defined-dim infrastructure supports compositional cost-bound extension (e.g., authoring a `LogLogCost` lens that participates in dominance), R3 may NOT need named-variants for Tier 2 (per Director caveat: "if Substrate Mgr canvas surfaces a compositional mechanism for Tier 2 that satisfies feedback_groundedness_gates_lenses + composes with Sum/Product algebra + carries consumer-evidence justification, accept that mechanism IN-R3 instead of named variants"). Test this end-to-end.
 - [ ] **Falsification probe (Tier 2 escape hatch)**: write a user-defined cost lens for a textbook-known bound that's R4-deferred (e.g., inverse Ackermann). Does it integrate? If yes — Tier 2 R4-deferral is structurally bounded. If no — user-defined-dim promise has a load-bearing gap; surface as Director-tier scope question.
 
+### §1.6 Tier 1 mechanics (coercion = emission / ownership / grounding completeness)
+
+**Promise** (THESIS.md:168-173 Tier 1 — Structural correctness): beyond the dimensions in §1.1-§1.5, Tier 1 makes specific structural commitments:
+
+- **Coercion = emission**: "the compiler reads a target spec and translates. No separate coercion engine."
+- **Ownership**: "the compiler proves no aliased mutation in emitted code."
+- **Grounding completeness**: "target-side primitive types are structurally modeled from the target language reference (Rust Reference §Types, Python data model, Go specification), with algebra inhabitance declared structurally — not string-typed shortcuts in a lookup table. Mapping from a `.dag` type to a target primitive is a structural algebra-homomorphism search over declared inhabitance, not a name-keyed table lookup. If a `.dag` type cannot be structurally grounded to a target primitive, the compiler refuses to emit (fail-closed)."
+
+**Coercion = emission probes**:
+
+- [ ] Find the "coercion engine." Show me the file or argument-flow. Is it a separate phase, or does it dissolve into emission?
+- [ ] Show me a `.dag` value being coerced to a target representation. Cite the call site. Is the coercion logic in emission, or in a separate `coerce.rs`?
+- [ ] **Falsification probe**: introduce a `.dag` type with no target inhabitance. Does the compiler emit it via some default-coercion path, or fail-closed?
+
+**Ownership probes**:
+
+- [ ] Show me where the compiler proves "no aliased mutation" in emitted code. Cite the proof site (lens, predicate, or test).
+- [ ] Show me an `.dag` program that would COMPILE if aliased mutation were allowed but FAILS now. Demonstrate the diagnostic.
+- [ ] Where is "aliasing" modeled in the substrate? Is it a Behavior shape, a Cardinality property, or implicit-via-purity?
+- [ ] **Falsification probe**: write a `.dag` program that mutates the same logical resource from two call sites. Does the compiler reject it, or emit potentially-aliasing target code?
+
+**Grounding completeness probes** (highest-load-bearing per THESIS.md:173):
+
+- [ ] Show me the structural model of Rust primitives. Cite `dsl/extdeps/languages/rust/primitives.dag` (or wherever). Does each Rust primitive have algebra-inhabitance declared (e.g., `i32 inhabits OrderedRing`)?
+- [ ] Same for Python data model. Same for Go specification. Cite both.
+- [ ] Show me the algebra-homomorphism-search code path. Cite the function. Is it a structural search, or a name-keyed table lookup?
+- [ ] Pick a target primitive at random. Trace the grounding chain: `.dag` type → algebra inhabitance → target primitive. Is every step structural?
+- [ ] **Falsification probe**: introduce a `.dag` type carrying algebra X. No target language inhabits X. Does the compiler fail-closed with a named diagnostic? Or does it pick a "closest" target primitive (failure mode — name-keyed shortcut)?
+- [ ] **Per-target falsification**: for each of Rust / Python / Go, find a `.dag` algebra with no target inhabitance. Verify fail-closed on each.
+
+**R3-close acceptance threshold** (PM-surfaced): grounding-completeness is the load-bearing claim for omni-emission. If it's name-keyed shortcuts (string-typed lookup), the whole `O(1)`-per-target story collapses. R3 close MUST demonstrate structural-grounding for at least one non-trivial primitive class per target.
+
+### §1.7 Tier 2 runtime safety (proven safe or total)
+
+**Promise** (THESIS.md:175-176): "Division by zero, integer overflow, out-of-bounds, force-unwrap, partial functions — either proven safe at compile time or made total. No partial functions in the runtime."
+
+**Probes** (per partial-op class):
+
+- [ ] **Division by zero**: show me a `.dag` program with a division. Show the divisor's proven-non-zero predicate (or the total-form making it safe). Cite the lens / check.
+- [ ] **Integer overflow**: show me a `.dag` arithmetic expression whose target-side overflow is bound by structural analysis. Cite the cost-lens-or-machine-constraint composition.
+- [ ] **Out-of-bounds**: show me a `.dag` indexed access. Show the index's proven-in-range predicate (or the total-form making OOB unrepresentable).
+- [ ] **Force-unwrap**: search for force-unwrap patterns in the `.dag` substrate. Should be zero in the language surface. If present, justify as user-input-boundary.
+- [ ] **Partial functions generally**: enumerate every partial primitive operation in `dsl/std/`. For each, show the totalization (Option-return / Diagnostic / refinement-precondition).
+
+**Falsification probes**:
+
+- [ ] Author a `.dag` program with division where the divisor's non-zero predicate is unprovable from structure. Does the compiler reject (Tier 1) or insert a runtime check (Tier 2 total)?
+- [ ] Author an integer-arithmetic program where overflow CANNOT be proven safe. Does the compiler reject or insert a Diagnostic-returning total form?
+- [ ] If a partial primitive lands in `dsl/std/` post-R3, what catches it? (Should be a §1.8 ratchet or anti-pattern; cite.)
+
+**R3-close acceptance threshold**: every Tier-2 partial-op class either has a documented per-program proof path (compile-time) or a documented total form (runtime). Zero "trust me, no overflow happens" handwaving.
+
 ---
 
 ## §2. The substrate promises
@@ -285,6 +337,180 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 
 **Anti-pattern**: "all lenses green = bug-free program" is the silent-impossibility-claim. R3 close framing should explicitly NAME the bug classes that remain possible (user-intent, unmodeled-dimension, glue-boundary, modeling-error, emergent-composition) rather than let "lenses green" carry the universal claim implicitly.
 
+#### §2.5.F Cross-module subtle-dependency detection via affected-set lens
+
+**Promise** (`docs/design-affected-set-lens.md` + r3-program-plan.md §1.8 gate #103 `ci_uses_affected_set_selection`): the affected-set lens is the **structural mechanism** for catching cross-module subtle dependencies — not value-level "did the return change," but **dimension-parameterized** "did any structural dimension (complexity / cost / effect / value) the consumer reads change." The aggregate affected-set is the union across all dimensions; if a helper's *cost* changes while its *return value* stays the same, downstream consumers reading the *cost* dimension still flag as affected.
+
+**Why this is the answer to §2.5.E cross-module bugs**:
+
+§2.5.E enumerated 7 cross-module + 5 cross-target bug shapes (shared-vocabulary mismatch, memory-layout assumption, async-semantic divergence, serialization round-trip, numeric width, etc.). The affected-set lens is what mechanically *catches* the dynamic / change-driven sub-classes of those: when module A changes in a way that affects module B's structural read of A, B is in the affected-set. The static / single-snapshot classes (e.g., shared vocabulary at a moment in time) are caught by other R3 lenses (complexity, cost, effect); the affected-set lens specifically catches the **diff-driven** propagation.
+
+**Status at HEAD** (r3-program-plan.md §1.8 + docs/r3-remaining-work-dependency-graph.md):
+
+- Gate #103 `ci_uses_affected_set_selection` — **DECLARED** (NEW 2026-05-12 per PR #2744 §1); R3-load-bearing
+- Slice 7 in T-WAD lane sequencing: Slice 4 (#100 substrate) → Slice 5 (#98 ci.yml swap) → Slice 7 (#103 affected-set) → Slice 8 (substrate completion)
+- Design doc: `docs/design-affected-set-lens.md` — **design framing + 5 worked examples; NOT a substrate-shape ratification, NOT a §1.8 gate addition** (per design doc §"Scope" line 7 verbatim). Substrate-shape ratification + §1.8 gate landing pending. Consumer-pattern sketch: CLI / agent / IDE invoking `IntrospectApplication`-carrier lens with `Set<NodeRef>` output. Prototype scope at [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699).
+
+**Probes** (post-gate-#103-CONSUMER_LANDED):
+
+- [ ] Where does affected-set live in CI/build? Cite the workflow file + the invocation site. Is it `gunbc query affected-set --since=main`?
+- [ ] What's the SHA-diff input shape? `(Dag_before, Dag_after)` per design doc, or a different surface?
+- [ ] Show me a concrete subtle dep that **ONLY** the dimension-parameterized variant catches — a case where value-only-diff would miss the affected-set but cost-or-complexity-diff catches it. Cite the test fixture.
+- [ ] Run affected-set on the last 5 merged PRs. What's the cardinality of the affected-set per PR? (Should be much smaller than transitive-downstream — that's the structural progress claim.)
+- [ ] Show me a PR where the affected-set predicted a test would run, AND the test caught a regression that value-only-diff would have skipped.
+
+**Falsification probes**:
+
+- [ ] **Cost-regression-in-uncovered-helper**: introduce a complexity regression in a helper (e.g., O(n) → O(n²)) that no test directly covers. Does affected-set flag every downstream consumer reading the cost dimension? Or does it miss them because no test directly asserts cost on the helper?
+- [ ] **Effect-leak-across-module-boundary**: add a side effect (I/O) to a previously-pure function. Does affected-set flag the consumers asserting purity? Or only the consumers calling the function directly?
+- [ ] **Cross-module dimension narrowing**: change function F's cost from `O(n)` to `O(n log n)` in a way the lens classifies correctly. Does the affected-set surface every transitive consumer reading the cost dimension, AT LEAST as far as the dimension flow propagates?
+- [ ] **PB-Runtime opacity**: introduce a change inside PB-Runtime (the bounded kernel) that affects a structural-dimension claim. Does the affected-set lens correctly identify the dimension-flow boundary at PB-Runtime, or does it under/over-propagate?
+
+**Open questions for ratification** (PM-surfaced):
+
+- Is the dimension-parameterized affected-set the **PRIMARY** R3-close artifact for catching cross-module subtle deps, or is it complementary to other mechanisms (per-dimension lens read at compile-time)?
+- Does R3 close require gate #103 CONSUMER_LANDED + PASSING, OR is DECLARED status with CI-integration deferred to the slice cascade?
+- Are the 4 in-R3 lenses (complexity / cost / parallelism / effect_enum) sufficient dimensions for the union, or does the affected-set need to surface user-defined-lens dimensions too?
+
+#### §2.5.F.1 Minimality definition + examples table
+
+**Minimality definition** (`docs/design-affected-set-lens.md:44`):
+
+> "Strictly smaller than transitive-downstream — but only relative to the structural dimensions whose values actually changed. If `delta(M, dim_M)` can be proven empty by the lens → consumer N reading `dim_M` is excluded from the affected-set for that dimension. If `delta(M, dim_M)` cannot be proven empty → consumer N is included by default (fail-closed)."
+
+"Minimal" = **minimal among soundly-derivable affected-sets given the lens's provability surface**. NOT theoretically-optimal (which would need omniscient delta-proof). The lens fails OVER-inclusive (sound but not theoretically-complete), never UNDER-inclusive — fail-closed always.
+
+**Two correctness properties** (named per the lens's two-direction failure modes — avoiding standard-static-analysis "sound/complete" labels because their conventional meanings invert under fail-closed over-approximation):
+
+**No-spurious-inclusion** (the "exclusion-correctness" direction): every node in the set has at least one dimension where `delta ≠ ∅` OR `delta = UNKNOWN`. If a node is in the set when every dimension it reads has `delta = ∅` provably, that's a spurious inclusion (lens over-included beyond the fail-closed mandate).
+
+**No-missed-inclusion** (the "coverage" direction): no node with `delta ≠ ∅` on a dimension it reads is excluded. Missing a node with a known non-empty delta is the UNSAFE failure mode — the lens missed an actual cross-module dependency.
+
+The lens is FAIL-CLOSED: when in doubt (UNKNOWN delta), include. This means the lens correctness target is **No-missed-inclusion (strict)** + **No-spurious-inclusion (relative to provability)** — over-inclusion on UNKNOWN is intentional and safe.
+
+**Comprehensive examples** — normal code-change scenarios + expected affected-set behavior:
+
+| # | Change scenario | Expected affected-set | Why (which dimension) |
+|---|---|---|---|
+| 1 | **Whitespace / formatting only** in function body | **∅** | Every dimension provably-unchanged at AST/Node-tree level |
+| 2 | **Comment-only** changes (docstrings, inline comments) | **∅** | Comments are not structural; no Node-tree delta |
+| 3 | **Identity-only change** (rename local variable; rename function with no callers) | **∅** | Per design doc §63: "identity change alone is NOT sufficient for propagation" |
+| 4 | **Function rename WITH callers** (rename `f` → `g` everywhere) | **∅ on dimension surface** | If all callers update simultaneously, dimension shapes unchanged; identity change is invisible structurally |
+| 5 | **Pure value change** (constant 5 → 7) | Consumers reading **value** dimension | Value-dim consumers flagged; cost/complexity/effect-dim consumers NOT flagged (unchanged) |
+| 6 | **Algorithm swap, same complexity class** (different O(n log n) sort) | **∅** on cost dim; ∅ on complexity dim | Cost + complexity dimensions unchanged; effect may differ if I/O patterns shift |
+| 7 | **Algorithm swap, complexity class changed** (O(n²) → O(n log n)) | Consumers reading **cost / complexity** dim | Value-dim consumers NOT flagged (return values same); cost/complexity-asserting consumers flagged |
+| 8 | **Effect added** (pure → I/O — e.g., logging) | Consumers reading **effect** dim | Purity-asserting consumers flagged; value/cost-only consumers not |
+| 9 | **Effect removed** (I/O removed) | Consumers reading **effect** dim | Symmetric to #8 |
+| 10 | **Type signature change — argument added (required)** | Every **caller** | Type dim changed at the function's interface; every caller's call-site type-checks against the new shape |
+| 11 | **Type signature change — argument added (optional with default)** | Callers that rely on **arity-exact** assertions | Most callers ∅; only callers asserting strict arity flagged |
+| 12 | **Type signature change — argument removed** | Every caller | Symmetric to #10 |
+| 13 | **Field added to struct/type** | Consumers reading the **type's structural shape** | Structural-shape consumers flagged; consumers reading only specific other fields NOT flagged |
+| 14 | **Field removed from struct/type** | Consumers reading **that specific field** | Surgical scope; other-field consumers untouched |
+| 15 | **Field renamed** (with all references updated) | **∅** on dimension surface | If atomic rename, no structural-shape delta (just naming); per identity-vs-dimension distinction |
+| 16 | **Field type changed** (e.g., Int → Nat) | Consumers reading that field's **type** dim | Type-dim consumers; algebra-inhabitance consumers may surface (per §1.6 grounding-completeness) |
+| 17 | **Refactor: extract function** (one fn → two with same external surface) | **∅** | External surface unchanged on all dimensions; internal structure is private |
+| 18 | **Refactor: inline function** (collapse callsite) | **∅** | Symmetric to #17 |
+| 19 | **New code added** (new function with no callers yet) | **∅** | No consumers exist; affected-set is trivially empty |
+| 20 | **New code added WITH consumer call** | The consumer(s) that newly reference it | New edge in dependency graph; consumer's structural-shape may have changed |
+| 21 | **Deletion of unused code** (no references) | **∅** | No consumers; trivially safe |
+| 22 | **Deletion of code WITH consumers** (compile-error class) | Compile error; NOT affected-set's surface | The affected-set lens runs over compilable Dag pairs; uncompilable post-deletion = different surface (Diagnostic-class) |
+| 23 | **Parallelism shape change** (sequential → parallel-marked) | Consumers reading **parallelism** dim | Parallelism-asserting consumers flagged; others not |
+| 24 | **Test-only change** (test body / new test, no production code touched) | The changed test itself (in affected-set) | Tests don't propagate FORWARD (no production consumers of tests); test's affected-set entry triggers re-run, not transitive expansion |
+| 25 | **Doc-only change** (`.md` files, READMEs) | **∅** for code consumers; affects only Markdown-emit consumers | Per `feedback_no_textual_enforcement_bridges`: docs are not structural |
+| 26 | **CI / build config change** (`ci.yml`, `Cargo.toml`) | Affected-set as defined for **workflow substrate** (per gate #103 Slice 7 + T-WAD) | Workflow-as-data: CI changes have their own affected-set lens over the workflow graph |
+| 27 | **Cross-module import added / removed** | If import provides new substrate fact, consumers of that fact flagged | Typical case: re-import alone is identity-class (∅); substrate-providing import affects the introduced/removed facts' consumers |
+| 28 | **Dependency version bump** (Cargo.toml `serde 1.0.X → 1.0.Y`) | Consumers reading the dep's **structural surface** that changed | Depends on what changed in the dep; lens reads the dep's substrate facts post-update |
+| 29 | **Generated code regeneration** (regen `_generated.rs` from `.dag` source) | Same as source `.dag` change's affected-set | Generated outputs are derived; affected-set is computed from the source delta, not the regen artifact |
+| 30 | **Opaque `ExecuteCommand` / extdeps boundary modification** | **Fail-closed include downstream** | Lens can't prove delta empty across opaque boundary → over-inclusive but SAFE per §63 fail-closed discipline |
+| 31 | **PB-Runtime kernel change** | **Fail-closed include downstream** | Bounded kernel changes can affect any consumer; over-inclusive but safe |
+| 32 | **Compile-time-only change** (e.g., add `#[ignore]` to a test) | The changed test only; **∅** for production | Compile-time meta-attribute change; production-runtime dim unchanged |
+| 33 | **Lens / cementing-test addition** (add a new `.dag` lens) | Programs that the lens NOW reports on (run the lens on every `.dag` program → affected-set of the lens's classification function) | Lens addition is a NEW dimension; the affected-set for "did dimension X change" is over the NEW dim's read surface |
+| 34 | **Algebra-law refinement** (e.g., new `OrderedRing` instance for type T) | Consumers reading **algebra-inhabitance** of T | Per §1.6 grounding-completeness + §3.6 L7 algebraic-laws: algebra-inhabitance consumers flagged |
+| 35 | **Substrate-shape extension** (e.g., new variant in a sum type) | Consumers pattern-matching on that sum type **without `_` wildcard** | Exhaustiveness-asserting consumers flagged; wildcard consumers may be ∅ |
+
+**Falsification-probe pattern**: for any scenario in the table, the lens's correctness is verified by:
+
+- **No-spurious-inclusion probe**: scenario expected to produce ∅ should produce ∅ at HEAD; if non-empty, identify spurious-inclusion class (lens over-included beyond fail-closed mandate)
+- **No-missed-inclusion probe**: scenario expected to flag consumers should flag the EXPECTED set (not a strict subset); if missing, identify missed-inclusion class (unsafe failure mode)
+- **Provability boundary probe**: scenarios marked "fail-closed include downstream" should produce non-minimal but SAFE affected-sets; verify they don't UNDER-include (under-inclusion is the unsafe failure mode)
+
+**Honest framing** — as the lens's substrate-coverage improves (more dimensions provably-decidable), the affected-set shrinks toward theoretical-minimum. Current R3-scope substrate gives current observable minimum. R4 extensions (richer dimension grammar, finer-grained extdeps inhabitance) tighten it further. R3-close acceptance: cite affected-set sizes for canonical scenarios + identify the gap between observable and theoretical minimum.
+
+**PM read** (provisional): the affected-set lens is THE structural cash for cross-module subtle-dep detection — without it, the §2.5.E cross-module bug classes are theoretically-impossible but operationally-unverified. With it, the static (compile-time) lens read + the diff-driven (affected-set) lens read compose to give *both* "this single snapshot is consistent" AND "this change preserves consistency." That's the omni-correctness story the operator's directive 2026-05-13 was probing.
+
+### §2.6 Substrate-shape specifics (6 connectives + 5 behaviors + C1 stop-signal)
+
+**Promise** (THESIS.md:198-203 Substrate shape — must not be flattened):
+
+- **Types**: Node trees with **six connectives** — `Atom | Conj | Disj | Arrow | Cardinality | Instantiation`
+- **Computation**: **five L1 behaviors** — `Value | Transform | Branch | Loop | Bind`
+- **C1-class stop signal**: substrate extension (7th connective or 6th behavior) requires ALL FOUR dissolution patterns from §"Structural decompression" to fail with structural arguments before extension is allowed
+
+**Probes — six connectives**:
+
+- [ ] Enumerate every type at HEAD that is structurally NOT one of the 6 connectives (or composed of them). Should be ZERO.
+- [ ] For each of the 6 connectives, cite ONE concrete use case at HEAD (e.g., `Conj` for product types, `Arrow` for function types, `Cardinality` for refinement, `Instantiation` for template-instantiation).
+- [ ] Where is "Instantiation matches C++ template-instantiation vocabulary and is ONLY used for type parameterization" enforced? Show me a value-construction site — does it use plain `Conj` with optional inhabits tag (per THESIS.md:199), not `Instantiation`?
+- [ ] **Falsification probe**: try to author a type at HEAD that resembles a 7th connective (e.g., a "metadata" or "reflection" variant outside the 6). Does the substrate reject it, or absorb it via one of the 4 dissolution patterns?
+
+**Probes — five behaviors**:
+
+- [ ] Enumerate every Behavior at HEAD that is structurally NOT one of the 5 (Value / Transform / Branch / Loop / Bind). Should be ZERO.
+- [ ] For each of the 5, cite ONE concrete use case at HEAD.
+- [ ] Where is `Transform → FunctionRef → Arrow` composition enforced (per THESIS.md:201)? Cite the substrate connection.
+- [ ] **Falsification probe**: try to author a behavior at HEAD that doesn't fold into the 5 (e.g., a "guard" or "interrupt" variant). Does the substrate reject it, or absorb it?
+
+**Probes — C1 stop signal**:
+
+- [ ] Has anyone proposed a 7th connective or 6th behavior in PRs / canvases since R1? Cite each.
+- [ ] For each proposal, was the C1 stop-signal protocol followed (all 4 dissolution patterns attempted before extension)? Cite the canvas / rationale.
+- [ ] What's the current count of dissolution patterns documented in §"Structural decompression"? (Should be 4 per THESIS.md.)
+- [ ] **Falsification probe**: an R4 proposal arrives proposing a 7th connective. What's the structural gate that ensures it goes through the 4-dissolution-attempt protocol? Is this a §1.8 ratchet or an unwritten norm?
+
+**R3-close honest framing**: substrate-shape invariants are the bedrock of every other thesis claim. If a 7th connective or 6th behavior has slipped in without stop-signal protocol, every downstream thesis claim is at risk. R3 close MUST verify the 6+5 bounds hold at HEAD.
+
+### §2.7 Modeling discipline
+
+**Promise** (THESIS.md:415-419 Modeling discipline):
+
+- Every declared type has at least one structural consumer.
+- Every service boundary uses typed enums, not String/Bool proxies.
+- No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). Missing facts are compile-time errors, not runtime strings.
+- No duplicate record shapes. One type per concept.
+
+Plus THESIS.md:359 — **Rust-authored tests are a language smell**. Every hand-authored `.rs` test flags a predicate, effect-model, or mock surface the language doesn't yet express.
+
+**Probes — every type has a consumer**:
+
+- [ ] Run the unused-types lens (or grep for un-referenced `type` declarations). What's the count? Should be 0.
+- [ ] Pick 5 types at random from `dsl/std/`. For each, cite the consumer site.
+- [ ] **Falsification probe**: declare a new type with no consumer. Does the compiler / lens flag it pre-merge?
+
+**Probes — typed enums at service boundaries**:
+
+- [ ] Grep for `String` or `Bool` used as discriminators at service boundaries. Enumerate. Each is a candidate for `feedback_opaque_strings_attract_heuristics`-class violation.
+- [ ] Pick 3 service boundaries (e.g., extdeps providers, RFC carriers). For each, are discriminators typed enums or `String`/`Bool`?
+- [ ] **Falsification probe**: introduce a String-typed discriminator at a service boundary. Does code review / lens / ratchet catch it?
+
+**Probes — no fabrication sentinels**:
+
+- [ ] Grep for `__BUG_`, `__EMIT_BUG_`, `__TODO_`, `__PENDING_` etc. across `dsl/` + `src/v3/`. Count.
+- [ ] For any survivors: cite the named-dissolution path or operator-ratified justification.
+- [ ] **Falsification probe**: try to add a `__SENTINEL_X__` string-marker as a code path. Does ratchet / lens reject it?
+
+**Probes — no duplicate record shapes**:
+
+- [ ] Run the duplicate-record-shape lens (or grep for structurally-identical types). What's the count?
+- [ ] Pick 5 record shapes from `dsl/std/`. For each, verify structurally-distinct from every other.
+- [ ] **Falsification probe**: declare two record types with identical fields/types but different names. Does the substrate flag the duplication, or accept it as namespacing?
+
+**Probes — Rust-tests are a language smell**:
+
+- [ ] Count hand-authored `.rs` test files (per SG-0 census `EXPECTED_HAND_AUTHORED_TEST`). What's the number at HEAD?
+- [ ] For each hand-authored Rust test: what predicate / effect-model / mock surface does it flag as "language-doesn't-yet-express"? Enumerate.
+- [ ] What's the named-retirement path per test? (Cite `pb_rust_tests_outside_residual_zero` ROADMAP gate.)
+- [ ] **Falsification probe**: try to add a new hand-authored `.rs` test for a behavior that COULD be expressed in `.dag` `TestClaim`. Does the SG-0 census reject it?
+
 ---
 
 ## §3. The emission promises
@@ -346,6 +572,171 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] Where's the runner? Is it itself `.dag` or hand-Rust?
 - [ ] **Falsification probe**: add a new TestClaim entirely in `.dag`, no Rust. Does it run?
 
+### §3.4 Full-stack-from-one-`.dag` — visceral 4-layer omni-emission + R4 framework substrate (FORWARD POINTER)
+
+**Status**: STUB — pointer only. Substantive Q-dispositions land post-canvas-ratification per Director msg_428b032e + operator directive 2026-05-13.
+
+**Thesis-probe framing**: a single `.dag` program generates a coherent full-stack application — Rust backend + SQL DDL schema + OpenAPI spec + Markdown docs — all sharing one Dag, all guaranteed coherent by gate #28 `omni_layers_share_one_node_tree`. This is the visceral cash of omni-emission as a thesis: not "we have 3 backends," but "you write one program, you get four artifacts, they cannot diverge by construction."
+
+**Structural cash at HEAD** (r3-program-plan.md §1.8, Director-verified 2026-05-13):
+- Gate #25 `omni_openapi_backend_emission_demo` — **CONSUMER_LANDED + PASSING** (runnable Rust backend)
+- Gate #26 `omni_documentation_drift_lock_demo` — **CONSUMER_LANDED + PASSING** (Markdown drift-lock)
+- Gate #27 `omni_sql_ddl_alternative_demo` — **CONSUMER_LANDED + PASSING** (SQL DDL projection)
+- Gate #28 `omni_layers_share_one_node_tree` — **CONSUMER_LANDED + PASSING** (Rust + OpenAPI + Markdown + SQL DDL share one Dag)
+
+**Active artifacts** (in flight pre-R3-close):
+- **Path (a)** — pre-R3 visceral demo: one `.dag` (TODO-service) exercises the 4 existing emitters, lands 4 human-visible artifacts + integration test pinning gate #28 invariant at demo scope. Director-direct work-item `adhoc-e9bb6ef1-b4d`.
+- **Path (b)** — pre-R3 R4 canvas: `docs/design-r4-full-stack-omni-emission-canvas.md` (Substrate Mgr authoring; 5-Q Director framing covers TS LanguageSpec carrier shape / React-as-framework-substrate carriers / ingest direction / cross-target consistency / Cluster F lens composition).
+
+**Probes** (deferred to post-canvas-ratification):
+- [ ] Demo: one `.dag` → 4 artifacts (Rust + SQL DDL + OpenAPI + Markdown). Show them. Show coherence test passing.
+- [ ] Canvas: 5 Director Q-dispositions ratified. Cite anchor.
+- [ ] Falsification probe: introduce a divergence between any two of the 4 emitted artifacts at the substrate level. Does gate #28 catch it?
+- [ ] R4 thesis-pitch: extend story to TS client + React frontend. What's the smallest structural extension?
+
+### §3.5 L6 — every structural form compiles to every target
+
+**Promise** (THESIS.md:181): "L6: every structural form compiles to every target."
+
+This is the **completeness** claim distinct from L5 (consistency between targets). L5 says "if Rust + Python + Go all emit, they agree." L6 says "EVERY `.dag` form CAN emit to EVERY target — no holes, no per-target gaps."
+
+**Probes**:
+
+- [ ] Enumerate the structural forms in `.dag` (the 6 connectives × 5 behaviors product space, minus disallowed combinations). For each, is it emittable to Rust? Python? Go?
+- [ ] Show me the L6 matrix at HEAD: (structural-form × target) → emit-status. Is it dense (all green), or sparse (per-target gaps)?
+- [ ] Pick 5 structural forms. For each, trace the emit code path for Rust + Python + Go. Are they parallel, or does one target have special-case branching the others lack?
+- [ ] **Falsification probe**: pick a structural form whose emit is implemented for one target but stubbed for another. Does the compiler fail-closed when targeting the stubbed lang, or silently emit broken code?
+- [ ] **L6 vs L5 distinction probe**: a form that emits to all 3 targets BUT produces semantically-divergent output is an L5 failure. A form that fails to emit at all on one target is an L6 failure. R3-close: zero of either?
+
+**R3-close honest framing**: L6 completeness is the strong-form omni-emission claim. R3 close MUST cite the form-by-form L6 matrix or explicitly defer to R4 with a named gap-class enumeration.
+
+### §3.6 L7 — operations obey declared algebraic laws
+
+**Promise** (THESIS.md:182): "L7: operations obey declared algebraic laws."
+
+The compiler reads algebra declarations (`Monoid`, `Group`, `Field`, `OrderedRing`, etc.), and emitted operations honor the declared laws (associativity, identity, inverse, commutativity, distributivity). Failure = emitted Rust `+` operation on a `Monoid<T>` violating associativity ⇒ structural bug, not "test it later."
+
+**Probes**:
+
+- [ ] Pick an algebra carrier at HEAD (e.g., `Monoid<X>` for some X). Find the emitted operation. Show me the proof / test that the emitted op honors the algebra's law.
+- [ ] Where do the algebra-law tests live? `dsl/std/algebra_axioms.dag` (or equivalent)? Cite path. Are these `.dag` `TestClaim` declarations (per §3.3) or hand-Rust?
+- [ ] **Coverage probe**: for the 4-5 most-used algebra carriers (Monoid, Group, AbelianGroup, Ring, Field), is there a per-axiom test demonstrating laws hold post-emit? Tabulate.
+- [ ] **Cross-target consistency**: do algebra-law tests pass on Rust + Python + Go independently? Or only Rust?
+- [ ] **Falsification probe**: introduce a `.dag` Monoid declaration whose emit deliberately violates associativity (e.g., a free-monoid with a non-associative concat). Does the L7 test surface catch it?
+
+**R3-close honest framing**: L7 is the algebraic-correctness anchor. If algebra-law tests are sparse or non-existent, "operations obey laws" is a claim without receipts. R3 close framing must either cite the per-axiom coverage or explicitly disposition this as R4-deferred.
+
+### §3.7 The verification-machinery promises (testgen / integration / mocks / dry-run)
+
+**Promise** (THESIS.md:166 + :348-368 + TESTING.md): "What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches by structurally deriving the proof or test." Testgen is downstream of code (structural coverage), integration tests are deliberate end-to-end, mocks are dependency-injection-by-construction (THESIS:367), and the pure-function posture admits structural dry-run by construction.
+
+§3.3 covers TestClaim-as-data form (the assertion). This section covers the **verification machinery** around it.
+
+#### §3.7.a Testgen — structural coverage derived from code
+
+**Promise** (THESIS.md:356-358): "Testgen is downstream of code: structural coverage derived from the program the user wrote." Every type declared in `dsl/std/` should yield inhabitant + coercion tests automatically (per SELF_HOSTING.md §2 L1.5 step 3).
+
+**Probes**:
+
+- [ ] Where does testgen live? Cite the file or pipeline-stage. Is it `.dag` or hand-Rust?
+- [ ] Pick a type from `dsl/std/` at random. Does testgen produce inhabitant + coercion tests for it? Cite the generated test count.
+- [ ] What's the testgen→TestClaim flow? Generated TestClaim declarations land where (in-tree, in-memory)?
+- [ ] **Coverage probe**: count types in `dsl/std/` vs count generated tests per type. Is coverage monotonic with declared structure?
+- [ ] **Reshape probe per TESTING.md:343**: `m1_5_testgen_test.rs` should be spot-check not exhaustive-compile-every-claim. Is this discipline applied at HEAD?
+- [ ] **Falsification probe**: declare a new type in `dsl/std/` with no consumer. Does testgen generate inhabitant tests for it, or does it skip? (Per §2.7 "every type has a structural consumer" — testgen IS a consumer if it's downstream of structure.)
+
+**R3-close honest framing**: testgen completeness is the bridge between Tier 1/2 (compile-time proofs) and Tier 3 (runtime verification). If testgen is sparse or per-test-hand-written, the "structurally derived test surface" thesis claim collapses to "we have some generated tests."
+
+#### §3.7.b Integration testing
+
+**Promise** (TESTING.md:128 + :118): integration tests are deliberate end-to-end coverage; the standard form is `compile_to_dag(small_fixture)` exercising multiple substrate carriers + emission targets in one test. Heavy integration tests are exception, not rule (TESTING.md:5).
+
+**Probes**:
+
+- [ ] Enumerate integration tests at HEAD. How many? In what file-locations? (`src/v3/compiler/tests/` etc.)
+- [ ] For each: is it `.dag` `TestClaim`-shaped or hand-authored `.rs`? Tabulate.
+- [ ] Pick 3 integration tests. For each, what fixture does it compile? What's the end-to-end coverage (which substrate carriers, which emission targets, which lenses)?
+- [ ] **Cross-target coverage**: are integration tests run for Rust + Python + Go targets independently? Or only one?
+- [ ] **Mock-over-compile anti-pattern probe (per TESTING.md:84)**: does any integration test mock its compile-result rather than actually compiling? Should be zero.
+- [ ] **Falsification probe**: introduce a regression that ONLY surfaces end-to-end (passes unit-level tests). Does any integration test catch it pre-merge?
+
+**R3-close honest framing**: integration tests should be the smallest set sufficient to catch class-of-bugs the structural Tier 1/2 proofs can't (cross-module composition, emission-runtime divergence). If the set is huge or growing, the Tier 1/2 surface has gaps.
+
+#### §3.7.c Mocks / dependency injection by construction
+
+**Promise** (THESIS.md:367 + TESTING.md:175-186): "Consequence of the pure-function posture: effects are explicit parameters, mocking is dependency-injection-by-construction, no hidden state means no flaky tests."
+
+The structural claim: every effectful operation takes its effect-source as a typed parameter; substituting a test double IS just substituting a different parameter value. No mock-framework, no test-double-DSL, no monkey-patching — the language gives mocking for free.
+
+**Probes**:
+
+- [ ] Pick a `.dag` program that performs I/O (e.g., HTTP call, file read). Show the effect-source as a typed parameter. Cite the carrier (e.g., `HttpClient`, `FileSystem`).
+- [ ] Write a test for that program substituting a fake effect-source. How much new code did you write — a fake `HttpClient` implementation, or a mock-framework invocation?
+- [ ] Run the test. Are there any hidden-state interactions (global state, ambient capabilities, environment dependencies)?
+- [ ] **"No flaky tests" probe**: enumerate test-flakiness incidents in CI history. For each, what was the root cause? Hidden state, time-dependency, race? Are any caused by mocking infrastructure?
+- [ ] **Falsification probe**: try to write a `.dag` program that uses an ambient capability (hidden state not in parameters). Does the substrate reject it, or admit it?
+- [ ] **Cross-test pollution probe**: run integration tests in randomized order. Does any test depend on order, or on prior test leftover state? Should be zero.
+
+**R3-close honest framing**: "mocking is dependency-injection-by-construction" is a strong claim — if the test substrate has mock-frameworks or test-double-DSLs at HEAD, the claim is false. R3 close MUST enumerate the test-doubling surface as evidence.
+
+#### §3.7.d Dry-run / structural execution traces
+
+**Promise** (derived from THESIS.md pure-function posture + bounded-execution invariant + §2.5.F affected-set lens): the compiler can answer "what would this program DO without running it" via structural analysis. The pure-function posture means effect-shapes are visible at the type level; bounded-execution means traces are computable.
+
+**Probes**:
+
+- [ ] What's the `dag run --dry-run` (or equivalent) invocation? Does it exist as a CLI flag, an `IntrospectApplication` lens, or implicit-via-purity?
+- [ ] Run dry-run on an example `.dag` workflow. What does it output? (Expected: execution-trace lens reading + effect-summary + cost-estimate.)
+- [ ] **Effect-shape preview probe**: pick a workflow with HTTP / DB / file effects. Can dry-run enumerate the effects it WOULD perform without performing them? Cite the lens / output.
+- [ ] **Cost-preview probe**: can dry-run report the symbolic cost (§1.2) of executing the workflow without executing it? (Should compose with cost-lens output.)
+- [ ] **Affected-set composition** (per §2.5.F): does dry-run compose with affected-set lens — i.e., "given this diff, what would actually re-execute"? Or are they separate query surfaces?
+- [ ] **Simulated-inputs probe**: can dry-run accept simulated input values + report what the program would compute? Distinguish from "running with fake values" (which is actual execution).
+- [ ] **Falsification probe**: a program performs an HTTP POST. Run dry-run. Does the actual HTTP request happen (failure) or is it captured as an effect-trace entry (success)?
+
+**R3-close honest framing**: dry-run isn't an explicit thesis-claim, but it falls out of the pure-function + bounded-execution + lens-framework structure. If dry-run requires special tooling distinct from the lens framework, that's a surface-debt finding. R3-close framing should disposition: is dry-run (a) by-construction-via-lenses, (b) a separate CLI surface, or (c) NYI for R3.
+
+#### §3.7.e Verification-machinery composition
+
+**Probe — the unified question**:
+
+- [ ] Run a single program through testgen + integration + mocks + dry-run. Do they share one substrate-read pass, or are they four separate pipelines? (Per `feedback_holistic_over_patches` + `feedback_compositional_not_templating`: should be one substrate-read with four lens-reads.)
+- [ ] **Falsification probe**: a bug surfaces in production. Could ANY of the four (testgen / integration / mocks / dry-run) have caught it pre-merge? Tabulate per bug class. If one surface ALWAYS misses, that's a gap class.
+
+**R3-close framing**: the four verification-machinery surfaces should be lens-compositions over the same substrate, not parallel pipelines. R3 close MUST demonstrate that adding a new verification dimension is one lens, not a separate pipeline.
+
+### §3.8 Multi-program / network-coordinated emission from one `.dag` (FORWARD POINTER)
+
+**Status**: STUB — pointer only. Substantive Q-dispositions land via R4 canvas (separate from path (b) full-stack-from-one-.dag canvas at PR #2847; distributed-coordination warrants its own canvas scope).
+
+**Thesis-probe framing**: extend omni-emission from "one `.dag` → N representations of one program" to "one `.dag` → N cooperating distributed programs with derived wire interfaces, where the SAME structural facts (cost / complexity / effect / parallelism) apply across the system, not just per-endpoint." This is the natural extension axis from gate #28 omni-emission and gate #29 wire-serde-alignment.
+
+**Structural cash at HEAD** (existing R3 substrate the multi-program story extends):
+- Gate #25 `omni_openapi_backend_emission_demo` — CONSUMER_LANDED + PASSING (wire-contract emit)
+- Gate #28 `omni_layers_share_one_node_tree` — CONSUMER_LANDED + PASSING (per Q4 Director ratification msg_7d51b699: NAME is layer-count-agnostic; the invariant is general)
+- Gate #29 `anthropic_wire_typed_serde_alignment` — wire-derivation precedent for a specific external API
+- T-Anthropic-Wire lane gates
+- Path (b) R4 canvas PR #2847 — Director-ratified TS/React substrate; foundational for cross-deployment programs
+
+**Distinct from path (b)**: path (b) covers single-program-multi-target (Rust backend + TS client + React UI + OpenAPI + SQL DDL from one `.dag`). §3.8 covers **multi-program coordination** — distinct programs at distinct deployment endpoints with explicit coordination semantics (sync / async / stream / pub-sub / eventually-consistent).
+
+**Probes** (deferred to post-R4-canvas-ratification):
+
+- [ ] **Multi-program shape**: how does `.dag` express "this fragment runs on machine A, this on machine B"? Is it a Cluster F lens reading a "deployment-target" dimension, OR substrate-level partitioning (carriers for `DeploymentUnit` / `Endpoint`)?
+- [ ] **Wire derivation extension**: does extending gate #28 `omni_layers_share_one_node_tree` to "share one Dag across deployment units" hold, OR does cross-deployment need a new invariant gate?
+- [ ] **Coordination semantics modeling**: are sync / async / stream / pub-sub first-class behaviors (a 6th L1 behavior or beyond? — would trigger C1 stop-signal per §2.6) OR compositions over existing 5 behaviors (Bind composition + effect-typed parameters)?
+- [ ] **Failure-at-boundary**: is "partial failure" a lens read, an effect annotation, or a substrate variant? How does it compose with effect-enumeration lens (§1.4)?
+- [ ] **Idempotency at endpoint**: composes with existing idempotency lens (per THESIS:188 "idempotency + cancellation + redundancy = algebraic simplification" + R1 demo class per THESIS:378-380)?
+- [ ] **Cross-endpoint dimension propagation**: does the affected-set lens (§2.5.F) extend across deployment-unit boundaries? When endpoint A's cost dimension changes, are endpoint B's consumers reading A's wire-contract dimension flagged?
+- [ ] **Falsification probe**: design a 2-endpoint distributed program in `.dag`. Demonstrate end-to-end emission: each endpoint emits its own backend (per Shape-A) + the wire contract between them (per Shape-B) + coordination behavior captured structurally. Or: identify the gap class.
+
+**Open questions for R4 canvas authoring**:
+
+- Does multi-program coordination warrant a NEW L1 behavior (6th: e.g., `Coordinate` for sync/async/stream/pubsub), OR is Bind composition + Effect annotation sufficient? Note: a 6th behavior would trigger C1 stop-signal per §2.6 (the four dissolution patterns must fail first).
+- Are "machine A" / "machine B" addresses substrate-level carriers (concrete `Endpoint` type) or lens-readable dimension (deployment-target dimension reads)?
+- How does failure-recovery compose with `feedback_fail_closed_discipline` (C-8)? Distributed systems force "retry-able failure" semantics; gunbc's fail-closed posture must extend coherently.
+
+**PM read** (provisional, pre-canvas-authoring): multi-program coordination is the natural completion of the omni-emission story. Gate #28 already proves N projections share one Dag for ONE program; §3.8 extends to N projections × M programs. The wire substrate (gate #25, #29) provides the partial answer (interface derivation); coordination semantics and failure-mode handling are the open R4 axes. R4 canvas should disposition the questions above before R4 worker dispatch.
+
 ---
 
 ## §4. The self-application promises
@@ -371,6 +762,40 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] How many iterations to converge? (Should be ≤2.)
 - [ ] If divergent: what's the byte-diff or behavior-diff?
 - [ ] **Falsification probe**: introduce a non-deterministic compiler step. Does the fixed-point predicate catch it?
+
+### §4.3 Concept unifications
+
+**Promise** (THESIS.md:184-188 Concept unifications):
+
+- **Coercion cost = complexity**: the cost of converting between representations IS measured by complexity-lens reads, not a parallel "coercion-cost" carrier.
+- **Coercion = emission**: see §1.6 above; restated here as a unification.
+- **Target language spec = transport spec = interpreter runtime**: ONE substrate carrier for all three. A Rust language spec IS-A transport spec IS-A interpreter runtime — different lenses read different facts from the same data.
+- **Idempotency + cancellation + redundancy = algebraic simplification**: three named runtime concerns are ONE algebraic-simplification mechanism over substrate.
+
+These are unification claims — load-bearing because each pairing-or-tripling that's separately-modeled is a parallel-authority violation per INVARIANTS P1.
+
+**Coercion cost = complexity probes**:
+
+- [ ] Find the "coercion cost" data. Cite the substrate carrier. Is it `Complexity` (the same one used by §1.1), or a separate `CoercionCost` carrier?
+- [ ] If separate: that's a parallel-authority finding. Surface as P1 violation candidate.
+- [ ] **Falsification probe**: a coercion between two representations has cost C. Is C readable via the complexity lens, or via a separate read?
+
+**Coercion = emission probes**: see §1.6 — same probes apply here.
+
+**Lang spec = transport spec = interpreter runtime probes**:
+
+- [ ] Find the Rust language spec at `dsl/extdeps/languages/rust/`. Find the Rust transport spec. Are they ONE file / ONE substrate carrier, or distinct authorities?
+- [ ] Same for an interpreter runtime (if v3 has one at HEAD; or the runtime-emission target). Is it the same substrate, or parallel?
+- [ ] If distinct: each pair is a parallel-authority finding. Enumerate.
+- [ ] **Falsification probe**: edit the Rust language spec. Does the transport spec auto-update (i.e., it IS the same fact) or require a parallel edit (P1 violation)?
+
+**Idempotency + cancellation + redundancy = algebraic simplification probes**:
+
+- [ ] Find the idempotency lens / mechanism. Find the cancellation lens / mechanism. Find the redundancy lens / mechanism. Are they three separate mechanisms or ONE algebraic-simplification engine with three lenses?
+- [ ] If three: where's the unification path? (Should be in algebra.dag's compositional-fold of `Behavior::Bind` per `feedback_closed_system_effects`.)
+- [ ] **Falsification probe**: write a `.dag` program with an obviously-redundant operation (e.g., reading the same key twice with no intervening write). Does the idempotency lens, cancellation lens, AND redundancy lens all catch it? Same diagnostic, or three different paths?
+
+**R3-close honest framing**: each unification claim is structurally testable. If any pair / triple are separately-modeled at HEAD, R3 close framing must explicitly disposition the parallel-authority as `feedback_parallel_representation_debt`-class.
 
 ---
 
@@ -409,9 +834,118 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] If non-zero: enumerate each bridge. Has each a named dissolution trigger and target date?
 - [ ] **Falsification probe**: would a code reviewer notice if a new bridge type was introduced without ledger entry?
 
+### §5.4 Compiler-as-data residual — "is the compiler pure data yet?"
+
+**Promise** (operator framing 2026-05-09 quoted verbatim in r3-program-plan.md §1.5 row #94 + r3-program-plan.md §1.8 row 1060 Q-Lens-Behavioral-Parity-R3-Closeability amendment): *"0 hand-Rust including tests AND stage0; bootstrap is data + self-generated"* — the R3 close criterion for the gunbc thesis claim "the compiler IS data, not code."
+
+**Supporting framings**:
+- THESIS.md: "substrate describes everything including itself"
+- `src/v3/SELF_HOSTING.md` §1: "Self-hosting means v3's entire compiler pipeline — parse, lower, infer, emit — is written in `.dag`, compiled by v3's own compile loop, and produces the same byte-for-byte output as the current Rust stage0. The Rust code at `src/v3/compiler/src/` becomes a bootstrap seed: kept for fresh-checkout bootstrapping and for the initial compilation of the `.dag` pipeline files, but no longer the authoritative compiler. The 'real' compiler is the `.dag` one; Rust stage0 exists to get it off the ground."
+
+**This section is the STRONG-FORM probe set** (§2.1 Pure Bootstrap covers the PB-0 census promise; §5.4 enumerates the specific file-class probes the operator asked for 2026-05-13):
+
+#### §5.4.a Stage0 edit-requirement at R3 close
+
+**Probes**:
+
+- [ ] Walk through R3-close-anchored changes: how many required edits to `src/v3/compiler/src/*.rs` (hand-Rust) vs. `.dag` substrate?
+- [ ] List the last 20 merged R3 PRs. For each, was the load-bearing change in `.rs` files or `.dag` files? Tabulate.
+- [ ] Is there a SINGLE merged R3 PR where the load-bearing change touched ONLY `.dag` files (no `_generated.rs` regen, no hand-Rust)? Cite SHA.
+- [ ] **Falsification probe**: pick a random `.dag` file. Edit it (e.g., add a field). Run the compiler. Does the compiler produce a correct emission without requiring any `_generated.rs` regen step that itself needs hand-Rust orchestration?
+
+#### §5.4.b Hand-Rust file count at R3 close
+
+**Probes** (against `src/v3/`):
+
+- [ ] Count `.rs` files in `src/v3/` total. Cite the number at HEAD.
+- [ ] Count `_generated.rs` (machine-emitted from `.dag`). Cite the number.
+- [ ] **Hand-Rust = total − generated**. Cite the count. Is it 0 per operator's 2026-05-09 framing?
+- [ ] If non-zero: enumerate each hand-Rust survivor. For each, cite the named-retirement-schedule (PR # / gate # / target SHA).
+- [ ] Cross-check against `src/v3/SELF_HOSTING.md` §1 "bootstrap seed" framing: are the survivors *bootstrap-seed-only* (i.e., regenerable from `.dag` via the compiler itself), or do any encode authoritative behavior absent from `.dag`?
+- [ ] **Falsification probe**: delete one hand-Rust file. Can the `.dag` substrate regenerate it via the compiler running on itself? Cite the regen invocation.
+
+#### §5.4.c Other hand-maintained files (non-Rust)
+
+**Probes** (broader than .rs):
+
+- [ ] Enumerate hand-maintained files by extension class. `.yml` (CI/build). `.toml` (Cargo / Rust). `.md` (docs). `.sh` (scripts). Others.
+- [ ] For each class, is the count R3-close-acceptable, or is there a named-dissolution-schedule?
+  - CI / `.yml`: per gate #103 affected-set + T-WAD slices, is the long-term plan to derive CI YAML from `.dag` workflow declarations? Cite the gate.
+  - `Cargo.toml`: is the long-term plan to derive Cargo manifests from `.dag` substrate? Or is `Cargo.toml` a "bootstrap-seed" peer to stage0 (kept-but-not-authoritative)?
+  - Docs `.md` (this doc included): are docs hand-authored R3-close-acceptable, or is there a thesis-claim that docs derive from `.dag` (e.g., gate #26 `omni_documentation_drift_lock_demo`)?
+  - Scripts `.sh`: enumerate. Each one is a process-discipline-bridge per `feedback_no_textual_enforcement_bridges` candidate — is each scoped to dissolve, or accepted as out-of-thesis?
+- [ ] **Falsification probe**: pick a hand-maintained non-Rust file (e.g., a build script). Is the load-bearing fact it encodes derivable from `.dag` substrate? If yes, why isn't it derived? If no, what's the named carrier for the fact?
+
+#### §5.4.d "Pure data" thesis-state at R3 close — interrogate against the committed 0-floor target
+
+**Committed target** (`docs/design-pure-bootstrap-zero.md:41` verbatim): *"Goal: zero hand-authored files in v3's source tree. Better than v2's 1-residual."* The ≤5-floor framing was retracted; the 0-floor target is the LIVE shape per ROADMAP T-PB-A row amendment. `docs/design-pure-bootstrap-zero.md:210` clarifies the hand-authored-vs-generated boundary: *"trampolines are 0 if their content is generated... a 1-line `include!()` trampoline that's itself emitted from a `.dag` authority is generated, not hand-authored."*
+
+**Promise** (THESIS.md substrate-describes-everything + design-pure-bootstrap-zero.md committed target): the compiler is "pure data" — every load-bearing fact lives in `.dag`; Rust files exist ONLY as machine-emitted artifacts of `.dag` authority. Hand-authored Rust at R3 close is debt against the 0-floor target, NOT an acceptable interpretation of "pure data."
+
+**Reconciling against contrary evidence**:
+
+`src/v3/SELF_HOSTING.md` §1 describes Rust at `src/v3/compiler/src/` as a "bootstrap seed: kept for fresh-checkout bootstrapping and for the initial compilation of the `.dag` pipeline files, but no longer the authoritative compiler." This framing describes the POST-0-floor functional shape, NOT an alternative R3-close criterion. The bootstrap-seed Rust is acceptable at R3 close IFF it is itself **machine-emitted from `.dag` authority** (per design-pure-bootstrap-zero.md:210 trampoline framing) — hand-authored bootstrap-seed Rust is R3-close debt against the 0-floor target.
+
+**Probes** (interrogating against the 0-floor target, not between alternative readings):
+
+- [ ] Run the PB-0 census at HEAD. What's the count of hand-authored `.rs` files in `src/v3/`? The committed target is **0** per design-pure-bootstrap-zero.md.
+- [ ] For each hand-authored survivor: cite the named-retirement-schedule (PR # / gate # / target SHA). Survivors without named retirement are 0-floor debt.
+- [ ] For each hand-authored survivor flagged as "bootstrap-seed": verify it is **machine-emitted from `.dag`** (replayable via `cargo run --bin regen-*` or equivalent). Hand-authored bootstrap-seed is NOT acceptable per design-pure-bootstrap-zero.md:210.
+- [ ] Cross-reference SELF_HOSTING.md §1 "bootstrap seed" framing against design-pure-bootstrap-zero.md:210 generated-trampoline framing: is every claimed bootstrap-seed survivor actually generated, not hand-authored?
+- [ ] **Falsification probe**: produce the `.dag` source for the LARGEST hand-Rust survivor at R3 close. Compile the `.dag`. Diff the emitted `.rs` against the survivor. If the survivor doesn't match the emission, the survivor is authoring facts not present in `.dag` — that's R3-close debt against the 0-floor target.
+- [ ] **Bootstrap-resolution boundary probe** (per design-pure-bootstrap-zero.md:191 STOP-condition): if first-time bootstrap (N=0) resolution requires hand-Rust in v3's source tree, the 0-floor target is unreachable and the framing needs revision back toward an explicit alternative. Verify the N=0 resolution lives OUTSIDE `src/v3/` (install script, gunbc-runtime crate, rustc macro).
+
+#### §5.4.e R3-close honest framing
+
+The committed target (per `docs/design-pure-bootstrap-zero.md`) is 0 hand-authored files in `src/v3/`. R3 close framing must interrogate against this target, not negotiate around it.
+
+PM-recommended answer-shape for R3 close:
+
+- R3 close MUST report PB-0 census count at HEAD. Per the committed 0-floor target: the goal is **0**.
+- If census count > 0 at R3 close: each survivor MUST be either (i) machine-emitted from `.dag` (and therefore not actually hand-authored per design-pure-bootstrap-zero.md:210), OR (ii) on the SG-0 ledger with named-retirement-schedule (per `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` discipline).
+- Hand-authored survivors with named-retirement-schedule are **acknowledged R3 debt against the 0-floor target**, NOT "acceptable close criterion." The named retirement is the dissolution plan; the survivor itself is debt.
+- R3 close framing CANNOT claim "pure data" if hand-authored survivors exist without machine-emitted reconciliation. The thesis claim is true iff the census is 0 OR all survivors are machine-emitted.
+
+**Anti-pattern**: silently shipping with hand-authored survivors while claiming "compiler is pure data" or "bootstrap-seed framing satisfies R3 close." Per design-pure-bootstrap-zero.md authority, bootstrap-seed Rust is acceptable IFF it is itself generated; otherwise it is 0-floor debt. R3 close framing must cite the census count + per-survivor disposition (machine-emitted OR named-retirement-schedule) against the committed 0-floor target.
+
+### §5.5 Free consequences (when Tiers 1-2 close)
+
+**Promise** (THESIS.md:205-210): "Free consequences (fall out when Tiers 1-2 close):
+- Automatic parallelism from dependency graph.
+- Automatic memoization from purity + cost.
+- Incremental cross-run execution from purity + bounded execution + dependency graph.
+- Space bound proofs from CX.
+- Cross-language optimization from shared cost algebra."
+
+§1.3 covers parallelism; §1.1 partially covers space bounds via complexity. This section probes the rest as standalone "free consequence" claims.
+
+**Automatic memoization probes**:
+
+- [ ] Find the memoization mechanism. Cite the lens / decorator / substrate carrier.
+- [ ] Is memoization opt-in (annotation) or by-construction (compiler reads purity + cost and applies it automatically)?
+- [ ] Show me a `.dag` program that should benefit from memoization. Compile + run. Was memoization applied? How is "was applied" verifiable (cost-lens output? execution-trace lens? cache-hit metric)?
+- [ ] **Falsification probe**: a pure function with high cost is called twice with the same args. Does the compiler emit code that memoizes, or naive double-execution?
+
+**Incremental cross-run execution probes**:
+
+- [ ] Find the incremental-execution mechanism. Cite the lens / data carrier.
+- [ ] Run an example `.dag` workflow twice with no input changes. Does the second run skip pure subgraphs that haven't changed? Verify via execution-trace lens.
+- [ ] Now change ONE input. Verify that only the affected-set subgraph re-executes (composes with §2.5.F affected-set lens).
+- [ ] **Falsification probe**: a non-deterministic step is in the graph. Does the incremental-execution mechanism correctly avoid skipping its re-evaluation?
+
+**Cross-language optimization probes**:
+
+- [ ] Find the "shared cost algebra" that enables cross-language optimization. Cite the substrate carrier.
+- [ ] Pick an optimization (e.g., loop-fusion / tail-recursion / cse). Is it applied uniformly across Rust + Python + Go targets, or per-target?
+- [ ] **Falsification probe**: write a `.dag` program where one target language's optimizer would catch a cost reduction but another wouldn't. Does the shared-cost-algebra propagate the optimization to ALL targets, or only the one whose host optimizer applies?
+
+**R3-close honest framing**: "free consequences" is a strong claim — each consequence must be demonstrably operational, not just structurally available. R3 close MUST cite per-consequence demos OR explicitly defer (per-consequence) to R4 with named gap.
+
 ---
 
-## §6. The "show the correct code" promise
+## §6. The user-experience / adoption promises
+
+### §6.1 "Show the correct code"
 
 **Promise** (THESIS.md:103-105): "Diagnostics should point to the structurally correct program, not just report that the current one is wrong."
 
@@ -421,6 +955,61 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] Pick 5 diagnostic message types. For each, does it satisfy the "show the correct code" criterion?
 - [ ] If diagnostic just says "X is wrong" without "Y would be right": is that a GAP for R3 close, or R4-deferred?
 - [ ] **Falsification probe**: write a program with a known structural error. Read the diagnostic. Could a user act on it without reading source code?
+
+### §6.2 Audience duality / opt-in depth
+
+**Promise** (THESIS.md:307-321 Audience duality):
+
+- Core language stays approachable — types, functions, match, effects, workflows. Any engineer can write a gunbc program and get multi-target emission without learning the lens/proof surface.
+- Advanced surface is opt-in — lenses, cementing tests, user-authored static reflection, complexity/cost/idempotency proofs.
+- "gunbc does not pick a tribe. Normal programmers get glue generation; principal engineers get structural proofs. The same compiler serves both because depth is a surface the user opts into."
+
+**Probes — core-language approachability**:
+
+- [ ] Show me the SIMPLEST `.dag` program — types + function + maybe one workflow. How many concepts must the author know? Is the proof / lens surface invisible?
+- [ ] Compile the simple program for Rust + Python + Go. Does it emit working code in all 3 without the user touching lens/proof surface?
+- [ ] ROADMAP cites `fixture_integration_canonical` for the glue-generation audience. Cite the fixture path. Compile + run. Does it land in <100 LOC of `.dag` surface for the user?
+
+**Probes — opt-in depth**:
+
+- [ ] Show me a `.dag` program that opens the advanced surface — author a user-defined lens. How much new surface does the user touch? Is the base-language surface untouched (per "opening doesn't change the base")?
+- [ ] ROADMAP cites `fixture_compiler_nerd_canonical` for the structural-proof audience. Cite the fixture path. Verify it exercises lens + proof surfaces.
+- [ ] **Falsification probe**: a base-language change (e.g., a new type connective) shouldn't require the advanced-surface user to relearn. Conversely, an advanced-surface change shouldn't break base-language programs. Demonstrate non-coupling at each direction.
+
+**R3-close honest framing**: audience duality is the recruiting-mechanism claim. R3 close MUST cite per-audience demo fixtures (both T-Demo fixtures landed) OR explicitly defer demo-coverage to R4 with named gap.
+
+### §6.3 Adoption model — economics, not enforcement
+
+**Promise** (THESIS.md:323-346 Adoption model):
+
+- "The thesis claims every program gets complexity, effects, termination, idempotency, and ownership for free — by construction, not by opt-in. ... There is no in-language way to author a program the lenses can't read."
+- **Leaving the stack (in-language)**: composing primitives into named patterns (namespacing). "The compiler sees through; lenses still apply. Still inside the stack."
+- **Leaving the stack (outside language)**: writing a different compiler on different primitives. "The thesis does not prevent this and does not need to — gunbc's lenses are folds over *our* primitives."
+- "Adoption is therefore gated by **economics, not enforcement**: low cost of entry × high free value."
+
+**Probes — every program gets the guarantees**:
+
+- [ ] Pick an arbitrary `.dag` program at HEAD. Apply the complexity lens. Does it produce output? (It should — no opt-in flag should be required.)
+- [ ] Same for effect / cost / parallelism lenses. Each should produce output for ANY `.dag` program at HEAD.
+- [ ] **Falsification probe**: try to author a `.dag` program that opts OUT of complexity/cost/effect lens reads. Is there ANY in-language syntax that disables lens reads? (Should be zero per `feedback_groundedness_gates_lenses`.)
+
+**Probes — leaving the stack (in-language)**:
+
+- [ ] Author a `.dag` namespace pattern. Run all 4 lenses on it. Do they all read through the namespacing, or does one of them stop at the named boundary? (Should read through per "compiler sees through" claim.)
+- [ ] **Falsification probe**: try to "hide" a complexity violation behind a named pattern (e.g., wrap an O(n²) function in a typedef'd "FastLookup<T>"). Does the complexity lens still flag it?
+
+**Probes — leaving the stack (outside language)**:
+
+- [ ] Show me a `.dag` program that calls out to an externally-implemented operation (e.g., `ExecuteCommand` / `extdeps` provider). Where does lens-coverage end? Cite the explicit boundary marker (per `feedback_groundedness_gates_lenses`).
+- [ ] **Falsification probe**: try to author a program that EFFECTIVELY leaves the stack inside the language (e.g., via heavy use of `extdeps` opaque calls). Is the lens-coverage boundary explicit + auditable?
+
+**Probes — economics not enforcement**:
+
+- [ ] What's the LOC overhead of a `.dag` program vs. an equivalent program in Rust / Python / Go? Tabulate for a canonical small + medium + large example.
+- [ ] What's the percentage of programs where ALL lenses produce green output (no violations)? If the percentage is high, "high free value" is structurally true.
+- [ ] **Falsification probe**: is there a class of programs gunbc IS more verbose / more constraining than alternatives, in a way that fails the "economics" test? Enumerate (acceptable to defer as R4 if narrow).
+
+**R3-close honest framing**: adoption model is the recruiting-mechanism story. R3 close framing should explicitly cash whether "low cost × high free value" is structurally demonstrated OR is forward-looking thesis-pitch.
 
 ---
 
