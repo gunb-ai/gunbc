@@ -8,6 +8,7 @@
 - [`TESTING.md`](../../TESTING.md) section "Cementing tests (Band C — lens subsumption)".
 - [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §5 and §C5.
 - [`docs/v3-lens-capability-register.md`](../v3-lens-capability-register.md).
+- [`docs/briefs/r3-gate-87-placeholder-dissolution-ledger-2026-05-13.md`](r3-gate-87-placeholder-dissolution-ledger-2026-05-13.md) for the Gate 87 `Compiles` placeholder and Rust-pin blocker ledger.
 - `src/v3/std/verification.dag` `TestPredicate` variants and lens-capability data.
 - `src/v3/compiler/regen.dag` `LensRegistryEntry` rows for the gate-#87 corpus.
 - `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` `R3_GATE_87_CEMENTING_REGEN_SUITES`.
