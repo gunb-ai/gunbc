@@ -6299,8 +6299,16 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
     Some(trimmed[start..end].to_string())
 }
 
+/// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
+///
+/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
+/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
+/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
-    matches!(path, "src/v3/compiler/src/bin/regen_lens.rs")
+    matches!(
+        path,
+        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
+    )
 }
 
 fn compiler_std_positive_set_ratchet_count() -> i64 {

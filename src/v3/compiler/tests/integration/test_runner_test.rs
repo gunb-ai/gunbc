@@ -637,7 +637,7 @@ data suite: TestSuite = {
     );
     assert_fail_contains(
         "lens_producer_files_remaining",
-        "lens-producer subset observed 1",
+        "lens-producer subset observed 2",
     );
     assert_eq!(
         result_for("pb_self_compile_fixed_point"),
