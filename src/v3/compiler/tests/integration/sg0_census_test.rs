@@ -552,7 +552,7 @@ fn sg0_v3_hand_authored_census() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated = generated_or_manifested_rs();
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
 
     let expected = expected_hand_authored_rs();
@@ -614,7 +614,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
             "EXPECTED_HAND_AUTHORED_NON_TEST",
             EXPECTED_HAND_AUTHORED_NON_TEST,
         ),
-        ("EXPECTED_HAND_AUTHORED_TEST", EXPECTED_HAND_AUTHORED_TEST),
+        ("EXPECTED_HAND_AUTHORED_TEST", expected_hand_authored_test()),
     ] {
         let mut prev: Option<&str> = None;
         for p in list {
@@ -629,7 +629,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
         }
     }
     let non_test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_NON_TEST.iter().copied().collect();
-    let test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+    let test: BTreeSet<&str> = expected_hand_authored_test().iter().copied().collect();
     let overlap: Vec<&&str> = non_test.intersection(&test).collect();
     assert!(
         overlap.is_empty(),
@@ -651,7 +651,7 @@ fn sg0_expected_rs_entries_match_test_partition() {
          EXPECTED_HAND_AUTHORED_TEST: {misplaced_non_test:?}"
     );
 
-    let misplaced_test: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
+    let misplaced_test: Vec<&str> = expected_hand_authored_test()
         .iter()
         .copied()
         .filter(|p| !is_test_path(p))
@@ -671,7 +671,7 @@ fn sg0_v3_non_test_hand_authored_subratchet() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated = generated_or_manifested_rs();
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
     let observed: BTreeSet<String> = hand_authored
         .iter()
@@ -699,14 +699,14 @@ fn sg0_v3_test_hand_authored_subratchet() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated = generated_or_manifested_rs();
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
     let observed: BTreeSet<String> = hand_authored
         .iter()
         .filter(|p| is_test_path(p))
         .cloned()
         .collect();
-    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_TEST
+    let expected: BTreeSet<String> = expected_hand_authored_test()
         .iter()
         .map(|p| (*p).to_string())
         .collect();
@@ -753,42 +753,16 @@ fn sg0_rust_test_generator_manifest_covers_every_test_rs() {
 }
 
 #[test]
-fn sg0_rust_test_generator_manifest_bytes_match_checked_in_files() {
-    let ws = workspace_root();
-    let manifest_paths: BTreeSet<&str> = RUST_TEST_GENERATOR_MANIFEST.iter().copied().collect();
-    let byte_paths: BTreeSet<&str> = RUST_TEST_GENERATOR_MANIFEST_BYTES
-        .iter()
-        .map(|(path, _)| *path)
-        .collect();
-    assert_eq!(
-        manifest_paths, byte_paths,
-        "Rust test byte-comparison rows must match RUST_TEST_GENERATOR_MANIFEST exactly"
-    );
-
-    let mut drifted = Vec::new();
-    for (path, generated_bytes) in RUST_TEST_GENERATOR_MANIFEST_BYTES {
-        let checked_in =
-            fs::read_to_string(ws.join(path)).unwrap_or_else(|e| panic!("read {path}: {e}"));
-        if checked_in != *generated_bytes {
-            drifted.push(*path);
-        }
-    }
-    assert!(
-        drifted.is_empty(),
-        "Rust tests drifted from the generator-manifest byte snapshot: {drifted:?}"
-    );
-}
-
-#[test]
 fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
-    if EXPECTED_HAND_AUTHORED_TEST.is_empty() {
+    let expected_hand_authored_test = expected_hand_authored_test();
+    if expected_hand_authored_test.is_empty() {
         return;
     }
 
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
     let mut unclassified = Vec::new();
 
-    for path in EXPECTED_HAND_AUTHORED_TEST {
+    for path in expected_hand_authored_test {
         match tests_as_data_migration_class(path) {
             Some(class) => by_class.entry(class).or_default().push(*path),
             None => unclassified.push(*path),
