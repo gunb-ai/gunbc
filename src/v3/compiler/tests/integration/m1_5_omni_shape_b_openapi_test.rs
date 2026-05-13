@@ -821,8 +821,27 @@ fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
     assert!(ddl.contains("'PATCH'"));
     assert!(ddl.contains("'PUT'"));
 
-    let _backend =
+    let backend_source =
         project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
+    let (_tmp_dir, backend_bin) = compile_backend_service(&backend_source);
+    for route in &canonical {
+        let concrete_path = route
+            .path
+            .replace("{userId}", "42")
+            .replace("{todoId}", "99")
+            .replace("{listId}", "7");
+        assert_eq!(
+            backend_probe(&backend_bin, &route.method, &concrete_path),
+            "200",
+            "generated backend accepts route {} {}",
+            route.method,
+            concrete_path
+        );
+    }
+    assert_eq!(backend_probe(&backend_bin, "GET", "/missing"), "404");
+    assert_eq!(backend_probe(&backend_bin, "DELETE", "/users"), "404");
+    assert_eq!(backend_probe(&backend_bin, "GET", "/users/"), "404");
+
     let _rust = emit_rust(&dag).expect("Shape A Rust emit consumes shared DAG");
 
     assert_eq!(
