@@ -32,6 +32,63 @@ type CementingBandCReceipt {
   kind: CementingBandCReceiptKind
 }
 
+// Full gate-87 regen harness coverage. This is the dispatch-visible mirror
+// of `src/v3/compiler/regen.dag` `LensRegistryEntry.name` values and the
+// PB-B-1 runner table stems; `r3_gate_87_lens_cementing_regen_receipts_test`
+// compares it against both live authorities so it cannot become a parallel
+// hand-maintained inventory.
+type CementingRegenHarnessReceipt {
+  registry_name: String
+  module_stem: String
+}
+
+data cementing_regen_registry_harness_receipts: List<CementingRegenHarnessReceipt> = [
+  {
+    registry_name: "cost"
+    module_stem: "t_r3_gate_87_cementing_regen_cost"
+  },
+  {
+    registry_name: "cost_symbolic"
+    module_stem: "t_r3_gate_87_cementing_regen_cost_symbolic"
+  },
+  {
+    registry_name: "cost_target_realization"
+    module_stem: "t_r3_gate_87_cementing_regen_cost_target_realization"
+  },
+  {
+    registry_name: "effect_enumeration"
+    module_stem: "t_r3_gate_87_cementing_regen_effect_enumeration"
+  },
+  {
+    registry_name: "infer_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_infer_helpers"
+  },
+  {
+    registry_name: "lower_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_lower_helpers"
+  },
+  {
+    registry_name: "parallelism"
+    module_stem: "t_r3_gate_87_cementing_regen_parallelism"
+  },
+  {
+    registry_name: "provenance"
+    module_stem: "t_r3_gate_87_cementing_regen_provenance"
+  },
+  {
+    registry_name: "structural_resolution"
+    module_stem: "t_r3_gate_87_cementing_regen_structural_resolution"
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "t_r3_gate_87_cementing_regen_unused_parameters"
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "t_r3_gate_87_cementing_regen_variant_payload"
+  }
+]
+
 data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
   {
     registry_name: "cost"

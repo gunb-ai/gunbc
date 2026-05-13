@@ -38,7 +38,10 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -131,6 +134,27 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .value
 }
 
+fn list_items(dag: &Dag, name: &str) -> Vec<FieldValue> {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from compiled dispatch DAG"));
+    match &decl.value_body {
+        Some(ValueBody::List(items)) => items.clone(),
+        other => panic!("`{name}` must lower as a list, got {other:?}"),
+    }
+}
+
+fn record_string_field(fields: &[(String, FieldValue)], label: &str, row_name: &str) -> String {
+    fields
+        .iter()
+        .find(|(candidate, _)| candidate == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("`{row_name}` row is missing String field `{label}`"))
+}
+
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -141,6 +165,63 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_cementing_dispatch_covers_registry_runner_inventory() {
+    let source = include_str!("../dag/cementing_dispatch.dag");
+    let dag = compile_to_dag(source, "src/v3/compiler/tests/dag/cementing_dispatch.dag")
+        .expect("cementing_dispatch.dag should compile");
+    let registry_names = regen_lens_registry_names();
+    let runner_stems = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+
+    let mut dispatch_names = BTreeSet::new();
+    let mut dispatch_stems = BTreeSet::new();
+    for row in list_items(&dag, "cementing_regen_registry_harness_receipts") {
+        let FieldValue::Record(fields) = row else {
+            panic!("cementing_regen_registry_harness_receipts rows must be records, got {row:?}");
+        };
+        let registry_name = record_string_field(
+            &fields,
+            "registry_name",
+            "cementing_regen_registry_harness_receipts",
+        );
+        let module_stem = record_string_field(
+            &fields,
+            "module_stem",
+            "cementing_regen_registry_harness_receipts",
+        );
+        assert!(
+            dispatch_names.insert(registry_name.clone()),
+            "duplicate gate-87 dispatch row for registry lens `{registry_name}`"
+        );
+        assert!(
+            dispatch_stems.insert(module_stem.clone()),
+            "duplicate gate-87 dispatch row for module stem `{module_stem}`"
+        );
+    }
+
+    assert_eq!(
+        dispatch_names, registry_names,
+        "`cementing_dispatch.dag::cementing_regen_registry_harness_receipts` must cover \
+         exactly the live `src/v3/compiler/regen.dag` `LensRegistryEntry.name` set."
+    );
+    assert_eq!(
+        dispatch_stems, runner_stems,
+        "`cementing_dispatch.dag::cementing_regen_registry_harness_receipts` must cover \
+         exactly the PB-B-1 gate-87 runner table stems, not a parallel hand list."
+    );
+
+    for stem in &runner_stems {
+        let path = workspace_root()
+            .join("src/v3/compiler/tests/dag")
+            .join(format!("{stem}.dag"));
+        assert!(
+            path.is_file(),
+            "runner table stem `{stem}` must have a corresponding gate-87 `.dag` harness at {}",
+            path.display()
+        );
+    }
 }
 
 #[test]
@@ -189,6 +270,11 @@ fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row
 #[test]
 fn r3_gate_87_infer_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/infer_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]

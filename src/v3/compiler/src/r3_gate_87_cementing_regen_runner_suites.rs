@@ -102,6 +102,12 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         &["cementing_regen_lower_helpers"],
     ),
     (
+        include_str!("../tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag",
+        "r3_gate_87_cementing_regen_parallelism_suite",
+        &["cementing_regen_parallelism"],
+    ),
+    (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_provenance.dag"),
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag",
         "r3_gate_87_cementing_regen_provenance_suite",
