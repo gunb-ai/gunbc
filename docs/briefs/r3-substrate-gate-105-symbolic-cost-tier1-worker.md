@@ -218,8 +218,8 @@ Normalization invariants in fold (canvas §5.3):
 Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_lens_behavioral_completion.rs`):
 
 `src/v3/compiler/tests/integration/cementing/symbolic_cost_tier1_carrier_test.rs` asserting:
-- 10 variant count (assert against `cost.dag` or `algebra.dag` source); REMOVED LinearCost
-- All 10 variant names + field shapes structurally present
+- 9 variant count (assert against `cost.dag` or `algebra.dag` source); REMOVED LinearCost (PolynomialCost.degree promotion to Rational is not a new variant)
+- All 9 variant names + field shapes structurally present
 - Phase A Q1-α deliverables present: rational_lt/le/gt/ge/eq/ne free functions in cost-lens module; NO OrderedField type declared
 - `Rational = Field<FieldOfFractions<Int>>` UNCHANGED at `dsl/std/rational.dag:26` (Q1-α)
 - Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ExpCost(2,n)`; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
@@ -242,7 +242,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 
 1. **`OrderedRing<T>` shape drift** at HEAD — if `dsl/std/algebra.dag:268-286` no longer carries the exact 14-field signature this brief mirrors, **STOP** and surface — strict-mirror authority broken.
 2. **Existing `LinearCost`-consumer surface differs from canvas assumption** — if grep reveals consumer paths that can't migrate to `PolynomialCost(degree=1)` losslessly (e.g., type-level dispatches on LinearCost variant-tag), **STOP** — anti-pattern #7 atomic-migration discipline requires lossless migration.
-3. **`Rational` carrier not at `dsl/std/rational.dag:26`** — if Rational has moved / changed shape since 2026-05-13 grep, **STOP** — Q1-c re-declaration target is wrong.
+3. **`Rational` carrier not at `dsl/std/rational.dag:26`** — if Rational has moved / changed shape since 2026-05-13 grep, **STOP** — Q1-α refinement target is wrong.
 4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `PositiveRational` / `ExponentialBase` / `PolyLogExponent` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse.)
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
@@ -259,8 +259,8 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering` — lens-local predicate derivation from Ordering pattern-match is the canonical path
 7. **Pending Director ratification per operator BLOCKING PR #2824:333**: Tier-1 variant constructed with raw Int/Rational exponent/base admitting illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost; degree≤0 for PolynomialCost) bypassing refinement type — PolyLogExponent/ExponentialBase/PositiveRational required at carrier level (Practice 2/6)
 8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (`PositiveRational { num: PositiveInt; denom: PositiveInt }`, inductive `PolyLogExponentSuccessor | PolyLogExponentFractional`, or any fresh record/sum shape) when refinement over canonical `Rational = Field<FieldOfFractions<Int>>` carrier is available via ratified `type X = Y where predicate` mechanism (gunbc#828 issuecomment-4390333451 Path 3 RATIFIED; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`). Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
-8. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
-9. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+9. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
+10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §12. 5 reviewer ratchets (Director-enumerated for PR review)
 
@@ -290,7 +290,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 ## §14. Out of scope
 
 - **Tier 2 variants** (LogLog / InverseAckermann / IteratedLog / HyperExp) — R4-deferred per Director §8. Worker must NOT add these.
-- **`Field<T>` consumer migration** beyond cost-lens — Q1-c lazy migration; Field stays in place
+- **`Field<T>` consumer migration** beyond cost-lens — Q1-α; Field stays in place unchanged (compare already present)
 - **InverseAckermann / IteratedAlgebra mechanism** — canvas §8 finding accepted; not introduced
 - **Cost-lens behavioral changes** — this is a carrier-extension PR, not a semantics change; lens output must be backwards-compatible modulo Linear→Poly(d=1) lossless rewrite
 - **`docs/design-symbolic-cost-algebra.md` rewrite** — out of scope; tracked separately as doc-drift sweep
@@ -307,8 +307,8 @@ Net 7 → 9 SymbolicCost variants (Q2-Y collapse Linear into
 PolynomialCost(degree=1)):
 [paste §5 variant set verbatim]
 
-Companion substrate (Q1-c):
-- Cost-lens-local Rational ordering helpers (Q1-α; NO new OrderedField)
+Companion substrate (Q1-α):
+- Cost-lens-local Rational ordering helpers (NO new OrderedField; derived from existing Field.compare)
 - Rational stays as Field<FieldOfFractions<Int>> (UNCHANGED)
 
 STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
@@ -334,7 +334,7 @@ Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 - Current SymbolicCost: `src/v3/std/algebra.dag:190-197`
 - Current STOP-SIGNAL: `src/v3/std/algebra.dag:60-72`
 - Rational: `dsl/std/rational.dag:26`
-- `feedback_strict_mirror_vs_novel_substrate_fact` — Q1-c discipline
+- `feedback_strict_mirror_vs_novel_substrate_fact` — Q1-α discipline (strict-mirror of existing Field.compare; novel only at lens-local helper layer)
 - `feedback_state_space_vs_behavioral_invariants` — Q2-Y refinement-vs-fold discipline
 - `feedback_naming_is_aliasing` — §5.1 PolyLog-vs-Product semantic-collision avoidance
 - `feedback_no_short_term_solutions` — Q2-Y absorption-over-coexistence

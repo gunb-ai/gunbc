@@ -10,8 +10,8 @@ authority docs:
   - `src/v3/std/algebra.dag:60-72` — `STOP SIGNAL: wanting an eighth variant` (will reset)
   - `docs/design-symbolic-cost-algebra.md` — current algebra
   - `dsl/std/algebra.dag:268-286` — existing `OrderedRing<T>` witness pattern
-  - `dsl/std/algebra.dag:287` — existing `Field<T>` (no order)
-  - `dsl/std/rational.dag:26` — `type Rational = Field<FieldOfFractions<Int>>` (no order witness)
+  - `dsl/std/algebra.dag:294` — `Field<T>` carries `compare: fn(T, T) -> Ordering` (foundational order primitive; derived predicates lt/le/gt/ge live lens-local under Q1-α)
+  - `dsl/std/rational.dag:26` — `type Rational = Field<FieldOfFractions<Int>>` (inherits `Field.compare` via Field-shape)
   - `feedback_groundedness_gates_lenses` (Tier 2 structural-extension caveat)
 ---
 
@@ -192,9 +192,9 @@ Mgr recommendation: (b). `(n!)²` is genuinely outside Tier 1; it's super-factor
 
 ### §5.3 — Normalization (rational-degree polynomial)
 
-- `PolyCost(d1) · PolyCost(d2) = PolyCost(d1 + d2)` — uses Q1-c OrderedField.add
+- `PolyCost(d1) · PolyCost(d2) = PolyCost(d1 + d2)` — uses `Field.add` on Rational (Q1-α; Rational inherits Field's Ring-shape add)
 - `PolyCost(1/2) · PolyCost(1/2) = PolyCost(1)` — and per Q2-Y, this is PolyCost(degree=1), the absorbed Linear
-- `PolyCost(d1) + PolyCost(d2) = PolyCost(max(d1, d2))` — uses Q1-c OrderedField.compare
+- `PolyCost(d1) + PolyCost(d2) = PolyCost(max(d1, d2))` — uses `Field.compare` on Rational via cost-lens-local `rational_max` helper (Q1-α; NO OrderedField)
 
 ## §6. Q4 — STOP-SIGNAL update
 
@@ -213,7 +213,7 @@ Current `src/v3/std/algebra.dag:69-72`:
 
 These refinements make `degree ≤ 0` / `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved (no parallel rational/int authority).
 
-Variant count: **10** post-Q2-Y (recommended), or **11** if Q2-X is ratified.
+Variant count: **9** post-Q2-Y (Director-ratified; PolynomialCost.degree promotion is not a new variant), or **10** if Q2-X is ratified.
 
 ## §7. Q5 — Carrier-shape canvas before worker dispatch — THIS DOC
 
@@ -278,16 +278,14 @@ Per `INVARIANTS.md` "Cost of Change":
 
 For exotic (Tier-2) bounds: still requires UnknownCost("reason") at consumer site — that's the R4-deferral receipt.
 
-## §12. Open questions for ratification
+## §12. Ratified dispositions (audit trail; all Q1-Q5 Director-ratified)
 
-Director ratification on:
-
-- **Q1**: a / b / c (Mgr-rec: c — layered OrderedField introduction + lazy consumer migration)
-- **Q2**: X (keep Linear separate) / Y (collapse to PolynomialCost(degree=1)) (Mgr-rec: Y per §P5)
-- **Q3**: §5 algebra interaction rule table; §5.1 PolyLog-vs-Product disposition (Mgr-rec: b composite); §5.2 FactorialCost squared (Mgr-rec: b UnknownCost)
-- **Q4**: §6 STOP-SIGNAL text (9 or 10 variants depending on Q2)
-- **Q5**: This canvas (ratification-of-canvas is itself the Q5 disposition)
-- **§8 Tier-2 mechanism**: defer to R4 (Mgr-rec) or accept IteratedAlgebra mechanism (rejected by §8 analysis)
+- **Q1**: **RATIFIED Q1-α** (msg_676ad4e7, supersedes msg_d86a5987 Q1-c) — use existing `Field.compare`; NO `OrderedField` introduction; cost-lens-local rational_lt/le/gt/ge/eq/ne free functions
+- **Q2**: **RATIFIED Q2-Y** (collapse LinearCost into PolynomialCost(degree=1))
+- **Q3**: **RATIFIED** §5 10-rule algebra interaction table; §5.1 b composite; §5.2 b UnknownCost (for (n!)²)
+- **Q4**: **RATIFIED** §6 STOP-SIGNAL text re-reset at 10th variant (9 ratified + 1 trigger)
+- **Q5**: **RATIFIED** this canvas (carrier-shape canvas before worker dispatch)
+- **§8 Tier-2 mechanism**: **RATIFIED defer to R4**; IteratedAlgebra rejected per §8 analysis
 
 ## §13. Reference
 
@@ -295,12 +293,12 @@ Director ratification on:
 - `src/v3/std/algebra.dag:190-197` — current 7-variant SymbolicCost
 - `src/v3/std/algebra.dag:60-72` — current STOP SIGNAL
 - `dsl/std/algebra.dag:268-286` — OrderedRing<T> precedent
-- `dsl/std/algebra.dag:287` — Field<T> (no order)
+- `dsl/std/algebra.dag:294` — Field<T> carries `compare: fn(T, T) -> Ordering`
 - `dsl/std/rational.dag:26` — Rational = Field<FieldOfFractions<Int>>
 - `docs/design-symbolic-cost-algebra.md` — current algebra
 - Director ratification: PM msg_4fd650b7 / Director msg_ad5e934d
 - `feedback_groundedness_gates_lenses` — Tier-2 structural-extension caveat
-- `feedback_strict_mirror_vs_novel_substrate_fact` — Q1-c applies
+- `feedback_strict_mirror_vs_novel_substrate_fact` — Q1-α applies (strict-mirror via existing Field.compare)
 - `feedback_load_bearing_ratchet_preservation` — Q2-Y migration discipline
 
 ---
