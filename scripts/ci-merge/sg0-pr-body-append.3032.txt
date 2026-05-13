@@ -1,0 +1,4 @@
+SG-0 hand-path delta: +2
+
+SG-0 pairing: (c) dispatch-tracked T-WAD Full R3-close program (operator/Director ratification) covers this census net-add for Slice 6 / gate #102 substrate.
+gunbc#828
