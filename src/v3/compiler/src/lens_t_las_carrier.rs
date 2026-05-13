@@ -38,16 +38,16 @@ pub struct Lens<T> {
     pub validate: Rc<LensValidateFn<T>>,
 }
 
-/// Mirrors `LensEnforcement<Output, Budget>` in `v3.std.lens_application`.
+/// Mirrors `LensEnforcement<Output, Budget, Projected>` in `v3.std.lens_application`.
 #[derive(Clone)]
-pub struct LensEnforcement<Output, Budget> {
-    pub project: Rc<dyn Fn(Output) -> Budget>,
-    pub violates: Rc<dyn Fn(Budget, Budget) -> bool>,
+pub struct LensEnforcement<Output, Budget, Projected> {
+    pub project: Rc<dyn Fn(Output) -> Projected>,
+    pub violates: Rc<dyn Fn(Output, Budget) -> bool>,
 }
 
-/// Mirrors `EnforceableLens<Output, Budget>` in `v3.std.lens_application`.
+/// Mirrors `EnforceableLens<Output, Budget, Projected>` in `v3.std.lens_application`.
 #[derive(Clone)]
-pub struct EnforceableLens<Output, Budget> {
+pub struct EnforceableLens<Output, Budget, Projected> {
     pub lens: Lens<Output>,
-    pub enforcement: LensEnforcement<Output, Budget>,
+    pub enforcement: LensEnforcement<Output, Budget, Projected>,
 }

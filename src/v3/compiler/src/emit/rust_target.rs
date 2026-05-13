@@ -5757,8 +5757,30 @@ impl<'a> Ctx<'a> {
                     &[("key", &key_name), ("value", &value_name)],
                 ))
             }
+            [key, value, extra] => {
+                let key_name =
+                    self.rust_type_name_for_decl_with_policy(key.value, depth + 1, arrow_policy)?;
+                let value_name = self.rust_type_name_for_decl_with_policy(
+                    value.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
+                let extra_name = self.rust_type_name_for_decl_with_policy(
+                    extra.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
+                Ok(render_named_template(
+                    &binding.carrier,
+                    &[
+                        ("key", &key_name),
+                        ("value", &value_name),
+                        ("extra", &extra_name),
+                    ],
+                ))
+            }
             _ => Err(EmitError::UnsupportedBehavior(format!(
-                "instantiated type carrier for declaration {:?} only supports arities 1 and 2 at PR scope",
+                "instantiated type carrier for declaration {:?} only supports arities 1, 2, and 3 at PR scope",
                 template
             ))),
         }

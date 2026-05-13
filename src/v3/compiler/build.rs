@@ -30,6 +30,13 @@
 // dependency that needs sorting, this script grows a topological
 // pass; until then, the simple rule is sufficient.
 //
+// Staged `src/v3/std/*.dag` additionally uses a small rank list
+// (`list.dag`, `substrate*.dag`, …). Among files sharing the default rank, load order
+// breaks ties using **`import v3.std.*` edges** parsed from each staged `.dag` plus a tiny
+// [`V3_STD_BOOTSTRAP_STAGING_PRECEDES`] table for bootstrap-only holes (see
+// `collect_std_staging_dependency_edges`). Dissolution: host-side full import-graph topo when the
+// staged slice can consume the real `std` module graph without SCCs.
+//
 // **Output**: writes three Rust files:
 //
 //   pub static STAGED_FILES: &[(&str, &str)] = &[
@@ -59,19 +66,151 @@
 // runtime is still hermetic — no filesystem access at `Dag::new()`
 // time.
 
+use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
-    collect_dag_entries_impl(dir, prioritized, false)
+/// Bootstrap-only `(must_precede, importer)` edges among `src/v3/std/*.dag` that are **not**
+/// expressed as `import v3.std.*` lines but are still load-order facts for PB-1:
+///
+/// - `induction.dag` imports `std.algebra` / `std.computation` / `std.termination` without a
+///   `v3.std.*` surface — without these edges, Kahn can emit `induction.dag` before `algebra.dag`
+///   while `algebra.dag` still waits on `lookup.dag` (`UnknownCost` / `ConstantCost` in the
+///   bootstrap snapshot).
+/// - `t_ci_workflow_as_data_demo.dag` imports `v3.std.timing_lens` — `timing_lens.dag` must lower
+///   first so gate #58 witness rows type-check.
+///
+/// **Why not scan every `import std.*` line:** mirroring the full `std` module graph inside this
+/// slice creates SCCs that strand `timing_lens.dag` / `t_ci_workflow_as_data_demo.dag` in the
+/// lexical Kahn leftover bucket (`t_ci` `<` `timing_lens` breaks gate #58). Dissolution: host-side
+/// full import-graph topo once the staged slice can consume the real graph without SCCs.
+const V3_STD_BOOTSTRAP_STAGING_PRECEDES: &[(&str, &str)] = &[
+    ("algebra.dag", "induction.dag"),
+    ("computation.dag", "induction.dag"),
+    ("termination.dag", "induction.dag"),
+    ("timing_lens.dag", "t_ci_workflow_as_data_demo.dag"),
+];
+
+/// For `src/v3/std` only: scan each staged `.dag` for `import v3.std.<module>` lines and merge
+/// [`V3_STD_BOOTSTRAP_STAGING_PRECEDES`] when both endpoints exist.
+fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, String)> {
+    let names: HashSet<String> = entries
+        .iter()
+        .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
+        .collect();
+    let mut out = Vec::new();
+    for path in entries {
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Ok(src) = fs::read_to_string(path) else {
+            continue;
+        };
+        for line in src.lines() {
+            let t = line.trim_start();
+            let Some(rest) = t.strip_prefix("import v3.std.") else {
+                continue;
+            };
+            let mod_suffix = rest.split([' ', '{']).next().unwrap_or("");
+            if mod_suffix.is_empty() {
+                continue;
+            }
+            let dep_file = format!("{mod_suffix}.dag");
+            if dep_file == name || !names.contains(&dep_file) {
+                continue;
+            }
+            out.push((dep_file, name.to_string()));
+        }
+    }
+    for &(dep, importer) in V3_STD_BOOTSTRAP_STAGING_PRECEDES {
+        if names.contains(dep) && names.contains(importer) {
+            out.push((dep.to_string(), importer.to_string()));
+        }
+    }
+    out
+}
+
+/// `edges` are `(must_precede, dependent)` file names: `must_precede` must sort before `dependent`.
+///
+/// Returns a total rank per staged file name so `sort_by` can compare by integer index (Kahn
+/// topological order with lexical tie-break among ready nodes). Reachability-only `cmp` is not a
+/// strict weak order and can panic Rust's sort — see PR #2827 review.
+fn std_v3_import_topo_ranks(
+    names: &[String],
+    edges: &[(String, String)],
+) -> HashMap<String, usize> {
+    let name_set: HashSet<&str> = names.iter().map(String::as_str).collect();
+    let unique_edges: HashSet<(String, String)> = edges.iter().cloned().collect();
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+    for n in names {
+        in_degree.insert(n.clone(), 0);
+    }
+    for (d, u) in unique_edges {
+        if d == u {
+            continue;
+        }
+        if name_set.contains(d.as_str()) && name_set.contains(u.as_str()) {
+            adj.entry(d.clone()).or_default().push(u.clone());
+            *in_degree.get_mut(&u).expect("u is a staged name") += 1;
+        }
+    }
+    let mut ready = BTreeSet::<String>::new();
+    for n in names {
+        if *in_degree.get(n).unwrap_or(&0) == 0 {
+            ready.insert(n.clone());
+        }
+    }
+    let mut order = Vec::<String>::new();
+    let mut placed = HashSet::<String>::new();
+    while let Some(n) = ready.iter().next().cloned() {
+        ready.remove(&n);
+        if !placed.insert(n.clone()) {
+            continue;
+        }
+        order.push(n.clone());
+        if let Some(succs) = adj.get(&n) {
+            for succ in succs {
+                let deg = in_degree
+                    .get_mut(succ)
+                    .expect("edge target is a staged name");
+                *deg -= 1;
+                if *deg == 0 {
+                    ready.insert(succ.clone());
+                }
+            }
+        }
+    }
+    let mut leftover: Vec<String> = names
+        .iter()
+        .filter(|n| !placed.contains(*n))
+        .cloned()
+        .collect();
+    leftover.sort();
+    order.extend(leftover);
+    order.into_iter().enumerate().map(|(i, n)| (n, i)).collect()
+}
+
+fn collect_dag_entries(
+    dir: &Path,
+    prioritized: &[&str],
+    scan_std_v3_import_edges: bool,
+) -> Vec<PathBuf> {
+    collect_dag_entries_impl(dir, prioritized, false, scan_std_v3_import_edges)
 }
 
 fn collect_dag_entries_recursive(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
-    collect_dag_entries_impl(dir, prioritized, true)
+    collect_dag_entries_impl(dir, prioritized, true, false)
 }
 
-fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -> Vec<PathBuf> {
+fn collect_dag_entries_impl(
+    dir: &Path,
+    prioritized: &[&str],
+    recursive: bool,
+    scan_std_v3_import_edges: bool,
+) -> Vec<PathBuf> {
     let mut entries = Vec::new();
     let mut dirs = vec![dir.to_path_buf()];
 
@@ -104,20 +243,58 @@ fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -
         }
     }
 
+    let import_edges_storage: Vec<(String, String)> =
+        if scan_std_v3_import_edges && !recursive && !entries.is_empty() {
+            collect_std_staging_dependency_edges(&entries)
+        } else {
+            Vec::new()
+        };
+
+    let import_topo_ranks: HashMap<String, usize> =
+        if scan_std_v3_import_edges && !import_edges_storage.is_empty() {
+            let names: Vec<String> = entries
+                .iter()
+                .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
+                .collect();
+            std_v3_import_topo_ranks(&names, &import_edges_storage)
+        } else {
+            HashMap::new()
+        };
+
     entries.sort_by(|a, b| {
-        let priority_key = |path: &Path| -> (usize, String, String) {
+        let staged_file_rank = |path: &Path| -> usize {
             let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            let rank = prioritized
+            prioritized
                 .iter()
                 .position(|candidate| *candidate == name)
-                .unwrap_or(prioritized.len());
-            (
-                rank,
-                name.to_string(),
-                path.strip_prefix(dir).unwrap_or(path).display().to_string(),
-            )
+                .unwrap_or(prioritized.len())
         };
-        priority_key(a).cmp(&priority_key(b))
+        let ra = staged_file_rank(a);
+        let rb = staged_file_rank(b);
+        match ra.cmp(&rb) {
+            Ordering::Equal => {
+                let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let import_cmp = if import_topo_ranks.is_empty() {
+                    Ordering::Equal
+                } else {
+                    let ra = import_topo_ranks.get(name_a).copied().unwrap_or(usize::MAX);
+                    let rb = import_topo_ranks.get(name_b).copied().unwrap_or(usize::MAX);
+                    ra.cmp(&rb)
+                };
+                match import_cmp {
+                    Ordering::Equal => name_a.cmp(name_b).then_with(|| {
+                        a.strip_prefix(dir)
+                            .unwrap_or(a)
+                            .display()
+                            .to_string()
+                            .cmp(&b.strip_prefix(dir).unwrap_or(b).display().to_string())
+                    }),
+                    ord => ord,
+                }
+            }
+            ord => ord,
+        }
     });
 
     entries
@@ -399,9 +576,10 @@ fn main() {
             // Python fixtures happen to load after `methods.dag` and were unaffected.
             "methods.dag",
         ],
+        true,
     );
-    let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
-    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"], false);
+    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"], false);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
     // stripped from the runtime bootstrap bundle — see COMPILER_FILES header.
     // `parse_tables.dag` is SG-2c-1 grammar-tables authority consumed by

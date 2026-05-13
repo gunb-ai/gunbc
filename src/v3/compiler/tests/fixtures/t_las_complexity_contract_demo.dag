@@ -14,10 +14,10 @@ import v3.std.lens_application { EnforcedApplication, DeclarationScope }
 fn linear_countdown_score(n: Int) -> Int =
   if n < 1 then 0 else linear_countdown_score(n - 1) + 1
 
-data witness_log_cap: EnforcedApplication<ComplexitySummary, AsymptoticClass> = {
+data witness_log_cap: EnforcedApplication<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   enforceable_lens: complexity_enforceable
   section: DeclarationScope { declaration: linear_countdown_score }
   budget: ClassConstant
   diagnostic_severity: Error
-  span: { file: "t_las_complexity_contract_demo.dag", start: 805, end: 1130 }
+  span: { file: "t_las_complexity_contract_demo.dag", start: 805, end: 1147 }
 }

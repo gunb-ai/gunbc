@@ -552,9 +552,9 @@ pub fn meet_pair(p0: &Certainty, p1: Certainty) -> Certainty {
 pub fn complexity_enforcement_project(p0: &ComplexitySummary) -> AsymptoticClass {
     ((p0).asymptotic_class).clone()
 }
-pub fn complexity_enforcement_violates(p0: &AsymptoticClass, p1: &AsymptoticClass) -> bool {
-    if asymptotic_dominates(p1, p0) {
-        if asymptotic_dominates(p0, p1) {
+pub fn complexity_enforcement_violates(p0: &ComplexitySummary, p1: &AsymptoticClass) -> bool {
+    if asymptotic_dominates(&((p0).asymptotic_class), p1) {
+        if asymptotic_dominates(p1, &((p0).asymptotic_class)) {
             (0 == 1)
         } else {
             (0 == 0)
