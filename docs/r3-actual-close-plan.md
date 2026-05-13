@@ -1,6 +1,6 @@
 # R3 Actual-Close Plan — Adversarial-Gap Disposition
 
-**Status**: DRAFT (PM-authored 2026-05-13, pending Director ratification + operator approval)
+**Status**: FULLY RATIFIED 2026-05-13 — Director structure-ratification (msg_cd2d8d7d) + operator §4 scope + Mgr-dispatch ratification (briansrls 2026-05-13). READY FOR DISPATCH post-merge.
 
 **Authority chain**:
 - Operator directive 2026-05-13 (verbatim): *"can we start on the planning docs to get to ACTUAL r3 close? like all of our adversarial questions answered positively? i feel like the planning for this stuff has been continuously dropped"*
@@ -8,7 +8,7 @@
 - Counterfactual surface: 10 substantive gaps found between Director's viz-as-SoT closure claim and THESIS-promise delivery on main
 - This doc replaces "viz-as-SoT closed_at + DECLARED-strings-are-drift" framing with explicit per-gap disposition: PROVEN / WEAK-EVIDENCE / GAP-with-plan / R4-DEFERRED-with-operator-accepted
 
-**Closure target**: every adversarial counterfactual either (a) cashed by a landed PR with on-main evidence, OR (b) explicitly R4-deferred with named operator acceptance recorded here, OR (c) reframed as not-R3-promised per THESIS authority.
+**Closure target** (codex BLOCKING #11284 PR #3013 2026-05-13 enforcement — semantic dilution retracted: prior generic R4-defer / THESIS-reframe clauses violated top-down 0-floor / no-carves authority per `docs/design-pure-bootstrap-zero.md` + `docs/r3-program-plan.md`; operator §4 ratification 2026-05-13 foreclosed all carve paths for the 4 scope items): every adversarial counterfactual cashed by a landed PR with on-main evidence. R4-defer / THESIS-reframe paths are **STRUCTURALLY FORECLOSED** for the 4 scope items (Gaps 1/2/3/9) per operator §4 IN-R3 ratification 2026-05-13 (see §4 + §6). The legacy alternative-disposition sections per gap below are preserved as **retraction citations** (audit-trail) documenting the foreclosed paths, NOT as available closure dispositions.
 
 **Closure NOT-target**: closing R3 with `closed_at` markers alone. The Director's procedural closure is necessary but not sufficient. The substantive closure requires the receipts named below.
 
@@ -45,14 +45,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 ```
 plus `cargo test --release sg0_census_test` passes with predicate = 0.
 
-**Alternative disposition** (briansrls + codex BLOCKING PR #3013 2026-05-13 enforcement: **no Tier-2 escape language survives this section**): `docs/design-pure-bootstrap-zero.md` sets an absolute 0-floor (L41: *"Goal: zero hand-authored files in v3's source tree"*) with no internal carve-out mechanism. Any PB-0 R4-carve requires **TWO** explicit operator-authored amendments BEFORE the carve can count:
+**Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (briansrls + codex BLOCKING PR #3013 2026-05-13 enforcement preserved as authority-chain framing — codex BLOCKING #11284 PR #3013 class enforcement adds operator-ratification foreclosure): operator §4 Item 1 ratified **IN-R3 (full 177-entry retirement)** 2026-05-13; R4-defer path NOT available. The dual-amendment authority chain below stands as **closure-rule discipline** (any future re-opening requires the dual amendment + explicit operator override of the §4 ratification at gunbc#828), NOT as a currently-available carve path:
 
-1. **Override of `project_no_r4_carves_directive`** (operator 2026-05-08: *"we are NOT moving anything to R4 as of now"*) — naming the specific subset + structural-unblockable reason
-2. **Amendment to `docs/design-pure-bootstrap-zero.md` authority text itself** — adding a per-subset deferral carrier with named reason + retirement plan to the design-doc-tier authority, not just to this plan doc
+1. **Override of `project_no_r4_carves_directive`** (operator 2026-05-08: *"we are NOT moving anything to R4 as of now"*) — naming the specific subset + structural-unblockable reason. **AND superseded by operator §4 Item 1 IN-R3 ratification 2026-05-13** — both layers stand; the §4 ratification is the operative foreclosure.
+2. **Amendment to `docs/design-pure-bootstrap-zero.md` authority text itself** — adding a per-subset deferral carrier with named reason + retirement plan to the design-doc-tier authority, not just to this plan doc.
 
-Neither override alone is sufficient. The PB-0 design doc currently admits no escape hatch; absent the amendment, the 0-floor stands and no carve-counter exists in the authority chain.
+Neither override alone is sufficient. The PB-0 design doc admits no escape hatch; absent the amendment, the 0-floor stands and no carve-counter exists in the authority chain.
 
-**PM-recommended**: do NOT R4-defer this — it's the load-bearing thesis claim ("0 hand-Rust"). The standing directive + design-doc 0-floor both apply absent explicit dual amendment.
+**Post-§4 read** (preserves PM-recommended history): the load-bearing thesis claim ("0 hand-Rust") is now operator-cashed. The IN-R3 ratification 2026-05-13 brings the design-doc 0-floor + the standing directive + the closure plan into single-authority alignment.
 
 ---
 
@@ -86,7 +86,7 @@ cargo test --release -p v3-compiler --test l5_cross_target_consistency
 ```
 plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cited.
 
-**Alternative disposition**: if operator accepts Python/Go as R4-deferred (R3 = Rust-only + Shape-B SQL/Markdown/OpenAPI), record acceptance here + amend §3.1 to claim only Rust as R3-shipped Shape-A. This re-scopes the 3-target story.
+**Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 enforcement: prior framing semantically weakened the §3.1 3-Shape-A target into Rust-only-narrow, violating the no-carves authority before operator-decision substrate cashed; retained here as audit-trail of the foreclosed path): operator §4 Item 2 ratified **IN-R3 (full 3-target Python+Go)** 2026-05-13; R4-defer / Rust-only-narrow paths NOT available. Any future re-opening of this disposition requires explicit operator override of the §4 ratification at gunbc#828.
 
 ---
 
@@ -130,7 +130,7 @@ The closure-ledger row currently stale @ #1191-#1231 era; close also requires th
 
 **Dispatch staffing prereq** (NOT a close criterion; Director note msg_f0a54769 Note 2 enforcement; Director note msg_f0a54769 Note 3 sequencing enforcement): execution of the 5 sub-lane closures requires owner identification. R3 Evaluator Mgr lane disposition per §4 sub-item 5 ratification (operator decides; PM-recommends re-spawn as 4th lane). **Sequencing**: re-spawn (or fold / Director-direct per operator ratification) occurs AFTER operator §4 sub-item 5 confirmation, NOT before (don't author the Mgr until the operator-decision substrate cashes; `feedback_construction_over_ratchets` adjacent class). PM-recommendation Option A is on-record but execution waits on operator.
 
-**Alternative disposition**: if operator accepts R1-horizon as R3-acceptable (compiler self-compiles but bit-identity only on R1-subset), record acceptance here + amend §4.2 promise text to scope-narrow the R3 claim. **R2-Evaluator-tier alternative**: if operator R4-carves the residual 5 sub-lanes per `project_no_r4_carves_directive` explicit override, record per-sub-lane R4-carve carrier with named structural-unblockable reason + retirement plan (substrate-shape symmetry with Gap 9 `DeferredCorrection` discipline).
+**Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 class enforcement — same semantic-dilution pattern as Gap 2; retained as audit-trail of foreclosed path): operator §4 Item 3 ratified **IN-R3 (4-joint-precondition cascade)** 2026-05-13; R4-defer / R1-horizon-narrow paths NOT available. **R2-Evaluator-tier per-sub-lane R4-carve** also FORECLOSED — operator §4 Item 3 IN-R3 ratification cashes the joint precondition rule, including the 5 R2-Evaluator sub-lane closures (substrate-debt-shaped close criterion per Director note msg_f0a54769 Note 2). Any future re-opening requires explicit operator override of the §4 ratification at gunbc#828.
 
 ---
 
@@ -339,7 +339,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Authority for no-relaxation** (codex BLOCKING PR #3013 receipt): the prior "Pragmatic relaxation (≥X%)" framing dilutes an absolute THESIS commitment into a negotiable threshold without THESIS-text reconciliation. Per `project_no_r4_carves_directive` (2026-05-08), R4-carve framing is NOT freely available; within-R3 relaxation paths are structurally equivalent to R4-carves under the directive. The alternative-disposition path below (R4-scope reframe with operator-recorded acceptance) is the ONLY non-100% path, and it requires explicit operator override of the no-carves directive — not a within-R3 threshold negotiation.
 
-**Alternative disposition**: if operator accepts that show-correct-code is THESIS-aspirational not R3-promised, record explicit not-R3-scoped here + amend interrogation doc §6 to reflect. **Note per standing directive**: this alternative requires operator override of `project_no_r4_carves_directive` since "THESIS-aspirational-not-R3-promised" is structurally an R4-carve.
+**Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 class enforcement — same semantic-dilution pattern as Gap 2; retained as audit-trail of foreclosed path): operator §4 Item 4 ratified **IN-R3 at 100% absolute** 2026-05-13; THESIS-aspirational-not-R3-promised reframe NOT available. The carrier shape (sum-variant `Correction { LiveCorrection | DeferredCorrection }` with zero `DeferredCorrection` in test corpus per close criterion above) is the structural form the ratification cashes. Any future re-opening requires explicit operator override of the §4 ratification at gunbc#828.
 
 ---
 
@@ -424,7 +424,20 @@ This caveat applies to the entire §3 — estimates above are PM-best-guess at d
 
 ---
 
-## §4. Operator decision points (request for ratification)
+## §4. Operator decision points — RATIFIED 2026-05-13
+
+**Ratification outcomes** (operator briansrls direct PM dispatch 2026-05-13):
+- **Items 1-4 (R3 scope decisions)**: ALL **IN-R3** confirmed. No R4-carves.
+  - Gap 1 (PB-0): IN-R3 — full 177-entry retirement
+  - Gap 2 (L5 cross-target): IN-R3 — full 3-target Python+Go
+  - Gap 3 (self-host R3-strong): IN-R3 — 4-joint-precondition cascade
+  - Gap 9 (show-correct-code): IN-R3 — 100% absolute (zero `DeferredCorrection` per sum-variant carrier)
+- **Item 5 (subtree-shape decision)**: **(a) re-spawn R3 Evaluator Mgr as 4th R3 Mgr lane** ratified. Director (zesty-bear-812) executes per pre-authorization msg_d456b60d.
+- **Phase A immediate dispatch**: authorized.
+
+The presentation framing below preserved as audit-trail of the operator-question that landed the ratification.
+
+---
 
 **Standing directive context** (per `project_no_r4_carves_directive`, Brian 2026-05-08 verbatim: *"we are NOT moving anything to R4 as of now"*): R4-carve is **NOT freely available** as a default. The 4 scope decisions below default to **IN-R3** unless operator explicitly overrides the standing directive with a structural-unblockable-reason argument per-decision.
 
