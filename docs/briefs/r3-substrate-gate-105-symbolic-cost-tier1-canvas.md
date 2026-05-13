@@ -169,7 +169,10 @@ Existing rules (from `docs/design-symbolic-cost-algebra.md` + algebra.dag fold o
 | `PolyCost(d) · ExpCost(c, v)` | `ProductCost([PolyCost(d), ExpCost(c, v)])` | composite, NOT absorbed — n^d · c^n is NOT O(c^n) (operator BLOCKING worker:140); additive absorption above is sound, multiplicative is NOT |
 | `ExpCost(c1, v) · ExpCost(c2, v)` | `ExpCost(c1·c2, v)` | c1^v · c2^v = (c1·c2)^v |
 | `ExpCost(c1, v) + ExpCost(c2, v)` (c1 < c2) | `ExpCost(c2, v)` | dominant base |
-| `FactorialCost(v) + anything` | `FactorialCost(v)` | factorial dominates |
+| `FactorialCost(v) + ConstantCost / PolyCost(_,v) / LogCost(v) / PolyLogCost(v,_) / ExpCost(_,v)` | `FactorialCost(v)` | factorial dominates same-variable Tier-1 below |
+| `FactorialCost(v) + FactorialCost(w)` (v ≠ w) | `SumCost([FactorialCost(v), FactorialCost(w)])` | cross-variable preserved as composite (no inter-variable dominance) |
+| `FactorialCost(v) + UnknownCost(reason)` | `SumCost([FactorialCost(v), UnknownCost(reason)])` | UnknownCost is conservative-top; never absorbed |
+| `FactorialCost(v) + SumCost([…]) / ProductCost([…])` | distribute then re-fold per §6 | composite-fold delegates to algebra rules |
 | `FactorialCost(v) · PolyCost(d)` | `ProductCost([FactorialCost(v), PolyCost(d)])` | composite, NOT absorbed (n! · n^d not O(n!)) |
 | `FactorialCost(v) · ExpCost(c, v)` | `ProductCost([FactorialCost(v), ExpCost(c, v)])` | composite, NOT absorbed (n! · c^n not O(n!)) |
 | `FactorialCost(v) · FactorialCost(v)` | `FactorialCost(v)`? OR `UnknownCost("v! · v! exceeds Tier 1")` | Canvas question (see §5.2) |
@@ -180,7 +183,7 @@ Two candidate shapes:
 - (a) `PolyCost(d) · LogCost(v) = PolyLogCost { var: v, exponent: 1 }` if d=0, but d=0 means ConstantCost not PolyCost; if d=1 then it's `v · log(v)` which is canonically n log n
 - (b) Keep as composite `ProductCost([PolyCost, LogCost])`; PolyLogCost only constructed from explicit log² n etc.
 
-Mgr recommendation: (b). PolyLogCost is for log^k n only (single variable, integer-exponent log). The n log n shape is `ProductCost([LinearCost(n), LogCost(n)])` — already representable, and the algebra fold via ordered-dominance correctly identifies it. Avoiding (a) prevents semantic-collision between "poly times log" and "polylog".
+Mgr recommendation: (b). PolyLogCost is for log^k n only (single variable, rational-exponent log per Q1-α + PolyLogExponent refinement). The n log n shape is `ProductCost([PolynomialCost { var: n, degree: 1 }, LogCost(n)])` — representable via PolynomialCost(degree=1) post-Q2-Y collapse (LinearCost dissolved); the algebra fold via ordered-dominance correctly identifies it. Avoiding (a) prevents semantic-collision between "poly times log" and "polylog".
 
 ### §5.2 — FactorialCost · FactorialCost
 
