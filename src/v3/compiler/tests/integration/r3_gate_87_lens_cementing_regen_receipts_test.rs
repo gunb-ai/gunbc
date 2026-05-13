@@ -117,10 +117,6 @@ fn regen_lens_registry_name_rows() -> Vec<String> {
         .collect()
 }
 
-fn regen_lens_registry_names() -> BTreeSet<String> {
-    regen_lens_registry_name_rows().into_iter().collect()
-}
-
 fn read_lens_source(rel: &str) -> String {
     let path = workspace_root().join(rel);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
@@ -232,6 +228,11 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
