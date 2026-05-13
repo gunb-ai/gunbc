@@ -96,10 +96,7 @@ fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, S
             let Some(rest) = t.strip_prefix("import v3.std.") else {
                 continue;
             };
-            let mod_suffix = rest
-                .split(|c: char| c == ' ' || c == '{')
-                .next()
-                .unwrap_or("");
+            let mod_suffix = rest.split([' ', '{']).next().unwrap_or("");
             if mod_suffix.is_empty() {
                 continue;
             }
@@ -118,7 +115,10 @@ fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, S
 /// Returns a total rank per staged file name so `sort_by` can compare by integer index (Kahn
 /// topological order with lexical tie-break among ready nodes). Reachability-only `cmp` is not a
 /// strict weak order and can panic Rust's sort — see PR #2827 review.
-fn std_v3_import_topo_ranks(names: &[String], edges: &[(String, String)]) -> HashMap<String, usize> {
+fn std_v3_import_topo_ranks(
+    names: &[String],
+    edges: &[(String, String)],
+) -> HashMap<String, usize> {
     let name_set: HashSet<&str> = names.iter().map(String::as_str).collect();
     let unique_edges: HashSet<(String, String)> = edges.iter().cloned().collect();
     let mut adj: HashMap<String, Vec<String>> = HashMap::new();
@@ -151,7 +151,9 @@ fn std_v3_import_topo_ranks(names: &[String], edges: &[(String, String)]) -> Has
         order.push(n.clone());
         if let Some(succs) = adj.get(&n) {
             for succ in succs {
-                let deg = in_degree.get_mut(succ).expect("edge target is a staged name");
+                let deg = in_degree
+                    .get_mut(succ)
+                    .expect("edge target is a staged name");
                 *deg -= 1;
                 if *deg == 0 {
                     ready.insert(succ.clone());
@@ -166,14 +168,14 @@ fn std_v3_import_topo_ranks(names: &[String], edges: &[(String, String)]) -> Has
         .collect();
     leftover.sort();
     order.extend(leftover);
-    order
-        .into_iter()
-        .enumerate()
-        .map(|(i, n)| (n, i))
-        .collect()
+    order.into_iter().enumerate().map(|(i, n)| (n, i)).collect()
 }
 
-fn collect_dag_entries(dir: &Path, prioritized: &[&str], scan_std_v3_import_edges: bool) -> Vec<PathBuf> {
+fn collect_dag_entries(
+    dir: &Path,
+    prioritized: &[&str],
+    scan_std_v3_import_edges: bool,
+) -> Vec<PathBuf> {
     collect_dag_entries_impl(dir, prioritized, false, scan_std_v3_import_edges)
 }
 
@@ -219,6 +221,13 @@ fn collect_dag_entries_impl(
         }
     }
 
+    let import_edges_storage: Vec<(String, String)> =
+        if scan_std_v3_import_edges && !recursive && !entries.is_empty() {
+            collect_std_v3_import_dependency_edges(&entries)
+        } else {
+            Vec::new()
+        };
+
     let import_topo_ranks: HashMap<String, usize> =
         if scan_std_v3_import_edges && !import_edges_storage.is_empty() {
             let names: Vec<String> = entries
@@ -247,14 +256,8 @@ fn collect_dag_entries_impl(
                 let import_cmp = if import_topo_ranks.is_empty() {
                     Ordering::Equal
                 } else {
-                    let ra = import_topo_ranks
-                        .get(name_a)
-                        .copied()
-                        .unwrap_or(usize::MAX);
-                    let rb = import_topo_ranks
-                        .get(name_b)
-                        .copied()
-                        .unwrap_or(usize::MAX);
+                    let ra = import_topo_ranks.get(name_a).copied().unwrap_or(usize::MAX);
+                    let rb = import_topo_ranks.get(name_b).copied().unwrap_or(usize::MAX);
                     ra.cmp(&rb)
                 };
                 match import_cmp {

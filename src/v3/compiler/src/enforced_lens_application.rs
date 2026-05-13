@@ -31,9 +31,9 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, AtomPayload,
-    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount,
-    TypeConnective, ValueBody,
+    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Behavior, Dag,
+    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective,
+    ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -150,9 +150,9 @@ fn timing_section_row_type_declares_measurement_tm(
         return false;
     };
     let tm_head = peel_type_declaration_head(dag, tm_disj);
-    children.iter().any(|f| {
-        f.label == "measurement" && peel_type_declaration_head(dag, f.ty) == tm_head
-    })
+    children
+        .iter()
+        .any(|f| f.label == "measurement" && peel_type_declaration_head(dag, f.ty) == tm_head)
 }
 
 /// Lowered `TimingMeasurement` usage for timing `EnforcedApplication` enforcement.
