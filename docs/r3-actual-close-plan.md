@@ -269,14 +269,14 @@ plus #85 SuiteClaim wrapper consumer landed.
 **What's missing**: §1.8 gate + per-diagnostic-class audit + close criterion.
 
 **Plan to cash**:
-- **Owner**: PM (deep-wolf-155) authors the new §1.8 row + Verification Mgr (swift-deer-459) implements
+- **Owner**: PM (deep-wolf-155) authors the new §1.8 row → Substrate Mgr (warm-wolf-698) authors canvas → Verification Mgr (swift-deer-459) implements
 - **Sub-program**:
   1. Author new §1.8 row #106 `show_correct_code_diagnostic_coverage` with substrate-shape gate type
   2. Enumerate diagnostic classes (parse / type / lens / emit / ...)
   3. For each class, audit existing diagnostics + check whether they cite "Y would be right" or only "X is wrong"
-  4. Author canvas for the substrate shape that admits Diagnostic-with-correction
+  4. **Substrate-shape canvas authored by Substrate Mgr BEFORE worker dispatch** (per claude review exploratory observation #2 — this plan doc surfaces the `correction: Option<Witness>` field as a sub-program step, but the actual substrate-shape commitment must be ratified via Mgr canvas, not implemented from this prose). Canvas authors the substrate shape that admits Diagnostic-with-correction; Director ratifies; worker dispatches against ratified shape.
   5. Worker brief dispatch to retrofit existing diagnostics
-- **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it)
+- **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it). **Caveat (per claude review exploratory observation #3 — estimates unsourced)**: this estimate is PM-prior-cycle-experience-based, NOT cited against specific velocity data. Substrate Mgr canvas surfaces the actual scope + worker effort; final estimate calibrates post-canvas-ratification.
 
 **Close criterion** (Director feedback item 6 — threshold is operator-decision-shaped, NOT Director-decision):
 - **THESIS-correct (100%)**: every Diagnostic in `src/v3/compiler/` has `correction: Witness` field present + `Some(_)` for **every** fired diagnostic in test corpus. No threshold relaxation; THESIS:103-105 reads as absolute promise.
@@ -357,20 +357,37 @@ Given the cross-gap dependencies, recommended dispatch order:
 
 **Pessimistic**: 6+ months if Gap 1 cannot be parallelized aggressively (PB-0 is the longest tail; everything else can run faster).
 
+**Velocity-citation discipline** (per claude review exploratory observation #3 — most estimates are unsourced):
+- Gap 1: cited against `feedback_pre_authored_brief_queue` cadence + observed SG-0 ratchet-shrink rate over prior R3 cycles
+- Gap 2/3/5/6/7/9: PM-prior-cycle-experience-based, NOT cited against specific velocity data. Final ratified version (post-operator-§4-confirmations) should:
+  1. Cite per-gap velocity reference (e.g., "Cluster M Phase 1 + 1a + 2 landed in N weeks per PR #2645/#2647/#2639/#2757 cadence; Phase 3 bulk-port estimate extrapolates")
+  2. Update at first weekly closure-cadence message (§5 process discipline) once first-week dispatch lands actual delta-velocity data
+- Gap 10: source = direct execution count (105 predicates × {serial 1-2wk OR parallel 3-5d via ctrl-build})
+
+This caveat applies to the entire §3 — estimates above are PM-best-guess at draft authorship; precision improves as dispatch progresses and weekly closure-cadence messages calibrate against actual landing dates.
+
 ---
 
 ## §4. Operator decision points (request for ratification)
 
 **Standing directive context** (per `project_no_r4_carves_directive`, Brian 2026-05-08 verbatim: *"we are NOT moving anything to R4 as of now"*): R4-carve is **NOT freely available** as a default. The 4 decisions below default to **IN-R3** unless operator explicitly overrides the standing directive with a structural-unblockable-reason argument per-decision.
 
-PM requests operator confirmation (default IN-R3) or explicit override (R4-carve with stated reason) on:
+**PM recommendation across all 4** (per claude review exploratory observation #1 — explicit per-gap PM view): **do not defer** any of Gaps 1/2/3/9. Each R4-carve materially dilutes a load-bearing R3 promise:
+- Gap 1 R4-carve = dilutes PB-0 thesis claim ("0 hand-Rust")
+- Gap 2 R4-carve = scope-narrows §3.1 from 3-Shape-A targets to Rust-only (defeats omni-emission story)
+- Gap 3 R4-carve = scope-narrows §4.2 self-host fixed point to R1-horizon (defeats self-host thesis claim)
+- Gap 9 R4-carve = drops THESIS:103-105 absolute promise
 
-1. **Gap 1 (PB-0)**: IN-R3 default = full 177-entry retirement; R4-carve override would require operator to name specific subsets + structural reason
-2. **Gap 2 (L5 cross-target)**: IN-R3 default = full 3-target Python+Go; R4-carve override would scope-narrow §3.1 promise to Rust-only Shape-A
-3. **Gap 3 (self-host R3-strong)**: IN-R3 default = 4-joint-precondition cascade; R4-carve override would accept R1-horizon as R3-final scope-narrowed
-4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + 100% Diagnostic-with-correction coverage per THESIS:103-105 absolute promise; **operator-decision sub-question**: if R3-IN, is acceptance threshold = 100% (THESIS-correct) OR a pragmatic relaxation (e.g., ≥80% with named-residual list)? PM's prior ≥80% framing is operator-decision-shaped, not Director-decision; surfacing here for explicit ratification (Director feedback item 6).
+PM requests operator confirmation (default IN-R3) or explicit override (R4-carve with stated structural-unblockable reason) on:
 
-**§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for these 4 items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive)" — explicit override only if structurally unblockable.
+1. **Gap 1 (PB-0)**: IN-R3 default = full 177-entry retirement. **PM-recommended: do not defer.** R4-carve override requires operator to name specific subsets + structural reason.
+2. **Gap 2 (L5 cross-target)**: IN-R3 default = full 3-target Python+Go. **PM-recommended: do not defer.** R4-carve override scope-narrows §3.1 to Rust-only Shape-A; the omni-emission falsifier promise (R4.A architectural-falsifier) loses Python/Go round-trip validation paths.
+3. **Gap 3 (self-host R3-strong)**: IN-R3 default = 4-joint-precondition cascade. **PM-recommended: do not defer.** R4-carve override accepts R1-horizon as R3-final and amends §4.2 promise text.
+4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + Diagnostic-with-correction coverage. **PM-recommended: do not defer.** Two operator sub-decisions:
+   - (a) IN-R3 (recommended) OR not-R3-promised reframe (= R4-carve per directive)
+   - (b) If IN-R3, threshold = **100%** (THESIS-correct absolute — PM's recommendation per claude exploratory observation reading THESIS:103-105 as absolute) OR **≥X% with named-residual list** (pragmatic relaxation; X TBD)
+
+**§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for these 4 items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive + PM-recommended)" — explicit override only if structurally unblockable.
 
 ---
 
