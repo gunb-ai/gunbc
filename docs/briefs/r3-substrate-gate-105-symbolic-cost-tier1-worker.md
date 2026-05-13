@@ -94,7 +94,7 @@ Replace `src/v3/std/algebra.dag:60-72` block with (Director-ratified verbatim pe
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
 // escalate. Tier-1 textbook coverage (gate #105 carrier-extension
 // 2026-05-13, PR #<this PR>) lands 9 variants covering ConstantCost /
-// PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent:
+// PolynomialCost { degree: Rational } (signed per Q6) / PolyLogCost { exponent:
 // PolyLogExponent (Rational > 1) } / LogCost / ProductCost / SumCost /
 // ExponentialCost { base: ExponentialBase (Int ≥ 2) } / FactorialCost /
 // UnknownCost — sufficient
@@ -141,7 +141,7 @@ type PolyLogExponent = Rational where gt_one
 2. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`)
 3. Both extensions land in same PR as carrier-shape changes — atomic per §P5
 
-**ZERO new authority introduced**: PositiveRational + PolyLogExponent are refinements of canonical Rational; ExponentialBase is refinement of canonical Int. Practice 4 / P1 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
+**ZERO new authority introduced**: PolyLogExponent is a refinement of canonical Rational; ExponentialBase is a refinement of canonical Int. PolynomialCost.degree uses plain signed Rational (no refinement; Q6 scope-extension). Practice 4 / P1 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
 
 **Authority chain for refinement mechanism**:
 - gunbc#828 issuecomment-4390333451 (Path 3 RATIFIED)
@@ -149,9 +149,9 @@ type PolyLogExponent = Rational where gt_one
 - `dsl/std/integer.dag:171-181` precedent (`PositiveInt = Nat where gt_zero`)
 - `src/v3/compiler/src/lower.rs:798-862` KNOWN_PREDICATES registry
 
-These types make `degree ≤ 0`, `exponent ≤ 1`, `base ≤ 1` structurally impossible to construct via the ratified refinement mechanism — no fold-time enforcement required, no new authority.
+These refinements make `exponent ≤ 1` (PolyLogCost) and `base ≤ 1` (ExponentialCost) structurally impossible to construct — no fold-time enforcement required, no new authority. PolynomialCost.degree intentionally has no such refinement: Q6 signed Rational admits negative degrees for asymptotic-decay coverage.
 
-**HARD STOP**: do NOT author PositiveRational / PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below).
+**HARD STOP**: do NOT author PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below). (PositiveRational is no longer in scope per Q6 scope-extension; PolynomialCost.degree is plain signed Rational.)
 
 ### §5.1 — Replace SymbolicCost variant set
 
@@ -278,7 +278,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 1. **`OrderedRing<T>` shape drift** at HEAD — if `dsl/std/algebra.dag:268-286` no longer carries the exact 14-field signature this brief mirrors, **STOP** and surface — strict-mirror authority broken.
 2. **Existing `LinearCost`-consumer surface differs from canvas assumption** — if grep reveals consumer paths that can't migrate to `PolynomialCost(degree=1)` losslessly (e.g., type-level dispatches on LinearCost variant-tag), **STOP** — anti-pattern #7 atomic-migration discipline requires lossless migration.
 3. **`Rational` carrier not at `dsl/std/rational.dag:26`** — if Rational has moved / changed shape since 2026-05-13 grep, **STOP** — Q1-α refinement target is wrong.
-4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `PositiveRational` / `ExponentialBase` / `PolyLogExponent` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse.)
+4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `ExponentialBase` / `PolyLogExponent` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse. `PositiveRational` is OUT of scope per Q6 — if encountered at HEAD as a parallel landing, that's an anti-pattern #7 fire.)
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
@@ -292,7 +292,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 4. Dominance lattice fudging via string-tagged Rational (use real ordered-witness) — §3 Q1-α addresses via existing Field.compare
 5. UnknownCost used for textbook-Tier-1-coverable bounds post-promotion (STOP-SIGNAL violation)
 6. **Director-ratified msg_676ad4e7**: Introducing parallel ordered-algebraic-structure carriers (`Ordered<X>`) when the underlying carrier already provides `compare: fn(T, T) -> Ordering` — lens-local predicate derivation from Ordering pattern-match is the canonical path
-7. **Pending Director ratification per operator BLOCKING PR #2824:333**: Tier-1 variant constructed with raw Int/Rational exponent/base admitting illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost; degree≤0 for PolynomialCost) bypassing refinement type — PolyLogExponent/ExponentialBase/PositiveRational required at carrier level (Practice 2/6)
+7. **Director ratified per operator BLOCKING PR #2824:333**: Tier-1 variant constructed with raw Int/Rational exponent/base admitting illegal collapse values (exponent=0/1 for PolyLogCost; base=0/1 for ExponentialCost) bypassing refinement type — PolyLogExponent + ExponentialBase required at carrier level (Practice 2/6). **PolynomialCost.degree is excluded** per Director msg_2c1bfb0e scope-extension — signed Rational degrees intentionally admit negative values for asymptotic-decay coverage (Q6).
 8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (`PositiveRational { num: PositiveInt; denom: PositiveInt }`, inductive `PolyLogExponentSuccessor | PolyLogExponentFractional`, or any fresh record/sum shape) when refinement over canonical `Rational = Field<FieldOfFractions<Int>>` carrier is available via ratified `type X = Y where predicate` mechanism (gunbc#828 issuecomment-4390333451 Path 3 RATIFIED; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`). Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 9. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
 10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
@@ -309,7 +309,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 ## §13. Verification
 
 - `cargo test --workspace` green
-- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveRational/PositiveInt/ExponentialBase/PolyLogExponent) / algebra rules sample / STOP-SIGNAL text)
+- New hermetic ratchet `symbolic_cost_tier1_carrier_test.rs` (§7) asserts all 4 verification axes (variant set / refinement carriers (PositiveInt/ExponentialBase/PolyLogExponent — NOT PositiveRational; PolynomialCost.degree is plain signed Rational per Q6) / algebra rules sample / STOP-SIGNAL text)
 - **INVARIANTS P5 receipt for the new hand-Rust test file** (per claude APPROVE 10773 + codex BLOCKING 014544f4 finding #4): authoring `symbolic_cost_tier1_carrier_test.rs` adds new hand-Rust under `src/v3/compiler/tests/`. Per P5 "Pure Bootstrap" discipline, this PR's body MUST cite **exactly ONE P5 receipt category** with concrete path + LOC count:
   - (a) **hand-Rust deletion of equivalent or greater LOC**: cite specific deleted file/lines + LOC count
   - (b) **SG-0 census shrink receipt**: cite specific SG-0 cell + shrink delta
