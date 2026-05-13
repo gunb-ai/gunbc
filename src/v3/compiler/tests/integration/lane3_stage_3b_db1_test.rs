@@ -1,4 +1,4 @@
-use v3_compiler::diagnostics::{apply_correction_and_reparse, Diagnostic};
+use v3_compiler::diagnostics::{apply_correction_and_reparse, Correction, Diagnostic};
 use v3_compiler::{compile_to_dag, CompileError};
 
 fn compile_semantic_fixture(source: &str, file: &str) -> v3_compiler::Dag {
@@ -69,6 +69,30 @@ fn read(x: Outer) -> Int = x.bad.leaf
         )
     });
     assert_fixes_apply_and_recompile(source, file, diagnostic, true);
+}
+
+#[test]
+fn ambiguous_missing_field_correction_is_deferred() {
+    let source = "\
+type Pair { left: Int, right: Int }
+fn read(x: Pair) -> Int = x.bad
+";
+    let file = "lane3_db1_ambiguous_missing_field.v3";
+    let dag = compile_semantic_fixture(source, file);
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::ResolveError { name, .. } if name.contains("field `bad` does not exist")
+        )
+    });
+    assert!(
+        matches!(
+            diagnostic.correction(),
+            Correction::DeferredCorrection { .. }
+        ),
+        "ambiguous missing-field repair should defer instead of choosing an arbitrary field: {:?}",
+        diagnostic.correction()
+    );
 }
 
 #[test]

@@ -4307,18 +4307,14 @@ fn resolve_field_project(
         .map(|field| field.ty)
     else {
         let field_start = t.span.byte_end.saturating_sub(field_label.len() as u32);
-        let correction = children
-            .iter()
-            .take(5)
-            .map(|field| {
-                Correction::live(
-                    format!("did you mean field `{}`?", field.label),
-                    SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
-                    field.label.clone(),
-                )
-            })
-            .next()
-            .unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic"));
+        let correction = match children.as_slice() {
+            [field] => Correction::live(
+                format!("did you mean field `{}`?", field.label),
+                SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
+                field.label.clone(),
+            ),
+            _ => Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
+        };
         return FieldProjectResolution::fail(Diagnostic::ResolveError {
             name: format!(
                 "field `{field_label}` does not exist on `{}`",
