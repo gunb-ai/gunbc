@@ -551,6 +551,71 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     }
 }
 
+#[cfg(test)]
+fn gate_58_raise_observed_duration_ns_in_measurement(
+    value: &mut FieldValue,
+    duration_ns: u64,
+) -> bool {
+    match value {
+        FieldValue::Variant { payload, .. } => {
+            let Some(FieldValue::Record(parts)) = payload.first_mut() else {
+                return false;
+            };
+            for (label, field) in parts.iter_mut() {
+                if label != "duration" {
+                    continue;
+                }
+                let FieldValue::Record(duration_parts) = field else {
+                    return false;
+                };
+                for (dlabel, dfield) in duration_parts.iter_mut() {
+                    if dlabel == "count" {
+                        if let FieldValue::Literal(LiteralBits::Int(s)) = dfield {
+                            *s = duration_ns.to_string();
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Test-only: raise `gate_58_modeled_ci_timing_measurement.measurement` Observed nanoseconds above
+/// the gate #58 pass `EnforcedApplication` budget so a subsequent [`check_enforced_lens_applications`]
+/// run must surface a timing violation — executable receipt that the timing branch evaluated the
+/// witness (declaration presence + empty diagnostics alone are insufficient).
+#[cfg(test)]
+pub fn gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(
+    dag: &mut Dag,
+    duration_ns: u64,
+) -> Result<(), &'static str> {
+    let id = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("gate_58_modeled_ci_timing_measurement")
+                && d.span.file.ends_with("t_ci_workflow_as_data_demo.dag")
+        })
+        .map(|d| d.id)
+        .ok_or("missing gate_58_modeled_ci_timing_measurement declaration")?;
+    let decl = dag.declaration_mut(id);
+    let Some(ValueBody::Structural { fields }) = decl.value_body.as_mut() else {
+        return Err("gate_58 witness missing structural value_body");
+    };
+    for (label, value) in fields.iter_mut() {
+        if label == "measurement"
+            && gate_58_raise_observed_duration_ns_in_measurement(value, duration_ns)
+        {
+            return Ok(());
+        }
+    }
+    Err("measurement field missing or not Observed with duration.count shape")
+}
+
 fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
     fields.iter().map(|(k, v)| (k.as_str(), v)).collect()
 }

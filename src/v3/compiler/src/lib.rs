@@ -21,6 +21,8 @@ pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
+#[cfg(test)]
+pub use enforced_lens_application::gate_58_test_raise_modeled_ci_timing_measurement_duration_ns;
 pub mod integration_rs_wiring_scan;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;

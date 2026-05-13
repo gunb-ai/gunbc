@@ -15,7 +15,11 @@ use std::path::PathBuf;
 use crate::common::cached_compile_outcome;
 use crate::common::CachedCompileOutcome;
 
-use v3_compiler::{check_enforced_lens_applications, generated_full_bootstrap_dag};
+use v3_compiler::{
+    check_enforced_lens_applications, gate_58_test_raise_modeled_ci_timing_measurement_duration_ns,
+    generated_full_bootstrap_dag,
+};
+use v3_compiler::{Diagnostic, FieldValue, LiteralBits};
 
 const VIOLATION_FIXTURE_REL: &str =
     "src/v3/compiler/tests/fixtures/t_gate_58_timing_enforcement_budget_violation.dag";
@@ -54,6 +58,37 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
         dag.diagnostics().is_empty(),
         "post-infer timing `EnforcedApplication` check must stay clean on the gate #58 pass witness; got {:?}",
         dag.diagnostics()
+    );
+
+    // Executable receipt (INVARIANTS P3 / gate #58): perturb the lowered witness above the pass
+    // budget and prove [`check_enforced_lens_applications`] evaluates timing enforcement on the
+    // live bootstrap graph (not merely declaration presence + a no-op pass).
+    const PASS_BUDGET_MAX_NS: u64 = 1_000_000_000;
+    const OVER_BUDGET_NS: u64 = PASS_BUDGET_MAX_NS + 1;
+    gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(&mut dag, OVER_BUDGET_NS)
+        .expect("raise gate #58 modeled timing measurement over pass budget");
+    check_enforced_lens_applications(&mut dag);
+    let violation_receipts: Vec<_> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .filter(|d| {
+            matches!(d, Diagnostic::ParseError { .. })
+                && d.message().contains("timing budget ceiling")
+                && d.message().contains(&format!("max_ns={PASS_BUDGET_MAX_NS}"))
+                && d
+                    .message()
+                    .contains(&format!("usage_max_ns={OVER_BUDGET_NS}"))
+        })
+        .collect();
+    assert_eq!(
+        violation_receipts.len(),
+        1,
+        "expected exactly one timing budget violation ParseError after witness perturbation; diagnostics={:?}",
+        dag.diagnostics()
+            .iter()
+            .map(|(_, d)| d.message())
+            .collect::<Vec<_>>()
     );
 }
 
