@@ -113,13 +113,22 @@ plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cit
   - Row-B materialization: T-LBP work
 - **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure is the dominant tail — 2 not-started sub-lanes + 3 in-flight per audit.
 
-**Close criterion**:
+**Close criterion** (substrate-debt-shaped only — Director note msg_f0a54769 2026-05-13 Note 2 enforcement: staffing/dispatch shape is a PRECONDITION for execution, not a close criterion for the substrate-debt itself; moved to "Dispatch staffing prereq" below):
 ```bash
 # Predicate at gate #16 R3-strong-form close:
 self_host_fixed_point && diff -q <stage0_binary> <emitted_binary>
 # returns: byte-identical
 ```
-All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close**: all 5 sub-lanes (runtime_value_model_structural / body_evaluator_structural / lens_application_complete_reflection / witness_construction_structural / cross_target_equivalence_harness_structural) PASSING in docs/r2-closure-ledger.md or §1.8 (refresh closure-ledger from #1191-#1231 era to HEAD) AND R3 Evaluator Mgr lane owner identified per §4 sub-item 5 disposition.
+All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close** (Director note msg_f0a54769 Note 1 enforcement: predicate authority is the R2-closure-ledger, NOT §1.8 — sub-lane names live at `docs/r2-closure-ledger.md:250-263`, do NOT map 1:1 to §1.8 row IDs; PM-recommended path (α): use sub-lane names as predicate authority rather than introduce 5 new §1.8 rows for already-named ledger content per `feedback_parallel_representation_debt`): all 5 R2-closure-ledger Evaluator sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md:250-263` —
+- `runtime_value_model_structural` = green
+- `body_evaluator_structural` = green
+- `lens_application_complete_reflection` = green
+- `witness_construction_structural` = green
+- `cross_target_equivalence_harness_structural` = green
+
+The closure-ledger row currently stale @ #1191-#1231 era; close also requires the ledger be refreshed against HEAD before status-evaluation. Grep-verifiable predicate against `docs/r2-closure-ledger.md` cell content.
+
+**Dispatch staffing prereq** (NOT a close criterion; Director note msg_f0a54769 Note 2 enforcement; Director note msg_f0a54769 Note 3 sequencing enforcement): execution of the 5 sub-lane closures requires owner identification. R3 Evaluator Mgr lane disposition per §4 sub-item 5 ratification (operator decides; PM-recommends re-spawn as 4th lane). **Sequencing**: re-spawn (or fold / Director-direct per operator ratification) occurs AFTER operator §4 sub-item 5 confirmation, NOT before (don't author the Mgr until the operator-decision substrate cashes; `feedback_construction_over_ratchets` adjacent class). PM-recommendation Option A is on-record but execution waits on operator.
 
 **Alternative disposition**: if operator accepts R1-horizon as R3-acceptable (compiler self-compiles but bit-identity only on R1-subset), record acceptance here + amend §4.2 promise text to scope-narrow the R3 claim. **R2-Evaluator-tier alternative**: if operator R4-carves the residual 5 sub-lanes per `project_no_r4_carves_directive` explicit override, record per-sub-lane R4-carve carrier with named structural-unblockable reason + retirement plan (substrate-shape symmetry with Gap 9 `DeferredCorrection` discipline).
 
