@@ -26,7 +26,7 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AsymptoticClass, Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
-    WorkflowOperation, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
+    PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect, WorkflowOperation,
     WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost::ComplexitySummary;

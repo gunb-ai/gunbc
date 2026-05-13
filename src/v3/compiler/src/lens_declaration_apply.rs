@@ -1615,8 +1615,8 @@ mod substrate_reflection {
         BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
         ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
         IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
-        WorkflowOperation, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
-        TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
+        OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective,
+        ValueNode, WorkflowEffect, WorkflowOperation,
     };
     use crate::diagnostics::SourceSpan;
 
