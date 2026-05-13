@@ -15,7 +15,7 @@ See [`docs/r4-ctrl-dag-migration-project-plan.md`](../../docs/r4-ctrl-dag-migrat
 
 - **Path**: `dsl/ctrl/<subsystem>.dag` — one file per catalog row (project-plan §3). Sub-subsystem splits live as separate `.dag` files (e.g. `pools_billing.dag` + `pools_dispatch.dag`) only when a single file would exceed cost-of-change-1.
 - **Module name**: `module ctrl.<subsystem>` matching the file basename.
-- **Shape**: type-only modeling — carriers, closed/open enums, projections, `service ... { fn ... }` signatures. No transport blocks in Phase 1.5 (those land in `dsl/extdeps/*.dag` under the Emission-Targets Mgr lane).
+- **Shape**: type-only modeling — carriers, closed/open enums, projections, `service ... { operation ... { input / output } readonly }` signatures (no transport in Phase 1.5; those land in `dsl/extdeps/*.dag` under the Emission-Targets Mgr lane).
 - **Practice-4 receipts**: every enum/sum with ≥2 variants carries an inline classification (`🟢 TERMINAL` / `🟡 STAGED` / `🔴 NEEDS-DISSOLUTION`) and, if non-terminal, a named dissolution trigger. See manager brief §"Per-worker brief template" item 4 for the required receipt format.
 - **Consumer-receipt header**: each `.dag` file's module header must cite (a) the ctrl/ TS file(s) currently authoritative and (b) the future emission target whose landing fires `STAGED → AUTHORITY`. The emission target's **placement** distinguishes:
   - `dsl/extdeps/<platform>/*.dag` — third-party source-of-record facts (GitHub-API shapes, SQL dialects, HTTP wire formats); owned by Emission-Targets Mgr; **no gunbc emission/policy facts allowed here** per INVARIANTS P1.
@@ -25,9 +25,8 @@ See [`docs/r4-ctrl-dag-migration-project-plan.md`](../../docs/r4-ctrl-dag-migrat
 
 ## Index
 
-(populated as worker PRs land; entries here index files in this directory)
-
-_no files yet — Wave-1 dispatch pending #2775 merge per Mgr brief §"Working state"._
+- [`review_verdict.dag`](review_verdict.dag) — PR review verdict / tally staging (`ctrl.review_verdict`).
+- [`pr_digests.dag`](pr_digests.dag) — PR digest helpers staging (`ctrl.pr_digests`), catalog #8.
 
 ## Discipline carry-overs
 
