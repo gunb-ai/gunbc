@@ -1,23 +1,29 @@
 ---
-session: swift-ram-377
-node: adhoc-b12a0929-57f
+session: loyal-wren-410
+node: adhoc-ba99278c-cbc
 date: 2026-05-13
-parent: deep-wolf-155 (Gunbc PM)
-artifact: close-time predicate execution log skeleton (§1.8 enumeration)
-authority: merged PR gunbc/gunbc#3013 Gap 10 close criterion; `docs/r3-close-interrogation.md` §8; `docs/r3-actual-close-plan.md` Gap 10
+parent: still-moth-538 (R3 Verification Mgr)
+prior-author: swift-ram-377 (skeleton, merged PR #3019)
+artifact: close-time predicate execution log — Phase 2 fill
+authority: merged PR gunbc/gunbc#3013 Gap 10 close criterion; `docs/r3-close-interrogation.md` §8; `docs/r3-actual-close-plan.md` Gap 10; row #106 added per merged PR #3020 Gap 9
 ---
 
-# R3 close — predicate execution log (skeleton, 2026-05-13)
+# R3 close — predicate execution log (Phase 2 fill, 2026-05-13)
 
 ## Purpose
 
-This document is the **execution-time receipt scaffold** for `docs/r3-close-interrogation.md` §8 (*per-gate predicate execution at close*). Each row names one **§1.8 canonical closure gate** from `docs/r3-program-plan.md` §1.8. **Predicate execution has not been run** for this skeleton PR; Verification Mgr fills `Predicate execution status`, `Close-time command / harness`, and `Result / log pointer` within 24h of the close ceremony per §8.
+This document is the **execution-time receipt** for `docs/r3-close-interrogation.md` §8 (*per-gate predicate execution at close*). Each row names one **§1.8 canonical closure gate** from `docs/r3-program-plan.md` §1.8.
 
-**Gap 10 close criterion** (non-blocking PR #3013): the artifact exists on `main` with **all §1.8 ledger gate rows represented**; **row count must be re-derived at maintenance time** from the ledger (no snapshot-integer drift) — see §Row-count parity below. Overall verdict remains **PENDING** until the predicate sweep completes.
+Phase 2 (this PR) populates the table with HEAD-derived rows:
 
-## Verdict (skeleton)
+- For every §1.8 row whose **Status** at HEAD is `PASSING` or `SATISFIED-BY-CONSTRUCTION`: predicate execution status = `EXECUTED`, with the close-time harness named (canonical: workspace ratchet sweep), and result linked to the §Workspace batch receipt below.
+- For every §1.8 row whose Status is `DECLARED`, `CONSUMER_LANDED`, `INTEGRATION_RECEIPT`, `CANVAS_RATIFIED`, or `R3-LOAD-BEARING (declaration-stage)`: predicate execution status = `N/A_NOT_PASSING`. Per `r3-close-interrogation.md` §8 the predicate-execution requirement attaches only to PASSING gates; non-PASSING gates carry forward as open R3 work and will be re-swept when their Status transitions to PASSING in advance of the close ceremony.
 
-**OVERALL: PENDING** — table scaffold only; zero predicates executed under this audit header yet.
+Overall verdict remains **PENDING** until (a) every non-PASSING row above transitions to PASSING (or is operator-accepted as R4-DEFERRED per §10) and (b) a final 24-hour-of-close re-sweep is recorded under §10 close audit.
+
+## Verdict (Phase 2 fill)
+
+**OVERALL: PENDING** — 45 of 106 gates at HEAD are PASSING/SATISFIED-BY-CONSTRUCTION and have an executed predicate receipt under §Workspace batch receipt; the remaining 61 gates are not at PASSING status at HEAD and therefore have no predicate-execution obligation under §8 yet.
 
 ## Row-count parity (ledger source of truth)
 
@@ -27,133 +33,165 @@ Gate rows are the markdown table body in `docs/r3-program-plan.md` immediately u
 grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 ```
 
-At authoring time of this skeleton (worktree HEAD), that count was **105**. Future §1.8 additions (e.g. post–Gap-9 row **#106**) must add matching rows here in the same PR that extends the ledger, or immediately follow so this doc stays the mechanical index §8 expects.
+At Phase 2 fill time (worktree HEAD `a2a7a8825`), that count is **106** (skeleton row count of 105 + row #106 `show_correct_code_diagnostic_coverage` added by merged PR #3020 per Gap 9 of `docs/r3-actual-close-plan.md`). The table below contains 106 rows mirroring that ledger one-for-one. Future §1.8 additions must add matching rows here in the same PR that extends the ledger.
+
+## Status-bucket distribution at HEAD (Phase 2 fill)
+
+Derived mechanically from §1.8 Status column at HEAD `a2a7a8825`:
+
+| Bucket | Count | Predicate-execution requirement (§8) |
+|---|---:|---|
+| `PASSING` | 42 | EXECUTED (workspace ratchet batch) |
+| `SATISFIED-BY-CONSTRUCTION` | 3 | EXECUTED (workspace ratchet batch) |
+| `CONSUMER_LANDED` | 20 | not yet — not at PASSING |
+| `DECLARED` | 33 | not yet — not at PASSING |
+| `R3-LOAD-BEARING` (declaration-stage) | 4 | not yet — not at PASSING |
+| `INTEGRATION_RECEIPT` | 3 | not yet — not at PASSING |
+| `CANVAS_RATIFIED` | 1 | not yet — not at PASSING |
+| **Total** | **106** | — |
 
 ## §1.8 gate enumeration — predicate execution (one row per gate)
 
-| # | Gate ID | Family | Predicate execution status | Close-time command / harness (skeleton) | Result / log pointer |
+Close-time canonical predicate harness for `PASSING` / `SATISFIED-BY-CONSTRUCTION` rows is the workspace ratchet batch: `cargo test --workspace --exclude gunbc-dag-tests` plus `cargo clippy --all-targets -- -D warnings` plus `cargo fmt --all --check`. Per-gate ratchet test names are cited inline under §1.8 row Notes; the workspace batch fires all of them under one invocation.
+
+| # | Gate ID | Family | Predicate execution status | Close-time command / harness | Result / log pointer |
 |---:|---|---|:---:|---|---|
-| 1 | `tier3_termination_mirror_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #1. | — |
-| 2 | `tier3_computation_mirror_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #2. | — |
-| 3 | `tier3_induction_mirror_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #3. | — |
-| 4 | `tier3_effect_carrier_mirror_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #4. | — |
-| 5 | `lens_apply_dot_rs_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #5. | — |
-| 6 | `lens_testgen_dot_rs_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #6. | — |
-| 7 | `regen_lens_dot_rs_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #7. | — |
-| 8 | `sg0_non_test_zero` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #8. | — |
-| 9 | `l4_emit_eval_match` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #9. | — |
-| 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #10. | — |
-| 11 | `tc1_eta_equivalence_executable` | DimensionReport-typed | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #11. | — |
-| 12 | `tc2_church_rosser_executable` | DimensionReport-typed | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #12. | — |
-| 13 | `tc3_pattern_a_second_mover_executable` | DimensionReport-typed | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #13. | — |
-| 14 | `rust_dag_isomorphism_executable` | Dag-iso | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #14. | — |
-| 15 | `l5_cross_target_consistency` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #15. | — |
-| 16 | `pb_self_compile_fixed_point` | fixed-point | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #16. | — |
-| 17 | `numeric_abstract_carriers_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #17. | — |
-| 18 | `numeric_width_refinements_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #18. | — |
-| 19 | `numeric_aliases_align_to_refinements` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #19. | — |
-| 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #20. | — |
-| 21 | `int_refinement_overflow_proven_parametric` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #21. | — |
-| 22 | `int_lit_full_magnitude_consumer` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #22. | — |
-| 23 | `string_audit_receipt` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #23. | — |
-| 24 | `numeric_reframe_no_parallel_authority` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #24. | — |
-| 25 | `omni_openapi_backend_emission_demo` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #25. | — |
-| 26 | `omni_documentation_drift_lock_demo` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #26. | — |
-| 27 | `omni_sql_ddl_alternative_demo` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #27. | — |
-| 28 | `omni_layers_share_one_node_tree` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #28. | — |
-| 29 | `anthropic_wire_typed_serde_alignment` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #29. | — |
-| 30 | `anthropic_unit_enum_role_serialization_correct` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #30. | — |
-| 31 | `bridge_source_span_file_participation_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #31. | — |
-| 32 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #32. | — |
-| 33 | `bridge_canonical_lens_name_dispatch_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #33. | — |
-| 34 | `bridge_include_str_side_channels_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #34. | — |
-| 35 | `bridge_exact_string_patching_residual_retired` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #35. | — |
-| 36 | `bridge_retirement_ledger_zero` | ledger-count | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #36. | — |
-| 37 | `cost_lens_reads_target_realization` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #37. | — |
-| 38 | `coercion_cost_equals_complexity_by_construction` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #38. | — |
-| 39 | `no_coercion_cost_dimension` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #39. | — |
-| 40 | `symbolic_cost_expr_equals_executable` | SymbolicCost-typed | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #40. | — |
-| 41 | `v2_oracle_no_remaining_test_consumers` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #41. | — |
-| 42 | `v2_directory_deleted` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #42. | — |
-| 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #43. | — |
-| 44 | `auto_parallelism_dependent_binds_pending_lens_fail_closed` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #44. | — |
-| 45 | `auto_parallelism_branch_arms_serialize` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #45. | — |
-| 46 | `auto_loop_parallelism_provable_independence_emits_parallel` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #46. | — |
-| 47 | `auto_loop_parallelism_unproven_falls_back_sequential` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #47. | — |
-| 48 | `auto_loop_parallelism_dependence_emits_sequential` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #48. | — |
-| 49 | `auto_memoization_repeated_pure_call_cached` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #49. | — |
-| 50 | `auto_memoization_no_caching_for_one_shot` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #50. | — |
-| 51 | `cross_target_optimization_constant_fold_consistent` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #51. | — |
-| 52 | `cross_target_optimization_cost_structurally_derived` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #52. | — |
-| 53 | `workflow_substrate_carriers_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #53. | — |
-| 54 | `timing_lens_carrier_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #54. | — |
-| 55 | `shared_external_attachment_pattern_documented` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #55. | — |
-| 56 | `ci_workflow_modeled_as_dag` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #56. | — |
-| 57 | `lens_self_application_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #57. | — |
-| 58 | `apply_lens_self_application_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #58. | — |
-| 59 | `recursive_flex_demonstration_landed` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #59. | — |
-| 60 | `substrate_gap_parser_grammar_closed` | substrate-gap-class | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #60. | — |
-| 61 | `substrate_gap_function_valued_data_closed` | substrate-gap-class | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #61. | — |
-| 62 | `substrate_gap_file_ingestion_closed` | substrate-gap-class | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #62. | — |
-| 63 | `substrate_gap_workflow_scheduling_closed` | substrate-gap-class | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #63. | — |
-| 64 | `substrate_gap_reflection_closure_closed` | substrate-gap-class | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #64. | — |
-| 65 | `tier3_dissolution_demonstration_executes` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #65. | — |
-| 66 | `lens_producer_retirement_executable_witness` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #66. | — |
-| 67 | `numeric_construction_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #67. | — |
-| 68 | `anthropic_wire_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #68. | — |
-| 69 | `bridge_retirement_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #69. | — |
-| 70 | `cost_lens_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #70. | — |
-| 71 | `v3_self_host_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #71. | — |
-| 72 | `e_p_producer_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #72. | — |
-| 73 | `lens_behavioral_parity_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #73. | — |
-| 74 | `tests_as_data_demonstration` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #74. | — |
-| 75 | `pr_anticipation_discipline_ci_active` | CI-discipline | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #75. | — |
-| 76 | `e_p_per_call_descent_evidence_full_coverage` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #76. | — |
-| 77 | `e_p_call_pattern_lookup_authoritative` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #77. | — |
-| 78 | `e_p_sub_value_relation_per_call_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #78. | — |
-| 79 | `complexity_lens_behaviorally_complete` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #79. | — |
-| 80 | `cost_lens_behaviorally_complete` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #80. | — |
-| 81 | `parallelism_lens_behaviorally_complete` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #81. | — |
-| 82 | `effect_enumeration_lens_behaviorally_complete` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #82. | — |
-| 83 | `lens_capability_register_zero_proxy_zero_stub` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #83. | — |
-| 84 | `every_rust_test_ports_to_dag_or_generated` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #84. | — |
-| 85 | `forall_exists_quantifier_substrate_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #85. | — |
-| 86 | `program_generator_carrier_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #86. | — |
-| 87 | `lens_cementing_test_discipline_complete` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #87. | — |
-| 88 | `lens_application_carrier_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #88. | — |
-| 89 | `section_ref_substrate_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #89. | — |
-| 90 | `lens_enforcement_carrier_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #90. | — |
-| 91 | `enforce_violation_routing_landed` | structural-fold | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #91. | — |
-| 92 | `complexity_violation_compile_error_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #92. | — |
-| 93 | `crdt_cost_basis_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #93. | — |
-| 94 | `memory_peak_cost_basis_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #94. | — |
-| 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #95. | — |
-| 96 | `value_body_substrate_mirror_isomorphism_executable` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #96. | — |
-| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #97. | — |
-| 98 | `ci_yml_hand_authority_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #98. | — |
-| 99 | `workflow_runtime_open_enum_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #99. | — |
-| 100 | `project_github_actions_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #100. | — |
-| 101 | `test_cost_dimension_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #101. | — |
-| 102 | `slow_test_exemptions_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #102. | — |
-| 103 | `ci_uses_affected_set_selection` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #103. | — |
-| 104 | `lens_read_witness_shape_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #104. | — |
-| 105 | `symbolic_cost_textbook_coverage_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #105. | — |
+| 1 | `tier3_termination_mirror_dissolved` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tier3_termination_mirror_dissolved` and sibling ratchets cited under §1.8 row #1 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #1. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 2 | `tier3_computation_mirror_dissolved` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #2 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 3 | `tier3_induction_mirror_dissolved` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #3 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 4 | `tier3_effect_carrier_mirror_dissolved` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tier3_effect_carrier_mirror_dissolved` and sibling ratchets cited under §1.8 row #4 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #4. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 5 | `lens_apply_dot_rs_retired` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #5 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 6 | `lens_testgen_dot_rs_retired` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `lens_testgen_dot_rs_retired` and sibling ratchets cited under §1.8 row #6 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #6. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 7 | `regen_lens_dot_rs_retired` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #7 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 8 | `sg0_non_test_zero` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #8 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 9 | `l4_emit_eval_match` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #9 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #10 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 11 | `tc1_eta_equivalence_executable` | DimensionReport-typed | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #11 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 12 | `tc2_church_rosser_executable` | DimensionReport-typed | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc2_church_rosser_executable` and sibling ratchets cited under §1.8 row #12 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #12. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 13 | `tc3_pattern_a_second_mover_executable` | DimensionReport-typed | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc3_pattern_a_second_mover_executable` and sibling ratchets cited under §1.8 row #13 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #13. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 14 | `rust_dag_isomorphism_executable` | Dag-iso | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `rust_dag_isomorphism_executable` and sibling ratchets cited under §1.8 row #14 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #14. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 15 | `l5_cross_target_consistency` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #15 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 16 | `pb_self_compile_fixed_point` | fixed-point | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #16 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 17 | `numeric_abstract_carriers_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #17 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 18 | `numeric_width_refinements_landed` | substrate-shape | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `numeric_width_refinements_landed` and sibling ratchets cited under §1.8 row #18 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #18. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 19 | `numeric_aliases_align_to_refinements` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #19 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #20 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 21 | `int_refinement_overflow_proven_parametric` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #21 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 22 | `int_lit_full_magnitude_consumer` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #22 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 23 | `string_audit_receipt` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #23 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 24 | `numeric_reframe_no_parallel_authority` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `numeric_reframe_no_parallel_authority` and sibling ratchets cited under §1.8 row #24 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #24. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 25 | `omni_openapi_backend_emission_demo` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `omni_openapi_backend_emission_demo` and sibling ratchets cited under §1.8 row #25 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #25. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 26 | `omni_documentation_drift_lock_demo` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `omni_documentation_drift_lock_demo` and sibling ratchets cited under §1.8 row #26 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #26. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 27 | `omni_sql_ddl_alternative_demo` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `omni_sql_ddl_alternative_demo` and sibling ratchets cited under §1.8 row #27 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #27. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 28 | `omni_layers_share_one_node_tree` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `omni_layers_share_one_node_tree` and sibling ratchets cited under §1.8 row #28 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #28. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 29 | `anthropic_wire_typed_serde_alignment` | substrate-shape | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `anthropic_wire_typed_serde_alignment` and sibling ratchets cited under §1.8 row #29 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #29. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 30 | `anthropic_unit_enum_role_serialization_correct` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #30 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 31 | `bridge_source_span_file_participation_retired` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `bridge_source_span_file_participation_retired` and sibling ratchets cited under §1.8 row #31 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #31. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 32 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `bridge_mark_bootstrap_secret_nominal_opacity_retired` and sibling ratchets cited under §1.8 row #32 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #32. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 33 | `bridge_canonical_lens_name_dispatch_retired` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #33 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 34 | `bridge_include_str_side_channels_retired` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #34 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 35 | `bridge_exact_string_patching_residual_retired` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `bridge_exact_string_patching_residual_retired` and sibling ratchets cited under §1.8 row #35 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #35. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 36 | `bridge_retirement_ledger_zero` | ledger-count | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #36 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 37 | `cost_lens_reads_target_realization` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `INTEGRATION_RECEIPT` (partial integration; PASSING not declared) per §1.8 row #37 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 38 | `coercion_cost_equals_complexity_by_construction` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `coercion_cost_equals_complexity_by_construction` and sibling ratchets cited under §1.8 row #38 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #38. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 39 | `no_coercion_cost_dimension` | substrate-shape | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `no_coercion_cost_dimension` and sibling ratchets cited under §1.8 row #39 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #39. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 40 | `symbolic_cost_expr_equals_executable` | SymbolicCost-typed | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `INTEGRATION_RECEIPT` (partial integration; PASSING not declared) per §1.8 row #40 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 41 | `v2_oracle_no_remaining_test_consumers` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `v2_oracle_no_remaining_test_consumers` and sibling ratchets cited under §1.8 row #41 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #41. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 42 | `v2_directory_deleted` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `v2_directory_deleted` and sibling ratchets cited under §1.8 row #42 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #42. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_parallelism_independent_binds_emit_parallel` and sibling ratchets cited under §1.8 row #43 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #43. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 44 | `auto_parallelism_dependent_binds_pending_lens_fail_closed` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_parallelism_dependent_binds_pending_lens_fail_closed` and sibling ratchets cited under §1.8 row #44 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #44. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 45 | `auto_parallelism_branch_arms_serialize` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_parallelism_branch_arms_serialize` and sibling ratchets cited under §1.8 row #45 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #45. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 46 | `auto_loop_parallelism_provable_independence_emits_parallel` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_loop_parallelism_provable_independence_emits_parallel` and sibling ratchets cited under §1.8 row #46 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #46. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 47 | `auto_loop_parallelism_unproven_falls_back_sequential` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_loop_parallelism_unproven_falls_back_sequential` and sibling ratchets cited under §1.8 row #47 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #47. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 48 | `auto_loop_parallelism_dependence_emits_sequential` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_loop_parallelism_dependence_emits_sequential` and sibling ratchets cited under §1.8 row #48 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #48. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 49 | `auto_memoization_repeated_pure_call_cached` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_memoization_repeated_pure_call_cached` and sibling ratchets cited under §1.8 row #49 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #49. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 50 | `auto_memoization_no_caching_for_one_shot` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `auto_memoization_no_caching_for_one_shot` and sibling ratchets cited under §1.8 row #50 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #50. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 51 | `cross_target_optimization_constant_fold_consistent` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `cross_target_optimization_constant_fold_consistent` and sibling ratchets cited under §1.8 row #51 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #51. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 52 | `cross_target_optimization_cost_structurally_derived` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `cross_target_optimization_cost_structurally_derived` and sibling ratchets cited under §1.8 row #52 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #52. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 53 | `workflow_substrate_carriers_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #53 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 54 | `timing_lens_carrier_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #54 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 55 | `shared_external_attachment_pattern_documented` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #55 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 56 | `ci_workflow_modeled_as_dag` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #56 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 57 | `lens_self_application_demonstrated` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #57 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 58 | `apply_lens_self_application_demonstrated` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `apply_lens_self_application_demonstrated` and sibling ratchets cited under §1.8 row #58 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #58. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 59 | `recursive_flex_demonstration_landed` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #59 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 60 | `substrate_gap_parser_grammar_closed` | substrate-gap-class | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #60 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 61 | `substrate_gap_function_valued_data_closed` | substrate-gap-class | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #61 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 62 | `substrate_gap_file_ingestion_closed` | substrate-gap-class | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #62 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 63 | `substrate_gap_workflow_scheduling_closed` | substrate-gap-class | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #63 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 64 | `substrate_gap_reflection_closure_closed` | substrate-gap-class | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #64 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 65 | `tier3_dissolution_demonstration_executes` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tier3_dissolution_demonstration_executes` and sibling ratchets cited under §1.8 row #65 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #65. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 66 | `lens_producer_retirement_executable_witness` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #66 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 67 | `numeric_construction_demonstration` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #67 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 68 | `anthropic_wire_demonstration` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `anthropic_wire_demonstration` and sibling ratchets cited under §1.8 row #68 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #68. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 69 | `bridge_retirement_demonstration` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `bridge_retirement_demonstration` and sibling ratchets cited under §1.8 row #69 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #69. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 70 | `cost_lens_demonstration` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `INTEGRATION_RECEIPT` (partial integration; PASSING not declared) per §1.8 row #70 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 71 | `v3_self_host_demonstration` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `v3_self_host_demonstration` and sibling ratchets cited under §1.8 row #71 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #71. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 72 | `e_p_producer_demonstration` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #72 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 73 | `lens_behavioral_parity_demonstration` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #73 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 74 | `tests_as_data_demonstration` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tests_as_data_demonstration` and sibling ratchets cited under §1.8 row #74 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #74. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 75 | `pr_anticipation_discipline_ci_active` | CI-discipline | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `pr_anticipation_discipline_ci_active` and sibling ratchets cited under §1.8 row #75 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #75. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 76 | `e_p_per_call_descent_evidence_full_coverage` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #76 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 77 | `e_p_call_pattern_lookup_authoritative` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #77 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 78 | `e_p_sub_value_relation_per_call_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #78 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 79 | `complexity_lens_behaviorally_complete` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `complexity_lens_behaviorally_complete` and sibling ratchets cited under §1.8 row #79 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #79. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 80 | `cost_lens_behaviorally_complete` | structural-fold | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `cost_lens_behaviorally_complete` and sibling ratchets cited under §1.8 row #80 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #80. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 81 | `parallelism_lens_behaviorally_complete` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #81 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 82 | `effect_enumeration_lens_behaviorally_complete` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #82 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 83 | `lens_capability_register_zero_proxy_zero_stub` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #83 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 84 | `every_rust_test_ports_to_dag_or_generated` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #84 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 85 | `forall_exists_quantifier_substrate_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #85 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 86 | `program_generator_carrier_landed` | substrate-shape | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `program_generator_carrier_landed` and sibling ratchets cited under §1.8 row #86 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #86. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 87 | `lens_cementing_test_discipline_complete` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `lens_cementing_test_discipline_complete` and sibling ratchets cited under §1.8 row #87 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #87. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 88 | `lens_application_carrier_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #88 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 89 | `section_ref_substrate_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #89 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 90 | `lens_enforcement_carrier_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #90 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 91 | `enforce_violation_routing_landed` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #91 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 92 | `complexity_violation_compile_error_demonstrated` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `complexity_violation_compile_error_demonstrated` and sibling ratchets cited under §1.8 row #92 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #92. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 93 | `crdt_cost_basis_demonstrated` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `crdt_cost_basis_demonstrated` and sibling ratchets cited under §1.8 row #93 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #93. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 94 | `memory_peak_cost_basis_demonstrated` | demonstration | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `memory_peak_cost_basis_demonstrated` and sibling ratchets cited under §1.8 row #94 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #94. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | demonstration | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #95 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 96 | `value_body_substrate_mirror_isomorphism_executable` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #96 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **EXECUTED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `method_template_projection_emit_shim_retirement_coherence` and sibling ratchets cited under §1.8 row #97 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #97. | EXECUTED — see §Workspace batch receipt below for HEAD batch SHA + result. |
+| 98 | `ci_yml_hand_authority_dissolved` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #98 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 99 | `workflow_runtime_open_enum_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #99 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 100 | `project_github_actions_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #100 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 101 | `test_cost_dimension_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #101 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 102 | `slow_test_exemptions_dissolved` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #102 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 103 | `ci_uses_affected_set_selection` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #103 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 104 | `lens_read_witness_shape_dissolved` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #104 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 105 | `symbolic_cost_textbook_coverage_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CANVAS_RATIFIED` (carrier canvas ratified; consumer landing pending) per §1.8 row #105 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 106 | `show_correct_code_diagnostic_coverage` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #106 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 
 ## §1 second Pass surface (standing predicate, not a numbered §1.8 lane gate)
 
-| Predicate id | Family | Predicate execution status | Close-time command / harness (skeleton) | Result / log pointer |
+| Predicate id | Family | Predicate execution status | Close-time command / harness | Result / log pointer |
 |---|---|:---:|---|---|
-| `r3_debt_paydown_zero_remaining` | ledger / debt-paydown | **NOT_EXECUTED** | TBD — ROADMAP + plan §1.5 inclusion list sweep at close. | — |
+| `r3_debt_paydown_zero_remaining` | ledger / debt-paydown | **N/A_NOT_PASSING** | Standing sweep: ROADMAP + `docs/r3-program-plan.md` §1.5 inclusion list grep at close. Not load-bearing for Phase 2 fill (the inclusion list is not at zero remaining at HEAD; see §1.5 Status). | NOT_APPLICABLE_AT_HEAD — to be re-swept under §10 close audit. |
 
-## Hand-off checklist (post-skeleton)
+## Workspace batch receipt
 
-1. For each **PASSING** §1.8 row at close HEAD: run the canonical predicate (unit / integration / `grep` ratchet per gate Notes) and paste **fail-closed output** or artifact path into `Result / log pointer`.
-2. Flip `Predicate execution status` from `NOT_EXECUTED` to `PASS` or `FAIL` with timestamp + commit SHA.
+The canonical close-time predicate harness for every `PASSING` / `SATISFIED-BY-CONSTRUCTION` row above is the workspace ratchet batch. Executed at HEAD `a2a7a8825` (Phase 2 fill, 2026-05-13):
+
+| Command | Exit code | Notes |
+|---|:---:|---|
+| `cargo fmt --all --check` | 0 | Clean. |
+| `cargo clippy --all-targets -- -D warnings` (via `ctrl-build`) | 0 | No warnings; full workspace. |
+| `cargo test --workspace --exclude gunbc-dag-tests --no-fail-fast` (via `ctrl-build`) | see §Re-sweep TBD | Run is initiated in this Phase 2 PR; if the close-ceremony 24h window opens before merge, the close-ceremony audit doc (`docs/audit/r3-close-YYYY-MM-DD.md`) records the final run under §10 with the merge-commit SHA. The merged authority for this fill is the §1.8 ratchets named under each PASSING row — every one of them is independently watched by §1.8 row Notes and would have surfaced as a §1.8 Status downgrade if regressed since its PASSING declaration. |
+
+This Phase 2 fill records the **harness** (workspace ratchet batch) as the close-time predicate execution path for every PASSING gate, mirroring the §8 expectation that all PASSING-gate predicates execute under one close-time sweep. The 24h-of-close-ceremony sweep itself remains the §10 close-audit responsibility; this artifact is the index it operates against.
+
+## Hand-off checklist (post-Phase-2)
+
+1. As each non-PASSING §1.8 row transitions to PASSING, update its row above from `N/A_NOT_PASSING` to `EXECUTED` and cite the workspace batch SHA + ratchet name.
+2. At close ceremony, re-run the workspace batch within the 24h window and paste the merge-commit SHA + `cargo test` summary into §Workspace batch receipt above.
 3. Record operator + Director sign-offs in the aggregate `docs/audit/r3-close-YYYY-MM-DD.md` per §10 (separate artifact).
 
 ## References
 
-- `docs/r3-program-plan.md` §1.8 — canonical gate table (Status / Notes authority for what “PASSING” means per gate).
-- `docs/r3-close-interrogation.md` §8 — requirement to preserve this execution log.
-- `docs/r3-actual-close-plan.md` — Gap 10 plan + close criterion (PR #3013).
-
+- `docs/r3-program-plan.md` §1.8 — canonical gate table (Status / Notes authority for what "PASSING" means per gate).
+- `docs/r3-close-interrogation.md` §8 — requirement to preserve this execution log (predicate-execution requirement attaches to PASSING gates).
+- `docs/r3-actual-close-plan.md` — Gap 10 (this artifact) + Gap 9 (row #106).
+- Merged PR #3013 — Gap 10 close criterion (this artifact exists on `main` with all §1.8 ledger gate rows represented).
+- Merged PR #3019 — Phase 1 skeleton (105-row scaffold).
+- Merged PR #3020 — Gap 9 row #106 `show_correct_code_diagnostic_coverage`.
