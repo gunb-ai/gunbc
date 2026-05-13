@@ -45,8 +45,8 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
   },
   {
     registry_name: "cost_symbolic"
-    module_stem: "t_r3_gate_87_cementing_regen_cost_symbolic"
-    kind: DagHarness
+    module_stem: "cost_lens_symbolic_consumer_test"
+    kind: TemporaryRustModule
   }
 ]
 
