@@ -42,12 +42,13 @@ use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::lens_cost::{complexity_lens_read, ComplexitySummary};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{Dag, Witness};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -131,6 +132,13 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .value
 }
 
+fn assert_complexity_read_inhabits(witness: Witness<ComplexitySummary>, behavior: &Behavior) {
+    assert!(
+        matches!(witness, Witness::Inhabits(_)),
+        "complexity_lens_read should cover `{behavior:?}` with Inhabits(_), got {witness:?}"
+    );
+}
+
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -141,6 +149,22 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_complexity_lens_read_covers_literal_program_behaviors() {
+    let dag = compile_to_dag(
+        "let lit: Int = 7",
+        "r3_gate_87_complexity_read_witness_coverage.v3",
+    )
+    .expect("compile");
+    assert!(
+        !dag.nodes().is_empty(),
+        "fixture should expose at least one behavior for read-channel coverage"
+    );
+    for behavior in dag.nodes() {
+        assert_complexity_read_inhabits(complexity_lens_read(&dag, behavior.clone()), behavior);
+    }
 }
 
 #[test]

@@ -4133,9 +4133,9 @@ pub mod lens_cost {
     }
 
     pub use generated::{
-        complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
-        complexity_summary_work_class_consistent, Certainty, ComplexityEntry, ComplexitySummary,
-        DominanceOutcome,
+        complexity_enforcement_project, complexity_enforcement_violates, complexity_lens_read,
+        complexity_of, complexity_summary_work_class_consistent, Certainty, ComplexityEntry,
+        ComplexitySummary, DominanceOutcome,
     };
     pub type ComplexityLookup = crate::dag::Lookup<ComplexitySummary>;
 
