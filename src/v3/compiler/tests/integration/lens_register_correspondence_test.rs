@@ -37,6 +37,11 @@ use std::path::{Path, PathBuf};
 
 use v3_compiler::cementing_dispatch;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems,
+};
+use v3_compiler::compile_to_dag;
 
 const R3_LENS_BEHAVIORAL_PARITY_SCOPE: &[&str] = &[
     "complexity.dag",
@@ -259,6 +264,98 @@ fn register_lens_basenames() -> BTreeSet<String> {
     capability_table_rows()
         .into_iter()
         .map(|(basename, _)| basename)
+        .collect()
+}
+
+fn list_items(decl: &Declaration, role: &str) -> Vec<FieldValue> {
+    match &decl.value_body {
+        Some(ValueBody::List(items)) => items.clone(),
+        other => panic!(
+            "`{role}` must be a List data declaration; got {:?} for `{}`",
+            other,
+            decl.name.as_deref().unwrap_or("<anonymous>")
+        ),
+    }
+}
+
+fn record_fields(value: &FieldValue, role: &str) -> &[(String, FieldValue)] {
+    match value {
+        FieldValue::Record(fields) => fields.as_slice(),
+        other => panic!("`{role}` row must be a record, got {other:?}"),
+    }
+}
+
+fn string_record_field(fields: &[(String, FieldValue)], label: &str, role: &str) -> String {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("`{role}` row is missing a String `{label}` field"))
+}
+
+fn structural_register_lens_basenames() -> BTreeSet<String> {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for structural capability-register ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .expect("std.verification must declare `lens_capability_register_rows`");
+    list_items(decl, "lens_capability_register_rows")
+        .iter()
+        .map(|row| {
+            let fields = record_fields(row, "lens_capability_register_rows");
+            string_record_field(fields, "lens_basename", "lens_capability_register_rows")
+        })
+        .collect()
+}
+
+fn cementing_dispatch_dag_harness_stems() -> BTreeSet<String> {
+    let dag = compile_to_dag(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    )
+    .expect("cementing_dispatch.dag should compile cleanly");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "cementing_dispatch.dag should have no diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let decl = dag
+        .declaration_by_name("cementing_band_c_v2_complete_receipts")
+        .expect("cementing_dispatch.dag must declare `cementing_band_c_v2_complete_receipts`");
+    list_items(decl, "cementing_band_c_v2_complete_receipts")
+        .iter()
+        .filter_map(|row| {
+            let fields = record_fields(row, "cementing_band_c_v2_complete_receipts");
+            let kind = fields
+                .iter()
+                .find(|(field_label, _)| field_label == "kind")
+                .map(|(_, value)| value)
+                .unwrap_or_else(|| {
+                    panic!("`cementing_band_c_v2_complete_receipts` row is missing `kind`")
+                });
+            let FieldValue::Variant { constructor, .. } = kind else {
+                panic!("`cementing_band_c_v2_complete_receipts.kind` must be a variant");
+            };
+            let constructor_name = dag
+                .declaration(*constructor)
+                .name
+                .as_deref()
+                .unwrap_or("<anonymous>");
+            (constructor_name == "DagHarness").then(|| {
+                string_record_field(
+                    fields,
+                    "module_stem",
+                    "cementing_band_c_v2_complete_receipts",
+                )
+            })
+        })
         .collect()
 }
 
