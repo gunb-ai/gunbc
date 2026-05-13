@@ -16,7 +16,7 @@
 //
 // Behavioral completion trigger: add typed pairwise-noncommute evidence to
 // `WorkflowParallelismReport` / `ParallelismUnsupportedDetail`, then route the
-// computed left/right `Operation` witnesses through that public payload.
+// computed left/right `WorkflowOperation` witnesses through that public payload.
 
 module lenses.parallelism
 
@@ -28,7 +28,7 @@ import std.effects {
   EffectShape,
   IdempotentShape,
   KeySource,
-  Operation,
+  WorkflowOperation,
   WorkflowEffect,
   WorkflowParallelismReport,
   CompositionVerdict,
@@ -44,7 +44,7 @@ type LinearBranchesLookup
   // public Stage 2e diagnostic contract. The terminal carrier is private to
   // this lens and has exactly one unsupported class (`NonLinearParallelBranch`)
   // at the report boundary.
-  = LinearBranchesFound { branches: List<List<Operation>> }
+  = LinearBranchesFound { branches: List<List<WorkflowOperation>> }
   | NonLinearBranchFound
 
 type NonCommutingPairLookup
@@ -55,7 +55,7 @@ type NonCommutingPairLookup
   // when `WorkflowParallelismReport` grows typed non-commute evidence, remove
   // this private carrier and carry the left/right operations through that
   // public report payload instead of overloading the free-text reason.
-  = NonCommutingPairFound { left: Operation, right: Operation }
+  = NonCommutingPairFound { left: WorkflowOperation, right: WorkflowOperation }
   | AllPairsCommute
 
 fn nsl_to_workflow_list(nsl: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =
@@ -118,7 +118,7 @@ fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
       }
   }
 
-fn operations_commute(a: Operation, b: Operation) -> Bool =
+fn operations_commute(a: WorkflowOperation, b: WorkflowOperation) -> Bool =
   match a.shape {
     IsIdempotent(ia) =>
       match b.shape {
@@ -152,15 +152,15 @@ fn extract_linear_branches(
 ) -> LinearBranchesLookup =
   extract_linear_branches_from_list(nsl_to_workflow_list(branches))
 
-fn flatten_branch_ops(branch_ops: List<List<Operation>>) -> List<Operation> =
+fn flatten_branch_ops(branch_ops: List<List<WorkflowOperation>>) -> List<WorkflowOperation> =
   match branch_ops {
     Empty => empty()
     Cons(payload) => concat(payload.head, flatten_branch_ops(payload.tail))
   }
 
 fn first_non_commuting_op_in_branch(
-  right_branch: List<Operation>,
-  left: Operation
+  right_branch: List<WorkflowOperation>,
+  left: WorkflowOperation
 ) -> NonCommutingPairLookup =
   match right_branch {
     Empty => AllPairsCommute
@@ -172,8 +172,8 @@ fn first_non_commuting_op_in_branch(
   }
 
 fn first_non_commuting_branch_pair(
-  left_branch: List<Operation>,
-  right_branch: List<Operation>
+  left_branch: List<WorkflowOperation>,
+  right_branch: List<WorkflowOperation>
 ) -> NonCommutingPairLookup =
   match left_branch {
     Empty => AllPairsCommute
@@ -186,8 +186,8 @@ fn first_non_commuting_branch_pair(
   }
 
 fn first_non_commuting_against_tail(
-  tail_branches: List<List<Operation>>,
-  left_branch: List<Operation>
+  tail_branches: List<List<WorkflowOperation>>,
+  left_branch: List<WorkflowOperation>
 ) -> NonCommutingPairLookup =
   match tail_branches {
     Empty => AllPairsCommute
@@ -200,7 +200,7 @@ fn first_non_commuting_against_tail(
   }
 
 fn pairwise_cross_branch_commutes(
-  branch_ops: List<List<Operation>>
+  branch_ops: List<List<WorkflowOperation>>
 ) -> NonCommutingPairLookup =
   match branch_ops {
     Empty => AllPairsCommute
@@ -267,7 +267,7 @@ fn analyze_parallelism(d: Dag, workflow_root: NodeId) -> WorkflowParallelismRepo
     Some(wf) => parallelism_report_for_workflow(wf)
   }
 
-fn read_only_ops(ops: List<Operation>) -> Bool =
+fn read_only_ops(ops: List<WorkflowOperation>) -> Bool =
   match ops {
     Empty => true
     Cons(payload) =>

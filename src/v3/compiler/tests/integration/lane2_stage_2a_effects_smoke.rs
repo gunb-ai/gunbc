@@ -92,7 +92,7 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "KeySource",
         "IdempotencyEvidence",
         "CompositionVerdict",
-        "Operation",
+        "WorkflowOperation",
         "WorkflowEffect",
         "BoolPortRef",
         "BranchArm",

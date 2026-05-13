@@ -24,17 +24,17 @@
 //   - `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` (partition)
 //   - `IdempotentShape`, `BreakingShape`
 //   - `CreateCause`, `KeySource`, `IdempotencyEvidence`
-//   - `Operation`
-//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<Operation> }`
+//   - `WorkflowOperation`
+//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<WorkflowOperation> }`
 //   - `is_idempotent_effect`, `operation_is_breaking`
-//   - `compose_effects(effects: List<Operation>) -> CompositionVerdict`
+//   - `compose_effects(effects: List<WorkflowOperation>) -> CompositionVerdict`
 //   - `generate_idempotency_obligations`
 // v2-specific imports, parser quirks, and Rust bridge code do NOT
 // come over. Pure `.dag` declarations.
 //
 // Stage 2a follow-ups (cleared):
 //
-// 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521), and the
+// 1. `DerivedOpEffect` was collapsed into `WorkflowOperation` (PR #521), and the
 // later OperationEffect retirement removed the transport-derived
 // `derive_op_effect` bridge entirely.
 // The previous shape carried `method` and `path_template` fields
@@ -42,7 +42,7 @@
 // read the transport fields — the modifier check and obligation
 // generator both project through `shape` alone, and the
 // `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS."
-// `Operation` is the durable carrier Stage 2b's `compose_effects`
+// `WorkflowOperation` is the durable carrier Stage 2b's `compose_effects`
 // walks. Future diagnostic
 // rendering that wants the originating method/path should attach a
 // separate evidence carrier to the diagnostic, not smuggle transport
@@ -50,7 +50,7 @@
 //
 // 2. `ComposedEffect { operations, idempotent: Bool, breaking_operation: String? }`
 // was removed entirely. `compose_effects` now returns
-// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<Operation> }`
+// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<WorkflowOperation> }`
 // directly. The earlier intermediate form wrapped the verdict in a
 // `{ operations, verdict }` record so callers could get the walk and
 // the judgment from one value, but reviewer feedback on the
@@ -66,12 +66,12 @@
 //
 // 3. `EffectShape` was partitioned into
 // `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`.
-// The earlier flat `BrokenBy { first_breaker: Operation }` shape
-// still admitted `Operation { shape: ReadEffect }` — an
+// The earlier flat `BrokenBy { first_breaker: WorkflowOperation }` shape
+// still admitted `WorkflowOperation { shape: ReadEffect }` — an
 // idempotent op in the breaker slot — enforced only by the
 // `compose_effects` filter. Partitioning EffectShape at the type
 // level dissolved that hole for carrier copies like
-// `BreakingOperation`, while `ElementRef<Operation>` replaces the
+// `BreakingOperation`, while `ElementRef<WorkflowOperation>` replaces the
 // copied payload with an index validated against a caller-owned evidence
 // list. Current trade-off: the handle only proves "in-bounds element of
 // some list the constructor saw", not "this exact owner list" and not
@@ -419,7 +419,7 @@ fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
 //   (the append duplicates on the second application)
 
 // Per-operation effect entry in a workflow.
-type Operation {
+type WorkflowOperation {
   operation_name: String
   shape: EffectShape
 }
@@ -429,7 +429,7 @@ type Operation {
 // The judgment space is therefore exactly two states: the workflow
 // converges, or some operation broke convergence. No third state.
 //
-// `first_breaker: ElementRef<Operation>` is an index witness
+// `first_breaker: ElementRef<WorkflowOperation>` is an index witness
 // validated against a caller-owned evidence list. It closes the
 // "copied standalone breaker record" hole, but not the full owner or
 // subset proof: `ElementRef` proves list membership for the list used
@@ -438,29 +438,29 @@ type Operation {
 // still established behaviorally.
 type CompositionVerdict
   = IdempotentComposition
-  | BrokenBy { first_breaker: ElementRef<Operation> }
+  | BrokenBy { first_breaker: ElementRef<WorkflowOperation> }
 
 // True if this operation is non-idempotent. Reads the partition
 // directly off `EffectShape` — no evidence-projection round-trip.
-fn operation_is_breaking(op: Operation) -> Bool {
+fn operation_is_breaking(op: WorkflowOperation) -> Bool {
   match op.shape {
     IsIdempotent => false
     IsBreaking => true
   }
 }
 
-fn breaker_ref(index: Int) -> ElementRef<Operation> {
+fn breaker_ref(index: Int) -> ElementRef<WorkflowOperation> {
   { index: index }
 }
 
-fn indexed_breaker_ref(op: IndexedElement<Operation>) -> ElementRef<Operation>? {
+fn indexed_breaker_ref(op: IndexedElement<WorkflowOperation>) -> ElementRef<WorkflowOperation>? {
   if operation_is_breaking(op.value) then
     Some(breaker_ref(op.index))
   else
     None
 }
 
-fn first_breaker_ref(effects: List<Operation>) -> ElementRef<Operation>? {
+fn first_breaker_ref(effects: List<WorkflowOperation>) -> ElementRef<WorkflowOperation>? {
   let breaker_candidates = effects |> enumerate |> flat_map(op =>
     match indexed_breaker_ref(op) {
       Some(r) => [r]
@@ -473,7 +473,7 @@ fn first_breaker_ref(effects: List<Operation>) -> ElementRef<Operation>? {
 // Compose a list of operation effects into a workflow-level verdict.
 // Returns `CompositionVerdict` directly — no enclosing record around
 // the verdict plus the input list. Callers that want the evidence
-// chain keep the input `List<Operation>` in scope; pairing the
+// chain keep the input `List<WorkflowOperation>` in scope; pairing the
 // verdict with the walk inside a record would create a second
 // authority (the list) alongside the projected one (the verdict),
 // and `.dag` records are directly constructible, so the two could
@@ -483,7 +483,7 @@ fn first_breaker_ref(effects: List<Operation>) -> ElementRef<Operation>? {
 // position (if any). `BrokenBy` carries that validated position instead
 // of copying a second breaker record; callers still have to resolve it
 // against the same evidence list they validated it against.
-fn compose_effects(effects: List<Operation>) -> CompositionVerdict {
+fn compose_effects(effects: List<WorkflowOperation>) -> CompositionVerdict {
   match first_breaker_ref(effects) {
     Some(b) => BrokenBy { first_breaker: b }
     None => IdempotentComposition
@@ -532,7 +532,7 @@ type BranchArm {
 // landed as PR #543) both consumed this sum without a shape change. Additional
 // variants remain gated by DB-18 STOP-AND-ESCALATE — not ad-hoc growth here.
 type WorkflowEffect
-  = LinearEffect { ops: List<Operation> }
+  = LinearEffect { ops: List<WorkflowOperation> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
   | LoopEffect { body: WorkflowEffect }
   | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
@@ -646,7 +646,7 @@ type IdempotencyTestObligation {
 }
 
 fn generate_idempotency_obligations(
-  ops: List<Operation>
+  ops: List<WorkflowOperation>
 ) -> List<IdempotencyTestObligation> {
   ops |> filter(o => is_idempotent_effect(shape: o.shape))
       |> map(o => IdempotencyTestObligation {

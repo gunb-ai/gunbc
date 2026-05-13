@@ -9,7 +9,7 @@
 // substrate `Behavior` nodes (needs op→node wiring in the lane2 carrier).
 // Until that lands, whole-program dimension analysis reads the spine below;
 // workflow-scoped idempotency-class dimensions continue to consume
-// `Operation` lists directly (`std.effects`).
+// `WorkflowOperation` lists directly (`std.effects`).
 
 module v3.std.workflows
 

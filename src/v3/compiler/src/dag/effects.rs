@@ -71,16 +71,16 @@ pub enum EffectShape {
 }
 
 /// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
-/// `Operation` record in `effects.dag`.
+/// `WorkflowOperation` record in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Operation {
+pub struct WorkflowOperation {
     pub operation_name: String,
     pub shape: EffectShape,
 }
 
 /// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
 /// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
-/// `ElementRef<Operation>` closes the "copied standalone breaker
+/// `ElementRef<WorkflowOperation>` closes the "copied standalone breaker
 /// record" hole by replacing the copied payload with a validated index,
 /// but it does not by itself preserve the owner list identity or prove
 /// the pointed operation is breaking. Those facts are still established
@@ -92,7 +92,7 @@ pub struct Operation {
 pub enum CompositionVerdict {
     IdempotentComposition,
     BrokenBy {
-        first_breaker: ElementRef<Operation>,
+        first_breaker: ElementRef<WorkflowOperation>,
     },
 }
 
@@ -111,7 +111,7 @@ pub struct BranchArm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowEffect {
     LinearEffect {
-        ops: Vec<Operation>,
+        ops: Vec<WorkflowOperation>,
     },
     BranchEffect {
         arms: NonSingletonList<BranchArm>,
@@ -147,7 +147,7 @@ impl BranchArm {
 }
 
 impl WorkflowEffect {
-    pub fn operation_at(&self, element: ElementRef<Operation>) -> Option<&Operation> {
+    pub fn operation_at(&self, element: ElementRef<WorkflowOperation>) -> Option<&WorkflowOperation> {
         match self {
             Self::LinearEffect { ops } => element.get(ops),
             Self::ParallelEffect { branches } => {
@@ -232,7 +232,7 @@ pub enum WorkflowParallelismReport {
 // co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
-pub(crate) fn compose_operation_effects(effects: &[Operation]) -> CompositionVerdict {
+pub(crate) fn compose_operation_effects(effects: &[WorkflowOperation]) -> CompositionVerdict {
     for (index, effect) in effects.iter().enumerate() {
         if matches!(effect.shape, EffectShape::IsBreaking(_)) {
             let first_breaker = ElementRef::from_slice(effects, index)

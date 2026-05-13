@@ -26,7 +26,7 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AsymptoticClass, Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
-    Operation, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
+    WorkflowOperation, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
     WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost::ComplexitySummary;
@@ -113,8 +113,8 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
     }
 }
 
-fn read_op(name: &str) -> Operation {
-    Operation {
+fn read_op(name: &str) -> WorkflowOperation {
+    WorkflowOperation {
         operation_name: name.to_string(),
         shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
     }
