@@ -167,6 +167,124 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 - [ ] Trigger an error condition at runtime. Is the result a `Diagnostic` with `reason: <named>` + `at: <port_or_node>`, or something less structured?
 - [ ] **Falsification probe**: write a malformed program. Does the compiler emit a clear diagnostic that points to the structurally correct alternative (per THESIS.md:103-105 "Show the correct code")?
 
+### §2.5 Impossible bugs by construction (THE META-PROMISE)
+
+**Promise** (THESIS.md:23 closed system + :120 "rejects structural, effect, and complexity bugs that ordinary compilers never model" + **INVARIANTS P4 Decidability** "Every accepted program stays within a closed, fail-closed system whose correctness questions are structurally decidable" + INVARIANTS P3 Fail-Closed + `feedback_closed_system_design` + `feedback_groundedness_gates_lenses`): the language's design makes whole classes of bug **impossible by construction** — not via runtime checks or static analysis added after the fact, but by the substrate refusing to admit the bug-shape. This is the META-claim that ties §1 (dimension promises) + §2.1-§2.4 (substrate promises) together. The structural anchor is **P4 Decidability**: closed-system + structurally-decidable-correctness-questions are precisely what makes the bug-class-impossibility claim cash structurally rather than rest on case-by-case enforcement.
+
+The claim is sharp on some bug classes and softer on others. This section interrogates BOTH sides honestly.
+
+**§2.5.A Probes — What "impossible" actually means**:
+
+- [ ] Enumerate the bug classes the architecture claims are impossible **against canonical authority** (THESIS.md:370-413 "Enumerable impossible-bug classes" + ROADMAP.md:93 T-Demo R1/R2+ split — NOT a PM-fabricated count). At HEAD, THESIS commits to: **[R1]** Suboptimal-complexity contract violation + Idempotency-contract violation + Transport/type drift; **[R2+]** Nested-optional flatten + Unenumerated effects + Unhandled diagnostic paths. R3 close audit MUST verify against the canonical THESIS enumeration, NOT a session-author guess. For each [R1] class: cite the substrate fact that prevents it + the demo fixture (per ROADMAP T-Demo). For each [R2+] class: confirm R4-DEFERRED disposition per §0 vocabulary with operator-recorded acceptance. **Anti-pattern**: hard-coding a candidate list at audit-author time rather than deferring to THESIS authority — `feedback_thesis_gate_state_drift`-class miss; classes may have been added/removed in THESIS since the audit was written.
+- [ ] For each: write a `.dag` program that ATTEMPTS the bug-class. Does the compiler refuse to compile? Show the diagnostic.
+- [ ] **Discrimination probe**: is "impossible" actually "(a) impossible to express in surface vocabulary" OR "(b) caught at compile time by lens"? They differ. (a) means the bug-shape has no syntactic form. (b) means the bug compiles syntactically but fails a check. Both prevent the bug at user-visible level; only (a) prevents the bug-shape from existing in the substrate at all.
+- [ ] **Compiler-correctness gating probe**: if the prevention is "caught at compile" (b-shape), what happens if the compiler itself has a bug? Is the prevention then defective? How is the compiler's correctness gated? (R3 close pointer: PB-self-compile fixed point + lens self-application.)
+- [ ] **Falsification probe**: name ONE bug class the architecture historically claimed was "impossible" but turned out to have an instance. What was the cause — structural gap, lens gap, modeling error, or implementation bug?
+
+**§2.5.B Probes — Glue bugs** (most concerning class — interface boundaries between subsystems):
+
+"Glue" here = the interfaces between substrate ↔ emission target, evaluator ↔ host, lens A ↔ lens B output, v3 substrate ↔ stage0 Rust. The architecture's "impossible by construction" claim is STRONGEST inside the substrate and WEAKEST at glue boundaries.
+
+- [ ] **Glue #1 — substrate (`.dag`) → emit target (Rust/Python/Go)**: How does the system PROVE that emitted target output faithfully realizes substrate semantics? Cite the proof. Show a concrete example. (R3 anchor: §3.1 L4 runtime equivalence + §3.1 L6 EmissionPathProjection data-coverage.)
+- [ ] **Glue #2 — emitter ↔ runtime**: even if substrate is correct + emission faithful, runtime behavior (memory layout, scheduler, OS, language-runtime) may diverge. Where does the architecture handle these vs. assume them? Where does "impossible by construction" become "trust the runtime"?
+- [ ] **Glue #3 — lens composition** (lens A output → lens B input): if lens A produces `WitnessA<C>` and lens B reads it as input, what enforces structural compatibility? (R3 anchor: `Witness<C>` shape lock + `Lens<C>` per-Behavior typed channel per design-lens-framework.md.)
+- [ ] **Glue #4 — bootstrap** (v3 substrate ↔ stage0 Rust): if stage0 has a bug that affects v3 substrate generation, is the bug caught by `pb_self_compile_fixed_point`? If stage0's generated code is wrong but compiles cleanly, what catches it? (R3 anchor: gate #16 self-compile fixed point + gate #18 numeric_width_refinements.)
+- [ ] **Glue #5 — `ExecuteCommand` PB-Runtime boundary**: external-toolchain boundary tests run via `ExecuteCommand`. The boundary itself is opaque to the lens framework. Is THAT a glue bug class, or is "calling external thing is by-definition outside scope"?
+- [ ] **Falsification probe**: identify a glue boundary in the current architecture with NO structural enforcement of correctness — just convention, comment, or runtime assertion. List 3 concrete examples at HEAD. Is each an "impossible bug" class, or a class that's still possible just by being at an interface?
+
+**§2.5.C Probes — User error** (user authoring a `.dag` program that's syntactically valid + lens-compliant but semantically wrong for their intent):
+
+This is the "wrong specification" class. The compiler can verify a `.dag` program against ITS contracts (lenses, types, algebra), but the contracts themselves are user-authored.
+
+- [ ] **Intent vs. spec**: write a `.dag` program that compiles cleanly + satisfies ALL lens contracts + does something the user obviously didn't intend (e.g., `sort_descending` named but body is `sort_ascending`; both type-correct). How many "impossible bug" classes does this hit?
+- [ ] **Wrong contract**: if the user's CONTRACT (Lens enforcement budget, complexity annotation, effect declaration) is wrong, the compiler accepts compliance with the wrong contract. How is the CONTRACT'S correctness checked? Or is that meta-level out-of-scope by design?
+- [ ] **Empty program**: an always-correct but useless program (`fn main = unit`). Does the system distinguish "no work" from "intended no work"? Or is "user wrote what they meant" axiomatic?
+- [ ] **Spec-as-program collapse**: when spec and implementation are the same artifact (.dag), is the user error "wrote wrong spec" identical to "wrote wrong program"? Does the architecture's "no parallel authority" discipline mean user-error is single-point-of-failure rather than divergence-detectable?
+- [ ] **Falsification probe**: enumerate 3 concrete user-error classes the architecture can NEVER catch by construction. Confirm that "impossible bugs by construction" is shorthand for "structurally-defined bug classes are impossible", not "all user errors are impossible".
+
+**§2.5.D Probes — Emergent behavior** (composition of correct individual parts producing surprising aggregate behavior):
+
+"Emergent" = pieces that are individually correct but compose into surprising aggregate behavior. The architecture's lens framework is strong on per-program facts; emergent claims need explicit treatment.
+
+- [ ] **Lens-composition emergent**: lens A + lens B individually correct + composed in unexpected order. Show 2 lenses where composition order MATTERS; demonstrate ordering effect on output. (R3 anchor: `Lens<C>` typed per-Behavior channels per design-lens-framework.md — is ordering structural or behavioral?)
+- [ ] **Scale emergent**: 1000-program corpus where each is individually correct but together produce a performance / cost / behavior surprise (e.g., aggregate cost dominates per-program cost; cross-program coupling). What's the architecture's tooling for catching scale-only bugs?
+- [ ] **Time-evolving emergent**: substrate at time T compiles cleanly + at time T+1 (with new dependencies / extdeps revision) compiles differently or with different cost. Is the divergence caught? (R3 anchor: `feedback_thesis_gate_state_drift` — gate state drifts over time.)
+- [ ] **Lens-set silent gap**: a 2-lens composition where the composition reports "all lenses green" but the actual program behavior is wrong because a third dimension was needed (and not modeled). Does the architecture's "lenses are folds over physics" claim catch THIS, or does "all modeled lenses green" silently mean "the modeled dimensions are individually green; jointly silent on unmodeled dimensions"?
+- [ ] **Falsification probe**: construct a `.dag` program where 4 individual lens claims (complexity, cost, parallelism, effect) all pass cleanly + the program is observably wrong (e.g., wrong arithmetic, wrong I/O sequence). How many such constructions exist? Is the architecture's response "model the missing dimension" or "user error is out-of-scope"?
+
+**§2.5.E Probes — Cross-module + cross-target subtle bugs (the omni-emission story)**:
+
+The class operator framed 2026-05-13 as the most personally interesting + the strongest omni-emission story: bugs between DISPARATE MODULES (cross-module within same language) and CROSS-EMISSION-TARGET (Rust ↔ JavaScript ↔ Python via shared .dag substrate). Traditional compilers see modules as opaque link-units with name/signature contracts and have ZERO visibility across emission-target boundaries; gunbc's lens framework reads ALL substrate facts globally, so cross-module / cross-target composition is structurally tractable.
+
+This sub-section enumerates the class with concrete shapes. The promise is **NOT** that all these are caught at HEAD R3 today — the promise is the architecture admits structurally-decidable enforcement (per P4) and the gates check the modeling exists. R3 close audit verifies which classes are mechanized + which remain at the modeling level pending demonstration.
+
+**Cross-module bug shapes** (within same emission target):
+
+- [ ] **Cross-module effect-leak through "pure" boundary**: Module A declares `compute_stats(x)` as pure. Module B's helper it calls writes to disk. Traditional compilers catch only if Module A is RE-ANNOTATED. gunbc's effect lens folds over the full Dag — Module B's I/O propagates to A's call sites structurally without annotation maintenance. (R3 anchor: gate #82 `effect_enumeration_lens_behaviorally_complete`.)
+- [ ] **Cross-module cost-composition emergence**: Module A wraps `each(items, |x| Module_B.process(x))` thinking it's O(n). Module B's `process` is O(n²) internally. Traditional: zero visibility into composed cost. gunbc: cost lens reads algebra + realization across modules — `Cost(A.each) = Cost(B.process) · n` falls out structurally. (R3 anchor: gates #70 `cost_lens_demonstration` + #105 `symbolic_cost_textbook_coverage_landed`.)
+- [ ] **Cross-module dimensional drift / unit confusion**: Module A's `Time` is "ms since epoch"; Module B's `Time` is "ns since epoch". Both ground to `i64`. Traditional: type system doesn't carry the unit. gunbc: dimensional fact lives in the algebra/witness — `Time<MS>` and `Time<NS>` are structurally different even when both ground to the same primitive.
+- [ ] **Cross-module ordering / sequencing assumption**: Module A: `validate(x); save(x)`. Module B refactors to `save(x); validate(x)`. Traditional: zero structural way to express ordering invariant. gunbc: the Dag IS a structural ordering; "save must follow validate" is a relation on Node identities.
+- [ ] **Cross-module callback effect-set drift**: Module A's `with_lock(callback)` assumes callback is pure. Module B's callback later acquires another lock → deadlock class. Traditional: callback contracts are convention. gunbc: callback's effect-set is structurally readable by lens framework.
+- [ ] **Cross-module aliasing / shadow definition**: Module A: `const MAX_RETRIES = 3`. Module B re-declares `MAX_RETRIES = 5`. Traditional: name collision detected only at link time. gunbc: P1 single-authority refuses parallel definitions structurally — second declaration is a compile-time INVARIANTS-P1 violation.
+- [ ] **Cross-module data-flow capability leak**: Module A's `read_secrets()` returns `Secret<String>`. Module B's caller strips into plain `String` via implicit conversion. Traditional: capability typing if you have it (most don't). gunbc: Secret is a structural carrier in the algebra DAG; downcasting requires explicit lens application, structurally trackable.
+
+**Cross-emission-target bug shapes** (the omni-emission story):
+
+When the SAME `.dag` substrate emits to Rust + JavaScript + Python (3 R3 Shape-A targets per §3.1), cross-target bugs are structurally impossible for shapes that derive from substrate. But cross-target bugs at the GLUE layer (target-specific realization fidelity) are a real concern. Operator's framing: "seeing bugs between JavaScript and Rust" — concrete shapes:
+
+- [ ] **Cross-target serialization round-trip**: Module A (emitted Rust) sends `User { id, name, email }` over wire to Module B (emitted JavaScript). Both emissions derive from the same `.dag` substrate. Field rename in `.dag` → both emissions update structurally; no schema-drift class possible. **Falsification**: rename a field in `.dag`; verify both Rust + JS emissions update; observe any cross-target consumer that didn't rebuild.
+- [ ] **Cross-target numeric width**: `.dag` declares `Counter: Nat<32>`. Rust emits `u32`, JavaScript emits `number` (53-bit safe-int). At `Counter > 2^32`, JS overflows silently; Rust wraps/panics. Traditional: zero cross-language analysis. gunbc: cost-lens + dimensional carrier reads BOTH emissions' realization cost — JS's `number` carries different overflow semantics than Rust's `u32`, structurally expressible per dim-substrate (R3 anchor: gate #18 `numeric_width_refinements_landed` + Q-MachineConstraint-Carrier).
+- [ ] **Cross-target effect divergence**: `.dag` declares an `async` operation. Rust emits via `tokio` futures; JavaScript emits via `Promise`; Python emits via `asyncio`. Cancellation semantics differ. Traditional: each emission target writes its own async-handling; cross-target tests catch only late. gunbc: substrate models async as structural fact; per-target LanguageSpec encodes realization; cost-lens reads composition.
+- [ ] **Cross-target boundary trust**: Rust service calls JavaScript via FFI / WASM / HTTP. Type marshaling at the boundary. Traditional: protobuf-like schema at best (post-hoc). gunbc: BOTH ends derive from same `.dag` declaration; marshaling is structural emission per target.
+- [ ] **Cross-target test-claim transferability**: `.dag` TestClaim asserts behavior X. Rust emission runs it via `cargo test`; JavaScript via `jest`; Python via `pytest`. All three should pass-or-fail identically for the SAME claim. Traditional: tests are language-specific; cross-language test-claims don't exist. gunbc: per gate #15 `l5_cross_target_consistency` — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus. (R3 close anchor — see §3.1 for L5 status.)
+
+**Falsification probes for cross-target class**:
+
+- [ ] **Pick a `.dag` program** that compiles + lens-passes cleanly + emit to all 3 R3 targets (Rust/Python/Go). Run the same fixture through each. Do outputs agree on every (input, output) pair? Where they don't agree, is the divergence: (a) a target-realization fidelity gap caught by L5 lens, (b) a substrate ambiguity (modeling-level error), or (c) a target-LanguageSpec drift (extdeps issue)?
+- [ ] **Construct a cross-language wire scenario**: emit Rust client + JavaScript server from the same `.dag` substrate. Have client send `User { ... }` to server; verify field-rename propagation, type-marshaling, async-cancellation semantics. Does the structural emission preserve all the facts the lens framework reads?
+- [ ] **Modeling-level cross-target gap**: identify a target-language-specific bug class (e.g., JavaScript's prototype-pollution, Rust's lifetime-pin-projection, Python's GIL-aware threading) that does NOT have substrate representation. Confirm the architecture's response: "model the missing dimension" or "target-specific gap is in extdeps lane".
+
+**The cross-module / cross-target story** (PM-derived, for thesis-pitch):
+
+This class is one of the strongest "bugs impossible by construction" stories because traditional compilers genuinely have ZERO visibility:
+- Inside same compilation: modules are linked via symbol tables — opaque
+- Across emission targets: each target's compiler is independent — no shared semantic substrate
+- Across the wire / FFI: schemas (protobuf, OpenAPI, JSON Schema) are external authority files — drift class
+
+gunbc's substrate-shared / emission-as-projection architecture means:
+- Module boundaries are naming partitions, not semantic firewalls
+- Emission targets are projections of the SAME Node tree
+- Cross-target structural facts (effects, costs, parallelism, types) flow forward to all emissions
+- Wire schemas are derived FROM substrate, not maintained alongside
+
+**R3 close audit for this class** (PM-recommended): demonstrate ONE end-to-end cross-target scenario (e.g., `.dag` declares a Service with typed request/response → emit Rust server + JavaScript client → demonstrate field-rename propagation + L5 stdout-parity). The omni-emission demo (gate #28 `omni_layers_share_one_node_tree` + gate #15 `l5_cross_target_consistency`) is the closest existing structural anchor; a cross-language wire demo would cash the story most viscerally.
+
+**The architectural honest answer** (PM-derived, surfaced for Director ratification):
+
+The "bugs are impossible by construction" claim is **SHARP** on:
+- **Structural facts absent from user-surface vocabulary** (no annotations → no annotation-rot; no escape hatches → no escape-hatch-leak; no metadata-string markers → no string-tag-collision)
+- **Lens-mediated dimension violations within the modeled set** (complexity / cost / parallelism / effect bugs caught at compile via lens read, FOR THE PROGRAMS where lenses apply structurally)
+- **Single-authority class** (no parallel substrate → no divergence-between-mirrors class)
+- **Closure-bound discipline** (closed system, bounded iteration, no `unsafe` outside narrow boundary)
+
+The claim is **LESS SHARP** on:
+- **Glue layers** (interface boundaries; emission target realization fidelity; lens composition; PB-Runtime boundary)
+- **User intent vs. specification** (the compiler enforces what's written; "user meant" is out of scope)
+- **Scale-only emergent behavior** (individual-correctness doesn't compose to system-correctness automatically)
+- **Modeling-level errors** (the model itself can be wrong; e.g., wrong complexity classification leads to lens reading the wrong fact)
+- **Unmodeled dimensions** (a bug class outside the 5 modeled behaviors / 4 in-R3 lenses is invisible to "all lenses green")
+- **Compiler-correctness self-reference** ("compiler catches X" is only as strong as the compiler's correctness; loop-closes via PB-self-compile + lens-self-application but isn't a structural fact at user-visible level)
+
+**Honest R3 close framing** (PM-recommended for Director ratification):
+
+R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
+- **Closed-set bug-class impossibility** for the explicitly modeled dimensions + substrate disciplines, with the modeled set enumerated
+- **Reduction-to-glue-boundary** for bugs at interfaces — glue boundaries are themselves probe-able, but the impossibility-by-construction claim does NOT extend to them by default
+- **User-intent out-of-scope** acknowledged: the architecture verifies SPECS, not INTENTS; user-error class is by-design outside the impossibility claim
+- **Emergent-behavior probes** as PM-curated R3-close-evidence: the lens-composition / scale / time-evolving / unmodeled-dimension surfaces have probe expectations defined here
+
+**Anti-pattern**: "all lenses green = bug-free program" is the silent-impossibility-claim. R3 close framing should explicitly NAME the bug classes that remain possible (user-intent, unmodeled-dimension, glue-boundary, modeling-error, emergent-composition) rather than let "lenses green" carry the universal claim implicitly.
+
 ---
 
 ## §3. The emission promises
