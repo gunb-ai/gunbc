@@ -23,6 +23,14 @@
 //! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
 //! register body in `cementing_dispatch.dag`.
 //!
+//! **G87-D2 — Same-PR `COMPLETE` flip (regen ∩ behavioral).** For every
+//! `LensRegistryEntry` `lens_file` basename, the prose table's behavioral `COMPLETE`
+//! marker must match `std.verification` `lens_capability_register_rows` structural
+//! `LensCapabilityBehavioralComplete` (any v2 counterpart axis), and each such row
+//! must keep the gate-#87 harness path
+//! `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` on disk
+//! (`<name>` is the registry `name` field). See `TESTING.md` *Same-PR checklist*.
+//!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
 //! allowed. `idempotency.dag` and `parallelism.dag` are the current
@@ -107,6 +115,42 @@ fn regen_lens_file_basenames() -> BTreeSet<String> {
                     panic!("registry entry `{binding}` has lens_file without basename: {lens_file}")
                 })
                 .to_string()
+        })
+        .collect()
+}
+
+/// `(LensRegistryEntry.name, lens_file basename)` for every `LensRegistryEntry` in
+/// `src/v3/compiler/regen.dag`.
+fn regen_lens_registry_name_and_file_basenames() -> BTreeSet<(String, String)> {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let entry_type_id = dag
+        .declaration_by_name("LensRegistryEntry")
+        .map(|decl| decl.id)
+        .expect("regen.dag must declare `LensRegistryEntry`");
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(entry_type_id))
+        .map(|decl| {
+            let binding = decl
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anonymous>".to_string());
+            let fields = structural_fields(decl);
+            let name = string_field(fields, "name", &binding);
+            let lens_file = string_field(fields, "lens_file", &binding);
+            let basename = Path::new(&lens_file)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_else(|| {
+                    panic!("registry entry `{binding}` has lens_file without basename: {lens_file}")
+                })
+                .to_string();
+            (name, basename)
         })
         .collect()
 }
@@ -255,6 +299,57 @@ fn capability_md_v2_cementing_basenames() -> BTreeSet<String> {
     out
 }
 
+/// Lens basenames for markdown rows whose behavioral column reads **COMPLETE** (any v2
+/// counterpart column — includes v3-native `COMPLETE` rows).
+fn capability_md_behaviorally_complete_basenames() -> BTreeSet<String> {
+    let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
+    let md = std::fs::read_to_string(&md_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    assert!(
+        md.lines().any(|l| l.trim() == CAPABILITY_TABLE_HEADING),
+        "docs/v3-lens-capability-register.md must contain a `{CAPABILITY_TABLE_HEADING}` \
+         heading; this test scopes its table scan to that section and cannot run \
+         without it. If the heading was renamed, update `CAPABILITY_TABLE_HEADING` \
+         in this test in the same PR."
+    );
+    let mut in_capability_section = false;
+    let mut out = BTreeSet::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line == CAPABILITY_TABLE_HEADING {
+            in_capability_section = true;
+            continue;
+        }
+        if in_capability_section && line.starts_with("## ") {
+            in_capability_section = false;
+        }
+        if !in_capability_section {
+            continue;
+        }
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 5 {
+            continue;
+        }
+        let lens_cell = cells[1].trim();
+        if lens_cell == "Lens" {
+            continue;
+        }
+        let basename = lens_cell.trim_matches('`').trim();
+        if !basename.ends_with(".dag") {
+            continue;
+        }
+        let behavioral = normalize_capability_table_markdown_token(&cells[3]);
+        if behavioral != "COMPLETE" {
+            continue;
+        }
+        out.insert(basename.to_string());
+    }
+    out
+}
+
 fn register_lens_basenames() -> BTreeSet<String> {
     capability_table_rows()
         .into_iter()
@@ -373,4 +468,58 @@ fn lens_capability_register_rows_match_md_v2_cementing_projection() {
          `LensCapabilityV2RealV2`). Update both in the same PR when promoting or narrowing a lens. \
          structural={structural:?} markdown={markdown:?}"
     );
+}
+
+#[test]
+fn lens_capability_register_behavioral_complete_matches_md_for_regen_lens_files() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for lens capability register ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let structural =
+        cementing_dispatch::lens_capability_register_behaviorally_complete_basenames(&dag)
+            .expect("read behavioral-complete projection from lens_capability_register_rows");
+    let markdown = capability_md_behaviorally_complete_basenames();
+    let regen = regen_lens_file_basenames();
+    let structural_regen: BTreeSet<_> = structural.intersection(&regen).cloned().collect();
+    let markdown_regen: BTreeSet<_> = markdown.intersection(&regen).cloned().collect();
+    assert_eq!(
+        structural_regen, markdown_regen,
+        "For every `LensRegistryEntry` `lens_file` basename, the prose capability table \
+         `COMPLETE` marker must match `std.verification` `lens_capability_register_rows` \
+         (`LensCapabilityBehavioralComplete`) in the same PR (TESTING.md Same-PR checklist). \
+         structural_register∩regen={structural_regen:?} markdown∩regen={markdown_regen:?}"
+    );
+}
+
+#[test]
+fn regen_lens_behaviorally_complete_requires_gate_87_cementing_harness_path() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for lens capability register ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let structural =
+        cementing_dispatch::lens_capability_register_behaviorally_complete_basenames(&dag)
+            .expect("read behavioral-complete projection from lens_capability_register_rows");
+    let root = workspace_root();
+    for (registry_name, basename) in regen_lens_registry_name_and_file_basenames() {
+        if !structural.contains(&basename) {
+            continue;
+        }
+        let harness = root.join(format!(
+            "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_{registry_name}.dag"
+        ));
+        assert!(
+            harness.is_file(),
+            "Gate #87 receipt stack: when `lens_capability_register_rows` marks `{basename}` \
+             (`LensRegistryEntry.name={registry_name}`) behaviorally complete, the harness \
+             `{}` must exist on disk; land `t_r3_gate_87_cementing_regen_*.dag` + \
+             `r3_gate_87_cementing_regen_runner_suites` in the same PR (TESTING.md Band C).",
+            harness.display()
+        );
+    }
 }
