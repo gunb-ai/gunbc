@@ -318,8 +318,11 @@ fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
         .collect();
     assert!(
         blockers.is_empty(),
-        "R3 gate #83 requires ZERO PROXY / ZERO STUB in the capability register for \
-         the four in-R3 T-Lens-Behavioral-Parity lenses. Remaining blocker(s): {blockers:?}."
+        "R3 gate #83 — **narrow markdown register ratchet** (`docs/v3-lens-capability-register.md` \
+         `## Capability table`): the four T-Lens-Behavioral-Parity basenames must not read \
+         BEHAVIORALLY PROXY or BEHAVIORALLY STUB. Necessary for gate #83, **not** the full §1.8 / \
+         Cluster F F-γ.2 close (that stays downstream of all-four-BEHAVIORALLY-COMPLETE per \
+         `docs/r3-actual-close-plan.md` Gap 4). Remaining PROXY/STUB blocker(s): {blockers:?}."
     );
 }
 
