@@ -23,14 +23,11 @@
 //! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
 //! register body in `cementing_dispatch.dag`.
 //!
-//! Directionality is the one written into the register's Discipline
-//! section — regen → register is required; extra register rows are
-//! allowed. `idempotency.dag` and `parallelism.dag` are the current
-//! example: both have register rows (as `BEHAVIORALLY STUB` lenses
-//! whose authority lives in Rust) but no `regen.dag` entry, because
-//! they are not regenerated into a `lens_*_generated.rs`. That is
-//! exactly the posture the register documents; a bidirectional
-//! ratchet would misread those rows as drift.
+//! Directionality is asymmetric for non-complete rows — regen → register is
+//! required, and extra register rows are allowed while a lens is scaffolded.
+//! `BEHAVIORALLY COMPLETE` rows are stricter: a COMPLETE claim must have a
+//! `LensRegistryEntry`, gate #87 `.dag` harness, and any temporary Rust pin in
+//! the same receipt stack.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -262,6 +259,16 @@ fn register_lens_basenames() -> BTreeSet<String> {
         .collect()
 }
 
+fn complete_register_lens_basenames() -> BTreeSet<String> {
+    capability_table_rows()
+        .into_iter()
+        .filter_map(|(basename, behavioral)| {
+            (normalize_capability_table_markdown_token(&behavioral) == "COMPLETE")
+                .then_some(basename)
+        })
+        .collect()
+}
+
 #[test]
 fn every_regen_lens_entry_has_a_capability_register_row() {
     let regen = regen_lens_file_basenames();
@@ -277,6 +284,20 @@ fn every_regen_lens_entry_has_a_capability_register_row() {
          of `docs/v3-lens-capability-register.md` for each missing lens, \
          declaring both its structural and behavioral status. Current \
          register-visible basenames: {register:?}."
+    );
+}
+
+#[test]
+fn every_complete_register_row_has_a_regen_lens_entry() {
+    let regen = regen_lens_file_basenames();
+    let complete = complete_register_lens_basenames();
+    let missing: Vec<&String> = complete.difference(&regen).collect();
+    assert!(
+        missing.is_empty(),
+        "`BEHAVIORALLY COMPLETE` capability-register rows must be generated lens entries \
+         so gate #87 can enforce the same-PR receipt stack (`regen.dag` row + \
+         `t_r3_gate_87_cementing_regen_*.dag` + runner inventory + Rust pin/dissolution note). \
+         Missing COMPLETE basename(s) from `src/v3/compiler/regen.dag`: {missing:?}."
     );
 }
 

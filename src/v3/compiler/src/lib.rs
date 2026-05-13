@@ -5181,7 +5181,12 @@ pub mod lens_idempotency {
         include!("lens_idempotency_generated.rs");
     }
 
-    pub use generated::analyze_workflow;
+    pub fn analyze_workflow(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> crate::dag::WorkflowIdempotencyReport {
+        generated::analyze_workflow(dag, &workflow_root)
+    }
 }
 
 /// Lane 2 Stage 2e parallelism lens. Authority lives in
@@ -5424,12 +5429,12 @@ pub use cost_basis_declaration::{
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use dag::analyze_workflow;
 pub use dag::{lane2_workflow_idempotency_report, report_unsupported_workflow_variant};
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
+pub use lens_idempotency::analyze_workflow;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use lens_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 
