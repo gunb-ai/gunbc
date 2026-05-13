@@ -159,6 +159,15 @@ type TimingBudget {
   max: Nanoseconds
 }
 
+// T-LAS timing enforcement: `project` codomain for `LensEnforcement<TimingMeasurement,
+// TimingBudget, TimingEnforcementProjected>`. Separates observed wall-clock usage (`TimedUsage`)
+// from non-evidence report states (`NonEvidenceUsage`) so `project` never encodes the latter as a
+// plausible `Nat` magnitude inside `TimingBudget` (P2 / illegal-states-unrepresentable; openai-pro
+// review on gate #58).
+type TimingEnforcementProjected
+  = TimedUsage { max: Nanoseconds }
+  | NonEvidenceUsage
+
 // §1.8 / r3-program-plan `timing_lens_carrier_landed`: nominal `Lens<C>` surface at
 // `C = TimingMeasurement` (see `docs/design-timing-lens.md` §1). Hooks below remain
 // scaffold until `data … : TimingLens` rows are admissible under E6-G1 policy.
@@ -347,31 +356,28 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
 // ── T-LAS / T-Lens-Self-Application — gate #58 `apply_lens_self_application_demonstrated` ──
 //
 // Canonical `EnforceableLens` for timing contracts on workflow-shaped sections. Enforcement
-// fail-closes on `Unobserved` / `Ambiguous` / `Stale` (mapped to a sentinel usage budget) and on
+// fail-closes on `Unobserved` / `Ambiguous` / `Stale` (typed `NonEvidenceUsage` projection) and on
 // `Observed` durations strictly above the user `TimingBudget.max` ceiling (same reflexive edge as
 // gate #94 memory-peak: `>` not `>=`). Host consumer: `enforced_lens_application` (mirrors
 // `complexity_enforceable` wiring for gate #92).
 //
 // P2: `violates` takes the full `TimingMeasurement` (see `LensEnforcement` in
-// `lens_application.dag`) so non-evidence variants fail closed **without** encoding that fact as
-// `TimingBudget.max.count == timing_enforcement_fault_sentinel_count()` — that shape collided with
-// legitimate `Observed` magnitudes equal to the sentinel (codex review 10994). `project` still
-// maps non-evidence to a sentinel-marked `TimingBudget` for any downstream surface that only
-// carries budgets; enforcement compares `Observed.duration.count > declared.max.count` with the
-// same strict `>` edge as gate #94.
+// `lens_application.dag`) so non-evidence variants fail closed without comparing sentinels inside
+// `TimingBudget`. `project` returns `TimingEnforcementProjected` — never overloads
+// `TimingBudget.max.count` with a second meaning for faults (codex 10994 / openai-pro gate #58).
+//
+// `timing_enforcement_fault_sentinel_count` remains a substrate-named regression literal (unit
+// tests: observed wall ns equal to this magnitude is ordinary evidence, not a fault short-circuit).
 
 fn timing_enforcement_fault_sentinel_count() -> Nat =
   999999999999999999
 
-fn timing_enforcement_fault_usage_budget() -> TimingBudget =
-  { max: { count: timing_enforcement_fault_sentinel_count() } }
-
-fn timing_enforcement_project(m: TimingMeasurement) -> TimingBudget =
+fn timing_enforcement_project(m: TimingMeasurement) -> TimingEnforcementProjected =
   match m {
-    Observed { duration: d } => { max: d }
-    Unobserved => timing_enforcement_fault_usage_budget()
-    Ambiguous => timing_enforcement_fault_usage_budget()
-    Stale => timing_enforcement_fault_usage_budget()
+    Observed { duration: d } => TimedUsage { max: d }
+    Unobserved => NonEvidenceUsage
+    Ambiguous => NonEvidenceUsage
+    Stale => NonEvidenceUsage
   }
 
 fn timing_enforcement_violates(m: TimingMeasurement, declared: TimingBudget) -> Bool =
@@ -397,12 +403,12 @@ data timing_lens: TimingLens = {
   validate: timing_lens_validate
 }
 
-data timing_enforcement: LensEnforcement<TimingMeasurement, TimingBudget> = {
+data timing_enforcement: LensEnforcement<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
   project: timing_enforcement_project
   violates: timing_enforcement_violates
 }
 
-data timing_enforceable: EnforceableLens<TimingMeasurement, TimingBudget> = {
+data timing_enforceable: EnforceableLens<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
   lens: timing_lens
   enforcement: timing_enforcement
 }
