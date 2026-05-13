@@ -31,12 +31,11 @@
 // pass; until then, the simple rule is sufficient.
 //
 // Staged `src/v3/std/*.dag` additionally uses a small rank list
-// (`list.dag`, `substrate*.dag`, …) plus `V3_STD_STAGING_ORDER_EDGES`:
-// explicit (before, after) pairs among files that share the default rank
-// when lexicographic order would violate a cross-file reference (PB-1 gate
-// #58: `t_ci_workflow_as_data_demo.dag` → `timing_enforceable` in
-// `timing_lens.dag`). Append edges for new std cross-references; dissolution:
-// import-graph topo sort in this producer.
+// (`list.dag`, `substrate*.dag`, …). Among files sharing the default rank, load order
+// breaks ties using **`import v3.std.*` edges** parsed from each staged `.dag` (see
+// `collect_std_v3_import_dependency_edges` in this file) so cross-file references follow the
+// same authority authors already wrote in-module. Dissolution: full import-graph topo when
+// ordering needs exceed flat `v3.std` single-segment imports.
 //
 // **Output**: writes three Rust files:
 //
@@ -189,6 +188,13 @@ fn collect_dag_entries_impl(
         }
     }
 
+    let import_edges_storage: Vec<(String, String)> =
+        if scan_std_v3_import_edges && !recursive && !entries.is_empty() {
+            collect_std_v3_import_dependency_edges(&entries)
+        } else {
+            Vec::new()
+        };
+
     entries.sort_by(|a, b| {
         let staged_file_rank = |path: &Path| -> usize {
             let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -203,7 +209,12 @@ fn collect_dag_entries_impl(
             Ordering::Equal => {
                 let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                match v3_std_staging_edge_order(name_a, name_b) {
+                let import_cmp = if import_edges_storage.is_empty() {
+                    Ordering::Equal
+                } else {
+                    std_v3_import_order_cmp(&import_edges_storage, name_a, name_b)
+                };
+                match import_cmp {
                     Ordering::Equal => name_a.cmp(name_b).then_with(|| {
                         a.strip_prefix(dir)
                             .unwrap_or(a)
@@ -497,9 +508,10 @@ fn main() {
             // Python fixtures happen to load after `methods.dag` and were unaffected.
             "methods.dag",
         ],
+        true,
     );
-    let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
-    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"], false);
+    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"], false);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
     // stripped from the runtime bootstrap bundle — see COMPILER_FILES header.
     // `parse_tables.dag` is SG-2c-1 grammar-tables authority consumed by
