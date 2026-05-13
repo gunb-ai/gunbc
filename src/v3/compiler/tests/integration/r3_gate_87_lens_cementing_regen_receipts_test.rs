@@ -187,6 +187,11 @@ fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row
 }
 
 #[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
+}
+
+#[test]
 fn r3_gate_87_infer_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/infer_helpers.dag");
 }
