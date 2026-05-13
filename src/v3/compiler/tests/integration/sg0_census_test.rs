@@ -790,7 +790,8 @@ enum TestsAsDataMigrationClass {
     LensOutputEquality,
     BehavioralObservation,
     BoundaryHostProcess,
-    CementingV2Oracle,
+    BandCCementingReceipt,
+    Gate84CementingHandoff,
     CensusOrRatchet,
     PropertyBased,
 }
@@ -809,11 +810,18 @@ fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass
         return Some(BoundaryHostProcess);
     }
 
-    if path.contains("/cementing/")
-        || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
+    if path.ends_with("cementing/cementing_provenance_origin_integration_test.rs")
+        || path.ends_with("cementing/complexity_lens_behavioral_completion.rs")
         || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs")
     {
-        return Some(CementingV2Oracle);
+        return Some(BandCCementingReceipt);
+    }
+
+    if path.ends_with("cementing/cost_lens_symbolic_consumer_test.rs")
+        || path.ends_with("cementing/memory_peak_cost_basis_demo.rs")
+        || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
+    {
+        return Some(Gate84CementingHandoff);
     }
 
     if path.contains("census")
@@ -1149,13 +1157,43 @@ fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
         TestsAsDataMigrationClass::LensOutputEquality,
         TestsAsDataMigrationClass::BehavioralObservation,
         TestsAsDataMigrationClass::BoundaryHostProcess,
-        TestsAsDataMigrationClass::CementingV2Oracle,
+        TestsAsDataMigrationClass::BandCCementingReceipt,
+        TestsAsDataMigrationClass::Gate84CementingHandoff,
         TestsAsDataMigrationClass::CensusOrRatchet,
         TestsAsDataMigrationClass::PropertyBased,
     ] {
         assert!(
             by_class.get(&class).is_some_and(|paths| !paths.is_empty()),
             "gate #84 migration audit lost class coverage for {class:?}"
+        );
+    }
+}
+
+#[test]
+fn sg0_cementing_paths_are_split_between_band_c_and_gate_84_handoff() {
+    use TestsAsDataMigrationClass::*;
+
+    for path in [
+        "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
+        "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+        "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+    ] {
+        assert_eq!(
+            tests_as_data_migration_class(path),
+            Some(BandCCementingReceipt),
+            "{path} should stay in the Band-C receipt bucket until its .dag/TestClaim successor lands"
+        );
+    }
+
+    for path in [
+        "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+        "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
+        "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
+    ] {
+        assert_eq!(
+            tests_as_data_migration_class(path),
+            Some(Gate84CementingHandoff),
+            "{path} is cementing-adjacent Rust handed to gate #84, not a live Band-C dispatch receipt"
         );
     }
 }

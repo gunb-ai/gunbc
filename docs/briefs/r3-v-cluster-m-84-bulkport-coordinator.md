@@ -47,11 +47,12 @@ Each class is a parallel-dispatchable worker batch. Coordinator (this brief's ow
 
 ### §2.1 Live SG-0 Classifier Bridge
 
-The transient Rust classifier in `src/v3/compiler/tests/integration/sg0_census_test.rs` currently uses seven buckets. This coordinator intentionally keeps six worker stubs from the ratified Cluster M queue; the bridge from live buckets to stubs is:
+The transient Rust classifier in `src/v3/compiler/tests/integration/sg0_census_test.rs` currently uses eight buckets. This coordinator intentionally keeps six worker stubs from the ratified Cluster M queue; the bridge from live buckets to stubs is:
 
 | Live `TestsAsDataMigrationClass` bucket | Owning worker stub |
 |---|---|
-| `CementingV2Oracle` | Cementing-test family |
+| `BandCCementingReceipt` | Cementing-test family |
+| `Gate84CementingHandoff` | Cementing-test family first-pass inventory; Coordinator may reroute non-Band-C report/demo rows to Generic DimensionReport / runner-discipline after naming the replacement predicate |
 | `PropertyBased` | Reflected-Dag structural assertion family for generator/quantifier claims; L4/L7/L5 skeleton for TC strict-fire/deferred Pattern-A entries |
 | `LensOutputEquality` | Generic DimensionReport / runner-discipline family unless the entry is a pure carrier-shape reflection, then Reflected-Dag |
 | `BoundaryHostProcess` | Boundary tests |
