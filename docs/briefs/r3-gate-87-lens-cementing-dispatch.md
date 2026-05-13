@@ -41,6 +41,7 @@ Owner surface:
 - `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`
 - `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag`
 - `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag`
+- `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag`
 - `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag`
 - matching Rust receipts under `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` where the public `.dag` behavior carrier is still narrower than the Rust API.
 
@@ -98,4 +99,3 @@ Acceptance:
 - Run the focused gate-87 integration tests that cover registry inventory, PB-B-1 runner wiring, and cementing dispatch projection.
 - PR body names gate #87, lists the dashboard child work items, and records validation.
 - The parent manager can close `lens_cementing_test_discipline_complete` using only merge-visible artifacts: this brief, child work-item outcomes, and the PR test receipts.
-

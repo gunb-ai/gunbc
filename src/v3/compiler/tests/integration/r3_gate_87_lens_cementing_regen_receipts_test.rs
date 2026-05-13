@@ -41,13 +41,16 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedKind, ValueBody,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{analyze_parallelism, Dag};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -167,6 +170,27 @@ fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
     assert!(
         matches!(got, Origin::Source { .. }),
         "literal bind should classify as Source(..), got {got:?}"
+    );
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_fails_closed_without_workflow_projection() {
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
+    let root = dag
+        .nodes()
+        .iter()
+        .find(|node| matches!(node, Behavior::Bind(_) | Behavior::Value(_)))
+        .map(Behavior::id)
+        .expect("literal fixture should expose a root node");
+    let got = analyze_parallelism(&dag, root);
+    assert!(
+        matches!(
+            got,
+            WorkflowParallelismReport::ParallelismUnsupported(ref detail)
+                if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+        ),
+        "literal program without a lane2 workflow projection must fail closed, got {got:?}"
     );
 }
 
