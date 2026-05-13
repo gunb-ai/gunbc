@@ -105,6 +105,12 @@ fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
 /// Separates non-evidence variants from `Observed` wall-clock nanoseconds so a legitimate
 /// `Observed` duration equal to the substrate fault sentinel `Nat` cannot be conflated with
 /// `Unobserved` / `Ambiguous` / `Stale` (INVARIANTS P2 / modeling-discipline Practice 2).
+///
+/// Practice 4 (`docs/modeling-discipline.md`, coproduct checkpoint): **GREEN (terminal)** for this
+/// PR — internal host projection mirroring `timing_enforcement_project` / `timing_lens.dag` for
+/// executable `EnforcedApplication` checks only. Ledger: substrate `LensEnforcement` still carries
+/// `TimingBudget` until the named `.dag` fault-budget carrier dissolves the sentinel encoding (see
+/// `timing_lens.dag` gate #58 block).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TimingMeasurementEnforcementUsage {
     NonObservedFault,

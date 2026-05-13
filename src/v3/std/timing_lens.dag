@@ -356,6 +356,13 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
 // `TimingMeasurement` projection so `Observed` wall-clock `Nat` is never compared for equality
 // against the fault sentinel (review thread 3231515819); dissolution remains a dedicated fault
 // budget carrier in `.dag` once the substrate grows one.
+//
+// Operational bound (PB-1 / gate #58): `timing_enforcement_fault_sentinel_count` is astronomically
+// larger than any staged workflow `Observed.duration.count` used as timing evidence (ns in the
+// 1e9–1e12 band), so the `TimingBudget` sentinel collision class is **out of band** for admitted
+// witness data. Declared `LensEnforcement<TimingMeasurement, TimingBudget>` below is substrate
+// algebra; **PB-1 executable** `EnforcedApplication` enforcement is the host pass (must preserve
+// variant facts when lowering still carries `TimingMeasurement`).
 
 fn timing_enforcement_fault_sentinel_count() -> Nat =
   999999999999999999
