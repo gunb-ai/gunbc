@@ -48,16 +48,34 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 
 ### §1.2 Cost
 
-**Promise** (r3-program-plan.md §1.6 + §1.8 #70: `cost_lens_demonstration`): the cost lens reads representative target programs, composes algebra+realization cost end-to-end, and produces observable cost-bound output.
+**Promise** (r3-program-plan.md §1.6 + §1.8 #70: `cost_lens_demonstration` + §1.8 #105: `symbolic_cost_textbook_coverage_landed`): the cost lens reads representative target programs, composes algebra+realization cost end-to-end, and produces observable cost-bound output. **R3-committed carrier scope** (operator directive 2026-05-13 + Director ratification msg_ad5e934d): Tier 1 algorithms-textbook coverage — Constant + Linear + Polynomial{degree: Rational} + PolyLog + Exponential + Factorial + Log + Sum/Product composites + UnknownCost (algebra-top floor only, NOT routine collapse target for textbook-Tier-1-coverable bounds).
 
-**Probes**:
+**Implementation probes** (carrier scope satisfies the promise):
 
 - [ ] Show me a `.dag` program with a cost budget. Quote it.
 - [ ] Show me the symbolic-cost output the lens produces. Verbatim.
 - [ ] Show me a program that EXCEEDS its cost budget. What error fires?
 - [ ] Where is the test? Cite path.
 - [ ] Is the cost arithmetic actually composing? Show me a multi-level program (call within call) and the symbolic-cost result.
-- [ ] **Falsification probe**: program with recursive call whose cost is bounded by a Tier-3 fact. Does the lens compute the bound or punt?
+
+**Scope probes** (Tier 1 textbook coverage per gate #105):
+
+- [ ] Show me a √n algorithm (e.g., trial division primality). Cost-lens output should be `PolynomialCost { degree: 1/2 }`, NOT `UnknownCost`.
+- [ ] Show me an exponential algorithm (subset enumeration). Cost-lens output should be `ExponentialCost { base: 2 }`, NOT `UnknownCost`.
+- [ ] Show me a factorial algorithm (permutation enumeration). Cost-lens output should be `FactorialCost`, NOT `UnknownCost`.
+- [ ] Show me a polylog algorithm (e.g., repeated binary search log² n). Cost-lens output should be `PolyLogCost { exponent: 2 }`, NOT `UnknownCost`.
+- [ ] Show me a matrix-multiplication cost program (n^2.373 Coppersmith-Winograd). Cost-lens output should be `PolynomialCost { degree: 2.373 }`, NOT `UnknownCost`.
+
+**Tier 2 boundary probes** (R4-deferred per Director ratification):
+
+- [ ] Show me a union-find program (α(n) inverse Ackermann). Currently expected: `UnknownCost("Tier 2 — pending R4 named-variant canvas")` OR `ConstantCost-with-named-reason` per Director rationale; NOT a Tier-1-coverable bound being squelched.
+- [ ] Show me a vEB-trees program (log log n). Same expectation; nested-log structure may compose via PolyLogCost — canvas surfaces if yes.
+
+**Falsification probes**:
+
+- [ ] Program with recursive call whose cost is bounded by a Tier-3 fact. Does the lens compute the bound or punt?
+- [ ] Program with cost in a class deliberately NOT in Tier 1 (e.g., O(n^n) hyperexponential). Is `UnknownCost("reason")` actionable for the user? Does the diagnostic name the gap class?
+- [ ] **STOP-SIGNAL trigger**: program with a Tier-1-coverable bound (e.g., √n) — verify the cost-lens does NOT collapse to UnknownCost post-gate-#105-landing. Pre-gate-#105: expected current behavior is UnknownCost (regression test).
 
 ### §1.3 Parallelism
 
@@ -91,6 +109,12 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 - [ ] Show me a program it validates. Show the output.
 - [ ] Did the user-defined lens use the same mechanism as built-in? Or a parallel infrastructure?
 - [ ] **Falsification probe**: would a NEW user-defined lens (one we haven't written yet) actually work end-to-end? Author a simple one. Does it compile and run?
+
+**Escape-hatch probes for Tier 2+ cost bounds** (per Director ratification msg_ad5e934d structural-extension caveat):
+
+- [ ] **If a user needs O(α(n)) or O(log log n)** — bounds NOT in Tier 1 of gate #105: can they author a user-defined cost-variant lens that integrates with `SymbolicCost`'s dominance lattice + Sum/Product algebra, OR does the user-defined-dim mechanism stop at producing a separate Dimension carrier with no algebra-integration?
+- [ ] **Compositional vs named-variant**: if the user-defined-dim infrastructure supports compositional cost-bound extension (e.g., authoring a `LogLogCost` lens that participates in dominance), R3 may NOT need named-variants for Tier 2 (per Director caveat: "if Substrate Mgr canvas surfaces a compositional mechanism for Tier 2 that satisfies feedback_groundedness_gates_lenses + composes with Sum/Product algebra + carries consumer-evidence justification, accept that mechanism IN-R3 instead of named variants"). Test this end-to-end.
+- [ ] **Falsification probe (Tier 2 escape hatch)**: write a user-defined cost lens for a textbook-known bound that's R4-deferred (e.g., inverse Ackermann). Does it integrate? If yes — Tier 2 R4-deferral is structurally bounded. If no — user-defined-dim promise has a load-bearing gap; surface as Director-tier scope question.
 
 ---
 
