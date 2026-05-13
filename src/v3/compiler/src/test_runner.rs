@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
+    ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -31,8 +32,9 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
-    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
+    analyze_parallelism, analyze_symbolic_cost_dimension, compare_stage_snapshots,
+    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
+    DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -3151,6 +3153,21 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(anchor) = program_dag.nodes().iter().find(|b| {
+                    matches!(b, Behavior::Value(_) | Behavior::Bind(_))
+                }) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): anchor node not found in `{file_name}`"
+                    )));
+                };
+                let report = analyze_parallelism(program_dag, anchor.id());
+                i64::from(matches!(
+                    report,
+                    WorkflowParallelismReport::ParallelismUnsupported(d)
+                        if d.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+                ))
+            }
             _ => return None,
         };
 
