@@ -153,7 +153,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                     .to_string(),
                 span: authority_span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "BootstrapDiagnostic",
                 ),
             },
         );
@@ -174,7 +174,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                         .to_string(),
                     span: span_for_inst.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "BootstrapDiagnostic",
                     ),
                 },
             );
@@ -190,7 +190,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                             .to_string(),
                     span: span_for_inst.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "BootstrapDiagnostic",
                     ),
                 },
             );
@@ -329,7 +329,7 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String, span: SourceSpan
             name,
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "BootstrapDiagnostic",
             ),
         },
     );

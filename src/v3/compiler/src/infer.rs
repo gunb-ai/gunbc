@@ -214,7 +214,7 @@ pub fn infer(dag: &mut Dag) {
                                 ),
                             )
                             .unwrap_or_else(|| {
-                                Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                                Correction::deferred_for_diagnostic_class("InferenceDiagnostic")
                             });
                             let diag = Diagnostic::TypeMismatch {
                                 expected: existing,
@@ -276,7 +276,7 @@ pub fn infer(dag: &mut Dag) {
             Diagnostic::ResolveError {
                 name: "(inference did not resolve this port)".to_string(),
                 span,
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             },
         );
     }
@@ -572,7 +572,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                                 "variant `{name}` is not a constructor of this match's scrutinee type"
                             ),
                             span: span.clone(),
-                        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                         }),
                     }
                 }
@@ -634,7 +634,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "duplicate match arm for variant `{name}` — each variant of a sum type must match exactly once"
                     ),
                     span: check.span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                 },
             );
             changed = true;
@@ -678,7 +678,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
                     ),
                     span: check.span,
-                    correction: fixes.into_iter().next().unwrap_or_else(|| Correction::deferred_for_diagnostic_class("legacy diagnostic class")),
+                    correction: fixes.into_iter().next().unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic")),
                 },
             );
             changed = true;
@@ -724,7 +724,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                             name: "(upstream failure in match payload binding)".to_string(),
                             span: branch_payload_binding_span(path, &b.span),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         }),
                     });
@@ -761,7 +761,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                 binding.binding_name
                             ),
                             span: span.clone(),
-                        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                         }),
                         Some(variants) => {
                             let variant = match &path.pattern {
@@ -797,7 +797,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                             "variant `{arm_name}` is not a constructor of this match's scrutinee type"
                                         ),
                                         span: span.clone(),
-                                    correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                                    correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                                     })
                                 }
                             }
@@ -840,7 +840,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                 actual: ty,
                                 span: rewrite.span,
                                 correction: Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "InferenceDiagnostic",
                                 ),
                             },
                         );
@@ -902,7 +902,7 @@ fn int_literal_magnitude_narrow_merge(
                     name: "(internal: integer literal out of range but no range fact)".to_string(),
                     span,
                     correction: Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "InferenceDiagnostic",
                     ),
                 })
             }
@@ -939,7 +939,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                             name: "internal: malformed decimal integer literal".to_string(),
                             span: v.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -976,7 +976,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                                     name: "(internal: integer literal out of range but no range fact)"
                                                         .to_string(),
                                                     span: v.span.clone(),
-                                                    correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                                                    correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                                                 },
                                             );
                                         }
@@ -1007,7 +1007,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                         ),
                         span: v.span.clone(),
                         correction: Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         ),
                     },
                 );
@@ -1036,7 +1036,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                             name: "(upstream failure in branch condition)".to_string(),
                             span: b.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1055,7 +1055,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                     name: "primitive `Bool` missing from declaration table — bootstrap failed"
                                         .to_string(),
                                     span: b.span.clone(),
-                                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                                 },
                             );
                         };
@@ -1066,7 +1066,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 actual: *ty,
                                 span: b.span.clone(),
                                 correction: Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "InferenceDiagnostic",
                                 ),
                             },
                         );
@@ -1087,7 +1087,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                             name: "(upstream failure in branch path)".to_string(),
                             span: b.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1104,7 +1104,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 name: "(upstream failure in branch path)".to_string(),
                                 span: b.span.clone(),
                                 correction: Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "InferenceDiagnostic",
                                 ),
                             },
                         );
@@ -1119,7 +1119,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 actual: *other,
                                 span: b.span.clone(),
                                 correction: Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "InferenceDiagnostic",
                                 ),
                             },
                         );
@@ -1142,7 +1142,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                         name: "function body is unresolved".to_string(),
                         span: l.span.clone(),
                         correction: Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         ),
                     },
                 ),
@@ -1178,7 +1178,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             actual: 0,
                             span: t.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1195,7 +1195,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 ),
                                 span: t.span.clone(),
                                 correction: Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "InferenceDiagnostic",
                                 ),
                             },
                         );
@@ -1221,7 +1221,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             ),
                             span: t.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1257,7 +1257,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             name: format!("function `{name}` has an invalid body"),
                             span: t.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1282,7 +1282,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             "arrow `{name}` carries an ExternalRealization body whose target is not a realization declaration"
                         ),
                         span: t.span.clone(),
-                    correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                    correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                     },
                 );
             }
@@ -1317,7 +1317,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 expected: signature.inputs.len(),
                 actual: t.inputs.len(),
                 span: t.span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             },
         );
     }
@@ -1334,7 +1334,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                         ),
                         span: t.span.clone(),
                         correction: Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         ),
                     },
                 );
@@ -1403,7 +1403,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             actual: *actual,
                             span: t.span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         },
                     );
@@ -1505,7 +1505,7 @@ fn phantom_unit_mismatch(
                 expected: TypeShape::new(expected_arg.value),
                 actual: TypeShape::new(actual_arg.value),
                 span: span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             });
         }
     }
@@ -1525,7 +1525,7 @@ fn malformed_phantom_parameter_diagnostic(
             declaration_display_name(dag, template),
         ),
         span: span.clone(),
-        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
     }
 }
 
@@ -1543,7 +1543,7 @@ fn missing_phantom_argument_diagnostic(
             phantom_parameter_display_name(dag, parameter),
         ),
         span: span.clone(),
-        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
     }
 }
 
@@ -1560,7 +1560,7 @@ fn unsupported_phantom_algebra_diagnostic(
             phantom_parameter_display_name(dag, parameter),
         ),
         span: span.clone(),
-        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
     }
 }
 
@@ -1699,7 +1699,7 @@ fn check_refinement_discharge(
             Some(Diagnostic::ResolveError {
                 name,
                 span: span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             })
         }
     }
@@ -2630,7 +2630,7 @@ fn callable_instantiation_conflict(
             target_display_name(dag, target)
         ),
         span: span.clone(),
-    correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+    correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
     }
 }
 
@@ -2679,7 +2679,7 @@ fn resolve_callable_target(
         return CallableTargetResolution::Fail(Diagnostic::ResolveError {
             name,
             span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     };
     let mut raw_subst = SubstStack::new();
@@ -2702,7 +2702,7 @@ fn resolve_callable_target(
             expected: expected_runtime_arity,
             actual: runtime_inputs.len(),
             span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     }
 
@@ -2732,7 +2732,7 @@ fn resolve_callable_target(
                                     target_display_name(dag, target)
                                 ),
                                 span: span.clone(),
-                            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                             },
                         );
                     }
@@ -2749,7 +2749,7 @@ fn resolve_callable_target(
                         name: format!("(upstream failure in {})", target_display_name(dag, target)),
                         span: span.clone(),
                         correction: Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         ),
                     });
                 }
@@ -2810,7 +2810,7 @@ fn resolve_callable_target(
                                 target_display_name(dag, target)
                             ),
                             span: span.clone(),
-                        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                         });
                     }
                 }
@@ -2832,7 +2832,7 @@ fn resolve_callable_target(
                             ),
                             span: span.clone(),
                             correction: Correction::deferred_for_diagnostic_class(
-                                "legacy diagnostic class",
+                                "InferenceDiagnostic",
                             ),
                         });
                     }
@@ -2889,7 +2889,7 @@ fn resolve_callable_target(
                         ),
                         span: span.clone(),
                         correction: Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         ),
                     });
                 }
@@ -2902,7 +2902,7 @@ fn resolve_callable_target(
         return CallableTargetResolution::Fail(Diagnostic::ResolveError {
             name,
             span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     };
     CallableTargetResolution::Resolved {
@@ -3213,7 +3213,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                     )
                     .unwrap_or_else(|| {
                         crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         )
                     }),
                 },
@@ -3272,7 +3272,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                     )
                     .unwrap_or_else(|| {
                         crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "InferenceDiagnostic",
                         )
                     }),
                 },
@@ -3316,7 +3316,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                 )
                 .unwrap_or_else(|| {
                     crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "InferenceDiagnostic",
                     )
                 }),
             },
@@ -3518,7 +3518,7 @@ fn resolve_payload_binding_type(
                     "variant `{variant_name}` does not carry a payload and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             })
         }
         TypeConnective::Conj { children }
@@ -3532,7 +3532,7 @@ fn resolve_payload_binding_type(
                         "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
                     ),
                     span: span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
                 })
         }
         TypeConnective::Conj { .. } => Ok(PayloadBindingResolution::SpecializedRecord {
@@ -3545,7 +3545,7 @@ fn resolve_payload_binding_type(
                     "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             })
         }
     }
@@ -3782,7 +3782,7 @@ fn materialize_substituted_refined_decl(
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "refined-generic substitution: substituted base did not resolve".to_string(),
             span: template_span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
         return template_refined;
     };
@@ -3795,7 +3795,7 @@ fn materialize_substituted_refined_decl(
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "refined-generic substitution: malformed predicate shape".to_string(),
             span: pred_span,
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
         return template_refined;
     };
@@ -3818,7 +3818,7 @@ fn materialize_substituted_refined_decl(
             name: "refined-generic substitution: out-of-fragment predicate body reached materialization"
                 .to_string(),
             span: template_span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
         return template_refined;
     };
@@ -4240,7 +4240,7 @@ fn resolve_field_project(
             expected: 1,
             actual: t.inputs.len(),
             span: t.span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     }
 
@@ -4250,7 +4250,7 @@ fn resolve_field_project(
             return FieldProjectResolution::Fail(Diagnostic::ResolveError {
                 name: format!("(upstream failure in field `{field_label}`)"),
                 span: t.span.clone(),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
             })
         }
         PortState::Resolved(ty) => *ty,
@@ -4263,7 +4263,7 @@ fn resolve_field_project(
             declaration: opaque_decl,
             accessor: None,
             span: t.span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     }
     let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
@@ -4274,7 +4274,7 @@ fn resolve_field_project(
                 target_display_name(dag, input_ty.declaration),
             ),
             span: t.span.clone(),
-        correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+        correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     };
 
@@ -4300,7 +4300,7 @@ fn resolve_field_project(
             })
             .next()
             .unwrap_or_else(|| {
-                Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                Correction::deferred_for_diagnostic_class("InferenceDiagnostic")
             });
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
             name: format!(
@@ -4318,7 +4318,7 @@ fn resolve_field_project(
                 target_display_name(dag, input_ty.declaration),
             ),
             span: t.span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
         });
     };
 

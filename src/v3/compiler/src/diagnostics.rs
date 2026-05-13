@@ -369,6 +369,13 @@ impl Diagnostic {
         std::slice::from_ref(self.correction())
     }
 
+    pub fn live_corrections(&self) -> &[Correction] {
+        match self.correction() {
+            Correction::LiveCorrection { .. } => std::slice::from_ref(self.correction()),
+            Correction::DeferredCorrection { .. } => &[],
+        }
+    }
+
     pub fn message(&self) -> String {
         match self {
             Diagnostic::TokenizerError { message, .. } | Diagnostic::ParseError { message, .. } => {
@@ -545,11 +552,9 @@ fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyle
         diagnostic.span().byte_end,
         diagnostic.message()
     )];
-    for (index, fix) in diagnostic.fixes().iter().enumerate() {
+    for (index, fix) in diagnostic.live_corrections().iter().enumerate() {
         lines.push(format!("FIX (option {}): {}", index + 1, fix.description()));
-        if matches!(fix, Correction::LiveCorrection { .. }) {
-            lines.push(render_correction_source(fix, style));
-        }
+        lines.push(render_correction_source(fix, style));
     }
     lines.join(&style.line_ending)
 }
@@ -971,14 +976,14 @@ mod tests {
                 message: String::new(),
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::ParseError {
                 message: String::new(),
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::TypeMismatch {
@@ -986,7 +991,7 @@ mod tests {
                 actual: ty,
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::ArityMismatch {
@@ -995,14 +1000,14 @@ mod tests {
                 actual: 0,
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::ResolveError {
                 name: String::new(),
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::UnitMismatch {
@@ -1012,7 +1017,7 @@ mod tests {
                 actual: ty,
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::BranchConditionNotBool {
@@ -1020,7 +1025,7 @@ mod tests {
                 actual_type: None,
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::MagnitudeOutOfRange {
@@ -1031,14 +1036,14 @@ mod tests {
                 expected: ty,
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::MalformedIntegerRangeFact {
                 message: String::new(),
                 span: span.clone(),
                 correction: fixes.first().cloned().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
             Diagnostic::NominalOpacityViolation {
@@ -1046,7 +1051,7 @@ mod tests {
                 accessor: None,
                 span,
                 correction: fixes.into_iter().next().unwrap_or_else(|| {
-                    Correction::deferred_for_diagnostic_class("legacy diagnostic class")
+                    Correction::deferred_for_diagnostic_class("DiagnosticFixture")
                 }),
             },
         ]
@@ -1590,14 +1595,14 @@ mod tests {
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "user".to_string(),
             span: span.clone(),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("DiagnosticFixture"),
         });
         dag.attach_bootstrap_diagnostic(
             key.clone(),
             Diagnostic::ResolveError {
                 name: "bootstrap".to_string(),
                 span,
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("DiagnosticFixture"),
             },
         );
 

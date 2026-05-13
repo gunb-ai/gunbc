@@ -554,7 +554,7 @@ pub(crate) fn magnitude_out_of_range(
         expected,
         span,
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "legacy diagnostic class",
+            "IntegerLiteralRangeDiagnostic",
         ),
     }
 }
@@ -574,7 +574,7 @@ pub(crate) fn magnitude_out_of_range_for_interval(
             name: "internal: integer literal failed range check but target has no exact interval facts"
                 .to_string(),
             span,
-            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("IntegerLiteralRangeDiagnostic"),
         },
     }
 }
@@ -584,7 +584,7 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
         message,
         span,
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "legacy diagnostic class",
+            "IntegerLiteralRangeDiagnostic",
         ),
     }
 }

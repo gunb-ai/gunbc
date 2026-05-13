@@ -202,7 +202,7 @@ pub fn analyze_symbolic_cost_dimension(
             Some(Diagnostic::ParseError {
                 message: format!("symbolic_cost dimension: {reason}"),
                 span: behavior_span(at),
-                correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: Correction::deferred_for_diagnostic_class("SymbolicCostDimensionDiagnostic"),
             })
         })
         .collect();
@@ -215,7 +215,7 @@ pub fn analyze_symbolic_cost_dimension(
             message: "symbolic_cost dimension: missing symbolic cost for workflow root result port"
                 .into(),
             span: behavior_span(root),
-            correction: Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+            correction: Correction::deferred_for_diagnostic_class("SymbolicCostDimensionDiagnostic"),
         });
     }
 

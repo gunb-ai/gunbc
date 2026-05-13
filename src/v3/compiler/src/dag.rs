@@ -4994,7 +4994,7 @@ impl Dag {
             actual_type,
             span: condition_span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "DagDiagnostic",
             ),
         });
         None
@@ -5078,7 +5078,7 @@ fn malformed_target_clean_emission_binding(declaration: &Declaration, detail: &s
         ),
         span: declaration.span.clone(),
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "legacy diagnostic class",
+            "DagDiagnostic",
         ),
     }
 }
@@ -5102,7 +5102,7 @@ fn duplicate_target_clean_emission_binding(
                 .unwrap_or("<anonymous target clean emission binding>")
         ),
         span: declaration.span.clone(),
-        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("DagDiagnostic"),
     }
 }
 

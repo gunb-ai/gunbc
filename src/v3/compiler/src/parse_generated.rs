@@ -197,7 +197,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected {expected:?}, got {:?}", token.kind),
                 span: token.span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             })
         }
@@ -229,7 +229,7 @@ impl<'a> Parser<'a> {
                 ),
                 span: self.peek().span.clone(),
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             }),
         }
@@ -490,7 +490,7 @@ impl<'a> Parser<'a> {
                         ),
                         span: key_token.span,
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "ParseError",
                         ),
                     });
                 }
@@ -558,7 +558,7 @@ impl<'a> Parser<'a> {
                             "expected binding name in named payload match pattern after `{field_name}:`, got {other:?}"
                         ),
                         span: binding_token.span,
-                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                     });
                 }
             };
@@ -634,7 +634,7 @@ impl<'a> Parser<'a> {
                     message: "unterminated block body: reached EOF before closing `}`".to_string(),
                     span: open.span,
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "ParseError",
                     ),
                 });
             }
@@ -839,7 +839,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected `=` or `{{` after fn return type, got {other:?}"),
                 span: self.peek().span.clone(),
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             }),
         }
@@ -855,7 +855,7 @@ impl<'a> Parser<'a> {
                     message: format!("expected type name, got {other:?}"),
                     span: name_token.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "ParseError",
                     ),
                 });
             }
@@ -953,7 +953,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected field label, got {:?}", name_token.kind),
                 span: name_token.span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             });
         };
@@ -1006,7 +1006,7 @@ impl<'a> Parser<'a> {
                         .clone()
                         .unwrap_or_else(|| type_kw_span.clone()),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "ParseError",
                     ),
                 });
             }
@@ -1034,7 +1034,7 @@ impl<'a> Parser<'a> {
                     .clone()
                     .unwrap_or_else(|| type_kw_span.clone()),
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             });
         }
@@ -1240,7 +1240,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected variant name, got {:?}", name_token.kind),
                 span: name_token.span.clone(),
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             });
         };
@@ -1351,7 +1351,7 @@ impl<'a> Parser<'a> {
                     message: format!("expected type name, got {other:?}"),
                     span: token.span,
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "ParseError",
                     ),
                 });
             }
@@ -1398,7 +1398,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected decimal width literal, got {other:?}"),
                 span: token.span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             }),
         }
@@ -1453,7 +1453,7 @@ impl<'a> Parser<'a> {
                 message: format!("expected identifier, got {other:?}"),
                 span: token.span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             }),
         }
@@ -1570,7 +1570,7 @@ impl<'a> Parser<'a> {
                         "expected function name after `|>`, got {other:?} — pipe desugars only to `f` or `f(...)`"
                     ),
                     span: target_token.span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                 });
             }
         };
@@ -1599,21 +1599,21 @@ impl<'a> Parser<'a> {
                     "expected function name or call after `|>`; dotted paths are not callable in the current surface grammar"
                         .to_string(),
                 span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             SurfaceExpr::PathCall { span, .. } => Err(Diagnostic::ParseError {
                 message:
                     "expected function name or call after `|>`; dotted-path calls are not pipe targets in the current surface grammar"
                         .to_string(),
                 span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             SurfaceExpr::VariantRecord { span, .. } => Err(Diagnostic::ParseError {
                 message:
                     "expected function name or call after `|>`; named constructor literals are values, not callable pipe targets"
                         .to_string(),
                 span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             _ => unreachable!("parse_ident_expr only returns Var, Call, Path, PathCall, or VariantRecord"),
         }
@@ -1640,7 +1640,7 @@ impl<'a> Parser<'a> {
             message: format!("expected primary expression, got {:?}", token.kind),
             span: token.span.clone(),
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "ParseError",
             ),
         })?;
         match (cls, token.kind) {
@@ -1671,7 +1671,7 @@ impl<'a> Parser<'a> {
                 ),
                 span: token.span,
                 correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "legacy diagnostic class",
+                    "ParseError",
                 ),
             }),
         }
@@ -1692,7 +1692,7 @@ impl<'a> Parser<'a> {
                     ),
                     span: self.peek().span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "ParseError",
                     ),
                 });
             }
@@ -1754,7 +1754,7 @@ impl<'a> Parser<'a> {
                             span: next.span,
                             correction:
                                 crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "ParseError",
                                 ),
                         });
                     }
@@ -1803,7 +1803,7 @@ impl<'a> Parser<'a> {
                             span: token.span,
                             correction:
                                 crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "ParseError",
                                 ),
                         });
                     }
@@ -1947,7 +1947,7 @@ impl<'a> Parser<'a> {
                                     "expected binding name in payload match pattern after `{name}(`, got {other:?}"
                                 ),
                                 span: binding_token.span,
-                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                             });
                         }
                     };
@@ -1985,7 +1985,7 @@ impl<'a> Parser<'a> {
                         "expected variant name in match pattern, got {other:?} — M1(2.8) supports `Variant => expr`, `Variant(binding) => expr`, and `Variant {{ field: binding }} => expr`"
                     ),
                     span: name_token.span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                 });
             }
         };

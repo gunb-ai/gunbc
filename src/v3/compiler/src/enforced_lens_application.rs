@@ -63,7 +63,7 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
             .to_string(),
         span: dag.declaration(enforced_template).span.clone(),
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "legacy diagnostic class",
+            "EnforcedLensApplicationDiagnostic",
         ),
     });
 }
@@ -398,7 +398,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 .to_string(),
                         span: decl.span.clone(),
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "EnforcedLensApplicationDiagnostic",
                         ),
                     });
                     continue;
@@ -415,7 +415,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 .to_string(),
                         span: decl.span.clone(),
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "EnforcedLensApplicationDiagnostic",
                         ),
                     });
                     continue;
@@ -427,7 +427,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 .to_string(),
                         span: decl.span.clone(),
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "EnforcedLensApplicationDiagnostic",
                         ),
                     });
                     continue;
@@ -446,7 +446,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 .to_string(),
                         span: decl.span.clone(),
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "EnforcedLensApplicationDiagnostic",
                         ),
                     });
                     continue;
@@ -463,7 +463,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             span: span.clone(),
                             correction:
                                 crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                                    "legacy diagnostic class",
+                                    "EnforcedLensApplicationDiagnostic",
                                 ),
                         });
                         continue;
@@ -481,7 +481,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
                                     .to_string(),
                             span: decl.span.clone(),
-                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                         });
                         continue;
                     }
@@ -516,7 +516,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             .to_string(),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -530,7 +530,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         .to_string(),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -547,7 +547,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     ),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -560,7 +560,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     ),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -572,7 +572,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                 });
                 continue;
             };
@@ -584,7 +584,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                 });
                 continue;
             };
@@ -599,7 +599,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     ),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -611,7 +611,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         .to_string(),
                     span: decl.span.clone(),
                     correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "legacy diagnostic class",
+                        "EnforcedLensApplicationDiagnostic",
                     ),
                 });
                 continue;
@@ -629,7 +629,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                  from `timing_lens.dag` (needed for fault-path diagnostic text; fail-closed)"
                                     .to_string(),
                             span: decl.span.clone(),
-                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                         });
                         continue;
                     };
@@ -645,7 +645,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 .to_string(),
                         span: decl.span.clone(),
                         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                            "legacy diagnostic class",
+                            "EnforcedLensApplicationDiagnostic",
                         ),
                     });
                     continue;
@@ -797,7 +797,7 @@ fn enforced_violation_diagnostic(
                 .to_string(),
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "EnforcedLensApplicationDiagnostic",
             ),
         };
     };
@@ -807,7 +807,7 @@ fn enforced_violation_diagnostic(
                 .to_string(),
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "EnforcedLensApplicationDiagnostic",
             ),
         };
     };
@@ -822,7 +822,7 @@ fn enforced_violation_diagnostic(
                 .to_string(),
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "EnforcedLensApplicationDiagnostic",
             ),
         };
     };
@@ -833,7 +833,7 @@ fn enforced_violation_diagnostic(
                 .to_string(),
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "EnforcedLensApplicationDiagnostic",
             ),
         };
     }
@@ -845,7 +845,7 @@ fn enforced_violation_diagnostic(
                 .to_string(),
             span,
             correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                "legacy diagnostic class",
+                "EnforcedLensApplicationDiagnostic",
             ),
         };
     }
@@ -853,7 +853,7 @@ fn enforced_violation_diagnostic(
         message: violation_message,
         span,
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "legacy diagnostic class",
+            "EnforcedLensApplicationDiagnostic",
         ),
     }
 }
