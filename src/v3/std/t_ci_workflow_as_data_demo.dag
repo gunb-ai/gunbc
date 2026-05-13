@@ -218,6 +218,12 @@ fn demo_ci_modeled_timing_dimension_report(d: Dag, b: Behavior) -> DimensionRepo
 // declaration display names. `modeled_gunbc_ci_workflow` remains the CI-shaped demo carrier;
 // this row is the enforcement subject until workflow observations fold into the same lens path
 // as gate #92’s complexity fold.
+//
+// Review thread 3231706686: `Observed { duration: { count: 0 } }` is a **lowered PB-1 receipt
+// placeholder** for the gate #58 `EnforcedApplication` harness (not a claim of external
+// `TimingObservationEntry` wiring). Anchor-backed CI timing rows remain tracked for dissolution
+// under the same T-Lens-Self-Application / tests-as-data lane as the Rust receipt; the integration
+// test perturbs this lowered magnitude to prove host enforcement executes on the snapshot.
 type gate_58_timing_enforcement_section {
   measurement: TimingMeasurement
 }
