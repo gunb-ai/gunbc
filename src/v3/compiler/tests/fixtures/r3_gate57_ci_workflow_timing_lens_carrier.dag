@@ -1,0 +1,10 @@
+// R3 gate #57 — merges `dsl/gunbc/ci.dag` with `v3.std.t_ci_workflow_as_data_demo` so
+// `evaluate_body(demo_ci_modeled_timing_dimension_report, …)` shares one lowered artifact with
+// the gunbc CI workflow carrier (lane-2 subject is the modeled CI bind shell).
+module user.r3_gate57_ci_workflow_timing_lens_carrier
+
+import gunbc.ci
+import v3.std.t_ci_workflow_as_data_demo { demo_ci_modeled_timing_dimension_report }
+
+// Keep `gunbc.ci` live in this module surface (import-only fixtures are easy to DCE drift).
+data r3_gate57_ci_workflow_timing_lens_anchor: Bool = true
