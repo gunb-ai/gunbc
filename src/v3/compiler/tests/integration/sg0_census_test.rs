@@ -349,6 +349,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
+//
+// **Band-C real-v2 COMPLETE promotion (G87-D4):** `tests/dag/cementing_dispatch.dag`
+// `TemporaryRustModule` rows must match paths enumerated below — executable guard
+// `sg0_band_c_v2_temporary_rust_cementing_receipts_are_census_enumerated` (fail-closed if
+// dispatch names a stem absent from this list). Structural projection + markdown parity live
+// in `lens_register_correspondence_test.rs`; receipt triples + wiring live in
+// `cementing_dispatch.rs` + `t_pb_b_1_dag_runner_test`.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
@@ -1123,6 +1130,64 @@ fn sg0_v3_test_hand_authored_subratchet() {
         "T-PB-B test SG-0 sub-ratchet drifted. Retirements should be removed from \
          EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
          residual or wait for the testgen path."
+    );
+}
+
+/// `module_stem` values for `kind: TemporaryRustModule` rows in `tests/dag/cementing_dispatch.dag`.
+/// Single parse authority for the G87-D4 SG-0 cross-check (no hand-duplicated stem list).
+fn temporary_rust_stems_from_cementing_dispatch_dag() -> BTreeSet<String> {
+    const DISPATCH_DAG: &str = include_str!("../dag/cementing_dispatch.dag");
+    let mut out = BTreeSet::new();
+    let mut pending_stem: Option<String> = None;
+    for raw in DISPATCH_DAG.lines() {
+        let t = raw.trim();
+        if let Some(rest) = t.strip_prefix("module_stem:") {
+            let rest = rest.trim();
+            if let Some(inner) = rest.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                if !inner.contains('"') {
+                    pending_stem = Some(inner.to_string());
+                }
+            }
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("kind:") {
+            let kind = rest.trim();
+            if kind == "TemporaryRustModule" {
+                if let Some(stem) = pending_stem.take() {
+                    out.insert(stem);
+                }
+            } else {
+                pending_stem = None;
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn sg0_band_c_v2_temporary_rust_cementing_receipts_are_census_enumerated() {
+    let stems = temporary_rust_stems_from_cementing_dispatch_dag();
+    assert!(
+        !stems.is_empty(),
+        "cementing_dispatch.dag must name at least one `TemporaryRustModule` Band-C receipt; \
+         if the v2-complete slice is fully `.dag`-native, delete this guard and the parser."
+    );
+    let census: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+    let mut missing = Vec::new();
+    for stem in &stems {
+        let rel = format!("src/v3/compiler/tests/integration/cementing/{stem}.rs");
+        if !census.contains(rel.as_str()) {
+            missing.push(rel);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "Band-C dispatch (`cementing_band_c_v2_complete_receipts` in cementing_dispatch.dag) \
+         lists `TemporaryRustModule` receipt(s) whose integration modules are not enumerated in \
+         EXPECTED_HAND_AUTHORED_TEST. Promoting a lens to BEHAVIORALLY COMPLETE with a real v2 \
+         counterpart must co-land the temporary-Rust pin + `tests/integration.rs` wiring + this \
+         census row (see regen.dag Band-C note). Missing census path(s): {missing:?} \
+         (parsed stems from dispatch: {stems:?})"
     );
 }
 

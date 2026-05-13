@@ -33,7 +33,8 @@
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
 //! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
 //! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
-//! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
+//! `lens_register_correspondence_test.rs` + `tests/dag/cementing_dispatch.dag` +
+//! `src/v3/compiler/src/cementing_dispatch.rs` + `ROADMAP.md` honesty pass.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
