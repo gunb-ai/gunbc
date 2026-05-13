@@ -487,12 +487,11 @@ fn gate57_bootstrap_dag() -> &'static v3_compiler::dag::Dag {
 fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
     static CARRIER: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
     CARRIER.get_or_init(|| {
-        let dag = compile_to_dag(R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE, R3_GATE57_CI_TIMING_LENS_CARRIER_FILE)
-            .unwrap_or_else(|err| {
-                panic!(
-                    "compile {R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {err:?}"
-                )
-            });
+        let dag = compile_to_dag(
+            R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE,
+            R3_GATE57_CI_TIMING_LENS_CARRIER_FILE,
+        )
+        .unwrap_or_else(|err| panic!("compile {R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {err:?}"));
         assert!(
             dag.diagnostics().is_empty(),
             "{R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {:?}",
@@ -949,10 +948,13 @@ fn lens_self_application_demonstrated() {
 fn lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow() {
     let handle = std::thread::Builder::new()
         .name(
-            "lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow".into(),
+            "lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow"
+                .into(),
         )
         .stack_size(32 * 1024 * 1024)
-        .spawn(lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow_body)
+        .spawn(
+            lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_workflow_body,
+        )
         .expect("spawn timing body");
     handle
         .join()
