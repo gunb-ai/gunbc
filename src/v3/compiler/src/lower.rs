@@ -4171,9 +4171,9 @@ fn lower_data_item(
             })
         }
         Some(SurfaceExpr::Call { target, args, .. }) => {
-            if dsl_std_read_utf8_file_decl_id(ctx.dag).is_some_and(|canonical| {
-                ctx.symbols.get(target).copied() == Some(canonical)
-            }) {
+            if dsl_std_read_utf8_file_decl_id(ctx.dag)
+                .is_some_and(|canonical| ctx.symbols.get(target).copied() == Some(canonical))
+            {
                 match lower_scalar_literal_for_type(
                     body.expect("call arm has body"),
                     ty_decl_id,
@@ -5924,13 +5924,13 @@ fn read_utf8_file_reject_untyped_string_use(
     let type_ok = string_decl_id
         .map(|id| walks_to(dag, expected_type, id))
         .unwrap_or(false)
-        || optional_element_type(dag, expected_type).is_some_and(|element| {
-            walks_to(dag, element, string_decl_id.unwrap_or(element))
-        });
+        || optional_element_type(dag, expected_type)
+            .is_some_and(|element| walks_to(dag, element, string_decl_id.unwrap_or(element)));
     if !type_ok {
         return Err(Diagnostic::ResolveError {
-            name: "`read_utf8_file` expands to a String; the expected type is not String-compatible"
-                .to_string(),
+            name:
+                "`read_utf8_file` expands to a String; the expected type is not String-compatible"
+                    .to_string(),
             span: span.clone(),
             fixes: Vec::new(),
         });
@@ -8689,9 +8689,9 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            if dsl_std_read_utf8_file_decl_id(dag).is_some_and(|canonical| {
-                symbols.get(target).copied() == Some(canonical)
-            }) {
+            if dsl_std_read_utf8_file_decl_id(dag)
+                .is_some_and(|canonical| symbols.get(target).copied() == Some(canonical))
+            {
                 if let Some(result) = read_utf8_file_try_expand(expr, symbols, dag) {
                     return match result {
                         Ok(literal_bits) => {
