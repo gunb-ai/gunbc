@@ -250,7 +250,7 @@ New sum-types proposed in canvas:
 
 | Sum type | Practice 4 |
 |---|---|
-| `HookKind = UseState \| UseEffect \| UseMemo \| UseCallback \| UseContext \| UseRef \| Custom(Identifier)` | 🟡 YELLOW — Custom arm requires consumer-evidence-required; 7-arm closed enumeration covers React 18 standard hooks |
+| `HookKind = UseState \| UseEffect \| UseMemo \| UseCallback \| UseContext \| UseRef \| Custom(Identifier)` | 🟡 YELLOW — 6 standard-hook arms (UseState/UseEffect/UseMemo/UseCallback/UseContext/UseRef) covering React 18 + 1 user-input boundary arm (Custom(Identifier)); Custom requires Practice-4-promotion canvas per §10 Phase-1.5 |
 | `ComponentBody = Render \| Composite` | 🟢 GREEN — distinct semantic axes |
 | `Lifecycle = OnMount \| OnUnmount \| OnUpdate { triggers }` | 🟢 GREEN — distinct lifecycle phases |
 | `TypingDiscipline = Nominal \| Structural` (Q1-b) | 🟢 GREEN — captures genuine semantic difference |
