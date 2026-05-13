@@ -181,7 +181,11 @@ fn is_timing_enforceable_lens_value(
 }
 
 /// Fail-closed check for landed complexity + timing enforcement applications.
-pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
+///
+/// Exported at the crate root (`v3_compiler::check_enforced_lens_applications`) so integration
+/// tests can re-invoke the same post-infer pass as `infer::infer` without treating declaration
+/// presence as proof the probe ran (gate #58 receipt).
+pub fn check_enforced_lens_applications(dag: &mut Dag) {
     let Some(enforced_template) = dag
         .declarations()
         .iter()

@@ -20,6 +20,7 @@ pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
+pub use enforced_lens_application::check_enforced_lens_applications;
 pub mod integration_rs_wiring_scan;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
