@@ -625,7 +625,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = **R3-load-bearing §1.8 gates GREEN** (**105** load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12 + Miss-class dissolution 2026-05-12 + cost-textbook-coverage 2026-05-13; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
+R3 close = **R3-load-bearing §1.8 gates GREEN** (**105** load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12 + Miss-class dissolution 2026-05-12 + cost-textbook-coverage 2026-05-13 + show-correct-code diagnostic coverage 2026-05-13; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
@@ -803,7 +803,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **106 closure gates total** across 18 lanes + 1 standing program (was 97; +6 T-WAD FULL R3 elevation 2026-05-12 + 1 Miss-class dissolution 2026-05-12 + 1 cost-textbook-coverage 2026-05-13); per-lane breakdown + history (Pattern-A executable family + 2026-05-06 codex BLOCKING fix lanes + 2026-05-08 ValueBody isomorphism Gate **#96** + 2026-05-08 emit-shim boundary coherence Gate **#97** + 2026-05-12 T-WAD FULL R3 elevation Gates **#98**–**#103** + 2026-05-12 Miss-class dissolution Gate **#104** + 2026-05-13 cost-textbook-coverage Gate **#105**) authoritative at §1.5 + §1.8 — Q1 row defers to those for sub-counts to preserve single-authority discipline | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **106 closure gates total** across 18 lanes + 1 standing program (was 97; +6 T-WAD FULL R3 elevation 2026-05-12 + 1 Miss-class dissolution 2026-05-12 + 1 cost-textbook-coverage 2026-05-13 + 1 show-correct-code diagnostic coverage 2026-05-13); per-lane breakdown + history (Pattern-A executable family + 2026-05-06 codex BLOCKING fix lanes + 2026-05-08 ValueBody isomorphism Gate **#96** + 2026-05-08 emit-shim boundary coherence Gate **#97** + 2026-05-12 T-WAD FULL R3 elevation Gates **#98**–**#103** + 2026-05-12 Miss-class dissolution Gate **#104** + 2026-05-13 cost-textbook-coverage Gate **#105** + 2026-05-13 show-correct-code diagnostic coverage Gate **#106**) authoritative at §1.5 + §1.8 — Q1 row defers to those for sub-counts to preserve single-authority discipline | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |
@@ -1003,7 +1003,7 @@ PB Mgr's substantive review on PR #1808 + canvas/refinements receipt at gunbc#84
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
 Substrate canvas + plan-poke-hole both folded in. Key absorptions:
-- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (105 total; 105 R3-load-bearing post-T-WAD-FULL-R3-elevation 2026-05-12 + Miss-class 2026-05-12 + cost-textbook 2026-05-13) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
+- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (106 total; 105 R3-load-bearing post-T-WAD-FULL-R3-elevation 2026-05-12 + Miss-class 2026-05-12 + cost-textbook 2026-05-13 + show-correct-code 2026-05-13) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
 - **§7 four-mechanism structure** (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" canonical authority): added §7.6 Velocity tripwire + §7.7 Closure-receipt cadence + §7.8 SG-0 PR-window net-shrink discipline
 - **§3 T-Debt-Paydown row** updated from "(TBD from canvas)" → YELLOW with PR #1807 + PR #1566 + Tier-1 dispatch-brief-drift-sweep anchors
 
