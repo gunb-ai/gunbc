@@ -176,12 +176,12 @@ Update sum + product fold logic to implement the Director-ratified rule table (c
 | `PolyLogCost(v, k1) · PolyLogCost(v, k2)` | `PolyLogCost(v, k1+k2)` |
 | `PolyLogCost(v, k1) + PolyLogCost(v, k2)` | `PolyLogCost(v, max(k1, k2))` |
 | `PolyCost(d) + ExpCost(c, v)` | `ExpCost(c, v)` (exp dominates poly) |
-| `PolyCost(d) · ExpCost(c, v)` | `ExpCost(c, v)` (exp absorbs poly) |
+| `PolyCost(d) · ExpCost(c, v)` | `ProductCost([PolyCost(d), ExpCost(c, v)])` — composite, NOT absorbed (n^d · c^n is NOT O(c^n) strictly; `n^d · c^n / c^n = n^d` is unbounded; multiplicative absorption is unsound per operator BLOCKING worker:140) |
 | `ExpCost(c1, v) + ExpCost(c2, v)`, c1 ≤ c2 | `ExpCost(c2, v)` (dominant base) |
 | `ExpCost(c1, v) · ExpCost(c2, v)` | `ExpCost(c1·c2, v)` (multiplicative composition) |
 | `FactorialCost(v) + anything` | `FactorialCost(v)` (factorial dominates) |
-| `FactorialCost(v) · PolyCost(d)` | `FactorialCost(v)` (factorial absorbs poly) |
-| `FactorialCost(v) · ExpCost(c, v)` | `FactorialCost(v)` (factorial dominates exp) |
+| `FactorialCost(v) · PolyCost(d)` | `ProductCost([FactorialCost(v), PolyCost(d)])` — composite, NOT absorbed (same unsoundness; n! · n^d / n! = n^d unbounded) |
+| `FactorialCost(v) · ExpCost(c, v)` | `ProductCost([FactorialCost(v), ExpCost(c, v)])` — composite, NOT absorbed (n! · c^n / n! = c^n unbounded) |
 | `FactorialCost(v) · FactorialCost(v)` | `UnknownCost("(v!)² exceeds Tier 1 — pending R4 named-variant canvas")` (§5.2 verbatim) |
 
 Normalization invariants in fold (canvas §5.3):

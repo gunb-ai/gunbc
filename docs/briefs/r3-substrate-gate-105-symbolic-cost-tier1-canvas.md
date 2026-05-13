@@ -162,12 +162,12 @@ Existing rules (from `docs/design-symbolic-cost-algebra.md` + algebra.dag fold o
 | `PolyCost(d) · LogCost(v)` | `PolyLogCost { var: v, exponent: 1 }`? OR composite ProductCost? | Canvas question (see §5.1) |
 | `PolyLogCost(v, k1) · PolyLogCost(v, k2)` | `PolyLogCost(v, k1+k2)` | log^a · log^b = log^(a+b) |
 | `PolyCost(d) + ExpCost(c, v)` | `ExpCost(c, v)` | exp dominates poly |
-| `PolyCost(d) · ExpCost(c, v)` | `ExpCost(c, v)` | exp absorbs poly multiplicatively too |
+| `PolyCost(d) · ExpCost(c, v)` | `ProductCost([PolyCost(d), ExpCost(c, v)])` | composite, NOT absorbed — n^d · c^n is NOT O(c^n) (operator BLOCKING worker:140); additive absorption above is sound, multiplicative is NOT |
 | `ExpCost(c1, v) · ExpCost(c2, v)` | `ExpCost(c1·c2, v)` | c1^v · c2^v = (c1·c2)^v |
 | `ExpCost(c1, v) + ExpCost(c2, v)` (c1 < c2) | `ExpCost(c2, v)` | dominant base |
 | `FactorialCost(v) + anything` | `FactorialCost(v)` | factorial dominates |
-| `FactorialCost(v) · PolyCost(d)` | `FactorialCost(v)` | factorial dominates |
-| `FactorialCost(v) · ExpCost(c, v)` | `FactorialCost(v)` | factorial dominates exp |
+| `FactorialCost(v) · PolyCost(d)` | `ProductCost([FactorialCost(v), PolyCost(d)])` | composite, NOT absorbed (n! · n^d not O(n!)) |
+| `FactorialCost(v) · ExpCost(c, v)` | `ProductCost([FactorialCost(v), ExpCost(c, v)])` | composite, NOT absorbed (n! · c^n not O(n!)) |
 | `FactorialCost(v) · FactorialCost(v)` | `FactorialCost(v)`? OR `UnknownCost("v! · v! exceeds Tier 1")` | Canvas question (see §5.2) |
 
 ### §5.1 — PolyCost · LogCost normalization
