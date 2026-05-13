@@ -87,6 +87,8 @@ rg 'Compiles|dissolve|placeholder' \
 | `structural_resolution` | `tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` | `LensOutputEquals` → `Int` (no-violation projection) | `List<UnresolvedArrowBody>` | M1(2.8) strict-module / list-carrier authoring lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt_on_literal_program` | List carrier stable in `.dag` without opaque-body diagnostics → full `LensOutputEquals` on list; delete Rust `check` pin. |
 | `unused_parameters` | `tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` | `LensOutputEquals` → `Int` (no-findings projection) | `List<UnusedParameter>` | M1(2.8) strict-module / list-carrier authoring lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_unused_parameters_rust_receipt_on_literal_program` | List carrier stable in `.dag` → full `LensOutputEquals`; delete Rust `UnusedParametersLens::query` pin. |
 
+**Remaining `R3_GATE_87_CEMENTING_REGEN_SUITES` harnesses (not Tables 1–2):** `cost` and `cost_symbolic` ship full behavioral `.dag` predicates (`LensOutputEquals` / `DifferentialEquals`, `SymbolicCostExprEquals*`) with no `Compiles` row and no paired pin in `r3_gate_87_lens_cementing_regen_receipts_test.rs`; Band-C supplements live under `tests/integration/cementing/` per §3 and the closure audit.
+
 **Non-placeholder Rust in this module:** `r3_gate_87_regen_lens_registry_names_match_fixture_inventory` is the regen name ↔ runner-table ratchet (not a lens carrier pin); it dissolves only if the single-authority model in §1 changes, not via carrier authoring.
 
 ## §3. Known Hand-Rust Cementing Dispositions

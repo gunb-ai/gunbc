@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `infer_helpers` temporary source-compilation placeholder.
+// G87-D3 ledger — Owning lane: PB / compiler-std helper output carrier lane. Deferred carrier:
+// public `infer_helpers` output (e.g. `Lookup<DeclarationId>` / template helper surfaces).
 // Helper-only lens rows currently have no single public behavioral carrier to compare with
 // `LensOutputEquals`; pretending source compilation is behavior would dilute the cementing
 // predicate. Temporary Rust receipt:

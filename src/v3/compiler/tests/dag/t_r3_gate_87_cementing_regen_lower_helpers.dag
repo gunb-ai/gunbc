@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `lower_helpers` temporary source-compilation placeholder.
+// G87-D3 ledger — Owning lane: PB / parse-surface + lower-helper convergence lane. Deferred
+// carrier: public `lower_helpers` behavioral output authorable as `.dag` expected values.
 // Helper-only lens rows currently have no single public behavioral carrier to compare with
 // `LensOutputEquals`; pretending source compilation is behavior would dilute the cementing
 // predicate. Temporary Rust receipt:

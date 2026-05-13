@@ -1,4 +1,7 @@
 // R3 gate #87 — `LensRegistryEntry` `variant_payload` temporary source-compilation placeholder.
+// G87-D3 ledger — Owning lane: T-PB-B generated lens output literal lane. Deferred carrier:
+// `VariantPayloadShapeLookup` expected literals. Per-shape behavioral pins live in
+// `src/v3/compiler/src/lib.rs::variant_payload::tests` until `.dag` can own them.
 // The public lens entry needs a real variant declaration id fixture before it can compare
 // `VariantPayloadShapeLookup`; source compilation must remain explicit placeholder evidence, not
 // a renamed behavior claim. Temporary Rust receipt:

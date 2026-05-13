@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `effect_enumeration`.
+// G87-D3 ledger — Owning lane: T-PB-B sum/report literal lane (registry row PARTIAL until
+// resource-threading aligns). Full carrier deferred: `EffectEnumerationReport`.
 // The claim names a narrow Int projection because `EffectEnumerationReport` literals are not yet
 // authorable as stable `.dag` data. The runner projection applies the Rust cementing oracle for the
 // named lens behavior and compares the frozen witness here.

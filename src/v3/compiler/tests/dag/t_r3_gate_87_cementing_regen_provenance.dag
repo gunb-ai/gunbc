@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `provenance`.
+// G87-D3 ledger — Owning lane: tests-as-data carrier completeness for sum-typed lens outputs
+// (`design-tests-as-data-completeness.md` §C5). Full carrier deferred: `Origin` sum.
 // The claim freezes the minimal literal-bind origin witness through a named Int projection until
 // `Origin` literals can be compared directly by `LensOutputEquals`.
 

@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `structural_resolution`.
+// G87-D3 ledger — Owning lane: M1(2.8) strict-module / list-carrier authoring lane. Full carrier
+// deferred: `List<UnresolvedArrowBody>`.
 // The full `List<UnresolvedArrowBody>` expected carrier is not yet stable as authored `.dag`
 // data, so this claim freezes the minimal no-violation witness through a named Int projection.
 

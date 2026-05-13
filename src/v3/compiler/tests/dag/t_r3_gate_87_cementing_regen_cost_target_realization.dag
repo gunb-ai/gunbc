@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `cost_target_realization`.
+// G87-D3 ledger — Owning lane: T-CostLens-Composition ε / strict-module carrier lane (registry N/A).
+// Full carrier deferred: `type_realization_meta` / realization row vs present-bit.
 // This freezes the declaration-resolution receipt for `type_realization_meta` as a `.dag`
 // `LensOutputEquals` claim with a narrow Int witness.
 

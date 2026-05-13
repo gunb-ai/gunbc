@@ -1,4 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `unused_parameters`.
+// G87-D3 ledger — Owning lane: M1(2.8) strict-module / list-carrier authoring lane. Full carrier
+// deferred: `List<UnusedParameter>`.
 // The full `List<UnusedParameter>` expected carrier is not yet stable as authored `.dag` data,
 // so this claim freezes the minimal no-finding witness through a named Int projection.
 

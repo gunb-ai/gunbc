@@ -11,10 +11,12 @@ Canonical row-by-row inventory of **every** gate-#87 harness `Compiles` placehol
 ```bash
 rg 'Compiles|dissolve|placeholder' \
   src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag \
-  src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs
+  src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs \
+  docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md \
+  docs/briefs/r3-gate-87-lens-cementing-closure-audit.md
 ```
 
-**G87-D3 audit result:** three `.dag` files use `predicate: Compiles` (helper registry rows only). Five harnesses use behavioral predicates with **Int projections** plus a matching Rust test in `r3_gate_87_lens_cementing_regen_receipts_test.rs` (`effect_enumeration`, `provenance`, `cost_target_realization`, `structural_resolution`, `unused_parameters`). The `cost` and `cost_symbolic` harnesses use full `.dag` differential / symbolic predicates without pins in that module; their extra behavioral supplements stay in `tests/integration/cementing/` per the capability register and the cementing-discipline brief §3.
+**G87-D3 audit result:** `R3_GATE_87_CEMENTING_REGEN_SUITES` lists ten harness stems; Tables 1–2 in the discipline brief plus its post-Table-2 note account for all of them. Three `.dag` files use `predicate: Compiles` (`infer_helpers`, `lower_helpers`, `variant_payload`). Five harnesses use behavioral predicates with **Int projections** plus a matching Rust test in `r3_gate_87_lens_cementing_regen_receipts_test.rs` (`effect_enumeration`, `provenance`, `cost_target_realization`, `structural_resolution`, `unused_parameters`). The `cost` and `cost_symbolic` harnesses use full `.dag` differential / symbolic predicates without pins in that module; their extra behavioral supplements stay in `tests/integration/cementing/` per the capability register and the cementing-discipline brief §3.
 
 ## Band-C Rule Applied
 
