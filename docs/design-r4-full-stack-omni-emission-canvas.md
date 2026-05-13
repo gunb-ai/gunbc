@@ -40,7 +40,7 @@ bash  dag  go  python  rust
 - Rust is the canonical Shape-A target precedent (`dsl/extdeps/languages/rust/{types,syntax,naming,emit,async}.dag`)
 - Gate #28 `omni_layers_share_one_node_tree` is CONSUMER_LANDED + PASSING per `m1_5_omni_shape_b_openapi_test.rs` — one `compile_to_dag` per workflow; multi-target emission (Rust + OpenAPI + Markdown + SQL DDL) shares the same `Dag`
 - Gate #18 `numeric_width_refinements_landed` shows the existing language-spec consumer-evidence pattern (Grounding G2 primitive rows in `dsl/extdeps/languages/rust/primitives.dag`)
-- No React-shaped carriers exist at HEAD; no `Component` / `Props` / `Hook` / `Lifecycle` / `Effect` types in `dsl/std/` or `dsl/extdeps/`
+- No React-shaped carriers exist at HEAD; no `Component` / `Props` / `Hook` types in `dsl/std/` or `dsl/extdeps/` (note: `Lifecycle` + `Effect` are NOT introduced — both dissolve into UseEffect HookKind arms per Practice 4 / codex canvas:76 + canvas:184)
 
 ## §3. Q1 — TS LanguageSpec carrier shape
 
@@ -129,7 +129,13 @@ type HookKind =
   | UseId                   // no args
   | UseSyncExternalStore { subscribe: Expression, get_snapshot: Expression, get_server_snapshot: Expression? }
   | Custom(Identifier)
-type Lifecycle = OnMount | OnUnmount | OnUpdate { triggers: List<Reference> }
+// (Prior standalone `Lifecycle = OnMount | OnUnmount | OnUpdate` DROPPED per
+//  codex BLOCKING canvas:184 — Practice 4 / P1: lifecycle phases derive from
+//  UseEffect arm structure, NOT irreducible variants:
+//    OnMount    ≡ UseEffect { body, dependencies: [], cleanup: None }
+//    OnUnmount  ≡ UseEffect { body: None,  dependencies: [], cleanup: Some(...) }
+//    OnUpdate(triggers) ≡ UseEffect { body, dependencies: triggers, cleanup: None }
+//  Dissolution receipt — no parallel-authority lifecycle sum.)
 // (Prior standalone `Effect { hook, body, cleanup }` type DROPPED — body+cleanup
 //  now live on UseEffect/UseLayoutEffect/UseInsertionEffect arms directly per the
 //  per-arm-call-signature reshape above. Single carrier for each hook call site.)
@@ -284,7 +290,7 @@ New sum-types proposed in canvas:
 |---|---|
 | `HookKind` — 15 React-18.3 built-in arms + `Custom(Identifier)` (authority: react.dev/reference/react) | 🟡 YELLOW — full React-versioned roster enumerated (UseState/UseReducer/UseEffect/UseLayoutEffect/UseInsertionEffect/UseContext/UseRef/UseImperativeHandle/UseMemo/UseCallback/UseDebugValue/UseDeferredValue/UseTransition/UseId/UseSyncExternalStore) covering React 18.3 + 1 user-input boundary arm (Custom(Identifier)); Custom requires Practice-4-promotion canvas per §10 Phase-1.5. Dissolution trigger: React version-anchor changes (new built-in hook in 18.x or 19.x) → re-ratify roster on the version-anchor PR. |
 | `JSXNode = HtmlElement \| ComponentRefNode \| TextNode \| ExpressionSlot \| FragmentNode` | 🟢 GREEN — JSX tree-node coproduct (subcomponents as tree nodes via `ComponentRefNode { component: ComponentName, ... }`, not alternate body mode; dissolves prior Render/Composite split per codex 10817 finding #2) |
-| `Lifecycle = OnMount \| OnUnmount \| OnUpdate { triggers }` | 🟢 GREEN — distinct lifecycle phases |
+| ~~`Lifecycle = OnMount \| OnUnmount \| OnUpdate { triggers }`~~ | 🔴 RED → **DISSOLVED** per codex BLOCKING canvas:184 — derives from UseEffect arm structure (deps=[] ⇒ Mount; cleanup-only ⇒ Unmount; deps=triggers ⇒ Update); no irreducible lifecycle authority. Anti-pattern §11 #12. |
 | `TypingDiscipline = Nominal \| Structural` (Q1-b) | 🟢 GREEN — captures genuine semantic difference |
 
 No 🔴 RED proposed. Worker brief (post-R3) authors Practice 4 receipts per variant.
@@ -324,6 +330,7 @@ Each phase = separate worker brief; standard canvas → ratification → worker 
 9. **Director-added (msg_7d51b699)**: Introducing parallel `omni_*_share_one_node_tree` gate when the invariant is already cashed at gate #28 — direct INVARIANTS P1 violation (gate #28's NAME is layer-count-agnostic; the layer-enumeration in the description is incidental, not load-bearing)
 10. **Mgr-derived per codex 10864 (INVARIANTS P3 + Practice 6)**: Landing the `TypingDiscipline` carrier extension with an implicit `Nominal` default for existing rows — missing field interpreted as a plausible value reintroduces convention-fallback semantics in place of API-level enforcement. R4-Phase-1 migration MUST be atomic: same PR sets every existing inhabitant's field explicitly + adds a compile-time exhaustiveness test asserting no row lacks the field.
 11. **Mgr-derived per codex canvas:76 (INVARIANTS P1/P2 + Practice 6)**: Putting call-signature-specific fields (`dependencies`, `cleanup`, `initial`, etc.) on the uniform `Hook` record — would let arms that don't take that field (UseState's `dependencies`?) carry meaningless facts, and erase the distinct call signatures of effect/memo/callback hooks. Call-signature fields MUST live on each `HookKind` arm.
+12. **Mgr-derived per codex canvas:184 (Practice 4 + INVARIANTS P1)**: Introducing a parallel `Lifecycle = OnMount | OnUnmount | OnUpdate` sum alongside `UseEffect` — lifecycle phases are NOT irreducible; they derive from UseEffect arm structure (`dependencies=[]` ⇒ Mount, cleanup-only ⇒ Unmount, `dependencies=triggers` ⇒ Update). Parallel authority on the same fact violates P1; lifecycle reasoning belongs on `dominant_term`-style derived projections of UseEffect facts.
 
 ## §12. Ratified dispositions (audit trail; all Director-ratified msg_7d51b699 via PM msg_1faad154 2026-05-13)
 
