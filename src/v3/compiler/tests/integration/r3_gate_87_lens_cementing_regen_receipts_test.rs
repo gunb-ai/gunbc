@@ -11,7 +11,9 @@
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! placeholders with per-file dissolution triggers in their `.dag` harness comments. `parallelism`
+//! uses the same narrow `Compiles` harness here; deeper behavioral receipts live in
+//! `lane2_stage_2e_parallelism_test`.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
@@ -156,6 +158,11 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
     );
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
