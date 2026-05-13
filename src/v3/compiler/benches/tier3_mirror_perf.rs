@@ -14,14 +14,14 @@
 //! the committed JSON; baseline updates land only through PR).
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use v3_compiler::dag::WorkflowEffect;
 use v3_compiler::dag::{
     lower_call_pattern, positive_amount_from_i64, positive_descent_count, type_iteration_dimension,
-    CallableRef, CallPattern, HttpMethodScalar, InputField, Operation, PathTemplate,
+    CallPattern, CallableRef, HttpMethodScalar, InputField, Operation, PathTemplate,
     RestEndpointBinding,
 };
-use v3_compiler::dag::WorkflowEffect;
-use v3_compiler::Dag;
 use v3_compiler::lane2_workflow_idempotency_report;
+use v3_compiler::Dag;
 
 fn bench_computation_mirror(c: &mut Criterion) {
     let steps = positive_amount_from_i64(32).expect("fixture Peano depth");
@@ -70,8 +70,12 @@ fn bench_effect_carrier_mirror(c: &mut Criterion) {
         ],
     };
     c.bench_function("tier3_effects_lane2_linear_read_chain", |bencher| {
-        bencher
-            .iter(|| black_box(lane2_workflow_idempotency_report(black_box(&dag), black_box(&workflow))));
+        bencher.iter(|| {
+            black_box(lane2_workflow_idempotency_report(
+                black_box(&dag),
+                black_box(&workflow),
+            ))
+        });
     });
 }
 
