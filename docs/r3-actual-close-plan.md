@@ -45,7 +45,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[];
 ```
 plus `cargo test --release sg0_census_test` passes with predicate = 0.
 
-**Alternative disposition (if operator accepts deferral)**: explicit R4 acceptance recorded here for specific subsets of the 177+ entries (e.g., grounding submodules may be Tier-2 R4-deferred per design-pure-bootstrap-zero.md). PM-recommended: do NOT R4-defer this in bulk — it's the load-bearing thesis claim.
+**Alternative disposition** (briansrls BLOCKING PR #3013 2026-05-13T18:22:57Z enforcement: **fabricated Tier-2 R4-deferral authority RETRACTED**): the prior framing cited `docs/design-pure-bootstrap-zero.md` as authority for Tier-2 R4-deferral of grounding submodules. That citation is fabricated — `docs/design-pure-bootstrap-zero.md` sets an absolute 0-floor (L41: *"Goal: zero hand-authored files in v3's source tree"*) and contains zero references to "Tier-2", "grounding submodules deferred", or any R4-deferral carve-out mechanism. The only "carves out" mention in that doc (L131) is the *historical* TESTING.md carve-out, which the doc explicitly **retracts** under the 0-floor target.
+
+The PB-0 design doc admits no internal escape hatch. Any R4-carve of PB-0 subsets requires explicit operator override of `project_no_r4_carves_directive` (2026-05-08), naming the specific subset + structural-unblockable reason. There is no per-subset deferral mechanism inside the design doc itself; the no-carves directive is the sole gate.
+
+**PM-recommended**: do NOT R4-defer this — it's the load-bearing thesis claim ("0 hand-Rust"). The standing directive applies absent explicit per-subset override.
 
 ---
 
