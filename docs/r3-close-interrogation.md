@@ -145,7 +145,7 @@ A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded 
 
 ### §2.5 Impossible bugs by construction (THE META-PROMISE)
 
-**Promise** (THESIS.md:23 closed system + :120 "rejects structural, effect, and complexity bugs that ordinary compilers never model" + INVARIANTS P5 atomic-migration + `feedback_closed_system_design` + `feedback_groundedness_gates_lenses`): the language's design makes whole classes of bug **impossible by construction** — not via runtime checks or static analysis added after the fact, but by the substrate refusing to admit the bug-shape. This is the META-claim that ties §1 (dimension promises) + §2.1-§2.4 (substrate promises) together.
+**Promise** (THESIS.md:23 closed system + :120 "rejects structural, effect, and complexity bugs that ordinary compilers never model" + **INVARIANTS P4 Decidability** "Every accepted program stays within a closed, fail-closed system whose correctness questions are structurally decidable" + INVARIANTS P3 Fail-Closed + `feedback_closed_system_design` + `feedback_groundedness_gates_lenses`): the language's design makes whole classes of bug **impossible by construction** — not via runtime checks or static analysis added after the fact, but by the substrate refusing to admit the bug-shape. This is the META-claim that ties §1 (dimension promises) + §2.1-§2.4 (substrate promises) together. The structural anchor is **P4 Decidability**: closed-system + structurally-decidable-correctness-questions are precisely what makes the bug-class-impossibility claim cash structurally rather than rest on case-by-case enforcement.
 
 The claim is sharp on some bug classes and softer on others. This section interrogates BOTH sides honestly.
 
