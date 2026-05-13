@@ -273,7 +273,7 @@ No 🔴 RED proposed. Worker brief (post-R3) authors Practice 4 receipts per var
 
 ## §9. Cost-of-change accounting
 
-Per `INVARIANTS.md` "Cost of Change":
+Per `CLAUDE.md` §"Cost of Change" (the "language grows by one type / one transport, how many files need editing? — should be 1" principle; substantively anchors at INVARIANTS.md P2 boundary discipline + P5 progress-is-dissolution):
 
 | State | Files to edit to add one new full-stack endpoint |
 |---|---|
