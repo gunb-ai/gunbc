@@ -19,15 +19,15 @@
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
 //! hosts the executable receipt: **`compile_to_dag(dsl/gunbc/ci.dag)` once** (via `OnceLock`) to load
-//! bootstrap `modeled_gunbc_ci_workflow` and project structural `ci_workflow_dag` (authority row,
-//! pipeline name, prerequisite edges, parallel fan-out) **before** the timing-lens `evaluate_body` shell runs on the
-//! full bootstrap (PB-1 still lowers `demo_ci_modeled_timing_dimension_report` only there — see
-//! `t_ci_workflow_as_data_demo.dag` note on wiring `modeled_gunbc_ci_workflow` through `evaluate_body`),
-//! then **split `#[test]` receipts** (TESTING.md §4 one-claim-per-test): structural carrier pins,
-//! `gunbc_ci::select_affected_gates`, paired symbolic-cost + E7 complexity on the lowered lane-2 subject,
-//! prerequisite **graph** fan-out read from the same structural carrier (no hand-staged `WorkflowEffect`),
-//! absence of a lowered lane-2 workflow projection until the compiler owns it (P2), and the bootstrap
-//! timing `evaluate_body` shell (PB-1 embed only — see `t_ci_workflow_as_data_demo.dag`).
+//! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
+//! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
+//! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
+//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt on a merged
+//! compile** (`tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag`) that **anchors
+//! `ci_workflow_dag`** from `gunbc.ci` in the same lowered artifact as
+//! `demo_ci_modeled_timing_dimension_report` (THESIS self-inspection on the modeled CI workflow carrier,
+//! not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
+//! still exercises the PB-1 bootstrap embed path for `modeled_gunbc_ci_workflow` / demo span wiring.
 //! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
@@ -69,6 +69,10 @@ const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
+const R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE: &str =
+    include_str!("../fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag");
+const R3_GATE57_CI_TIMING_LENS_CARRIER_FILE: &str =
+    "src/v3/compiler/tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
