@@ -790,7 +790,8 @@ enum TestsAsDataMigrationClass {
     LensOutputEquality,
     BehavioralObservation,
     BoundaryHostProcess,
-    CementingV2Oracle,
+    CementingDagInventoryBridge,
+    CementingHandRustBlocker,
     CensusOrRatchet,
     PropertyBased,
 }
@@ -809,11 +810,23 @@ fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass
         return Some(BoundaryHostProcess);
     }
 
-    if path.contains("/cementing/")
-        || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
-        || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs")
+    if path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs") {
+        return Some(CementingDagInventoryBridge);
+    }
+
+    if path.ends_with("cementing_provenance_origin_integration_test.rs")
+        || path.ends_with("complexity_lens_behavioral_completion.rs")
+        || path.ends_with("memory_peak_cost_basis_demo.rs")
     {
-        return Some(CementingV2Oracle);
+        return Some(CementingHandRustBlocker);
+    }
+
+    if path.ends_with("cost_lens_symbolic_consumer_test.rs") {
+        return Some(LensOutputEquality);
+    }
+
+    if path.ends_with("lens_behavioral_parity_demonstration_test.rs") {
+        return Some(LensOutputEquality);
     }
 
     if path.contains("census")
@@ -821,6 +834,7 @@ fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass
         || path.contains("bridge")
         || path.contains("sg")
         || path.contains("r1c_")
+        || path.contains("wiring_scanner")
         || path.contains("v2_oracle")
         || path.contains("value_body_substrate_mirror")
         || path.contains("lens_producer_retirement")
@@ -868,6 +882,50 @@ fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass
     }
 
     None
+}
+
+#[test]
+fn sg0_cementing_residual_classification_matches_gate87_brief() {
+    use TestsAsDataMigrationClass::*;
+
+    for path in [
+        "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
+        "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+        "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
+    ] {
+        assert_eq!(
+            tests_as_data_migration_class(path),
+            Some(CementingHandRustBlocker),
+            "{path} should remain a named-blocker cementing residual per \
+             docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md §3"
+        );
+    }
+
+    assert_eq!(
+        tests_as_data_migration_class(
+            "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs"
+        ),
+        Some(LensOutputEquality),
+        "cost_lens_symbolic_consumer_test is gate #78 host-wrapper residual scope, \
+         not a Band-C cementing residual"
+    );
+
+    assert_eq!(
+        tests_as_data_migration_class(
+            "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"
+        ),
+        Some(CementingDagInventoryBridge),
+        "gate #87 Rust receipt is the regen/.dag inventory bridge, not an isolated \
+         per-lens cementing row"
+    );
+
+    assert_eq!(
+        tests_as_data_migration_class(
+            "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs"
+        ),
+        Some(CensusOrRatchet),
+        "wiring scanner tests are scanner/ratchet residual scope, not lens cementing"
+    );
 }
 
 fn is_test_path(path: &str) -> bool {
@@ -1149,7 +1207,8 @@ fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
         TestsAsDataMigrationClass::LensOutputEquality,
         TestsAsDataMigrationClass::BehavioralObservation,
         TestsAsDataMigrationClass::BoundaryHostProcess,
-        TestsAsDataMigrationClass::CementingV2Oracle,
+        TestsAsDataMigrationClass::CementingDagInventoryBridge,
+        TestsAsDataMigrationClass::CementingHandRustBlocker,
         TestsAsDataMigrationClass::CensusOrRatchet,
         TestsAsDataMigrationClass::PropertyBased,
     ] {
