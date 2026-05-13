@@ -1,10 +1,10 @@
 ---
-status: Mgr-pre-authored worker brief (queue — dispatch fires on PR #3014 merge)
-authority_parent: R3 Debt-Paydown Mgr (`zesty-boar-261`)
+status: "Mgr-pre-authored worker brief (queue — dispatch fires on PR #3014 merge)"
+authority_parent: "R3 Debt-Paydown Mgr (zesty-boar-261)"
 authoring_date: 2026-05-13
 director_dispatch: msg_2e9a11ee-3a11-4d1c-a03b-999a6cf209fc
-program_anchor: PB-0 **cycle 2** — sustained `EXPECTED_HAND_AUTHORED_NON_TEST` retirement (same bars as cycle 1)
-predecessor_brief: [`r3-pb0-non-test-retirement-worker.md`](r3-pb0-non-test-retirement-worker.md) (cycle 1; Director msg_3f8442f6)
+program_anchor: "PB-0 cycle 2 — sustained EXPECTED_HAND_AUTHORED_NON_TEST retirement (same bars as cycle 1)"
+predecessor_brief: "docs/briefs/r3-pb0-non-test-retirement-worker.md (cycle 1; Director msg_3f8442f6)"
 ---
 
 # PB-0 cycle 2 — SG-0 NON_TEST hand-Rust retirement worker brief
