@@ -176,15 +176,21 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
   - **Phase 3 (#84 bulk-port)**: 99 tests × per-class dispatch — per-class worker briefs needed
 - **Effort estimate**: 4-8 weeks per Cluster M plan (operator "staffing not a concern" allows parallel dispatch)
 
-**Close criterion** (Director feedback item 4 — header-marker filter):
+**Close criterion** (Director feedback item 4 — header-marker filter; **codex BLOCKING PR #3013 2026-05-13 enforcement: boundary-test carve-out RETRACTED** per `TESTING.md` post-PR-#678 cascade + `docs/design-pure-bootstrap-zero.md` 0-floor target — class-5 boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations, NOT preserved as hand-authored survivors):
 ```bash
-# Predicate at gate #84 close — excludes generated-from-.dag tests via header marker:
-find src/v3/compiler/tests/integration -name "*.rs" -not -path "*/common/*" -not -path "*/boundary/*" \
+# Predicate at gate #84 close — ALL hand-authored *_test.rs counted; only generated-from-.dag tests survive:
+find src/v3/compiler/tests -name "*.rs" -not -path "*/common/*" \
   | xargs grep -L "// AUTO-GENERATED FROM .dag" \
   | wc -l
-# returns: 0 (only generated-from-.dag survivors carry the marker; hand-authored fail-closed)
+# returns: 0 (only generated-from-.dag survivors carry the marker; hand-authored fail-closed; boundary tests ARE included, must migrate to ExecuteCommand-based .dag TestClaim per TESTING.md cascade)
 ```
 plus #85 SuiteClaim wrapper consumer landed.
+
+**Authority for no-carve-out** (codex BLOCKING PR #3013 receipt):
+- `TESTING.md` "🔄 RETRACTED 2026-04-25 (cascade promotion of `docs/design-pure-bootstrap-zero.md`)": *"the previous 'two residual categories' framing (compiler-internal unit tests + external-toolchain boundary tests stay Rust-authored permanently) is retracted under the 0-floor target. Both categories dissolve"*
+- `TESTING.md` "0-residual is the target. Until v3's source tree reaches 0 hand-authored files..."
+- `docs/design-pure-bootstrap-zero.md`:41 *"Goal: zero hand-authored files in v3's source tree."*
+- `docs/design-pure-bootstrap-zero.md`:138 boundary-tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations per cascade-named successor pattern (PR #678 schema landed; bulk migration is Gap 5 Phase 3 scope)
 
 **Substrate prereq**: code-gen pipeline must emit `// AUTO-GENERATED FROM .dag` header line for every generated `*_test.rs` so the predicate can mechanically discriminate hand-authored vs generated. If not present at HEAD, lands in Gap 5 Phase 3 ratchet.
 
@@ -278,11 +284,10 @@ plus #85 SuiteClaim wrapper consumer landed.
   5. Worker brief dispatch to retrofit existing diagnostics
 - **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it). **Caveat (per claude review exploratory observation #3 — estimates unsourced)**: this estimate is PM-prior-cycle-experience-based, NOT cited against specific velocity data. Substrate Mgr canvas surfaces the actual scope + worker effort; final estimate calibrates post-canvas-ratification.
 
-**Close criterion** (Director feedback item 6 — threshold is operator-decision-shaped, NOT Director-decision):
-- **THESIS-correct (100%)**: every Diagnostic in `src/v3/compiler/` has `correction: Witness` field present + `Some(_)` for **every** fired diagnostic in test corpus. No threshold relaxation; THESIS:103-105 reads as absolute promise.
-- **Pragmatic relaxation (≥X%, X TBD)**: operator-set threshold + named-residual list for diagnostics not yet producing corrections. Requires explicit operator acceptance of threshold + retirement plan for residual.
+**Close criterion** (codex BLOCKING PR #3013 2026-05-13 enforcement: **absolute 100% — pragmatic-relaxation alternative RETRACTED** as it converted a load-bearing THESIS promise into a negotiable threshold):
+- **THESIS-correct (100% absolute)**: every Diagnostic in `src/v3/compiler/` has `correction: Witness` field present + `Some(_)` for **every** fired diagnostic in test corpus. No threshold relaxation. THESIS.md "Error handling: show the correct code" — *"Diagnostics should point to the structurally correct program, not just report that the current one is wrong"* — reads as absolute promise.
 
-Surfacing both at §4 for operator ratification (Director feedback item 6 routed there).
+**Authority for no-relaxation** (codex BLOCKING PR #3013 receipt): the prior "Pragmatic relaxation (≥X%)" framing dilutes an absolute THESIS commitment into a negotiable threshold without THESIS-text reconciliation. Per `project_no_r4_carves_directive` (2026-05-08), R4-carve framing is NOT freely available; within-R3 relaxation paths are structurally equivalent to R4-carves under the directive. The alternative-disposition path below (R4-scope reframe with operator-recorded acceptance) is the ONLY non-100% path, and it requires explicit operator override of the no-carves directive — not a within-R3 threshold negotiation.
 
 **Alternative disposition**: if operator accepts that show-correct-code is THESIS-aspirational not R3-promised, record explicit not-R3-scoped here + amend interrogation doc §6 to reflect. **Note per standing directive**: this alternative requires operator override of `project_no_r4_carves_directive` since "THESIS-aspirational-not-R3-promised" is structurally an R4-carve.
 
@@ -339,10 +344,11 @@ Given the cross-gap dependencies, recommended dispatch order:
 **Phase E — Director-tier coordination (zesty-bear-812, parallel)**:
 - Gap 3 (self-host fixed point): 4-joint-precondition cross-Mgr audit
 
-**Phase F — Final close ceremony (PM-direct, 1 week)**:
+**Phase F — Final close ceremony (PM-direct + operator, 1-2 weeks)**:
 - Re-run close-audit doc with all gaps PROVEN or R4-DEFERRED-with-acceptance
+- **Operator + PM adversarial re-pass (operator directive 2026-05-13 — final closeout discipline)**: every claim in `docs/r3-close-interrogation.md` + `docs/r3-actual-close-plan.md` + every §1.8 row status is re-interrogated against HEAD evidence with operator playing adversarial-stakeholder. Symmetric to the 2026-05-13 adversarial sweep that surfaced the 10 counterfactuals — but applied at close-ceremony to confirm none survived. Anti-pattern caught: "looks closed by procedural metric" without substantive HEAD-evidence cross-check. Discipline: every PROVEN claim has a paired predicate-execution receipt + grep-at-HEAD witness; no claim survives the adversarial-re-pass on assertion alone.
 - Operator final ratification
-- **Bookkeeping batch PR (Director feedback item 8 — downstream of predicate-execution verdict, NOT parallel to it)**: §1.8 manifest strings synchronize to **close-audit-doc predicate-execution outcome** (substantive View-4 authority per `feedback_r3_close_three_views_drift`), NOT to procedural `closed_at` markers. Strings sync as: row #N status = whatever the close-audit-doc row #N predicate evaluation returned. Sequencing: close-audit-doc lands first (Gap 10 execution complete); bookkeeping PR consumes that doc as authority + amends §1.8 strings to match. This avoids re-introducing the procedural-closure trap by always sourcing manifest state from predicate-execution outcome.
+- **Bookkeeping batch PR (Director feedback item 8 — downstream of predicate-execution verdict + adversarial-re-pass verdict, NOT parallel to either)**: §1.8 manifest strings synchronize to **close-audit-doc predicate-execution outcome PLUS adversarial-re-pass survivor status** (substantive View-4 authority per `feedback_r3_close_three_views_drift`), NOT to procedural `closed_at` markers. Strings sync as: row #N status = whatever the close-audit-doc row #N predicate evaluation returned AFTER adversarial-re-pass confirmed no counterfactuals survive. Sequencing: close-audit-doc lands first (Gap 10 execution complete) → operator+PM adversarial-re-pass against doc + interrogation + §1.8 → bookkeeping PR consumes the adversarial-re-pass verdict as authority + amends §1.8 strings to match. This avoids re-introducing the procedural-closure trap by always sourcing manifest state from predicate-execution outcome PLUS operator-verified absence of counterfactuals.
 
 ---
 
@@ -383,9 +389,8 @@ PM requests operator confirmation (default IN-R3) or explicit override (R4-carve
 1. **Gap 1 (PB-0)**: IN-R3 default = full 177-entry retirement. **PM-recommended: do not defer.** R4-carve override requires operator to name specific subsets + structural reason.
 2. **Gap 2 (L5 cross-target)**: IN-R3 default = full 3-target Python+Go. **PM-recommended: do not defer.** R4-carve override scope-narrows §3.1 to Rust-only Shape-A; the omni-emission falsifier promise (R4.A architectural-falsifier) loses Python/Go round-trip validation paths.
 3. **Gap 3 (self-host R3-strong)**: IN-R3 default = 4-joint-precondition cascade. **PM-recommended: do not defer.** R4-carve override accepts R1-horizon as R3-final and amends §4.2 promise text.
-4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + Diagnostic-with-correction coverage. **PM-recommended: do not defer.** Two operator sub-decisions:
-   - (a) IN-R3 (recommended) OR not-R3-promised reframe (= R4-carve per directive)
-   - (b) If IN-R3, threshold = **100%** (THESIS-correct absolute — PM's recommendation per claude exploratory observation reading THESIS:103-105 as absolute) OR **≥X% with named-residual list** (pragmatic relaxation; X TBD)
+4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + Diagnostic-with-correction coverage at **100% absolute** (no threshold negotiation; codex BLOCKING PR #3013 2026-05-13 retracted prior `≥X%` pragmatic-relaxation framing as THESIS-promise-dilution). **PM-recommended: do not defer.** Single operator sub-decision:
+   - (a) IN-R3 at 100% absolute (recommended) OR not-R3-promised reframe (= R4-carve per directive; requires explicit operator override of `project_no_r4_carves_directive`)
 
 **§5 process discipline note**: per the standing directive, asking the operator to choose IN-R3-vs-R4-carve framing for these 4 items implicitly invites R4-carve consideration. Re-framing per Director feedback item 1: the question is "confirm IN-R3 (default, per directive + PM-recommended)" — explicit override only if structurally unblockable.
 
