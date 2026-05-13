@@ -23,6 +23,7 @@
 // declaration, no name-based inhabitance walk at infer time.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Component, Path};
 use std::str::FromStr;
 
 use num_bigint::BigInt;
