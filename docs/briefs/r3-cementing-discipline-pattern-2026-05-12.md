@@ -57,7 +57,9 @@ Predicate-axis boundaries:
 
 ## §3. Known Hand-Rust Cementing Dispositions
 
-These are not a frozen dispatch inventory; the authoritative list is `EXPECTED_HAND_AUTHORED_TEST` in `src/v3/compiler/tests/integration/sg0_census_test.rs`. The table below records the disposition the #84 cementing-class worker must check before selecting pilots — predicate class (§2), blocker if any with owning lane, and the SG-0 hand-path census delta on a successful port. Refresh date: 2026-05-13 (G87-D handoff). On disposition change, update this table together with the live census comment above the same row.
+These are not a frozen dispatch inventory; the authoritative list is `EXPECTED_HAND_AUTHORED_TEST` in `src/v3/compiler/tests/integration/sg0_census_test.rs`. The table below records the disposition the #84 cementing-class worker must check before selecting pilots — predicate class (§2), blocker if any with owning lane, and the SG-0 hand-path census delta on a successful port. Refresh date: 2026-05-13 (G87-D5 handoff alignment). On disposition change, update this table together with the live census comment above the same row.
+
+Census coverage check (G87-D5, refresh 2026-05-13): the four rows below are the complete set of paths under `src/v3/compiler/tests/integration/cementing/` that appear in `EXPECTED_HAND_AUTHORED_TEST` at HEAD. No new cementing-test residual rows have landed since the prior refresh; no row in this table has been ported away from Rust since the prior refresh, so the §3 dispositions stand. This brief makes no census-delta claim — it is docs-only.
 
 | Rust module | Predicate class (§2) | Blocker / owning lane | SG-0 census delta on port |
 |---|---|---|---|
@@ -67,6 +69,17 @@ These are not a frozen dispatch inventory; the authoritative list is `EXPECTED_H
 | `tests/integration/cementing/memory_peak_cost_basis_demo.rs` | C-HandRustBlocker today; C-LensOutEq or C-CompilesHelper on unblock depending on demonstration shape. | Parser-level `apply_lens(cost, DeclarationScope, Enforce { budget: SymbolicCost { dimension: Memory, … } })` consumer. Owning lane: T-LAS Slice B lens-fold consumer, `docs/r3-program-plan.md` gate #91; gate #94 (`memory_peak_cost_basis_demonstrated`) is the consumer-side gate this receipt evidences. No `.dag` target yet (waiting on the parser-level consumer). | -1 on gate #91 unblock + same-PR move into a new `tests/dag/t_r3_*_memory_peak_*.dag` receipt that preserves max-dominance composition and `LensEnforcement` orientation semantics. |
 
 Rows that remain blocked after this check route to D2 with the named blocker. Rows unblocked by later substrate/compiler work hand back to V2 for same-PR replacement artifact plus census decrement under §4. This table is the only hand-maintained disposition surface for these rows; #84 cementing-class workers must not create a parallel inventory.
+
+### §3.1 Gate-#87 census rows that are NOT Band-C lens-cementing residuals
+
+These rows in `EXPECTED_HAND_AUTHORED_TEST` are named after, or split from, gate-#87 / `cementing_*` infrastructure but are **not** per-lens cementing receipts. They are listed here so #84 cementing-class workers do not select them as bulk-port targets. Their dissolution belongs to the named owning lane, not to cementing-class port:
+
+| Census row | Why not Band-C lens-cementing | Owning dissolution lane |
+|---|---|---|
+| `tests/integration/common/wiring_scanner_test.rs` | Hand-Rust unit tests for the `tests/integration.rs` wiring scanner — split out of the retired `cementing_lens_registry_dispatch_test.rs` during gate-#87 pattern landing. The scanner is consumed by `cementing_dispatch.rs` (§1) but the assertions cement scanner behavior, not lens output. | T-Tests-As-Data scanner-as-data port (no current gate row); dissolves when the scanner moves into a `.dag` reflection consumer. |
+| `tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` | Single Rust pin paired with the full `tests/dag/t_r3_gate_87_cementing_regen_*.dag` runner inventory; ratchets regen-registry-name ↔ harness-inventory correspondence and host-side carrier projections that `.dag` predicates cannot yet express. Not a per-lens receipt that can be ported in isolation. | T-Substrate / M1(2.8) strict-module carrier authoring; dissolves row-by-row as `LensOutputEquals` carriers (e.g. `ComplexitySummary`, `VariantPayloadShapeLookup`) become authorable in `.dag` test data and the corresponding `Compiles` placeholders flip behavioral. |
+
+These rows must not be re-classified into §3 by a #84 cementing-class worker, and porting them does not satisfy a Band-C cementing-class hand-path decrement. Their census-delta accrues to their respective owning lanes.
 
 ## §4. Phase 3 Worker Rule
 
