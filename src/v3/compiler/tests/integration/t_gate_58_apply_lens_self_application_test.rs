@@ -96,15 +96,13 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
         "legacy timing budget violation must carry an explicit row-#106 deferral until source-span evidence is threaded; got {correction:?}"
     );
     let v3_compiler::diagnostics::Correction::DeferredCorrection {
-        retirement_plan,
-        ..
+        retirement_plan, ..
     } = correction
     else {
         unreachable!("checked above")
     };
     assert_eq!(
-        retirement_plan.owner,
-        "R3 Gap 9 row #106 diagnostic roundtrip coverage",
+        retirement_plan.owner, "R3 Gap 9 row #106 diagnostic roundtrip coverage",
         "timing scaffold deferral must stay tied to row #106 retirement"
     );
     assert!(
