@@ -43,7 +43,7 @@ use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, CompositionVerdict, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedDetail,
+    Behavior, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedDetail,
     ParallelismUnsupportedKind, ValueBody, WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
