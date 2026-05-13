@@ -739,6 +739,47 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 3. **Per-gap closure PR template**: each gap-closure PR must cite the gap number from this doc + the close criterion satisfied + audit evidence path.
 4. **Gap 10 (close-audit doc) is authored FIRST** — it's the receipt mechanism for everything else. Without it, "closed" is unverifiable.
 
+### §5.1 Per-PR ratchet-direction discipline
+
+**Authority**: operator Decision A 2026-05-13 ("target 0 is met; work orthogonal" — net-direction-down is acceptable in any single PR as long as ultimate target = `EXPECTED_HAND_AUTHORED_NON_TEST = []` + `EXPECTED_HAND_AUTHORED_TEST = []` per Gap 1 + Gap 5 close criteria); Director recommended shape per msg_48439a7f 2026-05-13 + msg_0b8f9283 PendingFact-shape discrimination; PM authoring per msg_be7a26b4 commitment.
+
+**Drift class empirical baseline** (per `feedback_awk_range_per_const_array_not_whole_file_grep` verified counts; 10 commits since 2026-05-08 modifying `sg0_census_test.rs`):
+- Combined ratchet net trajectory: **+8 entries** (+2 `EXPECTED_HAND_AUTHORED_NON_TEST` + +6 `EXPECTED_HAND_AUTHORED_TEST`)
+- Single retirement commit in the window (`b8651008` T-Cluster-F-α S1 parallelism walker port; -1 NON_TEST)
+- 9+ addition commits; retirement rate ~10% of additions
+- Sustained growth rate ~+0.8 entries per commit
+- Direction: structurally AWAY from R3 close (which requires 0/0)
+
+This is `feedback_ratchet_only_down` drift; sustained pattern, not 5-commit anomaly. The §5.1 discipline prevents continued drift while substrate-completion lanes land their retirement-substrate enablers.
+
+**Per-PR assertion at PR-template tier**: any PR that increases either `EXPECTED_HAND_AUTHORED_NON_TEST` OR `EXPECTED_HAND_AUTHORED_TEST` const-array length must include in PR body:
+
+1. **Add-class classification** per the discrimination framing below — author classifies each new entry as one of:
+   - **(A) PendingFact-shape addition** — substrate-prereq carrier building toward `ResolvedFact` materialization (per `GeneratedManifestEntry = PendingFact | ResolvedFact` sum-variant landing via warm-wren-479 PR #3040 or analogous substrate); cite the named substrate-prereq + named materialization path
+   - **(B) Cascade-substitution net-direction-down** — worker substitutes 1 entry with multiple finer-grained entries (e.g., swift-bee-15 PR #3046's `+13/-17 = net -4`); explicit add/retire commentary in PR body listing which entries are added vs retired
+   - **(C) Hand-Rust without retirement-substrate** — requires Director-tier ratification + named structural-unblockable reason (per `project_no_r4_carves_directive` analogous discipline)
+
+2. **Gap classification cite** per the per-entry blocker taxonomy at `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` (Track A taxonomy doc, in flight under zesty-boar-261 / PR #3045): cite which class (a / b / c) per the taxonomy each added entry belongs to + the named blocker if any (e.g., "emit.rs depends on Gap 13 R2-Grounding T-Ground sub-lanes per close plan §1").
+
+3. **Net-direction commentary** per operator Decision A — if the PR ratchet-array length INCREASES net, name the structurally-unavoidable reason; if DECREASES net, name the retirement-class (a/b/c). Cascade-substitution PRs (class B above) name both.
+
+**Reviewer-grep enforcement**: PR reviewers (codex / cursor / openai-pro / claude) check stdout-artifact for ratchet-array length delta + classification cite. Missing classification cite = REQUEST_CHANGES (substantive). PR-template grep is the structural enforcement; Director-tier sanction is the policy escape hatch for genuine class-C structurally-unavoidable additions.
+
+**Examples** (illustrative):
+
+- *PR #3046 (swift-bee-15 cycle-2 NON_TEST retirement)*: cascade-substitution class B; 17 retirements + 13 finer-grained `.dag` test-fixture additions = net -4; PR body must explicitly enumerate which 3 hand-Rust files are retired + which 10 substitution entries are added per the named scope.
+- *PR #3040 (warm-wren-479 generator-manifest substrate)*: substrate-prereq landing itself; not a ratchet PR but the substrate that enables future class A PendingFact-shape additions to materialize toward retirement.
+- *Future PR adding new gate's hand-Rust consumer test*: must be class A (PendingFact-shape building toward generated consumer) OR class C (Director-tier-ratified hand-Rust survival with named reason).
+
+**Sequencing prereq**: this §5.1 discipline applies post-`docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` landing (Track A taxonomy under PR #3045); until taxonomy lands, the discrimination is Mgr-tier coordination per PM cross-message msg_de98e128 + msg_9806a1d4 (PendingFact-shape OK / hand-Rust-without-substrate PAUSE).
+
+**Foreclosure clause**: this discipline does NOT impose a hard zero-add-per-PR rule (per operator Decision A "target 0 is met; work orthogonal" — net-direction-down per-PR is acceptable; substrate-prereq work during pending windows is legitimate; cascade-substitution is allowed with commentary). It IS a hard "no silent hand-Rust additions without retirement-substrate path" rule preventing the empirical +8/10-commits drift class from continuing.
+
+**Cross-Mgr coordination handoff**: until §5.1 PR-template assertion is mechanically enforced (CI-tier check, future Cluster-M-Phase-3-style ratchet-direction-test work item TBD), §5.1 is Mgr-tier discipline coordinated via:
+- zesty-boar-261 R3 Debt-Paydown Mgr surfaces ratchet-additions from sibling Mgrs to PM (per msg_48439a7f Cross-Mgr coordination clause)
+- PM cross-messages still-moth-538 / warm-wolf-698 with class-A/B/C discrimination per Director msg_0b8f9283 framing
+- Director-tier reinforce if any Mgr-tier escalation surfaces
+
 ---
 
 ## §6. Pending Director + operator decisions
