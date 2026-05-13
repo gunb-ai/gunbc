@@ -6,9 +6,9 @@
 //! via `evaluate_body` against bind ports resolved from **`generated_full_bootstrap_dag()`**.
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
-//! hosts the executable receipt that pins `dsl/gunbc/ci.dag` workflow authority and exercises the
-//! timing dimension through the evaluator plus symbolic-cost / complexity / parallelism lens surfaces
-//! on a representative v3 program (`cached_compile_to_dag` — see `lens_self_application_demonstrated`).
+//! hosts the executable receipt: `dsl/gunbc/ci.dag` source markers + bootstrap `modeled_gunbc_ci_workflow`,
+//! timing via `evaluate_body` (large-stack thread for debug builds), and cost / complexity /
+//! parallelism checks on a cached representative program (`lens_self_application_demonstrated`).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
@@ -24,9 +24,9 @@
 use crate::common::cached_compile_to_dag;
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, CompositionVerdict, DeclarationId, EffectShape, FieldValue, IdempotentShape,
-    LiteralBits, NonSingletonList, OperationEffect, TypeConnective, ValueNode, WorkflowEffect,
-    WorkflowParallelismReport,
+    AtomPayload, Behavior, CompositionVerdict, DeclarationId, EffectShape, FieldValue,
+    IdempotentShape, LiteralBits, NonSingletonList, OperationEffect, TypeConnective, ValueNode,
+    WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
@@ -632,102 +632,116 @@ fn lens_self_application_demonstrated() {
         "bootstrap diagnostics: {:?}",
         boot.diagnostics()
     );
-    boot
-        .declaration_by_name("modeled_gunbc_ci_workflow")
-        .expect("bootstrap must load `modeled_gunbc_ci_workflow` from t_ci_workflow_as_data_demo.dag");
+    boot.declaration_by_name("modeled_gunbc_ci_workflow")
+        .expect(
+            "bootstrap must load `modeled_gunbc_ci_workflow` from t_ci_workflow_as_data_demo.dag",
+        );
     assert!(
-        boot.declaration_by_name("modeled_gunbc_ci_workflow_dag").is_none(),
+        boot.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+            .is_none(),
         "bootstrap demo must not author a second CI DAG topology authority"
     );
 
     // --- Timing lens: bootstrap `demo_ci_modeled_timing_dimension_report` (prior ignored receipt). ---
-    let dag = boot;
+    // `evaluate_body` on the full bootstrap `Dag` recurses deeply enough to overflow the default
+    // test thread stack in debug builds; run the receipt on a dedicated thread with a larger stack
+    // (same pattern as other full-bootstrap evaluator harnesses).
+    let dag_for_timing = boot.clone();
+    let timing_join = std::thread::Builder::new()
+        .name("lens_self_app_timing_dimension_report".into())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || {
+            let dag = dag_for_timing;
+            let (d_port, b_port) = {
+                let bind_node_id =
+                    bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
+                let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+                    panic!("demo_ci_modeled_timing_dimension_report bind");
+                };
+                assert_eq!(
+                    bind.params.len(),
+                    2,
+                    "demo_ci_modeled_timing_dimension_report expects Dag and Behavior"
+                );
+                (bind.params[0], bind.params[1])
+            };
 
-    let (d_port, b_port) = {
-        let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
-        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
-            panic!("demo_ci_modeled_timing_dimension_report bind");
-        };
-        assert_eq!(
-            bind.params.len(),
-            2,
-            "demo_ci_modeled_timing_dimension_report expects Dag and Behavior"
-        );
-        (bind.params[0], bind.params[1])
-    };
+            let d_val = bootstrap_dag_runtime_carrier(&dag);
+            let b_beh = sample_demo_value_behavior(&dag);
+            let b_val = match &b_beh {
+                Behavior::Value(v) => behavior_value_variant(&dag, v),
+                _ => unreachable!(),
+            };
 
-    let d_val = bootstrap_dag_runtime_carrier(&dag);
-    let b_beh = sample_demo_value_behavior(&dag);
-    let b_val = match &b_beh {
-        Behavior::Value(v) => behavior_value_variant(&dag, v),
-        _ => unreachable!(),
-    };
+            let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
+            let frame =
+                EvalFrame::from_bindings([(d_port, d_val), (b_port, b_val)]).expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            };
+            let out = evaluate_body(&dag, bind_node_id, &mut state, strategy).expect("eval");
 
-    let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
-    let frame = EvalFrame::from_bindings([(d_port, d_val), (b_port, b_val)]).expect("frame");
-    let mut state = EvalStateStack::with_root_frame(frame);
-    let strategy = EvalStrategy::ApplicativeOrder {
-        input_order: InputEvaluationOrder::LeftFirst,
-    };
-    let out = evaluate_body(&dag, bind_node_id, &mut state, strategy).expect("eval");
+            let Value::VariantValue { tag, payload } = &out else {
+                panic!("expected DimensionReport variant Value, got {out:?}");
+            };
+            let dim_ok = disj_variant_constructor_id(&dag, "DimensionReport", "DimensionOk");
+            assert_eq!(*tag, dim_ok, "expected DimensionOk");
 
-    let Value::VariantValue { tag, payload } = &out else {
-        panic!("expected DimensionReport variant Value, got {out:?}");
-    };
-    let dim_ok = disj_variant_constructor_id(&dag, "DimensionReport", "DimensionOk");
-    assert_eq!(*tag, dim_ok, "expected DimensionOk");
+            let Value::RecordValue(fields) = &**payload else {
+                panic!("DimensionOk payload record");
+            };
+            let composed = fields
+                .iter()
+                .find(|f| f.label == "composed")
+                .map(|f| &f.value)
+                .expect("composed");
 
-    let Value::RecordValue(fields) = &**payload else {
-        panic!("DimensionOk payload record");
-    };
-    let composed = fields
-        .iter()
-        .find(|f| f.label == "composed")
-        .map(|f| &f.value)
-        .expect("composed");
+            let observed_tag = disj_variant_constructor_id(&dag, "TimingMeasurement", "Observed");
+            let Value::VariantValue {
+                tag: ctag,
+                payload: cpayload,
+            } = composed
+            else {
+                panic!("composed must be TimingMeasurement variant, got {composed:?}");
+            };
+            assert_eq!(*ctag, observed_tag, "composed must be Observed");
 
-    let observed_tag = disj_variant_constructor_id(&dag, "TimingMeasurement", "Observed");
-    let Value::VariantValue {
-        tag: ctag,
-        payload: cpayload,
-    } = composed
-    else {
-        panic!("composed must be TimingMeasurement variant, got {composed:?}");
-    };
-    assert_eq!(*ctag, observed_tag, "composed must be Observed");
+            let Value::RecordValue(duration_fields) = &**cpayload else {
+                panic!("Observed payload");
+            };
+            let duration = duration_fields
+                .iter()
+                .find(|f| f.label == "duration")
+                .map(|f| &f.value)
+                .expect("duration");
+            let Value::RecordValue(count_fields) = duration else {
+                panic!("Nanoseconds record");
+            };
+            let count = count_fields
+                .iter()
+                .find(|f| f.label == "count")
+                .map(|f| &f.value)
+                .expect("count");
+            assert_eq!(
+                count,
+                &Value::LiteralValue(LiteralBits::Int("0".to_string())),
+                "`timing_sequential_identity` pins Observed zero ns for this receipt"
+            );
 
-    let Value::RecordValue(duration_fields) = &**cpayload else {
-        panic!("Observed payload");
-    };
-    let duration = duration_fields
-        .iter()
-        .find(|f| f.label == "duration")
-        .map(|f| &f.value)
-        .expect("duration");
-    let Value::RecordValue(count_fields) = duration else {
-        panic!("Nanoseconds record");
-    };
-    let count = count_fields
-        .iter()
-        .find(|f| f.label == "count")
-        .map(|f| &f.value)
-        .expect("count");
-    assert_eq!(
-        count,
-        &Value::LiteralValue(LiteralBits::Int("0".to_string())),
-        "`timing_sequential_identity` pins Observed zero ns for this receipt"
-    );
-
-    let dim_name = fields
-        .iter()
-        .find(|f| f.label == "dimension_name")
-        .map(|f| &f.value)
-        .expect("dimension_name");
-    assert_eq!(
-        dim_name,
-        &Value::LiteralValue(LiteralBits::String("ci_modeled_timing".to_string())),
-        "dimension_name must match ci_modeled_timing_lens.name"
-    );
+            let dim_name = fields
+                .iter()
+                .find(|f| f.label == "dimension_name")
+                .map(|f| &f.value)
+                .expect("dimension_name");
+            assert_eq!(
+                dim_name,
+                &Value::LiteralValue(LiteralBits::String("ci_modeled_timing".to_string())),
+                "dimension_name must match ci_modeled_timing_lens.name"
+            );
+        })
+        .expect("spawn timing eval thread");
+    timing_join.join().expect("timing eval thread panicked");
 
     // --- Cost + complexity + parallelism: same lens machinery the repo ships for user programs. ---
     let prog = cached_compile_to_dag("let x = 1 + 2", "lens_self_application_dim.v3");
