@@ -4,9 +4,8 @@
 //! exercised under `ForAllTargets` so emitted Rust, Python, and Go agree on the observed `Int`
 //! stdout carve-out (`docs/r3-actual-close-plan.md` §Gap 2 close criterion). The full-suite test
 //! requires `rustc`, `python3`, and `go` on `PATH` (same host contract as the prior L5 skeleton).
-
-#[path = "integration/common/mod.rs"]
-mod common;
+//! Wired through the consolidated `tests/integration.rs` harness so the gate shares one
+//! bootstrap with the v3-compiler integration binary (see that file’s module docs + TESTING.md).
 
 use std::sync::OnceLock;
 
@@ -15,9 +14,9 @@ use v3_compiler::dag::{Dag, FieldValue, LiteralBits};
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
-use common::run_on_larger_stack;
+use crate::common::run_on_larger_stack;
 
-const L5_FIXTURE: &str = include_str!("fixtures/r3_verification_l5_corpus.dag");
+const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
 const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
 const L5_SUITE: &str = "l5_cross_target_consistency";
 
@@ -26,22 +25,22 @@ const L5_CORPUS_AUTHORITY: &[(&str, &str, &str)] = &[
     (
         "l5_cross_target_consistency_add_then",
         "l5_cross_target_consistency",
-        include_str!("fixtures/r3_l5_corpus/add_then_branch_seed.v3"),
+        include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3"),
     ),
     (
         "r3_l5_cert_branch_literal_true",
         "r3_l5_cert_branch_literal_true",
-        include_str!("fixtures/r3_l5_corpus/branch_literal_true_seed.v3"),
+        include_str!("../fixtures/r3_l5_corpus/branch_literal_true_seed.v3"),
     ),
     (
         "r3_l5_cert_branch_literal_false",
         "r3_l5_cert_branch_literal_false",
-        include_str!("fixtures/r3_l5_corpus/branch_literal_false_seed.v3"),
+        include_str!("../fixtures/r3_l5_corpus/branch_literal_false_seed.v3"),
     ),
     (
         "r3_l5_cert_nested_branch",
         "r3_l5_cert_nested_branch",
-        include_str!("fixtures/r3_l5_corpus/nested_branch_seed.v3"),
+        include_str!("../fixtures/r3_l5_corpus/nested_branch_seed.v3"),
     ),
 ];
 

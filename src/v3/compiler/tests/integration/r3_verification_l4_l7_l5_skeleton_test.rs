@@ -13,14 +13,13 @@
 //! matrix until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see
 //! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Gate **#15**
 //! `l5_cross_target_consistency` (Rust / Python / Go `ForAllTargets` corpus) lives in
-//! `tests/l5_cross_target_consistency.rs`.
+//! `tests/boundary/l5_cross_target_consistency.rs` (via `tests/integration.rs`).
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::LiteralBits;
-use v3_compiler::dag::{Dag, FieldValue};
+use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
