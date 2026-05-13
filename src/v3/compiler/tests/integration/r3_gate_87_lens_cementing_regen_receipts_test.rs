@@ -41,13 +41,16 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedKind, ValueBody,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{analyze_parallelism, Dag};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -199,6 +202,27 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_on_literal_program_without_workflow_projection() {
+    let dag = compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3")
+        .expect("compile");
+    let root = dag
+        .nodes()
+        .iter()
+        .find(|behavior| matches!(behavior, Behavior::Value(_) | Behavior::Bind(_)))
+        .expect("literal program should contain a behavior node")
+        .id();
+    let report = analyze_parallelism(&dag, root);
+    let WorkflowParallelismReport::ParallelismUnsupported(detail) = report else {
+        panic!("parallelism lens should fail closed without workflow projection");
+    };
+    assert_eq!(
+        detail.kind,
+        ParallelismUnsupportedKind::NoWorkflowProjection,
+        "literal bind should surface the explicit no-workflow-projection blocker"
+    );
 }
 
 #[test]

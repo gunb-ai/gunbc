@@ -3143,6 +3143,23 @@ impl<'a> TestRunner<'a> {
                     Origin::Source { .. }
                 ))
             }
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(root) = program_dag
+                    .nodes()
+                    .iter()
+                    .find(|behavior| matches!(behavior, Behavior::Value(_) | Behavior::Bind(_)))
+                    .map(Behavior::id)
+                else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): no behavior root found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    crate::lens_parallelism::analyze_parallelism(program_dag, root),
+                    WorkflowParallelismReport::ParallelismUnsupported(detail)
+                        if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+                ))
+            }
             "gate87_structural_resolution_no_violations" => {
                 i64::from(lens_structural_resolution::check(program_dag).is_empty())
             }
