@@ -25,7 +25,7 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Verdict (Phase 2 index population)
 
-**OVERALL: PENDING** — 48 of 106 gates have HARNESS_NAMED at the §1.8-ledger snapshot this index is derived from; the remaining 61 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
+**OVERALL: PENDING** — 48 of 106 gates have HARNESS_NAMED at the §1.8-ledger snapshot this index is derived from; the remaining 58 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
 ## Ledger-snapshot anchor (single-authority discipline, INVARIANTS P1/P2)
 
