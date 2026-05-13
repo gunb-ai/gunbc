@@ -215,7 +215,7 @@ Current `src/v3/std/algebra.dag:69-72`:
 - `NonZeroRational = Rational where nonzero` — REQUIRES NEW `nonzero` predicate (allowed_carriers: Rational; arg_shape: Bare). **Named alias** per HEAD parser constraint (codex BLOCKING worker:167): `where` refinements only attach to type aliases / parameters at HEAD (precedent `dsl/std/integer.dag:181 type PositiveInt = Nat where gt_zero`), NOT inline in struct field types. Used as `PolynomialCost.degree: NonZeroRational` per Director Option B msg_b80bcaa8.
 - `PositiveInt = Nat where gt_zero` — ALREADY EXISTS at `dsl/std/integer.dag:181`; worker reuses
 
-These refinements make `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved. PolynomialCost.degree intentionally has no refinement: signed Rational admits asymptotic decay (negative degrees) per Director msg_2c1bfb0e scope-extension.
+These refinements make `exponent ≤ 1` (PolyLogCost), `base ≤ 1` (ExponentialCost), and `degree = 0` (PolynomialCost via NonZeroRational) **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved. PolynomialCost.degree has **no positivity refinement** (signed Rational admits asymptotic decay / negative degrees per Director msg_2c1bfb0e sign-admission), but DOES carry the named `NonZeroRational` alias (msg_b80bcaa8 Practice-2 zero-exclusion to prevent ConstantCost collision). Sign-admission preserved; zero-exclusion enforced.
 
 ## §6.1 — Q6 Asymptotic-dominance ordering with signed degrees (Director RATIFIED msg_2c1bfb0e)
 
