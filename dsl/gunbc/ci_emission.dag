@@ -39,11 +39,11 @@ type WorkflowRuntime = YamlStatic | BinaryShim
 //
 // Binary `main()` and affected-set selection are out of scope — the arm
 // emits a `Workflow` that *references* the binary, not the binary itself.
-fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = Workflow {
+fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = {
   name: dag.github_actions_workflow.name,
   on: dag.github_actions_workflow.on,
   concurrency: dag.github_actions_workflow.concurrency,
-  jobs: [Job {
+  jobs: [{
       id: "ci",
       name: none,
       runner: HostedRunner { label: UbuntuLatest },

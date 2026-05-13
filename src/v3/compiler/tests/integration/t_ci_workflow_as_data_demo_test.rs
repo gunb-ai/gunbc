@@ -58,7 +58,7 @@ use v3_compiler::gunbc_ci::{
 };
 use v3_compiler::lens_cost::complexity_of;
 use v3_compiler::{
-    analyze_complexity, analyze_symbolic_cost_dimension, compile_to_dag,
+    analyze_complexity, analyze_symbolic_cost_dimension, compile_sources_to_dag, compile_to_dag,
     generated_full_bootstrap_dag, CompileError, DimensionReport,
 };
 
@@ -70,6 +70,28 @@ const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
+const GUNBC_CI_EMISSION_COMPILE_CONTEXT_SOURCE: &str = r#"
+module gunbc.ci
+
+import extdeps.github.actions { Workflow }
+
+type CIWorkflowDag {
+  github_actions_workflow: Workflow
+}
+
+data ci_workflow_dag: CIWorkflowDag = {
+  github_actions_workflow: {
+    name: "ci",
+    on: [],
+    concurrency: none,
+    jobs: [],
+    env: none,
+    permissions: none
+  }
+}
+"#;
+const GUNBC_CI_EMISSION_COMPILE_CONTEXT_FILE: &str =
+    "dsl/gunbc/ci_emission_compile_context.dag";
 const R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE: &str =
     include_str!("../fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag");
 const R3_GATE57_CI_TIMING_LENS_CARRIER_FILE: &str =
@@ -844,6 +866,19 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 
 #[test]
 fn gunbc_ci_emission_substrate_contract_is_present() {
+    let dag = compile_sources_to_dag(&[
+        (
+            GUNBC_CI_EMISSION_COMPILE_CONTEXT_SOURCE,
+            GUNBC_CI_EMISSION_COMPILE_CONTEXT_FILE,
+        ),
+        (GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE),
+    ])
+    .unwrap_or_else(|err| panic!("compile gunbc CI emission context: {err:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "gunbc CI emission context diagnostics: {:?}",
+        dag.diagnostics()
+    );
     assert!(
         GUNBC_CI_EMISSION_SOURCE.contains(
             "fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow"
