@@ -10,13 +10,21 @@
 
 ## Scope
 
-Phase 3 defines emission target contracts for ctrl subsystem projections:
+Phase 3 defines generated-artifact emission target contracts for ctrl subsystem
+projections:
 
 - HTTP server routes and request/response binding shape.
 - SQL migration scripts and ordered schema-change steps.
 - Audit event records and actor/outcome facts.
 
 These are target contracts only. They do not claim runtime cut-over, framework choice, database execution, or audit sink authority.
+
+This brief supersedes the earlier non-target transport-audit reading for this
+lane. `extdeps.transports.*` remains the transport execution/config audit
+surface; the three files owned here are the generated artifacts emitted from
+ctrl subsystem projections into those external boundaries. Any future
+transport-only audit must land as a separate receipt instead of overloading the
+Phase 3 target-contract lane.
 
 ## Gates
 

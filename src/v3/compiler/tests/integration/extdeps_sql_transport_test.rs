@@ -144,6 +144,31 @@ fn audit_event_extdep_dag_compiles_cleanly() {
 fn audit_event_target_fields_preserve_cloudevents_core_names() {
     let dag = compile_extdep(AUDIT_EVENT_DAG, "dsl/extdeps/audit/event.dag");
 
+    for (field, ty) in [
+        ("id", "CloudEventId"),
+        ("source", "CloudEventSource"),
+        ("specversion", "CloudEventSpecVersion"),
+        ("type", "CloudEventType"),
+        ("subject", "CloudEventSubject"),
+        ("time", "Timestamp"),
+    ] {
+        assert_eq!(
+            conj_field_ty(&dag, "AuditEventRecord", field),
+            decl_id_by_name(&dag, ty),
+            "AuditEventRecord.{field} must use the shared CloudEvents/std carrier `{ty}`"
+        );
+    }
+    assert_eq!(
+        conj_field_ty(&dag, "AuditEventField", "key"),
+        decl_id_by_name(&dag, "CloudEventExtensionName"),
+        "CloudEvents extension keys must use the branded extension-name carrier"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "AuditEventField", "value"),
+        decl_id_by_name(&dag, "CloudEventExtensionValue"),
+        "CloudEvents extension values must use the branded extension-value carrier"
+    );
+
     let event_fields: HashSet<String> = conj_field_labels(&dag, "AuditEventRecord")
         .into_iter()
         .collect();

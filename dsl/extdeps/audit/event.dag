@@ -12,6 +12,19 @@
 
 module extdeps.audit.event
 
+import std.types { NonEmptyStr, Timestamp }
+
+// CloudEvents core attribute carriers. They intentionally stay separate from
+// ctrl audit convenience fields so emitted audit records preserve the external
+// wire vocabulary until a generated emitter owns the final serialization.
+type CloudEventId = NonEmptyStr where brand("CloudEventId")
+type CloudEventSource = NonEmptyStr where brand("CloudEventSource")
+type CloudEventSpecVersion = NonEmptyStr where brand("CloudEventSpecVersion")
+type CloudEventType = NonEmptyStr where brand("CloudEventType")
+type CloudEventSubject = NonEmptyStr where brand("CloudEventSubject")
+type CloudEventExtensionName = NonEmptyStr where brand("CloudEventExtensionName")
+type CloudEventExtensionValue = NonEmptyStr where brand("CloudEventExtensionValue")
+
 // Coproduct dissolution classification (modeling-discipline.md Practice 4):
 // GREEN (terminal). Actor source changes authorization and attribution
 // semantics; collapsing to a string would lose the external audit dimension.
@@ -30,29 +43,29 @@ type AuditOutcome
 
 type AuditActor {
   kind: AuditActorKind
-  id: String
+  id: NonEmptyStr
 }
 
 type AuditEventField {
-  key: String
-  value: String
+  key: CloudEventExtensionName
+  value: CloudEventExtensionValue
 }
 
 type AuditEventRecord {
-  id: String
-  source: String
-  specversion: String
-  type: String
-  subject: String
+  id: CloudEventId
+  source: CloudEventSource
+  specversion: CloudEventSpecVersion
+  type: CloudEventType
+  subject: CloudEventSubject
   actor: AuditActor
   outcome: AuditOutcome
-  time: String
+  time: Timestamp
   fields: List<AuditEventField>
 }
 
 // STAGED. Ctrl subsystem projections emit into this target only after parity
 // tests prove the event stream matches the existing TypeScript implementation.
 type AuditEventEmissionTarget {
-  stream_name: String
+  stream_name: NonEmptyStr
   events: List<AuditEventRecord>
 }
