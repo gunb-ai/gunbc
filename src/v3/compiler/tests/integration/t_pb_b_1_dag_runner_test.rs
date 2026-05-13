@@ -32,7 +32,7 @@ use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn lower(source: &str, file: &str) -> Dag {
     // `compile_to_dag` returns `Ok` iff the module diagnostic table is empty
@@ -63,6 +63,14 @@ fn lower(source: &str, file: &str) -> Dag {
         }
         Err(other) => panic!("unexpected compile error for {file}: {other:?}"),
     }
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("expected src/v3/compiler -> workspace root")
+        .to_path_buf()
 }
 
 fn run_suite_all_pass(dag: &Dag, suite_name: &str) {
@@ -427,7 +435,6 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 
 #[test]
 fn r3_gate_87_cementing_regen_runner_inventory_is_executable() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = BTreeSet::new();
     let mut suites = BTreeSet::new();
 
@@ -450,11 +457,7 @@ fn r3_gate_87_cementing_regen_runner_inventory_is_executable() {
             "gate-87 runner row `{suite}` must name the structural TestClaim receipt(s)"
         );
 
-        let path = manifest_dir
-            .ancestors()
-            .nth(3)
-            .expect("expected src/v3/compiler -> workspace root")
-            .join(file);
+        let path = workspace_root().join(file);
         let disk_source = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read gate-87 runner harness {}: {e}", path.display()));
         assert_eq!(
