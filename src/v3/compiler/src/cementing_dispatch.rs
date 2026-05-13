@@ -347,7 +347,12 @@ fn behaviorally_complete_basenames_from_capability_rows(
 /// Lens basenames whose canonical `std.verification` `lens_capability_register_rows` row carries
 /// `LensCapabilityBehavioralComplete` (any v2 counterpart axis). Used to ratchet the prose
 /// capability table against structural authority for Same-PR `COMPLETE` flips on `regen.dag`
-/// lenses (`lens_register_correspondence_test`).
+/// lenses.
+///
+/// **Merge-visible consumers (integration, not dead code):**
+/// `lens_register_correspondence_test::lens_capability_register_behavioral_complete_matches_md_for_regen_lens_files`
+/// and `lens_register_correspondence_test::regen_lens_behaviorally_complete_requires_gate_87_cementing_harness_path`
+/// (`tests/integration.rs` → `integration/lens_register_correspondence_test.rs`; `cargo test -p v3-compiler`).
 pub fn lens_capability_register_behaviorally_complete_basenames(
     dag: &Dag,
 ) -> Result<BTreeSet<String>, String> {
