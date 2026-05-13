@@ -213,6 +213,8 @@ fn emit_env_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>>
     emit_optional_string_map(v)
 }
 
+/// `Map<String, String>?` for workflow/job/step fields: `none` or `{ k: v, ... }`.
+/// Do not wrap in `Some {{ value: ... }}` (that shape is for other optional carriers).
 fn emit_optional_string_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
     let Some(v) = v else {
         return Ok("none".to_string());
@@ -223,7 +225,7 @@ fn emit_optional_string_map(v: Option<&Value>) -> Result<String, Box<dyn std::er
     if m.is_empty() {
         return Ok("none".to_string());
     }
-    Ok(format!("Some {{ value: {} }}", string_map_literal_body(v)?))
+    Ok(string_map_literal_body(v)?)
 }
 
 fn string_map_literal_body(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
