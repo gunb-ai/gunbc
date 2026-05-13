@@ -57,7 +57,7 @@ Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` (or similar audit-doc pat
 
 This doc is **substrate-progress audit-trail**, not substrate authoring. Cost-of-change: 1 new file, no existing-file edits beyond the `#[ignore]` removal in Phase A.
 
-## §5. Phase C — §1.8 row #63 ledger update
+## §5. Phase C — §1.8 row #63 ledger update + §4.4 substrate-prereq reconciliation
 
 Update `docs/r3-program-plan.md` §1.8 row #63 from DECLARED (or CANVAS_RATIFIED if PM ledger-maintenance landed first) → **CONSUMER_LANDED + PASSING**:
 
@@ -65,6 +65,22 @@ Update `docs/r3-program-plan.md` §1.8 row #63 from DECLARED (or CANVAS_RATIFIED
 - Cite anchor commit `73969f4a9` for `#[ignore]`-planned-deferral receipt
 - Cite Phase B audit doc for sibling-debt mapping
 - Reference rows #99 + #100 as the rows that carry the sibling-debt explicitly
+
+**§4.4 substrate-prereq reconciliation** (per operator BLOCKING PR #2831 worker.md:62 — INVARIANTS P2/P5 single-closure-authority discipline): `docs/r3-program-plan.md` §4.4 enumerates required substrate carriers (`WorkflowTrigger`, `WorkflowStep`, `WorkflowMatrix`, `WorkflowSecret`, `RunnerResource`, `Workflow<Trigger, Steps, Resources>`). At HEAD these carriers exist under different paths/names:
+
+| §4.4 prereq | Actual HEAD location |
+|---|---|
+| `Workflow<Trigger, Steps, Resources>` composing carrier | `dsl/extdeps/github/actions.dag:29` `type Workflow` |
+| `WorkflowTrigger` sum | `dsl/extdeps/github/actions.dag:51` |
+| `WorkflowStep` | `dsl/extdeps/github/actions.dag:222` `type Step` |
+| `WorkflowMatrix<Axes>` | `dsl/extdeps/github/actions.dag:300` `type MatrixStrategy` |
+| `WorkflowSecret<Name>` | `dsl/extdeps/github/actions.dag:114` |
+| `RunnerResource<C>` | `dsl/extdeps/github/actions.dag:205` `type RunnerSpec` + `:211` `type RunnerLabel` |
+| `CIWorkflowDag` (canonical workflow-as-dag carrier) | `dsl/gunbc/ci.dag:120-125,191-200` |
+
+Worker brief Phase C MUST update §4.4 carrier-enumeration with a "substrate-prereqs satisfied at HEAD; landing paths differ from original §4.4 sketch — see mapping above" footnote, citing this PR. This dissolves the dual-closure-authority concern: the substrate-prereq enumeration is satisfied + the test-pass receipt is the §1.8 closure receipt. Single closure authority, multi-receipt evidence.
+
+(Note: Director-ratified Q1=A disposition assumed the substrate was landed; operator BLOCKING surfaced that §4.4 needed explicit reconciliation in the worker brief. Phase C now does this reconciliation atomically with the §1.8 row #63 status flip — preserves Director ratification + addresses operator concern.)
 
 ## §6. STOP conditions
 
