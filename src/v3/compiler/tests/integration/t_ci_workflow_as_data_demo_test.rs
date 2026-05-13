@@ -5,6 +5,11 @@
 //! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
 //! via `evaluate_body` against bind ports resolved from **`generated_full_bootstrap_dag()`**.
 //!
+//! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
+//! hosts the executable receipt that pins `dsl/gunbc/ci.dag` workflow authority and exercises the
+//! timing dimension through the evaluator plus symbolic-cost / complexity / parallelism lens surfaces
+//! on a representative v3 program (`cached_compile_to_dag` — see `lens_self_application_demonstrated`).
+//!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
 //! `_ci_wad_seed_*` in `t_ci_workflow_as_data_demo.dag`). The eager evaluator cannot execute
@@ -16,14 +21,21 @@
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
+use crate::common::cached_compile_to_dag;
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueNode,
+    AtomPayload, Behavior, CompositionVerdict, DeclarationId, EffectShape, FieldValue, IdempotentShape,
+    LiteralBits, NonSingletonList, OperationEffect, TypeConnective, ValueNode, WorkflowEffect,
+    WorkflowParallelismReport,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
+use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
+use v3_compiler::{
+    analyze_complexity, analyze_parallelism, analyze_symbolic_cost_dimension, compile_to_dag,
+    generated_full_bootstrap_dag, CompileError, DimensionReport,
+};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
@@ -42,6 +54,23 @@ const _: &str = include_str!(concat!(
 
 fn demo_bootstrap_dag() -> v3_compiler::dag::Dag {
     generated_full_bootstrap_dag()
+}
+
+fn bind_node_id_named(dag: &v3_compiler::dag::Dag, bind_name: &str) -> v3_compiler::dag::NodeId {
+    dag.nodes()
+        .iter()
+        .find_map(|b| match b {
+            Behavior::Bind(bind) if bind.name == bind_name => Some(bind.id),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing Bind named `{bind_name}`"))
+}
+
+fn lens_self_app_read_op(name: &str) -> OperationEffect {
+    OperationEffect {
+        operation_name: name.to_string(),
+        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    }
 }
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
