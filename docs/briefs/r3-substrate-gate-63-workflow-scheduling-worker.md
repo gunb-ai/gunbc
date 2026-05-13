@@ -153,7 +153,7 @@ PR body MUST cite verbatim + assert receipt-of-compliance:
 
 - `cargo test --workspace` green (must include the un-ignored gate-criterion test under default invocation) — predicate (a) receipt
 - `cargo test -p v3-compiler --test integration t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` green WITHOUT `--ignored` flag (Phase A check)
-- Phase B.1 bridge-inventory grep receipt: unallocated-survivor count = 0 — predicate (b) receipt (§1.4 conjunctive)
+- Phase B.1 two-pass bridge-inventory receipt (Pass-1 authority-surface enumeration + all-lines / YAML-structural classification authoritative; Pass-2 keyword grep cross-check only — see §4.1): unallocated-survivor count = 0 — predicate (b) receipt (§1.4 conjunctive)
 - Phase B.2 audit doc lands at expected path with 5-survivor allocation table + Director msg_804cdc93 quote (STRUCTURAL exception receipt per §7.2)
 - §1.8 row #63 status updated to CONSUMER_LANDED + PASSING with all required cites
 - PR body cites:

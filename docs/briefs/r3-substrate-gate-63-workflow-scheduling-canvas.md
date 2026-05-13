@@ -164,7 +164,7 @@ No new sum-type proposed in this canvas. All three candidates work with existing
 
 ## §7. Cost-of-change accounting (REVISED per snappy-bear-502 msg_cef1340b)
 
-Cost-of-change is per the **revised Candidate A scope** (administrative un-ignore; 5 sibling failures excluded as separately-scoped substrate-debt). See §2 + §3.A + §10 for the revised framing.
+Cost-of-change is per the **revised Candidate A scope** (administrative un-ignore; 5 sibling failures excluded as separately-scoped substrate-debt). See §2 + §3 (Candidate A) + §10 for the revised framing.
 
 | Candidate | Files edited to close gate #63 |
 |---|---|
@@ -177,7 +177,8 @@ Cost-of-change is per the **revised Candidate A scope** (administrative un-ignor
 1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline (§4); any closure must un-ignore the gate-criterion test
 2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (violates `INVARIANTS.md` P5 "Progress Is Dissolution"; atomic-migration discipline per `feedback_load_bearing_ratchet_preservation`)
 3. **Parallel-authority on CIWorkflowDag execution path** — if T-Lens-Self-Application has a competing DimensionReport producer shape, canvas should surface, not duplicate
-4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P2 boundary / duplicate-fact issue (demo passes; production doesn't — two sources of truth)
+4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P2 boundary / duplicate-fact issue (demo passes; production doesn't — two sources of truth). The Q1=A narrowing IS Director-ratified per msg_804cdc93; the anti-pattern fires only on implicit "demo IS production" claims, not the explicit Director-allocated demo-as-receipt + rows #99/#100-as-residual structure. Worker brief §7 #4 carries the verbatim ratification cite.
+5. **Scope-broadening a gate closure to absorb sibling-test substrate-debt with own §1.8 ledger rows** (Director-ratified anti-pattern per msg_804cdc93) — gate #63 closure MUST NOT pull the 5 sibling failures (snappy-bear-502 audit) into its scope; those are Director-allocated to rows #99 (workflow_runtime_open_enum_landed) + #100 (project_github_actions_landed) per Phase B.2 STRUCTURAL exception (§7.2 + debt-sweep §3.A). Worker brief §7 #5 carries the verbatim cite.
 
 ## §9. Open questions (RATIFIED 2026-05-13 per Director msg_804cdc93; preserved for audit trail)
 
