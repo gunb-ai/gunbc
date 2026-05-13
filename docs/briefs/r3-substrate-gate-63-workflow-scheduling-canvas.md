@@ -75,7 +75,7 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 **Scope shifted per snappy-bear-502 msg_cef1340b correction**:
 
 - Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`) — **§1.4 predicate (a) receipt**
-- Worker Phase B.1 systematic Class 4 bridge inventory: grep `src/v3/` for every Class 4 bridge site; classify pass-through / allocated-survivor (cite §1.8 row #) / unallocated-survivor; assert **unallocated-survivor count = 0** — **§1.4 predicate (b) receipt**
+- Worker Phase B.1 systematic Class 4 bridge inventory (two-pass — worker brief §4.1 is authoritative): **Pass 1** authority-surface enumeration (closed file list across src/v3/ + dsl/ + .github/workflows/) + all-lines / YAML-structural classification of every workflow/scheduling fact; **Pass 2** content-keyword grep cross-check (never sole receipt). Each fact classified pass-through / allocated-survivor (cite §1.8 row #) / unallocated-survivor; receipt asserts **unallocated-survivor count = 0** — **§1.4 predicate (b) receipt**
 - Worker Phase B.2 sibling-debt audit doc: 5 snappy-bear-502 failures enumerated as Director-allocated to rows #99/#100 per Director msg_804cdc93 (the STRUCTURAL exception citation per §7.2 + debt-sweep §3.A); these are Class 4 bridge survivors with explicit Director allocation, not unallocated
 - Close gate #63 on **conjunctive (a) + (b) receipts** + §4.4 substrate-prereq reconciliation
 
@@ -93,7 +93,7 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 | `RunnerResource<C>` | `:205` (`RunnerSpec`) + `:211` (`RunnerLabel`) |
 | `CIWorkflowDag` (workflow-as-dag canonical) | `dsl/gunbc/ci.dag:120-125,191-200` |
 
-All 6 §4.4 prereq carriers EXIST under different paths/names than §4.4 originally sketched. Phase C requires worker to footnote §4.4 with the path-mapping above, citing the closure PR — this dissolves the dual-closure-authority concern (INVARIANTS P2/P5) by making the §4.4 enumeration + §1.8 row #63 closure receipt explicitly consistent. Single closure authority, multi-receipt evidence.
+All 7 mapping-table rows (6 §4.4 substrate carriers + CIWorkflowDag canonical composing carrier) EXIST under different paths/names than §4.4 originally sketched. Phase C requires worker to footnote §4.4 with the path-mapping above, citing the closure PR — this dissolves the dual-closure-authority concern (INVARIANTS P2/P5) by making the §4.4 enumeration + §1.8 row #63 closure receipt explicitly consistent. Single closure authority, multi-receipt evidence.
 
 Pros:
 - **Smallest possible blast-radius** — single `#[ignore]` removal + Phase B.1/B.2 grep-and-doc receipts + §4.4 footnote + test promotion
@@ -208,7 +208,7 @@ Recommended **revised scope**:
 
 **Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring.
 
-**Sibling-debt note**: the 5 failures from `--include-ignored` are separately worth tracking. Worker brief Phase D could include "surface sibling-debt audit document" with the 5 specific failure modes as a Mgr-tier follow-on triage item, not a gate #63 closure-blocker.
+**Sibling-debt note**: the 5 failures from `--include-ignored` are separately worth tracking. Worker brief Phase B.2 surfaces the sibling-debt audit document with the 5 specific failure modes as Director-allocated to rows #99/#100 per msg_804cdc93 (the STRUCTURAL exception receipt) — not a gate #63 closure-blocker.
 
 ## §11. Reference
 
