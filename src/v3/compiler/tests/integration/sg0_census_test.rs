@@ -1148,9 +1148,7 @@ fn temporary_rust_stems_from_cementing_dispatch_dag() -> BTreeSet<String> {
                     pending_stem = Some(inner.to_string());
                 }
             }
-            continue;
-        }
-        if let Some(rest) = t.strip_prefix("kind:") {
+        } else if let Some(rest) = t.strip_prefix("kind:") {
             let kind = rest.trim();
             if kind == "TemporaryRustModule" {
                 if let Some(stem) = pending_stem.take() {
