@@ -46,9 +46,10 @@ type TestClaim {
 // modeled test node. This deliberately does not reuse compiler-internal
 // `SymbolicCost`: the slow-test ratchet needs observed/budgeted wall-clock
 // cost for the test node itself. **Target:** #102 derives ratchet policy from
-// those substrate facts. **Shipped:** CI reads modeled warn tokens from
-// `dsl/gunbc/test_node_wall_clock_ratchet.dag` (projected by `gunbc-ci`) — see
-// gate #102. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
+// those substrate facts. **Interim (not #102 closure):** warn-token rows live in
+// `dsl/gunbc/test_node_wall_clock_ratchet.dag` and are projected for shell/JQ until
+// the runner routes policy off `TestNodeCostDimension` facts instead of a parallel
+// warn-name list. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
 // rows per test where paydown replaces warn-only policy.
 //
 // Legacy dsl projection note: this tree does not carry T-WAD's v3
