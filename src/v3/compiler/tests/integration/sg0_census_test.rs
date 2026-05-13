@@ -40,6 +40,20 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
+const RETIRED_LENS_APPLY_RS: &str = "src/v3/compiler/src/lens_apply.rs";
+
+#[test]
+fn r3_gate_5_lens_apply_rs_stays_retired() {
+    let retired_path = workspace_root().join(RETIRED_LENS_APPLY_RS);
+
+    assert!(
+        !retired_path.exists(),
+        "R3 gate #5 (`lens_apply_dot_rs_retired`) requires \
+         `{RETIRED_LENS_APPLY_RS}` to stay retired. Bounded lens application \
+         (`apply_lens_declaration`, reflection helpers) lives in \
+         `lens_declaration_apply.rs` until PB-Runtime owns the surface end-to-end."
+    );
+}
 
 #[test]
 fn r3_gate_6_lens_testgen_rs_stays_retired() {
@@ -49,7 +63,7 @@ fn r3_gate_6_lens_testgen_rs_stays_retired() {
         !retired_path.exists(),
         "R3 gate #6 (`lens_testgen_dot_rs_retired`) requires \
          `{RETIRED_LENS_TESTGEN_RS}` to stay retired. Keep the stable \
-         `v3_compiler::lens_testgen` API routed through `lens_apply.rs` \
+         `v3_compiler::lens_testgen` API routed through `lens_declaration_apply.rs` \
          until PB-Runtime owns testgen end-to-end."
     );
 }
@@ -281,7 +295,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
     // `tests/integration/common/mod.rs`).
     "src/v3/compiler/src/integration_rs_wiring_scan.rs",
-    "src/v3/compiler/src/lens_apply.rs",
+    "src/v3/compiler/src/lens_declaration_apply.rs",
     "src/v3/compiler/src/lens_t_las_carrier.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",

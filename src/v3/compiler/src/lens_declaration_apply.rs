@@ -1,13 +1,11 @@
 //! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
 //!
-//! **R3 `lens_apply_dot_rs_retired` — canonical acceptance vs edits here:** Gate closure is
-//! **deletion of this file** plus **`EXPECTED_HAND_AUTHORED_NON_TEST` shrink** in
-//! `src/v3/compiler/tests/integration/sg0_census_test.rs`, after PB-Runtime / §7.1 Row-4 readiness,
-//! per `docs/r3-program-plan.md` §1.8 (gate **#5**). **Pre-closure retirement-lane PRs may still
-//! grow or refactor this file** as migration signal; that work is **not** the acceptance receipt and
-//! does not certify the gate. Branch merge deferral (§7.1) and INVARIANTS P5(b) explicit deferral +
-//! dissolution trigger are stated on the tracking PR body.
+//! **R3 gate #5 (`lens_apply_dot_rs_retired`):** the legacy path
+//! `src/v3/compiler/src/lens_apply.rs` is **retired** (path absent from the tree).
+//! Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
+//! readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
+//! `INVARIANTS` P5(b) deferral language on the tracking PR.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -277,11 +275,11 @@ fn find_fold_step_bind_via_instantiation(
 /// absence (INVARIANTS P2/P3). Evaluator frame/build failures and [`evaluate_body`] errors still
 /// return `Ok(None)` so [`EvalCtx`] can recover typed diagnostics (overflow, branch miss, loops).
 ///
-/// **Not gate closure:** This helper does **not** satisfy `lens_apply_dot_rs_retired`; canonical
-/// acceptance remains **file deletion + SG-0 shrink** after Row-4 (see module docs above).
+/// **Not full PB-Runtime retirement:** This helper does **not** complete the Row-4 /
+/// interpreter-as-data dissolution by itself; canonical shrink of this module waits on
+/// §7.1 receipts. Expand coverage until the bounded-lens host can delete entirely.
 ///
-/// **Merge:** still gated on §7.1 Row-4 green; this is early signal only — expand coverage until
-/// `lens_apply.rs` can retire entirely.
+/// **Merge:** still gated on §7.1 Row-4 green; this is early signal only.
 fn try_apply_lens_via_evaluator_literals_only(
     lens_program: &Dag,
     root_bind: &BindNode,

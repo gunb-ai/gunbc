@@ -3755,9 +3755,9 @@ pub mod evaluator {
 }
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
-/// (see module docs in `lens_apply.rs`).
-pub mod lens_apply;
-pub use lens_apply::lens_testgen;
+/// (see module docs in `lens_declaration_apply.rs`).
+pub mod lens_declaration_apply;
+pub use lens_declaration_apply::lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
 /// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is

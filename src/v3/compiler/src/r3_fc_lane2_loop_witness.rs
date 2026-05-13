@@ -13,7 +13,7 @@
 //! **(b)** citing that ROADMAP URL, not research-only briefs as sole authority. Shape discussion (not
 //! authorization) remains in `docs/briefs/r3-v-auto-loop-parallelism-cross-target-witness-shapes.md`.
 //!
-//! **Paired scaffold:** [`crate::lens_apply::apply_lens_declaration`] special-cases lens
+//! **Paired scaffold:** [`crate::lens_declaration_apply::apply_lens_declaration`] special-cases lens
 //! `auto_loop_parallelism_pending_lens` when `program_under_test` is `Some`; dissolve **together**
 //! with this scanner when lowering installs `lane2_workflow` from surface syntax.
 //!
