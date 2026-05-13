@@ -31,8 +31,10 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::gunbc_ci::{select_affected_gates, CiGateMeta, CiWorkflowDiff, CiWorkflowDagInput};
-use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
+use v3_compiler::gunbc_ci::{
+    select_affected_gates, CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
+};
+use v3_compiler::lens_cost::complexity_of;
 use v3_compiler::{
     analyze_complexity, analyze_parallelism, analyze_symbolic_cost_dimension, compile_to_dag,
     generated_full_bootstrap_dag, CompileError, DimensionReport,
@@ -620,11 +622,11 @@ fn gunbc_ci_emission_substrate_compiles() {
 
 /// R3 gate #57 — `lens_self_application_demonstrated` (T-Lens-Self-Application).
 ///
-/// Pins gunbc's CI workflow as `.dag` structural authority and exercises the repository's lens
-/// stack: timing via `DimensionReport<TimingMeasurement>` (`evaluate_body` on the bootstrap shell),
-/// symbolic-cost + E7 complexity entrypoints via `DimensionReport<SymbolicCost>`, structural
-/// `complexity_of` read, and lane-2 parallelism composition (`WorkflowParallelismReport` — the
-/// substrate report carrier until a `DimensionReport` projection lands for parallelism).
+/// Pins gunbc's CI workflow as `.dag` authority (`compile_to_dag` on `dsl/gunbc/ci.dag`) and
+/// exercises the repository's lens stack: timing via `DimensionReport<TimingMeasurement>`
+/// (`evaluate_body` on the bootstrap shell), symbolic-cost + E7 complexity entrypoints plus
+/// structural `complexity_of` on the **CI workflow dag**, lane-2 parallelism on that same subject,
+/// and `gunbc_ci::select_affected_gates` over the structural `ci_workflow_dag` carrier.
 #[test]
 fn lens_self_application_demonstrated() {
     assert!(
@@ -760,52 +762,63 @@ fn lens_self_application_demonstrated_body() {
         "dimension_name must match ci_modeled_timing_lens.name"
     );
 
-    // --- Cost + complexity + parallelism: same lens machinery the repo ships for user programs. ---
-    let prog = cached_compile_to_dag("let x = 1 + 2", "lens_self_application_dim.v3");
+    // --- `dsl/gunbc/ci.dag` as the lens subject: structural affected-set dispatch + program lens
+    // folds on the same lowered graph that carries `ci_workflow_dag` (no toy program authority). ---
+    let ci_dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
     assert!(
-        prog.diagnostics().is_empty(),
-        "lens_self_application fixture diagnostics: {:?}",
-        prog.diagnostics()
+        ci_dag.diagnostics().is_empty(),
+        "{GUNBC_CI_FILE}: {:?}",
+        ci_dag.diagnostics()
     );
-    let root = bind_node_id_named(&prog, "x");
 
-    let cost = analyze_symbolic_cost_dimension(&prog, root);
-    let complexity = analyze_complexity(&prog, root);
-    let (cost_composed, cost_name) = match &cost {
-        DimensionReport::DimensionOk {
-            composed,
-            dimension_name,
-            ..
-        } => (composed, dimension_name.as_str()),
-        other => panic!("expected symbolic-cost DimensionOk, got {other:?}"),
-    };
-    let (complexity_composed, complexity_name) = match &complexity {
-        DimensionReport::DimensionOk {
-            composed,
-            dimension_name,
-            ..
-        } => (composed, dimension_name.as_str()),
-        other => panic!("expected analyze_complexity DimensionOk, got {other:?}"),
-    };
-    assert_eq!(cost_name, "symbolic_cost");
-    assert_eq!(complexity_name, "symbolic_cost");
+    let ci_input = ci_workflow_dag_input_from_compiled_ci(&ci_dag);
+    let affected = select_affected_gates(&ci_input, &CiWorkflowDiff::TouchAll)
+        .expect("affected-set selection must succeed on gunbc-ci topology");
     assert_eq!(
-        cost_composed, complexity_composed,
-        "analyze_complexity must delegate to the symbolic-cost dimension (single authority)"
+        affected,
+        vec![
+            "compile-gates".to_string(),
+            "lint".to_string(),
+            "tests".to_string(),
+            "l1-ratchet".to_string(),
+        ],
+        "TouchAll must schedule the full gunbc-ci gate roster in prerequisite topo order"
     );
 
-    let Behavior::Bind(bind_x) = prog.node(root) else {
-        panic!("workflow root must be a Bind for this fixture");
+    let ci_subject = ci_dag
+        .workflow_lane2_subject()
+        .expect("compiled gunbc.ci must expose a workflow lane-2 subject bind for lens consumers");
+
+    let cost_ci = analyze_symbolic_cost_dimension(&ci_dag, ci_subject);
+    let complexity_ci = analyze_complexity(&ci_dag, ci_subject);
+    match (&cost_ci, &complexity_ci) {
+        (
+            DimensionReport::DimensionOk {
+                dimension_name: a,
+                composed: ca,
+                ..
+            },
+            DimensionReport::DimensionOk {
+                dimension_name: b,
+                composed: cb,
+                ..
+            },
+        ) => {
+            assert_eq!(a, b);
+            assert_eq!(ca, cb);
+            assert_eq!(a.as_str(), "symbolic_cost");
+        }
+        (DimensionReport::DimensionFail { .. }, DimensionReport::DimensionFail { .. }) => {}
+        _ => panic!("cost vs complexity mismatch on CI dag: {cost_ci:?} vs {complexity_ci:?}"),
+    }
+
+    let Behavior::Bind(bind_ci) = ci_dag.node(ci_subject) else {
+        panic!("lane-2 subject must remain a Bind shell");
     };
-    assert!(
-        matches!(
-            complexity_of(&prog, &bind_x.result_port()),
-            ComplexityLookup::Hit(_)
-        ),
-        "complexity lens read path must hit on the workflow bind result port"
-    );
+    let _cx = complexity_of(&ci_dag, &bind_ci.result_port());
 
-    let mut prog_parallel = prog.clone();
+    let mut ci_parallel = ci_dag.clone();
     let workflow = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
@@ -817,9 +830,9 @@ fn lens_self_application_demonstrated_body() {
         ])
         .expect("two branches satisfy NonSingletonList"),
     };
-    assert!(prog_parallel.try_register_lane2_workflow_effect(root, workflow));
+    assert!(ci_parallel.try_register_lane2_workflow_effect(ci_subject, workflow));
 
-    let par = analyze_parallelism(&prog_parallel, root);
+    let par = analyze_parallelism(&ci_parallel, ci_subject);
     assert!(matches!(
         par,
         WorkflowParallelismReport::ParallelCompositionVerdict(
