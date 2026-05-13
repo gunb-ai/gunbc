@@ -334,9 +334,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 
 // All test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
-// workspace root. T-PB-B owns shrinking this subset toward the
-// TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
-// rely on this list moving.
+// workspace root. T-PB-B owns shrinking this subset toward **zero**
+// hand-maintained Rust tests (`ROADMAP.md` lane acceptance row `T-PB-B` /
+// `pb_rust_tests_outside_residual_zero`; cascade promotion 2026-04-25
+// retracted the legacy `TESTING.md` "Post-R2 shape" residual carve-out).
+// T-PB-A reductions must not rely on this list moving.
 // Slice 1 census reconciliation (2026-05-02): sorted path list; update when
 // adding/removing hand-authored integration tests (SG-0 ratchet).
 //
@@ -349,6 +351,25 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
+//
+// **G87 cementing-family SG-0 residual inventory + upstream blockers (closed world).**
+// - **Directory** `tests/integration/cementing/*.rs` — every file is ratcheted here; see
+//   `sg0_cementing_family_integration_directory_is_census_locked`.
+// - **Paired gate-#87 tests outside that directory** — `CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR`
+//   (keep in sync when moving wiring / regen-receipt modules).
+// - **PB-B-1 DAG runner** `t_pb_b_1_dag_runner_test.rs` — shared with gate #74 + R1C-D/E;
+//   not duplicated in that const; gate-#87 wiring is the `R3_GATE_87_CEMENTING_REGEN_SUITES` slice.
+// - **Band-C registry correspondence** — `lens_register_correspondence_test.rs` (v2-cementing vs
+//   `cementing_dispatch.dag`); gate #84 audit class `LensOutputEquality`, not `CementingV2Oracle`.
+// - **Non-test SG-0 producers / shims** (see `EXPECTED_HAND_AUTHORED_NON_TEST`):
+//   `cementing_dispatch.rs`, `integration_rs_wiring_scan.rs`, `r3_gate_87_cementing_regen_runner_suites.rs`.
+// - **Named upstream blockers** (dissolution triggers; cite in deferrals, not ad-hoc PR nits):
+//   `Gate73_ReportPredicateCarriers` (`complexity_lens_behavioral_completion.rs` until
+//   `ComplexitySummary` is substrate-evaluable in `.dag` claims); **gate #78** host
+//   `symbolic_cost_of` alias-collapse post-pass (`cost_lens_symbolic_consumer_test.rs` — not the
+//   Band-C `cost_symbolic` receipt in `t_r3_gate_87_cementing_regen_cost_symbolic.dag`); **M1(2.8)**
+//   / full public list carriers for placeholder `.dag` harness rows (`r3_gate_87_lens_cementing_regen_receipts_test.rs`
+//   module docs); **gate #94** application-surface (`memory_peak_cost_basis_demo.rs`).
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
@@ -746,6 +767,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
 ];
 
+/// Gate #87 / Band-C cementing integration tests that live **outside**
+/// `tests/integration/cementing/` but are part of the same SG-0 dispatch slice.
+/// Keep in sync with [`EXPECTED_HAND_AUTHORED_TEST`]; see
+/// `sg0_cementing_family_integration_directory_is_census_locked`.
+const CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR: &[&str] = &[
+    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
+    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+];
+
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
 // hand-authored and text-inlined into generated Rust (or otherwise
 // dissolve when the corresponding `.dag` authority lands). The
@@ -1106,9 +1136,54 @@ fn sg0_v3_test_hand_authored_subratchet() {
     assert_eq!(
         observed, expected,
         "T-PB-B test SG-0 sub-ratchet drifted. Retirements should be removed from \
-         EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
-         residual or wait for the testgen path."
+         EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests need director sign-off or a \
+         `.dag`/generated path per ROADMAP `pb_rust_tests_outside_residual_zero`."
     );
+}
+
+#[test]
+fn sg0_cementing_family_integration_directory_is_census_locked() {
+    let ws = workspace_root();
+    let cementing_dir = ws.join("src/v3/compiler/tests/integration/cementing");
+    let census: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+
+    let mut on_disk = BTreeSet::new();
+    for entry in fs::read_dir(&cementing_dir).unwrap_or_else(|e| {
+        panic!("read_dir {}: {e}", cementing_dir.display());
+    }) {
+        let entry = entry.expect("cementing dir entry");
+        let path = entry.path();
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(&ws)
+            .expect("cementing dir under workspace")
+            .to_string_lossy()
+            .replace('\\', "/");
+        on_disk.insert(rel);
+    }
+
+    assert!(
+        !on_disk.is_empty(),
+        "expected at least one `tests/integration/cementing/*.rs` source file"
+    );
+
+    for path in &on_disk {
+        assert!(
+            census.contains(path.as_str()),
+            "cementing-family integration file `{path}` must be listed in \
+             `EXPECTED_HAND_AUTHORED_TEST` (SG-0 single inventory)"
+        );
+    }
+
+    for path in CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR {
+        assert!(
+            census.contains(path),
+            "cementing-family paired path `{path}` dropped from `EXPECTED_HAND_AUTHORED_TEST` \
+             without updating `CEMENTING_FAMILY_SG0_TEST_PATHS_OUTSIDE_CEMENTING_DIR`"
+        );
+    }
 }
 
 #[test]
