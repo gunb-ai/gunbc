@@ -4668,27 +4668,51 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if let Err(reason) = self.resolve_pb_marker_ref(
-            subset_predicate,
-            "subset_predicate",
-            "lens_producer_files_subset_predicate",
-            "LensProducerFilesSubsetPredicate",
-        ) {
-            return ClaimResult::Fail(reason);
-        }
+        let FieldValue::Reference(subset_id) = subset_predicate else {
+            return ClaimResult::Fail(format!(
+                "PB census predicate `subset_predicate` should be a DeclarationRef, got {subset_predicate:?}"
+            ));
+        };
+        let subset_name = self.dag.declaration(*subset_id).name.as_deref().unwrap_or("");
+        let (predicate, subset_label): (fn(&str) -> bool, &str) = match subset_name {
+            "lens_producer_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "lens_producer_files_subset_predicate",
+                    "LensProducerFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_lens_producer_census_path, "lens-producer")
+            }
+            "bin_shim_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "bin_shim_files_subset_predicate",
+                    "BinShimFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_bin_shim_census_path, "bin-shim")
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "PB census predicate `subset_predicate` references unknown predicate `{other}`"
+                ));
+            }
+        };
         let entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let count = entries
-            .iter()
-            .filter(|path| is_lens_producer_census_path(path))
-            .count() as i64;
+        let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "CensusSubsetCount `{list_constant_name}` lens-producer subset observed {count}"
+                "CensusSubsetCount `{list_constant_name}` {subset_label} subset observed {count}"
             ))
         }
     }
@@ -6304,6 +6328,10 @@ fn is_lens_producer_census_path(path: &str) -> bool {
         path,
         "src/v3/compiler/src/lens_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
+}
+
+fn is_bin_shim_census_path(path: &str) -> bool {
+    path.starts_with("src/v3/compiler/src/bin/")
 }
 
 fn compiler_std_positive_set_ratchet_count() -> i64 {
