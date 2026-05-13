@@ -36,7 +36,7 @@ use crate::dag::{
     TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
-    declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
+    declaration_display_name, witness_correction_for_decl, Correction, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
@@ -5477,7 +5477,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires `op` as a resolved algebra field reference"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
@@ -5493,7 +5493,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires canonical `OrderedRing.eq`, but the `OrderedRing` algebra metadata is unavailable"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
@@ -5506,7 +5506,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` is only legal with `op: OrderedRing.eq` (fail-closed narrowing); resolved `op` does not match canonical `OrderedRing.eq`"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
