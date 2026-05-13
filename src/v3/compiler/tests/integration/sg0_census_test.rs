@@ -453,6 +453,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // when extdeps transport files are covered by a `.dag`-native parse/authority
     // suite or generated test harness.
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
+    "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
