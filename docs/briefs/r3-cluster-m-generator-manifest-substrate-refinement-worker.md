@@ -15,9 +15,9 @@
 Per Director msg_606e0e50 §"Q-RegenCapability RATIFIED: (β) SPLIT" + §"Q-FixtureMapping RATIFIED: deferred":
 
 **IN-SCOPE this PR (Substrate-Mgr-owned)**:
-- Substrate-shape change: `verification.dag` `GeneratedFromDag` refinement + new `GeneratedManifestEntry` type + `ContentHash` field
+- Substrate-shape change: `verification.dag` `GeneratedFromDag` refinement + new `GeneratedManifestEntry = PendingFact | ResolvedFact` sum-variant (RE-RATIFIED msg_3b99a90f; `ResolvedFact.source_hash: NonEmptyStr` per Q3-RE-AMEND β msg_8423d468)
 - 4-site `test_runner.rs` migration: lockstep field-rename only (minimal-shape; no new evaluator runtime capability)
-- #86 PASSING transitions in-place via shape-change (existing predicate sites carry minimal-shape `manifest_entries` with trivial `dag_source` + trivial `source_hash`; gate satisfies on shape, not on byte-equality firing)
+- #86 PASSING transitions in-place via shape-change (existing predicate sites carry `PendingFact { output_path }` only — no fabricated `dag_source` / `source_hash` per INVARIANTS P3 / C-9; `ResolvedFact` materialisation defers to the follow-up Evaluator-Mgr-owned runtime PR at its hash-derivation construction boundary; gate satisfies on shape, not on byte-equality firing)
 - Bootstrap regen via standard `regen.dag` flow (NOT hand-edit)
 
 **OUT-OF-SCOPE this PR (split to follow-ups)**:
