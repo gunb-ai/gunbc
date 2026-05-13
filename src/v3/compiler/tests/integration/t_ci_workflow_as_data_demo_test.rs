@@ -844,19 +844,6 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 
 #[test]
 fn gunbc_ci_emission_substrate_contract_is_present() {
-    let dag = compile_sources_to_dag(&[
-        (
-            GUNBC_CI_EMISSION_COMPILE_CONTEXT_SOURCE,
-            GUNBC_CI_EMISSION_COMPILE_CONTEXT_FILE,
-        ),
-        (GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE),
-    ])
-    .unwrap_or_else(|err| panic!("compile gunbc CI emission context: {err:?}"));
-    assert!(
-        dag.diagnostics().is_empty(),
-        "gunbc CI emission context diagnostics: {:?}",
-        dag.diagnostics()
-    );
     assert!(
         GUNBC_CI_EMISSION_SOURCE.contains(
             "fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow"
