@@ -137,12 +137,12 @@ Cons:
 ```dag
 | PolynomialCost { var: SizeVariable, degree: Rational where nonzero }
 ```
-(LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`. Per Director scope-extension msg_2c1bfb0e: **no `where` refinement** — signed Rational admits negative degrees for asymptotic-decay coverage.)
+(LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`. Per Director scope-extension msg_2c1bfb0e + msg_b80bcaa8: **no positivity / `gt_zero` refinement** — signed Rational admits negative degrees for asymptotic-decay coverage; **carrier-level `where nonzero` refinement IS present** to exclude degree=0 collision with ConstantCost per Practice-2 (Director Option B ratification msg_b80bcaa8).)
 
 Pros:
 - Single uniform variant for all positive-degree polynomial bounds
 - Sum/product algebra closes uniformly: `PolyCost(d1) · PolyCost(d2) = PolyCost(d1+d2)` no Linear special case
-- 11 → 10 net (Linear absorbed); aligns with §P5 Progress Is Dissolution
+- 7 → 9 net (per §1 ratified scope: PROMOTE PolyCost.degree + ADD 3 new variants + REMOVE LinearCost = +3 net new variants over the existing 7; LinearCost-absorption aligns with §P5 Progress Is Dissolution). PolynomialCost.degree promotion is not a new variant — see §4 closing line for the variant-count reconciliation.
 
 Cons:
 - **Migration**: all LinearCost-consumer paths must rewrite to PolynomialCost(degree=1)
