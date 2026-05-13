@@ -33,6 +33,7 @@
 //! ratchet would misread those rows as drift.
 
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use v3_compiler::cementing_dispatch;
@@ -262,6 +263,25 @@ fn register_lens_basenames() -> BTreeSet<String> {
         .collect()
 }
 
+fn src_v3_lenses_basenames() -> BTreeSet<String> {
+    let lens_dir = workspace_root().join("src/v3/lenses");
+    std::fs::read_dir(&lens_dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", lens_dir.display()))
+        .map(|entry| {
+            entry.unwrap_or_else(|e| panic!("read entry in {}: {e}", lens_dir.display()))
+        })
+        .filter_map(|entry| {
+            let path = entry.path();
+            (path.extension() == Some(OsStr::new("dag"))).then(|| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_else(|| panic!("non-utf8 lens path {}", path.display()))
+                    .to_string()
+            })
+        })
+        .collect()
+}
+
 #[test]
 fn every_regen_lens_entry_has_a_capability_register_row() {
     let regen = regen_lens_file_basenames();
@@ -277,6 +297,20 @@ fn every_regen_lens_entry_has_a_capability_register_row() {
          of `docs/v3-lens-capability-register.md` for each missing lens, \
          declaring both its structural and behavioral status. Current \
          register-visible basenames: {register:?}."
+    );
+}
+
+#[test]
+fn every_src_v3_lens_file_has_a_capability_register_row() {
+    let lens_files = src_v3_lenses_basenames();
+    let register = register_lens_basenames();
+    let missing: Vec<&String> = lens_files.difference(&register).collect();
+    assert!(
+        missing.is_empty(),
+        "`docs/v3-lens-capability-register.md` describes every `.dag` lens under \
+         `src/v3/lenses/`; each on-disk lens file must have a matching row in the \
+         `## Capability table`, including non-regen lenses. Missing lens basename(s): \
+         {missing:?}. Current register-visible basenames: {register:?}."
     );
 }
 

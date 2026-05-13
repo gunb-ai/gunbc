@@ -199,7 +199,19 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
     v2_counterpart: LensCapabilityV2NoneV3Native
   },
   {
+    lens_basename: "dag_shape.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
     lens_basename: "effect_enumeration.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralPartial
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "emission_provenance.dag"
     structural: LensCapabilityStructuralTerminal
     behavioral: LensCapabilityBehavioralPartial
     v2_counterpart: LensCapabilityV2NoneV3Native
@@ -243,6 +255,12 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   {
     lens_basename: "infer_helpers.dag"
     structural: LensCapabilityStructuralPartial
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NotApplicable
+  },
+  {
+    lens_basename: "lens_composition_associative_witness.dag"
+    structural: LensCapabilityStructuralTerminal
     behavioral: LensCapabilityBehavioralNA
     v2_counterpart: LensCapabilityV2NotApplicable
   },
