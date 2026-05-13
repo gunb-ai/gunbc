@@ -238,9 +238,9 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "Gate #103 — Layer 1 affected-set selection (BinaryShim receipt → gate plan)" },
+          name: Some { value: "Gate #103 — Layer 1 selection + workflow YAML policy (integration)" },
           id: none,
-          run: "cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet",
+          run: "set -euo pipefail\ncargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet\ncargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet\n",
           shell: Bash,
           env: none,
           working_directory: none,

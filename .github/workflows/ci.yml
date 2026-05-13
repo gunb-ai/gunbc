@@ -193,8 +193,13 @@ jobs:
       - name: "Gate #103 — path-regex inventory ratchet (canvas §5)"
         run: bash scripts/check-workflow-path-regex-inventory.sh
 
-      - name: "Gate #103 — Layer 1 affected-set selection (BinaryShim receipt → gate plan)"
-        run: cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
+      # Also runs `workflow_no_path_regex_policy_ci_yml` (Rust belt-and-suspenders vs the shell
+      # ratchet above; same forbidden-substrings manifest).
+      - name: "Gate #103 — Layer 1 selection + workflow YAML policy (integration)"
+        run: |
+          set -euo pipefail
+          cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
+          cargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet
 
   # Merge-blocking heavy compute always runs on non-draft PRs and on pushes to
   # main. Docs-only skip was removed as **Layer 2 Phase C** hygiene under gate
