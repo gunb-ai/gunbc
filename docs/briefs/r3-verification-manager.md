@@ -1,6 +1,18 @@
 # R3 Verification Manager Brief
 
-**Status:** PROPOSAL — manager brief authored at R3 spin-up (post-R2-close 2026-04-30 per [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) §"Director closure acceptance"). Spawned per [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure" Item 2 (Director-locked 2026-04-28).
+**Status:** ACTIVE — manager brief authored at R3 spin-up (post-R2-close 2026-04-30 per [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) §"Director closure acceptance"), then refreshed for the 2026-05-13 actual-close ratification. Spawned per [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure" Item 2 (Director-locked 2026-04-28).
+
+## 2026-05-13 actual-close lane update
+
+`docs/r3-actual-close-plan.md` is now the controlling close-plan artifact for Verification-owned work. The operator ratified the IN-R3 path for the Verification gaps on 2026-05-13; R4 deferral and narrowed Rust-only closure paths are structurally foreclosed for this lane. This manager therefore owns the lane-through-close implementation posture below, not the older standby-only posture in the original brief:
+
+| Actual-close item | Verification obligation | Close predicate |
+|---|---|---|
+| Gap 2 — L5 cross-target consistency / gate #15 | Land the certification corpus and the three-target Rust/Python/Go runtime-behavior parity assertion. Coordinate with Substrate only for missing carrier/emitter support; the gate remains Verification-owned. | `cargo test --release -p v3-compiler --test l5_cross_target_consistency` passes with `N > 0` corpus programs and all three Shape-A targets agreeing on runtime behavior. |
+| Gap 5 — tests-as-data completeness / gates #84 + #85 | Drive Cluster M Phase 3 bulk-port to `.dag` `TestClaim` or generated test artifacts, including the generator-manifest authority for surviving generated Rust tests. | `EXPECTED_HAND_AUTHORED_TEST` is empty in `sg0_census_test.rs`; the generator manifest covers every surviving Rust test file and regeneration byte-comparison passes; SuiteClaim wrapper consumer for #85 is landed. |
+| T-WAD Slice 7 — affected-set integration | Consume the affected-set lens output in the BinaryShim CI path once Slice 5 exists; remove Layer-2 path-regex workflow selection authority from remaining workflow files. | `ci_uses_affected_set_selection` is PASSING: BinaryShim CI selection is driven by affected-set lens output, with no path-regex `if:` bridge remaining as CI authority. |
+
+The manager should dispatch worker slices directly against these predicates. Brief maintenance that does not reduce one of these predicates is not lane-closing work.
 
 ## Orient before reading
 
@@ -14,9 +26,11 @@
 
 | Item | Size | Status (at brief authoring) | Gates on |
 |---|---|---|---|
-| **Lane 1: T-V-L4-L7-Direct** | M | **Worker brief authored, standby** — [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md). Per-target equivalence harness using `DifferentialEquals` predicate (consumes Worker B PR-D scaffold per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §slice 1). NOT a `Lens<C>` instance per codex BLOCKING `f5f63c7d9` — runtime equivalence check, not structural fold. | R2-Evaluator PR-A.3 implementation carriers + PR-B body evaluator landing |
-| **Lane 2: T-V-L5-Corpus** | M | **Worker brief authored, standby** — [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md). Cross-target equivalence corpus authoring (L5 only; L6 reclassified to R2-T-Ground-CrossTarget-Meta per [`r3-structure.md`](../r3-structure.md) §"Acceptance" T-Verification-L5-Corpus L6-reclassification note). Consumes PR-D semantic policy in [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md). | Lane 1 corpus existing + R2-Grounding-Rust + R2-Grounding-Python + R2-Grounding-Go (Shape A 3-target grounding precondition) |
-| **Lane 3: T-Free-Consequences-Demonstration** | S-M | **Worker brief authored, standby** — [`r3-v-free-consequences-worker.md`](r3-v-free-consequences-worker.md). Small doc + testcase-driven demonstration of what guarantees the compiler actually provides: auto-parallelism (including effect/commutativity safety), auto-memoization, cross-target optimization, and space-bound CX status/reference (space-bound proofs remain NOT STARTED until the space lens is modeled). | R2-Evaluator witness construction + R2-T-Substrate-Lens-Primitive (`Lens<C>` shape) + T-CostLens-Composition |
+| **Lane 1: T-V-L4-L7-Direct** | M | **Worker brief authored; actual-close predicate active** — [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md). Per-target equivalence harness using `DifferentialEquals` predicate (consumes Worker B PR-D scaffold per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §slice 1). NOT a `Lens<C>` instance per codex BLOCKING `f5f63c7d9` — runtime equivalence check, not structural fold. | R2-Evaluator PR-A.3 implementation carriers + PR-B body evaluator landing |
+| **Lane 2: T-V-L5-Corpus** | M | **Actual-close Gap 2 owner** — [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md). Cross-target equivalence corpus authoring (L5 only; L6 reclassified to R2-T-Ground-CrossTarget-Meta per [`r3-structure.md`](../r3-structure.md) §"Acceptance" T-Verification-L5-Corpus L6-reclassification note). Consumes PR-D semantic policy in [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md). The 2026-05-13 close plan forecloses Rust-only narrowing; the required surface is Rust + Python + Go. | Lane 1 corpus existing + R2-Grounding-Rust + R2-Grounding-Python + R2-Grounding-Go (Shape A 3-target grounding precondition) |
+| **Lane 3: T-Free-Consequences-Demonstration** | S-M | **Worker brief authored; remains lane-close work** — [`r3-v-free-consequences-worker.md`](r3-v-free-consequences-worker.md). Small doc + testcase-driven demonstration of what guarantees the compiler actually provides: auto-parallelism (including effect/commutativity safety), auto-memoization, cross-target optimization, and space-bound CX status/reference (space-bound proofs remain NOT STARTED until the space lens is modeled). | R2-Evaluator witness construction + R2-T-Substrate-Lens-Primitive (`Lens<C>` shape) + T-CostLens-Composition |
+| **Cross-lane: T-Tests-As-Data-Completeness** | L | **Actual-close Gap 5 owner** — Cluster M Phase 3 bulk-port is now lane-closing Verification work, not audit-only tracking. The manager owns worker dispatch for per-class ports and the generated-test manifest authority required by `docs/r3-actual-close-plan.md` §Gap 5. | ProgramGenerator substrate (#86) landed; #85 generated consumer + Cluster M Phase 3 generator-manifest work remain. |
+| **Cross-lane: T-WAD Slice 7 affected-set CI selection** | M | **Absorbed owner for `ci_uses_affected_set_selection`** per [`docs/r3-t-workflow-as-data-full-r3-close-scope.md`](../r3-t-workflow-as-data-full-r3-close-scope.md) §3/§7. This is a Verification lane extension because it consumes the affected-set lens output and removes regex bridge authority from CI selection. | Slice 5 BinaryShim projection arm + PR #2713 affected-set lens output. |
 | **Ledger gate: T-Bridge-Retirement (`bridge_retirement_ledger_zero`)** | S (audit cadence; no implementation) | **Bridge map row maintenance** — 5 named bridges per [`r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement row's distribution map. Verification owns the unified audit gate; retirement work distributes per natural-owner program. | Per-bridge: each bridge fires structurally in its owner program; ledger-zero gate fires when all 5 are green. |
 
 ### Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle (NOT a fourth owned lane)
@@ -109,9 +123,15 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 - Unified `BinaryDimensionReportEquals` coverage-requirements proposal (TC1/TC2/TC3 inputs; Substrate authors predicate variant when proposal is mature).
 - Lane 1 / Lane 2 / Lane 3 implementation worker briefs (gated on R2-Evaluator / substrate prerequisites — convert from standby to dispatch-ready when prerequisites fire).
 
-## Working state (fill on dispatch)
+## Working state (2026-05-13 refresh)
 
-Lane status table refreshes here as work lands. Initial state: 3 lanes in standby + 1 ledger gate in audit cadence + TC bundle absorbed-responsibility audit cadence; bridge map row maintenance ongoing.
+The lane is no longer only "3 lanes in standby." It has three active actual-close surfaces:
+
+- **Gap 2 / gate #15** — dispatch L5 corpus + Rust/Python/Go parity implementation slices until the close predicate is executable in CI.
+- **Gap 5 / gates #84-#85** — dispatch Cluster M Phase 3 per-class test ports plus the generator-manifest authority; negative SG-0 ratchet and positive manifest predicate both required.
+- **T-WAD Slice 7 / `ci_uses_affected_set_selection`** — queue implementation once BinaryShim Slice 5 exists; acceptance requires affected-set lens output to drive CI selection and deletes path-regex bridge authority.
+
+The TC bundle and bridge-retirement ledger remain absorbed audit responsibilities, but they are not substitutes for the three active close surfaces above.
 
 ## Cross-refs
 
