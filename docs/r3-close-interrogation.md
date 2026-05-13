@@ -704,6 +704,39 @@ The structural claim: every effectful operation takes its effect-source as a typ
 
 **R3-close framing**: the four verification-machinery surfaces should be lens-compositions over the same substrate, not parallel pipelines. R3 close MUST demonstrate that adding a new verification dimension is one lens, not a separate pipeline.
 
+### §3.8 Multi-program / network-coordinated emission from one `.dag` (FORWARD POINTER)
+
+**Status**: STUB — pointer only. Substantive Q-dispositions land via R4 canvas (separate from path (b) full-stack-from-one-.dag canvas at PR #2847; distributed-coordination warrants its own canvas scope).
+
+**Thesis-probe framing**: extend omni-emission from "one `.dag` → N representations of one program" to "one `.dag` → N cooperating distributed programs with derived wire interfaces, where the SAME structural facts (cost / complexity / effect / parallelism) apply across the system, not just per-endpoint." This is the natural extension axis from gate #28 omni-emission and gate #29 wire-serde-alignment.
+
+**Structural cash at HEAD** (existing R3 substrate the multi-program story extends):
+- Gate #25 `omni_openapi_backend_emission_demo` — CONSUMER_LANDED + PASSING (wire-contract emit)
+- Gate #28 `omni_layers_share_one_node_tree` — CONSUMER_LANDED + PASSING (per Q4 Director ratification msg_7d51b699: NAME is layer-count-agnostic; the invariant is general)
+- Gate #29 `anthropic_wire_typed_serde_alignment` — wire-derivation precedent for a specific external API
+- T-Anthropic-Wire lane gates
+- Path (b) R4 canvas PR #2847 — Director-ratified TS/React substrate; foundational for cross-deployment programs
+
+**Distinct from path (b)**: path (b) covers single-program-multi-target (Rust backend + TS client + React UI + OpenAPI + SQL DDL from one `.dag`). §3.8 covers **multi-program coordination** — distinct programs at distinct deployment endpoints with explicit coordination semantics (sync / async / stream / pub-sub / eventually-consistent).
+
+**Probes** (deferred to post-R4-canvas-ratification):
+
+- [ ] **Multi-program shape**: how does `.dag` express "this fragment runs on machine A, this on machine B"? Is it a Cluster F lens reading a "deployment-target" dimension, OR substrate-level partitioning (carriers for `DeploymentUnit` / `Endpoint`)?
+- [ ] **Wire derivation extension**: does extending gate #28 `omni_layers_share_one_node_tree` to "share one Dag across deployment units" hold, OR does cross-deployment need a new invariant gate?
+- [ ] **Coordination semantics modeling**: are sync / async / stream / pub-sub first-class behaviors (a 6th L1 behavior or beyond? — would trigger C1 stop-signal per §2.6) OR compositions over existing 5 behaviors (Bind composition + effect-typed parameters)?
+- [ ] **Failure-at-boundary**: is "partial failure" a lens read, an effect annotation, or a substrate variant? How does it compose with effect-enumeration lens (§1.4)?
+- [ ] **Idempotency at endpoint**: composes with existing idempotency lens (per THESIS:188 "idempotency + cancellation + redundancy = algebraic simplification" + R1 demo class per THESIS:378-380)?
+- [ ] **Cross-endpoint dimension propagation**: does the affected-set lens (§2.5.F) extend across deployment-unit boundaries? When endpoint A's cost dimension changes, are endpoint B's consumers reading A's wire-contract dimension flagged?
+- [ ] **Falsification probe**: design a 2-endpoint distributed program in `.dag`. Demonstrate end-to-end emission: each endpoint emits its own backend (per Shape-A) + the wire contract between them (per Shape-B) + coordination behavior captured structurally. Or: identify the gap class.
+
+**Open questions for R4 canvas authoring**:
+
+- Does multi-program coordination warrant a NEW L1 behavior (6th: e.g., `Coordinate` for sync/async/stream/pubsub), OR is Bind composition + Effect annotation sufficient? Note: a 6th behavior would trigger C1 stop-signal per §2.6 (the four dissolution patterns must fail first).
+- Are "machine A" / "machine B" addresses substrate-level carriers (concrete `Endpoint` type) or lens-readable dimension (deployment-target dimension reads)?
+- How does failure-recovery compose with `feedback_fail_closed_discipline` (C-8)? Distributed systems force "retry-able failure" semantics; gunbc's fail-closed posture must extend coherently.
+
+**PM read** (provisional, pre-canvas-authoring): multi-program coordination is the natural completion of the omni-emission story. Gate #28 already proves N projections share one Dag for ONE program; §3.8 extends to N projections × M programs. The wire substrate (gate #25, #29) provides the partial answer (interface derivation); coordination semantics and failure-mode handling are the open R4 axes. R4 canvas should disposition the questions above before R4 worker dispatch.
+
 ---
 
 ## §4. The self-application promises
