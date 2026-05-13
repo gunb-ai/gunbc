@@ -202,6 +202,11 @@ fn r3_gate_87_lower_helpers_lens_source_compiles() {
 }
 
 #[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
+}
+
+#[test]
 fn r3_gate_87_structural_resolution_rust_receipt_on_literal_program() {
     let dag = compile_to_dag(
         "let lit: Int = 7",

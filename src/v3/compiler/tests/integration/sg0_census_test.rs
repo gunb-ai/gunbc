@@ -344,11 +344,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // New cementing receipts must follow `TESTING.md` §4 "One claim per test": one structural
 // claim per `#[test]` / per `data foo: TestClaim`, and runner-drive tests assert
 // `ClaimResult` by shape (`== ClaimResult::Pass` / `matches!(_, ClaimResult::Pass)`), never
-// by stringified message contents. When porting a Rust receipt below to a `.dag` `TestClaim`,
-// **the same PR removes the entry from this list** — `EXPECTED_HAND_AUTHORED_TEST` is the
-// single cementing inventory. Don't introduce a parallel hand list (e.g. a separate
-// "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
-// monotonically-shrinking authority tracks the Rust→`.dag` migration.
+// by stringified message contents. The gate-87 regen inventory is
+// `R3_GATE_87_CEMENTING_REGEN_SUITES`, checked against `src/v3/compiler/regen.dag`; this census
+// only tracks temporary hand-Rust receipts that have not yet dissolved into that shared runner
+// table. When porting a Rust receipt below to a `.dag` `TestClaim`, **the same PR removes the
+// entry from this list**. Don't introduce a parallel hand list (e.g. a separate
+// "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that the runner
+// table plus this monotonically-shrinking SG-0 census track the Rust→`.dag` migration.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
