@@ -3154,9 +3154,11 @@ impl<'a> TestRunner<'a> {
                     .is_empty(),
             ),
             "gate87_parallelism_no_workflow_projection" => {
-                let Some(anchor) = program_dag.nodes().iter().find(|b| {
-                    matches!(b, Behavior::Value(_) | Behavior::Bind(_))
-                }) else {
+                let Some(anchor) = program_dag
+                    .nodes()
+                    .iter()
+                    .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
+                else {
                     return Some(ClaimResult::Fail(format!(
                         "LensOutputEquals({lens_name}): anchor node not found in `{file_name}`"
                     )));
