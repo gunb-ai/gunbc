@@ -20,7 +20,7 @@
 
 module lenses.parallelism
 
-import std.list { List, Empty, Cons, empty, cons, concat }
+import std.list { List, Empty, Cons, empty, cons }
 import v3.std.substrate { Dag, NodeId, NonSingletonList, lane2_workflow_at }
 import v3.spec.rust { rust_language }
 import std.effects {
@@ -151,10 +151,16 @@ fn extract_linear_branches(
 ) -> LinearBranchesLookup =
   extract_linear_branches_from_list(nsl_to_workflow_list(branches))
 
+fn append_ops(left: List<WorkflowOperation>, right: List<WorkflowOperation>) -> List<WorkflowOperation> =
+  match left {
+    Empty => right
+    Cons(payload) => cons(payload.head, append_ops(payload.tail, right))
+  }
+
 fn flatten_branch_ops(branch_ops: List<List<WorkflowOperation>>) -> List<WorkflowOperation> =
   match branch_ops {
     Empty => empty()
-    Cons(payload) => concat(payload.head, flatten_branch_ops(payload.tail))
+    Cons(payload) => append_ops(payload.head, flatten_branch_ops(payload.tail))
   }
 
 fn first_non_commuting_op_in_branch(
