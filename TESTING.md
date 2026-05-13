@@ -464,6 +464,44 @@ equivalence for every `.dag` file, and it does not require new
 substrate accessors or emitters. It only governs **explicit**
 subsumption or `COMPLETE`-with-counterpart claims.
 
+### Reviewer one-pass — any gate-#87-touching PR
+
+After the cementing ratchets landed (G87-D1…D5, 2026-05-13), reviewing a PR that
+edits any gate-#87 surface reduces to four pointer checks. Do not re-inventory
+lens rows, predicates, or hand-Rust modules here — the substrate-of-truth lists
+are cited below and the executable predicates already fail-close on drift.
+
+1. **Single-authority surfaces moved together.** If the PR touches `regen.dag`,
+   `R3_GATE_87_CEMENTING_REGEN_SUITES`, a `tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`
+   receipt, or `tests/dag/cementing_dispatch.dag`, every other surface in that
+   set must move in the same PR — and `docs/v3-lens-capability-register.md` +
+   `data lens_capability_register_rows` in `src/v3/std/verification.dag` must
+   stay aligned. Authority list: `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md`
+   §1. Fail-closed predicate: `CementingDispatchMatchesProjection` +
+   `r3_gate_87_lens_cementing_regen_receipts_test`.
+2. **Placeholders carry a named dissolution trigger.** Any new or modified
+   `.dag` receipt using `Compiles` and any paired Rust pin must appear in
+   `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §2.1 with the
+   blocker and owning lane named. New placeholders without an entry are a block;
+   dissolving a placeholder requires removing both the `.dag` `Compiles` claim
+   and the paired Rust pin in the same PR.
+3. **Hand-Rust cementing residual is classified, not silent.** Any
+   `src/v3/compiler/tests/integration/cementing/*.rs` change must match a row in
+   `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §3 (Band-C
+   residual) or §3.1 (named-after-#87 but not lens-cementing). Adding a new file
+   without classifying it is a block. The SG-0 census authority remains
+   `EXPECTED_HAND_AUTHORED_TEST` in `sg0_census_test.rs`; the §3/§3.1 tables are
+   the only hand-maintained disposition surface — do not duplicate them.
+4. **`COMPLETE`-flip stack is whole.** If the PR flips a register row to
+   `BEHAVIORALLY COMPLETE`, walk the same-PR checklist above. The receipt class
+   (DifferentialEquals / LensOutputEquals / SymbolicCostExprEquals / Compiles
+   + paired pin) must match the v2-counterpart column per `docs/briefs/r3-gate-87-lens-cementing-closure-audit.md`.
+
+Anything not covered by one of these four checks is either out of gate-#87
+scope (route to the owning lane named in §3/§3.1) or already enforced by a
+fail-closed predicate at the corresponding ratchet. Reviewer disagreements over
+a row's class belong on the pattern brief, not on a parallel inventory.
+
 ## Related
 
 - `INVARIANTS.md` — project-level invariants; some have direct
