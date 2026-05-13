@@ -474,23 +474,22 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 ## §6. Pending Director + operator decisions
 
 - [x] **Director ratifies this plan structure** — APPROVED 2026-05-13 (msg_cd2d8d7d) on structure + dispatch sequencing + §5 process discipline. 8 substantive notes integrated into this revision.
-- [ ] Operator §4 confirmations (4 scope decisions; default IN-R3 per `project_no_r4_carves_directive`):
-  - [ ] Gap 1 (PB-0): confirm IN-R3 OR override with named R4-carve subsets
-  - [ ] Gap 2 (L5 cross-target): confirm IN-R3 (Python+Go) OR override with Rust-only-Shape-A scope
-  - [ ] Gap 3 (self-host R3-strong): confirm IN-R3 (4-joint-precondition cascade) OR override with R1-horizon final
-  - [ ] Gap 9 (show-correct-code): confirm IN-R3 at 100% absolute (no threshold negotiation per §4 + close criterion above) OR override with not-R3-promised reframe (= R4-carve; requires explicit operator override of `project_no_r4_carves_directive`)
-- [ ] Operator §4 sub-item 5 (subtree-shape decision; surfaced per Director audit msg_82b9c4bb 2026-05-13):
-  - [ ] R3 Evaluator Mgr dispatch: (a) re-spawn as 4th lane (PM + Director recommended) / (b) fold into existing R3 Mgrs / (c) Director-direct ad-hoc (PM does not recommend per r2-structure.md:73 anti-pattern)
-- [ ] Operator authorizes Phase A immediate dispatch (close-audit doc skeleton + §1.8 row #106 author)
+- [x] **Operator §4 confirmations** — ALL 4 IN-R3 ratified 2026-05-13 (briansrls direct PM dispatch):
+  - [x] Gap 1 (PB-0): **IN-R3 confirmed** — full 177-entry retirement, no R4-carves
+  - [x] Gap 2 (L5 cross-target): **IN-R3 confirmed** — full 3-target Python+Go cross-target stdout-parity
+  - [x] Gap 3 (self-host R3-strong): **IN-R3 confirmed** — 4-joint-precondition cascade (no R1-horizon scope-narrow)
+  - [x] Gap 9 (show-correct-code): **IN-R3 confirmed** — 100% absolute (zero DeferredCorrection in test corpus per sum-variant carrier)
+- [x] **Operator §4 sub-item 5 (subtree-shape decision)** — ratified 2026-05-13 (briansrls direct PM dispatch): **(a) re-spawn R3 Evaluator Mgr as 4th lane** confirmed. Director (zesty-bear-812) executes per pre-authorization at msg_d456b60d.
+- [x] **Operator authorizes Phase A immediate dispatch** — implicit in ratification 2026-05-13. Close-audit doc skeleton + §1.8 row #106 authoring proceeds PM-direct post-merge.
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
-  - [ ] R2-Evaluator audit (Gap 3 precondition; this week)
+  - [x] R2-Evaluator audit — **completed 2026-05-13 (msg_82b9c4bb)**; findings absorbed into Gap 3 expansion + §4 sub-item 5 + r3-program-plan.md lines 429/435 reframe at commits 85c230b4b + 97cfb9d4c
   - [ ] Gap 3 cross-Mgr coordination tracking (ongoing, Phase E)
   - [ ] §1.8 row #106 substrate-shape canvas ratification when PM surfaces it
   - [ ] Pre-execution review of close-audit-doc rows touching Director-tier ratification gates (gate #105 / canvas-ratified-class)
-- [ ] PM dispatches Phase B + Phase C briefs post-§4-ratification
+- [ ] PM dispatches Phase B + Phase C briefs post-§4-ratification (ratification ✓ 2026-05-13; PM-direct close-audit-doc skeleton authoring imminent)
 
 ---
 
 **Authored by**: deep-wolf-155 (PM)
 **Date**: 2026-05-13
-**Status**: Director structure-ratified 2026-05-13 (msg_cd2d8d7d); **DRAFT pending operator scope approval** (§4 IN-R3 confirmations + Phase A dispatch authorization)
+**Status**: Director structure-ratified 2026-05-13 (msg_cd2d8d7d); **operator fully ratified 2026-05-13** (4 scope decisions IN-R3 + §4 sub-item 5 re-spawn (a) + Phase A authorization); READY FOR DISPATCH post-merge
