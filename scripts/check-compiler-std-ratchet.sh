@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=3
+BASELINE_TRACKED_TOTAL=4
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -46,6 +46,7 @@ POSITIVE_ROWS=(
   "src/v3/lenses/effect_enumeration.dag:TransactionalPattern"
   "src/v3/lenses/effect_enumeration.dag:EffectEnumerationReport"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentBinding"
+  "src/v3/lenses/parallelism.dag:LinearBranchesLookup"
   "src/v3/lenses/provenance.dag:Origin"
   "src/v3/lenses/structural_resolution.dag:UnresolvedArrowBody"
   "src/v3/lenses/structural_resolution.dag:NameKeyedReference"
@@ -66,11 +67,14 @@ EXEMPT_ROWS=(
 
 # `complexity.dag`, `cost.dag`, and `infer_helpers.dag` no longer declare local
 # 2-variant `Lookup` sums — they import `v3.std.lookup::Lookup` (authority in
-# `src/v3/std/lookup.dag`, outside this script's counted surfaces).
+# `src/v3/std/lookup.dag`, outside this script's counted surfaces). Remaining
+# rows here are lens-local scaffold coproducts with named dissolution triggers;
+# they are not published lens API carriers.
 TRACKED_ROWS=(
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor"
   "src/v3/lenses/infer_helpers.dag:NormalizedInstantiationArgs"
+  "src/v3/lenses/parallelism.dag:NonCommutingPairLookup"
 )
 
 collect_type_rows() {
