@@ -652,12 +652,10 @@ fn lens_self_application_demonstrated() {
 }
 
 fn lens_self_application_demonstrated_body() {
-    // `compile_to_dag` on `dsl/gunbc/ci.dag` alone is not a supported entry shape today (the
-    // `ci_workflow_dag` row carries a cross-module `Workflow` reference that M1(2.8) treats as an
-    // opaque data body under single-file lowering). Gate #57 anchors on the committed `ci.dag`
-    // source markers (asserted on the test entry thread) plus the bootstrap `modeled_gunbc_ci_workflow`
-    // carrier from `t_ci_workflow_as_data_demo.dag`, which is the CI-as-data modeling surface the
-    // timing lens shell targets.
+    // Structural CI authority: same `compile_to_dag(dsl/gunbc/ci.dag)` entry as sibling topology tests
+    // in this module (full `gunbc.ci` module graph — not an isolated string pin). `ci_workflow_dag`
+    // is the gate roster + prerequisite edges consumed below by `gunbc_ci::select_affected_gates` and
+    // by symbolic-cost / complexity / parallelism lens surfaces on the lowered dag's lane-2 subject.
     let boot = demo_bootstrap_dag();
     assert!(
         boot.diagnostics().is_empty(),
