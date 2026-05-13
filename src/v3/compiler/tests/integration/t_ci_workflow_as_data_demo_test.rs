@@ -10,8 +10,10 @@
 //! gunbc itself*) lands here on the **emit-back** branch from `docs/r3-structure.md` §"Acceptance"
 //! (either YAML round-trip **or** direct execution): `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output`
 //! regression-locks the live GitHub Actions file `.github/workflows/ci.yml` against
-//! `dsl/gunbc/ci_github_actions_workflow.dag` through the `gen_gunbc_ci_workflow_dag` crate (see also
-//! `dsl/gunbc/ci_emission.dag` / `gunbc_ci_emission_substrate_compiles`). The optional full-bootstrap
+//! `dsl/gunbc/ci_github_actions_workflow.dag` through the `gen_gunbc_ci_workflow_dag` crate. Slice-4
+//! `project_github_actions` / `WorkflowRuntime` substrate lives in `dsl/gunbc/ci_emission.dag`
+//! (isolated `compile_to_dag` on gunbc CI modules is follow-on work — see §1.8 gate #59 row).
+//! The optional full-bootstrap
 //! `evaluate_body` receipt remains `#[ignore]` until the cold-cache amortization work called out
 //! inline on `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator`.
 //!
