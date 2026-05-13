@@ -1,3 +1,0 @@
-SG-0 hand-path delta: +1
-
-SG-0 pairing: (c) dispatch via docs/briefs/r4-ctrl-migration-pr-digests-worker.md (Wave-1 catalog #8 `dsl/ctrl/pr_digests.dag` modeling); INVARIANTS.md §SG-0 hand-authored integration test receipt lands same PR as the `EXPECTED_HAND_AUTHORED_TEST` census line (P5 paired dispatch).
