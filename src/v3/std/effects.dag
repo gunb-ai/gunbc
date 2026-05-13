@@ -113,6 +113,21 @@ module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons, enumerate }
+import std.methods {
+  append_method,
+  concat_method,
+  count_method,
+  diff_method,
+  get_method,
+  has_method,
+  length_method,
+  lookup_method,
+  map_get_method,
+  map_has_method,
+  map_insert_method,
+  replace_method,
+  with_method
+}
 import v3.std.substrate { ElementRef, NonSingletonList, PortId }
 import v3.std.services { Operation, CallableRef }
 
@@ -446,22 +461,41 @@ fn effect_shape_is_breaking(shape: EffectShape) -> Bool =
   }
 
 fn operation_effect_shape(op: Operation) -> EffectShape {
-  if op.endpoint.method == GET || op.endpoint.method == HEAD || op.endpoint.method == OPTIONS then
-    IsIdempotent(ReadEffect)
+  if op.callable.decl == append_method then
+    IsBreaking(AppendEffect)
   else
-    if op.endpoint.method == POST then
+    if op.callable.decl == concat_method then
       IsBreaking(CreateEffect { cause: PostAlways })
+  else
+    if op.callable.decl == get_method ||
+       op.callable.decl == lookup_method ||
+       op.callable.decl == map_get_method ||
+       op.callable.decl == has_method ||
+       op.callable.decl == map_has_method ||
+       op.callable.decl == count_method ||
+       op.callable.decl == length_method then
+      IsIdempotent(ReadEffect)
     else
-      match last_path_param(op.endpoint.path) {
-        Some(param) =>
-          if op.endpoint.method == DELETE then
-            IsIdempotent(DeleteEffect { key_source: PathParam { param: param } })
-          else
-            IsIdempotent(UpsertEffect { key_source: PathParam { param: param } })
-        None =>
-          IsBreaking(CreateEffect { cause: KeylessFallback { method: op.endpoint.method } })
-      }
+    if op.callable.decl == map_insert_method ||
+       op.callable.decl == replace_method ||
+       op.callable.decl == with_method then
+      IsIdempotent(UpsertEffect {
+        key_source: PathParam { param: operation_resource_key(op) }
+      })
+    else
+    if op.callable.decl == diff_method then
+      IsIdempotent(DeleteEffect {
+        key_source: PathParam { param: operation_resource_key(op) }
+      })
+    else
+      IsBreaking(CreateEffect { cause: KeylessFallback { method: POST } })
 }
+
+fn operation_resource_key(op: Operation) -> String =
+  match last_path_param(op.endpoint.path) {
+    Some(param) => param
+    None => "resource"
+  }
 
 fn breaker_ref(index: Int) -> ElementRef<Operation> {
   { index: index }

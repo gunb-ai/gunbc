@@ -114,11 +114,13 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
     }
 }
 
-fn read_op(name: &str) -> Operation {
+fn read_op(dag: &Dag, _name: &str) -> Operation {
+    let callable = dag
+        .declaration_by_name("compose_effects")
+        .expect("bootstrap should provide compose_effects declaration")
+        .id;
     Operation {
-        callable: CallableRef {
-            decl_name: name.to_string(),
-        },
+        callable: CallableRef { decl: callable },
         inputs: BTreeMap::<String, InputField>::new(),
         endpoint: RestEndpointBinding {
             method: HttpMethodScalar::Get,
@@ -242,10 +244,10 @@ fn r3_gate_73_demonstrates_parallelism_parity_snapshot() {
     let workflow = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op("read_user")],
+                ops: vec![read_op(&dag, "read_user")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op("read_account")],
+                ops: vec![read_op(&dag, "read_account")],
             }),
         ])
         .expect("two branches satisfy NonSingletonList"),
