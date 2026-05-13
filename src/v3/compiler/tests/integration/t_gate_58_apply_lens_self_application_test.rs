@@ -83,14 +83,17 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     let Diagnostic::ParseError {
         message,
         span,
-        fixes,
+        correction,
     } = d
     else {
         panic!("expected ParseError diagnostic, got {d:?}");
     };
     assert!(
-        fixes.is_empty(),
-        "timing budget violation must not attach auto-fixes; got {fixes:?}"
+        matches!(
+            correction,
+            v3_compiler::diagnostics::Correction::DeferredCorrection { .. }
+        ),
+        "timing budget violation must carry an explicit deferred correction; got {correction:?}"
     );
     assert!(
         span.file.ends_with("t_ci_workflow_as_data_demo.dag"),
@@ -133,7 +136,13 @@ fn apply_lens_self_application_timing_enforcement_executable_budget_violation() 
             let diags: Vec<&Diagnostic> = dag.diagnostics().iter().map(|(_, d)| d).collect();
             let ok = diags.iter().any(|d| {
                 d.layer1_kind_label() == "ParseError"
-                    && matches!(d, Diagnostic::ParseError { fixes, .. } if fixes.is_empty())
+                    && matches!(
+                        d,
+                        Diagnostic::ParseError {
+                            correction: v3_compiler::diagnostics::Correction::DeferredCorrection { .. },
+                            ..
+                        }
+                    )
                     && match d {
                         Diagnostic::ParseError { message, .. } => {
                             gate_58_test_parse_timing_budget_violation_max_ns_pair(message)

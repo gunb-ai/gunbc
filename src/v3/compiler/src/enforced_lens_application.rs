@@ -62,7 +62,9 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
                   `lens_application.dag` (modeled authority missing; fail-closed)"
             .to_string(),
         span: dag.declaration(enforced_template).span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "legacy diagnostic class",
+        ),
     });
 }
 
@@ -395,7 +397,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `algebra.dag` (modeled authority missing; fail-closed)"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "legacy diagnostic class",
+                        ),
                     });
                     continue;
                 };
@@ -410,7 +414,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: could not resolve function declaration for section"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "legacy diagnostic class",
+                        ),
                     });
                     continue;
                 };
@@ -420,7 +426,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: could not resolve function result port for section"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "legacy diagnostic class",
+                        ),
                     });
                     continue;
                 };
@@ -437,7 +445,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               use `ClassLinear` / `ClassQuadratic` for sub-cubic tiers)"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "legacy diagnostic class",
+                        ),
                     });
                     continue;
                 };
@@ -451,7 +461,10 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                   cannot enforce budget"
                                     .to_string(),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "legacy diagnostic class",
+                                ),
                         });
                         continue;
                     }
@@ -468,7 +481,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
                                     .to_string(),
                             span: decl.span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
                         });
                         continue;
                     }
@@ -502,7 +515,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `timing_lens.dag` (modeled authority missing; fail-closed)"
                             .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             };
@@ -514,7 +529,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `EnforcedApplication` section"
                         .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             };
@@ -529,7 +546,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             }
@@ -540,7 +559,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             };
@@ -551,7 +572,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
                 });
                 continue;
             };
@@ -563,7 +584,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
                 });
                 continue;
             };
@@ -577,7 +598,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             };
@@ -587,7 +610,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               nanoseconds (expected `TimingBudget { max: Nanoseconds { count } }`)"
                         .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
                 continue;
             };
@@ -604,7 +629,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                  from `timing_lens.dag` (needed for fault-path diagnostic text; fail-closed)"
                                     .to_string(),
                             span: decl.span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
                         });
                         continue;
                     };
@@ -619,7 +644,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "legacy diagnostic class",
+                        ),
                     });
                     continue;
                 }
@@ -769,7 +796,9 @@ fn enforced_violation_diagnostic(
             message: "lens enforcement: internal error (DiagnosticSeverity is not a sum type)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         };
     };
     let Some(error_ctor) = variants.iter().find(|v| v.label == "Error").map(|v| v.ty) else {
@@ -777,7 +806,9 @@ fn enforced_violation_diagnostic(
             message: "lens enforcement: internal error (DiagnosticSeverity lacks `Error` variant)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         };
     };
     let FieldValue::Variant {
@@ -790,7 +821,9 @@ fn enforced_violation_diagnostic(
                       variant value"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         };
     };
     if *constructor != error_ctor {
@@ -799,7 +832,9 @@ fn enforced_violation_diagnostic(
                       `Error` (INVARIANTS C-8; fail-closed discipline)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         };
     }
     // `lens_application.dag`: `type DiagnosticSeverity = Error` — the lone variant is nullary.
@@ -809,13 +844,17 @@ fn enforced_violation_diagnostic(
                       P1; malformed variant payload)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         };
     }
     Diagnostic::ParseError {
         message: violation_message,
         span,
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "legacy diagnostic class",
+        ),
     }
 }
 
@@ -1034,9 +1073,14 @@ mod diagnostic_severity_fail_closed_tests {
 
     fn assert_parse_error_at(diag: Diagnostic, expected_span: &SourceSpan) {
         match diag {
-            Diagnostic::ParseError { span, fixes, .. } => {
+            Diagnostic::ParseError {
+                span, correction, ..
+            } => {
                 assert_eq!(&span, expected_span);
-                assert!(fixes.is_empty());
+                assert!(matches!(
+                    correction,
+                    crate::diagnostics::Correction::DeferredCorrection { .. }
+                ));
             }
             other => panic!("expected ParseError, got {other:?}"),
         }

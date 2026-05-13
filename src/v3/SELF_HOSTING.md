@@ -1903,7 +1903,7 @@ If corrections ship at L1.5:
 
 **Acceptance criteria:**
 
-- [ ] Diagnostic type carries `correction: Option<Correction>`
+- [ ] Diagnostic type carries mandatory `correction: Correction`
 - [ ] All five current variants (TokenizerError, ParseError,
       TypeMismatch, ArityMismatch, ResolveError) compute a
       correction where structurally possible

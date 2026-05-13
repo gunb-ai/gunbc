@@ -118,14 +118,16 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
                 message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "legacy diagnostic class",
+                ),
             })?;
             const MAX_SIGNED_ABS: u128 = 1u128 << 127;
             if magnitude > MAX_SIGNED_ABS {
                 return Err(Diagnostic::TokenizerError {
                     message: format!("integer literal out of range for signed decimal literal: `-{}` (|m| > 2^127)", literal),
                     span: SourceSpan::new(file, start as u32, end as u32),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("legacy diagnostic class"),
                 });
             }
             let value = if magnitude == 0 {
@@ -155,7 +157,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
                 message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "legacy diagnostic class",
+                ),
             })?;
             let value = magnitude.to_string();
             tokens.push(Token {
@@ -263,7 +267,10 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                             return Err(Diagnostic::TokenizerError {
                                 message: "unterminated string escape".to_string(),
                                 span: SourceSpan::new(file, start as u32, (end + 1) as u32),
-                                fixes: Vec::new(),
+                                correction:
+                                    crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                        "legacy diagnostic class",
+                                    ),
                             });
                         };
                         match escaped {
@@ -289,7 +296,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 return Err(Diagnostic::TokenizerError {
                     message: "unterminated string literal".to_string(),
                     span: SourceSpan::new(file, start as u32, end as u32),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 });
             }
             tokens.push(Token {
@@ -303,7 +312,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
         return Err(Diagnostic::TokenizerError {
             message: format!("unexpected byte `{}`", byte as char),
             span: SourceSpan::new(file, start as u32, (start + 1) as u32),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         });
     }
 

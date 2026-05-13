@@ -158,10 +158,11 @@ fn read(x: Outer) -> Int = x.bad.leaf
     let fix = diag
         .fixes()
         .iter()
-        .find(|fix| fix.new_source == "ok")
+        .find(|fix| fix.new_source() == Some("ok"))
         .expect("missing-field fix should suggest `ok`");
-    assert_eq!(fix.span.byte_start, bad_start);
-    assert_eq!(fix.span.byte_end, bad_start + "bad".len() as u32);
+    let span = fix.span().expect("missing-field fix should be live");
+    assert_eq!(span.byte_start, bad_start);
+    assert_eq!(span.byte_end, bad_start + "bad".len() as u32);
 }
 
 #[test]
@@ -200,7 +201,7 @@ fn read(x: AB) -> Int = match x { A => 1 }
     assert!(
         diag.fixes()
             .iter()
-            .any(|fix| fix.description.contains("`B`")),
+            .any(|fix| fix.description().contains("`B`")),
         "non-exhaustive match diagnostic should suggest the missing `B` arm"
     );
 }
@@ -231,9 +232,12 @@ fn read(x: AB) -> Int = match x {}
             )
         });
     assert!(
-        diag.fixes()
-            .iter()
-            .any(|fix| !fix.new_source.starts_with(", ") && fix.new_source == "A => 1"),
+        diag.fixes().iter().any(|fix| {
+            let Some(new_source) = fix.new_source() else {
+                return false;
+            };
+            !new_source.starts_with(", ") && new_source == "A => 1"
+        }),
         "empty match fix should seed a valid first arm, got {:?}",
         diag.fixes()
     );
@@ -273,14 +277,17 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
         Diagnostic::TypeMismatch {
             expected,
             actual,
-            fixes,
+            correction,
             ..
         } => {
             assert_eq!(*expected, primitive_shape(&dag, "Bool"));
             assert_eq!(*actual, primitive_shape(&dag, "Int"));
             assert!(
-                !fixes.is_empty(),
-                "type mismatch diagnostic should carry at least one correction"
+                matches!(
+                    correction,
+                    v3_compiler::diagnostics::Correction::LiveCorrection { .. }
+                ),
+                "type mismatch diagnostic should carry a live correction"
             );
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
@@ -317,19 +324,15 @@ let x: MaybeInt = true
         .diagnostics()
         .get(bind.value)
         .expect("diagnostic recorded for mismatched sum value");
-    let Diagnostic::TypeMismatch { fixes, .. } = diag else {
+    let Diagnostic::TypeMismatch { correction, .. } = diag else {
         panic!("expected TypeMismatch, got {diag:?}");
     };
-    let fix = fixes
-        .iter()
-        .find(|fix| fix.new_source == "Some(1)")
-        .unwrap_or_else(|| panic!("expected positional constructor witness, got {fixes:?}"));
     let rendered = rendered_rust_diagnostic(&dag, diag);
     assert!(
         rendered.contains("\n    \"Some(1)\";"),
         "rendered diagnostic should show the supported positional constructor syntax, got {rendered}"
     );
-    assert_eq!(fix.new_source, "Some(1)");
+    assert_eq!(correction.new_source(), Some("Some(1)"));
 }
 
 #[test]
@@ -350,12 +353,15 @@ fn bad() -> Int = div(1, nope)
             _ => None,
         })
         .expect("diagnostic recorded for unresolved name in refined argument position");
-    let Diagnostic::ResolveError { fixes, .. } = diag else {
+    let Diagnostic::ResolveError { correction, .. } = diag else {
         panic!("expected ResolveError, got {diag:?}");
     };
     assert!(
-        fixes.is_empty(),
-        "refined declarations must fail closed instead of emitting a base-shape witness; got {fixes:?}"
+        matches!(
+            correction,
+            v3_compiler::diagnostics::Correction::DeferredCorrection { .. }
+        ),
+        "refined declarations must fail closed instead of emitting a base-shape witness; got {correction:?}"
     );
 }
 

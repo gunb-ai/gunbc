@@ -152,7 +152,9 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                      cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
                     .to_string(),
                 span: authority_span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "legacy diagnostic class",
+                ),
             },
         );
         return;
@@ -171,7 +173,9 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                            bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
                         .to_string(),
                     span: span_for_inst.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 },
             );
             return;
@@ -185,7 +189,9 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                            cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
                             .to_string(),
                     span: span_for_inst.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "legacy diagnostic class",
+                    ),
                 },
             );
             return;
@@ -322,7 +328,9 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String, span: SourceSpan
         Diagnostic::ResolveError {
             name,
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "legacy diagnostic class",
+            ),
         },
     );
 }
