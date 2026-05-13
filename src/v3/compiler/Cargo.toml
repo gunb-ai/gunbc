@@ -89,3 +89,7 @@ path = "src/bin/self_host_fixed_point.rs"
 [[bin]]
 name = "r1c_e_emit_gates"
 path = "src/bin/r1c_e_emit_gates.rs"
+
+[[bin]]
+name = "gunbc-ci"
+path = "src/bin/gunbc_ci.rs"
