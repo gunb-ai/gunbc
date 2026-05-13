@@ -9586,33 +9586,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-<<<<<<< HEAD
             id: NodeId(850),
             target: TransformTarget::Callable(DeclarationId(1308)),
             inputs: vec![PortId(1015)],
             output: PortId(1016),
-            span: SourceSpan::new("src/v3/std/verification.dag", 28552, 28575),
+            span: SourceSpan::new("src/v3/std/verification.dag", 28547, 28570),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(851),
             target: TransformTarget::Callable(DeclarationId(1309)),
             inputs: vec![PortId(1017)],
             output: PortId(1018),
-            span: SourceSpan::new("src/v3/std/verification.dag", 28597, 28631),
-=======
-            id: NodeId(844),
-            target: TransformTarget::Callable(DeclarationId(1305)),
-            inputs: vec![PortId(1010)],
-            output: PortId(1011),
-            span: SourceSpan::new("src/v3/std/verification.dag", 28547, 28570),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(845),
-            target: TransformTarget::Callable(DeclarationId(1306)),
-            inputs: vec![PortId(1012)],
-            output: PortId(1013),
             span: SourceSpan::new("src/v3/std/verification.dag", 28592, 28626),
->>>>>>> origin/main
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(852),
@@ -9643,27 +9628,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     }),
                 },
             ],
-<<<<<<< HEAD
             output: PortId(1019),
-            span: SourceSpan::new("src/v3/std/verification.dag", 28517, 28635),
-=======
-            output: PortId(1014),
             span: SourceSpan::new("src/v3/std/verification.dag", 28512, 28630),
->>>>>>> origin/main
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(853),
             name: "obligation_for_suite_claim".to_string(),
-<<<<<<< HEAD
             value: PortId(1019),
             params: vec![PortId(1014)],
-            span: SourceSpan::new("src/v3/std/verification.dag", 28517, 28635),
-=======
-            value: PortId(1014),
-            params: vec![PortId(1009)],
             span: SourceSpan::new("src/v3/std/verification.dag", 28512, 28630),
->>>>>>> origin/main
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
