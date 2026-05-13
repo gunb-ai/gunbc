@@ -4,7 +4,7 @@ authority parent: R3 Substrate Manager (warm-wolf-698)
 authoring date: 2026-05-13
 gate: §1.8 ledger row #63 `substrate_gap_workflow_scheduling_closed`
 authority docs:
-  - `docs/r3-program-plan.md:291` — gate #63 row (DECLARED 2026-05-06)
+  - `docs/r3-program-plan.md:291` — gate #63 row (**CANVAS_RATIFIED** 2026-05-13 via PR #2831; was DECLARED 2026-05-06)
   - `docs/r3-program-plan.md:77` + §4.4 — Class 4 (workflow/scheduling) criterion: "CI workflow modeled as .dag data executes through evaluator + produces DimensionReport<TimingMeasurement>"
   - `docs/r3-structure.md` — T-Workflow-As-Data + T-Lens-Self-Application lane assignment
 snappy-bear-502 audit anchor: msg_140d9bc7-6417-45bf-b541-41cba1ea98cd
