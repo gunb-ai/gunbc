@@ -93,7 +93,24 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
             correction,
             v3_compiler::diagnostics::Correction::DeferredCorrection { .. }
         ),
-        "timing budget violation must carry an explicit deferred correction; got {correction:?}"
+        "legacy timing budget violation must carry an explicit row-#106 deferral until source-span evidence is threaded; got {correction:?}"
+    );
+    let v3_compiler::diagnostics::Correction::DeferredCorrection {
+        retirement_plan,
+        ..
+    } = correction
+    else {
+        unreachable!("checked above")
+    };
+    assert_eq!(
+        retirement_plan.owner,
+        "R3 Gap 9 row #106 diagnostic roundtrip coverage",
+        "timing scaffold deferral must stay tied to row #106 retirement"
+    );
+    assert!(
+        retirement_plan.exit_condition.contains("LiveCorrection"),
+        "timing scaffold deferral must name the live-correction exit condition; got {:?}",
+        retirement_plan.exit_condition
     );
     assert!(
         span.file.ends_with("t_ci_workflow_as_data_demo.dag"),

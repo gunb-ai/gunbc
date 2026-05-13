@@ -1889,6 +1889,15 @@ one — not as a polish step after the lens works, but as part of
 the lens's acceptance criteria. The test pattern above is a
 gating requirement for every new diagnostic and every new lens.
 
+The gate #58 timing-lens enforcement scaffold is the only legacy
+pre-L1.5 exception in this section. It predates the mandatory
+`Correction` carrier and currently emits `DeferredCorrection` with a
+row-#106 retirement plan because the host-side enforcement diagnostic
+does not yet retain a source span for the offending timing
+measurement/budget literal. That test must ratchet the explicit
+retirement plan, not treat deferral as acceptable steady state; closing
+row #106 requires replacing it with a `LiveCorrection` roundtrip.
+
 **Why ASAP matters.** If corrections are deferred until M4:
 1. Every lens ships without fix suggestions, and adding them
    later means re-understanding each lens's error semantics
