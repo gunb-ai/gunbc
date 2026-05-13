@@ -53,12 +53,15 @@ Author `docs/audit/r3-gate-63-sibling-debt-mapping.md` with **two** receipts:
 
 ### §4.1 Phase B.1 — Systematic Class 4 bridge inventory (predicate (b))
 
-Worker grep at HEAD for every Class 4 bridge site in `src/v3/`:
+Worker grep at HEAD for every Class 4 bridge site across **all authority surfaces** — Rust under `src/v3/`, DSL substrate under `dsl/`, and CI/scheduling configuration under `.github/workflows/` (Class 4 is workflow/scheduling; bridge sites are not confined to Rust):
 
 ```
-git grep -nE "ci_workflow|workflow_runtime|WorkflowRuntime|workflow_as_data" src/v3/ \
+git grep -nE "ci_workflow|workflow_runtime|WorkflowRuntime|workflow_as_data|CIWorkflowDag|WorkflowTrigger|WorkflowStep|WorkflowMatrix|WorkflowSecret|RunnerResource" \
+  src/v3/ dsl/ .github/workflows/ \
   | grep -v "^Binary file"
 ```
+
+The grep MUST include `dsl/gunbc/ci_emission.dag` + `dsl/gunbc/ci_github_actions_workflow.dag` + `dsl/extdeps/github/actions.dag` + every other Class 4 authority surface this brief cites at §5 (carrier mapping table) — partial search confined to `src/v3/` would undermine the §1.4 (b) "systematic enumeration" requirement (codex BLOCKING 10885; INVARIANTS P2 / modeling-discipline "Facts flow forward").
 
 For EACH hit, classify as one of:
 - **Pass-through**: site executes through v3 cleanly (counts toward predicate (b) GREEN; cite line)
