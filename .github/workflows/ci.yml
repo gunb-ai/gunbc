@@ -151,6 +151,11 @@ jobs:
         # silently neutering the consumer.
         run: bash scripts/test-check-manager-brief-authority.sh
 
+      - name: Test-timeout ratchet self-test (consumer not ceremonial)
+        # Prevents future JSONL manifest parsing changes from silently
+        # neutering fail-closed slow-test policy.
+        run: bash scripts/test-check-test-timeout.sh
+
       - name: Rust toolchain single-authority check (P2)
         # Pinned channel must not be duplicated in dsl/extdeps/rustup.dag;
         # authority is rust-toolchain.toml only (PR #1794).
