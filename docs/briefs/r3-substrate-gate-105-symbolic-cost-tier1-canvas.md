@@ -45,55 +45,69 @@ Tier 2 R4-DEFERRED per Director with named-consumer-trigger requirement:
 - `src/v3/std/algebra.dag:190-197`: current 7 variants (ConstantCost, LinearCost, PolynomialCost with `degree: DegreeAtLeastTwo`, ProductCost, SumCost, LogCost, UnknownCost)
 - `src/v3/std/algebra.dag:60-72`: STOP SIGNAL "wanting an eighth variant"
 - `dsl/std/algebra.dag:268-286`: `OrderedRing<T>` witness with `compare/lt/le/gt/ge` already defined
-- `dsl/std/algebra.dag:287-...`: `Field<T>` defined WITHOUT order operations
-- `dsl/std/rational.dag:26`: `type Rational = Field<FieldOfFractions<Int>>` — supports add+mul+inverse, NOT order. Confirmed: NO `OrderedField` witness exists at HEAD.
+- `dsl/std/algebra.dag:287-295`: `Field<T>` — **CORRECTION per operator BLOCKING 2026-05-13 (canvas:48)**: Field ALREADY has `compare: fn(T, T) -> Ordering` (line 294). The earlier "defined WITHOUT order operations" claim was wrong. Field is missing the derived order predicates (lt/le/gt/ge/eq/ne) that `OrderedRing<T>` carries (lines 268-286), but the foundational `compare` operator IS already on Field.
+- `dsl/std/rational.dag:26`: `type Rational = Field<FieldOfFractions<Int>>`. Per above correction: Rational already carries `compare` via Field — order primitive is present. What's missing is the convenience-predicate set (lt/le/gt/ge/eq/ne). This invalidates the original Q1 premise; see §3 revised candidate set below.
 - `dsl/std/computation.dag:8`: "algebra.dag says 'Int inhabits OrderedRing'" — Int is ordered, but Rational is not
 
-## §3. Q1 — Rational dominance lattice (substrate-shape question)
+## §3. Q1 — Rational dominance lattice (substrate-shape question; REVISED per operator BLOCKING canvas:48)
 
-Polynomial dominance requires **total order on Rational** to compare degrees (1/2 < 1 < 2/3 < 1 < 2 < 2.373). `Rational = Field<...>` carries no order witness.
+**Premise correction**: Earlier canvas authoring claimed Rational "carries no order witness." This was wrong — `Field<T>` at `dsl/std/algebra.dag:294` already has `compare: fn(T, T) -> Ordering`. Rational therefore already carries the foundational order primitive. What's missing is the **derived order predicates** (lt/le/gt/ge/eq/ne) that `OrderedRing<T>` carries on top of `compare`.
 
-### Candidate Q1-a — Extend Rational with OrderedField witness
+The original Q1-a/Q1-b/Q1-c framing — and the prior Director-ratified Q1-c disposition — was based on the stale premise. Introducing `OrderedField<T>` now would create **parallel order authority** with the existing `Field.compare` field. Anti-pattern.
 
-Add `type OrderedField<T> { ... }` in `dsl/std/algebra.dag` analogous to `OrderedRing<T>` (lines 268-286), with `add/sub/zero/negate/mul/div/one + compare/eq/lt/le/gt/ge + reciprocal/divide`. Refit Rational:
-```dag
-type Rational = OrderedField<FieldOfFractions<Int>>
-```
+### REVISED Candidate Q1-α — Use `Field.compare` directly + derive helpers as free functions
 
-Pros:
-- Strict-mirror of `OrderedRing<T>` precedent (`feedback_strict_mirror_vs_novel_substrate_fact` applies — no novel substrate fact; ratifies directly)
-- Rational gains order as a first-class field witness; benefits all consumers (not just cost-lens)
-- Clean Practice-4 placement: order is structurally part of the field's algebra, not bolted on
-
-Cons:
-- Touches a foundational algebra carrier; cross-program impact requires checking all `Field<>` consumers
-- Adds 7 functions to the witness record (compare/eq/lt/le/gt/ge + ne)
-
-### Candidate Q1-b — Carry parallel Int-tuple representation for comparison
-
-Add per-PolynomialCost-degree-comparison helpers that decompose `Rational = p/q` into `(p, q)` Int-tuples and compare via cross-multiplication (`a/b ≶ c/d ⟺ ad ≶ bc` since q > 0).
+Scope:
+- Cost-lens fold uses `Rational.compare` directly via existing `Field<FieldOfFractions<Int>>.compare`
+- Where lt/le/gt/ge convenience predicates are needed in cost-lens body, define them as free functions on `Rational` in cost-lens module (e.g., `rational_lt(a, b) = compare(a, b) == Less`)
+- **No `OrderedField<T>` introduction**; no `Rational` re-declaration; no modifications to `dsl/std/algebra.dag` or `dsl/std/rational.dag`
 
 Pros:
-- Localizes to cost-lens; no foundational algebra touched
-- Useful even if a future OrderedField lands (correctness check)
+- Zero new substrate; uses existing `Field.compare`
+- Cost-lens-local convenience helpers; no foundational algebra touched
+- No parallel order authority
 
 Cons:
-- **Parallel-rep risk**: comparison logic lives in cost-lens body, not on the Rational carrier — two-source-of-truth posture if Rational consumers elsewhere later need order
-- Anti-pattern #4 (Director-enumerated): "Dominance lattice fudging via string-tagged Rational (use real ordered-witness)" — partial application risk
+- lt/le/gt/ge live as free functions, not on the carrier (mild Cost-of-Change-2 for future predicate sites if free functions need refactor)
 
-### Candidate Q1-c — Substrate Mgr discretion (third approach)
+### REVISED Candidate Q1-β — Extend `Field<T>` with derived order predicates (in-place)
 
-**Proposed Q1-c**: Layered approach — land `OrderedField<T>` witness alongside `Rational` re-declaration, BUT scope the OrderedField introduction strictly to enable rational ordering at the algebraic-witness layer; do NOT preemptively migrate existing `Field<T>` consumers. Migration occurs only if a consumer surfaces a need. This is Q1-a's substrate landing + lazy consumer migration.
+Scope:
+- Add `lt: fn(T, T) -> Bool`, `le`, `gt`, `ge`, `eq`, `ne` to `Field<T>` at `dsl/std/algebra.dag:287` — mirroring the OrderedRing record's predicate set
+- No new type; `Field<T>` becomes the single authority for ordered-field operations
+- Refit Rational stays at `Field<FieldOfFractions<Int>>`
 
 Pros:
-- Lands the structural fix without cross-program migration burden
-- Strict-mirror precedent (OrderedRing → OrderedField analogous addition)
-- Future consumers can adopt incrementally; no breaking change
+- Strict in-place extension of foundational carrier; no parallel-rep
+- Single authority — `Field.compare` is foundational; derived predicates compose on it
+- Cost-lens fold uses `Rational.lt`, `Rational.le`, etc. directly (Cost-of-Change-1 for future predicate sites)
 
 Cons:
-- Two `Field`-shaped witnesses exist (Field + OrderedField) — potential confusion until full migration
+- Touches foundational `Field<T>` shape; affects all `Field<T>` consumers (witness record gets 6 new fields)
+- Migration: existing `Field<T>` witness realizations must populate the new predicate fields
 
-**Mgr recommendation**: Q1-c. Combines Q1-a structural correctness with bounded blast-radius.
+### REVISED Candidate Q1-γ — `OrderedField<T>` strict-superset (former Q1-c REVISED with explicit reconciliation)
+
+Scope:
+- Add `type OrderedField<T>` extending Field with the missing 6 predicates, EXPLICITLY reconciled: `Field.compare` is the foundational primitive; OrderedField inherits compare from its Field-shaped sub-record and adds derived predicates
+- This requires DSL support for sub-record inheritance / type-level inclusion — check at HEAD whether the grammar supports this
+
+Pros:
+- Cleanest Practice-4 layering; OrderedField is structurally Field-plus-predicates
+- Field consumers unchanged; OrderedField consumers gain full predicate set
+
+Cons:
+- DSL inheritance grammar may not exist at HEAD (worker brief must grep-verify before authoring)
+- Two carriers (Field + OrderedField); the prior parallel-authority concern returns unless inheritance is structural, not parallel
+
+**Revised Mgr recommendation**: **Q1-α** (use `Field.compare` + cost-lens-local free functions). Reasoning:
+- Zero new substrate; zero foundational-algebra-touch
+- `feedback_strict_mirror_vs_novel_substrate_fact` does NOT apply here — there's no need for a new witness shape since Field already carries the foundational primitive
+- `feedback_no_short_term_solutions` is also irrelevant — this is the canonical use-existing-substrate pattern, not a workaround
+- Q1-β is acceptable if Director prefers carrier-uniform predicate set, but the migration scope is broader
+- Q1-γ requires DSL-grammar prerequisite check; defer unless Q1-α is rejected
+
+**Re-ratification required**: Director's prior Q1-c ratification (PM msg_a055c38b relaying msg_d86a5987) was based on the stale premise. With premise corrected, Q1 needs re-disposition. Most likely lands on Q1-α (smallest scope, premise-corrected) but Director may prefer Q1-β for carrier uniformity.
 
 ## §4. Q2 — Linear-vs-Polynomial split reconciliation
 
