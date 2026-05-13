@@ -379,20 +379,27 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
-    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
+    // R3 gate #87 / Band-C v3-native provenance residual: split from the retired
+    // `cementing_lens_registry_dispatch_test.rs` monolith. Stays hand-Rust until the
+    // `origin_of` seam check can be expressed as a `.dag` `LensOutputEquals`/structural
+    // claim without a Rust mirror of `Behavior -> Origin` carrier matching.
     "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
-    // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
-    // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
-    // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
-    // report carrier (`Gate73_ReportPredicateCarriers`).
+    // R3 gates #79/#87: Band-C frozen-v2-oracle receipt for the complexity lens
+    // COMPLETE row. Stays hand-Rust until `.dag` TestClaims can author/compare the
+    // published `ComplexitySummary` carrier, including nested `SymbolicCost`,
+    // asymptotic class, and certainty fields.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture while the
-    // host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass. Gate #80 Band-C
-    // symbolic-cost cementing moved to
-    // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
+    // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture
+    // while the host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass.
+    // Gate #80 Band-C `cost_symbolic` COMPLETE cementing now lives in
+    // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; this row remains only
+    // for the wrapper/per-call-pattern residual and must not be counted as a second
     // `cost_symbolic` COMPLETE receipt.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
-    // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
+    // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`):
+    // interim host demonstration for memory-peak composition/enforcement until parser-level
+    // `apply_lens(cost, DeclarationScope, Enforce { dimension: Memory, ... })` and its
+    // runner-observable TestClaim path land.
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
@@ -630,9 +637,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
     // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
-    // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
-    // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
-    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
+    // R3 gate #87 (`lens_cementing_test_discipline_complete`): one paired Rust pin for
+    // the `regen.dag` lens registry harness inventory. The `.dag`
+    // `t_r3_gate_87_cementing_regen_*.dag` suites and `t_pb_b_1_dag_runner_test`
+    // are the primary receipts; this file remains hand-Rust only for host-side carrier
+    // projections and helper compile contracts that `.dag` predicates cannot yet express.
+    // As individual Rust pins port to `.dag`, shrink this single SG-0 row instead of
+    // creating a separate gate-#87 residual census.
     "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
     // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
     // that the `.dag` PB census claim executes through `TestRunner` and reports
