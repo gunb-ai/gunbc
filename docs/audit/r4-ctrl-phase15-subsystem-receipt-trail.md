@@ -38,9 +38,9 @@ Cells use compact `bool · evidence` form. `—` denotes not-yet-applicable (e.g
 
 | subsystem_id | catalog_row | algebra_landed | phase15_pr_merged | phase3_emission_landed | parity_passed | open_receipt_debt |
 |---|---|---|---|---|---|---|
-| `pr_digests` | 8 | `—` (non-consumer) | `true` · PR #2838 commit `b9f8a075f32904039c3e83a5efe0a34a920b4fe0` | `true` · PR #2832 commit `6ce22a1fa970becacf717fe1c2e2f164bee421a3` (projection: `dsl/gunbc/digest_render.dag`; source facts: `dsl/extdeps/github/pulls.dag`; std render primitives: `dsl/std/render.dag`) | `false` | `true` |
+| `pr_digests` | 8 | `—` (non-consumer) | `true` · PR #2838 commit `b9f8a075f32904039c3e83a5efe0a34a920b4fe0` | `true` · PR #2832 commit `6ce22a1fa970becacf717fe1c2e2f164bee421a3` (projection: `dsl/gunbc/digest_render.dag`; source facts: `dsl/extdeps/github/pulls.dag`; std render primitives: `dsl/std/render.dag`) | `true` · gate_id `r4_ctrl_wave1_catalog8_trio_parity` · witnessed green on main `ee66560e55fd7d374b70b950f603e2a0e5260175` · in-tree: `ctrl_pr_digests_dag_smoke_test::ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface`; `parse_stage4_prep::handwritten_parser_accepts_gunbc_digest_render_dag` (`src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs`, `src/v3/compiler/tests/integration.rs`) | `false` |
 
-(Wave-1 trio anchor — first row inserted on placeholder; flips begin when the Wave-1 worker lands `dsl/ctrl/pr_digests.dag`. Charter PR #2775 and Mgr brief PR #2777 are merged on main as of 2026-05-12.)
+(Wave-1 trio anchor — catalog #8; `dsl/ctrl/pr_digests.dag` + Phase-3 digest projection landed; charter #2775 + Mgr brief #2777 merged 2026-05-12; parity gate `r4_ctrl_wave1_catalog8_trio_parity` green 2026-05-13.)
 
 ---
 
@@ -52,11 +52,26 @@ When a Phase 1.5 worker PR merges, Subsystem-Modeling Mgr appends a row (or flip
 | <subsystem_id> | <catalog_row> | <algebra_landed bool · PR URL @SHA OR `—`> | true · <modeling PR URL @SHA> | false | false | true |
 ```
 
+(Example row shows `open_receipt_debt = true` immediately after `phase15_pr_merged` flips while Phase-3 + parity are still false — adjust booleans to match the live subsystem.)
+
 `open_receipt_debt` is recomputed on every row change. When `phase3_emission_landed ∧ parity_passed` flips, `open_receipt_debt` flips to `false` and the staged-debt count decreases.
 
 ## Parity-flip protocol
 
 Verification Mgr flips `parity_passed` to `true` after the named parity-harness gate (per the trio's Phase-3 PR) is green on main. Evidence cell records `gate_id` + CI job URL or in-tree test path.
+
+---
+
+## Named parity gate — `r4_ctrl_wave1_catalog8_trio_parity` (Wave-1 catalog #8 trio anchor)
+
+**Structural parity (both green on `main`):**
+
+1. `ctrl_pr_digests_dag_smoke_test::ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface` in `src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs` — lexer + structural needles for `dsl/ctrl/pr_digests.dag`.
+2. `parse_stage4_prep::handwritten_parser_accepts_gunbc_digest_render_dag` in `src/v3/compiler/tests/integration.rs` — handwritten parser accepts `dsl/gunbc/digest_render.dag`.
+
+**Filter commands:** `cargo test -p v3-compiler --test integration ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface` and `cargo test -p v3-compiler --test integration handwritten_parser_accepts_gunbc_digest_render_dag`.
+
+**Out of scope for this gate_id (explicit):** execution or `TestClaim` consumption of `digest_render_expectation_receipts` in `dsl/gunbc/digest_render.dag` — those rows remain structural/doc receipts until a dedicated harness evaluates them (non-blocking for Wave-1 trio structural closure per Director + review thread 2026-05-13).
 
 ---
 
