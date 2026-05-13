@@ -31,6 +31,9 @@ use v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
+use std::collections::BTreeSet;
+use std::path::Path;
+
 fn lower(source: &str, file: &str) -> Dag {
     // `compile_to_dag` returns `Ok` iff the module diagnostic table is empty
     // (`lib.rs` — any semantic issue is `Err(Semantic(dag))` with non-empty
@@ -421,6 +424,45 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 // lives in `r3_tests_as_data_demonstration_suite_passes_through_runner` above (and
 // `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
 // separate ratchet; do not conflate the two in PR titles or census expectations.
+
+#[test]
+fn r3_gate_87_cementing_regen_runner_inventory_is_executable() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut files = BTreeSet::new();
+    let mut suites = BTreeSet::new();
+
+    for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
+        assert!(
+            files.insert(*file),
+            "R3_GATE_87_CEMENTING_REGEN_SUITES must not list `{file}` twice"
+        );
+        assert!(
+            suites.insert(*suite),
+            "R3_GATE_87_CEMENTING_REGEN_SUITES must not list suite `{suite}` twice"
+        );
+        assert!(
+            file.starts_with("src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_")
+                && file.ends_with(".dag"),
+            "gate-87 runner row `{suite}` must point at a canonical cementing regen harness, got `{file}`"
+        );
+        assert!(
+            !claim_names.is_empty(),
+            "gate-87 runner row `{suite}` must name the structural TestClaim receipt(s)"
+        );
+
+        let path = manifest_dir
+            .ancestors()
+            .nth(3)
+            .expect("expected src/v3/compiler -> workspace root")
+            .join(file);
+        let disk_source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read gate-87 runner harness {}: {e}", path.display()));
+        assert_eq!(
+            *source, disk_source,
+            "gate-87 runner row `{suite}` must include the same source bytes as `{file}`"
+        );
+    }
+}
 
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {

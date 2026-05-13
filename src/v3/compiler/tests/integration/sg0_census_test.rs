@@ -39,6 +39,12 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // Relative to workspace root; mirrors the single census root
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
+const R3_GATE_87_RUNNER_INVENTORY_RS: &str =
+    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs";
+const R3_GATE_87_RUNNER_RECEIPT_RS: &str =
+    "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs";
+const R3_GATE_87_SG0_RATCHET_RECEIPT_RS: &str =
+    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs";
 const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
 const RETIRED_LENS_APPLY_RS: &str = "src/v3/compiler/src/lens_apply.rs";
 
@@ -1068,6 +1074,27 @@ fn sg0_expected_rs_entries_match_test_partition() {
         "T-PB-B test ratchet must only include paths under src/v3/compiler/tests/; \
          move these to EXPECTED_HAND_AUTHORED_NON_TEST: {misplaced_test:?}"
     );
+}
+
+#[test]
+fn sg0_r3_gate_87_runner_receipts_stay_partitioned() {
+    let non_test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_NON_TEST.iter().copied().collect();
+    let test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+
+    assert!(
+        non_test.contains(R3_GATE_87_RUNNER_INVENTORY_RS),
+        "gate-87 runner inventory must stay in EXPECTED_HAND_AUTHORED_NON_TEST: \
+         `{R3_GATE_87_RUNNER_INVENTORY_RS}`"
+    );
+    for path in [
+        R3_GATE_87_RUNNER_RECEIPT_RS,
+        R3_GATE_87_SG0_RATCHET_RECEIPT_RS,
+    ] {
+        assert!(
+            test.contains(path),
+            "gate-87 executable receipt must stay in EXPECTED_HAND_AUTHORED_TEST: `{path}`"
+        );
+    }
 }
 
 #[test]
