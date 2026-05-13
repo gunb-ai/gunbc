@@ -62,7 +62,8 @@ fn apply_lens_self_application_timing_enforcement_executable_budget_violation() 
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
         .join(VIOLATION_FIXTURE_REL);
-    let source = fs::read_to_string(&path).expect("read gate #58 timing enforcement violation fixture");
+    let source =
+        fs::read_to_string(&path).expect("read gate #58 timing enforcement violation fixture");
     std::thread::Builder::new()
         .name("t-gate-58-timing-enforcement-violation".into())
         .stack_size(64 * 1024 * 1024)

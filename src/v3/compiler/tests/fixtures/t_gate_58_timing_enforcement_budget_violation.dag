@@ -10,7 +10,7 @@ import v3.std.lens_application { DeclarationScope, EnforcedApplication }
 import v3.std.timing_lens {
   TimingBudget,
   TimingMeasurement,
-  timing_enforceable,
+  timing_enforceable
 }
 import v3.std.t_ci_workflow_as_data_demo { gate_58_timing_enforcement_section }
 
