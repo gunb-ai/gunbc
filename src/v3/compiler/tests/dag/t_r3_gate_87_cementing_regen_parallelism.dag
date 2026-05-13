@@ -1,0 +1,31 @@
+// R3 gate #87 — `LensRegistryEntry` `parallelism` temporary receipt.
+// Registry row is BEHAVIORALLY PARTIAL (`WorkflowParallelismReport` lacks stable `.dag` literals for
+// full `LensOutputEquals` over the report carrier; minimal `let lit: Int = 7` programs also lack
+// a `ParallelEffect` workflow anchor). This harness keeps an explicit `Compiles` smoke claim on the
+// same trivial program shape as other regen cementing placeholders until a Lane-2 workflow fixture
+// can freeze a narrow behavioral witness without inventing fake parallelism semantics.
+//
+// Temporary Rust pin (lens authority surface compiles):
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_parallelism_lens_source_compiles`.
+//
+// Dissolution trigger: when a public parallelism output slice is authorable as `.dag` expected
+// literals (or a named Int projection like other gate-87 regen harnesses), replace this `Compiles`
+// claim with `LensOutputEquals` / `DifferentialEquals` over that carrier and delete the temporary
+// Rust lens-source receipt in the same PR.
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data cementing_regen_parallelism_claim: TestClaim = {
+  name: "cementing_regen_parallelism",
+  source: "let lit: Int = 7",
+  file_name: "r3_gate_87_parallelism_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_parallelism_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/parallelism",
+  claims: [Enumerated(cementing_regen_parallelism_claim)]
+}

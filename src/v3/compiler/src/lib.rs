@@ -5016,6 +5016,31 @@ pub(crate) mod infer_helpers {
 
     #[cfg(test)]
     pub(crate) use generated::filter_non_self_template_arguments;
+
+    #[cfg(test)]
+    mod tests {
+        use super::filter_non_self_template_arguments;
+        use crate::dag::{DeclarationId, TemplateArgument};
+
+        #[test]
+        fn filter_non_self_template_arguments_drops_self_bindings() {
+            let p = DeclarationId::test_raw(1);
+            let v = DeclarationId::test_raw(2);
+            let args = vec![
+                TemplateArgument {
+                    parameter: p,
+                    value: p,
+                },
+                TemplateArgument {
+                    parameter: p,
+                    value: v,
+                },
+            ];
+            let got = filter_non_self_template_arguments(&args);
+            assert_eq!(got.len(), 1);
+            assert_eq!(got[0].value, v);
+        }
+    }
 }
 
 /// SG-3g-d: `.dag`-authority `expr_span` / `item_span` for surface nodes plus
