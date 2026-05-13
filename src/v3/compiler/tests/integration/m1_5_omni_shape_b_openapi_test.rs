@@ -792,6 +792,10 @@ fn openapi_projection_ignores_same_shape_non_service_endpoint_binding() {
 /// `emit_rust`, matching r3-program-plan §1.8 #25–#28 structural discipline.
 #[test]
 fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
+    // `compile_count` mirrors `omni_layers_share_one_node_tree`: one shared `Dag` is already
+    // enforced structurally because every projection takes `&dag`. The counter still ratchets
+    // accidental double acquisition via `compile_*_counted` (e.g. a duplicated helper call
+    // during edits), matching the §1.8 #28 receipt style in this module.
     let mut compile_count = 0usize;
     let dag = compile_todo_service_repository_fixture_counted(&mut compile_count);
 
