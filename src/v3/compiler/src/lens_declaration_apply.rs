@@ -1613,9 +1613,10 @@ mod substrate_reflection {
     use crate::dag::{
         AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
         BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
-        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
+        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldMap, FieldValue, HttpMethodScalar,
         IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
         Operation, OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget,
+        UrlPathToken,
         TypeConnective, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
@@ -2041,12 +2042,55 @@ mod substrate_reflection {
     }
 
     fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {
+        let tokens = op
+            .endpoint
+            .path
+            .tokens
+            .iter()
+            .map(|token| match token {
+                UrlPathToken::LiteralToken { text } => sum_variant_payload(
+                    dag,
+                    "UrlPathToken",
+                    "LiteralToken",
+                    vec![FieldValue::Literal(LiteralBits::String(text.clone()))],
+                ),
+                UrlPathToken::ParamToken { name } => sum_variant_payload(
+                    dag,
+                    "UrlPathToken",
+                    "ParamToken",
+                    vec![FieldValue::Literal(LiteralBits::String(name.clone()))],
+                ),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let inputs = FieldMap::from_entries(
+            op.inputs
+                .keys()
+                .map(|name| (name.clone(), FieldValue::Record(vec![])))
+                .collect(),
+        )
+        .map_err(|_| ReflectError("duplicate operation input key"))?;
         Ok(FieldValue::Record(vec![
             (
-                "operation_name".to_string(),
-                FieldValue::Literal(LiteralBits::String(op.operation_name.clone())),
+                "callable".to_string(),
+                FieldValue::Record(vec![(
+                    "decl_name".to_string(),
+                    FieldValue::Literal(LiteralBits::String(op.callable.decl_name.clone())),
+                )]),
             ),
-            ("shape".to_string(), reflect_effect_shape(dag, &op.shape)?),
+            ("inputs".to_string(), FieldValue::Map(inputs)),
+            (
+                "endpoint".to_string(),
+                FieldValue::Record(vec![
+                    (
+                        "method".to_string(),
+                        reflect_http_method_scalar(dag, op.endpoint.method)?,
+                    ),
+                    (
+                        "path".to_string(),
+                        FieldValue::Record(vec![("tokens".to_string(), FieldValue::List(tokens))]),
+                    ),
+                ]),
+            ),
         ]))
     }
 

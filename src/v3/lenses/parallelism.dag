@@ -27,14 +27,15 @@ import std.effects {
   EffectShape,
   IdempotentShape,
   KeySource,
-  Operation,
   WorkflowEffect,
   WorkflowParallelismReport,
   CompositionVerdict,
   ParallelismUnsupportedKind,
   compose_effects,
+  operation_effect_shape,
   report_parallelism_unsupported
 }
+import v3.std.services { Operation }
 
 type LinearBranchesLookup
   // 🟢 TERMINAL helper coproduct. This is the local, total result of trying to
@@ -81,14 +82,14 @@ fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
   match a {
     PathParam { param: pa } =>
       match b {
-        PathParam { param: _ } => true
+        PathParam { param: pb } => pa == pb
         InputField { field: _ } => false
         CompositeKey { fields: _ } => false
       }
     InputField { field: fa } =>
       match b {
         PathParam { param: _ } => false
-        InputField { field: _ } => true
+        InputField { field: fb } => fa == fb
         CompositeKey { fields: _ } => false
       }
     CompositeKey { fields: _ } =>
@@ -100,9 +101,9 @@ fn key_sources_equal(a: KeySource, b: KeySource) -> Bool =
   }
 
 fn operations_commute(a: Operation, b: Operation) -> Bool =
-  match a.shape {
+  match operation_effect_shape(a) {
     IsIdempotent(ia) =>
-      match b.shape {
+      match operation_effect_shape(b) {
         IsIdempotent(ib) => idempotent_shapes_commute(ia, ib)
         IsBreaking(_) => false
       }
@@ -258,7 +259,7 @@ fn read_only_ops(ops: List<Operation>) -> Bool =
   match ops {
     Empty => true
     Cons(payload) =>
-      match payload.head.shape {
+      match operation_effect_shape(payload.head) {
         IsIdempotent(shape) =>
           match shape {
             ReadEffect => read_only_ops(payload.tail)

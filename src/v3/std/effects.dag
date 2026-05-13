@@ -115,7 +115,7 @@ module std.effects
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons, enumerate }
 import v3.std.substrate { ElementRef, NonSingletonList, PortId }
-import v3.std.services { Operation, CallableRef }
+import v3.std.services { Operation }
 
 // ── Path-template carriers ──────────────────────────────────────
 //
@@ -446,11 +446,23 @@ fn effect_shape_is_breaking(shape: EffectShape) -> Bool =
     IsBreaking => true
   }
 
-fn operation_effect_shape(op: Operation) -> EffectShape =
-  callable_effect_shape(op.callable)
-
-fn callable_effect_shape(callable: CallableRef) -> EffectShape =
-  IsBreaking(AppendEffect)
+fn operation_effect_shape(op: Operation) -> EffectShape {
+  if op.endpoint.method == GET || op.endpoint.method == HEAD || op.endpoint.method == OPTIONS then
+    IsIdempotent(ReadEffect)
+  else
+    if op.endpoint.method == POST then
+      IsBreaking(CreateEffect { cause: PostAlways })
+    else
+      match last_path_param(op.endpoint.path) {
+        Some(param) =>
+          if op.endpoint.method == DELETE then
+            IsIdempotent(DeleteEffect { key_source: PathParam { param: param } })
+          else
+            IsIdempotent(UpsertEffect { key_source: PathParam { param: param } })
+        None =>
+          IsBreaking(CreateEffect { cause: KeylessFallback { method: op.endpoint.method } })
+      }
+}
 
 fn breaker_ref(index: Int) -> ElementRef<Operation> {
   { index: index }
@@ -651,10 +663,10 @@ type IdempotencyTestObligation {
 fn generate_idempotency_obligations(
   ops: List<Operation>
 ) -> List<IdempotencyTestObligation> {
-  ops |> filter(o => is_idempotent_effect(shape: o.shape))
+  ops |> filter(o => is_idempotent_effect(shape: operation_effect_shape(o)))
       |> map(o => IdempotencyTestObligation {
-           operation_name: o.operation_name,
-           effect_shape: o.shape,
+           operation_name: "callable",
+           effect_shape: operation_effect_shape(o),
            claim: "f(f(x)) == f(x)",
            witness_required: true
          })
