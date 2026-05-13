@@ -3684,7 +3684,6 @@ fn type_to_declaration_id(
                     meta_tag: None,
                     specialization_parent: None,
                     inhabits: None,
-
                     value_body: None,
                     refinement: None,
                     nominal_opacity: None,
@@ -3712,7 +3711,6 @@ fn type_to_declaration_id(
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
-
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
