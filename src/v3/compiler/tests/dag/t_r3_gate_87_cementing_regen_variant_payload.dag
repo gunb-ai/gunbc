@@ -9,14 +9,15 @@ module v3.compiler.tests.t_r3.gate_87_cementing_regen_variant_payload
 
 import std.substrate { Dag }
 import std.verification { LensOutputEquals, ProgramInput, TestClaim, TestSuite }
-import lenses.variant_payload { VariantPayloadShapeLookup }
+import lenses.variant_payload {
+  VariantPayloadShapeLookup,
+  gate87_cementing_variant_payload_declaration_missing_expected
+}
 
 fn gate87_variant_payload_shape_on_missing_declaration_id(_d: Dag) -> VariantPayloadShapeLookup =
   DeclarationMissing
 
 data gate87_program_input: ProgramInput = {}
-
-data gate87_variant_payload_expected_missing: VariantPayloadShapeLookup = DeclarationMissing
 
 data cementing_regen_variant_payload_claim: TestClaim = {
   name: "cementing_regen_variant_payload",
@@ -25,7 +26,7 @@ data cementing_regen_variant_payload_claim: TestClaim = {
   predicate: LensOutputEquals(
     gate87_variant_payload_shape_on_missing_declaration_id,
     gate87_program_input,
-    gate87_variant_payload_expected_missing
+    gate87_cementing_variant_payload_declaration_missing_expected
   ),
   requires: []
 }

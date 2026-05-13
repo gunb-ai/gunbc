@@ -67,3 +67,10 @@ fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadSha
         Instantiation(_) => NotPayloadProduct
       }
   }
+
+// R3 gate #87 — Band-C `LensOutputEquals` witness carrier for `DeclarationMissing` (absent
+// `DeclarationId`). Lives in this prepended authority module so `compile_to_dag` harnesses can
+// reference a structurally validated sum literal without tripping M1(2.8) strict-user opaque-body
+// rejection on thin `tests/dag/*.dag` modules.
+data gate87_cementing_variant_payload_declaration_missing_expected: VariantPayloadShapeLookup =
+  DeclarationMissing
