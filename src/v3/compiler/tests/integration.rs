@@ -53,6 +53,8 @@ mod bridge_ledger_carrier_test;
 mod bridge_lower_helpers_patch_zero_residual_test;
 #[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
 mod canonical_lens_bridge_ratchet_test;
+#[path = "integration/cementing/cementing_provenance_origin_integration_test.rs"]
+mod cementing_provenance_origin_integration_test;
 #[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
 mod complexity_lens_behavioral_completion;
 #[path = "integration/cementing/cost_lens_symbolic_consumer_test.rs"]

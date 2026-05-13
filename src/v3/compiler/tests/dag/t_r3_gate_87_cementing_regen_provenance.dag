@@ -1,6 +1,9 @@
 // R3 gate #87 — `LensRegistryEntry` `provenance`.
-// Claims freeze `origin_of` seam witnesses through named Int projections (1 = variant holds)
-// until `Origin` literals can be compared directly by `LensOutputEquals`.
+// PB-B-1 enumeratable seam checks: `LensOutputEquals` Int projections assert only that
+// `origin_of` classifies as `Source` / `Computed` on the glue programs (runner-visible).
+// Full `Origin` payload + `NodeId` equality vs producer `Behavior` stays in
+// `tests/integration/cementing/cementing_provenance_origin_integration_test.rs` until
+// `Origin` literals are authorable as `.dag` expected values.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_provenance
 

@@ -3132,6 +3132,9 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            // Gate-#87 provenance harness: `.dag` claims assert Source/Computed shape only.
+            // Full `Origin` + carried `NodeId` mirror vs producer `Behavior` is
+            // `cementing_provenance_origin_integration_test.rs` (dual receipt; PR #2894 review).
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
