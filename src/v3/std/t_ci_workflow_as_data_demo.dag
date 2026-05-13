@@ -236,10 +236,17 @@ data gate_58_modeled_ci_timing_measurement: gate_58_timing_enforcement_section =
   measurement: Observed { duration: { count: 0 } }
 }
 
-// Gate #58 (`apply_lens_self_application_demonstrated`): `EnforcedApplication<TimingMeasurement,
-// TimingBudget, TimingEnforcementProjected>` using canonical `timing_enforceable`, sectioning the gate witness row above
-// (not the `Workflow` table directly) so infer reads modeled `TimingMeasurement` facts from the
-// PB-1 snapshot — same `EnforcedApplication` carrier path as gate #92’s T-LAS demos.
+// Gate #58 (`apply_lens_self_application_demonstrated`) — **T-LAS receipt** on the same
+// `EnforcedApplication<TimingMeasurement, TimingBudget, TimingEnforcementProjected>` carrier as
+// gate #92: `section` is `DeclarationScope { declaration: gate_58_modeled_ci_timing_measurement }`
+// because PB-1 + host `check_enforced_lens_applications` require a nominal row exposing
+// `measurement: TimingMeasurement` (see `enforced_lens_application.rs`). **Thesis narration**
+// (“apply timing enforcement to the modeled CI `Workflow` as the section”) is **not** this row’s
+// claim: `data modeled_gunbc_ci_workflow` is the adjacent T-Workflow-As-Data substrate; wiring
+// `Workflow` (or `TimingObservationEntry`) into that enforcement column is **explicit dissolution**
+// under T-Lens-Self-Application / `INVARIANTS.md` SG-0 / ROADMAP T-PB-B — until then this witness is
+// the lawful PB-1 closure receipt for the **machinery** (`timing_enforceable` + host pass), not a
+// substitute for full recursive-flex self-application over the workflow table.
 data gate_58_apply_lens_self_application_pass: EnforcedApplication<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
   enforceable_lens: timing_enforceable
   section: DeclarationScope { declaration: gate_58_modeled_ci_timing_measurement }

@@ -164,18 +164,18 @@ type TimingBudget {
 // from non-evidence report states (`NonEvidenceUsage`) so `project` never encodes the latter as a
 // plausible `Nat` magnitude inside `TimingBudget` (P2 / illegal-states-unrepresentable; openai-pro
 // review on gate #58).
+//
+// PRACTICE 4 / INVARIANTS P1 (`docs/modeling-discipline.md` §4 coproduct checkpoint) — traffic light:
+// **🟢 GREEN (terminal)** — landed enforcement-projection coproduct: `TimedUsage` is the observed
+// wall-clock usage coordinate (same `Nanoseconds` shape as `TimingBudget.max`); `NonEvidenceUsage`
+// is a unit fact for `Unobserved` / `Ambiguous` / `Stale` (no `Nat` fault sentinel in `TimingBudget`).
+// **🟡 SCAFFOLD** — none on this sum (both variants are substrate-final at this layer). **🔴 BLOCKED**
+// — none. **Dissolution:** retire this sum only when every `project` consumer can thread full
+// `TimingMeasurement` without illegal-state collisions (gate #58 `.dag` `TestClaim` / T-PB-B SG-0
+// receipt per `INVARIANTS.md`).
 type TimingEnforcementProjected
   = TimedUsage { max: Nanoseconds }
   | NonEvidenceUsage
-
-// PRACTICE 4 (`docs/modeling-discipline.md`, coproduct checkpoint): **GREEN (terminal)** —
-// `TimingEnforcementProjected` is the enforcement **projection** coproduct for timing T-LAS
-// (gate #58): `TimedUsage` carries the same nanosecond ceiling as `TimingBudget.max` for
-// observed wall-clock evidence; `NonEvidenceUsage` is a unit fact for `Unobserved` / `Ambiguous` /
-// `Stale` (no second meaning stuffed into `TimingBudget.max.count`). **Dissolution:** retire this
-// sum only when every downstream surface that consumes `project` can instead thread full
-// `TimingMeasurement` without reintroducing illegal-state collisions (tracked with gate #58
-// `.dag` `TestClaim` / T-PB-B SG-0 receipt per `INVARIANTS.md`).
 
 // §1.8 / r3-program-plan `timing_lens_carrier_landed`: nominal `Lens<C>` surface at
 // `C = TimingMeasurement` (see `docs/design-timing-lens.md` §1). Hooks below remain
