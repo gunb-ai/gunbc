@@ -21,8 +21,7 @@
 module lenses.parallelism
 
 import std.list { List, Empty, Cons, empty, cons, concat }
-import v3.std.substrate { Dag, NodeId, lane2_workflow_at }
-import v3.std.substrate_minimal { NonSingletonList }
+import v3.std.substrate { Dag, NodeId, NonSingletonList, lane2_workflow_at }
 import v3.spec.rust { rust_language }
 import std.effects {
   EffectShape,
