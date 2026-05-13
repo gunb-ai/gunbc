@@ -129,6 +129,9 @@ import std.types { Int }
 let omni_emit_anchor: Int = 0
 "#;
 
+const TODO_SERVICE_REPOSITORY_SOURCE: &str =
+    include_str!("../../../../../dsl/demos/todo_service.dag");
+
 fn compile_omni_service_fixture() -> v3_compiler::Dag {
     std::thread::Builder::new()
         .name("m1_5_openapi_fixture_compile".to_string())
@@ -159,6 +162,87 @@ fn compile_empty_omni_service_fixture() -> v3_compiler::Dag {
         .expect("spawn larger-stack compile thread")
         .join()
         .expect("larger-stack compile thread completes")
+}
+
+fn compile_todo_service_repository_fixture() -> v3_compiler::Dag {
+    std::thread::Builder::new()
+        .name("m1_5_todo_service_repository_compile".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            compile_to_dag(
+                TODO_SERVICE_REPOSITORY_SOURCE,
+                "dsl/demos/todo_service.dag",
+            )
+            .expect("repository todo_service.dag demo compiles")
+        })
+        .expect("spawn larger-stack compile thread")
+        .join()
+        .expect("larger-stack compile thread completes")
+}
+
+fn expected_todo_service_routes() -> BTreeSet<RestRoute> {
+    BTreeSet::from([
+        RestRoute {
+            method: "DELETE".to_string(),
+            path: "/todos/{todoId}".to_string(),
+            path_parameters: vec!["todoId".to_string()],
+        },
+        RestRoute {
+            method: "DELETE".to_string(),
+            path: "/users/{userId}".to_string(),
+            path_parameters: vec!["userId".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/lists/{listId}".to_string(),
+            path_parameters: vec!["listId".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/todos/{todoId}".to_string(),
+            path_parameters: vec!["todoId".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/users".to_string(),
+            path_parameters: vec![],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/users/{userId}".to_string(),
+            path_parameters: vec!["userId".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/users/{userId}/todos".to_string(),
+            path_parameters: vec!["userId".to_string()],
+        },
+        RestRoute {
+            method: "PATCH".to_string(),
+            path: "/todos/{todoId}".to_string(),
+            path_parameters: vec!["todoId".to_string()],
+        },
+        RestRoute {
+            method: "POST".to_string(),
+            path: "/lists/{listId}/todos".to_string(),
+            path_parameters: vec!["listId".to_string()],
+        },
+        RestRoute {
+            method: "POST".to_string(),
+            path: "/users".to_string(),
+            path_parameters: vec![],
+        },
+        RestRoute {
+            method: "POST".to_string(),
+            path: "/users/{userId}/todos".to_string(),
+            path_parameters: vec!["userId".to_string()],
+        },
+        RestRoute {
+            method: "PUT".to_string(),
+            path: "/users/{userId}".to_string(),
+            path_parameters: vec!["userId".to_string()],
+        },
+    ])
 }
 
 fn expected_routes() -> BTreeSet<RestRoute> {
@@ -698,5 +782,52 @@ fn openapi_projection_ignores_same_shape_non_service_endpoint_binding() {
             .any(|route| route.path == "/same-shape-but-not-service"),
         "A user-authored endpoint record with the same method/path shape must not become \
          an OpenAPI route unless its field type is the canonical RestEndpointBinding."
+    );
+}
+
+/// Repository `dsl/demos/todo_service.dag` visceral demo: one `compile_to_dag` feeds the
+/// four Shape B projections (OpenAPI YAML, Markdown, SQL DDL, Rust backend) plus Shape A
+/// `emit_rust`, matching r3-program-plan §1.8 #25–#28 structural discipline.
+#[test]
+fn todo_service_repository_demo_omni_layers_share_one_node_tree() {
+    let mut compile_count = 0usize;
+    let dag = {
+        compile_count += 1;
+        compile_todo_service_repository_fixture()
+    };
+
+    let canonical = extract_rest_routes(&dag).expect("canonical route projection extracts");
+    assert_eq!(canonical, expected_todo_service_routes());
+
+    let openapi = project_openapi_yaml(&dag).expect("Shape B OpenAPI projects from shared DAG");
+    assert!(openapi.starts_with("openapi: 3.1.0\n"));
+    assert_eq!(openapi_yaml_routes(&openapi), canonical);
+
+    let markdown = project_markdown_documentation(&dag).expect("Markdown projects from shared DAG");
+    assert_eq!(markdown_documentation_routes(&markdown), canonical);
+
+    let ddl = project_sql_ddl_schema(&dag).expect("SQL DDL projects from shared DAG");
+    let ddl_routes = sql_ddl_routes(&ddl);
+    let canonical_without_parameters: BTreeSet<_> = canonical
+        .iter()
+        .map(|route| RestRoute {
+            method: route.method.clone(),
+            path: route.path.clone(),
+            path_parameters: vec![],
+        })
+        .collect();
+    assert_eq!(ddl_routes, canonical_without_parameters);
+    assert!(ddl.contains("  CHECK (method IN ("));
+    assert!(ddl.contains("'DELETE'"));
+    assert!(ddl.contains("'PATCH'"));
+    assert!(ddl.contains("'PUT'"));
+
+    let _backend =
+        project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
+    let _rust = emit_rust(&dag).expect("Shape A Rust emit consumes shared DAG");
+
+    assert_eq!(
+        compile_count, 1,
+        "Shape A + Shape B layers must consume the same compile_to_dag result for the repository demo"
     );
 }
