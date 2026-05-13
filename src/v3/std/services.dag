@@ -43,7 +43,7 @@ import v3.spec.v3_l1 { DeclarationRef }
 //
 // Downstream consumers (after PR-β..ω land):
 //   - `analyze_workflow` / `analyze_parallelism`
-//     (`src/v3/compiler/src/dag/effects.rs`, `workflow_parallelism.rs`) derive
+//     (`src/v3/compiler/src/dag/effects.rs`, `lenses/parallelism.dag`) derive
 //     `OperationEffect` per `std.effects::derive_op_effect(method, path)` from
 //     loaded `Operation` records; authored `lane2_workflow` retires.
 //   - `OperationEffect` substrate type

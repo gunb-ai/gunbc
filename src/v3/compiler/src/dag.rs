@@ -339,6 +339,8 @@ pub use computation::{
     IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
 
+pub(crate) use effects::compose_operation_effects;
+
 pub use effects::{
     analyze_workflow, lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
     BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
