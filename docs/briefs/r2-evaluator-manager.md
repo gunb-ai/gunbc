@@ -2,6 +2,8 @@
 
 **Status:** PROPOSAL (per [`docs/r2-structure.md`](../r2-structure.md), Goal 7 added 2026-04-28 via PR #1078). Spawns post-#1078-merge per Transition mechanics step 4. **No prior brief to migrate** — this is a genuinely new R2 manager.
 
+**R3 Evaluator Manager (Gap 3 operative framing):** [`r3-evaluator-manager.md`](r3-evaluator-manager.md) — use for R3-actual-close dispatch, sibling coordination, and refreshed closure-ledger interpretation. This file remains the **R2-era** detailed program + PR-A..E cadence archive.
+
 ## Orient before reading
 
 - **R2 structure authority:** [`docs/r2-structure.md`](../r2-structure.md). Names this manager one of **7** standing R2 managers (alongside Substrate, Modeling, Grounding, Impossible-Bugs, Pure Bootstrap, R2 Release; cross-program coordination via Director). Manager count rose from 6 to 7 with this lane added per #1078.
