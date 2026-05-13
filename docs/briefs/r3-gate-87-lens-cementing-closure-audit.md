@@ -1,6 +1,6 @@
 # R3 Gate 87 Lens Cementing Closure Audit
 
-Audit date: 2026-05-12
+Audit date: 2026-05-12 (G87-D3 ledger sync 2026-05-13)
 
 Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen.dag`, `dsl/gunbc/tools/regen.dag`, `TESTING.md` Band-C, and the gate-87 cementing receipts for every registered lens whose capability-register row is `BEHAVIORALLY COMPLETE`.
 
@@ -18,7 +18,7 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 | Registry key | Lens file | Band-C class | Receipt status |
 |---|---|---|---|
 | `cost` | `src/v3/lenses/complexity.dag` | Real v2 counterpart (`src/v2/complexity.dag`) | Green: `.dag` differential receipt `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost.dag` plus temporary Rust frozen `ComplexitySummary` receipt `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`. |
-| `cost_symbolic` | `src/v3/lenses/cost.dag` | Real v2 counterpart (v2 `CostExpr` embedded in complexity) | Green: temporary Rust frozen symbolic-cost projection receipt `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs`; `.dag` carrier is blocked on nested `SymbolicCost` / `SizeVariable` expected literals. |
+| `cost_symbolic` | `src/v3/lenses/cost.dag` | Real v2 counterpart (v2 `CostExpr` embedded in complexity) | Green: gate-#87 `.dag` receipt `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag` (`SymbolicCostExprEquals` witnesses). `cost_lens_symbolic_consumer_test.rs` remains a **non-duplicate** host pin for gate #78 `per_call_pattern_at` / `symbolic_cost_of` wrapper discipline (see `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §3). |
 | `provenance` | `src/v3/lenses/provenance.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag` plus Rust compile-to-DAG origin receipt. |
 | `structural_resolution` | `src/v3/lenses/structural_resolution.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` plus Rust clean-program receipt. |
 | `unused_parameters` | `src/v3/lenses/unused_parameters.dag` | v3-native | Green: `LensOutputEquals` harness `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` plus Rust clean-program receipt. |
@@ -26,7 +26,7 @@ Scope: cross-check `docs/v3-lens-capability-register.md`, `src/v3/compiler/regen
 
 ## Non-Complete Registered Rows
 
-These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`).
+These registry rows are intentionally outside the complete-lens closure set: `cost_target_realization` (`N/A`), `effect_enumeration` (`PARTIAL`), `parallelism` (`PARTIAL`), `infer_helpers` (`N/A`), and `lower_helpers` (`N/A`). Gate-#87 PB-B-1 harness: `parallelism` uses `tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag` (`Compiles` placeholder + dissolution trigger in file header) so `regen.dag` names stay aligned with `R3_GATE_87_CEMENTING_REGEN_SUITES`.
 
 ## Ratchets
 

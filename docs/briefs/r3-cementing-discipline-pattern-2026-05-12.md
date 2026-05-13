@@ -55,15 +55,39 @@ Predicate-axis boundaries:
 - `BinaryDimensionReportEquals` belongs to Pattern-A DimensionReport comparisons, not cementing-class bulk-port.
 - `ProgramGenerator`, `Quantifier`, and `QuantifiedTestClaim` belong to property-based family claims, not per-lens cementing receipts.
 
-### §2.1 Gate-#87 `Compiles` helper placeholders
+### §2.1 Gate-#87 dissolution ledger (G87-D3)
 
-The rows below are the complete Gate #87 `.dag` `Compiles` placeholder set at the G87-D3 refresh. They are helper or carrier-blocked placeholders, not behavioral cementing evidence. On dissolution, replace the placeholder with the named stronger predicate and remove the paired Rust pin in the same PR.
+Authoritative audit **2026-05-13** over every `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harness and every paired host receipt in `r3_gate_87_lens_cementing_regen_receipts_test.rs`. No silent Band-C exception: each non-final receipt names the missing carrier or runner capability and the owning lane that can dissolve it.
+
+#### §2.1.1 `Compiles` placeholders (helper-only or carrier-blocked)
+
+These rows are **not** behavioral cementing evidence. On dissolution, replace `Compiles` with the named stronger predicate and remove the paired Rust pin in the same PR.
 
 | Lens row | Placeholder file | Paired Rust pin | Dissolution trigger / owning lane |
 |---|---|---|---|
 | `infer_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals` over that carrier. Owning lane: PB / compiler-std helper carrier lane. |
 | `lower_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles` | Public `lower_helpers` behavior carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals`. Owning lane: PB / parse-surface and lower-helper convergence lane. |
 | `variant_payload` | `tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_variant_payload_lens_source_compiles`; temporary unit receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests` | Stable variant-declaration fixture and `VariantPayloadShapeLookup` expected literal become authorable as `.dag` data; replace with `LensOutputEquals(variant_payload_shape, ..., expected)`. Owning lane: T-PB-B tests-as-data carrier completeness for generated lens output literals. |
+| `parallelism` | `tests/dag/t_r3_gate_87_cementing_regen_parallelism.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_parallelism_lens_source_compiles` | Register row is **BEHAVIORALLY PARTIAL** (`docs/v3-lens-capability-register.md`): when `WorkflowParallelismReport` / `ParallelismUnsupportedDetail` expected literals are authorable as `.dag` data (typed pairwise non-commute evidence), replace with `LensOutputEquals` and delete the Rust pin. Owning lane: Cluster F / T-LBP parallelism lens behavioral completion. |
+
+#### §2.1.2 `LensOutputEquals` Int projections with paired host Rust pins
+
+The `.dag` harnesses below already run through the PB-B-1 runner, but the claim uses a **named Int projection** (or seam projection) because the full public report carrier is not yet stable as authored `.dag` `TestPredicate` expected data. The listed `#[test]` rows in `r3_gate_87_lens_cementing_regen_receipts_test.rs` are **temporary host pins**, not silent deferrals: each names what must become literal before the Rust row can retire.
+
+| Lens row | Harness file | `.dag` predicate shape | Paired Rust pin | Dissolution trigger / owning lane |
+|---|---|---|---|---|
+| `structural_resolution` | `tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` | `LensOutputEquals` Int projection (`List<UnresolvedArrowBody>` not literal-stable) | `r3_gate_87_structural_resolution_rust_receipt_on_literal_program` | Full `lens_structural_resolution::check` empty-list witness authorable as `.dag` expected data; M1(2.8) strict user modules avoid opaque-body diagnostics on real carriers. Owning lane: T-PB-B / M1(2.8) carrier completeness. |
+| `unused_parameters` | `tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` | `LensOutputEquals` Int projection | `r3_gate_87_unused_parameters_rust_receipt_on_literal_program` | `List<UnusedParameter>` expected literal authorable in `.dag`. Owning lane: T-PB-B / M1(2.8) carrier completeness. |
+| `effect_enumeration` | `tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag` | `LensOutputEquals` Int projection | `r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program` | `EffectEnumerationReport` literals (incl. transaction scaffold bounds) authorable in `.dag`; host pin today asserts `TransactionalPattern` + fact cardinality. Owning lane: T-PB-B tests-as-data; partial lens semantics in register until effect/resource threading closes. |
+| `provenance` | `tests/dag/t_r3_gate_87_cementing_regen_provenance.dag` | `LensOutputEquals` Int projection (seam until `Origin` literals land) | `r3_gate_87_provenance_origin_rust_receipt_on_literal_bind` | `Origin` sum literals comparable in `.dag` claims; host pin classifies `origin_of` per bind. Owning lane: tests-as-data sum-typed outputs (`docs/design-tests-as-data-completeness.md` §C5); see also §3 `cementing_provenance_origin_integration_test.rs`. |
+| `cost_target_realization` | `tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag` | `LensOutputEquals` Int projection | `r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row` | Narrow Int witness insufficient for full realization-table contract; host asserts `type_realization_meta` resolves `TypeRealization`. Owning lane: T-CostLens-Composition / realization substrate consumers co-located with register **N/A** row. |
+
+#### §2.1.3 Gate-#87 `.dag` behavioral receipts without additional Rust pins in this module
+
+| Lens row | Harness file | Notes |
+|---|---|---|
+| `cost` | `tests/dag/t_r3_gate_87_cementing_regen_cost.dag` | `LensOutputEquals` + `DifferentialEquals` on merge-sort fixture. Frozen `ComplexitySummary` host oracle for the same register row lives under `tests/integration/cementing/complexity_lens_behavioral_completion.rs` (Band-C dispatch); dissolution tracked against gate #73 report carriers, not this integration module alone. |
+| `cost_symbolic` | `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag` | `SymbolicCostExprEquals` / `SymbolicCostExprEqualsForBindParam` only. Residual `cost_lens_symbolic_consumer_test.rs` is **not** a duplicate gate-#87 receipt (gate #78 host-wrapper pin); see §3. |
 
 ## §3. Known Hand-Rust Cementing Dispositions
 
