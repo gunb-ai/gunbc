@@ -227,6 +227,26 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Gate #103 — path-regex inventory ratchet (canvas §5)" },
+          id: none,
+          run: "bash scripts/check-workflow-path-regex-inventory.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Gate #103 — Layer 1 affected-set selection (BinaryShim receipt → gate plan)" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }],
       needs: [],
       env: none,
