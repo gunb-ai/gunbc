@@ -396,7 +396,7 @@ named blocker as described above. The canonical capability table is
 (`docs/design-tests-as-data-completeness.md` §8.3); keep it aligned with
 this section and `docs/v3-lens-capability-register.md` (prose mirror).
 Band-C receipts live in `src/v3/compiler/tests/dag/cementing_dispatch.dag`
-(`cementing_band_c_v2_complete_receipts`); `CementingDispatchMatchesProjection`
+(`cementing_band_c_receipts`); `CementingDispatchMatchesProjection`
 joins those two lists (runner receipt:
 `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
 Whenever a new gate-#87 `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harness

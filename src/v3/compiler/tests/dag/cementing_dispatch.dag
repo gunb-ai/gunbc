@@ -23,16 +23,19 @@ import std.verification {
 type CementingBandCReceiptKind
   = DagHarness
   | TemporaryRustModule
+  | Gate87RustSidecarTest
 
 type CementingBandCReceipt {
   registry_name: String
   module_stem: String
   // `DagHarness` → `.dag` TestClaim harness under `tests/dag/<module_stem>.dag`;
   // `TemporaryRustModule` → `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
+  // `Gate87RustSidecarTest` → `tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`
+  // declares `#[test] fn <module_stem>()`.
   kind: CementingBandCReceiptKind
 }
 
-data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
+data cementing_band_c_receipts: List<CementingBandCReceipt> = [
   {
     registry_name: "cost"
     module_stem: "t_r3_gate_87_cementing_regen_cost"
@@ -52,6 +55,96 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
     registry_name: "cost_symbolic"
     module_stem: "cost_lens_symbolic_consumer_test"
     kind: TemporaryRustModule
+  },
+  {
+    registry_name: "cost_target_realization"
+    module_stem: "t_r3_gate_87_cementing_regen_cost_target_realization"
+    kind: DagHarness
+  },
+  {
+    registry_name: "cost_target_realization"
+    module_stem: "r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "effect_enumeration"
+    module_stem: "t_r3_gate_87_cementing_regen_effect_enumeration"
+    kind: DagHarness
+  },
+  {
+    registry_name: "effect_enumeration"
+    module_stem: "r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "parallelism"
+    module_stem: "t_r3_gate_87_cementing_regen_parallelism"
+    kind: DagHarness
+  },
+  {
+    registry_name: "parallelism"
+    module_stem: "r3_gate_87_parallelism_lens_source_compiles"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "provenance"
+    module_stem: "t_r3_gate_87_cementing_regen_provenance"
+    kind: DagHarness
+  },
+  {
+    registry_name: "provenance"
+    module_stem: "r3_gate_87_provenance_origin_rust_receipt_on_literal_bind"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "structural_resolution"
+    module_stem: "t_r3_gate_87_cementing_regen_structural_resolution"
+    kind: DagHarness
+  },
+  {
+    registry_name: "structural_resolution"
+    module_stem: "r3_gate_87_structural_resolution_rust_receipt_on_literal_program"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "t_r3_gate_87_cementing_regen_unused_parameters"
+    kind: DagHarness
+  },
+  {
+    registry_name: "unused_parameters"
+    module_stem: "r3_gate_87_unused_parameters_rust_receipt_on_literal_program"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "infer_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_infer_helpers"
+    kind: DagHarness
+  },
+  {
+    registry_name: "infer_helpers"
+    module_stem: "r3_gate_87_infer_helpers_lens_source_compiles"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "t_r3_gate_87_cementing_regen_variant_payload"
+    kind: DagHarness
+  },
+  {
+    registry_name: "variant_payload"
+    module_stem: "r3_gate_87_variant_payload_lens_source_compiles"
+    kind: Gate87RustSidecarTest
+  },
+  {
+    registry_name: "lower_helpers"
+    module_stem: "t_r3_gate_87_cementing_regen_lower_helpers"
+    kind: DagHarness
+  },
+  {
+    registry_name: "lower_helpers"
+    module_stem: "r3_gate_87_lower_helpers_lens_source_compiles"
+    kind: Gate87RustSidecarTest
   }
 ]
 
@@ -61,7 +154,7 @@ data claim_cementing_dispatch_projection: TestClaim = {
   file_name: "cementing_dispatch_projection_gate.v3"
   predicate: CementingDispatchMatchesProjection {
     capability_register: lens_capability_register_rows
-    cementing_receipts: cementing_band_c_v2_complete_receipts
+    cementing_receipts: cementing_band_c_receipts
   }
   requires: []
 }

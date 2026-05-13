@@ -15,12 +15,12 @@
 //! + host FS for this check.
 //!
 //! **Interim projection bridge:** `expected_cementing_receipt_triples` is a fail-closed Rust match
-//! from `(registry_name, regen lens_file basename)` to the canonical receipt triples the
-//! `cementing_band_c_v2_complete_receipts` list must equal. Dissolution: move that expansion into
+//! from `(registry_name, regen lens_file basename, capability class)` to the canonical receipt
+//! triples the `cementing_band_c_receipts` list must equal. Dissolution: move that expansion into
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path as FsPath;
 
 use crate::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
@@ -104,6 +104,7 @@ fn cementing_receipt_kind_wire_tag(sum_variant_label: &str) -> Result<&'static s
     match sum_variant_label {
         "DagHarness" => Ok("dag"),
         "TemporaryRustModule" => Ok("temporary-rust"),
+        "Gate87RustSidecarTest" => Ok("gate87-rust-sidecar-test"),
         other => Err(format!(
             "cementing receipt `kind`: unknown `CementingBandCReceiptKind` variant `{other}`"
         )),
@@ -202,7 +203,7 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
 /// receipt rows — otherwise the dispatch predicate fail-closes with an explicit error.
 fn expected_cementing_receipt_triples(
     registry_pairs: &[(String, String)],
-    basenames: &BTreeSet<String>,
+    capability_classes: &std::collections::BTreeMap<String, String>,
 ) -> Result<BTreeSet<(String, String, String)>, String> {
     let mut out = BTreeSet::new();
     for (name, lens_file) in registry_pairs {
@@ -213,11 +214,11 @@ fn expected_cementing_receipt_triples(
                 format!("registry entry `{name}` has lens_file without basename: {lens_file}")
             })?
             .to_string();
-        if !basenames.contains(&basename) {
+        let Some(class) = capability_classes.get(&basename) else {
             continue;
-        }
-        match (name.as_str(), basename.as_str()) {
-            ("cost", "complexity.dag") => {
+        };
+        match (name.as_str(), basename.as_str(), class.as_str()) {
+            ("cost", "complexity.dag", "complete-v2") => {
                 out.insert((
                     name.clone(),
                     "t_r3_gate_87_cementing_regen_cost".to_string(),
@@ -229,7 +230,7 @@ fn expected_cementing_receipt_triples(
                     "temporary-rust".to_string(),
                 ));
             }
-            ("cost_symbolic", "cost.dag") => {
+            ("cost_symbolic", "cost.dag", "complete-v2") => {
                 out.insert((
                     name.clone(),
                     "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
@@ -241,12 +242,84 @@ fn expected_cementing_receipt_triples(
                     "temporary-rust".to_string(),
                 ));
             }
+            ("cost_target_realization", "cost_target_realization.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "cost_target_realization",
+                    "r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row",
+                );
+            }
+            ("effect_enumeration", "effect_enumeration.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "effect_enumeration",
+                    "r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program",
+                );
+            }
+            ("parallelism", "parallelism.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "parallelism",
+                    "r3_gate_87_parallelism_lens_source_compiles",
+                );
+            }
+            ("provenance", "provenance.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "provenance",
+                    "r3_gate_87_provenance_origin_rust_receipt_on_literal_bind",
+                );
+            }
+            ("structural_resolution", "structural_resolution.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "structural_resolution",
+                    "r3_gate_87_structural_resolution_rust_receipt_on_literal_program",
+                );
+            }
+            ("unused_parameters", "unused_parameters.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "unused_parameters",
+                    "r3_gate_87_unused_parameters_rust_receipt_on_literal_program",
+                );
+            }
+            ("infer_helpers", "infer_helpers.dag", "helper") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "infer_helpers",
+                    "r3_gate_87_infer_helpers_lens_source_compiles",
+                );
+            }
+            ("variant_payload", "variant_payload.dag", "v3-native") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "variant_payload",
+                    "r3_gate_87_variant_payload_lens_source_compiles",
+                );
+            }
+            ("lower_helpers", "lower_helpers.dag", "helper") => {
+                insert_gate87_dag_and_sidecar(
+                    &mut out,
+                    name,
+                    "lower_helpers",
+                    "r3_gate_87_lower_helpers_lens_source_compiles",
+                );
+            }
             _ => {
                 return Err(format!(
-                    "Band-C v2 cementing projection includes `LensRegistryEntry` \
-                     (`name={name}`, `lens_file` basename `{basename}`) but \
+                    "Band-C cementing projection includes `LensRegistryEntry` \
+                     (`name={name}`, `lens_file` basename `{basename}`, class `{class}`) but \
                      `expected_cementing_receipt_triples` has no receipt expansion — \
-                     land matching `cementing_band_c_v2_complete_receipts` rows in \
+                     land matching `cementing_band_c_receipts` rows in \
                      `cementing_dispatch.dag` and extend the expansion table in \
                      `cementing_dispatch.rs` in the same PR."
                 ));
@@ -254,6 +327,24 @@ fn expected_cementing_receipt_triples(
         }
     }
     Ok(out)
+}
+
+fn insert_gate87_dag_and_sidecar(
+    out: &mut BTreeSet<(String, String, String)>,
+    registry_name: &str,
+    lens_name: &str,
+    sidecar_test: &str,
+) {
+    out.insert((
+        registry_name.to_string(),
+        format!("t_r3_gate_87_cementing_regen_{lens_name}"),
+        "dag".to_string(),
+    ));
+    out.insert((
+        registry_name.to_string(),
+        sidecar_test.to_string(),
+        "gate87-rust-sidecar-test".to_string(),
+    ));
 }
 
 fn v2_cementing_basenames_from_capability_rows(
@@ -311,6 +402,76 @@ fn v2_cementing_basenames_from_capability_rows(
         }
     }
     Ok(basenames)
+}
+
+fn cementing_classes_from_capability_rows(
+    dag: &Dag,
+    capability_rows: &[FieldValue],
+) -> Result<BTreeMap<String, String>, String> {
+    let mut classes = BTreeMap::new();
+    for row in capability_rows {
+        let Some(fields) = record_fields(row) else {
+            return Err(format!(
+                "capability_register list: expected record row, got {row:?}"
+            ));
+        };
+        let lens_basename = string_field(fields, "lens_basename")?;
+        let structural = record_field(fields, "structural").ok_or_else(|| {
+            "capability_register row: missing `structural` field (expected \
+             `LensCapabilityStructuralStatus` variant)"
+                .to_string()
+        })?;
+        let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
+            "capability_register row: missing `behavioral` field (expected \
+             `LensCapabilityBehavioralStatus` variant)"
+                .to_string()
+        })?;
+        let v2 = record_field(fields, "v2_counterpart").ok_or_else(|| {
+            "capability_register row: missing `v2_counterpart` field (expected \
+             `LensCapabilityV2Counterpart` variant)"
+                .to_string()
+        })?;
+        let structural_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityStructuralStatus",
+            structural,
+            "structural",
+            "capability_register row",
+        )?;
+        let behavioral_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityBehavioralStatus",
+            behavioral,
+            "behavioral",
+            "capability_register row",
+        )?;
+        let v2_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityV2Counterpart",
+            v2,
+            "v2_counterpart",
+            "capability_register row",
+        )?;
+
+        let class = if behavioral_label == "LensCapabilityBehavioralComplete"
+            && v2_label == "LensCapabilityV2RealV2"
+        {
+            Some("complete-v2")
+        } else if v2_label == "LensCapabilityV2NoneV3Native" {
+            Some("v3-native")
+        } else if structural_label == "LensCapabilityStructuralPartial"
+            && v2_label == "LensCapabilityV2NotApplicable"
+        {
+            Some("helper")
+        } else {
+            None
+        };
+
+        if let Some(class) = class {
+            classes.insert(lens_basename, class.to_string());
+        }
+    }
+    Ok(classes)
 }
 
 /// Lens basenames that participate in Band-C v2 cementing: `LensCapabilityBehavioralComplete`
@@ -377,7 +538,8 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     let capability_rows = list_items_of_declaration(dag, reg_id, "capability_register")?;
     let receipt_rows = list_items_of_declaration(dag, recv_id, "cementing_receipts")?;
 
-    let basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
+    let v2_basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
+    let capability_classes = cementing_classes_from_capability_rows(dag, &capability_rows)?;
 
     let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 
@@ -388,12 +550,15 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 "registry entry `{name}` has lens_file without basename: {lens_file}"
             ));
         };
-        if basenames.contains(basename) {
+        if v2_basenames.contains(basename) {
             matched_basenames.insert(basename.to_string());
         }
     }
 
-    let missing: Vec<_> = basenames.difference(&matched_basenames).cloned().collect();
+    let missing: Vec<_> = v2_basenames
+        .difference(&matched_basenames)
+        .cloned()
+        .collect();
     if !missing.is_empty() {
         return Err(format!(
             "`lens_capability_register` escalates v2 cementing for lens basenames {missing:?}, \
@@ -430,7 +595,8 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         }
     }
 
-    let expected_triples = expected_cementing_receipt_triples(&registry_pairs, &basenames)?;
+    let expected_triples =
+        expected_cementing_receipt_triples(&registry_pairs, &capability_classes)?;
     if receipt_triples != expected_triples {
         return Err(format!(
             "cementing_receipts `(registry_name, module_stem, kind)` triples must exactly match \
@@ -508,12 +674,36 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                         "registry lens `{registry_name}` lists temporary Rust cementing stem `{module_stem}` but \
                          tests/integration.rs does not bind `{expected}` to `mod {module_stem};` in the same item \
                          (Band-C dispatch)."
+                        ));
+                }
+            }
+            "gate87-rust-sidecar-test" => {
+                let path = manifest_dir
+                    .join("tests")
+                    .join("integration")
+                    .join("r3_gate_87_lens_cementing_regen_receipts_test.rs");
+                let sidecar = match std::fs::read_to_string(&path) {
+                    Ok(text) => text,
+                    Err(err) => {
+                        return Err(format!(
+                            "read {} for gate-87 Rust sidecar receipt `{module_stem}`: {err}",
+                            path.display()
+                        ));
+                    }
+                };
+                let expected_fn = format!("fn {module_stem}(");
+                if !sidecar.contains("#[test]") || !sidecar.contains(&expected_fn) {
+                    return Err(format!(
+                        "registry lens `{registry_name}` lists gate-87 Rust sidecar receipt \
+                         `{module_stem}` but {} does not declare `#[test] fn {module_stem}(...)`.",
+                        path.display()
                     ));
                 }
             }
             _ => {
                 return Err(
-                    "cementing receipt `kind`: internal error — wire tag not `dag` or `temporary-rust`"
+                    "cementing receipt `kind`: internal error — wire tag not `dag`, \
+                     `temporary-rust`, or `gate87-rust-sidecar-test`"
                         .to_string(),
                 );
             }
