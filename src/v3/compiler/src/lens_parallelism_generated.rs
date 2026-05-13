@@ -16,8 +16,8 @@ fn parallel_unsupported(
 
 fn key_sources_equal(a: &KeySource, b: &KeySource) -> bool {
     match (a, b) {
-        (KeySource::PathParam { .. }, KeySource::PathParam { .. }) => true,
-        (KeySource::InputField { .. }, KeySource::InputField { .. }) => true,
+        (KeySource::PathParam { param: pa }, KeySource::PathParam { param: pb }) => pa == pb,
+        (KeySource::InputField { field: fa }, KeySource::InputField { field: fb }) => fa == fb,
         _ => false,
     }
 }
@@ -34,7 +34,7 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
 }
 
 fn operations_commute(a: &Operation, b: &Operation) -> bool {
-    match (&a.shape, &b.shape) {
+    match (&operation_effect_shape(a), &operation_effect_shape(b)) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
             idempotent_shapes_commute(ia, ib)
         }
@@ -62,15 +62,13 @@ fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
         .collect()
 }
 
-fn pairwise_cross_branch_commutes(
-    branch_ops: &[Vec<Operation>],
-) -> Result<(), (String, String)> {
+fn pairwise_cross_branch_commutes(branch_ops: &[Vec<Operation>]) -> Result<(), ()> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
                 for ob in &branch_ops[j] {
                     if !operations_commute(oa, ob) {
-                        return Err((oa.operation_name.clone(), ob.operation_name.clone()));
+                        return Err(());
                     }
                 }
             }
@@ -110,7 +108,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((_a, _b)) => parallel_unsupported(
+        Err(()) => parallel_unsupported(
             ParallelismUnsupportedKind::PairwiseNonCommute,
             "parallel branch operations do not commute under parallel scheduling",
         ),
@@ -131,10 +129,7 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
         return 0;
     }
     for op in ops {
-        if !matches!(
-            op.shape,
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-        ) {
+        if !matches!(operation_effect_shape(op), EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) {
             return 0;
         }
     }

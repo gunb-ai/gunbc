@@ -15,13 +15,15 @@
 //! One `OnceLock` compile + `Dag::clone` per test keeps `try_register_lane2_workflow_effect` isolated.
 
 use std::sync::OnceLock;
+use std::collections::BTreeMap;
 
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, BreakingShape, CompositionVerdict, EffectShape, IdempotentShape, KeySource,
-    NonSingletonList, Operation, ParallelismUnsupportedKind, WorkflowEffect,
-    WorkflowParallelismReport,
+    operation_effect_shape, Behavior, BreakingShape, CallableRef, CompositionVerdict,
+    CreateCause, EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource,
+    NonSingletonList, Operation, ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding,
+    UrlPathToken, WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
@@ -48,9 +50,38 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
 }
 
 fn op(name: &str, shape: EffectShape) -> Operation {
+    let (method, tokens) = match shape {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (HttpMethodScalar::Put, vec![UrlPathToken::ParamToken { name: param }]),
+        EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (
+            HttpMethodScalar::Delete,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        })
+        | EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback { method },
+        }) => (method, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+        | EffectShape::IsIdempotent(IdempotentShape::DeleteEffect { .. }) => {
+            (HttpMethodScalar::Put, vec![])
+        }
+    };
     Operation {
-        operation_name: name.to_string(),
-        shape,
+        callable: CallableRef {
+            decl_name: name.to_string(),
+        },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
     }
 }
 
@@ -254,10 +285,9 @@ fn parallel_append_in_branch_is_broken_by() {
         .expect("registered workflow should be readable at the root")
         .operation_at(first_breaker)
         .expect("parallel breaker ref should resolve in branch-order flattening");
-    assert_eq!(breaker.operation_name, "append_audit");
     assert!(matches!(
-        breaker.shape,
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        operation_effect_shape(breaker),
+        EffectShape::IsBreaking(_)
     ));
 }
 

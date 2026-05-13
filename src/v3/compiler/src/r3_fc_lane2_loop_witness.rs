@@ -28,7 +28,25 @@
 //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, Operation, WorkflowEffect};
+use std::collections::BTreeMap;
+
+use crate::dag::{
+    operation_effect_shape, CallableRef, Dag, HttpMethodScalar, InputField, Operation,
+    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect,
+};
+
+fn lane2_witness_operation(name: &str, method: HttpMethodScalar, tokens: Vec<UrlPathToken>) -> Operation {
+    Operation {
+        callable: CallableRef {
+            decl_name: name.to_string(),
+        },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
+    }
+}
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
@@ -127,22 +145,22 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
             let wf = match kind {
                 WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![Operation {
-                            operation_name: "r3_fc_read".to_string(),
-                            shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-                        }],
+                        ops: vec![lane2_witness_operation(
+                            "r3_fc_read",
+                            HttpMethodScalar::Get,
+                            vec![],
+                        )],
                     }),
                 },
                 WitnessKind::UpsertLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![Operation {
-                            operation_name: "r3_fc_upsert".to_string(),
-                            shape: EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-                                key_source: KeySource::PathParam {
-                                    param: "id".to_string(),
-                                },
-                            }),
-                        }],
+                        ops: vec![lane2_witness_operation(
+                            "r3_fc_upsert",
+                            HttpMethodScalar::Put,
+                            vec![UrlPathToken::ParamToken {
+                                name: "id".to_string(),
+                            }],
+                        )],
                     }),
                 },
                 WitnessKind::Unproven => unreachable!("filtered above"),
@@ -200,7 +218,7 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                ops[0].shape,
+                                operation_effect_shape(&ops[0]),
                                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
                             )
                 )
@@ -228,7 +246,7 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                ops[0].shape,
+                                operation_effect_shape(&ops[0]),
                                 EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
                             )
                 )

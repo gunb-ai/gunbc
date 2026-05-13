@@ -2,10 +2,13 @@
 
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
+use std::collections::BTreeMap;
+
 use v3_compiler::dag::{
-    ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape,
-    IdempotentShape, KeySource, NonSingletonList, Operation, TypeConnective, WorkflowEffect,
-    WorkflowIdempotencyReport,
+    operation_effect_shape, ArrowBody, Behavior, BreakingShape, CallableRef, CompositionVerdict,
+    CreateCause, EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource,
+    NonSingletonList, Operation, PathTemplate, RestEndpointBinding, TypeConnective, UrlPathToken,
+    WorkflowEffect, WorkflowIdempotencyReport,
 };
 use v3_compiler::diagnostics::{Diagnostic, SourceSpan};
 use v3_compiler::Dag;
@@ -23,9 +26,38 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
 }
 
 fn op(name: &str, shape: EffectShape) -> Operation {
+    let (method, tokens) = match shape {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (HttpMethodScalar::Put, vec![UrlPathToken::ParamToken { name: param }]),
+        EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (
+            HttpMethodScalar::Delete,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        })
+        | EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback { method },
+        }) => (method, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+        | EffectShape::IsIdempotent(IdempotentShape::DeleteEffect { .. }) => {
+            (HttpMethodScalar::Put, vec![])
+        }
+    };
     Operation {
-        operation_name: name.to_string(),
-        shape,
+        callable: CallableRef {
+            decl_name: name.to_string(),
+        },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
     }
 }
 
@@ -153,10 +185,9 @@ fn append_effect_breaks_linear_chain() {
     let breaker = wf
         .operation_at(first_breaker)
         .expect("breaker ref should resolve into linear ops");
-    assert_eq!(breaker.operation_name, "append_audit");
     assert!(matches!(
-        breaker.shape,
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        operation_effect_shape(breaker),
+        EffectShape::IsBreaking(_)
     ));
 }
 

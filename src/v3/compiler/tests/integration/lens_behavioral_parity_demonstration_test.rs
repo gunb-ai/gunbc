@@ -20,14 +20,15 @@
 //! (`ComplexitySummary`, workflow parallelism, effect enumeration) track under
 //! `Gate73_ReportPredicateCarriers`.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AsymptoticClass, Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
-    Operation, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
-    WorkflowParallelismReport,
+    AsymptoticClass, Behavior, CallableRef, CompositionVerdict, HttpMethodScalar, InputField,
+    NonSingletonList, Operation, PathTemplate, PortId, RestEndpointBinding, SymbolicCost,
+    TransformTarget, TypeConnective, WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost::ComplexitySummary;
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup};
@@ -115,8 +116,14 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
 
 fn read_op(name: &str) -> Operation {
     Operation {
-        operation_name: name.to_string(),
-        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+        callable: CallableRef {
+            decl_name: name.to_string(),
+        },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Get,
+            path: PathTemplate { tokens: vec![] },
+        },
     }
 }
 
