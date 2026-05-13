@@ -296,6 +296,28 @@ fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
 }
 
 #[test]
+fn r3_gate_87_parallelism_analyze_lit_frozen_no_workflow_witness() {
+    const FILE: &str = "r3_gate_87_parallelism_lit.v3";
+    let dag = compile_to_dag("let lit: Int = 7", FILE).expect("compile");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "lit" && b.span.file == FILE)
+        .expect("lit bind");
+    let report = v3_compiler::analyze_parallelism(&dag, bind.id);
+    assert!(
+        matches!(
+            report,
+            v3_compiler::dag::WorkflowParallelismReport::ParallelismUnsupported(ref d)
+                if d.kind == v3_compiler::dag::ParallelismUnsupportedKind::NoWorkflowProjection
+        ),
+        "frozen witness: literal program without lane2 workflow must classify as NoWorkflowProjection; \
+         got {report:?} (paired with `t_r3_gate_87_cementing_regen_parallelism.dag`)"
+    );
+}
+
+#[test]
 fn r3_gate_87_cost_cementing_dag_merge_sort_program_locksteps_merge_sort_fixture() {
     let program = include_str!("../fixtures/r1_merge_sort_pair.v3");
     let dag_text = include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag");
