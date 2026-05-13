@@ -8,8 +8,8 @@ import extdeps.github.actions {
   WorkflowTrigger, Push, PullRequest,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermRead, PermWrite, PermNone,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax,
-  CancelInProgressSpec, CancelInProgressBool,
+  ConcurrencyMappingQueueNotMax,
+  CancelInProgressBool,
   HostedRunner, SelfHosted, RunsOnExpression,
   RunnerLabel, UbuntuLatest,
   ShellType, Bash
@@ -21,7 +21,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
   concurrency: Some {
   value: ConcurrencyMappingQueueNotMax {
       group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
-      cancel_in_progress: Some { value: CancelInProgressBool { value: true } },
+      cancel_in_progress: CancelInProgressBool { value: true },
       explicit_single: none
     }
   },
@@ -588,7 +588,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
     }],
   env: Some { value: { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" } },
   permissions: Some {
-  value: {
+  value: WorkflowPermissions {
       contents: PermRead,
       pull_requests: PermRead,
       issues: PermNone,

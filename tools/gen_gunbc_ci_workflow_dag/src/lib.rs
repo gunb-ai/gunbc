@@ -48,8 +48,8 @@ pub fn emit_ci_github_actions_workflow_module(
     out.push_str("  WorkflowTrigger, Push, PullRequest,\n");
     out.push_str("  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,\n");
     out.push_str("  WorkflowPermissions, PermRead, PermWrite, PermNone,\n");
-    out.push_str("  ConcurrencySpec, ConcurrencyMappingQueueNotMax,\n");
-    out.push_str("  CancelInProgressSpec, CancelInProgressBool,\n");
+    out.push_str("  ConcurrencyMappingQueueNotMax,\n");
+    out.push_str("  CancelInProgressBool,\n");
     out.push_str("  HostedRunner, SelfHosted, RunsOnExpression,\n");
     out.push_str("  RunnerLabel, UbuntuLatest,\n");
     out.push_str("  ShellType, Bash\n");
@@ -72,7 +72,7 @@ fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let on = emit_triggers(m.get("on").ok_or("missing on:")?)?;
     let concurrency = emit_concurrency(m.get("concurrency"))?;
     let jobs = emit_jobs(m.get("jobs").ok_or("missing jobs:")?)?;
-    let env = emit_env_map(m.get("env"))?;
+    let env = emit_optional_string_map(m.get("env"))?;
     let permissions = emit_permissions(m.get("permissions"))?;
     Ok(format!(
         "{{\n  name: {},\n  on: {},\n  concurrency: {},\n  jobs: {},\n  env: {},\n  permissions: {}\n}}",
@@ -194,23 +194,19 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
         None => "none".to_string(),
-        Some(Value::Bool(true)) => {
-            "Some { value: CancelInProgressBool { value: true } }".to_string()
-        }
-        Some(Value::Bool(false)) => {
-            "Some { value: CancelInProgressBool { value: false } }".to_string()
-        }
+        Some(Value::Bool(true)) => "CancelInProgressBool { value: true }".to_string(),
+        Some(Value::Bool(false)) => "CancelInProgressBool { value: false }".to_string(),
         Some(other) => return Err(format!("unsupported cancel-in-progress: {other:?}").into()),
     };
+    // `T?` optional fields lower as `none` | `Some { value: <inhabited T> }` (see
+    // `lower.rs` / `infer.rs` optional-match disj). `ConcurrencySpec` itself is a sum;
+    // `cancel_in_progress` inside `ConcurrencyMappingQueueNotMax` is `CancelInProgressSpec?`
+    // and uses the same `none` | bare-variant discipline (no inner `Some`).
     Ok(format!(
         "Some {{\n  value: ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}\n  }}",
         dag_string(&group),
         cancel
     ))
-}
-
-fn emit_env_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
-    emit_optional_string_map(v)
 }
 
 fn emit_optional_string_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
@@ -273,7 +269,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "Some {{\n  value: {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}\n  }}",
+        "Some {{\n  value: WorkflowPermissions {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}\n  }}",
         contents, pull_requests, issues, actions
     ))
 }
