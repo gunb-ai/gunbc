@@ -1357,13 +1357,10 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
-<<<<<<< HEAD
-=======
 // `NonSingletonList<element>` (`substrate_minimal`) — mirrors
 // `python_non_singleton_list_instantiation`; required when a lens module
 // names `NonSingletonList<T>` in function signatures (e.g. Stage 2e
 // `parallelism.dag` extracting parallel branches).
->>>>>>> origin/main
 data rust_non_singleton_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: NonSingletonList
