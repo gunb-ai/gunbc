@@ -26,6 +26,7 @@ use crate::lens_declaration_apply::{
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_parallelism::analyze_parallelism;
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -3132,6 +3133,21 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(root) = first_behavior_root(program_dag) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): no behavior root found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    analyze_parallelism(program_dag, root),
+                    crate::dag::WorkflowParallelismReport::ParallelUnsupported(detail)
+                        if matches!(
+                            detail.kind,
+                            crate::dag::ParallelismUnsupportedKind::NoWorkflowProjection
+                        )
+                ))
+            }
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
