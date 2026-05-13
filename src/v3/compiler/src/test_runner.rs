@@ -5058,10 +5058,10 @@ impl<'a> TestRunner<'a> {
                 }
             };
             // Single-field record variants (e.g., `PendingFact { output_path: Path }`)
-                // lower with `output_path` inlined as the bare payload value; multi-field
-                // variants (e.g., `ResolvedFact { output_path, dag_source, source_hash }`)
-                // wrap payload in `FieldValue::Record(fields)`. Extract `output_path`
-                // from whichever shape this arm produces.
+            // lower with `output_path` inlined as the bare payload value; multi-field
+            // variants (e.g., `ResolvedFact { output_path, dag_source, source_hash }`)
+            // wrap payload in `FieldValue::Record(fields)`. Extract `output_path`
+            // from whichever shape this arm produces.
             let output_path = match &inner {
                 FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
                 _ => record_fields(&inner).and_then(|fields| {
@@ -5080,7 +5080,10 @@ impl<'a> TestRunner<'a> {
                 }
             }
         }
-        if let Some(path) = named_paths.iter().find(|path| !generated.contains(path.as_str())) {
+        if let Some(path) = named_paths
+            .iter()
+            .find(|path| !generated.contains(path.as_str()))
+        {
             return ClaimResult::Fail(format!(
                 "GeneratedFromDag manifest_entries output_path `{path}` is not in the generated-file authority"
             ));
