@@ -11,7 +11,9 @@
 //! no intentionally-wrong deferred carrier here; unsupported control
 //! flow is modeled via explicit sums, not silent placeholders.
 //!
-//! Extracted from `dag.rs` (L4b). No behavior change.
+//! The L4b extraction has since grown the native Stage 2 bridge for
+//! `Operation`-based effect classification; see `operation_effect_shape` for
+//! the live transitional contract and dissolution receipt.
 
 use std::collections::BTreeMap;
 
