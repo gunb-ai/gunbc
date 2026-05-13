@@ -6450,6 +6450,10 @@ fn optional_some_none_surface_form(expr: &SurfaceExpr) -> bool {
     }
 }
 
+// Optional/sum payload surface vs lowered field names: `docs/v3-spec.md` Scenario 6 shows
+// `Some { value: v }` style patterns; lowering may use synthetic `_0` for the inner payload field.
+// Treat `value` ↔ `_0` as one alias so record literals (e.g. `with:` / `env:` rows in
+// `dsl/gunbc/ci_github_actions_workflow.dag`) match the inferred sum-variant arm consistently.
 fn surface_record_field_for_variant_payload<'a>(
     fields: &'a [crate::parse::SurfaceRecordField],
     payload_label: &str,
