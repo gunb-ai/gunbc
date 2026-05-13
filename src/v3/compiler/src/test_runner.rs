@@ -7903,18 +7903,20 @@ mod gate_87_v2_counterpart_boundary_tests {
         let file = "r3_gate_87_straight_line_boundary.v3";
         let dag = compile_to_dag(src, file).expect("straight-line program compiles");
         let (v3, v2) = cost_for_bind(&dag, "straight_line_total", file);
-        // Both lineages must report identical Hit values; the absolute pin catches a same-direction
-        // drift that the `DifferentialEquals` equality check alone would miss.
+        // Absolute pin: `straight_line_total = a + b` is one `Transform` over two literal-Int
+        // `Value` nodes (each cost 0); `lane_e_host_add_one` adds 1, then `Bind` lookup. Both
+        // lineages must report `Hit(1)`. Pinning the absolute value catches a same-direction
+        // drift between `lane_e_host_forward_cost_of` and `lens_cost::cost_of` that pairwise
+        // `assert_eq!(v3, v2)` alone would silently accept.
+        let expected = CostLookup::Hit(1);
         assert_eq!(
-            v3, v2,
-            "v3 host forward-fold and v2 generated cost_of must agree on straight_line_total"
+            v3, expected,
+            "v3 host forward-fold cost on straight_line_total drifted from pinned Hit(1)"
         );
-        match v3 {
-            CostLookup::Hit(_) => {}
-            CostLookup::Miss => {
-                panic!("v3 host forward-fold returned Miss for straight_line_total")
-            }
-        }
+        assert_eq!(
+            v2, expected,
+            "v2 generated cost_of on straight_line_total drifted from pinned Hit(1)"
+        );
     }
 
     #[test]
@@ -7924,14 +7926,20 @@ mod gate_87_v2_counterpart_boundary_tests {
         let file = "r3_gate_87_merge_sort_pair_boundary.v3";
         let dag = compile_to_dag(src, file).expect("merge_sort_pair program compiles");
         let (v3, v2) = cost_for_bind(&dag, "merge_sort_out", file);
+        // Absolute pin: `merge_sort_out = merge_sort_pair(cons(2, singleton(1)))` reduces to a
+        // `Hit(3)` cost on both lineages under the current host forward-fold + v2-generated
+        // `cost_of`. The numeric pin (not just `assert_eq!(v3, v2)`) is what defends against
+        // a same-direction drift in both implementations. If lens-cost lowering legitimately
+        // changes, update this pin in lockstep with the v3 host mirror.
+        let expected = CostLookup::Hit(3);
         assert_eq!(
-            v3, v2,
-            "v3 host forward-fold and v2 generated cost_of must agree on merge_sort_out"
+            v3, expected,
+            "v3 host forward-fold cost on merge_sort_out drifted from pinned Hit(3)"
         );
-        match v3 {
-            CostLookup::Hit(_) => {}
-            CostLookup::Miss => panic!("v3 host forward-fold returned Miss for merge_sort_out"),
-        }
+        assert_eq!(
+            v2, expected,
+            "v2 generated cost_of on merge_sort_out drifted from pinned Hit(3)"
+        );
     }
 
     #[test]
