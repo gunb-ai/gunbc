@@ -70,6 +70,31 @@ EOF
   fi
 }
 
+test_non_warn_manifest_policy_fails_closed() {
+  write_log
+  cat >> "$LOG" <<'EOF'
+test not_warn_policy ... ok <2.100s>
+EOF
+
+  local output exit_code
+  if output=$(TEST_TIMEOUT_MANIFEST="$MANIFEST" bash "$CONSUMER" "$LOG" 2000 2>&1); then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
+
+  if [ "$exit_code" -eq 0 ]; then
+    echo "FAIL [non-warn-policy]: consumer treated a non-warn manifest row as warn-listed"
+    printf '%s\n' "$output" | sed 's/^/  | /'
+    return 1
+  fi
+  if [[ "$output" != *"not_warn_policy"* ]] || [[ "$output" != *"not warn-listed in manifest"* ]]; then
+    echo "FAIL [non-warn-policy]: consumer failed but did not name the non-warn slow test"
+    printf '%s\n' "$output" | sed 's/^/  | /'
+    return 1
+  fi
+}
+
 test_zero_parsed_lines_fails_closed() {
   printf 'not libtest output\n' > "$LOG"
 
@@ -96,6 +121,7 @@ failures=0
 for test_fn in \
   test_warn_manifest_allows_known_slow_test \
   test_unknown_slow_test_fails_closed \
+  test_non_warn_manifest_policy_fails_closed \
   test_zero_parsed_lines_fails_closed; do
   echo "Test: $test_fn..."
   if "$test_fn"; then
