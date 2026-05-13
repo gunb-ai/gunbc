@@ -83,6 +83,8 @@ mod idempotency_lens_instance_blocker_test;
 mod int_literal_cardinality_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
 mod l1_5_fixed_point_test;
+#[path = "boundary/l5_cross_target_consistency.rs"]
+mod l5_cross_target_consistency;
 #[path = "integration/lane2_stage_2a_effects_smoke.rs"]
 mod lane2_stage_2a_effects_smoke;
 #[path = "integration/lane2_stage_2b_db18_test.rs"]
