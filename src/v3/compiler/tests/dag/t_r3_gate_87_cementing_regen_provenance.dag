@@ -1,6 +1,6 @@
 // R3 gate #87 — `LensRegistryEntry` `provenance`.
-// The claim freezes the minimal literal-bind origin witness through a named Int projection until
-// `Origin` literals can be compared directly by `LensOutputEquals`.
+// Claims freeze `origin_of` seam witnesses through named Int projections (1 = variant holds)
+// until `Origin` literals can be compared directly by `LensOutputEquals`.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_provenance
 
@@ -8,6 +8,8 @@ import std.substrate { Dag }
 import std.verification { LensOutputEquals, ProgramInput, TestClaim, TestSuite }
 
 fn gate87_provenance_literal_origin_source(d: Dag) -> Int = 0
+
+fn gate87_provenance_sum_origin_computed(d: Dag) -> Int = 0
 
 data gate87_program_input: ProgramInput = {}
 
@@ -25,7 +27,22 @@ data cementing_regen_provenance_claim: TestClaim = {
   requires: []
 }
 
+data cementing_regen_provenance_sum_claim: TestClaim = {
+  name: "cementing_regen_provenance_sum",
+  source: "let sum: Int = 1 + 2",
+  file_name: "r3_gate_87_provenance_sum_smoke.v3",
+  predicate: LensOutputEquals(
+    gate87_provenance_sum_origin_computed,
+    gate87_program_input,
+    gate87_expected_true
+  ),
+  requires: []
+}
+
 data r3_gate_87_cementing_regen_provenance_suite: TestSuite = {
   name: "r3-gate-87/cementing/regen/provenance",
-  claims: [Enumerated(cementing_regen_provenance_claim)]
+  claims: [
+    Enumerated(cementing_regen_provenance_claim),
+    Enumerated(cementing_regen_provenance_sum_claim)
+  ]
 }

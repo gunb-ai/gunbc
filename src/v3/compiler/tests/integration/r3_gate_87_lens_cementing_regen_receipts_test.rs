@@ -44,7 +44,6 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
-use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
@@ -155,18 +154,6 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
     assert!(
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
-    );
-}
-
-#[test]
-fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
-    let dag =
-        compile_to_dag("let lit: Int = 7", "r3_gate_87_provenance_receipt.v3").expect("compile");
-    let port = find_bind_value_port(&dag, "lit");
-    let got = origin_of(&dag, &port);
-    assert!(
-        matches!(got, Origin::Source { .. }),
-        "literal bind should classify as Source(..), got {got:?}"
     );
 }
 
