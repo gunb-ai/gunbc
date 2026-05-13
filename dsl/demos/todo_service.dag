@@ -4,8 +4,9 @@
 // Markdown drift-lock, SQL DDL route schema, runnable Rust backend) plus Shape A
 // `emit_rust` on one shared `compile_to_dag` result (r3-program-plan §1.8 #25–#28).
 //
-// Domain carriers are type-authority only; route exposure follows the canonical
-// `List<{ endpoint: RestEndpointBinding }>` row shape from `v3.std.services`.
+// Domain carriers are illustrated with small `data` inhabitants (human-facing
+// demo context). Omni route extraction still keys only on
+// `List<{ endpoint: RestEndpointBinding }>` rows (`v3.std.services`).
 
 module demos.todo_service
 
@@ -35,6 +36,24 @@ type TodoList {
 
 type TodoServiceOperation {
   endpoint: RestEndpointBinding
+}
+
+data todo_domain_example_user: User = {
+  id:           "demo-user",
+  display_name: "Demo User"
+}
+
+data todo_domain_example_item: TodoItem = {
+  id:        "demo-todo",
+  list_id:   "demo-list",
+  title:     "Wire domain carriers to example rows",
+  completed: false
+}
+
+data todo_domain_example_list: TodoList = {
+  id:       "demo-list",
+  owner_id: "demo-user",
+  title:    "Demo backlog"
 }
 
 data todo_service_operations: List<TodoServiceOperation> = [
