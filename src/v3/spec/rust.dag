@@ -92,7 +92,7 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
-import std.algebra { BooleanAlgebra, Monoid }
+import std.algebra { BooleanAlgebra, Monoid, FreeMonoid }
 import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128, IntPlatform, UIntPlatform }
 import v3.std.lookup { Lookup }
 import v3.std.dimensions { Witness }
@@ -1096,6 +1096,17 @@ data rust_string_eq: OperatorRealization = {
   cost: 1
 }
 
+// Equality on `FreeMonoid` inhabitants (e.g. `String` / `List` element
+// comparisons after the monoid witness walk) — same Rust surface as
+// `rust_string_eq` / `rust_int_eq`.
+data rust_free_monoid_eq: OperatorRealization = {
+  language: rust_language
+  target: FreeMonoid
+  op: OrderedRing.eq
+  carrier: "({lhs} == {rhs})"
+  cost: 1
+}
+
 data rust_int_ne: OperatorRealization = {
   language: rust_language
   target: Int
@@ -1280,6 +1291,17 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: List
   carrier: "Vec<{element}>"
+  cost: 1
+}
+
+// `NonSingletonList<element>` (`substrate_minimal`) — mirrors
+// `python_non_singleton_list_instantiation`; required when a lens module
+// names `NonSingletonList<T>` in function signatures (e.g. Stage 2e
+// `parallelism.dag` extracting parallel branches).
+data rust_non_singleton_list_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: NonSingletonList
+  carrier: "NonSingletonList<{element}>"
   cost: 1
 }
 
