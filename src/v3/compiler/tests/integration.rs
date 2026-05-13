@@ -364,7 +364,7 @@ mod t_demo_fixture_test {
     fn t_demo_impossible_bug_suite_r1_passes() {
         let dag = cached_t_demo_fixture_dag();
         let results = TestRunner::new(dag).run_suite("impossible_bug_class_suite_r1");
-        assert_eq!(results.len(), 2);
+        assert_eq!(results.len(), 3);
         assert!(
             results
                 .iter()
