@@ -209,12 +209,15 @@ fn md_v2_counterpart_is_real_v2_oracle(v2_cell: &str) -> bool {
 /// v2 counterpart column bucket aligned with `LensCapabilityV2Counterpart` mnemonics in
 /// [`v3_compiler::cementing_dispatch::lens_capability_register_normalized_axes_by_basename`].
 fn md_v2_bucket_for_register_axes_alignment(v2_cell: &str) -> String {
-    if md_v2_counterpart_is_real_v2_oracle(v2_cell) {
-        return "REAL_V2".to_string();
-    }
     let lower = v2_cell.trim().to_ascii_lowercase();
+    // Must run before `md_v2_counterpart_is_real_v2_oracle`: prose sometimes uses
+    // `None (v3-native; …)` (semicolon) rather than the exact `none (v3-native)` substring
+    // checked there, but still maps to `LensCapabilityV2NoneV3Native`.
     if lower.contains("v3-native") {
         return "NONE_V3_NATIVE".to_string();
+    }
+    if md_v2_counterpart_is_real_v2_oracle(v2_cell) {
+        return "REAL_V2".to_string();
     }
     "NOT_APPLICABLE".to_string()
 }
