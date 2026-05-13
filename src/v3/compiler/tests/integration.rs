@@ -217,6 +217,8 @@ mod sg7_prep_variant_payload_freshness_test;
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
+#[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
+mod t_gate_58_apply_lens_self_application_test;
 #[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
 mod t_impossiblebugs_unenumerated_effects_test;
 #[path = "integration/t_las_complexity_contract_compile_error_test.rs"]

@@ -22,8 +22,11 @@ import extdeps.github.actions {
 }
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
+import v3.std.lens_application { DeclarationScope, DiagnosticSeverity, EnforcedApplication }
 import v3.std.timing_lens {
+  TimingBudget,
   TimingMeasurement,
+  timing_enforceable,
   timing_lens_behavior_span,
   timing_lens_scaffold_non_evidence_diagnostic,
   timing_lens_validate,
@@ -208,3 +211,29 @@ fn demo_ci_modeled_timing_dimension_report(d: Dag, b: Behavior) -> DimensionRepo
     dimension_report_tm_from_witness(d, ci_demo_timing_read(d, b))
   else
     dimension_report_tm_from_witness(d, ci_wad_modeled_workflow_timing_witness(d, b))
+
+// Gate #58 (`apply_lens_self_application_demonstrated`) — typed `DeclarationScope` witness for
+// timing enforcement: embeds authoritative lowered `TimingMeasurement` (same substrate as
+// `timing_enforcement_project` / `timing_lens.dag`) so the host consumer never keys usage off
+// declaration display names. `modeled_gunbc_ci_workflow` remains the CI-shaped demo carrier;
+// this row is the enforcement subject until workflow observations fold into the same lens path
+// as gate #92’s complexity fold.
+type gate_58_timing_enforcement_section {
+  measurement: TimingMeasurement
+}
+
+data gate_58_modeled_ci_timing_measurement: gate_58_timing_enforcement_section = {
+  measurement: Observed { duration: { count: 0 } }
+}
+
+// Gate #58 (`apply_lens_self_application_demonstrated`): `EnforcedApplication<TimingMeasurement,
+// TimingBudget>` using canonical `timing_enforceable`, sectioning the gate witness row above
+// (not the `Workflow` table directly) so infer reads modeled `TimingMeasurement` facts from the
+// PB-1 snapshot — same `EnforcedApplication` carrier path as gate #92’s T-LAS demos.
+data gate_58_apply_lens_self_application_pass: EnforcedApplication<TimingMeasurement, TimingBudget> = {
+  enforceable_lens: timing_enforceable
+  section: DeclarationScope { declaration: gate_58_modeled_ci_timing_measurement }
+  budget: { max: { count: 1000000000 } }
+  diagnostic_severity: Error
+  span: { file: "src/v3/std/t_ci_workflow_as_data_demo.dag", start: 0, end: 0 }
+}

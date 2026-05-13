@@ -15,6 +15,15 @@
 //! `LensEnforcement` projection + violation relation as `complexity.dag`
 //! (`complexity_enforcement_project` / `complexity_enforcement_violates`, surfaced
 //! through `complexity_lens_generated`) and attaches a compile diagnostic on violation.
+//!
+//! Gate #58 (`apply_lens_self_application_demonstrated`): when a program authors
+//! `EnforcedApplication<TimingMeasurement, TimingBudget>` referencing `timing_enforceable`
+//! (`v3.std.timing_lens`), infer reads the **lowered** `TimingMeasurement` carried on the
+//! `DeclarationScope` subject (today: `gate_58_modeled_ci_timing_measurement` in
+//! `t_ci_workflow_as_data_demo.dag`, typed `gate_58_timing_enforcement_section`) and applies the
+//! same usage ceiling as `timing_enforcement_project` / `timing_enforcement_violates` in
+//! `timing_lens.dag` (fault states map to a sentinel usage budget in substrate; the host compares
+//! projected nanoseconds against `TimingBudget.max` with the same strict `>` edge as gate #94).
 
 use std::collections::HashMap;
 
@@ -53,7 +62,125 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
     });
 }
 
-/// Fail-closed check for landed complexity enforcement applications.
+/// Sentinel nanoseconds carrier for non-`Observed` timing states in
+/// `timing_enforcement_fault_usage_budget` / `timing_enforcement_project` (`timing_lens.dag`).
+/// Host enforcement must stay aligned with that substrate literal.
+pub(crate) const TIMING_ENFORCEMENT_FAULT_SENTINEL_NS: u64 = 999_999_999_999_999_999;
+
+fn timing_measurement_sum_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("TimingMeasurement")
+                && d.span.file.ends_with("timing_lens.dag")
+        })
+        .map(|d| d.id)
+}
+
+/// PB-1 gate #58 witness row type (`t_ci_workflow_as_data_demo.dag`): one field `measurement`
+/// carrying lowered `TimingMeasurement` facts for [`check_enforced_lens_applications`].
+fn gate_58_timing_enforcement_section_type_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("gate_58_timing_enforcement_section")
+                && d.span.file.ends_with("t_ci_workflow_as_data_demo.dag")
+        })
+        .map(|d| d.id)
+}
+
+/// Interprets a lowered `TimingMeasurement` value the same way `timing_enforcement_project` does
+/// on the substrate (`timing_lens.dag`): `Observed` → `duration.count` nanoseconds; other report
+/// variants map to the fault usage budget sentinel.
+fn timing_measurement_variant_usage_max_ns(
+    dag: &Dag,
+    tm_disj: DeclarationId,
+    value: &FieldValue,
+) -> Option<u64> {
+    let TypeConnective::Disj { variants } = &dag.declaration(tm_disj).connective else {
+        return None;
+    };
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    let variant = variants.iter().find(|v| v.ty == *constructor)?;
+    match variant.label.as_str() {
+        "Observed" => observed_timing_payload_max_ns(payload),
+        "Unobserved" | "Ambiguous" | "Stale" => Some(TIMING_ENFORCEMENT_FAULT_SENTINEL_NS),
+        _ => None,
+    }
+}
+
+fn observed_timing_payload_max_ns(payload: &[FieldValue]) -> Option<u64> {
+    let FieldValue::Record(parts) = payload.first()? else {
+        return None;
+    };
+    if let Some((_, v)) = parts.iter().find(|(label, _)| label == "duration") {
+        return field_value_nat_magnitude(v);
+    }
+    field_value_nat_magnitude(&FieldValue::Record(parts.clone()))
+}
+
+pub(crate) fn timing_enforcement_violates(declared_max_ns: u64, usage_max_ns: u64) -> bool {
+    usage_max_ns == TIMING_ENFORCEMENT_FAULT_SENTINEL_NS || usage_max_ns > declared_max_ns
+}
+
+fn field_value_nat_magnitude(value: &FieldValue) -> Option<u64> {
+    match value {
+        FieldValue::Literal(LiteralBits::Int(s)) => s.parse().ok(),
+        FieldValue::Record(parts) => parts
+            .iter()
+            .find(|(label, _)| label == "count")
+            .and_then(|(_, v)| field_value_nat_magnitude(v)),
+        _ => None,
+    }
+}
+
+fn field_value_timing_budget_max_ns(value: &FieldValue) -> Option<u64> {
+    let FieldValue::Record(parts) = value else {
+        return None;
+    };
+    let max = parts
+        .iter()
+        .find(|(label, _)| label == "max")
+        .map(|(_, v)| v)?;
+    field_value_nat_magnitude(max)
+}
+
+fn is_timing_enforceable_lens_value(
+    value: &FieldValue,
+    timing_enforceable_id: Option<DeclarationId>,
+    timing_lens_id: Option<DeclarationId>,
+    timing_enforcement_id: Option<DeclarationId>,
+) -> bool {
+    if let (Some(bundle), FieldValue::Reference(id)) = (timing_enforceable_id, value) {
+        if *id == bundle {
+            return true;
+        }
+    }
+    let (Some(lens_id), Some(enforcement_id)) = (timing_lens_id, timing_enforcement_id) else {
+        return false;
+    };
+    let FieldValue::Record(parts) = value else {
+        return false;
+    };
+    let mut lens_ref: Option<DeclarationId> = None;
+    let mut enforcement_ref: Option<DeclarationId> = None;
+    for (label, field) in parts {
+        match (label.as_str(), field) {
+            ("lens", FieldValue::Reference(r)) => lens_ref = Some(*r),
+            ("enforcement", FieldValue::Reference(r)) => enforcement_ref = Some(*r),
+            _ => {}
+        }
+    }
+    lens_ref == Some(lens_id) && enforcement_ref == Some(enforcement_id)
+}
+
+/// Fail-closed check for landed complexity + timing enforcement applications.
 pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
     let Some(enforced_template) = dag
         .declarations()
@@ -66,27 +193,44 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
     else {
         return;
     };
-    let Some(complexity_enforceable_id) = dag
+    let complexity_enforceable_id = dag
         .declarations()
         .iter()
         .find(|d| {
             d.name.as_deref() == Some("complexity_enforceable")
                 && d.span.file.ends_with("complexity.dag")
         })
-        .map(|d| d.id)
-    else {
-        return;
-    };
-    let Some(asymptotic_disj) = dag
+        .map(|d| d.id);
+    let timing_enforceable_id = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("timing_enforceable")
+                && d.span.file.ends_with("timing_lens.dag")
+        })
+        .map(|d| d.id);
+    let timing_lens_id = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("timing_lens") && d.span.file.ends_with("timing_lens.dag")
+        })
+        .map(|d| d.id);
+    let timing_enforcement_id = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("timing_enforcement")
+                && d.span.file.ends_with("timing_lens.dag")
+        })
+        .map(|d| d.id);
+    let asymptotic_disj = dag
         .declarations()
         .iter()
         .find(|d| {
             d.name.as_deref() == Some("AsymptoticClass") && d.span.file.ends_with("algebra.dag")
         })
-        .map(|d| d.id)
-    else {
-        return;
-    };
+        .map(|d| d.id);
     let Some(section_ref_disj) = dag
         .declarations()
         .iter()
@@ -124,53 +268,17 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
             continue;
         }
         let fm = field_map(fields);
-        let enforceable = match fm.get("enforceable_lens") {
-            Some(FieldValue::Reference(id)) => *id,
+        let enforceable_lens = match fm.get("enforceable_lens") {
+            Some(v) => v,
             _ => continue,
         };
-        if enforceable != complexity_enforceable_id {
-            continue;
-        }
         let section = match fm.get("section") {
             Some(v) => *v,
             _ => continue,
         };
-        let Some(fn_decl) =
-            resolve_declaration_scope_fn(dag, section, section_ref_disj, declaration_scope_conj)
-        else {
-            violations.push(Diagnostic::ParseError {
-                message: "lens enforcement: could not resolve function declaration for section"
-                    .to_string(),
-                span: decl.span.clone(),
-                fixes: Vec::new(),
-            });
-            continue;
-        };
-        let Some(port) = fn_result_port(dag, fn_decl) else {
-            violations.push(Diagnostic::ParseError {
-                message: "lens enforcement: could not resolve function result port for section"
-                    .to_string(),
-                span: decl.span.clone(),
-                fixes: Vec::new(),
-            });
-            continue;
-        };
         let budget_val = match fm.get("budget") {
             Some(v) => *v,
             _ => continue,
-        };
-        let Some(budget_class) =
-            field_value_asymptotic_class(dag, asymptotic_disj, positive_descent_disj, budget_val)
-        else {
-            violations.push(Diagnostic::ParseError {
-                message: "lens enforcement: could not read complexity budget `AsymptoticClass` \
-                          (ill-formed `ClassPolynomial` budgets must use Peano `degree` ≥ 3; \
-                          use `ClassLinear` / `ClassQuadratic` for sub-cubic tiers)"
-                    .to_string(),
-                span: decl.span.clone(),
-                fixes: Vec::new(),
-            });
-            continue;
         };
         let span = match fm.get("span") {
             Some(FieldValue::Record(span_fields)) => record_as_source_span(span_fields),
@@ -178,47 +286,253 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         }
         .unwrap_or_else(|| decl.span.clone());
 
-        let observed = match complexity_of(dag, &port) {
-            Lookup::Hit(s) => complexity_enforcement_project(&s),
-            Lookup::Miss => {
+        if let (Some(cid), FieldValue::Reference(ref_id)) =
+            (complexity_enforceable_id, enforceable_lens)
+        {
+            if *ref_id == cid {
+                let Some(asymptotic_disj) = asymptotic_disj else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not resolve substrate `AsymptoticClass` from \
+                              `algebra.dag` (modeled authority missing; fail-closed)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                    continue;
+                };
+                let Some(fn_decl) = resolve_declaration_scope_fn(
+                    dag,
+                    section,
+                    section_ref_disj,
+                    declaration_scope_conj,
+                ) else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not resolve function declaration for section"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                    continue;
+                };
+                let Some(port) = fn_result_port(dag, fn_decl) else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not resolve function result port for section"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                    continue;
+                };
+                let Some(budget_class) = field_value_asymptotic_class(
+                    dag,
+                    asymptotic_disj,
+                    positive_descent_disj,
+                    budget_val,
+                ) else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not read complexity budget `AsymptoticClass` \
+                              (ill-formed `ClassPolynomial` budgets must use Peano `degree` ≥ 3; \
+                              use `ClassLinear` / `ClassQuadratic` for sub-cubic tiers)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                    continue;
+                };
+
+                let observed = match complexity_of(dag, &port) {
+                    Lookup::Hit(s) => complexity_enforcement_project(&s),
+                    Lookup::Miss => {
+                        violations.push(Diagnostic::ParseError {
+                            message:
+                                "lens enforcement: complexity lens returned Miss for section — \
+                                  cannot enforce budget"
+                                    .to_string(),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        });
+                        continue;
+                    }
+                };
+                if !complexity_enforcement_violates(&budget_class, &observed) {
+                    continue;
+                }
+                let severity_val = match fm.get("diagnostic_severity") {
+                    Some(v) => *v,
+                    _ => {
+                        violations.push(Diagnostic::ParseError {
+                            message:
+                                "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
+                                    .to_string(),
+                            span: decl.span.clone(),
+                            fixes: Vec::new(),
+                        });
+                        continue;
+                    }
+                };
+                let violation_message = format!(
+                    "lens enforcement violation: complexity budget {budget_class:?} exceeded \
+                 by observed class {observed:?} (declared `EnforcedApplication` at {})",
+                    decl.name.as_deref().unwrap_or("?")
+                );
+                violations.push(enforced_violation_diagnostic(
+                    dag,
+                    diagnostic_severity_disj,
+                    severity_val,
+                    violation_message,
+                    span,
+                ));
+                continue;
+            }
+        }
+
+        if is_timing_enforceable_lens_value(
+            enforceable_lens,
+            timing_enforceable_id,
+            timing_lens_id,
+            timing_enforcement_id,
+        ) {
+            let Some(section_decl_id) =
+                resolve_declaration_scope_declaration_id(section, declaration_scope_conj)
+            else {
                 violations.push(Diagnostic::ParseError {
-                    message: "lens enforcement: complexity lens returned Miss for section — \
-                              cannot enforce budget"
+                    message: "lens enforcement: could not resolve `DeclarationScope` for timing \
+                              `EnforcedApplication` section"
                         .to_string(),
-                    span: span.clone(),
+                    span: decl.span.clone(),
                     fixes: Vec::new(),
                 });
                 continue;
-            }
-        };
-        if !complexity_enforcement_violates(&budget_class, &observed) {
-            continue;
-        }
-        let severity_val = match fm.get("diagnostic_severity") {
-            Some(v) => *v,
-            _ => {
+            };
+            let section_decl = dag.declaration(section_decl_id);
+            let Some(section_ty) = gate_58_timing_enforcement_section_type_decl_id(dag) else {
+                violations.push(Diagnostic::ParseError {
+                    message: "lens enforcement: could not resolve substrate \
+                              `gate_58_timing_enforcement_section` from \
+                              `t_ci_workflow_as_data_demo.dag` (modeled authority missing; fail-closed)"
+                        .to_string(),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            if section_decl.meta_tag != Some(section_ty) {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: timing `EnforcedApplication` section must be data typed \
+                         `gate_58_timing_enforcement_section` (carrying lowered `TimingMeasurement`); \
+                         got meta_tag {:?} for declaration `{}`",
+                        section_decl.meta_tag,
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            let Some(body) = section_decl.value_body.as_ref() else {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: timing section `{}` has no lowered value body",
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            let ValueBody::Structural { fields } = body else {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: timing section `{}` must lower to a structural record body",
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            let section_fm = field_map(fields);
+            let Some(measurement) = section_fm.get("measurement") else {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: timing section `{}` is missing required `measurement` field",
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            let Some(tm_disj) = timing_measurement_sum_type_decl_id(dag) else {
                 violations.push(Diagnostic::ParseError {
                     message:
-                        "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
+                        "lens enforcement: could not resolve substrate `TimingMeasurement` from \
+                              `timing_lens.dag` (modeled authority missing; fail-closed)"
                             .to_string(),
                     span: decl.span.clone(),
                     fixes: Vec::new(),
                 });
                 continue;
+            };
+            let Some(usage_max_ns) =
+                timing_measurement_variant_usage_max_ns(dag, tm_disj, measurement)
+            else {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: could not interpret `measurement` as lowered \
+                         `TimingMeasurement` for section `{}`",
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            let Some(declared_max_ns) = field_value_timing_budget_max_ns(budget_val) else {
+                violations.push(Diagnostic::ParseError {
+                    message: "lens enforcement: could not read timing budget `TimingBudget.max` \
+                              nanoseconds (expected `TimingBudget { max: Nanoseconds { count } }`)"
+                        .to_string(),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
+            if !timing_enforcement_violates(declared_max_ns, usage_max_ns) {
+                continue;
             }
-        };
-        let violation_message = format!(
-            "lens enforcement violation: complexity budget {budget_class:?} exceeded \
-             by observed class {observed:?} (declared `EnforcedApplication` at {})",
-            decl.name.as_deref().unwrap_or("?")
-        );
-        violations.push(enforced_violation_diagnostic(
-            dag,
-            diagnostic_severity_disj,
-            severity_val,
-            violation_message,
-            span,
-        ));
+            let severity_val = match fm.get("diagnostic_severity") {
+                Some(v) => *v,
+                _ => {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                    continue;
+                }
+            };
+            let violation_message = format!(
+                "lens enforcement violation: timing budget ceiling max_ns={declared_max_ns} exceeded \
+                 by projected wall-clock usage max_ns={usage_max_ns} (declared `EnforcedApplication` \
+                 at {})",
+                decl.name.as_deref().unwrap_or("?")
+            );
+            violations.push(enforced_violation_diagnostic(
+                dag,
+                diagnostic_severity_disj,
+                severity_val,
+                violation_message,
+                span,
+            ));
+        }
     }
 
     for diagnostic in violations {
@@ -335,13 +649,10 @@ fn declaration_scope_payload_conj(
     Some(v.ty)
 }
 
-fn resolve_declaration_scope_fn(
-    dag: &Dag,
+fn resolve_declaration_scope_declaration_id(
     section: &FieldValue,
-    section_ref_disj: DeclarationId,
     declaration_scope_conj: DeclarationId,
 ) -> Option<DeclarationId> {
-    let _ = section_ref_disj;
     let FieldValue::Variant {
         constructor,
         payload,
@@ -352,8 +663,8 @@ fn resolve_declaration_scope_fn(
     if *constructor != declaration_scope_conj {
         return None;
     }
-    let id = match payload.as_slice() {
-        [FieldValue::Reference(id)] => *id,
+    match payload.as_slice() {
+        [FieldValue::Reference(id)] => Some(*id),
         [FieldValue::Record(parts)] => {
             let mut decl_id: Option<DeclarationId> = None;
             for (label, value) in parts {
@@ -363,10 +674,20 @@ fn resolve_declaration_scope_fn(
                     }
                 }
             }
-            decl_id?
+            decl_id
         }
-        _ => return None,
-    };
+        _ => None,
+    }
+}
+
+fn resolve_declaration_scope_fn(
+    dag: &Dag,
+    section: &FieldValue,
+    section_ref_disj: DeclarationId,
+    declaration_scope_conj: DeclarationId,
+) -> Option<DeclarationId> {
+    let _ = section_ref_disj;
+    let id = resolve_declaration_scope_declaration_id(section, declaration_scope_conj)?;
     matches!(dag.declaration(id).connective, TypeConnective::Arrow { .. }).then_some(id)
 }
 
@@ -658,5 +979,33 @@ mod polynomial_budget_class_policy_tests {
         assert!(!polynomial_budget_peano_is_admissible(&deg2));
         let deg3 = positive_amount_from_i64(3).expect("synthetic degree 3");
         assert!(polynomial_budget_peano_is_admissible(&deg3));
+    }
+}
+
+#[cfg(test)]
+mod gate_58_timing_enforcement_unit_tests {
+    use super::{timing_enforcement_violates, TIMING_ENFORCEMENT_FAULT_SENTINEL_NS};
+
+    #[test]
+    fn fault_sentinel_always_violates_under_any_finite_budget() {
+        assert!(timing_enforcement_violates(
+            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS - 1,
+            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS
+        ));
+        assert!(timing_enforcement_violates(
+            1,
+            TIMING_ENFORCEMENT_FAULT_SENTINEL_NS
+        ));
+    }
+
+    #[test]
+    fn observed_usage_strictly_exceeding_budget_violates() {
+        assert!(timing_enforcement_violates(500, 1000));
+    }
+
+    #[test]
+    fn observed_usage_within_or_equal_budget_is_clean() {
+        assert!(!timing_enforcement_violates(1000, 500));
+        assert!(!timing_enforcement_violates(1000, 1000));
     }
 }

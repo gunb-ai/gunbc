@@ -11,6 +11,7 @@
 // durations) and passes `Unobserved` / `Ambiguous` / `Stale` through unchanged.
 module v3.std.timing_lens
 
+import std.algebra { Monoid }
 import std.list { List, is_empty }
 import std.nat { Nat }
 import std.types {
@@ -27,6 +28,7 @@ import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
+import v3.std.lens_application { LensEnforcement, EnforceableLens }
 import v3.std.workflows { behavior_spine }
 
 // DB-11 `FilePath` witness for this module (same narrowing discipline as
@@ -341,3 +343,57 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
         "timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment)."
       )
   }
+
+// ── T-LAS / T-Lens-Self-Application — gate #58 `apply_lens_self_application_demonstrated` ──
+//
+// Canonical `EnforceableLens` for timing contracts on workflow-shaped sections. Enforcement
+// fail-closes on `Unobserved` / `Ambiguous` / `Stale` (mapped to a sentinel usage budget) and on
+// `Observed` durations strictly above the user `TimingBudget.max` ceiling (same reflexive edge as
+// gate #94 memory-peak: `>` not `>=`). Host consumer: `enforced_lens_application` (mirrors
+// `complexity_enforceable` wiring for gate #92).
+
+fn timing_enforcement_fault_sentinel_count() -> Nat =
+  999999999999999999
+
+fn timing_enforcement_fault_usage_budget() -> TimingBudget =
+  { max: { count: timing_enforcement_fault_sentinel_count() } }
+
+fn timing_usage_is_fault_sentinel(usage: TimingBudget) -> Bool =
+  usage.max.count == timing_enforcement_fault_sentinel_count()
+
+fn timing_enforcement_project(m: TimingMeasurement) -> TimingBudget =
+  match m {
+    Observed { duration: d } => { max: d }
+    Unobserved => timing_enforcement_fault_usage_budget()
+    Ambiguous => timing_enforcement_fault_usage_budget()
+    Stale => timing_enforcement_fault_usage_budget()
+  }
+
+fn timing_enforcement_violates(declared: TimingBudget, usage: TimingBudget) -> Bool =
+  if timing_usage_is_fault_sentinel(usage) then 0 == 0
+  else if usage.max.count > declared.max.count then 0 == 0
+  else 0 == 1
+
+data timing_lens_monoid: Monoid<TimingMeasurement> = {
+  op: timing_sequential_op
+  identity: Observed { duration: { count: 0 } }
+}
+
+data timing_lens: TimingLens = {
+  name: "timing"
+  read: timing_lens_read
+  sequential: timing_lens_monoid
+  branch: timing_branch_op
+  iterate: timing_measurement_iterate
+  validate: timing_lens_validate
+}
+
+data timing_enforcement: LensEnforcement<TimingMeasurement, TimingBudget> = {
+  project: timing_enforcement_project
+  violates: timing_enforcement_violates
+}
+
+data timing_enforceable: EnforceableLens<TimingMeasurement, TimingBudget> = {
+  lens: timing_lens
+  enforcement: timing_enforcement
+}

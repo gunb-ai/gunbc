@@ -30,6 +30,11 @@
 // dependency that needs sorting, this script grows a topological
 // pass; until then, the simple rule is sufficient.
 //
+// Staged `src/v3/std/*.dag` additionally uses a small rank list
+// (`list.dag`, `substrate*.dag`, …) plus one lexicographic tie-break:
+// `timing_lens.dag` before `t_ci_workflow_as_data_demo.dag` so PB-1
+// bootstrap lowering can resolve `timing_enforceable` references.
+//
 // **Output**: writes three Rust files:
 //
 //   pub static STAGED_FILES: &[(&str, &str)] = &[
@@ -59,9 +64,26 @@
 // runtime is still hermetic — no filesystem access at `Dag::new()`
 // time.
 
+use std::cmp::Ordering;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// `regen_bootstrap` / `STAGED_FILES` order is otherwise lexicographic on the file
+/// name within each rank bucket. `t_ci_workflow_as_data_demo.dag` sorts before
+/// `timing_lens.dag` (`t_ci…` < `tim…`), but the CI demo's `data` rows reference
+/// `timing_enforceable` from `timing_lens.dag`, which must already exist in the
+/// declaration table when `lower_bodies_phase` runs.
+fn v3_std_timing_lens_before_ci_workflow_demo(a: &Path, b: &Path) -> Ordering {
+    match (
+        a.file_name().and_then(|s| s.to_str()),
+        b.file_name().and_then(|s| s.to_str()),
+    ) {
+        (Some("timing_lens.dag"), Some("t_ci_workflow_as_data_demo.dag")) => Ordering::Less,
+        (Some("t_ci_workflow_as_data_demo.dag"), Some("timing_lens.dag")) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
 
 fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
     collect_dag_entries_impl(dir, prioritized, false)
@@ -105,19 +127,32 @@ fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -
     }
 
     entries.sort_by(|a, b| {
-        let priority_key = |path: &Path| -> (usize, String, String) {
+        let staged_file_rank = |path: &Path| -> usize {
             let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            let rank = prioritized
+            prioritized
                 .iter()
                 .position(|candidate| *candidate == name)
-                .unwrap_or(prioritized.len());
-            (
-                rank,
-                name.to_string(),
-                path.strip_prefix(dir).unwrap_or(path).display().to_string(),
-            )
+                .unwrap_or(prioritized.len())
         };
-        priority_key(a).cmp(&priority_key(b))
+        let ra = staged_file_rank(a);
+        let rb = staged_file_rank(b);
+        match ra.cmp(&rb) {
+            Ordering::Equal => match v3_std_timing_lens_before_ci_workflow_demo(a, b) {
+                Ordering::Equal => {
+                    let name_a = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    let name_b = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    name_a.cmp(name_b).then_with(|| {
+                        a.strip_prefix(dir)
+                            .unwrap_or(a)
+                            .display()
+                            .to_string()
+                            .cmp(&b.strip_prefix(dir).unwrap_or(b).display().to_string())
+                    })
+                }
+                ord => ord,
+            },
+            ord => ord,
+        }
     });
 
     entries
