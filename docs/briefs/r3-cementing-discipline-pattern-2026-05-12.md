@@ -55,15 +55,39 @@ Predicate-axis boundaries:
 - `BinaryDimensionReportEquals` belongs to Pattern-A DimensionReport comparisons, not cementing-class bulk-port.
 - `ProgramGenerator`, `Quantifier`, and `QuantifiedTestClaim` belong to property-based family claims, not per-lens cementing receipts.
 
-### §2.1 Gate-#87 `Compiles` helper placeholders
+### §2.1 Gate-#87 placeholder-dissolution ledger (G87-D3, refresh 2026-05-13)
 
-The rows below are the complete Gate #87 `.dag` `Compiles` placeholder set at the G87-D3 refresh. They are helper or carrier-blocked placeholders, not behavioral cementing evidence. On dissolution, replace the placeholder with the named stronger predicate and remove the paired Rust pin in the same PR.
+**Inventory rule:** `predicate: Compiles` appears only under `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_{infer_helpers,lower_helpers,variant_payload}.dag` — three helper registry rows. Every other gate-#87 harness uses a behavioral predicate; several still use a **narrow Int projection** in `.dag` because the full public carrier literal is not stable as authored test data. Those rows pair with a Rust pin in `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs` (same PR must retire both sides on dissolution).
 
-| Lens row | Placeholder file | Paired Rust pin | Dissolution trigger / owning lane |
-|---|---|---|---|
-| `infer_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals` over that carrier. Owning lane: PB / compiler-std helper carrier lane. |
-| `lower_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles` | Public `lower_helpers` behavior carrier becomes authorable as `.dag` expected data; replace with `LensOutputEquals`. Owning lane: PB / parse-surface and lower-helper convergence lane. |
-| `variant_payload` | `tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag` | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_variant_payload_lens_source_compiles`; temporary unit receipts in `src/v3/compiler/src/lib.rs::variant_payload::tests` | Stable variant-declaration fixture and `VariantPayloadShapeLookup` expected literal become authorable as `.dag` data; replace with `LensOutputEquals(variant_payload_shape, ..., expected)`. Owning lane: T-PB-B tests-as-data carrier completeness for generated lens output literals. |
+**Verification (spot-check harness + ledger surfaces):**
+
+```bash
+rg 'Compiles|dissolve|placeholder' \
+  src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_*.dag \
+  src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs \
+  docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md \
+  docs/briefs/r3-gate-87-lens-cementing-closure-audit.md
+```
+
+#### Table 1 — `.dag` `Compiles` placeholders (complete set)
+
+| Lens (`regen.dag` `name`) | Harness | Interim carrier / evidence | Owning lane | Paired Rust pin | Dissolution trigger |
+|---|---|---|---|---|---|
+| `infer_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag` | Lens source compiles; no `LensOutputEquals` carrier yet | PB / compiler-std helper output carrier lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output (e.g. `Lookup<DeclarationId>` / template helper surfaces) authorable as `.dag` expected values → replace claim with `LensOutputEquals` and delete Rust pin. |
+| `lower_helpers` | `tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag` | Lens source compiles; no behavioral harness carrier yet | PB / parse-surface + lower-helper convergence lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles` | Public `lower_helpers` behavior carrier authorable in `.dag` → `LensOutputEquals` + delete Rust pin. |
+| `variant_payload` | `tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag` | Lens source compiles; `VariantPayloadShapeLookup` literals not in harness | T-PB-B generated lens output literal lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_variant_payload_lens_source_compiles` **and** `src/v3/compiler/src/lib.rs::variant_payload::tests` (per-shape behavioral pins) | Stable fixture + `VariantPayloadShapeLookup` expected literal authorable as `.dag` data → harness `LensOutputEquals(..., expected)`; fold unit tests into `.dag` or delete when redundant; delete `Compiles` + compile-only Rust pin. |
+
+#### Table 2 — Narrow `.dag` harness witness + paired Rust pin (not `Compiles`)
+
+| Lens (`regen.dag` `name`) | Harness | `.dag` witness | Full carrier deferred (name) | Owning lane | Paired Rust pin | Dissolution trigger |
+|---|---|---|---|---|---|---|
+| `effect_enumeration` | `tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag` | `LensOutputEquals` → `Int` (no-transaction projection) | `EffectEnumerationReport` (facts, coverage, transaction scaffold) | T-PB-B sum/report literal lane; lens row stays **PARTIAL** until resource-threading work (register) | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program` | Replace Int shim with full report `LensOutputEquals` when literals + register **PARTIAL**→**COMPLETE** criteria align; retire Rust pin in same PR. |
+| `provenance` | `tests/dag/t_r3_gate_87_cementing_regen_provenance.dag` | `LensOutputEquals` → `Int` (literal-origin projection) | `Origin` sum (`Source` / `Computed` / …) | Tests-as-data carrier completeness for sum-typed lens outputs (`design-tests-as-data-completeness.md` §C5) | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_provenance_origin_rust_receipt_on_literal_bind` | `Origin` literals comparable in `.dag` → direct `LensOutputEquals` on `Origin`; delete Rust origin-class pin. |
+| `cost_target_realization` | `tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag` | `LensOutputEquals` → `Int` (meta-present projection) | Full `type_realization_meta` / realization row carrier vs present-bit | T-CostLens-Composition ε / strict-module carrier lane (registry **N/A** row) | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row` | Author full realization-meta witness in `.dag` (or stronger predicate) → drop Int shim + Rust name-keyed pin together. |
+| `structural_resolution` | `tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag` | `LensOutputEquals` → `Int` (no-violation projection) | `List<UnresolvedArrowBody>` | M1(2.8) strict-module / list-carrier authoring lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt_on_literal_program` | List carrier stable in `.dag` without opaque-body diagnostics → full `LensOutputEquals` on list; delete Rust `check` pin. |
+| `unused_parameters` | `tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag` | `LensOutputEquals` → `Int` (no-findings projection) | `List<UnusedParameter>` | M1(2.8) strict-module / list-carrier authoring lane | `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_unused_parameters_rust_receipt_on_literal_program` | List carrier stable in `.dag` → full `LensOutputEquals`; delete Rust `UnusedParametersLens::query` pin. |
+
+**Non-placeholder Rust in this module:** `r3_gate_87_regen_lens_registry_names_match_fixture_inventory` is the regen name ↔ runner-table ratchet (not a lens carrier pin); it dissolves only if the single-authority model in §1 changes, not via carrier authoring.
 
 ## §3. Known Hand-Rust Cementing Dispositions
 
