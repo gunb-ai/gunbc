@@ -1,8 +1,10 @@
 //! SG-0 — v3 Rust authority census + ratchet.
 //!
 //! Enumerates every `.rs` file under `src/v3/compiler` and partitions
-//! it into **generated** (listed in the producer-owned manifest at
-//! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
+//! it into **producer-owned generated compiler artifacts** (listed in
+//! [`v3_compiler::generated_files::GENERATED_FILES`]), **testgen-owned
+//! Rust test artifacts** (listed in
+//! [`v3_compiler::generated_files::RUST_TEST_GENERATOR_MANIFEST`]), versus
 //! **hand-authored** (everything else). The hand-authored set is
 //! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus
 //! [`EXPECTED_HAND_AUTHORED_TEST`] below — the ratchet. The split is
@@ -19,7 +21,7 @@
 //!   the entry from its expected sub-ratchet — this is the normal
 //!   shrinkage path and the primary success condition for SG-1..SG-7.
 //!
-//! **Producer-owned partition.** A `.rs` file counts as generated iff
+//! **Producer-owned partition.** A non-test `.rs` file counts as generated iff
 //! its workspace-relative path is a member of `GENERATED_FILES`, which
 //! is emitted by `src/v3/compiler/build.rs` on every build from the
 //! reviewed `REGEN_OUTPUTS` literal. Every codegen driver (the
@@ -28,6 +30,9 @@
 //! the list before writing — so a new generated file can only land if
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
+//! Rust test artifacts use the separate `RUST_TEST_GENERATOR_MANIFEST`
+//! emitted from `tests/rust_test_generator.manifest`; they deliberately
+//! do not enter `GENERATED_FILES`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -473,6 +478,14 @@ fn expected_hand_authored_rs() -> BTreeSet<String> {
         .collect()
 }
 
+fn generated_or_manifested_rs() -> BTreeSet<String> {
+    GENERATED_FILES
+        .iter()
+        .chain(RUST_TEST_GENERATOR_MANIFEST.iter())
+        .map(|p| (*p).to_string())
+        .collect()
+}
+
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR points at src/v3/compiler/. ancestors():
     //   [0] src/v3/compiler
@@ -550,7 +563,7 @@ fn sg0_v3_hand_authored_census() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let generated = generated_or_manifested_rs();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
 
     let expected = expected_hand_authored_rs();
@@ -669,7 +682,7 @@ fn sg0_v3_non_test_hand_authored_subratchet() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let generated = generated_or_manifested_rs();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
     let observed: BTreeSet<String> = hand_authored
         .iter()
@@ -697,7 +710,7 @@ fn sg0_v3_test_hand_authored_subratchet() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let generated = generated_or_manifested_rs();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
     let observed: BTreeSet<String> = hand_authored
         .iter()
@@ -718,14 +731,14 @@ fn sg0_v3_test_hand_authored_subratchet() {
 }
 
 #[test]
-fn sg0_generated_rust_test_manifest_covers_every_test_rs() {
+fn sg0_rust_test_generator_manifest_covers_every_test_rs() {
     let ws = workspace_root();
     let tests_root = ws.join("src/v3/compiler/tests");
 
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&tests_root, &ws, &mut all_rs);
 
-    let manifest: BTreeSet<String> = GENERATED_RUST_TEST_FILES
+    let manifest: BTreeSet<String> = RUST_TEST_GENERATOR_MANIFEST
         .iter()
         .map(|p| (*p).to_string())
         .collect();
@@ -733,38 +746,38 @@ fn sg0_generated_rust_test_manifest_covers_every_test_rs() {
     assert_eq!(
         all_rs, manifest,
         "gate #84 positive authority drift: every Rust test file must be present in \
-         GENERATED_RUST_TEST_FILES. Missing entries are orphaned tests; extra entries are stale \
+         RUST_TEST_GENERATOR_MANIFEST. Missing entries are orphaned tests; extra entries are stale \
          generator-manifest rows."
     );
 
     let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
-    let missing_from_partition: Vec<&str> = GENERATED_RUST_TEST_FILES
+    let misclassified_tests: Vec<&str> = RUST_TEST_GENERATOR_MANIFEST
         .iter()
         .copied()
-        .filter(|path| !generated.contains(path))
+        .filter(|path| generated.contains(path))
         .collect();
     assert!(
-        missing_from_partition.is_empty(),
-        "every generated Rust test manifest row must also be in GENERATED_FILES; missing: \
-         {missing_from_partition:?}"
+        misclassified_tests.is_empty(),
+        "Rust test generator-manifest rows must not be in GENERATED_FILES, which is reserved for \
+         codegen-produced compiler artifacts; misclassified: {misclassified_tests:?}"
     );
 }
 
 #[test]
-fn sg0_generated_rust_test_manifest_bytes_match_checked_in_files() {
+fn sg0_rust_test_generator_manifest_bytes_match_checked_in_files() {
     let ws = workspace_root();
-    let manifest_paths: BTreeSet<&str> = GENERATED_RUST_TEST_FILES.iter().copied().collect();
-    let byte_paths: BTreeSet<&str> = GENERATED_RUST_TEST_FILE_BYTES
+    let manifest_paths: BTreeSet<&str> = RUST_TEST_GENERATOR_MANIFEST.iter().copied().collect();
+    let byte_paths: BTreeSet<&str> = RUST_TEST_GENERATOR_MANIFEST_BYTES
         .iter()
         .map(|(path, _)| *path)
         .collect();
     assert_eq!(
         manifest_paths, byte_paths,
-        "generated Rust test byte-comparison rows must match GENERATED_RUST_TEST_FILES exactly"
+        "Rust test byte-comparison rows must match RUST_TEST_GENERATOR_MANIFEST exactly"
     );
 
     let mut drifted = Vec::new();
-    for (path, generated_bytes) in GENERATED_RUST_TEST_FILE_BYTES {
+    for (path, generated_bytes) in RUST_TEST_GENERATOR_MANIFEST_BYTES {
         let checked_in =
             fs::read_to_string(ws.join(path)).unwrap_or_else(|e| panic!("read {path}: {e}"));
         if checked_in != *generated_bytes {
@@ -773,7 +786,7 @@ fn sg0_generated_rust_test_manifest_bytes_match_checked_in_files() {
     }
     assert!(
         drifted.is_empty(),
-        "generated Rust tests drifted from the generator-manifest byte snapshot: {drifted:?}"
+        "Rust tests drifted from the generator-manifest byte snapshot: {drifted:?}"
     );
 }
 

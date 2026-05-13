@@ -75,7 +75,7 @@ use std::path::{Path, PathBuf};
 fn read_rust_test_generator_manifest(path: &Path) -> Vec<String> {
     let source = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("read Rust test generator manifest {}: {e}", path.display()));
-    let mut paths = Vec::new();
+    let mut paths: Vec<String> = Vec::new();
     for (idx, raw_line) in source.lines().enumerate() {
         let line = raw_line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -563,7 +563,7 @@ fn main() {
     let gunbc_dir = repo_root.join("dsl").join("gunbc");
     let dsl_std_dir = repo_root.join("dsl").join("std");
     let rust_test_generator_manifest =
-        repo_root.join("src/v3/compiler/tests/rust_test_generator_manifest.txt");
+        repo_root.join("src/v3/compiler/tests/rust_test_generator.manifest");
 
     // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
