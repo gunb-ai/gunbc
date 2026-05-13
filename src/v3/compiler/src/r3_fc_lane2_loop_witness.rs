@@ -36,14 +36,18 @@ use crate::dag::{
 };
 
 fn lane2_witness_operation(
+    dag: &Dag,
     name: &str,
     method: HttpMethodScalar,
     tokens: Vec<UrlPathToken>,
 ) -> Operation {
+    let callable = dag
+        .declaration_by_name(name)
+        .or_else(|| dag.declaration_by_name("compose_effects"))
+        .expect("bootstrap should provide compose_effects declaration")
+        .id;
     Operation {
-        callable: CallableRef {
-            decl_name: name.to_string(),
-        },
+        callable: CallableRef { decl: callable },
         inputs: BTreeMap::<String, InputField>::new(),
         endpoint: RestEndpointBinding {
             method,
@@ -150,6 +154,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
                         ops: vec![lane2_witness_operation(
+                            dag,
                             "r3_fc_read",
                             HttpMethodScalar::Get,
                             vec![],
@@ -159,6 +164,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 WitnessKind::UpsertLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
                         ops: vec![lane2_witness_operation(
+                            dag,
                             "r3_fc_upsert",
                             HttpMethodScalar::Put,
                             vec![UrlPathToken::ParamToken {
@@ -222,7 +228,7 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                operation_effect_shape(&ops[0]),
+                                operation_effect_shape(&dag, &ops[0]),
                                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
                             )
                 )
@@ -250,7 +256,7 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                operation_effect_shape(&ops[0]),
+                                operation_effect_shape(&dag, &ops[0]),
                                 EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
                             )
                 )

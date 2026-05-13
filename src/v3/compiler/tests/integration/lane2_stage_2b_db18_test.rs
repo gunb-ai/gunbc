@@ -25,7 +25,16 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(name: &str, shape: EffectShape) -> Operation {
+fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
+    let callable_name = if matches!(shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)) {
+        "append_method"
+    } else {
+        "compose_effects"
+    };
+    let callable = dag
+        .declaration_by_name(callable_name)
+        .unwrap_or_else(|| panic!("missing callable declaration `{callable_name}`"))
+        .id;
     let (method, tokens) = match shape {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
@@ -42,8 +51,8 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         ),
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
-        })
-        | EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
+        }) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
@@ -53,9 +62,7 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         }
     };
     Operation {
-        callable: CallableRef {
-            decl_name: name.to_string(),
-        },
+        callable: CallableRef { decl: callable },
         inputs: BTreeMap::<String, InputField>::new(),
         endpoint: RestEndpointBinding {
             method,
@@ -102,6 +109,7 @@ fn bool_port_of_requires_bool_port() {
     let bool_bind = binds.iter().find(|b| b.name == "y").expect("y");
     let linear = || WorkflowEffect::LinearEffect {
         ops: vec![op(
+            &dag,
             "noop",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],
@@ -134,10 +142,12 @@ fn gcp_style_linear_chain_idempotent() {
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
             op(
+                &dag,
                 "get_secret",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
             ),
             op(
+                &dag,
                 "put_secret",
                 EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                     key_source: KeySource::PathParam {
@@ -146,6 +156,7 @@ fn gcp_style_linear_chain_idempotent() {
                 }),
             ),
             op(
+                &dag,
                 "grant",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
             ),
@@ -168,10 +179,12 @@ fn append_effect_breaks_linear_chain() {
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
             op(
+                &dag,
                 "read",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
             ),
             op(
+                &dag,
                 "append_audit",
                 EffectShape::IsBreaking(BreakingShape::AppendEffect),
             ),
@@ -189,8 +202,8 @@ fn append_effect_breaks_linear_chain() {
         .operation_at(first_breaker)
         .expect("breaker ref should resolve into linear ops");
     assert!(matches!(
-        operation_effect_shape(breaker),
-        EffectShape::IsBreaking(_)
+        operation_effect_shape(&dag, breaker),
+        EffectShape::IsBreaking(BreakingShape::AppendEffect)
     ));
 }
 
@@ -200,6 +213,7 @@ fn post_create_is_breaking() {
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![op(
+            &dag,
             "post_create",
             EffectShape::IsBreaking(BreakingShape::CreateEffect {
                 cause: CreateCause::PostAlways,
@@ -223,6 +237,7 @@ fn diagnostic_paths_name_stage2b() {
     let stage = "lane2_stage2b_idempotency_lens";
     let linear = WorkflowEffect::LinearEffect {
         ops: vec![op(
+            &dag,
             "r",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],

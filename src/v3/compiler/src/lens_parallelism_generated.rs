@@ -33,8 +33,11 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
     }
 }
 
-fn operations_commute(a: &Operation, b: &Operation) -> bool {
-    match (&operation_effect_shape(a), &operation_effect_shape(b)) {
+fn operations_commute(dag: &Dag, a: &Operation, b: &Operation) -> bool {
+    match (
+        &operation_effect_shape(dag, a),
+        &operation_effect_shape(dag, b),
+    ) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
             idempotent_shapes_commute(&ia, &ib)
         }
@@ -62,12 +65,12 @@ fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
         .collect()
 }
 
-fn pairwise_cross_branch_commutes(branch_ops: &[Vec<Operation>]) -> Result<(), ()> {
+fn pairwise_cross_branch_commutes(dag: &Dag, branch_ops: &[Vec<Operation>]) -> Result<(), ()> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
                 for ob in &branch_ops[j] {
-                    if !operations_commute(oa, ob) {
+                    if !operations_commute(dag, oa, ob) {
                         return Err(());
                     }
                 }
@@ -96,7 +99,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
             "Stage 2e v1 requires every parallel branch to be `LinearEffect`",
         );
     };
-    match compose_operation_effects(flatten_branch_ops(&branch_ops).as_slice()) {
+    match compose_operation_effects(p0, flatten_branch_ops(&branch_ops).as_slice()) {
         CompositionVerdict::BrokenBy { first_breaker } => {
             return WorkflowParallelismReport::ParallelCompositionVerdict(
                 CompositionVerdict::BrokenBy { first_breaker },
@@ -104,7 +107,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         }
         CompositionVerdict::IdempotentComposition => {}
     }
-    match pairwise_cross_branch_commutes(&branch_ops) {
+    match pairwise_cross_branch_commutes(p0, &branch_ops) {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
@@ -129,7 +132,10 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
         return 0;
     }
     for op in ops {
-        if !matches!(operation_effect_shape(op), EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) {
+        if !matches!(
+            operation_effect_shape(p0, op),
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        ) {
             return 0;
         }
     }

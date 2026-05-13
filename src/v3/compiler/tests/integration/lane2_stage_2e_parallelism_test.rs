@@ -49,7 +49,16 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(name: &str, shape: EffectShape) -> Operation {
+fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
+    let callable_name = if matches!(shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)) {
+        "append_method"
+    } else {
+        "compose_effects"
+    };
+    let callable = dag
+        .declaration_by_name(callable_name)
+        .unwrap_or_else(|| panic!("missing callable declaration `{callable_name}`"))
+        .id;
     let (method, tokens) = match shape {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
@@ -66,8 +75,8 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         ),
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
-        })
-        | EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
+        }) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
@@ -77,9 +86,7 @@ fn op(name: &str, shape: EffectShape) -> Operation {
         }
     };
     Operation {
-        callable: CallableRef {
-            decl_name: name.to_string(),
-        },
+        callable: CallableRef { decl: callable },
         inputs: BTreeMap::<String, InputField>::new(),
         endpoint: RestEndpointBinding {
             method,
@@ -88,14 +95,19 @@ fn op(name: &str, shape: EffectShape) -> Operation {
     }
 }
 
-fn read(name: &str) -> Operation {
-    op(name, EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
+fn read(dag: &Dag, name: &str) -> Operation {
+    op(
+        dag,
+        name,
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    )
 }
 
 #[test]
 fn parallel_requires_at_least_two_branches_type_level() {
+    let dag = shared_fixture_dag();
     let linear = WorkflowEffect::LinearEffect {
-        ops: vec![read("r")],
+        ops: vec![read(&dag, "r")],
     };
     assert!(
         NonSingletonList::from_vec(vec![Box::new(linear.clone())]).is_none(),
@@ -110,10 +122,10 @@ fn parallel_read_only_branches_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read("a"), read("b")],
+                ops: vec![read(&dag, "a"), read(&dag, "b")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read("c")],
+                ops: vec![read(&dag, "c")],
             }),
         ])
         .unwrap(),
@@ -134,6 +146,7 @@ fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
     let upsert = op(
+        &dag,
         "put_item",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: key.clone(),
@@ -163,6 +176,7 @@ fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
     let key = KeySource::PathParam { param: "id".into() };
     let upsert = |name: &str| {
         op(
+            &dag,
             name,
             EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                 key_source: key.clone(),
@@ -194,6 +208,7 @@ fn parallel_different_path_param_names_not_proven_commute() {
     let root = lane2_anchor(&dag);
     let upsert = |name: &str, param: &str| {
         op(
+            &dag,
             name,
             EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                 key_source: KeySource::PathParam {
@@ -230,6 +245,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let upsert = op(
+        &dag,
         "put",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::PathParam { param: "k".into() },
@@ -238,7 +254,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read("get")],
+                ops: vec![read(&dag, "get")],
             }),
             Box::new(WorkflowEffect::LinearEffect { ops: vec![upsert] }),
         ])
@@ -264,10 +280,11 @@ fn parallel_append_in_branch_is_broken_by() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read("get")],
+                ops: vec![read(&dag, "get")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
                 ops: vec![op(
+                    &dag,
                     "append_audit",
                     EffectShape::IsBreaking(BreakingShape::AppendEffect),
                 )],
@@ -289,8 +306,8 @@ fn parallel_append_in_branch_is_broken_by() {
         .operation_at(first_breaker)
         .expect("parallel breaker ref should resolve in branch-order flattening");
     assert!(matches!(
-        operation_effect_shape(breaker),
-        EffectShape::IsBreaking(_)
+        operation_effect_shape(&dag, breaker),
+        EffectShape::IsBreaking(BreakingShape::AppendEffect)
     ));
 }
 
@@ -299,7 +316,7 @@ fn non_parallel_root_is_unsupported() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: vec![read("only")],
+        ops: vec![read(&dag, "only")],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);

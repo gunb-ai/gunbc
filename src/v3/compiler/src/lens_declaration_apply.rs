@@ -1968,8 +1968,8 @@ mod substrate_reflection {
             (
                 "callable".to_string(),
                 FieldValue::Record(vec![(
-                    "decl_name".to_string(),
-                    FieldValue::Literal(LiteralBits::String(op.callable.decl_name.clone())),
+                    "decl".to_string(),
+                    FieldValue::Reference(op.callable.decl),
                 )]),
             ),
             ("inputs".to_string(), FieldValue::Map(inputs)),

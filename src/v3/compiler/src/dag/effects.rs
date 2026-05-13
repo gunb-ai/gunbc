@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{BoolPortRef, Dag, ElementRef, NodeId, NonSingletonList};
+use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NodeId, NonSingletonList};
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
 /// naming authority is `effects.dag`.
@@ -91,14 +91,9 @@ pub struct PathTemplate {
 pub struct InputField {}
 
 /// 🟡 **TRANSITIONAL.** Native mirror of `services.dag::CallableRef`.
-///
-/// The `.dag` carrier stores `decl: DeclarationRef`; the native Stage 2 tests
-/// cannot manufacture declaration refs without a fixture boundary, so this
-/// bridge stores the resolved callable display name only for diagnostics. The
-/// operation-effect authority does not read it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallableRef {
-    pub decl_name: String,
+    pub decl: DeclarationId,
 }
 
 /// 🟢 **TERMINAL.** Native mirror of `services.dag::RestEndpointBinding`.
@@ -274,7 +269,10 @@ pub enum WorkflowParallelismReport {
 // co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
-pub fn operation_effect_shape(effect: &Operation) -> EffectShape {
+pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
+    if callable_is_append_method(dag, effect.callable.decl) {
+        return EffectShape::IsBreaking(BreakingShape::AppendEffect);
+    }
     match effect.endpoint.method {
         HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
@@ -307,6 +305,12 @@ pub fn operation_effect_shape(effect: &Operation) -> EffectShape {
     }
 }
 
+fn callable_is_append_method(dag: &Dag, callable: DeclarationId) -> bool {
+    dag.declaration_opt(&callable)
+        .and_then(|decl| decl.name.as_deref())
+        .is_some_and(|name| name == "append_method")
+}
+
 fn last_path_param(path: &PathTemplate) -> Option<String> {
     path.tokens.iter().rev().find_map(|token| match token {
         UrlPathToken::ParamToken { name } => Some(name.clone()),
@@ -314,9 +318,12 @@ fn last_path_param(path: &PathTemplate) -> Option<String> {
     })
 }
 
-pub(crate) fn compose_operation_effects(effects: &[Operation]) -> CompositionVerdict {
+pub(crate) fn compose_operation_effects(dag: &Dag, effects: &[Operation]) -> CompositionVerdict {
     for (index, effect) in effects.iter().enumerate() {
-        if matches!(operation_effect_shape(effect), EffectShape::IsBreaking(_)) {
+        if matches!(
+            operation_effect_shape(dag, effect),
+            EffectShape::IsBreaking(_)
+        ) {
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
             return CompositionVerdict::BrokenBy { first_breaker };
@@ -344,15 +351,17 @@ pub fn report_unsupported_workflow_variant(
 /// Native-Dag entry for the `std.effects::lane2_workflow_idempotency_report`
 /// algebra (same cases as the `.dag` `match`).
 pub fn lane2_workflow_idempotency_report(workflow: &WorkflowEffect) -> WorkflowIdempotencyReport {
-    project_workflow_idempotency_report(workflow)
+    let dag = Dag::new();
+    project_workflow_idempotency_report(&dag, workflow)
 }
 
 pub(crate) fn project_workflow_idempotency_report(
+    dag: &Dag,
     workflow: &WorkflowEffect,
 ) -> WorkflowIdempotencyReport {
     match workflow {
         WorkflowEffect::LinearEffect { ops } => WorkflowIdempotencyReport::WorkflowCompositionVerdict(
-            compose_operation_effects(ops.as_slice()),
+            compose_operation_effects(dag, ops.as_slice()),
         ),
         WorkflowEffect::BranchEffect { .. } => WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
@@ -395,5 +404,5 @@ pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyRe
                 .to_string(),
         });
     };
-    project_workflow_idempotency_report(workflow)
+    project_workflow_idempotency_report(d, workflow)
 }
