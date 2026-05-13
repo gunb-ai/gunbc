@@ -115,13 +115,13 @@ type HookKind =
   | Custom(Identifier)
 type Lifecycle = OnMount | OnUnmount | OnUpdate { triggers: List<Reference> }
 type Effect { hook: Hook, body: Expression, cleanup: Expression? }
-// Component body IS a JSXTree. Subcomponents are nodes within the tree (ComponentRef
+// Component body IS a JSXTree. Subcomponents are nodes within the tree (ComponentRefNode
 // arm), NOT an alternate body mode. JSXNode coproduct dissolves the prior Render vs
 // Composite split — one render tree with component references as tree nodes.
 type JSXTree { root: JSXNode }
 type JSXNode =
     HtmlElement { tag: Identifier, attrs: List<JSXAttr>, children: List<JSXNode> }
-  | ComponentRef { component: ComponentRef, props: List<JSXAttr>, children: List<JSXNode> }
+  | ComponentRefNode { component: ComponentName, props: List<JSXAttr>, children: List<JSXNode> }
   | TextNode { text: String }
   | ExpressionSlot { expr: Expression }
   | FragmentNode { children: List<JSXNode> }
@@ -223,7 +223,7 @@ Gate #28 `omni_layers_share_one_node_tree` — CONSUMER_LANDED + PASSING via `m1
 The full-stack scenario adds:
 - Rust backend (existing Shape-A)
 - TS client (new Shape-A)
-- React UI (new Shape-A or Shape-F)
+- React UI (new Shape-A per ratified Q2-a; Shape-F explicitly REJECTED — see anti-pattern §11 #6)
 - OpenAPI spec (existing Shape-B; wire contract)
 - SQL DDL (existing Shape-B; DB schema)
 
@@ -265,7 +265,7 @@ New sum-types proposed in canvas:
 | Sum type | Practice 4 |
 |---|---|
 | `HookKind` — 15 React-18.3 built-in arms + `Custom(Identifier)` (authority: react.dev/reference/react) | 🟡 YELLOW — full React-versioned roster enumerated (UseState/UseReducer/UseEffect/UseLayoutEffect/UseInsertionEffect/UseContext/UseRef/UseImperativeHandle/UseMemo/UseCallback/UseDebugValue/UseDeferredValue/UseTransition/UseId/UseSyncExternalStore) covering React 18.3 + 1 user-input boundary arm (Custom(Identifier)); Custom requires Practice-4-promotion canvas per §10 Phase-1.5. Dissolution trigger: React version-anchor changes (new built-in hook in 18.x or 19.x) → re-ratify roster on the version-anchor PR. |
-| `JSXNode = HtmlElement \| ComponentRef \| TextNode \| ExpressionSlot \| FragmentNode` | 🟢 GREEN — JSX tree-node coproduct (subcomponents as tree nodes, not alternate body mode; dissolves prior Render/Composite split per codex 10817 finding #2) |
+| `JSXNode = HtmlElement \| ComponentRefNode \| TextNode \| ExpressionSlot \| FragmentNode` | 🟢 GREEN — JSX tree-node coproduct (subcomponents as tree nodes via `ComponentRefNode { component: ComponentName, ... }`, not alternate body mode; dissolves prior Render/Composite split per codex 10817 finding #2) |
 | `Lifecycle = OnMount \| OnUnmount \| OnUpdate { triggers }` | 🟢 GREEN — distinct lifecycle phases |
 | `TypingDiscipline = Nominal \| Structural` (Q1-b) | 🟢 GREEN — captures genuine semantic difference |
 
