@@ -363,12 +363,9 @@ type CreateCause
 //
 //   PathParam:     key extracted from URL/path template ({id}, {name})
 //   InputField:    key is a declared input field of the operation
-//   CompositeKey:  key is a tuple of multiple fields
-
 type KeySource
   = PathParam { param: String }
   | InputField { field: String }
-  | CompositeKey { fields: List<String> }
 
 // ── Effect evidence ─────────────────────────────────────────────
 //

@@ -36,7 +36,6 @@ pub enum HttpMethodScalar {
 pub enum KeySource {
     PathParam { param: String },
     InputField { field: String },
-    CompositeKey { fields: Vec<String> },
 }
 
 /// 🟢 **TERMINAL.** Why a create-shaped op is classified breaking — mirrors

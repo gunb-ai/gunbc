@@ -49,7 +49,7 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
+fn op(dag: &Dag, shape: EffectShape) -> Operation {
     let callable_name = match &shape {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => "get_method",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }) => "map_insert_method",
@@ -97,19 +97,15 @@ fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
     }
 }
 
-fn read(dag: &Dag, name: &str) -> Operation {
-    op(
-        dag,
-        name,
-        EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-    )
+fn read(dag: &Dag) -> Operation {
+    op(dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
 }
 
 #[test]
 fn parallel_requires_at_least_two_branches_type_level() {
     let dag = shared_fixture_dag();
     let linear = WorkflowEffect::LinearEffect {
-        ops: vec![read(&dag, "r")],
+        ops: vec![read(&dag)],
     };
     assert!(
         NonSingletonList::from_vec(vec![Box::new(linear.clone())]).is_none(),
@@ -124,10 +120,10 @@ fn parallel_read_only_branches_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read(&dag, "a"), read(&dag, "b")],
+                ops: vec![read(&dag), read(&dag)],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read(&dag, "c")],
+                ops: vec![read(&dag)],
             }),
         ])
         .unwrap(),
@@ -149,7 +145,6 @@ fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
     let key = KeySource::PathParam { param: "id".into() };
     let upsert = op(
         &dag,
-        "put_item",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: key.clone(),
         }),
@@ -176,10 +171,9 @@ fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
-    let upsert = |name: &str| {
+    let upsert = || {
         op(
             &dag,
-            name,
             EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                 key_source: key.clone(),
             }),
@@ -188,10 +182,10 @@ fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert("put_a")],
+                ops: vec![upsert()],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert("put_b")],
+                ops: vec![upsert()],
             }),
         ])
         .unwrap(),
@@ -208,10 +202,9 @@ fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
 fn parallel_different_path_param_names_not_proven_commute() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
-    let upsert = |name: &str, param: &str| {
+    let upsert = |param: &str| {
         op(
             &dag,
-            name,
             EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                 key_source: KeySource::PathParam {
                     param: param.into(),
@@ -222,10 +215,10 @@ fn parallel_different_path_param_names_not_proven_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert("put_a", "a")],
+                ops: vec![upsert("a")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert("put_b", "b")],
+                ops: vec![upsert("b")],
             }),
         ])
         .unwrap(),
@@ -248,7 +241,6 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let root = lane2_anchor(&dag);
     let upsert = op(
         &dag,
-        "put",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::PathParam { param: "k".into() },
         }),
@@ -256,7 +248,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read(&dag, "get")],
+                ops: vec![read(&dag)],
             }),
             Box::new(WorkflowEffect::LinearEffect { ops: vec![upsert] }),
         ])
@@ -282,12 +274,11 @@ fn parallel_append_in_branch_is_broken_by() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read(&dag, "get")],
+                ops: vec![read(&dag)],
             }),
             Box::new(WorkflowEffect::LinearEffect {
                 ops: vec![op(
                     &dag,
-                    "append_audit",
                     EffectShape::IsBreaking(BreakingShape::AppendEffect),
                 )],
             }),
@@ -318,7 +309,7 @@ fn non_parallel_root_is_unsupported() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: vec![read(&dag, "only")],
+        ops: vec![read(&dag)],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);

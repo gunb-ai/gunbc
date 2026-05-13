@@ -25,7 +25,7 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
+fn op(dag: &Dag, shape: EffectShape) -> Operation {
     let callable_name = match &shape {
         EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => "get_method",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }) => "map_insert_method",
@@ -112,7 +112,6 @@ fn bool_port_of_requires_bool_port() {
     let linear = || WorkflowEffect::LinearEffect {
         ops: vec![op(
             &dag,
-            "noop",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],
     };
@@ -143,25 +142,16 @@ fn gcp_style_linear_chain_idempotent() {
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
             op(
                 &dag,
-                "get_secret",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
-            op(
-                &dag,
-                "put_secret",
                 EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                     key_source: KeySource::PathParam {
                         param: "name".into(),
                     },
                 }),
             ),
-            op(
-                &dag,
-                "grant",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
         ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
@@ -180,16 +170,8 @@ fn append_effect_breaks_linear_chain() {
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
-            op(
-                &dag,
-                "read",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
-            op(
-                &dag,
-                "append_audit",
-                EffectShape::IsBreaking(BreakingShape::AppendEffect),
-            ),
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
+            op(&dag, EffectShape::IsBreaking(BreakingShape::AppendEffect)),
         ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf.clone()));
@@ -216,7 +198,6 @@ fn post_create_is_breaking() {
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![op(
             &dag,
-            "post_create",
             EffectShape::IsBreaking(BreakingShape::CreateEffect {
                 cause: CreateCause::PostAlways,
             }),
@@ -240,7 +221,6 @@ fn diagnostic_paths_name_stage2b() {
     let linear = WorkflowEffect::LinearEffect {
         ops: vec![op(
             &dag,
-            "r",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],
     };
