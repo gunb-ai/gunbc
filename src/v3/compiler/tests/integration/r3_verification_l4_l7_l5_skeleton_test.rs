@@ -1,6 +1,6 @@
 //! **Layer:** integration
 //!
-//! R3 Lane 1 + Lane 2 + L5 harness receipts: §1.8 gate **#9** `l4_emit_eval_match` (canonical
+//! R3 Lane 1 + Lane 2 harness receipts: §1.8 gate **#9** `l4_emit_eval_match` (canonical
 //! `TestClaim.name`) + suite `r3_verification_l4_l7_direct_suite` exercise the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path on **certification seeds only**
 //! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
@@ -11,15 +11,15 @@
 //! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); lattice /
 //! Boolean / free-monoid obligations and lattice meet/join law tags stay **out** of the passing
 //! matrix until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see
-//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Lane 2 / L5 wires
-//! the seed corpus row through `ForAllTargets` over Rust/Python/Go Int observations.
+//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Gate **#15**
+//! `l5_cross_target_consistency` (Rust / Python / Go `ForAllTargets` corpus) lives in
+//! `tests/boundary/l5_cross_target_consistency.rs` (via `tests/integration.rs`).
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::LiteralBits;
-use v3_compiler::dag::{Dag, FieldValue};
+use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -64,16 +64,9 @@ const L7_MATRIX_PASS_CLAIMS: &[&str] = &[
     "r3_l7_ordered_ring_mul_identity",
 ];
 
-const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
-const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
-const L5_SUITE: &str = "r3_verification_l5_corpus_suite";
-const L5_CLAIM: &str = "r3_verification_l5_cross_target_skeleton";
-const L5_AUTHORITY_PROGRAM: &str = include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3");
-
 static L4_DAG: OnceLock<Dag> = OnceLock::new();
 static L4_MIXED_DAG: OnceLock<Dag> = OnceLock::new();
 static L7_DAG: OnceLock<Dag> = OnceLock::new();
-static L5_DAG: OnceLock<Dag> = OnceLock::new();
 
 fn cached_compile(
     src: &'static str,
@@ -311,72 +304,4 @@ fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
             matches[0].result
         );
     }
-}
-
-#[test]
-fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
-    // L5 is a real target-execution receipt: this test expects the CI host to provide
-    // `rustc`, `python3`, and `go` so `ForAllTargets` can observe all three emitted programs.
-    let dag = cached_compile(L5_FIXTURE, L5_FIXTURE_PATH, &L5_DAG);
-    let claim_decl = dag
-        .declaration_by_name(L5_CLAIM)
-        .unwrap_or_else(|| panic!("missing `{L5_CLAIM}` in {}", L5_FIXTURE_PATH));
-    let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|reason| {
-        panic!("`{L5_CLAIM}` should lower to a structural TestClaim: {reason}");
-    });
-    assert_eq!(
-        claim.source, L5_AUTHORITY_PROGRAM,
-        "`TestClaim.source` must equal `add_then_branch_seed.v3` bytes (single program authority)"
-    );
-    let FieldValue::Variant { payload, .. } = &claim.predicate else {
-        panic!("L5 predicate must lower to a structural ForAllTargets variant");
-    };
-    let [FieldValue::Literal(LiteralBits::String(command)), FieldValue::List(args), FieldValue::Literal(LiteralBits::Int(expect_exit_code)), FieldValue::Reference(input_ref)] =
-        payload.as_slice()
-    else {
-        panic!(
-            "L5 ForAllTargets must carry inert command triple plus ProgramOutputBind input_ref, got {payload:?}"
-        );
-    };
-    assert_eq!(command, "true");
-    assert!(args.is_empty());
-    assert_eq!(expect_exit_code, "0");
-    assert_eq!(
-        dag.declaration(*input_ref).name.as_deref(),
-        Some("r3_l5_program_output"),
-        "L5 ForAllTargets must structurally select the l5_out ProgramOutputBind"
-    );
-    let required_toolchains: Vec<_> = claim
-        .requires
-        .iter()
-        .map(|requirement| match requirement {
-            FieldValue::Record(fields) => match fields.as_slice() {
-                [(label, FieldValue::Reference(id))] if label == "target" => dag
-                    .declaration(*id)
-                    .name
-                    .as_deref()
-                    .unwrap_or("<anonymous>")
-                    .to_string(),
-                other => panic!(
-                    "L5 `requires` entry must be ResourceReference {{ target }}, got {other:?}"
-                ),
-            },
-            other => {
-                panic!("L5 `requires` entry must be a ResourceReference record, got {other:?}")
-            }
-        })
-        .collect();
-    assert_eq!(
-        required_toolchains,
-        ["L5RustcToolchain", "L5Python3Toolchain", "L5GoToolchain"],
-        "L5 ForAllTargets must declare host toolchain requirements structurally on TestClaim.requires"
-    );
-    let results = TestRunner::new(dag).run_suite(L5_SUITE);
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, L5_CLAIM);
-    assert!(
-        matches!(results[0].result, ClaimResult::Pass),
-        "expected ForAllTargets Rust/Python/Go Int observations to agree, got {:?}",
-        results[0].result
-    );
 }
