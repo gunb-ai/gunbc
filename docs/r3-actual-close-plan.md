@@ -375,55 +375,76 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Promise** (THESIS.md cost lens + design-cost-lens / `src/v3/lenses/complexity.dag` header: *"behavioral complexity summary lens for the v3 DAG ... structurally terminal; behaviorally complete"*): the complexity lens behaviorally computes asymptotic class for any program structure the substrate admits, including nested algorithms (composition of poly/log/linear/constant in any permutation expressible by `SymbolicCost`).
 
-**HEAD evidence** (operator adversarial probe 2026-05-13 — `n log(n^k)` + nested-log + polynomial-of-log probe):
+**HEAD evidence** (operator adversarial probe 2026-05-13 — `n log(n^k)` + nested-log + polynomial-of-log probe; revised per briansrls BLOCKING comment-4445313478 PR #3037 2026-05-13: HEAD evidence verified against `src/v3/std/algebra.dag` + `src/v3/compiler/src/dag_cost_generated.rs` + `src/v3/compiler/src/complexity_lattice.rs` + `src/v3/compiler/src/enforced_lens_application.rs`):
 
-- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag`, 7 variants):
-  - `ProductCost(NonSingletonList<SymbolicCost>)` — **recursive composition over arbitrary `SymbolicCost`** ✓
-  - `SumCost(NonSingletonList<SymbolicCost>)` — **recursive composition over arbitrary `SymbolicCost`** ✓
-  - `PolynomialCost { var: SizeVariable, degree: Nat }` — **terminal: `SizeVariable` argument only** ✗
-  - `LogCost(SizeVariable)` — **terminal: `SizeVariable` argument only** ✗
-  - `LinearCost(SizeVariable)` / `ConstantCost(Int)` / `UnknownCost(String)` — terminal (expected)
+- **`SymbolicCost` substrate** (`src/v3/std/algebra.dag` lines 190-196, 7 variants):
+  - `ProductCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
+  - `SumCost(NonSingletonList<SymbolicCost>)` — recursive composition over arbitrary `SymbolicCost` ✓
+  - `PolynomialCost { var: SizeVariable, degree: Nat }` — terminal: `SizeVariable` argument only
+  - `LogCost(SizeVariable)` — terminal: `SizeVariable` argument only
+  - `LinearCost(SizeVariable)` / `ConstantCost(Int)` / `UnknownCost(String)` — terminal
+  - **No `ExponentialCost` variant in SymbolicCost** — exponential growth in source cost has no substrate representation.
 
-- **Structural asymmetry**: `Product` + `Sum` take recursive `SymbolicCost`; `Log` + `Polynomial` take only `SizeVariable`. The substrate cannot express `Log(Product(...))` directly. Per operator probe: *"shouldn't [LogCost] work for any arbitrary combination of cost?"* — the asymmetry is structural, not motivated by an algebra-level invariant.
+- **`AsymptoticClass` enum** (`src/v3/compiler/src/dag_cost_generated.rs:86-95`, 8 variants): `ClassConstant`, `ClassLog`, `ClassLinear`, `ClassLinearithmic`, `ClassQuadratic`, `ClassPolynomial { degree }`, `ClassExponential`, `ClassUnknown`.
+
+- **`classify_symbolic_cost` actual behavior** (`src/v3/compiler/src/dag_cost_generated.rs:289-312`):
+  ```rust
+  ConstantCost  → ClassConstant
+  LinearCost    → ClassLinear
+  LogCost       → ClassLog
+  PolynomialCost { degree=2 } → ClassQuadratic
+  PolynomialCost { degree=N>0 } → ClassPolynomial { degree=N }
+  ProductCost / SumCost / UnknownCost → ClassUnknown      // <-- composition handling absent
+  ```
+  Any composite `SymbolicCost` (`ProductCost`, `SumCost`) → **`ClassUnknown`**. The classifier has **zero composition handling** — only terminal-variant arms.
+
+- **`ClassLinearithmic` + `ClassExponential` are unreachable outputs from the classifier**. They are constructible only via the string-to-AsymptoticClass deserialization in `src/v3/compiler/src/enforced_lens_application.rs:960-962` (used when *users* declare an enforcement budget like `"ClassLinearithmic"`). Nothing in `classify_symbolic_cost` or `normalize` ever produces them. The lattice has 8 declared classes, but the classifier produces only 6.
 
 - **`normalize(c: SymbolicCost)` body** (`src/v3/std/algebra.dag:537-548`) handles only:
   - Sum: drop `ConstantCost(0)` (additive identity)
   - Product: collapse to `ConstantCost(0)` on multiplicative annihilator, drop `ConstantCost(1)` (multiplicative identity)
   - Single-element Sum/Product: collapse to the element
   - Product of two identical `LinearCost`s → `PolynomialCost(var, 2)` (n*n = n²)
-  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule** (`log(a*b) → log(a) + log(b)`), **NO nested-log handling**.
+  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule**, **NO nested-log handling**, **NO Product/Sum-to-named-tier normalization** (`Product([Linear, Log])` does NOT become `ClassLinearithmic` in classification — it stays `ProductCost` and classifies to `ClassUnknown`).
 
-- **What the compiler reports for nested algorithms at HEAD**:
-  - `n log(n^k)` — cannot be constructed directly (type error: `LogCost` doesn't take `PolynomialCost`). Either the cost-lens fold canonicalizes at construction time (UNVERIFIED at HEAD — lens body audit pending) or emits `UnknownCost(<reason>)` (fail-open) or fails-closed.
-  - `log(log(n))` — same: cannot be constructed (no `LogCost(LogCost(...))`).
-  - `n² log n` — representable as `ProductCost([PolynomialCost(n, 2), LogCost(n)])` but the `AsymptoticClass` enumerated lattice (`src/v3/compiler/src/complexity_lattice.rs`) ceilings to `ClassPolynomial { degree: 2 }` — **loses the log factor in classification**.
-  - `n log²n` — representable as `ProductCost([LinearCost(n), LogCost(n), LogCost(n)])` but lattice collapses to `ClassLinearithmic` — **loses the second log factor**.
+- **What the compiler actually reports for nested algorithms at HEAD** (revised — was overstated previously):
+  - `n log n` = `ProductCost([LinearCost(n), LogCost(n)])` → **`ClassUnknown`** (classifier has no `n log n` arm; `ClassLinearithmic` is unreachable).
+  - `n log(n^k)` — cannot be constructed directly (type-level: `LogCost` doesn't take `PolynomialCost`). Cost-lens fold canonicalization at construction time is UNVERIFIED at HEAD (lens-body audit deferred to Gap 11 sub-program step 1). If unconstructible: lens emits `UnknownCost(<reason>)` → classifier `ClassUnknown`.
+  - `log(log(n))` — same: cannot be constructed (`LogCost` doesn't take `LogCost`).
+  - `n² log n` = `ProductCost([PolynomialCost(n, 2), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown; the polynomial degree and the log factor are both lost).
+  - `n log²n` = `ProductCost([LinearCost(n), LogCost(n), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown).
+  - `2^n` — no `ExponentialCost` substrate variant; cannot be represented in source. Would fall to `UnknownCost(<reason>)`.
 
-- **`STOP SIGNAL` discipline** (`src/v3/std/algebra.dag` Pattern-3 audit block): the 7 SymbolicCost variants are declared "terminal; the asymptotic surface the thesis reasons about; any new variant should carry its own load-bearing reason." This forbids an 8th variant, but does NOT address making existing variants (`LogCost`, `PolynomialCost`) recursive over `SymbolicCost` symmetric with `Product`/`Sum`.
+- **`STOP SIGNAL` discipline** (`src/v3/std/algebra.dag` Pattern-3 audit block): the 7 SymbolicCost variants are declared "terminal; the asymptotic surface the thesis reasons about; any new variant should carry its own load-bearing reason." This forbids an 8th variant. It does NOT address (a) making existing variants (`LogCost`, `PolynomialCost`) recursive over `SymbolicCost` to be symmetric with `Product`/`Sum`, (b) the missing `ExponentialCost` variant, or (c) the classifier's lack of composition handling.
 
-**What's missing** (substrate + lens-fold + lattice tiers):
+**What's missing** (recalibrated per actual HEAD evidence above — classifier composition-handling is the root issue, not lattice tier coverage):
 
-1. **`LogCost` recursive shape**: either ratify `LogCost(SymbolicCost)` for symmetric composition with Product/Sum, OR ratify a canonicalization rule (`.dag`-authored) that converts `Log(complex)` → `Log(SizeVariable)` of the dominant variable at expression-construction time.
-2. **`normalize()` log-rule extensions**: add log-power (`log(n^k) → k * log(n)`), log-product (`log(a*b) → log(a) + log(b)`), nested-log handling — OR mark these as out-of-scope with explicit rationale.
-3. **`AsymptoticClass` lattice tier coverage**: enumerate which compositions retain information vs collapse — e.g. `polynomial × log` is currently NOT a tier (collapses to `ClassPolynomial`). Either extend the lattice with `ClassPolyLog { poly_degree: Nat, log_degree: Nat }` style tiers OR ratify the collapse as intentional with named loss.
-4. **Cost-lens fold audit**: verify whether the cost-lens fold at `src/v3/lenses/complexity.dag` does construction-time canonicalization (would partially close the gap without substrate changes).
+1. **`classify_symbolic_cost` composition handling**: the classifier currently maps ALL `ProductCost` and `SumCost` to `ClassUnknown`. This is the dominant gap — even `n log n` (the most common nested case) classifies to Unknown despite `ClassLinearithmic` being an enumerated tier. Composition-aware classification arms are needed: at minimum (a) `Product([Linear, Log])` → `ClassLinearithmic`, (b) `Product([Polynomial(k), Log])` → tier extension or named collapse, (c) `Sum` dominance reduction (drop dominated terms, classify the survivor).
+2. **`LogCost` recursive shape (OR canonicalization rule)**: substrate cannot express `Log(complex)` directly (terminal `SizeVariable`-only argument). Either ratify `LogCost(SymbolicCost)` symmetric with Product/Sum, OR ratify a `.dag`-authored canonicalization rule that converts `Log(complex)` → `Log(SizeVariable)` of the dominant variable + multiplicative factors hoisted out (e.g. `log(n^k) → k * log(n)`) at expression-construction time.
+3. **`ExponentialCost` variant absence**: no substrate way to represent exponential growth in source cost. Either add the 8th variant (against STOP SIGNAL discipline — needs ratified motivation) or formally scope `ClassExponential` as enforcement-budget-only (input-not-output) with explicit rationale.
+4. **`ClassLinearithmic` / `ClassExponential` reachability gap**: 2 of 8 lattice classes are unreachable from `classify_symbolic_cost`; only constructible via string-deserialization for enforcement budgets. Either wire the classifier to produce them (per item 1) OR formally annotate them as input-only tiers with explicit reachability documentation.
+5. **`normalize()` log-rule extensions**: add log-power (`log(n^k) → k * log(n)`), log-product (`log(a*b) → log(a) + log(b)`), nested-log handling — OR mark these as out-of-scope with explicit rationale.
+6. **Cost-lens fold audit**: verify whether the cost-lens fold at `src/v3/lenses/complexity.dag` does construction-time canonicalization (would partially close the gap without substrate changes, but only if classifier composition handling also lands per item 1).
 
 **Plan to cash**:
-- **Owner**: Substrate Mgr (warm-wolf-698) authors the canvas decision (recursive `LogCost` vs canonicalization-rule); Verification Mgr (still-moth-538) audits cost-lens fold for current canonicalization behavior; Director ratifies the substrate-shape decision.
+- **Owner**: Verification Mgr (still-moth-538) audits cost-lens fold + classifier behavior; Substrate Mgr (warm-wolf-698) authors the substrate-shape canvas decisions (classifier composition arms + LogCost recursive vs canonicalization-rule + ExponentialCost variant decision); Director ratifies the substrate-shape decisions.
 - **Sub-program**:
-  1. **Audit**: Verification Mgr greps cost-lens fold body for nested-construction handling; reports actual behavior at HEAD on `log(complex)` inputs
-  2. **Substrate-shape canvas** (Substrate Mgr): two options — (A) ratify `LogCost(SymbolicCost)` recursive symmetric with Product/Sum, OR (B) ratify `.dag`-authored canonicalization rule that runs before LogCost construction with named log-algebra coverage (power-rule + product-rule + nested-log policy)
-  3. **`normalize()` extension** OR canonicalization-rule landing per (A)/(B)
-  4. **`AsymptoticClass` lattice review**: confirm which compositions retain information vs collapse; document the collapse rules with explicit rationale per `feedback_no_textual_enforcement_bridges` (every collapse traces to a structural reason)
-  5. **Lens cementing receipt update**: extend behavioral completion test corpus to cover nested compositions (n log n^k, n² log n, n log² n, log log n)
-- **Effort estimate**: 2-4 weeks substrate-canvas + lens-fold audit + normalize extension + lattice tier extension; gated on canvas ratification authority.
+  1. **Audit at HEAD** (Verification Mgr): grep cost-lens fold body for nested-construction handling; report actual behavior on `log(complex)` inputs; confirm `classify_symbolic_cost` Product/Sum → ClassUnknown behavior (per HEAD evidence above) is the dominant classification gap
+  2. **Classifier composition canvas** (Substrate Mgr): add composition arms to `classify_symbolic_cost` — minimum (a) `Product([Linear, Log])` → `ClassLinearithmic` (closes the reachability gap for the most common nested case), (b) `Product([Polynomial(k), Log])` → tier-extension OR named collapse decision, (c) `Sum` dominance reduction (drop dominated terms, classify the survivor), (d) `ExponentialCost` substrate variant decision (add 8th variant OR formally annotate `ClassExponential` as enforcement-budget-only)
+  3. **LogCost shape canvas** (Substrate Mgr): two options — (A) ratify `LogCost(SymbolicCost)` recursive symmetric with Product/Sum, OR (B) ratify `.dag`-authored canonicalization rule that runs before LogCost construction with named log-algebra coverage (power-rule + product-rule + nested-log policy)
+  4. **`normalize()` extension** OR canonicalization-rule landing per item 3 (A)/(B), plus log-power / log-product / nested-log rule coverage
+  5. **`AsymptoticClass` reachability review**: confirm classifier produces all 8 tiers or formally annotate the unreachable subset; document collapse rules with explicit rationale per `feedback_no_textual_enforcement_bridges`
+  6. **Lens cementing receipt update**: extend behavioral completion test corpus to cover nested compositions (n log n, n log(n^k), n² log n, n log² n, log log n, 2^n) with the expected classification per the canvas decisions
+- **Effort estimate**: 3-5 weeks (revised up from 2-4 per recalibration — classifier composition arms + ExponentialCost decision were not in the prior scope) — substrate canvas + lens-fold audit + classifier extension + normalize extension + lattice reachability review; gated on canvas ratification authority.
 
 **Close criterion**:
-- (a) `LogCost` shape ratified (either recursive over `SymbolicCost` or canonicalized at construction with named rule coverage)
-- (b) `normalize()` extended with log-rules OR canonicalization-rule layer landed
-- (c) `AsymptoticClass` lattice review complete with named collapse rationale
-- (d) Cementing test corpus extended to cover nested compositions per the operator probe (n log n^k, n² log n, n log² n, log log n) with explicit expected classification
-- (e) Complexity lens behavioral-completion test passes against the extended corpus
+- (a) `classify_symbolic_cost` produces all reachable `AsymptoticClass` tiers from `ProductCost`/`SumCost` compositions per the canvas decisions (at minimum: `n log n` classifies to `ClassLinearithmic` not `ClassUnknown`)
+- (b) `LogCost` shape ratified (either recursive over `SymbolicCost` or canonicalized at construction with named rule coverage)
+- (c) `ExponentialCost` substrate variant ratified-or-formally-excluded with named rationale
+- (d) `normalize()` extended with log-rules OR canonicalization-rule layer landed
+- (e) `AsymptoticClass` reachability review complete: every enumerated class is either produced by `classify_symbolic_cost` from valid `SymbolicCost` inputs OR formally annotated as enforcement-budget-input-only
+- (f) Cementing test corpus extended to cover nested compositions per the operator probe (n log n, n log(n^k), n² log n, n log² n, log log n, 2^n) with explicit expected classification
+- (g) Complexity lens behavioral-completion test passes against the extended corpus
 
 **Alternative disposition — FORECLOSED at authoring** (per `project_no_r4_carves_directive`): R4-defer of nested-complexity completeness would scope-narrow gate #79 behavioral close to "only handles non-nested compositions". The operator-adversarial probe 2026-05-13 surfaced this gap; the gap is now operator-recorded and must close IN-R3 absent explicit operator override of the no-carves directive with named structural-unblockable reason. Substrate-shape canvas is the unblockable path.
 
