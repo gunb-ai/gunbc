@@ -346,6 +346,28 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] Where's the runner? Is it itself `.dag` or hand-Rust?
 - [ ] **Falsification probe**: add a new TestClaim entirely in `.dag`, no Rust. Does it run?
 
+### §3.4 Full-stack-from-one-`.dag` — visceral 4-layer omni-emission + R4 framework substrate (FORWARD POINTER)
+
+**Status**: STUB — pointer only. Substantive Q-dispositions land post-canvas-ratification per Director msg_428b032e + operator directive 2026-05-13.
+
+**Thesis-probe framing**: a single `.dag` program generates a coherent full-stack application — Rust backend + SQL DDL schema + OpenAPI spec + Markdown docs — all sharing one Dag, all guaranteed coherent by gate #28 `omni_layers_share_one_node_tree`. This is the visceral cash of omni-emission as a thesis: not "we have 3 backends," but "you write one program, you get four artifacts, they cannot diverge by construction."
+
+**Structural cash at HEAD** (r3-program-plan.md §1.8, Director-verified 2026-05-13):
+- Gate #25 `omni_openapi_backend_emission_demo` — **CONSUMER_LANDED + PASSING** (runnable Rust backend)
+- Gate #26 `omni_documentation_drift_lock_demo` — **CONSUMER_LANDED + PASSING** (Markdown drift-lock)
+- Gate #27 `omni_sql_ddl_alternative_demo` — **CONSUMER_LANDED + PASSING** (SQL DDL projection)
+- Gate #28 `omni_layers_share_one_node_tree` — **CONSUMER_LANDED + PASSING** (Rust + OpenAPI + Markdown + SQL DDL share one Dag)
+
+**Active artifacts** (in flight pre-R3-close):
+- **Path (a)** — pre-R3 visceral demo: one `.dag` (TODO-service) exercises the 4 existing emitters, lands 4 human-visible artifacts + integration test pinning gate #28 invariant at demo scope. Director-direct work-item `adhoc-e9bb6ef1-b4d`.
+- **Path (b)** — pre-R3 R4 canvas: `docs/design-r4-full-stack-omni-emission-canvas.md` (Substrate Mgr authoring; 5-Q Director framing covers TS LanguageSpec carrier shape / React-as-framework-substrate carriers / ingest direction / cross-target consistency / Cluster F lens composition).
+
+**Probes** (deferred to post-canvas-ratification):
+- [ ] Demo: one `.dag` → 4 artifacts (Rust + SQL DDL + OpenAPI + Markdown). Show them. Show coherence test passing.
+- [ ] Canvas: 5 Director Q-dispositions ratified. Cite anchor.
+- [ ] Falsification probe: introduce a divergence between any two of the 4 emitted artifacts at the substrate level. Does gate #28 catch it?
+- [ ] R4 thesis-pitch: extend story to TS client + React frontend. What's the smallest structural extension?
+
 ---
 
 ## §4. The self-application promises
