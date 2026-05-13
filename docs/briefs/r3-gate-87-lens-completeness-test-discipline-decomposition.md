@@ -98,9 +98,9 @@ Owned surfaces:
 - Any non-`regen` lens cementing tests or blockers.
 
 Concrete acceptance:
-- Produce a live list of complete or promoted-complete lenses outside `src/v3/compiler/regen.dag`.
-- For each row, classify as already cemented, needs Band-C receipt, blocked by carrier authoring, or not a behavioral lens.
-- Dispatch concrete follow-on ports for every actionable row and update the census / register comments in the same PR where a test moves.
+- Derive the non-`regen` complete-lens slice from `docs/v3-lens-capability-register.md` and the SG-0 census; do not create a separate persistent inventory.
+- For each derived row, update the canonical register / census comments with the classification: already cemented, needs Band-C receipt, blocked by carrier authoring, or not a behavioral lens.
+- Dispatch concrete follow-on ports for every actionable row and update the canonical census / register surfaces in the same PR where a test moves.
 
 ## Dispatch Order
 
