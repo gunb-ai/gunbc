@@ -495,6 +495,17 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
             timing_lens_id,
             timing_enforcement_id,
         ) {
+            let Some(tm_disj) = timing_measurement_sum_type_decl_id(dag) else {
+                violations.push(Diagnostic::ParseError {
+                    message:
+                        "lens enforcement: could not resolve substrate `TimingMeasurement` from \
+                              `timing_lens.dag` (modeled authority missing; fail-closed)"
+                            .to_string(),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            };
             let Some(section_decl_id) =
                 resolve_declaration_scope_declaration_id(section, declaration_scope_conj)
             else {
@@ -508,6 +519,20 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 continue;
             };
             let section_decl = dag.declaration(section_decl_id);
+            if !timing_section_row_type_declares_measurement_tm(dag, section_decl_id, tm_disj) {
+                violations.push(Diagnostic::ParseError {
+                    message: format!(
+                        "lens enforcement: timing `EnforcedApplication` section `{}` must be a \
+                         lowered `data …: RowTy = …` row whose nominal `RowTy` declares \
+                         `measurement: TimingMeasurement` (same substrate contract as \
+                         `timing_enforcement_project`)",
+                        section_decl.name.as_deref().unwrap_or("?")
+                    ),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            }
             let Some(body) = section_decl.value_body.as_ref() else {
                 violations.push(Diagnostic::ParseError {
                     message: format!(
@@ -537,17 +562,6 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         "lens enforcement: timing section `{}` is missing required `measurement` field",
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
-                    span: decl.span.clone(),
-                    fixes: Vec::new(),
-                });
-                continue;
-            };
-            let Some(tm_disj) = timing_measurement_sum_type_decl_id(dag) else {
-                violations.push(Diagnostic::ParseError {
-                    message:
-                        "lens enforcement: could not resolve substrate `TimingMeasurement` from \
-                              `timing_lens.dag` (modeled authority missing; fail-closed)"
-                            .to_string(),
                     span: decl.span.clone(),
                     fixes: Vec::new(),
                 });

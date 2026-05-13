@@ -68,38 +68,95 @@
 // time.
 
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Directed edges among `src/v3/std/*.dag` files that share the default staging rank
-/// (`collect_dag_entries` priority miss) but must load in dependency order. Lexicographic
-/// order alone would put `t_ci_workflow_as_data_demo.dag` before `timing_lens.dag`
-/// (`t_ci…` < `tim…`), breaking PB-1 lowering of `timing_enforceable` references.
-const V3_STD_STAGING_ORDER_EDGES: &[(&str, &str)] =
-    &[("timing_lens.dag", "t_ci_workflow_as_data_demo.dag")];
-
-fn v3_std_staging_edge_order(name_a: &str, name_b: &str) -> Ordering {
-    for &(before, after) in V3_STD_STAGING_ORDER_EDGES {
-        if name_a == before && name_b == after {
-            return Ordering::Less;
-        }
-        if name_a == after && name_b == before {
-            return Ordering::Greater;
+/// For `src/v3/std` only: scan each staged `.dag` for `import v3.std.<module>` lines and derive
+/// `(dependency.dag, importer.dag)` edges when both files exist in the same staging directory.
+/// `collect_dag_entries` applies these edges among co-ranked files so load order respects the
+/// same cross-module references the authors already declared (single authority: import surface),
+/// instead of a hand-maintained parallel edge list. Dissolution: replace with full import-graph
+/// topo in this producer if `v3.std` nesting or non-`v3.std` std edges need ordering too.
+fn collect_std_v3_import_dependency_edges(entries: &[PathBuf]) -> Vec<(String, String)> {
+    let names: HashSet<String> = entries
+        .iter()
+        .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
+        .collect();
+    let mut out = Vec::new();
+    for path in entries {
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Ok(src) = fs::read_to_string(path) else {
+            continue;
+        };
+        for line in src.lines() {
+            let t = line.trim_start();
+            let Some(rest) = t.strip_prefix("import v3.std.") else {
+                continue;
+            };
+            let mod_suffix = rest
+                .split(|c: char| c == ' ' || c == '{')
+                .next()
+                .unwrap_or("");
+            if mod_suffix.is_empty() {
+                continue;
+            }
+            let dep_file = format!("{mod_suffix}.dag");
+            if dep_file == name || !names.contains(&dep_file) {
+                continue;
+            }
+            out.push((dep_file, name.to_string()));
         }
     }
-    Ordering::Equal
+    out
 }
 
-fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
-    collect_dag_entries_impl(dir, prioritized, false)
+/// `edges` are `(must_precede, dependent)` file names: `must_precede` must sort before `dependent`.
+fn std_v3_import_order_cmp(edges: &[(String, String)], name_a: &str, name_b: &str) -> Ordering {
+    let precedes = |from: &str, to: &str| -> bool {
+        let mut stack = vec![from.to_string()];
+        let mut seen = HashSet::<String>::new();
+        while let Some(n) = stack.pop() {
+            if n == to {
+                return true;
+            }
+            if !seen.insert(n.clone()) {
+                continue;
+            }
+            for (d, u) in edges {
+                if d == &n {
+                    stack.push(u.clone());
+                }
+            }
+        }
+        false
+    };
+    let ab = precedes(name_a, name_b);
+    let ba = precedes(name_b, name_a);
+    match (ab, ba) {
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
+
+fn collect_dag_entries(dir: &Path, prioritized: &[&str], scan_std_v3_import_edges: bool) -> Vec<PathBuf> {
+    collect_dag_entries_impl(dir, prioritized, false, scan_std_v3_import_edges)
 }
 
 fn collect_dag_entries_recursive(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
-    collect_dag_entries_impl(dir, prioritized, true)
+    collect_dag_entries_impl(dir, prioritized, true, false)
 }
 
-fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -> Vec<PathBuf> {
+fn collect_dag_entries_impl(
+    dir: &Path,
+    prioritized: &[&str],
+    recursive: bool,
+    scan_std_v3_import_edges: bool,
+) -> Vec<PathBuf> {
     let mut entries = Vec::new();
     let mut dirs = vec![dir.to_path_buf()];
 
