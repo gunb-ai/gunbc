@@ -67,27 +67,28 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(&mut dag, OVER_BUDGET_NS)
         .expect("raise gate #58 modeled timing measurement over pass budget");
     check_enforced_lens_applications(&mut dag);
-    let violation_receipts: Vec<_> = dag
+    let msgs: Vec<String> = dag
         .diagnostics()
         .iter()
-        .map(|(_, d)| d)
-        .filter(|d| {
-            d.message().contains("lens enforcement violation")
-                && d.message().contains("timing budget ceiling")
-                && d.message()
-                    .contains(&format!("max_ns={PASS_BUDGET_MAX_NS}"))
-                && d.message()
-                    .contains(&format!("usage_max_ns={OVER_BUDGET_NS}"))
-        })
+        .map(|(_, d)| d.message())
         .collect();
     assert_eq!(
-        violation_receipts.len(),
+        msgs.len(),
         1,
-        "expected exactly one timing budget violation ParseError after witness perturbation; diagnostics={:?}",
-        dag.diagnostics()
-            .iter()
-            .map(|(_, d)| d.message())
-            .collect::<Vec<_>>()
+        "expected exactly one timing budget violation diagnostic after witness perturbation; got {msgs:?}"
+    );
+    let m = &msgs[0];
+    assert!(
+        m.contains("lens enforcement violation") && m.contains("timing budget ceiling"),
+        "unexpected diagnostic body: {m:?}"
+    );
+    assert!(
+        m.contains(&format!("max_ns={PASS_BUDGET_MAX_NS}")),
+        "expected declared budget {PASS_BUDGET_MAX_NS} in diagnostic: {m:?}"
+    );
+    assert!(
+        m.contains(&format!("usage_max_ns={OVER_BUDGET_NS}")),
+        "expected projected usage {OVER_BUDGET_NS} in diagnostic: {m:?}"
     );
 }
 
