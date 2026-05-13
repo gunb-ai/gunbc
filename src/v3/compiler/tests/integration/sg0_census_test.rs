@@ -379,20 +379,32 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
-    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
+    // R3 gate #87 / #84 G87-D5: provenance `origin_of` seam check (retired from
+    // `cementing_lens_registry_dispatch_test.rs`). V2-portable after `.dag`
+    // `TestPredicate` expected values can author the `Origin` sum per `Behavior`.
+    // Owner lane: tests-as-data carrier completeness for sum-typed lens outputs.
+    // Census delta: -1 when folded into the existing provenance `.dag` receipt.
     "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
     // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
-    // report carrier (`Gate73_ReportPredicateCarriers`).
+    // report carrier (`Gate73_ReportPredicateCarriers`). Owner lane: T-LBP /
+    // gate #73 report-predicate carrier authoring. Census delta: -1 with the
+    // same-PR complexity `.dag` receipt after gate #73 unblocks.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture while the
     // host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass. Gate #80 Band-C
     // symbolic-cost cementing moved to
     // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
-    // `cost_symbolic` COMPLETE receipt.
+    // `cost_symbolic` COMPLETE receipt. Owner lane: gate #78 host-wrapper retirement.
+    // Census delta for #84 cementing class: 0; this row decrements only with the
+    // gate #78 wrapper retirement.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
+    // Blocked on parser-level `apply_lens(cost, DeclarationScope, Enforce { ... })`
+    // consumer support. Owner lane: T-LAS Slice B / gate #91; gate #94 is the
+    // consumer-side receipt. Census delta: -1 with a same-PR memory-peak `.dag`
+    // receipt after gate #91 unblocks.
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
