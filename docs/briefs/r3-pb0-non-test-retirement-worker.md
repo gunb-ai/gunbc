@@ -9,7 +9,7 @@ program_anchor: PR #3013 R3-actual-close **Gap 1** — PB-0 `EXPECTED_HAND_AUTHO
 
 # PB-0 — SG-0 NON_TEST hand-Rust retirement worker brief
 
-**Dispatch.** Debt-Paydown Mgr standing program: sustained **per-PR** retirement of paths listed in `EXPECTED_HAND_AUTHORED_NON_TEST` inside `src/v3/compiler/tests/integration/sg0_census_test.rs` (const opens ~L237). **Target cadence:** retire **5–10** distinct census paths **per merged PR** (Director directive). **Ratchet:** `feedback_ratchet_only_down` — the `wc -l` / unique-path count for this const slice **must strictly decrease** on the PR that touches the census; **never** add a `NON_TEST` entry without Director-tier substrate-debt justification (substrate fix lands elsewhere; census expansion here is almost always STOP-and-escalate).
+**Dispatch.** Debt-Paydown Mgr standing program: sustained **per-PR** retirement of paths listed in `EXPECTED_HAND_AUTHORED_NON_TEST` inside `src/v3/compiler/tests/integration/sg0_census_test.rs` (const opens ~L237). **Target cadence:** retire **5–10** distinct census paths **per merged PR** when the pre-PR census count **`before ≥ 5`** (Director directive). **Tail closure:** when **`before < 5`**, the PR must retire **all remaining** `NON_TEST` paths (drop to **0** in that merge if P5/atomic-migration allows; otherwise the minimum legal decrement is **all paths in the tail set** for that PR — no indefinite stall at 1–4). **Ratchet:** `feedback_ratchet_only_down` — the `wc -l` / unique-path count for this const slice **must strictly decrease** on the PR that touches the census; **never** add a `NON_TEST` entry without Director-tier substrate-debt justification (substrate fix lands elsewhere; census expansion here is almost always STOP-and-escalate).
 
 **Closure alignment.** §1.8 gate **#8** `sg0_non_test_zero` (`docs/r3-program-plan.md`) — T-PB-A ratchet to **0** for `EXPECTED_HAND_AUTHORED_NON_TEST` ∪ `EXPECTED_HAND_AUTHORED_FRAGMENTS` per `docs/design-pure-bootstrap-zero.md` + `docs/r3-structure.md` §Acceptance. This brief owns **NON_TEST** slice only unless the same PR also carries an explicit, separately justified fragments row (out of scope by default).
 
@@ -34,7 +34,7 @@ program_anchor: PR #3013 R3-actual-close **Gap 1** — PB-0 `EXPECTED_HAND_AUTHO
 
 ## Per-PR acceptance checklist
 
-1. **Count proof:** before/after `EXPECTED_HAND_AUTHORED_NON_TEST` unique `"src/v3/..."` lines via tracker §2 `awk`+`grep` recipe; **after < before** by ≥ **5** (stretch **10** when safely batchable without violating atomic-migration / P5).
+1. **Count proof:** before/after `EXPECTED_HAND_AUTHORED_NON_TEST` unique `"src/v3/..."` lines via tracker §2 `awk`+`grep` recipe; **`after < before`** with minimum drop **`min(5, before)`** — i.e. require **≥5** net removals when **`before ≥ 5`** (stretch **10** when safely batchable without violating atomic-migration / P5); when **`before < 5`**, require **`after = 0`** (retire every remaining path in the tail; matches Pure Bootstrap **0** target and avoids a brief that cannot be satisfied on the last stretch).
 2. **`cargo test -p v3-compiler --test integration sg0_v3_hand_authored_census`** (or full workspace per `TESTING.md` if you touched cross-crate surfaces) — **green**.
 3. **SG-0 PR-window** (`ROADMAP.md` SG-0 discipline): if this PR edits `sg0_census_test.rs`, PR description carries **`SG-0 hand-path delta: …`** signed net path change + pairing **(a)/(b)/(c)** when net-add would otherwise trip policy.
 4. **No new compiler authority** smuggled as “wiring” without substrate receipt — if retirement forces a **new** substrate-shape question, **STOP** → escalate to Debt-Paydown Mgr → Director-tier canvas if needed.
@@ -47,4 +47,4 @@ program_anchor: PR #3013 R3-actual-close **Gap 1** — PB-0 `EXPECTED_HAND_AUTHO
 
 ## Deliverable
 
-One squash-ready PR: **5–10** fewer `NON_TEST` paths, tests green, SG-0 discipline satisfied, brief section “Retired this cycle” listing paths + one-line dissolution receipt each (mirror moved to `.dag`, file deleted, authority merged, etc.).
+One squash-ready PR: when the pre-PR unique-path count **`before ≥ 5`**, retire **5–10** fewer `NON_TEST` paths; when **`before < 5`**, retire **all** remaining paths so **`after = 0`**. Tests green, SG-0 discipline satisfied, “Retired this cycle” listing paths + one-line dissolution receipt each (mirror moved to `.dag`, file deleted, authority merged, etc.).
