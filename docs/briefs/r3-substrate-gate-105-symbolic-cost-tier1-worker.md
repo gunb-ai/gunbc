@@ -82,10 +82,10 @@ type Rational = OrderedField<FieldOfFractions<Int>>
 Replace `src/v3/std/algebra.dag:60-72` block with (Director-ratified verbatim per canvas §6):
 
 ```
-// STOP SIGNAL: wanting an 11th variant (or 12th if Tier-2
+// STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
 // escalate. Tier-1 textbook coverage (gate #105 carrier-extension
-// 2026-05-13, PR #<this PR>) lands 10 variants covering ConstantCost /
+// 2026-05-13, PR #<this PR>) lands 9 variants covering ConstantCost /
 // PolynomialCost(Rational > 0) / PolyLogCost / LogCost / ProductCost /
 // SumCost / ExponentialCost / FactorialCost / UnknownCost — sufficient
 // for the asymptotic surface that R3-load-bearing lenses reason about.
@@ -145,7 +145,7 @@ type SymbolicCost inhabits Semiring<SymbolicCost>
   | UnknownCost(String)
 ```
 
-10 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
+9 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
 
 **Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
 - `PolynomialCost.degree: PositiveRational` — `degree ≤ 0` is structurally impossible
@@ -189,7 +189,7 @@ Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_len
 - `OrderedField<T>` declared in `dsl/std/algebra.dag` with 16 record fields (Field 9 + Order 7)
 - `Rational = OrderedField<FieldOfFractions<Int>>` at `dsl/std/rational.dag:26`
 - Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ExpCost(2,n)`; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
-- STOP-SIGNAL text at `:60-72` contains new "11th variant" wording
+- STOP-SIGNAL text at `:60-72` contains new "10th variant" wording
 
 ## §8. Phase F — Consumer migration (atomic)
 
@@ -230,7 +230,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 1. **Q1-c integrity**: OrderedField MUST strict-mirror OrderedRing record shape (compare/lt/le/gt/ge minimum)
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
-4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 11 (10 ratified + 1 trigger)
+4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
 5. **All 7 anti-patterns enforceable** at PR review
 
 ## §13. Verification
@@ -260,7 +260,7 @@ Closes gate #105 symbolic_cost_textbook_coverage_landed.
 Carrier extended per Director-ratified Path A Tier 1 (canvas PR #2828;
 ratification PM msg_a055c38b relaying msg_d86a5987 2026-05-13).
 
-Net 7 → 10 SymbolicCost variants (Q2-Y collapse Linear into
+Net 7 → 9 SymbolicCost variants (Q2-Y collapse Linear into
 PolynomialCost(degree=1)):
 [paste §5 variant set verbatim]
 
@@ -268,7 +268,7 @@ Companion substrate (Q1-c):
 - OrderedField<T> witness in dsl/std/algebra.dag (strict-mirror of OrderedRing<T>)
 - Rational = OrderedField<FieldOfFractions<Int>>
 
-STOP-SIGNAL re-reset to 11 (10 ratified + 1 trigger) at algebra.dag:60-72.
+STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:60-72.
 
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").

@@ -19,7 +19,7 @@ authority docs:
 
 ## §0. Status
 
-Director ratified Path A Tier 1 on 2026-05-13 (PM msg_4fd650b7 relaying msg_ad5e934d). Net 7 → 11 SymbolicCost variants; one promoted (PolynomialCost.degree to Rational). This canvas surfaces 5 sub-questions for Director ratification before worker brief authoring.
+Director ratified Path A Tier 1 on 2026-05-13 (PM msg_4fd650b7 relaying msg_ad5e934d). Net 7 → 9 SymbolicCost variants; one promoted (PolynomialCost.degree to Rational). This canvas surfaces 5 sub-questions for Director ratification before worker brief authoring.
 
 PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker brief authoring **gates on this canvas being Director-ratified AND PR #2824 landing**.
 
@@ -30,7 +30,7 @@ PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker b
 3. **ADD**: `ExponentialCost { base: Int, var: SizeVariable }` for 2^n, c^n with c ≥ 2
 4. **ADD**: `FactorialCost { var: SizeVariable }` for n!
 
-Net `src/v3/std/algebra.dag:190-197` final variant count: **11** (was 7).
+Net `src/v3/std/algebra.dag:190-197` final variant count: **9** (was 7).
 
 Tier 2 R4-DEFERRED per Director with named-consumer-trigger requirement:
 - LogLogCost (vEB trees)
@@ -132,7 +132,7 @@ Cons:
 
 **Mgr recommendation**: Q2-Y. The `degree ≠ 1` refinement (Q2-X) is exactly the kind of structural fudge §P5 progress-is-dissolution discipline rejects. LinearCost as a separate variant in a Rational-degree world is a pre-Rational vestige. Migration scope is bounded (cost-lens consumers) and per `feedback_load_bearing_ratchet_preservation` the dissolution-receipt is the standard pattern.
 
-Net Tier 1 final variant count under Q2-Y: **10**, not 11. Reviewer-ratchet adjusts accordingly.
+Net Tier 1 final variant count under Q2-Y: **9**, not 10 (PolynomialCost.degree promotion is not a new variant). Reviewer-ratchet adjusts accordingly.
 
 ## §5. Q3 — Sum/Product algebra interaction rules
 
@@ -184,7 +184,7 @@ Current `src/v3/std/algebra.dag:69-72`:
 > STOP SIGNAL: wanting an eighth variant. Pause and escalate rather than extending; the thesis claim is that seven covers the asymptotic surface, and any new variant should carry its own dissolution receipt.
 
 **Post-extension proposed text** (Mgr recommendation):
-> STOP SIGNAL: wanting an 11th variant (or 12th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 10 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PositiveInt } / LogCost / ProductCost / SumCost / ExponentialCost { base: IntAtLeastTwo } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
+> STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2 IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and escalate. Tier-1 textbook coverage (gate #105 carrier-extension 2026-05-13) lands 9 variants covering ConstantCost / PolynomialCost { degree: PositiveRational } / PolyLogCost { exponent: PositiveInt } / LogCost / ProductCost / SumCost / ExponentialCost { base: IntAtLeastTwo } / FactorialCost / UnknownCost — sufficient for the asymptotic surface that R3-load-bearing lenses reason about. Tier-2 (LogLog / InverseAckermann / IteratedLog / HyperExp) is R4-DEFERRED per Director ratification msg_ad5e934d; new variants in R4 require consumer-evidence-justified canvas. UnknownCost("reason: ...") remains algebra-top, but reviewer-tier STOP-SIGNAL fires if a Tier-1-coverable bound is collapsed to Unknown — that is anti-pattern #5 per gate #105.
 
 **Type-level refinement carriers** (per codex BLOCKING on PR #2828 — `docs/modeling-discipline.md` Practice 2 + Practice 6: invariants encoded in type system, NOT fold normalizer):
 
@@ -252,7 +252,7 @@ Per `INVARIANTS.md` "Cost of Change":
 | State | Files to edit to add one new asymptotic-bound consumer |
 |---|---|
 | Pre-canvas (today) | ≥3 (variant if Tier-2-coverable; algebra rules; consumer site) |
-| Post-canvas (10-variant Q2-Y) | 1 (consumer constructs the appropriate Tier-1 variant directly) |
+| Post-canvas (9-variant Q2-Y) | 1 (consumer constructs the appropriate Tier-1 variant directly) |
 
 For exotic (Tier-2) bounds: still requires UnknownCost("reason") at consumer site — that's the R4-deferral receipt.
 
@@ -263,7 +263,7 @@ Director ratification on:
 - **Q1**: a / b / c (Mgr-rec: c — layered OrderedField introduction + lazy consumer migration)
 - **Q2**: X (keep Linear separate) / Y (collapse to PolynomialCost(degree=1)) (Mgr-rec: Y per §P5)
 - **Q3**: §5 algebra interaction rule table; §5.1 PolyLog-vs-Product disposition (Mgr-rec: b composite); §5.2 FactorialCost squared (Mgr-rec: b UnknownCost)
-- **Q4**: §6 STOP-SIGNAL text (10 or 11 variants depending on Q2)
+- **Q4**: §6 STOP-SIGNAL text (9 or 10 variants depending on Q2)
 - **Q5**: This canvas (ratification-of-canvas is itself the Q5 disposition)
 - **§8 Tier-2 mechanism**: defer to R4 (Mgr-rec) or accept IteratedAlgebra mechanism (rejected by §8 analysis)
 
