@@ -5,8 +5,10 @@ use std::time::{Duration, Instant};
 
 use crate::cementing_dispatch;
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, CompositionVerdict, Dag, Declaration, DeclarationId,
+    EffectShape, FieldValue, IdempotentShape, LiteralBits, NodeId, NonSingletonList,
+    OperationEffect, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    WorkflowEffect, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -26,6 +28,7 @@ use crate::lens_declaration_apply::{
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_parallelism::analyze_parallelism;
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -3132,6 +3135,40 @@ impl<'a> TestRunner<'a> {
                 enumerate_effects(program_dag).transaction,
                 TransactionalPattern::NoTransaction
             )),
+            "gate87_parallelism_read_only_branches_commute" => {
+                let Some(root) = first_workflow_anchor(program_dag) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): workflow anchor not found in `{file_name}`"
+                    )));
+                };
+                let mut dag = program_dag.clone();
+                let read = |operation_name: &str| OperationEffect {
+                    operation_name: operation_name.to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                };
+                let workflow = WorkflowEffect::ParallelEffect {
+                    branches: NonSingletonList::from_vec(vec![
+                        Box::new(WorkflowEffect::LinearEffect {
+                            ops: vec![read("left_read")],
+                        }),
+                        Box::new(WorkflowEffect::LinearEffect {
+                            ops: vec![read("right_read")],
+                        }),
+                    ])
+                    .expect("two branches form a NonSingletonList"),
+                };
+                if !dag.try_register_lane2_workflow_effect(root, workflow) {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): could not stage lane2 workflow effect for `{file_name}`"
+                    )));
+                }
+                i64::from(matches!(
+                    analyze_parallelism(&dag, root),
+                    WorkflowParallelismReport::ParallelCompositionVerdict(
+                        CompositionVerdict::IdempotentComposition
+                    )
+                ))
+            }
             "gate87_provenance_literal_origin_source" => {
                 let Some(bind) = find_bind(program_dag, "lit", file_name) else {
                     return Some(ClaimResult::Fail(format!(
