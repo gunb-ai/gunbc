@@ -21,6 +21,7 @@ impl SurfaceType {
         match self {
             SurfaceType::Named { span, .. }
             | SurfaceType::Parameterized { span, .. }
+            | SurfaceType::WidthNatLiteral { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
         }
@@ -1316,6 +1317,12 @@ impl<'a> Parser<'a> {
 
         let token = self.bump().clone();
         let name = match token.kind {
+            TokenKind::IntLit(decimal) => {
+                return Ok(SurfaceType::WidthNatLiteral {
+                    decimal,
+                    span: token.span,
+                });
+            }
             TokenKind::Ident(n) => n,
             other => {
                 return Err(Diagnostic::ParseError {

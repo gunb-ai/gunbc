@@ -72,6 +72,10 @@ pub enum SurfaceType {
         args: Vec<SurfaceType>,
         span: SourceSpan,
     },
+    WidthNatLiteral {
+        decimal: String,
+        span: SourceSpan,
+    },
     Optional {
         inner: Box<SurfaceType>,
         span: SourceSpan,

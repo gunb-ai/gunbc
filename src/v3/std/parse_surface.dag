@@ -64,6 +64,10 @@ type SurfaceType
       args: List<SurfaceType>
       span: SourceSpan
     }
+  // R3 gate #60 Phase 2.1 — type-level nonnegative decimal width in angle-bracket
+  // position (`Int<64>`, `MachineWidth<32>`, …). Lowers to `MachineWidth<decimal>`
+  // phantom argument as `Atom(Literal(Int(decimal))))` per Q-MC sub-decision 3.
+  | WidthNatLiteral { decimal: String, span: SourceSpan }
   | Optional {
       inner: SurfaceType
       span: SourceSpan

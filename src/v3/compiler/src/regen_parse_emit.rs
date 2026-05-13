@@ -101,6 +101,7 @@ fn emit_parse_module(parser_body: &str) -> String {
         match self {
             SurfaceType::Named { span, .. }
             | SurfaceType::Parameterized { span, .. }
+            | SurfaceType::WidthNatLiteral { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
         }
