@@ -3583,12 +3583,10 @@ fn compose_algebra_machine_width_connective(
     compose_tpl: DeclarationId,
     algebra_id: DeclarationId,
     machine_width_inst: DeclarationId,
-) -> TypeConnective {
-    let p0 = template_param_id(dag, compose_tpl, 0)
-        .expect("Compose<Algebra, MachineConstraint> must declare Algebra");
-    let p1 = template_param_id(dag, compose_tpl, 1)
-        .expect("Compose<Algebra, MachineConstraint> must declare MachineConstraint");
-    TypeConnective::Instantiation {
+) -> Option<TypeConnective> {
+    let p0 = template_param_id(dag, compose_tpl, 0)?;
+    let p1 = template_param_id(dag, compose_tpl, 1)?;
+    Some(TypeConnective::Instantiation {
         template: compose_tpl,
         arguments: vec![
             TemplateArgument {
@@ -3600,7 +3598,7 @@ fn compose_algebra_machine_width_connective(
                 value: machine_width_inst,
             },
         ],
-    }
+    })
 }
 
 /// When `surface_name` is `Int` / `UInt` / `Real` / `Nat` and there is exactly one
@@ -3640,12 +3638,7 @@ fn materialize_algebra_machine_width_width_nat(
         .or_else(|| symbols.get(algebra_surface))
         .copied()?;
     let mw_inst = alloc_machine_width_literal_nat(dag, mw_tpl, decimal, lit_span.clone())?;
-    Some(compose_algebra_machine_width_connective(
-        dag,
-        compose_tpl,
-        algebra_id,
-        mw_inst,
-    ))
+    compose_algebra_machine_width_connective(dag, compose_tpl, algebra_id, mw_inst)
 }
 
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
