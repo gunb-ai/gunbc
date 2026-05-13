@@ -853,26 +853,28 @@ fn lens_self_application_demonstrated_body() {
 
     let cost_ci = analyze_symbolic_cost_dimension(&ci_dag, ci_subject);
     let complexity_ci = analyze_complexity(&ci_dag, ci_subject);
-    match (&cost_ci, &complexity_ci) {
-        (
-            DimensionReport::DimensionOk {
-                dimension_name: a,
-                composed: ca,
-                ..
-            },
-            DimensionReport::DimensionOk {
-                dimension_name: b,
-                composed: cb,
-                ..
-            },
-        ) => {
-            assert_eq!(a, b);
-            assert_eq!(ca, cb);
-            assert_eq!(a.as_str(), "symbolic_cost");
-        }
-        (DimensionReport::DimensionFail { .. }, DimensionReport::DimensionFail { .. }) => {}
-        _ => panic!("cost vs complexity mismatch on CI dag: {cost_ci:?} vs {complexity_ci:?}"),
-    }
+    let (
+        DimensionReport::DimensionOk {
+            dimension_name: a,
+            composed: ca,
+            ..
+        },
+        DimensionReport::DimensionOk {
+            dimension_name: b,
+            composed: cb,
+            ..
+        },
+    ) = (&cost_ci, &complexity_ci)
+    else {
+        panic!(
+            "gate #57 requires `DimensionOk` from both `analyze_symbolic_cost_dimension` and \
+             `analyze_complexity` on the CI lane-2 subject (fail-closed); got cost={cost_ci:?} \
+             complexity={complexity_ci:?}"
+        );
+    };
+    assert_eq!(a, b);
+    assert_eq!(ca, cb);
+    assert_eq!(a.as_str(), "symbolic_cost");
 
     let Behavior::Bind(bind_ci) = ci_dag.node(ci_subject) else {
         panic!("lane-2 subject must remain a Bind shell");
