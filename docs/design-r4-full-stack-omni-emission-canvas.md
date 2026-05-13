@@ -1,5 +1,5 @@
 ---
-status: Mgr canvas (R4 substrate-shape questions for Director ratification; surfaced per Director msg_22a1c596 + PM msg_83ce8113 routing 2026-05-13 + operator directive 2026-05-13)
+status: Director RATIFIED 2026-05-13 (msg_7d51b699 via PM msg_1faad154) — all 6 dispositions ratified (Q1-b / Q2-a / Q3-a / Q4 EXTEND gate #28 / Q5-a / Practice 4 HookKind 🟡 YELLOW with R4-Phase-1.5 Practice-4-promotion canvas requirement)
 authority parent: R3 Substrate Manager (warm-wolf-698)
 authoring date: 2026-05-13
 scope: R4 post-R3 (NO implementation pre-R3; canvas-as-deliverable only)
@@ -86,7 +86,7 @@ Cons:
 
 (Reserved per Director's pattern in gate #62 / gate #105 canvas chains; not pre-proposed.)
 
-**Mgr recommendation**: Q1-b. The structural-vs-nominal distinction is load-bearing for TS emission (any TS emit must respect it); encoding it in the carrier is cleaner than burying it in lang-specific files. Migration scope is bounded (Rust adds `TypingDiscipline = Nominal` field, structural new TS rows set `Structural`).
+**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q1-b. The structural-vs-nominal distinction is load-bearing for TS emission (any TS emit must respect it); encoding it in the carrier is cleaner than burying it in lang-specific files. Migration scope is bounded (Rust adds `TypingDiscipline = Nominal` field, structural new TS rows set `Structural`).
 
 ## §4. Q2 — React-as-framework-substrate carriers (Shape-A vs Shape-B)
 
@@ -113,7 +113,7 @@ type Effect { hook: Hook, body: Expression, cleanup: Expression? }
 type ComponentBody = Render { jsx: JSXTree } | Composite { sub_components: List<ComponentRef> }
 ```
 
-Sketch only — actual ratified shape requires Director disposition. Each carrier needs Practice 4 analysis (most are 🟢 GREEN; `HookKind` is potential 🟡 YELLOW — depends whether Custom needs strict consumer evidence).
+Sketch (Director ratified §12 dispositions msg_7d51b699 2026-05-13). HookKind 🟡 YELLOW confirmed — R4-Phase-1.5 Practice-4-promotion canvas required before Phase-2 dispatch per §10.
 
 ### Candidate Q2-a — Shape-A (component as source-code subject)
 
@@ -151,7 +151,7 @@ Cons:
 - Introduces a new shape category — broader R4 substrate impact
 - Practice 4 analysis required for the new Shape-F sum/category
 
-**Mgr recommendation**: Q2-a. Pragma: React components ARE TS source code at emit time; the framework-vs-language distinction is internal to the TS lane and doesn't need a new shape category. Practice 4 cleaner.
+**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q2-a. Pragma: React components ARE TS source code at emit time; the framework-vs-language distinction is internal to the TS lane and doesn't need a new shape category. Practice 4 cleaner.
 
 ## §5. Q3 — Ingest direction
 
@@ -196,7 +196,7 @@ Pros:
 Cons:
 - Migration tooling becomes second-class; may bit-rot
 
-**Mgr recommendation**: Q3-a. Single authority discipline; migration tooling is a separate concern not load-bearing for the canvas.
+**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q3-a. Single authority discipline; migration tooling is a separate concern not load-bearing for the canvas.
 
 ## §6. Q4 — Cross-target consistency story (gate #28 invariant extension)
 
@@ -217,7 +217,7 @@ All five derive from the same `.dag` workflow. Gate #28's invariant naturally ex
 
 ### Mgr recommendation
 
-Extend gate #28 test to assert 5-target consistency: same `Dag` → Rust + TS + React + OpenAPI + SQL DDL. Author a new gate (e.g., `omni_full_stack_share_one_node_tree`) parallel to #28 if the existing test surface can't cleanly extend, OR fold into #28's existing test with new projection assertions. Director disposition required.
+**RATIFIED EXTEND gate #28** (Director msg_7d51b699): update gate #28 row description to enumerate 5/6 projections (Rust + TS + React + OpenAPI + SQL DDL + Markdown) — gate name `omni_layers_share_one_node_tree` is layer-count-agnostic. Extend `m1_5_omni_shape_b_openapi_test.rs` (or rename to `omni_layers_consistency_test.rs`) to assert N-target consistency from same `Dag`. **Parallel gate explicitly REJECTED** — would create parallel authority on same invariant (INVARIANTS P1 violation; new anti-pattern §11 #9).
 
 ## §7. Q5 — Composition with Cluster F lens framework
 
@@ -242,7 +242,7 @@ Each fits naturally into the existing lens framework. The substrate question is 
 
 Component is a non-Behavior substrate; lens framework needs a Component-applicable adapter.
 
-**Mgr recommendation**: Q5-a — `Component` is `Behavior::Bind`. Strict-mirror of how other carriers participate in lens framework; no new substrate kind. Lens-application natural.
+**Ratified disposition** (Director msg_7d51b699; Mgr-rec as authored): Q5-a — `Component` is `Behavior::Bind`. Strict-mirror of how other carriers participate in lens framework; no new substrate kind. Lens-application natural.
 
 ## §8. Practice 4 (coproduct dissolution) overview
 
@@ -270,38 +270,41 @@ Per `INVARIANTS.md` "Cost of Change":
 
 ## §10. R4 phase plan (canvas-only; for ratification framing)
 
-1. **R4-Phase-1**: TS LanguageSpec carrier landing (Q1 ratified shape)
-2. **R4-Phase-2**: React framework substrate carriers (Q2 ratified shape) + JSX emission
-3. **R4-Phase-3**: Cross-target consistency invariant extension (Q4 ratified shape) + #28-extension or new gate
-4. **R4-Phase-4**: Lens framework composition (Q5 ratified shape) — component-applicable lens reads
-5. **R4-Phase-5**: Visceral demo extension — extend path (a) TODO demo with React UI + TS client deriving from same `.dag`
+1. **R4-Phase-1**: TS LanguageSpec carrier landing (Q1-b ratified: `TypingDiscipline = Nominal | Structural` on `InhabitantDecl`)
+2. **R4-Phase-1.5** (Director directive msg_7d51b699): Practice-4-promotion canvas on `HookKind` Custom arm — Mgr authors before Phase-2 dispatch; enumerates what lens framework needs to differentiate about Custom hooks
+3. **R4-Phase-2**: React framework substrate carriers (Q2-a Shape-A; Q5-a Component=Behavior::Bind) + JSX emission
+4. **R4-Phase-3**: Cross-target consistency invariant extension via gate #28 EXTEND (Q4 ratified) — update row description to enumerate 5/6 projections; extend/rename `m1_5_omni_shape_b_openapi_test.rs` to assert N-target consistency
+5. **R4-Phase-4**: Lens framework composition (Q5-a ratified) — component-applicable lens reads (4 Cluster F lenses uniform)
+6. **R4-Phase-5**: Visceral demo extension — extend path (a) TODO demo with React UI + TS client deriving from same `.dag`
 
 Each phase = separate worker brief; standard canvas → ratification → worker brief → PR pattern.
 
-## §11. Director-pending anti-patterns (for R4 worker review)
+## §11. Director-ratified anti-patterns (for R4 worker review)
 
 1. TS LanguageSpec landed without structural-vs-nominal distinction encoded at carrier level (Q1-b: Practice 2/6)
-2. React components landed as Shape-B (Director's Q2 lean: Shape-A)
+2. React components landed as Shape-B (Q2-a ratified: Shape-A)
 3. Ingest direction admits TS source as authority (Q3-a single-authority)
-4. Gate #28 omni-emission invariant extension forgotten (Q4)
+4. Gate #28 omni-emission invariant extension forgotten (Q4 EXTEND)
 5. Component carrier NOT participating in lens framework (Q5-a)
-6. New `Shape-F` introduced without explicit ratification (against Mgr-rec Q2-a)
+6. New `Shape-F` introduced without explicit ratification (against ratified Q2-a)
+7. **Director-added (msg_7d51b699)**: Adding `TypingDiscipline` arms beyond `Nominal | Structural` without ratified consumer evidence (e.g., speculative `Refinement` arm for hypothetical Liquid Haskell)
+8. **Director-added (msg_7d51b699)**: Custom `HookKind` landing in R4-Phase-2 without the Practice-4-promotion canvas enumerated in §10 (Phase-1.5)
+9. **Director-added (msg_7d51b699)**: Introducing parallel `omni_*_share_one_node_tree` gate when the invariant is already cashed at gate #28 — direct INVARIANTS P1 violation (gate #28's NAME is layer-count-agnostic; the layer-enumeration in the description is incidental, not load-bearing)
 
-## §12. Open questions for ratification
+## §12. Ratified dispositions (audit trail; all Director-ratified msg_7d51b699 via PM msg_1faad154 2026-05-13)
 
-Director ratification on:
-
-- **Q1** TS LanguageSpec: a / b (Mgr-rec) / c (discretion)
-- **Q2** React carrier shape: a (Mgr-rec) / b / c
-- **Q3** Ingest direction: a (Mgr-rec) / b / c
-- **Q4** Cross-target invariant: extend #28 OR new gate
-- **Q5** Lens composition: a (Mgr-rec) / b
-- **Practice 4** disposition on `HookKind` (canvas §8 🟡 YELLOW): Custom arm consumer-evidence required pre-R4?
+- **Q1**: **RATIFIED Q1-b** — `TypingDiscipline = Nominal | Structural` extension to `InhabitantDecl` (`dsl/std/coercion.dag:59`). Migration safe: Rust/Python/Go default to Nominal; structural new TS rows set Structural. Practice 4 🟢 GREEN per §8.
+- **Q2**: **RATIFIED Q2-a** — Shape-A (components ARE TS source code). Director-cited counter-example: Rust web frameworks (Axum/Actix) fit "framework-tier-emitting-through-language" in Shape-A without Shape-F; Vue/Svelte/Express/Django symmetrically Shape-A. Cluster F lens framework lives in Shape-A space; composes naturally via Q5-a.
+- **Q3**: **RATIFIED Q3-a** — `.dag` → JSX single-authority; aligns with INVARIANTS P1 + gate #28 omni-emission pattern.
+- **Q4**: **RATIFIED EXTEND gate #28** (NOT new parallel gate). Director rationale: gate #28 NAME `omni_layers_share_one_node_tree` is layer-count-agnostic — the invariant is general; current description's layer-enumeration is incidental. New parallel gate would create parallel authority on the same invariant — direct INVARIANTS P1 violation. **Extension shape**: update gate #28 row description to enumerate 5/6 projections (Rust + TS + React + OpenAPI + SQL DDL + Markdown); extend `m1_5_omni_shape_b_openapi_test.rs` (or rename to `omni_layers_consistency_test.rs`) test to assert N-target consistency from same Dag.
+- **Q5**: **RATIFIED Q5-a** — Component is `Behavior::Bind`. Strict-mirror per `feedback_recursion_is_emergent` + `feedback_compiler_is_dag_processor`. All 4 Cluster F lenses (complexity/cost/parallelism/effect) apply uniformly without new substrate-kind.
+- **Practice 4 HookKind**: **RATIFIED 🟡 YELLOW** with R4-Phase-1.5 Practice-4-promotion canvas requirement. 6-arm closed enumeration (UseState | UseEffect | UseMemo | UseCallback | UseContext | UseRef) covers React 18 standard hooks. `Custom(Identifier)` arm IS user-input boundary per `feedback_coproduct_dissolution` — appropriate stopping point. **R4-Phase-2 prerequisite (Director directive)**: Mgr authors Practice-4-promotion canvas before Phase-2 worker dispatch to enumerate what lens framework needs to differentiate about Custom hooks. If lenses treat Custom opaquely → Custom stays as-is. If lenses need structural differentiation (effect-class vs computation-class) → Custom requires field-level extension.
 
 ## §13. Reference
 
 - Operator directive 2026-05-13 (PM msg_83ce8113 verbatim)
-- PM relay msg_83ce8113 (relaying Director msg_22a1c596)
+- PM relay msg_83ce8113 (relaying Director msg_22a1c596) — canvas dispatch
+- **Director ratification msg_7d51b699** (relayed via PM msg_1faad154) — all 6 dispositions ratified 2026-05-13
 - Operator chat ratification of path (a)+(b)
 - Substrate audit (Director-verified): `dsl/extdeps/languages/` lacks TS
 - Gate #28: `docs/r3-program-plan.md:256` + `m1_5_omni_shape_b_openapi_test.rs`
