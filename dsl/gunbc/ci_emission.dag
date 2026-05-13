@@ -14,11 +14,9 @@ module gunbc.ci_emission
 import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
 import gunbc.ci.github_actions_workflow { gunbc_ci_github_actions_workflow }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, ActionRef,
-  WorkflowTrigger, Push, PullRequest,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
-  HostedRunner, RunnerLabel, UbuntuLatest,
-  ShellType, Bash
+  Workflow, Job, RunStep, UsesStep,
+  HostedRunner, UbuntuLatest,
+  Bash
 }
 
 // 🟡 YELLOW (scaffold) — coproduct-dissolution receipt (see modeling-discipline Practice 4).
