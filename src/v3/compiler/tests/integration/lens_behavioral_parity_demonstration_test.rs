@@ -116,8 +116,8 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
 
 fn read_op(dag: &Dag, _name: &str) -> Operation {
     let callable = dag
-        .declaration_by_name("compose_effects")
-        .expect("bootstrap should provide compose_effects declaration")
+        .declaration_by_name("get_method")
+        .expect("bootstrap should provide get_method declaration")
         .id;
     Operation {
         callable: CallableRef { decl: callable },

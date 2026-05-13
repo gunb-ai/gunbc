@@ -43,8 +43,7 @@ fn lane2_witness_operation(
 ) -> Operation {
     let callable = dag
         .declaration_by_name(name)
-        .or_else(|| dag.declaration_by_name("compose_effects"))
-        .expect("bootstrap should provide compose_effects declaration")
+        .expect("bootstrap should provide requested method declaration")
         .id;
     Operation {
         callable: CallableRef { decl: callable },
@@ -155,7 +154,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                     body: Box::new(WorkflowEffect::LinearEffect {
                         ops: vec![lane2_witness_operation(
                             dag,
-                            "r3_fc_read",
+                            "get_method",
                             HttpMethodScalar::Get,
                             vec![],
                         )],
@@ -165,7 +164,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                     body: Box::new(WorkflowEffect::LinearEffect {
                         ops: vec![lane2_witness_operation(
                             dag,
-                            "r3_fc_upsert",
+                            "map_insert_method",
                             HttpMethodScalar::Put,
                             vec![UrlPathToken::ParamToken {
                                 name: "id".to_string(),

@@ -50,10 +50,12 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
 }
 
 fn op(dag: &Dag, _name: &str, shape: EffectShape) -> Operation {
-    let callable_name = if matches!(shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)) {
-        "append_method"
-    } else {
-        "compose_effects"
+    let callable_name = match &shape {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => "get_method",
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }) => "map_insert_method",
+        EffectShape::IsIdempotent(IdempotentShape::DeleteEffect { .. }) => "diff_method",
+        EffectShape::IsBreaking(BreakingShape::CreateEffect { .. }) => "concat_method",
+        EffectShape::IsBreaking(BreakingShape::AppendEffect) => "append_method",
     };
     let callable = dag
         .declaration_by_name(callable_name)
