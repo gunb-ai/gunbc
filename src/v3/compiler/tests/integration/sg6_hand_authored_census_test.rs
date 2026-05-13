@@ -359,6 +359,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/lower_helpers_generated.rs",
         ),
         (
+            "parallelism",
+            "src/v3/lenses/parallelism.dag",
+            "src/v3/compiler/src/lens_parallelism_generated.rs",
+        ),
+        (
             "provenance",
             "src/v3/lenses/provenance.dag",
             "src/v3/compiler/src/lens_provenance_generated.rs",
