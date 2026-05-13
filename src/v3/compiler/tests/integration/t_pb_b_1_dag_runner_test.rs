@@ -25,9 +25,14 @@
 //! checkable receipt = **PR #2639 description**, not inferred deletes). Table lives in
 //! `v3_compiler::r3_gate_87_cementing_regen_runner_suites` (shared with `cementing_dispatch`).
 
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Dag;
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES;
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_pb_b1_dag_module_stems, R3_GATE_87_CEMENTING_REGEN_SUITES,
+};
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -421,6 +426,165 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 // lives in `r3_tests_as_data_demonstration_suite_passes_through_runner` above (and
 // `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
 // separate ratchet; do not conflate the two in PR titles or census expectations.
+
+// --- R3 gate #87 — cementing_dispatch ↔ PB-B-1 runner drift ratchets (G87-D4) --------------------
+
+fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
+    fields
+        .iter()
+        .find(|(candidate, _)| candidate == label)
+        .map(|(_, value)| value)
+}
+
+fn string_field(fields: &[(String, FieldValue)], label: &str) -> String {
+    match record_field(fields, label) {
+        Some(FieldValue::Literal(LiteralBits::String(value))) => value.clone(),
+        other => panic!("field `{label}`: expected string literal, got {other:?}"),
+    }
+}
+
+fn disj_variants(dag: &Dag, type_name: &str) -> Vec<(String, DeclarationId)> {
+    let sum_decl = dag.declaration_by_name(type_name).unwrap_or_else(|| {
+        panic!(
+            "merged DAG missing nullary sum `{type_name}` (expected from cementing_dispatch.dag)"
+        )
+    });
+    let TypeConnective::Disj { variants } = &sum_decl.connective else {
+        panic!("`{type_name}` must be a Disj coproduct for receipt kind decoding");
+    };
+    variants
+        .iter()
+        .map(|variant| (variant.label.clone(), variant.ty))
+        .collect()
+}
+
+fn decode_nullary_sum_variant_label(
+    dag: &Dag,
+    sum_type_name: &str,
+    value: &FieldValue,
+    field_label: &str,
+) -> String {
+    let variants = disj_variants(dag, sum_type_name);
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("{field_label}: expected nullary sum variant, got {value:?}");
+    };
+    assert!(
+        payload.is_empty(),
+        "{field_label}: unexpected variant payload (expected nullary `{sum_type_name}` arm)"
+    );
+    variants
+        .iter()
+        .find(|(_, id)| id == constructor)
+        .map(|(label, _)| label.clone())
+        .unwrap_or_else(|| {
+            panic!(
+                "{field_label}: constructor id {:?} is not a declared variant of `{sum_type_name}`",
+                constructor
+            )
+        })
+}
+
+/// `module_stem` values for `kind: DagHarness` rows in `cementing_band_c_v2_complete_receipts`.
+fn cementing_dispatch_dag_harness_module_stems(dag: &Dag) -> BTreeSet<String> {
+    let decl = dag
+        .declaration_by_name("cementing_band_c_v2_complete_receipts")
+        .unwrap_or_else(|| {
+            panic!("cementing_dispatch.dag must declare `cementing_band_c_v2_complete_receipts`")
+        });
+    let Some(ValueBody::List(items)) = &decl.value_body else {
+        panic!(
+            "`cementing_band_c_v2_complete_receipts` must lower to ValueBody::List, got {:?}",
+            decl.value_body
+        );
+    };
+    let mut stems = BTreeSet::new();
+    for item in items {
+        let FieldValue::Record(fields) = item else {
+            panic!("cementing receipt row must be a record, got {item:?}");
+        };
+        let kind = record_field(fields, "kind").expect("cementing receipt row missing `kind`");
+        let kind_label =
+            decode_nullary_sum_variant_label(dag, "CementingBandCReceiptKind", kind, "kind");
+        if kind_label != "DagHarness" {
+            continue;
+        }
+        let stem = string_field(fields, "module_stem");
+        assert!(
+            stems.insert(stem.clone()),
+            "cementing_band_c_v2_complete_receipts: duplicate DagHarness module_stem `{stem}`"
+        );
+    }
+    stems
+}
+
+#[test]
+fn r3_gate_87_cementing_dispatch_dag_harnesses_align_with_pb_b1_runner_table() {
+    let dag = lower(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    let dag_harness_stems = cementing_dispatch_dag_harness_module_stems(&dag);
+    let pb_b1_stems = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
+    assert!(
+        !dag_harness_stems.is_empty(),
+        "expected at least one DagHarness receipt in cementing_band_c_v2_complete_receipts"
+    );
+    for stem in &dag_harness_stems {
+        assert!(
+            pb_b1_stems.contains(stem),
+            "cementing_dispatch.dag lists DagHarness `{stem}` but that stem is absent from \
+             `R3_GATE_87_CEMENTING_REGEN_SUITES` (PB-B-1 runner inventory) — extend the shared \
+             table + `t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_suites_pass_through_runner` \
+             in the same PR as the Band-C receipt (INVARIANTS P2)."
+        );
+        let expected_path = format!("src/v3/compiler/tests/dag/{stem}.dag");
+        let wired = R3_GATE_87_CEMENTING_REGEN_SUITES
+            .iter()
+            .any(|(_, file, _, _)| *file == expected_path);
+        assert!(
+            wired,
+            "cementing_dispatch.dag DagHarness `{stem}` must map to runner row path `{expected_path}`; \
+             got no matching `R3_GATE_87_CEMENTING_REGEN_SUITES` entry (runner vs dispatch path drift)."
+        );
+        let on_disk = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("dag")
+            .join(format!("{stem}.dag"));
+        assert!(
+            on_disk.is_file(),
+            "cementing_dispatch.dag references DagHarness `{stem}` but `{}` is missing on disk",
+            on_disk.display()
+        );
+    }
+}
+
+#[test]
+fn r3_gate_87_cementing_dispatch_suite_structural_name_matches_declaration_binding() {
+    let dag = lower(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    let suite = dag
+        .declaration_by_name("cementing_dispatch_suite")
+        .expect("`cementing_dispatch_suite` declaration must exist");
+    let Some(ValueBody::Structural { fields }) = &suite.value_body else {
+        panic!(
+            "`cementing_dispatch_suite` must lower to a structural TestSuite body, got {:?}",
+            suite.value_body
+        );
+    };
+    let structural_name = string_field(fields, "name");
+    assert_eq!(
+        structural_name, "cementing_dispatch_suite",
+        "`TestSuite.name` inside `cementing_dispatch_suite` must match the declaration binding and \
+         the `run_suite` argument in `cementing_dispatch_suite_passes_through_runner` — fix the .dag \
+         or update the PB-B-1 receipt in the same PR."
+    );
+}
 
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
