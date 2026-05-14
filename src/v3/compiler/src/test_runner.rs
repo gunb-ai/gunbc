@@ -2583,7 +2583,6 @@ impl<'a> TestRunner<'a> {
                         )),
                     };
                 }
-                let mut failures = 0usize;
                 for (idx, (source, file_name)) in shapes.iter().enumerate() {
                     let claim = TestClaimValue {
                         claim_name: claim_name.clone(),
@@ -2600,9 +2599,7 @@ impl<'a> TestRunner<'a> {
                                 result: ClaimResult::Pass,
                             };
                         }
-                        ClaimResult::Fail(_) => {
-                            failures += 1;
-                        }
+                        ClaimResult::Fail(_) => {}
                         ClaimResult::NotYetImplemented(msg) => {
                             return ClaimEvaluation {
                                 claim_name: claim_name.clone(),
@@ -2616,8 +2613,9 @@ impl<'a> TestRunner<'a> {
                     }
                 }
                 let msg = format!(
-                    "QuantifiedTestClaim `{}` Exists found no witness among {failures} programs",
-                    claim_name
+                    "QuantifiedTestClaim `{}` Exists found no witness among {} programs",
+                    claim_name,
+                    shapes.len()
                 );
                 ClaimEvaluation {
                     claim_name,
