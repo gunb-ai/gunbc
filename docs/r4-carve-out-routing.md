@@ -127,8 +127,16 @@ groundwork — semantic equivalence reasoning, algorithm transformation
 library, pattern-recognition rules tied to abstract specifications
 (input/output relations) rather than program syntax. Not feasible at
 lens-tier; needs a new compiler analysis layer (perhaps a "synthesis
-lens" or "optimization-recommendation lens" with weaker enforcement —
-warning rather than error since algorithm choice is design-tier).
+lens" or "optimization-recommendation lens"). Per
+`feedback_fail_closed_discipline` + INVARIANTS.md C-8 — lens
+enforcement is Error or it isn't enforcement (no warning steady
+state). Advisory suggestions about alternate algorithm choices route
+through a separate introspection/report carrier (NOT
+`DiagnosticSeverity`; the R4 C7 design ratification specifies the
+carrier shape). Algorithm choice is design-tier — the report
+surface gives the programmer information without imposing a hard
+fail-closed constraint; the actual error/non-error discrimination
+of the synthesis lens is a Director-tier R4 design decision.
 
 **Authority**: operator wishlist routing 2026-05-14 via PM
 (deep-wolf-155); operator-recommended R4 dispatch when same-algorithm
