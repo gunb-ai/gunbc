@@ -44,7 +44,7 @@ struct AnthropicMessagesRequest {
     system: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum ResponseRole {
     Assistant,
@@ -318,6 +318,11 @@ fn anthropic_messages_wire_demo_is_hermetic() {
         serde_json::to_value(RequestRole::Assistant).expect("assistant role serializes"),
         json!("assistant"),
         "assistant request role must serialize to the Anthropic wire string"
+    );
+    assert_eq!(
+        serde_json::to_value(ResponseRole::Assistant).expect("response role serializes"),
+        json!("assistant"),
+        "unit response role must serialize to the Anthropic wire string, not an object"
     );
 
     let request = AnthropicMessagesRequest {
