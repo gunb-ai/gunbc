@@ -436,7 +436,7 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
 /// **Hygiene:** `repeat_string` exists in the bootstrap bundle only via this excerpt — no
 /// hand-maintained duplicate of `render.dag` (INVARIANTS P2). Edit the marked region in
 /// `render.dag` only; this output is overwritten on `cargo build -p v3-compiler`.
-/// Emit PB-0 cycle-4 host authority modules (former `EXPECTED_HAND_AUTHORED_NON_TEST` paths) from
+/// Emit PB-0 host authority modules (former `EXPECTED_HAND_AUTHORED_NON_TEST` paths) from
 /// checked-in templates so `REGEN_OUTPUTS` / `GENERATED_FILES` stay the sole SG-0 partition
 /// authority (`sg0_v3_hand_authored_census`).
 ///
@@ -465,6 +465,10 @@ fn emit_pb0_cycle4_host_authority_modules(repo_root: &Path) {
     let tmpl_dir = repo_root.join("tools/pb0_cycle4_emit_templates");
     let specs: &[(&str, &str)] = &[
         (
+            "cementing_dispatch.rs.in",
+            "src/v3/compiler/src/cementing_dispatch.rs",
+        ),
+        (
             "complexity_lattice.rs.in",
             "src/v3/compiler/src/complexity_lattice_generated.rs",
         ),
@@ -472,6 +476,8 @@ fn emit_pb0_cycle4_host_authority_modules(repo_root: &Path) {
             "cost_basis_declaration.rs.in",
             "src/v3/compiler/src/cost_basis_declaration_generated.rs",
         ),
+        ("diagnostics.rs.in", "src/v3/compiler/src/diagnostics.rs"),
+        ("dimension.rs.in", "src/v3/compiler/src/dimension.rs"),
         (
             "emit_collection_ops_method_contract.rs.in",
             "src/v3/compiler/src/emit/collection_ops_method_contract_generated.rs",
@@ -488,9 +494,18 @@ fn emit_pb0_cycle4_host_authority_modules(repo_root: &Path) {
             "int_literal_ranges.rs.in",
             "src/v3/compiler/src/int_literal_ranges_generated.rs",
         ),
+        ("infer.rs.in", "src/v3/compiler/src/infer.rs"),
         (
             "pb_method_template_projection.rs.in",
             "src/v3/compiler/src/pb_method_template_projection_generated.rs",
+        ),
+        (
+            "pipeline_authority.rs.in",
+            "src/v3/compiler/src/pipeline_authority.rs",
+        ),
+        (
+            "post_emit_verifier.rs.in",
+            "src/v3/compiler/src/post_emit_verifier.rs",
         ),
     ];
     for (tmpl_name, rel_out) in specs {
@@ -754,8 +769,9 @@ fn main() {
         "src/v3/compiler/src/bootstrap_generated.rs",
         "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs",
         "src/v3/compiler/src/bootstrap_std_generated.rs",
-        // PB-0 cycle-4: former hand `EXPECTED_HAND_AUTHORED_NON_TEST` modules — templates under
+        // PB-0: former hand `EXPECTED_HAND_AUTHORED_NON_TEST` modules — templates under
         // `tools/pb0_cycle4_emit_templates/*.rs.in`, emitted by `emit_pb0_cycle4_host_authority_modules`.
+        "src/v3/compiler/src/cementing_dispatch.rs",
         "src/v3/compiler/src/complexity_lattice_generated.rs",
         // SG-5 substrate / runtime-mirror projections, generated from
         // `src/v3/std/substrate.dag` + `src/v3/std/parse_surface.dag`
@@ -773,10 +789,13 @@ fn main() {
         "src/v3/compiler/src/dag_lookup_generated.rs",
         "src/v3/compiler/src/dag_scalar_generated.rs",
         "src/v3/compiler/src/dag_value_body_generated.rs",
+        "src/v3/compiler/src/diagnostics.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",
+        "src/v3/compiler/src/dimension.rs",
         "src/v3/compiler/src/emit/collection_ops_method_contract_generated.rs",
         "src/v3/compiler/src/emit_rust_bin_shim_generated.rs",
         "src/v3/compiler/src/enforced_lens_application_generated.rs",
+        "src/v3/compiler/src/infer.rs",
         "src/v3/compiler/src/infer_helpers_generated.rs",
         "src/v3/compiler/src/int_literal_ranges_generated.rs",
         "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
@@ -788,6 +807,8 @@ fn main() {
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
         "src/v3/compiler/src/lower_helpers_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
+        "src/v3/compiler/src/pipeline_authority.rs",
+        "src/v3/compiler/src/post_emit_verifier.rs",
         "src/v3/compiler/src/pb_method_template_projection_generated.rs",
         "src/v3/compiler/src/parse_generated.rs",
         "src/v3/compiler/src/parse_surface_generated.rs",
