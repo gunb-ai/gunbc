@@ -223,6 +223,8 @@ mod sg6_hand_authored_census_test;
 mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
+#[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
+mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
