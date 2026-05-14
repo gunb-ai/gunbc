@@ -800,10 +800,15 @@ This is `feedback_ratchet_only_down` drift; sustained pattern, not 5-commit anom
 
 Every brief (Mgr-tier OR worker-tier) dispatched per any Phase / Mgr lane MUST include in its frontmatter or §0 a 3-axis citation block:
 
-1. **Design-doc authority cite** (NAMED design doc + section + named lane/step):
-   - Example for PB-X retirement work: *"design authority: `docs/design-pure-bootstrap-zero.md` (PB-6 emit lane) + `src/v3/SELF_HOSTING.md` §2.2 Step 1 L2.5 model review prereq"*
-   - Example for Gap 13 T-Ground sub-lane: *"design authority: `docs/r2-closure-ledger.md:108-122` (T-Ground sub-lane registration) + `docs/design-emission-model.md` §3 (no-engine discipline)"*
-   - Vague "see design docs" or "per `docs/`" does NOT satisfy. Cite the SPECIFIC section + named lane.
+1. **Design-doc authority cite** (NAMED design doc + section + named lane/step) — **AND per-entry citation when brief scope is enumerable** (per operator discipline 2026-05-14: *"every test/file should clearly map to a design section that explains how/where it's going"*):
+   - **Single-entry briefs** (one file/test/scope): one design-authority citation suffices.
+     - Example for PB-X retirement work: *"design authority: `docs/design-pure-bootstrap-zero.md` (PB-6 emit lane) + `src/v3/SELF_HOSTING.md` §2.2 Step 1 L2.5 model review prereq"*
+     - Example for Gap 13 T-Ground sub-lane: *"design authority: `docs/r2-closure-ledger.md:108-122` (T-Ground sub-lane registration) + `docs/design-emission-model.md` §3 (no-engine discipline)"*
+   - **Multi-entry briefs** (class-level / cycle / sweep covering >1 file/test/scope): MUST cite **per-entry design** OR a **static pre-dispatch enumeration artifact** (e.g., per-test inventory doc, per-file taxonomy doc) that maps each entry to its design section. Lane-level citation alone is insufficient when scope is enumerable; that's exactly the Cluster M class-level-only failure mode the audit doc §3 systemic-pattern finding identified (codex BLOCKING #11738 PR #3071 follow-up). Examples:
+     - **Wrong** (lane-level only): *"design authority: `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`"* (one citation covering 20+ unrelated tests)
+     - **Right** (per-entry mapping): brief includes a table mapping each test ID to its design section, OR cites a static pre-dispatch inventory doc that has the per-entry mapping (e.g., *"per-test inventory: `docs/audit/r3-cluster-m-per-test-inventory-YYYY-MM-DD.md` §X (covering tests T1-T20)"*)
+     - **Right** (single-entry breakdown): if the brief covers N entries, each entry's design section is named in the brief frontmatter
+   - **Vague "see design docs" or "per `docs/`" does NOT satisfy**. Cite the SPECIFIC section + named lane (single-entry) OR specific section per entry / specific inventory artifact (multi-entry).
 
 2. **Mgr lane ownership confirmation** (NAMED Mgr session at time of dispatch):
    - Example: *"owner Mgr: warm-wolf-698 (R3 Substrate Mgr expanded scope per α-ratification 2026-05-14)"*
