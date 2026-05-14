@@ -1010,6 +1010,7 @@ fn workflow_path_regex_forbidden_substrings() -> impl Iterator<Item = &'static s
         })
 }
 
+// Scans every `.github/workflows/*.{yml,yaml}` (same fingerprint scope as the shell ratchet).
 #[test]
 fn workflow_no_path_regex_policy_ci_yml() {
     use std::fs;
@@ -1019,16 +1020,39 @@ fn workflow_no_path_regex_policy_ci_yml() {
     let repo_root = repo_root
         .canonicalize()
         .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
-    let path = repo_root.join(".github/workflows/ci.yml");
-    let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let workflows_dir = repo_root.join(".github/workflows");
+    let entries = fs::read_dir(&workflows_dir)
+        .unwrap_or_else(|e| panic!("read_dir {}: {e}", workflows_dir.display()));
 
-    for forbidden in workflow_path_regex_forbidden_substrings() {
-        assert!(
-            !raw.contains(forbidden),
-            "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; single authority: scripts/workflow-path-regex-forbidden-substrings.txt)",
-            path.display()
-        );
+    let mut scanned = 0usize;
+    for entry in entries {
+        let entry = entry.expect("workflow dir entry");
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !(name.ends_with(".yml") || name.ends_with(".yaml")) {
+            continue;
+        }
+        let raw =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        scanned += 1;
+        for forbidden in workflow_path_regex_forbidden_substrings() {
+            assert!(
+                !raw.contains(forbidden),
+                "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; single authority: scripts/workflow-path-regex-forbidden-substrings.txt)",
+                path.display()
+            );
+        }
     }
+    assert!(
+        scanned > 0,
+        "{} must contain at least one workflow file (.yml / .yaml)",
+        workflows_dir.display()
+    );
 }
 
 #[test]
