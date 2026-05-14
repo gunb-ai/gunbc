@@ -77,9 +77,23 @@ Per Decision 3.A operator-ratified, infer produces `InferredDag` variant explici
 
 **Cross-stage role**: `InferredDag` is the input type to emit (per PR #3066 §3.1 / §9 Step 2). The typed-state carrier discipline is the foundation of post-infer-readiness contract per Decision 3.A operator-ratified shape (NOT lens-checked enforcement per existing l1.5-clean-bootstrap-design.md §2.2 + SELF_HOSTING.md §2.1 — those design docs require amendment per PM-routed disposition β; PM authors concurrent amendment PR).
 
-### §4.2 `InferDiagnostic` (per-stage variants per Decision 2.B discriminated-union)
+### §4.2 `InferDiagnostic` (substrate extension per Decision 2.B)
 
-Per Decision 2.B operator-ratified discriminated-union diagnostics, infer's per-stage diagnostic variants are tagged with `DiagnosticSource::Infer` and carry inference-specific shape:
+**LIVE substrate state at HEAD** (verified via `grep -n "^type Diagnostic" src/v3/std/diagnostics.dag`):
+- Line 150: `type Diagnostic { kind: AnyDiagnosticKind, span: SourceSpan, message: String, correction: Correction }` — runtime carrier
+- Line 139: `type AnyDiagnosticKind = CompilerKind(CompilerDiagnosticKind) | LensInstanceKind(LensInstanceKindWitness)` — discriminates by KIND-LAYER per Q6.5 anti-bridge (NOT by stage source)
+- Line 201: `type EmissionDiagnostic` — SEPARATE carrier per Q6.5 anti-bridge (cited by PR #3066 §4.2 correctly)
+
+**Decision 2.B operator-ratified per-stage `source` axis is a SUBSTRATE EXTENSION** (not live). Per PR #3077 codex BLOCKING audit + analogous fix here. Earlier draft framing as "live cross-stage carrier" was wrong.
+
+Two extension paths apply equally to PB-5 infer (same as PB-4 lower per PR #3077 §12 Q7):
+
+**Option (a) — Carrier field extension**: add `source: DiagnosticSource` to `Diagnostic`. Cross-stage refactor.
+**Option (b) — Lane-local sum + mapping**: `InferDiagnostic` sum (variants below) maps into `AnyDiagnosticKind::CompilerKind(CompilerDiagnosticKind)` per the anti-bridge pattern. No change to existing `Diagnostic` carrier shape.
+
+Per PR #3077 §12 Q7 director-recommend: **(b) lane-local sum + mapping** per Q6.5 anti-bridge preservation. Operator/PM ratification needed; same decision applies to all 4 pipeline stages (Parse/Lower/Infer/Emit).
+
+InferDiagnostic variant shape (Step 2 brief authors against full set):
 
 ```
 type InferDiagnostic
@@ -88,12 +102,11 @@ type InferDiagnostic
   | ArgumentArityMismatch { expected: Nat, actual: Nat }
   | TypeMismatch { expected: TypeShape, actual: TypeShape }
   | AlgebraInhabitanceFail { connective: TypeConnective, axis: String }
+  | PostSweepUninferred { port_id: PortId, fallback_reason: String }   // per §12 Q3
   | (additional variants per Step 2 worker brief authoring against infer.rs)
 ```
 
-**Substrate authority — LIVE V3 AUTHORITY (partial)**: `src/v3/std/diagnostics.dag` cross-stage `Diagnostic` carrier per PR #3066 §4.2 audit (live at line 150). Per Decision 2.B, per-stage `InferDiagnostic` shape variants extend the live diagnostics carrier; refactoring discipline per `feedback_grep_carrier_semantic_before_ratification` 4-axis audit.
-
-**Lane dependency**: PB-Substrate (live diagnostics carrier extension); Director-tier authoring for `InferDiagnostic` variant shape.
+**Lane dependency**: PB-Substrate Decision 2.B extension path landing; Director-tier authoring for `InferDiagnostic` variant shape.
 
 ### §4.3 `InferResult` — NOT a separate sum-variant
 
@@ -150,7 +163,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`.
 |---|---|---|---|
 | PB-Substrate Decision 3.A | `Dag = PreInferDag \| InferredDag` sum-variant extension at `src/v3/std/substrate.dag` | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | DEPENDS on Decision 3.A operator-ratified; cross-stage refactoring |
 | TypeConnective + algebraic structure | `src/v3/std/substrate.dag` (live; TypeConnective + AtomPayload + Declaration variants) | PB-Substrate | LIVE at HEAD; inference rules are per-variant structural facts |
-| InferDiagnostic variants | extension of `src/v3/std/diagnostics.dag:150` per Decision 2.B discriminated-union | PB-Substrate + Director-tier per-stage diagnostic authoring | Carrier LIVE; per-stage variant authoring NEW |
+| InferDiagnostic substrate extension | `src/v3/std/diagnostics.dag:150` `Diagnostic { kind: AnyDiagnosticKind, ... }` exists (kind-layer discrimination per Q6.5); Decision 2.B per-stage `source` axis is SUBSTRATE EXTENSION (NOT live). Path: (a) extend Diagnostic carrier OR (b) lane-local InferDiagnostic sum + mapping into CompilerKind (Director-recommend (b) per PR #3077 §12 Q7) | PB-Substrate + Director-tier per-stage authoring + operator/PM ratification per PR #3077 §12 Q7 (cross-stage Decision 2.B path) | Live `Diagnostic` + `AnyDiagnosticKind` + `EmissionDiagnostic` (separate per Q6.5); NO per-stage source axis live |
 | Algebra inhabitance walk | `src/v3/std/algebra.dag` + per-target inhabitance facts | T-Ground-Coercion-Fold (Gap 13 R3 Grounding Mgr) | In-flight per PR #1980 ScratchIntExamples retirement; broader algebra inhabitance fold pending |
 | AmendmentPR for 3.A typed-state enforcement | `docs/l1.5-clean-bootstrap-design.md:86-88` + `src/v3/SELF_HOSTING.md:248-258` flip enforcement model from lens-checked to typed-state | PM-authored amendment PR per disposition β | DEPENDS on operator ratification (3.A = (c) per 2026-05-14 directive); PM authors |
 
@@ -338,7 +351,7 @@ Subsequent L2.5 models (PB-3 parse / PB-2 tokenize) follow same sequence.
 
 **Live substrate referenced**:
 - `src/v3/std/substrate.dag` (Dag, Declaration, Port, TypeConnective, AtomPayload — extends to PreInferDag|InferredDag per Decision 3.A)
-- `src/v3/std/diagnostics.dag:150` (Diagnostic carrier — extends with InferDiagnostic variants per Decision 2.B)
+- `src/v3/std/diagnostics.dag:150` (`Diagnostic { kind: AnyDiagnosticKind, ... }` carrier — kind-layer discrimination per Q6.5 anti-bridge); `:139` (AnyDiagnosticKind); `:201` (EmissionDiagnostic — separate per Q6.5). InferDiagnostic extension path per PR #3077 §12 Q7 ratification (Director-recommend (b) lane-local sum + mapping into CompilerKind)
 - `src/v3/std/algebra.dag` (algebra inhabitance + AsymptoticClass + algebraic structure for inference rule book)
 - `src/v3/compiler/src/infer.rs:1-30` (current hand-Rust top-comment with canonical inference rules + invariants)
 
