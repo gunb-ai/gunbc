@@ -91,30 +91,41 @@ Per Decision 3.A operator-ratified (sum-variant `Dag = PreInferDag | InferredDag
 
 **Substrate authority**: extension of `src/v3/std/substrate.dag` `Dag` declaration to a sum-variant per Decision 3.A. The current `type Dag` single-variant carrier becomes `type Dag = PreInferDag | InferredDag` — refactoring routes via PB-Substrate (cross-stage carrier change affects parse / lower / infer / emit signatures + every Dag-consumer).
 
-### §4.2 `LowerDiagnostic` (closed-axis sum-variant per Decision 2.B)
+### §4.2 `LowerDiagnostic` (substrate extension per Decision 2.B)
 
-Per Decision 2.B operator-ratified (discriminated-union `Diagnostic { source: DiagnosticSource, ... }` shape across all stages), lower's per-stage diagnostic variants are tagged with `DiagnosticSource::Lower` and carry the lower-specific shape:
+**LIVE substrate state at HEAD** (verified via `grep -n "^type Diagnostic" src/v3/std/diagnostics.dag`):
+- Line 150: `type Diagnostic { kind: AnyDiagnosticKind, span: SourceSpan, message: String, correction: Correction }` — runtime diagnostic carrier
+- Line 139: `type AnyDiagnosticKind = CompilerKind(CompilerDiagnosticKind) | LensInstanceKind(LensInstanceKindWitness)` — discriminates by KIND-LAYER (compiler-primitive vs lens-instance), NOT by stage source
+- Line 201: `type EmissionDiagnostic = | UnderRefined | NoInhabitant | ...` — SEPARATE carrier for emission-stage fold failures (cited by PR #3066 §4.2)
+
+**Decision 2.B operator-ratified shape requires SUBSTRATE EXTENSION** — the per-stage `source: DiagnosticSource` axis is NOT currently a live substrate fact. The existing discrimination axis is kind-layer (CompilerKind vs LensInstanceKind), per Q6.5 anti-bridge invariant. Decision 2.B adds an orthogonal source axis (Parse / Lower / Infer / Emit) that requires extending the live carrier:
 
 ```
-// Pseudocode per Decision 2.B + LIVE substrate at src/v3/std/diagnostics.dag:
-type Diagnostic = {
-  source: DiagnosticSource,   // Lower | Parse | Infer | Emit
-  span: SourceSpan,
-  shape: DiagnosticShape,     // discriminated-union per source
+// Per Decision 2.B substrate extension (NEW; NOT currently live):
+type DiagnosticSource = Parse | Lower | Infer | Emit
+type Diagnostic {
+  kind: AnyDiagnosticKind     // existing — kind-layer discrimination
+  source: DiagnosticSource    // NEW — per Decision 2.B per-stage axis
+  span: SourceSpan
+  message: String
+  correction: Correction
 }
 
-// Lower-specific shape variants:
+// Per-stage shape variants attach via CompilerDiagnosticKind extension OR
+// separate lane-local sums per Step 2 worker brief authoring decision:
 type LowerDiagnostic
   = ResolveError { identifier: String, scope_chain: List<DeclarationId> }
   | UnsupportedSurfaceForm { form: String, reason: String }
   | DuplicateDeclaration { name: String, prior_span: SourceSpan }
   | DuplicateRecordFieldLabel { label: String, prior_span: SourceSpan }  // per PR #3075 ratchet
-  | (additional variants per Step 2 worker brief authoring against lower.rs:179+)
+  | (additional variants per Step 2 worker brief authoring against lower.rs)
 ```
 
-**Substrate authority — LIVE V3 AUTHORITY (partial)**: `src/v3/std/diagnostics.dag` carries the cross-stage `Diagnostic` carrier per PR #3066 §4.2 audit (live at line 150). Per Decision 2.B, per-stage `LowerDiagnostic` shape variants extend the live diagnostics carrier; refactoring discipline routes per `feedback_grep_carrier_semantic_before_ratification` 4-axis audit. Earlier draft (this doc pre-ratification) cited "T-Ground-Diagnostic NOT-STARTED"; that framing is wrong — the diagnostic carrier is LIVE. What's pending is the per-stage `LowerDiagnostic` variant authoring against the live carrier.
+**Substrate authority — SUBSTRATE EXTENSION REQUIRED**: PB-4 lower's diagnostic substrate requires either (i) extending live `Diagnostic` carrier at `src/v3/std/diagnostics.dag:150` with `source: DiagnosticSource` field per Decision 2.B, or (ii) lane-local `LowerDiagnostic` sum that maps into existing `AnyDiagnosticKind::CompilerKind` (downstream consumer concern per the line 163-168 anti-bridge note). The current `EmissionDiagnostic` at line 201 is a SEPARATE carrier (per Q6.5 anti-bridge); PB-4 does NOT extend that.
 
-**Lane dependency**: PB-Substrate (live diagnostics carrier extension); Director-tier authoring for `LowerDiagnostic` variant shape.
+Operator/PM ratification needed on extension shape at §12 Q-new (added per codex BLOCKING #3077): which extension path for Decision 2.B per-stage source axis — carrier-field-extension or lane-local-sum-mapping.
+
+**Lane dependency**: PB-Substrate (Decision 2.B substrate extension authoring); Director-tier per-stage diagnostic variant authoring.
 
 ### §4.3 `LowerResult` (disjoint sum)
 
@@ -167,7 +178,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | PB-Substrate | `src/v3/std/substrate.dag` extension for `Dag = PreInferDag \| InferredDag` sum-variant per Decision 3.A | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | DEPENDS on Decision 3.A operator-ratified shape; refactoring cross-stage |
 | PB-3 Parse | `src/v3/std/parse_surface.dag` (live; `SurfaceModule` / `SurfaceItem` / `SurfaceExpr` / `SurfacePattern`) | PB-3 lane (R3 Substrate Mgr post-PB-4) | LIVE at HEAD per `grep -n "^type Surface" src/v3/std/parse_surface.dag` |
 | ElaborationSpec carrier | `src/v3/std/elaboration_spec.dag` (NEW substrate to author per Decision 3.C) | Director-tier substrate-fact-introduction | NEEDS AUTHORING; Step 2 brief scope |
-| LowerDiagnostic variants | extension of `src/v3/std/diagnostics.dag:150` per Decision 2.B discriminated-union | PB-Substrate + Director-tier per-stage diagnostic authoring | Carrier LIVE; per-stage variant authoring NEW |
+| LowerDiagnostic substrate extension | `src/v3/std/diagnostics.dag:150` `Diagnostic` carrier exists with `kind: AnyDiagnosticKind` (CompilerKind|LensInstanceKind discrimination per Q6.5 anti-bridge); Decision 2.B per-stage `source` axis is a SUBSTRATE EXTENSION (NOT currently live). Path: either (i) extend `Diagnostic` with `source: DiagnosticSource` field, or (ii) lane-local LowerDiagnostic sum mapping into CompilerKind | PB-Substrate + Director-tier per-stage diagnostic authoring + operator/PM ratification on extension path per §12 Q-new | Live `Diagnostic` + `AnyDiagnosticKind` + `EmissionDiagnostic` (line 201, separate per Q6.5) NO per-stage source axis live |
 | Symbol-table substrate | `src/v3/std/symbol_table.dag` (proposed; verify existence at Step 2) | Director-tier substrate-fact-introduction | NEEDS GREP VERIFICATION at Step 2 authoring; current `lower.rs` uses `HashMap<String, DeclarationId>` (hand-Rust; not `.dag` substrate) |
 
 **Critical observation**: PB-4 lower's substrate prereqs are LIGHTER than PB-6 emit's. PB-4 mostly extends existing live carriers (substrate.dag / diagnostics.dag) + authors 1 NEW carrier (ElaborationSpec) + verifies symbol-table substrate. PB-6 emit had 8 prereqs routing through R3 Grounding Mgr; PB-4 lower has 5 with most LIVE or DEPENDS-on-Decision-3.A.
