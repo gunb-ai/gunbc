@@ -1523,7 +1523,7 @@ fn caller(n: Int) -> Int = helper(n)
 fn e_p_call_pattern_lookup_authoritative_consumers_use_query_surface() {
     let cost_lens = include_str!("../../../lenses/cost.dag");
     let complexity_lens = include_str!("../../../lenses/complexity.dag");
-    let generated_cost = include_str!("../../src/lens_cost_symbolic_generated.rs");
+    let generated_cost = include_str!("../../src/cost_symbolic_lens_generated.rs");
     let generated_complexity = include_str!("../../src/complexity_lens_generated.rs");
 
     for (name, source) in [
@@ -1549,7 +1549,7 @@ fn e_p_call_pattern_lookup_authoritative_consumers_use_query_surface() {
 
     for (name, source) in [
         (
-            "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
+            "src/v3/compiler/src/cost_symbolic_lens_generated.rs",
             generated_cost,
         ),
         (
