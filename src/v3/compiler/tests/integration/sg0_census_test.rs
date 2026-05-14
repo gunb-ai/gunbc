@@ -664,7 +664,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // PB-B-1 runner can assert the file-tree audit fail-closed without a host-side
     // filesystem walker, or when the gate flips PASSING via a positive ingestion
     // demonstration and the carrier-reachability ratchets alone carry the audit.
-    "src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_passing_test.rs",
+    "src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
     // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
