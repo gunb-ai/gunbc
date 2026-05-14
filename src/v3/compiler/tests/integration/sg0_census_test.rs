@@ -495,6 +495,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // R3 §1.8 gate #89 (`section_ref_substrate_landed`): `SectionRef` disjoint-sum substrate receipt.
+    "src/v3/compiler/tests/integration/lens_application_substrate_carrier_test.rs",
     // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
     // receipt for the four-lens parity snapshot while LensOutputEquals /
     // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
