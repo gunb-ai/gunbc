@@ -61,22 +61,22 @@ Neither override alone is sufficient. The PB-0 design doc admits no escape hatch
 **Promise** (r3-structure.md §Acceptance + §3.1 of interrogation doc): *"for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus."*
 
 **HEAD evidence**:
-- Gate #15 `l5_cross_target_consistency` = **CONSUMER_LANDED + PASSING** after PR #3060.
-- `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` defines the L5 `ForAllTargets` certification suite with four rows: `add_then_branch_seed`, `branch_literal_true_seed`, `branch_literal_false_seed`, and `nested_branch_seed`.
+- Gate #15 `l5_cross_target_consistency` = **CONSUMER_LANDED** after PR #3060, not PASSING.
+- `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` defines an L5 `ForAllTargets` scaffold suite with four rows: `add_then_branch_seed`, `branch_literal_true_seed`, `branch_literal_false_seed`, and `nested_branch_seed`.
 - `src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs` keeps the embedded `TestClaim.source` bytes equal to the authority `.v3` fixtures under `src/v3/compiler/tests/fixtures/r3_l5_corpus/`.
 - The `TestRunner` L5 path consumes `ProgramOutputBind`, validates exact `TestClaim.requires` toolchain edges (`L5RustcToolchain`, `L5Python3Toolchain`, `L5GoToolchain`), emits each corpus program to Rust/Python/Go, executes each target, and fails closed unless the observed `Int` stdout values agree.
 
-**What's missing**: the core gate #15 close criterion is cashed for N>0 certification corpus rows. Follow-on expansion can grow corpus breadth, but that is coverage ratchet work, not the gate #15 blocker recorded here.
+**What's missing**: per `docs/design-cross-target-equivalence.md` Corpus Policy, each valid L5 corpus row must carry the expected semantic observation or oracle authority, the effect class, the numeric policy, and a coverage reason. The #3060 rows model target requirements and output binds, but not those locked policy facts; they are scaffold evidence rather than full L5 certification rows.
 
-**Plan to cash**: CASHED by PR #3060. Remaining work is normal corpus-growth ratchet discipline: add new rows to `r3_verification_l5_corpus.dag` with matching authority `.v3` fixtures and let the boundary harness execute all rows through the same Rust/Python/Go parity path.
+**Plan to cash**: extend the L5 corpus substrate so every row records the locked design facts above, then update the runner/fixtures to consume them fail-closed before the §1.8 row flips to PASSING. PR #3060 remains the target-execution runner scaffold and can be reused once those corpus-policy facts are modeled.
 
 **Close criterion**:
 ```bash
 # Predicate at gate #15 close:
 cargo test --release -p v3-compiler --test integration l5_
-# returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on stdout
+# returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on semantic observations
 ```
-plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cited.
+plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumeration and per-row design-policy facts cited.
 
 **Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 enforcement: prior framing semantically weakened the §3.1 3-Shape-A target into Rust-only-narrow, violating the no-carves authority before operator-decision substrate cashed; retained here as audit-trail of the foreclosed path): operator §4 Item 2 ratified **IN-R3 (full 3-target Python+Go)** 2026-05-13; R4-defer / Rust-only-narrow paths NOT available. Any future re-opening of this disposition requires explicit operator override of the §4 ratification at gunbc#828.
 
