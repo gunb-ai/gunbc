@@ -1,6 +1,6 @@
 // lenses.effect_enumeration — structural effect-shape lens.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PARTIAL.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
 // See docs/v3-lens-capability-register.md.
 //
 // --- F-β.1 / gate #82 — migration-shape canvas (substrate prereq for F-β.2) ---
@@ -70,6 +70,13 @@
 module lenses.effect_enumeration
 
 import std.list { List, empty, fold, cons }
+import std.effects {
+  BreakingShape,
+  EffectShape,
+  IdempotentShape,
+  operation_effect_shape
+}
+import v3.std.services { Operation }
 import v3.std.substrate {
   Dag,
   Behavior,
@@ -154,6 +161,28 @@ fn enumerate_effects(d: Dag) -> EffectEnumerationReport =
     coverage_gaps: compute_coverage_gaps(d),
     redundant_reads: empty(),
     transaction: transaction_pattern(d)
+  }
+
+fn operation_structural_effect_shape(op: Operation) -> StructuralEffectShape =
+  effect_shape_to_structural(operation_effect_shape(op))
+
+fn effect_shape_to_structural(shape: EffectShape) -> StructuralEffectShape =
+  match shape {
+    IsIdempotent(idempotent) => idempotent_shape_to_structural(idempotent)
+    IsBreaking(breaking) => breaking_shape_to_structural(breaking)
+  }
+
+fn idempotent_shape_to_structural(shape: IdempotentShape) -> StructuralEffectShape =
+  match shape {
+    ReadEffect => ReadShaped
+    UpsertEffect { key_source: _ } => WriteShaped
+    DeleteEffect { key_source: _ } => WriteShaped
+  }
+
+fn breaking_shape_to_structural(shape: BreakingShape) -> StructuralEffectShape =
+  match shape {
+    CreateEffect { cause: _ } => WriteShaped
+    AppendEffect => WriteShaped
   }
 
 fn compute_effect_facts(d: Dag) -> List<EffectFact> =

@@ -3794,12 +3794,17 @@ pub mod lens_effect_enumeration {
         use crate::dag::*;
         use crate::diagnostics::*;
 
+        fn operation_effect_shape(op: &Operation) -> EffectShape {
+            crate::dag::operation_effect_shape(&Dag::new(), op)
+                .expect("bootstrapped std.effects operation anchors must classify Operation")
+        }
+
         include!("lens_effect_enumeration_generated.rs");
     }
 
     pub use generated::{
-        enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
-        StructuralEffectShape, TransactionalPattern,
+        enumerate_effects, operation_structural_effect_shape, CoverageGap, EffectEnumerationReport,
+        EffectFact, RedundantReadError, StructuralEffectShape, TransactionalPattern,
     };
 }
 

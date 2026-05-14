@@ -404,6 +404,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
     // `cost_symbolic` COMPLETE receipt.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+    // R3 gate #82: Operation-row consumer receipt for effect_enumeration COMPLETE.
+    "src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
