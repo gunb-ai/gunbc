@@ -273,8 +273,8 @@ pub fn assert_bootstrap_real_is_approximate_field_of_fractions_int(dag: &Dag) {
 }
 
 /// Second slot of `Compose<Algebra, MachineWidth<…>>` after R3 gate #60 Slice Z:
-/// literal-Nat phantom width (`MachineWidth<64>`) or the nominal `Byte` carrier
-/// for 8-bit rows (`MachineWidth<Byte>`).
+/// literal-Nat phantom width (`MachineWidth<64>`, `MachineWidth<8>`, …).
+#[derive(Copy, Clone)]
 pub enum MachineWidthSlotWitness {
     NamedCarrier(&'static str),
     LiteralNatBits(&'static str),
@@ -380,7 +380,7 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
 /// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
 pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
-        ("Int8", "Int", MachineWidthSlotWitness::NamedCarrier("Byte")),
+        ("Int8", "Int", MachineWidthSlotWitness::LiteralNatBits("8")),
         (
             "Int16",
             "Int",
@@ -404,7 +404,7 @@ pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
         (
             "UInt8",
             "UInt",
-            MachineWidthSlotWitness::NamedCarrier("Byte"),
+            MachineWidthSlotWitness::LiteralNatBits("8"),
         ),
         (
             "UInt16",

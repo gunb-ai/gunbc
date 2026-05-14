@@ -333,7 +333,7 @@ fn machine_width_inner_to_std_width_carrier_decl(
 }
 
 /// Fixed-width integers after gate #19 + #60: `Compose<Int, MachineWidth<N>>` (signed) or
-/// `Compose<UInt, MachineWidth<N>>` (unsigned) with literal-Nat `N` (or `MachineWidth<Byte>` for 8-bit).
+/// `Compose<UInt, MachineWidth<N>>` (unsigned) with literal-Nat `N` for every fixed width.
 /// Maps to the same `(OrderedRing|Semiring, Word*)` pilot routing key as the legacy
 /// `OrderedRing<Word*>` / `Semiring<Word*>` instantiations.
 fn compose_integer_routing_witness(
