@@ -43,7 +43,9 @@ use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
-use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use v3_compiler::lens_effect_enumeration::{
+    enumerate_effects, StructuralEffectShape, TransactionalPattern,
+};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -155,6 +157,43 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
     assert!(
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
+    );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_structural_effect_shapes() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::NoEffect)),
+        "effect enumeration should prove NoEffect facts for source/value nodes, got {:?}",
+        report.facts
+    );
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::ReadShaped)),
+        "effect enumeration should derive ReadShaped facts from callable arrow bodies, got {:?}",
+        report.facts
+    );
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::WriteShaped)),
+        "effect enumeration should derive WriteShaped facts from returned-resource arrow signatures, got {:?}",
+        report.facts
+    );
+    assert!(
+        report.coverage_gaps.iter().any(|gap| gap
+            .reason
+            .contains("transform target is not an arrow declaration")),
+        "effect enumeration should surface non-arrow callable coverage gaps explicitly, got {:?}",
+        report.coverage_gaps
     );
 }
 
