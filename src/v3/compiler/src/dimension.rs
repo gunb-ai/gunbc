@@ -19,7 +19,7 @@ use std::collections::HashSet;
 
 use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
 use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_symbolic::{lookup_symbolic_cost, SymbolicCostLookup};
 
 fn behavior_result_port(b: &Behavior) -> PortId {
     match b {
@@ -160,6 +160,7 @@ pub fn analyze_symbolic_cost_dimension(
     workflow_root: NodeId,
 ) -> DimensionReport<SymbolicCost> {
     const DIMENSION_NAME: &str = "symbolic_cost";
+    let cost_table = crate::lens_cost_symbolic::compute_symbolic_costs(d);
     let scope = workflow_reachable_behavior_ids(d, workflow_root);
     let mut witnesses = Vec::new();
     for behavior in d.nodes() {
@@ -167,7 +168,7 @@ pub fn analyze_symbolic_cost_dimension(
             continue;
         }
         let port = behavior_result_port(behavior);
-        match symbolic_cost_of(d, &port) {
+        match lookup_symbolic_cost(&cost_table, &port) {
             SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
                 reason: "missing symbolic cost for behavior result port".into(),
                 at: behavior.clone(),
@@ -177,7 +178,8 @@ pub fn analyze_symbolic_cost_dimension(
     }
 
     let root = d.node(workflow_root);
-    let root_lookup = symbolic_cost_of(d, &behavior_result_port(root));
+    let root_lookup =
+        lookup_symbolic_cost(&cost_table, &behavior_result_port(root));
 
     let witness_failure = witnesses
         .iter()
