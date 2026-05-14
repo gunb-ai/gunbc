@@ -246,12 +246,7 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
         };
 
         let macro_arg = &text[open + 1..close];
-        let joined_literals: String = macro_arg
-            .split('"')
-            .skip(1)
-            .step_by(2)
-            .collect::<Vec<_>>()
-            .join("");
+        let joined_literals = joined_rust_string_literals(macro_arg);
         if macro_arg.contains(FORBIDDEN_PIPELINE_DAG_PATH)
             || joined_literals.contains(FORBIDDEN_PIPELINE_DAG_PATH)
         {
@@ -264,6 +259,76 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
         }
     }
     offenders
+}
+
+fn joined_rust_string_literals(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut joined = String::new();
+    let mut idx = 0usize;
+    while idx < bytes.len() {
+        if let Some((content_start, content_end, end)) = raw_string_literal_bounds(bytes, idx) {
+            joined.push_str(&text[content_start..content_end]);
+            idx = end;
+            continue;
+        }
+        if bytes[idx] == b'"' {
+            idx += 1;
+            while idx < bytes.len() {
+                match bytes[idx] {
+                    b'\\' => {
+                        if let Some(escaped) = bytes.get(idx + 1) {
+                            joined.push(*escaped as char);
+                            idx += 2;
+                        } else {
+                            idx += 1;
+                        }
+                    }
+                    b'"' => {
+                        idx += 1;
+                        break;
+                    }
+                    byte => {
+                        joined.push(byte as char);
+                        idx += 1;
+                    }
+                }
+            }
+            continue;
+        }
+        idx += 1;
+    }
+    joined
+}
+
+fn raw_string_literal_bounds(bytes: &[u8], start: usize) -> Option<(usize, usize, usize)> {
+    if bytes.get(start) != Some(&b'r') {
+        return None;
+    }
+    if start > 0 && is_rust_ident_byte(bytes[start - 1]) {
+        return None;
+    }
+    let mut quote = start + 1;
+    while bytes.get(quote) == Some(&b'#') {
+        quote += 1;
+    }
+    if bytes.get(quote) != Some(&b'"') {
+        return None;
+    }
+    let hash_count = quote - start - 1;
+    let content_start = quote + 1;
+    let mut idx = content_start;
+    while idx < bytes.len() {
+        if bytes[idx] == b'"'
+            && idx + 1 + hash_count <= bytes.len()
+            && bytes[idx + 1..idx + 1 + hash_count]
+                .iter()
+                .all(|byte| *byte == b'#')
+        {
+            return Some((content_start, idx, idx + 1 + hash_count));
+        }
+        idx += 1;
+    }
+    None
 }
 
 fn macro_delimiters(open: Option<u8>) -> Option<(char, char)> {
@@ -307,21 +372,23 @@ fn include_str_pipeline_dag_ratchet_catches_split_literals() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("tests/integration/synthetic.rs");
     let synthetic = format!(
-        r#"
+        r##"
 const OK: &str = include{}("other.dag");
 const BAD: &str = include{}(concat!("../../", "pipeline", ".dag"));
 const ALSO_BAD: &str = include_str /* trivia */ ! (concat!("../../", "pipeline", ".dag"));
 const BRACKET_BAD: &str = include_str![concat!("../../", "pipeline", ".dag")];
 const BRACE_BAD: &str = include_str!{{concat!("../../", "pipeline", ".dag")}};
-"#,
+const RAW_BAD: &str = include_str!(concat!(r#"../../pipeline"#, r#".dag"#));
+"##,
         "_str!", "_str!"
     );
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
-    assert_eq!(offenders.len(), 4);
+    assert_eq!(offenders.len(), 5);
     assert!(offenders[0].contains("synthetic.rs:3:"));
     assert!(offenders[1].contains("synthetic.rs:4:"));
     assert!(offenders[2].contains("synthetic.rs:5:"));
     assert!(offenders[3].contains("synthetic.rs:6:"));
+    assert!(offenders[4].contains("synthetic.rs:7:"));
 }
 
 #[test]
