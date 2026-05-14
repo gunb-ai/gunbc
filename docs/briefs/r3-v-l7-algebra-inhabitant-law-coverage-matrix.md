@@ -43,8 +43,8 @@ own witness obligation. This does not bypass P1: laws absent from
 
 - Wired: enum-backed law exists and the current runner has a bounded
   operational witness path for that law.
-- NYI: enum-backed law exists but the current runner returns
-  `NotYetImplemented`.
+- Not covered: enum-backed law exists and may be runner-wired, but the current
+  consumer matrix does not yet provide a faithful per-inhabitant witness.
 - P1: the law is theory in `dsl/std/algebra.dag` but lacks an
   `AlgebraicLawKind` substrate variant or carrier edge.
 - Profile: live compiler-enriched inhabitant in `kernel_algebra_profile`.
@@ -54,8 +54,11 @@ own witness obligation. This does not bypass P1: laws absent from
 
 ## Current Runner Surface
 
-`Associativity` and `Commutativity` are wired as bounded operational witnesses.
-`Identity` is enum-backed but blocked on the lens identity-element edge.
+`Associativity`, `Commutativity`, and `Identity` are wired as bounded
+operational witnesses for binary `Int` lens programs. Identity is still not a
+per-inhabitant substrate proof: carriers such as Bool/String/List need faithful
+identity-element metadata before their identity rows can count toward
+exhaustive closure.
 `Distributivity` is intentionally absent from `AlgebraicLawKind`; the runner
 routes any future non-enum law through P1 rather than accepting a fixture-local
 encoding.
@@ -64,15 +67,15 @@ encoding.
 
 | Inhabitant family | Live source | Algebra surface | Enum-backed obligations | Missing-law obligations | Disposition |
 |---|---|---|---|---|---|
-| Bool | Profile: `kernel_algebra_profile["Bool"] = BooleanAlgebraProfile`; denotational Bool inhabits BooleanAlgebra | BooleanAlgebra / bounded lattice | meet/join associativity Wired; meet/join commutativity Wired; top/bottom or join identity NYI | complement, absorption, distributivity P1 | Needs per-Bool rows when L7 moves from pair skeleton to exhaustive fixtures. |
+| Bool | Profile: `kernel_algebra_profile["Bool"] = BooleanAlgebraProfile`; denotational Bool inhabits BooleanAlgebra | BooleanAlgebra / bounded lattice | meet/join associativity Wired; meet/join commutativity Wired; top/bottom or join identity not covered by current Int matrix | complement, absorption, distributivity P1 | Needs per-Bool rows when L7 moves from pair skeleton to exhaustive fixtures. |
 | Set<A> | Profile: `kernel_algebra_profile["Set"] = BooleanAlgebraCollectionProfile`; denotational Set<A> pointwise BooleanAlgebra | BooleanAlgebra<A> / bounded lattice | same enum-backed lattice/Boolean rows as Bool, but over Set<A> | complement, absorption, distributivity P1 | Separate from Bool; pointwise lifting is a distinct inhabitant witness. |
-| String | Profile plus `dsl/std/string_type.dag:14-16` | FreeMonoid<Char> | concat associativity Wired; empty identity NYI | none on current FreeMonoid law surface beyond enum-backed rows | Needs String-specific rows; PR #1419's placeholder does not establish Char-sequence inhabitance. |
-| List<T> | Profile: `kernel_algebra_profile["List"] = FreeMonoidCollectionProfile`; denotational List<T> inhabits FreeMonoid<T> | FreeMonoid<T> | concat associativity Wired; empty identity NYI | element-parametric witness coverage per concrete T remains a later monomorphization question | Needs at least one List<T> family row and future concrete T expansion if T becomes executable witness data. |
+| String | Profile plus `dsl/std/string_type.dag:14-16` | FreeMonoid<Char> | concat associativity Wired; empty identity not covered by current Int matrix | none on current FreeMonoid law surface beyond enum-backed rows | Needs String-specific rows; PR #1419's placeholder does not establish Char-sequence inhabitance. |
+| List<T> | Profile: `kernel_algebra_profile["List"] = FreeMonoidCollectionProfile`; denotational List<T> inhabits FreeMonoid<T> | FreeMonoid<T> | concat associativity Wired; empty identity not covered by current Int matrix | element-parametric witness coverage per concrete T remains a later monomorphization question | Needs at least one List<T> family row and future concrete T expansion if T becomes executable witness data. |
 | Map<K,V> | Profile: `kernel_algebra_profile["Map"] = PartialFunctionProfile`; denotational Map<K,V> inhabits PartialFunction<K,V> | PartialFunction<K,V> | no current `AlgebraicLawKind` row in PR #1419 | merge associativity/identity/conflict behavior P1 | Track as an inhabitant surface, but do not author `AlgebraicLaw` rows until a law variant exists. |
-| Nat | Declared: `dsl/std/nat.dag:55` is `Nat = Semiring<Magnitude>`; `algebra.dag:55-59` says denotationally CommutativeSemiring | Semiring now; CommutativeSemiring sharpening pending | additive commutativity Wired; multiplicative identity NYI if represented through current enum surface | distributivity, annihilation, multiplication associativity-by-operation, future multiplicative commutativity sharpening P1 | Declared live but not kernel-profiled; matrix must mark Semiring status separate from future CommutativeSemiring sharpening. |
-| UInt8/16/32/64/128 | Declared: `dsl/std/integer.dag:57-61`; Rust target rows mirror unsigned Semiring carriers | Semiring<Word*> | additive commutativity Wired; multiplicative identity NYI where fixture chooses the mul lens | distributivity and annihilation P1 | Each width is a separate inhabitant obligation because overflow/range facts differ by carrier. |
-| Int8/16/32/64/128 | Declared: `dsl/std/integer.dag:50-54`; Rust target rows mirror signed OrderedRing carriers | OrderedRing<Word*> | additive commutativity Wired; multiplicative identity NYI | additive inverse, order compatibility, distributivity P1 | Fixed-width signed rows stay distinct from abstract Int after the construction-chain pivot. |
-| Int | Declared: `dsl/std/integer.dag:83` is `AbelianGroup<GroupCompletion<Nat>>`; kernel profile still maps "Int" to OrderedRingProfile | transitional abstract integer | Abelian-group identity NYI / commutativity Wired if using current enum surface | OrderedRing/Ring residual requires cascade decision; order and distributivity P1 | Audit-sensitive: do not collapse kernel profile and construction-chain alias into one witness without a lane decision. |
+| Nat | Declared: `dsl/std/nat.dag:55` is `Nat = Semiring<Magnitude>`; `algebra.dag:55-59` says denotationally CommutativeSemiring | Semiring now; CommutativeSemiring sharpening pending | additive commutativity Wired; multiplicative identity runner-wired for Int-style lens programs but not covered for Nat inhabitance | distributivity, annihilation, multiplication associativity-by-operation, future multiplicative commutativity sharpening P1 | Declared live but not kernel-profiled; matrix must mark Semiring status separate from future CommutativeSemiring sharpening. |
+| UInt8/16/32/64/128 | Declared: `dsl/std/integer.dag:57-61`; Rust target rows mirror unsigned Semiring carriers | Semiring<Word*> | additive commutativity Wired; multiplicative identity runner-wired for Int-style lens programs but not covered per width | distributivity and annihilation P1 | Each width is a separate inhabitant obligation because overflow/range facts differ by carrier. |
+| Int8/16/32/64/128 | Declared: `dsl/std/integer.dag:50-54`; Rust target rows mirror signed OrderedRing carriers | OrderedRing<Word*> | additive commutativity Wired; multiplicative identity runner-wired for Int-style lens programs but not covered per width | additive inverse, order compatibility, distributivity P1 | Fixed-width signed rows stay distinct from abstract Int after the construction-chain pivot. |
+| Int | Declared: `dsl/std/integer.dag:83` is `AbelianGroup<GroupCompletion<Nat>>`; kernel profile still maps "Int" to OrderedRingProfile | transitional abstract integer | current Int additive/multiplicative matrix exercises enum-backed identity and commutativity; abstract construction-chain identity coverage remains incomplete | OrderedRing/Ring residual requires cascade decision; order and distributivity P1 | Audit-sensitive: do not collapse kernel profile and construction-chain alias into one witness without a lane decision. |
 | Float | Profile: `kernel_algebra_profile["Float"] = ApproximateFieldProfile`; denotational Float is ApproximateField | approximate field, not exact Field | exact associativity should not be claimed for floating addition; current enum laws need approximate semantics before fixture use | approximate identity/rounding, reciprocal/division, order laws P1 | Exclude from exact L7 law closure until approximate-law substrate shape exists. |
 | SymbolicCost | Candidate: [`design-cost-lens-sizevar-dimension-wiring.md`](../design-cost-lens-sizevar-dimension-wiring.md) §"4. SymbolicCost commutative-semiring discipline (product-zero bug class)" proposes `Semiring<SymbolicCost>`; §"8.3 `Dimension<SymbolicCost>` declaration scope for slice 2" resolves Semiring, not CommutativeSemiring | Semiring<SymbolicCost> candidate | no PR #1419 fixture row yet | annihilation/product-zero, distributivity, add/mul identity P1 | Canonical proof that per-inhabitant coverage is required; author only after the semiring declaration lands. |
 
