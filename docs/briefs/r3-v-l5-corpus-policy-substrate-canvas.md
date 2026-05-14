@@ -58,15 +58,17 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 ### Q2 — Numeric policy carrier
 
-**B1.** New nominal sum `NumericPolicy = Int64OverflowFree | NamedOverflowSemantics(RefinementRef) | FloatExcluded | FloatPolicyDeferred`. Captures extension-spec §1.1 directly.
+**B1.** Single flat sum `NumericPolicy = Int64OverflowFree | NamedOverflowSemantics(RefinementRef) | FloatExcluded | FloatPolicyDeferred` — disqualified: makes integer-overflow policy and float policy mutually exclusive variants, but a row mixing `Int` and `Float` observables needs **both** axes carried simultaneously.
 **B2.** Reuse existing refinement vocabulary (`dsl/std/integer.dag` Int<N> + width refinements per gate #18) — no new carrier; row carries a `RefinementRef`.
 **B3.** Free-form `String` policy slot — disqualified up front (INVARIANTS §P2 boundary-discipline / §P3 fail-closed violation; substring authority is exactly what design doc §"Oracle Policy" forbids).
+**B4.** Two-axis record `NumericPolicy { int: IntOverflowPolicy, float: FloatPolicy }` with independent closed sums per axis (`IntOverflowPolicy = Int64OverflowFree | NamedOverflowSemantics(RefinementRef)`; `FloatPolicy = FloatExcluded | FloatPolicyDeferred`). Every row carries both facts; neither axis preempts the other.
 
 **Disqualifiers:**
-- **B3** ruled out by design doc §"Oracle Policy" *"Diagnostic string matching, substring checks, … are invalid"*.
+- **B1** collapses two orthogonal axes (integer overflow vs float exclusion/deferral) into a single sum, so a row cannot state both at once — INVARIANTS §P2 boundary-discipline violation per briansrls BLOCKING 2026-05-14.
 - **B2** is incomplete — refinement vocabulary describes the type, not the per-row *policy decision* (e.g. "overflow-free at this row's literal range" vs "named wrap semantics"). Extension-spec §1.1 explicitly requires the policy-decision surface, not just the type.
+- **B3** ruled out by design doc §"Oracle Policy" *"Diagnostic string matching, substring checks, … are invalid"*.
 
-**Canvas recommendation:** **B1** with **B2 as a payload** — `NamedOverflowSemantics` references a refinement authored in `dsl/std/`, so the new carrier is the *policy decision*, not parallel numeric arithmetic.
+**Canvas recommendation:** **B4** with **B2 as a payload** on the `IntOverflowPolicy.NamedOverflowSemantics` arm — references a refinement authored in `dsl/std/`, so the new carrier is the *policy decision*, not parallel numeric arithmetic. Both numeric axes are always carried by every row; mutual exclusivity is gone.
 
 ### Q3 — Coverage reason carrier
 
@@ -107,7 +109,7 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 ## 5. Substrate carrier shape (preliminary, conditional on Q1–Q5 ratification)
 
-Assuming canvas recommendations land (**A2 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement). `src/v3/std/verification.dag` is **not** edited. The only other change is an `import std.r3_l5_corpus` line in the L5 fixture (`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`) — not in `verification.dag`:
+Assuming canvas recommendations land (**A2 + B4 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement). `src/v3/std/verification.dag` is **not** edited. The only other change is an `import std.r3_l5_corpus` line in the L5 fixture (`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`) — not in `verification.dag`:
 
 ```
 type OracleAuthority
@@ -121,11 +123,18 @@ type ExpectedObservation {
   oracle: OracleAuthority
 }
 
-type NumericPolicy
+type IntOverflowPolicy        // Q2-B4: integer-overflow axis (one of two)
   = Int64OverflowFree
   | NamedOverflowSemantics(RefinementRef)
-  | FloatExcluded
+
+type FloatPolicy              // Q2-B4: float-exclusion / deferral axis (two of two)
+  = FloatExcluded
   | FloatPolicyDeferred
+
+type NumericPolicy {           // every L5 row carries BOTH axes; never mutually exclusive
+  int: IntOverflowPolicy
+  float: FloatPolicy
+}
 
 type CorpusEffectClass         // Q1-A2: matches design doc §"Side-effect Policy" verbatim;
   = Pure                       // orthogonal axis to `EffectShape`'s idempotency partition
