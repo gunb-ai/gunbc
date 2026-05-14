@@ -1,0 +1,142 @@
+---
+status: PM-authored dispatch plan (deep-wolf-155)
+authority_parent: Operator briansrls 2026-05-14 request — "make an actual file I can review in terms of the dependencies ... for all tasks, can we make sure to associate an actual design?"
+substrate: docs/audit/r3-comprehensive-design-brief-implementation-audit-2026-05-14.md §4 (Phase 2 corrective sweep enumeration)
+authoring_date: 2026-05-14
+---
+
+# R3 Phase 2 Corrective Sweep — Dispatch Plan with Dependency Tree
+
+## §0. Purpose
+
+Per operator request 2026-05-14: dependency-tree planning artifact for dashboard planning; every task associated with a concrete design-doc authority citation BEFORE dispatch.
+
+This file operationalizes the §5.2 brief-dispatch authority-gate discipline (codified later in Phase 2.7) by applying it to the Phase 2 corrective sweep itself. If the planning shape works for Phase 2, the same template generalizes to future dispatches.
+
+**Discipline applied per task**:
+1. **Design authority cite**: which design-doc / authority artifact defines what this task should produce
+2. **Mgr lane**: who owns the work (PM-direct / specific R3 Mgr / Director)
+3. **Upstream deps**: which Phase tasks must complete before this can dispatch
+4. **Downstream consumers**: which Phase tasks (or active work) depend on this completing
+5. **Success criterion**: what "done" looks like, as a checkable predicate
+6. **Status**: where the task sits in the lifecycle
+
+## §1. Phase 2 task table
+
+| ID | Task | Design authority | Mgr lane | Upstream deps | Downstream consumers | Success criterion | Status |
+|----|------|------------------|----------|---------------|----------------------|-------------------|--------|
+| **2.0** | Audit doc landing + §5.1 5th axis enforcement | Operator request 2026-05-14 + Director msg_e66f4326 + Director msg_b9f9c36b audit ratification | PM (deep-wolf-155) | — (root) | All other Phase 2 phases | PR #3061 merged with §5.1 class-C tightening + 4-breaks-+-1-queue framing + tree-aware L2.5 absence evidence | **IN REVIEW** (PR #3061; 1-of-2 approvals: claude APPROVE; awaiting codex + openai-pro re-review on HEAD `687c72b1e`; CI: 2-of-3 green, v3 IN_PROGRESS) |
+| **2.1** | Close plan Gap 1 amendment — route through PB-X lanes + SELF_HOSTING §2 4-step | `src/v3/SELF_HOSTING.md` §2 (4-step migration discipline) + `docs/design-pure-bootstrap-zero.md` (PB-X lane enumeration) + `docs/substrate-reflection-design.md` §12.6 (migration order emit→lower→infer→parse) | PM (deep-wolf-155) | 2.0 (audit substrate) | 2.2 (§1.8 PB-X gate rows reference Gap 1 framing); 2.3 (Track A reclassification cites Gap 1 framing) | Close plan §1 Gap 1 narration routes through PB-X lanes explicitly with §2.2 4-step citation; PB-X-numbering-vs-migration-order distinction surfaced | **QUEUED** |
+| **2.2** | §1.8 PB-X lane reference rows (NOT parallel substrate) | `docs/design-pure-bootstrap-zero.md` PB-X lane enumeration + `feedback_parallel_representation_debt` discipline (reference, not duplicate) | PM (deep-wolf-155) | 2.1 (Gap 1 framing established); 2.4 (R2-Evaluator reference-shape pattern) | 2.3 (Track A reclassification cites these gates) | §1.8 has reference rows (NOT parallel substrate) for: PB-Substrate / PB-1 / PB-3 / PB-4 / PB-5 / PB-6 / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build; each row cites design-pure-bootstrap-zero.md authority | **QUEUED** |
+| **2.3** | Track A taxonomy reclassification + §1.1 cluster cleanup | §5.1 class-C tightened (landed in 2.0 via this PR) + `docs/design-pure-bootstrap-zero.md` PB-X lane mapping | PM (deep-wolf-155) authoring; zesty-boar-261 (R3 Debt-Paydown Mgr) coordination | 2.1 (Gap 1 framing); 2.2 (§1.8 PB-X gate rows) | Future cycle workers reference reclassified taxonomy | Taxonomy classifies (b)-class pipeline-stage entries with explicit PB-X lane prereq + L2.5 domain-model-set citation (per §5.1 5th axis); §1.1 bootstrap/regen cluster mapped to PB-X lanes; NOT generic "Cluster M / regen brief canvas" prereq | **QUEUED** |
+| **2.4** | Gap 3 R2-Evaluator amendment + §1.8 single-reference to r2-closure-ledger | Operator §4 Item 5 α-ratification 2026-05-14 (warm-wolf-698 expanded scope) + `docs/r2-closure-ledger.md:250-263` (5 sub-lane single-source authority) + `feedback_parallel_representation_debt` | PM (deep-wolf-155) | 2.0 (audit substrate) | 2.2 (establishes pattern for §1.8 references) | Gap 3 framing updated to ratified state (warm-wolf-698 expanded scope, NOT "pending §4 Item 5 staffing"); §1.8 references `docs/r2-closure-ledger.md:250-263` via single cross-reference on existing gate #16 row (NOT 5 parallel gate rows) | **QUEUED** |
+| **2.5** | Gap 9 substrate-shape canvas authoring | Close plan Gap 9 §4 (line 301-346) + operator §4 Item 4 IN-R3 ratification 2026-05-13 (100% absolute LiveCorrection variant) | PM (deep-wolf-155) canvas authoring; Director (zesty-bear-812) + warm-wolf-698 (Substrate Mgr) ratification | 2.0 (audit substrate) | show-correct-code worker brief dispatch (currently stalled awaiting canvas; routes through still-moth-538/tidy-ram-467 Verification Mgr post-ratification) | Sum-variant `Correction { LiveCorrection \| DeferredCorrection }` substrate carrier canvas authored + ratified by Director + Substrate Mgr; show-correct-code worker brief dispatch unblocked | **QUEUED** |
+| **2.6** | Cluster F Phase 2 canvas coordination with warm-wolf-698 | `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` (Task 12 amendment via PR #2364) + `docs/design-f-beta-1-effect-enum-migration-shape-canvas-2026-05-12.md` (F-β.1 canvas) | warm-wolf-698 (R3 Substrate Mgr; owns Cluster F lane); PM (deep-wolf-155) coordination | 2.0 (audit substrate) | F-α walker port worker dispatch; F-β.2 atomic migration worker (quiet-seal-699 PR #3016 already in flight) | F-β.1 canvas Substrate-Mgr-ratified; F-α walker port worker dispatch ready; F-β.2 (quiet-seal-699 PR #3016) coordinated with F-β.1 canvas authority | **QUEUED** (partial overlap with active quiet-seal-699 work) |
+| **2.7** | §5.2 brief-dispatch authority-gate discipline — ROOT-CAUSE FIX | `src/v3/SELF_HOSTING.md` §2 + `INVARIANTS.md` P5 + audit doc §3 systemic pattern findings (4 sub-patterns: brief citations / Mgr lane sync / canvas-first sequencing / audit reactivity) | PM (deep-wolf-155) | 2.0 (audit doc establishes systemic pattern) + 2.1-2.6 (evidence-base for the discipline) | ALL future dispatches gated by §5.2 (permanent close-plan addition + PR-template enforcement) | §5.2 added to close plan with mandatory pre-dispatch: (a) design-doc authority citation; (b) Mgr lane ownership confirmation; (c) canvas-ratification status. Reviewer-grep enforcement at PR-template tier. Cross-references this dispatch-plan doc as exemplar | **QUEUED** |
+
+## §2. Dependency graph (Mermaid)
+
+```mermaid
+graph TD
+  subgraph "Phase 2.0 — Substrate (this PR #3061)"
+    P20[2.0 Audit doc + §5.1 enforcement]
+  end
+
+  subgraph "Phase 2.1-2.3 — PB-0 framework alignment"
+    P21[2.1 Close plan Gap 1 amend<br/>PB-X lanes + §2 4-step]
+    P22[2.2 §1.8 PB-X reference rows]
+    P23[2.3 Track A reclassification<br/>+ §1.1 cleanup]
+  end
+
+  subgraph "Phase 2.4 — R2-Evaluator authority alignment"
+    P24[2.4 Gap 3 amend<br/>+ §1.8 ledger single-reference]
+  end
+
+  subgraph "Phase 2.5 — Gap 9 canvas"
+    P25[2.5 Sum-variant Correction canvas]
+  end
+
+  subgraph "Phase 2.6 — Cluster F coord"
+    P26[2.6 F-β.1 canvas ratify coord]
+  end
+
+  subgraph "Phase 2.7 — Root-cause systemic fix"
+    P27[2.7 §5.2 brief-dispatch authority-gate]
+  end
+
+  %% Direct dependencies
+  P20 --> P21
+  P20 --> P24
+  P20 --> P25
+  P20 --> P26
+  P20 --> P27
+
+  %% Internal Phase chain
+  P21 --> P22
+  P21 --> P23
+  P22 --> P23
+  P24 --> P22
+
+  %% 2.7 depends on evidence base from 2.1-2.6
+  P21 -.evidence.-> P27
+  P22 -.evidence.-> P27
+  P23 -.evidence.-> P27
+  P24 -.evidence.-> P27
+  P25 -.evidence.-> P27
+  P26 -.evidence.-> P27
+
+  %% Status coloring
+  classDef inreview fill:#fff3cd,stroke:#856404
+  classDef queued fill:#d1ecf1,stroke:#0c5460
+  class P20 inreview
+  class P21,P22,P23,P24,P25,P26,P27 queued
+```
+
+## §3. Critical-path notes
+
+- **Phase 2.0 is single point of failure**: every other Phase 2 task depends on 2.0 (audit doc) landing. Currently in PR #3061 review (1-of-2 approvals; 2-of-3 CI green).
+- **Phase 2.1 → 2.2 → 2.3 chain is sequential**: Gap 1 framing must land first (2.1), then §1.8 PB-X reference rows (2.2), then Track A reclassification can cite them (2.3). Cannot parallelize.
+- **Phase 2.4 is parallel with 2.1-2.3 once 2.0 lands**: R2-Evaluator amendment has no dependency on PB-0 framework work; can dispatch concurrently. Establishes the §1.8 reference-shape pattern for 2.2.
+- **Phase 2.5 + 2.6 are parallel with everything else**: Gap 9 canvas + Cluster F coord are independent workstreams; gated only on 2.0 substrate.
+- **Phase 2.7 is the synthesis**: §5.2 process discipline references all prior phases as evidence base. Should land last in the sweep so it's grounded in the actual Phase 2 execution patterns (proving the discipline works on the corrective sweep itself).
+
+## §4. Status legend
+
+- **IN REVIEW**: PR open, reviews + CI in flight
+- **QUEUED**: design authority cited, dependencies enumerated, awaiting upstream completion or dispatch
+- **DISPATCHED**: PR open, worker active
+- **MERGED**: substantive landing complete
+- **BLOCKED**: cannot proceed; reason cited
+
+## §5. Operator-tier visibility
+
+Per dispatch discipline (this doc IS the substrate for §5.2 brief-dispatch authority-gate):
+
+Before any Phase 2 PR opens, the dispatch directive must:
+1. Reference this doc's task ID (e.g., "Phase 2.1")
+2. Cite the design authority listed in the §1 table
+3. Confirm upstream deps marked MERGED (or explicit "dispatching in parallel with upstream X" annotation)
+4. State the success criterion verbatim from the table
+
+Reviewer-grep at PR-template tier checks for these citations; missing = REQUEST_CHANGES (substantive).
+
+This is the discipline §5.2 will codify. By applying it to Phase 2 itself, we validate the shape before formalizing it as permanent close-plan addition.
+
+## §6. Adjacent — what's NOT in this doc
+
+- **R3 close work beyond Phase 2 corrective sweep**: remaining 2 R2-Evaluator sub-lanes + 11 R2-Grounding sub-lanes + Cluster F worker dispatches + Cluster M Phase 3 + T-WAD Slices 5-8 + close-audit doc Phase 2 + Gap 11 (LogCost asymmetry) + Gap 12 (PropertyGenerator) etc. — these will route through the §5.2 discipline once it lands via Phase 2.7, with their own dependency-tree planning artifacts as needed.
+- **Active in-flight work**: PR #3016 (quiet-seal-699 F-β.2), PR #3033 (T-WAD Slice 7), PR #3024 (close-plan predicate execution Phase 2), PR #3059/#3062 (Mgr-tier work) — these are pre-Phase-2 dispatches; not retroactively re-validated against §5.2. Going-forward dispatches will be.
+- **Director-tier L2.5 emit model (PB-6)**: Director (zesty-bear-812) authoring L2.5 emit model directly per "Director-tier-design-up-front discipline" (msg_e66f4326). Lands into warm-wolf-698 expanded scope; will be substrate for future PB-6 worker dispatch (post-deployment-trigger of PR #3041 --shape flag).
+
+## §7. Sequencing recommendation (per Director msg_e66f4326)
+
+1. **First (this PR, Phase 2.0)**: audit doc landing + §5.1 5th axis enforcement (IN REVIEW)
+2. **Second (Phase 2.1)**: close plan Gap 1 amendment
+3. **Third (Phase 2.4)**: Gap 3 R2-Evaluator amendment (parallel-eligible with 2.1)
+4. **Fourth (Phase 2.2)**: §1.8 PB-X reference rows
+5. **Fifth (Phase 2.5)**: Gap 9 canvas authoring (parallel-eligible)
+6. **Sixth (Phase 2.3)**: Track A reclassification (after 2.1 + 2.2)
+7. **Seventh (Phase 2.6)**: Cluster F Phase 2 coord (parallel-eligible)
+8. **Eighth (Phase 2.7)**: §5.2 process discipline (synthesis; last)
+
+Director-tier ratify + admin-merge per operator broad-authorization on each PR open.
