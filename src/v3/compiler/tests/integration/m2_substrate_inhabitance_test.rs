@@ -3412,7 +3412,7 @@ fn record_body_duplicate_fields_fail_closed() {
                 Diagnostic::ResolveError { name, span, .. }
                     if name == "data `duplicate_fields` record body repeats field `a`"
                         && span.file == "record_duplicate_fields.v3"
-                        && span.byte_start <= duplicate_span
+                        && span.byte_start == duplicate_span
                         && duplicate_span < span.byte_end
             )
         }),
