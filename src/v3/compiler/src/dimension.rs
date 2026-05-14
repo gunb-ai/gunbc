@@ -178,8 +178,7 @@ pub fn analyze_symbolic_cost_dimension(
     }
 
     let root = d.node(workflow_root);
-    let root_lookup =
-        lookup_symbolic_cost(&cost_table, &behavior_result_port(root));
+    let root_lookup = lookup_symbolic_cost(&cost_table, &behavior_result_port(root));
 
     let witness_failure = witnesses
         .iter()
@@ -239,9 +238,11 @@ pub fn analyze_symbolic_cost_dimension(
 /// **Single authority.** Thin wrapper that delegates to
 /// [`analyze_symbolic_cost_dimension`] — the lens-spine path that walks
 /// reachable behaviors from `workflow_root` via
-/// `workflow_reachable_behavior_ids` and consumes
-/// [`crate::lens_cost_symbolic::symbolic_cost_of`] for each behavior's
-/// result port. The wrapper exists so the E7 public surface is named
+/// `workflow_reachable_behavior_ids` and looks up each in-scope behavior's
+/// result port in one [`crate::lens_cost_symbolic::compute_symbolic_costs`]
+/// table via [`crate::lens_cost_symbolic::lookup_symbolic_cost`] (same facts
+/// as [`crate::lens_cost_symbolic::symbolic_cost_of`], without rebuilding the
+/// table per port). The wrapper exists so the E7 public surface is named
 /// the way the dispatch brief locks it (`analyze_complexity` /
 /// `analyze_tenant_flow` / `analyze_ifc`) without introducing a
 /// parallel analyzer.
