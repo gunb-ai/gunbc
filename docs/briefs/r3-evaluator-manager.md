@@ -6,6 +6,7 @@
 
 - R3 close plan: [`docs/r3-actual-close-plan.md`](../r3-actual-close-plan.md) Gap 3 and §4 item 5.
 - R2 closure ledger source of truth: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) Evaluator Manager table.
+- R2 closure ledger ownership protocol: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) §"Signal protocol" and §"Authority discipline". R2 Release Manager remains the single ledger owner; this R3 lane prepares evidence and signals row transitions unless Director explicitly ratifies a refresh PR as the ledger-update vehicle.
 - R3 evaluator implementation boundary: [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md).
 - Current sequencing audit: [`docs/audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md`](../audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md).
 - Current ratchet: [`scripts/check-r2-evaluator-ledger-refresh.sh`](../../scripts/check-r2-evaluator-ledger-refresh.sh).
@@ -32,7 +33,7 @@ The current ledger refresh intentionally does not overclaim the two in-flight ro
 
 1. **Lens application completion worker**: consume the Phase 5 handoff and Q-Reification boundary; produce complete reflection + real lens-over-`Dag` evidence without routing through host-side reflection shortcuts or widening `fold_lens<C>` before X1.b S1/S3 authority is present.
 2. **Witness construction worker**: make witness materialization complete over the accepted evaluator surface, including a real `Violates` / diagnostic path rather than the E6-G1.a fail-closed empty-list stub.
-3. **Ledger refresh follow-up**: after each worker lands, update the exact R2 closure-ledger row and keep `scripts/check-r2-evaluator-ledger-refresh.sh` bound to the row-level evidence.
+3. **Ledger signal follow-up**: after each worker lands, send the exact row transition evidence through the R2 Release Manager signal/ack protocol, or land a Director-ratified ledger refresh PR that names that protocol exception. Keep `scripts/check-r2-evaluator-ledger-refresh.sh` bound to the acknowledged row-level evidence.
 
 ## Remaining Closure Predicates
 
@@ -42,13 +43,14 @@ The current ledger refresh intentionally does not overclaim the two in-flight ro
 - a lens-over-`Dag` path produces a real `DimensionReport<C>` through declared substrate values;
 - the path covers complete reflection per [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md), not only the static E6-G1.a representative;
 - any generic `fold_lens<C>` claim is backed by the required X1.b S1/S3 runtime-callee authority or by an explicit Director reroute.
+- the result is signaled for the exact `lens_application_complete_reflection` row in [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md), with R2 Release Manager acknowledgement or explicit Director-ratified refresh authority.
 
 `witness_construction_structural` turns green only when all of these are true at HEAD:
 
 - `Witness::Inhabits` and `Witness::Violates` both materialize through evaluator-executed declared constructors;
 - `Violates` carries a non-stub diagnostic path instead of the current E6-G1.a empty-list fail-closed receipt;
 - algebraic-law witness rows stay tied to faithful law carriers and do not widen beyond the bounded Int receipts until substrate authority exists;
-- the result updates the exact `witness_construction_structural` row in [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) and keeps the row-bound ratchet current.
+- the result is signaled for the exact `witness_construction_structural` row in [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md), with R2 Release Manager acknowledgement or explicit Director-ratified refresh authority, and keeps the row-bound ratchet current.
 
 ## Cross-Manager Dependencies
 
@@ -61,9 +63,9 @@ The current ledger refresh intentionally does not overclaim the two in-flight ro
 
 Signal Director when:
 
-- `lens_application_complete_reflection` turns green in `docs/r2-closure-ledger.md`;
-- `witness_construction_structural` turns green in `docs/r2-closure-ledger.md`;
+- `lens_application_complete_reflection` has R2 Release Manager acknowledgement to turn green in `docs/r2-closure-ledger.md`;
+- `witness_construction_structural` has R2 Release Manager acknowledgement to turn green in `docs/r2-closure-ledger.md`;
 - `scripts/check-r2-evaluator-ledger-refresh.sh` passes with all five rows green or with an explicitly ratified intermediate matrix;
-- no dashboard REQUEST_CHANGES remain on the manager PR that updates the ledger.
+- no dashboard REQUEST_CHANGES remain on the manager PR or acknowledged Release Manager signal that refreshes the ledger evidence.
 
 Until then, Gap 3 remains sequencing-held and PB must not dispatch or claim `pb_self_compile_fixed_point_strong`.
