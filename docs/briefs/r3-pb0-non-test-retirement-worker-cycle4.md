@@ -1,5 +1,5 @@
 ---
-status: "Mgr-authored worker brief (dispatch — PB-0 cycle 4, parallel with cycle 2)"
+status: "Mgr-authored worker brief (dispatch — PB-0 cycle 4; **landed** PR #3048)"
 authority_parent: "R3 Debt-Paydown Mgr (zesty-boar-261)"
 authoring_date: 2026-05-13
 director_dispatch: "msg_5d7f3491-889b-4342-bf9f-8a97b8e55431"
@@ -18,12 +18,12 @@ taxonomy_anchor: "docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-1
 
 **Classification trail:** Taxonomy rows for several of these paths are **(b)** today — **named prereq / substrate bundles** in §3; this dispatch still **names** them for operator visibility. Workers **STOP** rather than orphan-drop if a path cannot lawfully retire in one PR under P5; use PR-body **(i–iii)** for a **largest strict subset** + bound follow-up when needed.
 
-### §0.1 Named `EXPECTED_HAND_AUTHORED_NON_TEST` paths (this worker only)
+### §0.1 Named scope (**landed** — PR #3048)
 
-**Disjoint from cycle-2’s six paths** and **disjoint from cycle-3’s eight paths** in [`r3-pb0-non-test-retirement-worker-cycle3.md`](r3-pb0-non-test-retirement-worker-cycle3.md) §0.1. Target **these seven** paths in **this** PR (subset landing only with **(i–iii)** if P5 blocks one-shot removal):
+**Bright-seal-412** merged **PR #3048** (2026-05-14). The **seven** paths below were the **dispatch-time** `NON_TEST` retirement targets (disjoint from cycle-2 + cycle-3 batches); they **no longer appear** in `EXPECTED_HAND_AUTHORED_NON_TEST` on `main`. Row-85 projection for method templates is now **`pb_method_template_projection_generated.rs`** (generated / `REGEN_OUTPUTS`); do **not** resurrect the deleted hand file name as a census path.
 
-| # | Path |
-|---|------|
+| # | Path (historical) |
+|---|-------------------|
 | 1 | `src/v3/compiler/src/complexity_lattice.rs` |
 | 2 | `src/v3/compiler/src/cost_basis_declaration.rs` |
 | 3 | `src/v3/compiler/src/enforced_lens_application.rs` |
@@ -32,7 +32,7 @@ taxonomy_anchor: "docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-1
 | 6 | `src/v3/compiler/src/emit/collection_ops_method_contract.rs` |
 | 7 | `src/v3/compiler/src/emit_rust_bin_shim.rs` |
 
-**Live census anchor:** `src/v3/compiler/tests/integration/sg0_census_test.rs` — grep for `const EXPECTED_HAND_AUTHORED_NON_TEST`.
+**Live census anchor:** `src/v3/compiler/tests/integration/sg0_census_test.rs` — grep for `const EXPECTED_HAND_AUTHORED_NON_TEST` (taxonomy §3 stays row-aligned with the **live** slice).
 
 ---
 

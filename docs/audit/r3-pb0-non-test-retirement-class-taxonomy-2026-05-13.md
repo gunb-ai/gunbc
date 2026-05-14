@@ -45,7 +45,11 @@ In §3, rows that reference **§1.1** inherit this anchor set instead of repeati
 
 Director **msg_84abadad** Track A named **six** surfaces; **PR #3046** (swift-bee-15) **merged 2026-05-14**. **Five** former `NON_TEST` `.rs` census lines (`gunbc_ci.rs`, `integration_rs_wiring_scan.rs`, `lens_declaration_apply.rs`, `lens_t_las_carrier.rs`, `r3_gate_87_cementing_regen_runner_suites.rs`) **retired from** `EXPECTED_HAND_AUTHORED_NON_TEST` **with same-PR receipts** — nested `pub mod` / API surfaces folded under `cementing_dispatch.rs`, bounded lens application body recorded under `EXPECTED_HAND_AUTHORED_FRAGMENTS` as `lens_declaration_apply_body.txt` (see census comments on `main`). **`cementing_dispatch.rs`** remains a **single** `NON_TEST` hub row until gate **#87** / substrate dissolution completes.
 
+**PR #3048** (bright-seal-412, Director **msg_5d7f3491** cycle-4) **merged same window**: **seven** additional `NON_TEST` paths retired (see [`r3-pb0-non-test-retirement-worker-cycle4.md`](../briefs/r3-pb0-non-test-retirement-worker-cycle4.md) §0.1 historical table). Row-85 read surface moved to generated `pb_method_template_projection_generated.rs` + `REGEN_OUTPUTS` receipt — not a silent census orphan.
+
 ## §3. Per-path taxonomy (all `NON_TEST` rows)
+
+Rows follow **`EXPECTED_HAND_AUTHORED_NON_TEST`** declaration order on `main` (post–**#3046**, **#3048**). **Seven** paths retired in **PR #3048** (bright-seal-412 cycle-4) are **historical** — see §5 changelog; they must **not** reappear here unless the census regresses.
 
 | Path | Class | Blocker / rationale |
 |------|-------|---------------------|
@@ -63,8 +67,6 @@ Director **msg_84abadad** Track A named **six** surfaces; **PR #3046** (swift-be
 | `src/v3/compiler/src/bootstrap.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/bootstrap_regen_fresh.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/cementing_dispatch.rs` | **(a)** | Post–PR #3046 **hub**: gate **#87** `CementingDispatchMatchesProjection` host + nested former cycle-2 surfaces (census comment block); retire when predicate substrate owns the walk / T-WAD + PB-Runtime arcs close — not an orphan drop. |
-| `src/v3/compiler/src/complexity_lattice.rs` | **(b)** | Cost/complexity lattice host; couples to cementing + cost lenses — retire with owning `.dag` lens programs. |
-| `src/v3/compiler/src/cost_basis_declaration.rs` | **(b)** | Cost basis declaration host; couples to cost-lens / cementing migration. |
 | `src/v3/compiler/src/dag.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/dag/builder.rs` | **(b)** | DAG substrate modules; tied to Tier3 + effects + cardinality program rows — retire with owning substrate move, not isolated. |
 | `src/v3/compiler/src/dag/cardinality_payload.rs` | **(b)** | DAG substrate modules; tied to Tier3 + effects + cardinality program rows — retire with owning substrate move, not isolated. |
@@ -73,20 +75,15 @@ Director **msg_84abadad** Track A named **six** surfaces; **PR #3046** (swift-be
 | `src/v3/compiler/src/diagnostics.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/dimension.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/emit.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
-| `src/v3/compiler/src/emit/collection_ops_method_contract.rs` | **(b)** | Emit surface; Gap 13 / R2-Grounding + collection-ops identity gates per adjacent census comments. |
 | `src/v3/compiler/src/emit/python_target.rs` | **(b)** | Emit surface; Gap 13 / R2-Grounding + collection-ops identity gates per adjacent census comments. |
 | `src/v3/compiler/src/emit/rust_target.rs` | **(b)** | Emit surface; Gap 13 / R2-Grounding + collection-ops identity gates per adjacent census comments. |
 | `src/v3/compiler/src/emit_rust.rs` | **(b)** | R1C-E / emit-rust host harness; shared with `r1c_e_emit_gates` bin — dissolve with R1 close / `.dag` TestClaim migration per census notes. |
-| `src/v3/compiler/src/emit_rust_bin_shim.rs` | **(b)** | R1C-E / emit-rust host harness; shared with `r1c_e_emit_gates` bin — dissolve with R1 close / `.dag` TestClaim migration per census notes. |
 | `src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs` | **(b)** | R1C-E / emit-rust host harness; shared with `r1c_e_emit_gates` bin — dissolve with R1 close / `.dag` TestClaim migration per census notes. |
-| `src/v3/compiler/src/enforced_lens_application.rs` | **(b)** | T-Lens-Self-Application enforcement host; ties gate #58 / timing lens program — not isolated drop. |
 | `src/v3/compiler/src/infer.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
-| `src/v3/compiler/src/int_literal_ranges.rs` | **(b)** | Numeric / literal-range host; T-Numeric-Construction adjacent — retire with numeric program. |
 | `src/v3/compiler/src/lib.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/lower.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/memory_peak_cost.rs` | **(b)** | Gate #94 cost-lens memory-peak authority; dissolve with cost-lens substrate program. |
 | `src/v3/compiler/src/omni_shape_b_openapi.rs` | **(b)** | Shape B OpenAPI transitional host; dissolve when `.dag` owns projection end-to-end per census comment. |
-| `src/v3/compiler/src/pb_method_template_projection.rs` | **(b)** | Row-85 method-template read surface; `docs/decisions/r3-row85-method-template-read-surface.md` — PB-zero consumer bundle. |
 | `src/v3/compiler/src/pipeline_authority.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/post_emit_verifier.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/process_exit.rs` | **(b)** | PB-1 Item 5 host mirror of `dsl/std/process.dag` — dissolve with PB-1 bin-shim program. |
