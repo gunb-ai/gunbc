@@ -65,7 +65,10 @@ pub mod realization_cost {
 
     use std::collections::HashMap;
 
-    use crate::dag::{literal_decimal_i64, Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+    use crate::dag::{
+        literal_decimal_i64, sequential, Dag, DeclarationId, FieldValue, LiteralBits, SymbolicCost,
+        ValueBody,
+    };
 
     /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
     /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
@@ -257,6 +260,20 @@ pub mod realization_cost {
         pub fn cost(&self, key: &RealizationCostKey) -> Option<RealizationCostAmount> {
             self.get(key).map(|entry| entry.cost)
         }
+
+        pub fn compose_symbolic_cost<I>(
+            &self,
+            algebra_cost: SymbolicCost,
+            keys: I,
+        ) -> Option<SymbolicCost>
+        where
+            I: IntoIterator<Item = RealizationCostKey>,
+        {
+            keys.into_iter().try_fold(algebra_cost, |acc, key| {
+                self.cost(&key)
+                    .map(|cost| sequential(acc, SymbolicCost::ConstantCost { _0: cost.value() }))
+            })
+        }
     }
 
     struct RealizationMetas {
@@ -406,6 +423,38 @@ pub mod realization_cost {
             );
         }
 
+        #[test]
+        fn realization_cost_table_composes_symbolic_cost_with_realization_rows() {
+            let dag = bootstrap_dag();
+            let rust_language = named_id(&dag, "rust_language");
+            let int_decl = named_id(&dag, "Int");
+            let add_op = field_ref(&dag, "rust_int_add", "op");
+            let table = RealizationCostTable::for_language(&dag, rust_language)
+                .expect("rust realization-cost table should build");
+
+            let composed = table
+                .compose_symbolic_cost(
+                    SymbolicCost::ConstantCost { _0: 2 },
+                    [
+                        RealizationCostKey::Type(int_decl),
+                        RealizationCostKey::Operator {
+                            target: int_decl,
+                            op: add_op,
+                        },
+                    ],
+                )
+                .expect("rust Int and Add realization rows should compose");
+            let expected = sequential(
+                sequential(
+                    SymbolicCost::ConstantCost { _0: 2 },
+                    SymbolicCost::ConstantCost { _0: 1 },
+                ),
+                SymbolicCost::ConstantCost { _0: 1 },
+            );
+
+            assert_eq!(composed, expected);
+        }
+
         fn named_id(dag: &Dag, name: &str) -> DeclarationId {
             dag.declaration_by_name(name)
                 .unwrap_or_else(|| panic!("missing declaration `{name}`"))
@@ -420,6 +469,25 @@ pub mod realization_cost {
                 .expect("spawn bootstrap builder")
                 .join()
                 .expect("bootstrap builder should not panic")
+        }
+
+        fn field_ref(dag: &Dag, decl_name: &str, field_name: &str) -> DeclarationId {
+            let decl = dag
+                .declaration_by_name(decl_name)
+                .unwrap_or_else(|| panic!("missing declaration `{decl_name}`"));
+            let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+                panic!("declaration `{decl_name}` should have structural value_body");
+            };
+            match fields
+                .iter()
+                .find_map(|(label, value)| (label == field_name).then_some(value))
+                .unwrap_or_else(|| panic!("missing field `{field_name}` on `{decl_name}`"))
+            {
+                FieldValue::Reference(id) => *id,
+                other => {
+                    panic!("{decl_name}.{field_name} should be a DeclarationRef, got {other:?}")
+                }
+            }
         }
 
         fn set_int_field(dag: &mut Dag, decl: DeclarationId, field_name: &str, value: i64) {

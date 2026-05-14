@@ -397,11 +397,26 @@ let demo: Int = countdown(3) + 1
             "fixture rows should expose Rust Int/Add/Sub/Eq realization costs"
         );
 
-        let composed = [type_cost, add_cost, sub_cost, eq_cost]
-            .into_iter()
-            .fold(algebra_cost, |acc, cost| {
-                sequential(acc, SymbolicCost::ConstantCost { _0: cost })
-            });
+        let composed = table
+            .compose_symbolic_cost(
+                algebra_cost,
+                [
+                    RealizationCostKey::Type(int_decl),
+                    RealizationCostKey::Operator {
+                        target: int_decl,
+                        op: add_op,
+                    },
+                    RealizationCostKey::Operator {
+                        target: int_decl,
+                        op: sub_op,
+                    },
+                    RealizationCostKey::Operator {
+                        target: int_decl,
+                        op: eq_op,
+                    },
+                ],
+            )
+            .expect("Rust Int/Add/Sub/Eq realization costs should compose");
         assert!(
             mentions_linear(&composed),
             "cost lens demo should preserve the observable linear bound while folding Rust realization rows, got {composed:?}"
