@@ -830,9 +830,9 @@ If a brief dispatches without the 3-axis citation block AND a reviewer flags it,
 
 **§5.2.4 — Exemplar substrate**
 
-`docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md` is the exemplar artifact applying this discipline to the Phase 2 corrective sweep itself. Every Phase 2.0-2.8 task in §1 task table has the 3-axis citation block; §8 dispatches reference the task IDs; §9 design-coverage gap audit surfaces per-entry coverage status that the brief-dispatch authority-gate would catch.
+`docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md` is the exemplar artifact applying this discipline to the Phase 2 corrective sweep itself. The dispatch plan §1 task table covers the 3-axis citation block via these columns: **Design authority** column maps to axis 1 (per-task design-doc citation); **Mgr lane** column maps to axis 2 (named owner Mgr / PM-direct); **Canvas-ratification status** column maps to axis 3 (substrate-tier ratified canvas authority / N/A for consumer-tier). §8 dispatch commands per task reference the task IDs; §9 design-coverage gap audit surfaces per-entry coverage status that the brief-dispatch authority-gate would catch.
 
-By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition.
+By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition. **Validation receipt** (per codex BLOCKING #11738 PR #3071 follow-up 2026-05-14): the §1 task table's three citation columns (Design authority + Mgr lane + Canvas-ratification status) correspond to the §5.2.1 3-axis citation block; the exemplar claim is grep-verifiable against the dispatch plan §1 header at `docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md`.
 
 **§5.2.5 — Foreclosure clause** (analogous to §5.1)
 
