@@ -67,7 +67,10 @@ pub mod realization_cost {
 
     use std::collections::HashMap;
 
-    use crate::dag::{literal_decimal_i64, Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+    use crate::dag::{
+        literal_decimal_i64, sequential, Dag, DeclarationId, FieldValue, LiteralBits, SymbolicCost,
+        ValueBody,
+    };
 
     /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
     /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
@@ -259,6 +262,17 @@ pub mod realization_cost {
         pub fn cost(&self, key: &RealizationCostKey) -> Option<RealizationCostAmount> {
             self.get(key).map(|entry| entry.cost)
         }
+    }
+
+    /// Compose the target-agnostic symbolic cost with target realization
+    /// costs read from a `LanguageSpec` row table.
+    pub fn compose_symbolic_cost_with_realization_costs(
+        algebra_cost: SymbolicCost,
+        costs: impl IntoIterator<Item = RealizationCostAmount>,
+    ) -> SymbolicCost {
+        costs.into_iter().fold(algebra_cost, |acc, cost| {
+            sequential(acc, SymbolicCost::ConstantCost { _0: cost.value() })
+        })
     }
 
     struct RealizationMetas {
