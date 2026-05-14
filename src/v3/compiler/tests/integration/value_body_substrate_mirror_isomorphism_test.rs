@@ -12,19 +12,61 @@ const SUBSTRATE_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../src/v3/std/substrate.dag"
 ));
+const GENERATED_VALUE_BODY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/dag_value_body_generated.rs"
+));
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VariantShape {
+    name: String,
+    payload: PayloadShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PayloadShape {
+    Tuple(String),
+    Record(Vec<(String, String)>),
+}
 
 #[test]
 fn value_body_substrate_mirror_isomorphism_executable() {
     let substrate_variants = substrate_value_body_variants(SUBSTRATE_DAG);
-    let rust_variants = rust_value_body_variants();
+    let generated_variants = generated_value_body_variants(GENERATED_VALUE_BODY);
+    let runtime_variants = rust_value_body_variants();
 
     assert_eq!(
-        rust_variants, substrate_variants,
-        "Rust `ValueBody` generated mirror must stay isomorphic with `src/v3/std/substrate.dag`"
+        generated_variants, substrate_variants,
+        "generated Rust `ValueBody` payload shape must stay isomorphic with `src/v3/std/substrate.dag`"
+    );
+    assert_eq!(
+        runtime_variants,
+        substrate_variants
+            .iter()
+            .map(|variant| variant.name.as_str())
+            .collect::<Vec<_>>(),
+        "live Rust `ValueBody` exhaustiveness witness must stay isomorphic with `src/v3/std/substrate.dag`"
     );
 }
 
-fn substrate_value_body_variants(source: &str) -> Vec<&str> {
+#[test]
+fn value_body_map_fieldmap_duplicate_key_invariant_is_executable() {
+    let duplicate = FieldMap::from_entries(vec![
+        (
+            "same".to_string(),
+            v3_compiler::dag::FieldValue::Literal(LiteralBits::Bool(true)),
+        ),
+        (
+            "same".to_string(),
+            v3_compiler::dag::FieldValue::Literal(LiteralBits::Bool(false)),
+        ),
+    ])
+    .expect_err("FieldMap must reject duplicate keys");
+
+    assert_eq!(duplicate.key, "same");
+}
+
+fn substrate_value_body_variants(source: &str) -> Vec<VariantShape> {
     let mut variants = Vec::new();
     let mut in_value_body = false;
 
@@ -49,7 +91,50 @@ fn substrate_value_body_variants(source: &str) -> Vec<&str> {
         {
             // Substrate constructor names carry the `ValueBody` family prefix
             // (`ValueBodyUnparsed`); Rust enum variants are the suffix.
-            variants.push(variant_name(rest));
+            variants.push(parse_substrate_variant(rest));
+        }
+    }
+
+    variants
+}
+
+fn generated_value_body_variants(source: &str) -> Vec<VariantShape> {
+    let mut variants = Vec::new();
+    let mut lines = source.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with(char::is_uppercase) || trimmed.starts_with("pub enum ") {
+            continue;
+        }
+
+        if let Some((name, rest)) = trimmed.split_once('(') {
+            variants.push(VariantShape {
+                name: name.to_string(),
+                payload: PayloadShape::Tuple(normalize_rust_value_body_type(
+                    rest.trim_end_matches("),"),
+                )),
+            });
+            continue;
+        }
+
+        if let Some(name) = trimmed.strip_suffix(" {") {
+            let mut fields = Vec::new();
+            for field_line in lines.by_ref() {
+                let field = field_line.trim();
+                if field == "}," {
+                    break;
+                }
+                let (label, ty) = field
+                    .trim_end_matches(',')
+                    .split_once(": ")
+                    .expect("generated ValueBody record field");
+                fields.push((label.to_string(), normalize_rust_value_body_type(ty)));
+            }
+            variants.push(VariantShape {
+                name: name.to_string(),
+                payload: PayloadShape::Record(fields),
+            });
         }
     }
 
@@ -84,6 +169,43 @@ fn variant_name(text: &str) -> &str {
         .find(|c: char| c == '(' || c == '{' || c == ',' || c.is_whitespace())
         .unwrap_or(text.len());
     &text[..end]
+}
+
+fn parse_substrate_variant(text: &str) -> VariantShape {
+    let name = variant_name(text);
+    let rest = text[name.len()..].trim();
+
+    let payload = if let Some(tuple) = rest.strip_prefix('(') {
+        PayloadShape::Tuple(tuple.trim_end_matches(')').to_string())
+    } else if rest.starts_with('{') {
+        let fields = rest
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .split(',')
+            .map(str::trim)
+            .filter(|field| !field.is_empty())
+            .map(|field| {
+                let (label, ty) = field.split_once(": ").expect("ValueBody record field");
+                (label.to_string(), ty.to_string())
+            })
+            .collect();
+        PayloadShape::Record(fields)
+    } else {
+        panic!("unsupported ValueBody substrate variant shape: {text}");
+    };
+
+    VariantShape {
+        name: name.to_string(),
+        payload,
+    }
+}
+
+fn normalize_rust_value_body_type(ty: &str) -> String {
+    match ty {
+        "Vec<(String, FieldValue)>" | "FieldMap" => "List<FieldEntry>".to_string(),
+        "Vec<FieldValue>" => "List<FieldValue>".to_string(),
+        other => other.to_string(),
+    }
 }
 
 // INVARIANTS P1 / P2: checkable receipt that this gate stays tied to the
