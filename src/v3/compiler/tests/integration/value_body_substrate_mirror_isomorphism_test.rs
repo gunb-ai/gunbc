@@ -137,7 +137,10 @@ fn generated_value_body_variants(source: &str) -> Vec<VariantShape> {
                 name: name.to_string(),
                 payload: PayloadShape::Record(fields),
             });
+            continue;
         }
+
+        panic!("unsupported generated ValueBody variant shape: {trimmed}");
     }
 
     variants
