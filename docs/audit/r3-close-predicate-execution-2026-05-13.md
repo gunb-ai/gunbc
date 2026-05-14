@@ -41,9 +41,9 @@ grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 
 At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleton row count of 105 + row #106 `show_correct_code_diagnostic_coverage` added by merged PR #3020 per Gap 9 of `docs/r3-actual-close-plan.md`). The table below contains 106 rows mirroring that ledger one-for-one.
 
-## Status-bucket distribution at the ledger-snapshot anchor
+## Status-bucket distribution after row #15 re-derivation
 
-Derived mechanically from §1.8 Status column at commit `c055495c8`:
+Derived from the `c055495c8` §1.8 status snapshot plus the single 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED + PASSING`) recorded in this follow-up:
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
