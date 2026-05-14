@@ -56,6 +56,31 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
         .id
 }
 
+fn variant_payload_field_labels_sorted(
+    dag: &Dag,
+    sum_name: &str,
+    variant_label: &str,
+) -> Vec<String> {
+    let sum_decl = dag
+        .declaration_by_name(sum_name)
+        .unwrap_or_else(|| panic!("`{sum_name}` missing from full bootstrap"));
+    let variants = match &sum_decl.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("`{sum_name}` is not a Disj: {other:?}"),
+    };
+    let variant = variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .unwrap_or_else(|| panic!("`{sum_name}` missing `{variant_label}` variant"));
+    let payload_decl = dag.declaration(variant.ty);
+    let mut labels: Vec<String> = match &payload_decl.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
+        conn => panic!("`{sum_name}::{variant_label}` payload is not a Conj: {conn:?}"),
+    };
+    labels.sort();
+    labels
+}
+
 fn variant_payload_field_ty(
     dag: &Dag,
     sum_name: &str,
@@ -199,6 +224,11 @@ fn gate_106_diagnostic_record_carries_mandatory_correction_field() {
 #[test]
 fn gate_106_live_correction_variant_payload_locked() {
     let dag = generated_full_bootstrap_dag();
+    assert_eq!(
+        variant_payload_field_labels_sorted(&dag, "Correction", "LiveCorrection"),
+        vec!["witness".to_string()],
+        "`LiveCorrection` payload field-set must match diagnostics.dag (no extras / omissions)"
+    );
     let witness_id = decl_id_by_name(&dag, "CorrectionWitness");
     assert_eq!(
         variant_payload_field_ty(&dag, "Correction", "LiveCorrection", "witness"),
@@ -210,6 +240,11 @@ fn gate_106_live_correction_variant_payload_locked() {
 #[test]
 fn gate_106_deferred_correction_variant_payload_locked() {
     let dag = generated_full_bootstrap_dag();
+    assert_eq!(
+        variant_payload_field_labels_sorted(&dag, "Correction", "DeferredCorrection"),
+        vec!["reason".to_string(), "retirement_plan".to_string(),],
+        "`DeferredCorrection` payload field-set must match diagnostics.dag (no extras / omissions)"
+    );
     let string_id = decl_id_by_name(&dag, "String");
     let plan_id = decl_id_by_name(&dag, "RetirementPlan");
     assert_eq!(
