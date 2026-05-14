@@ -94,20 +94,7 @@ consumers (Grounding) wire downstream.
 
 ### C7 — Cross-algorithm complexity optimality (algorithm synthesis)
 
-**R3 status**: **Same-algorithm CLASS-LEVEL tightness lens IS in R3** per operator
-ratification 2026-05-14 (PR #3067 design substrate +
-`docs/design-complexity-tightness-lens.md`). The class-level lens reasons
-about a program AS WRITTEN and applies the **3 class-tier** semantics-preserving
-structural transformations (`LoopHoisting` / `DeadCodeElimination` /
-`ConstantBoundPropagation` — see `docs/design-complexity-tightness-lens.md`
-§1.2 tier classification) to derive an `AsymptoticStrictDominance` improvement
-witness in `BoundedLattice<AsymptoticClass>` at `src/v3/std/algebra.dag:418`;
-emits `Loose` (and TightnessViolation diagnostic) when the class lattice arm
-shifts. Compiler-internal code always-on; user programs opt-in via
-`EnforcedTightness` (concrete non-generic self-comparison carrier with
-`lens: Lens<TightnessAnalysis>` type-locked per
-`docs/design-complexity-tightness-lens.md` §1.5; structurally distinct from
-`EnforcedApplication`'s 3-param user-budget shape).
+**R3 status**: **Same-algorithm CLASS-LEVEL tightness lens is SCOPED IN R3** (operator-ratified 2026-05-14, design substrate at PR #3067 + `docs/design-complexity-tightness-lens.md`; **substrate NOT YET LANDED in `src/v3/std/`** — design ratification is PM-tier per the design frontmatter, with Director ratification + worker dispatch pending Gap 11). The class-level lens (per the planned `.dag` substrate at design doc §1.5) reasons about a program AS WRITTEN and applies the **3 class-tier** semantics-preserving structural transformations (`LoopHoisting` / `DeadCodeElimination` / `ConstantBoundPropagation` — see `docs/design-complexity-tightness-lens.md` §1.2 tier classification) to derive an `AsymptoticStrictDominance` improvement witness in `BoundedLattice<AsymptoticClass>` at the existing live substrate `src/v3/std/algebra.dag:418`. The lens emits `Loose` (and TightnessViolation diagnostic) when the class lattice arm shifts. Compiler-internal code will be always-on; user programs opt-in via `EnforcedTightness` (concrete non-generic self-comparison carrier with `lens: Lens<TightnessAnalysis>` type-locked per `docs/design-complexity-tightness-lens.md` §1.5; structurally distinct from `EnforcedApplication`'s 3-param user-budget shape).
 
 **3 symbolic-tier-only transformations** (`LoopFusion` /
 `AggregationRecognition` / `MapFilterFoldFusion`) are explicitly **NOT**
@@ -116,12 +103,13 @@ the same `AsymptoticClass` arm (e.g., `O(n+m) → O(max(n,m))` are both
 `ClassLinear`). Per `docs/design-complexity-tightness-lens.md` §2 carve-out,
 those cases are deferred to a future **symbolic-cost-tightness sibling lens**
 (separate `data` instance + separate carrier parameterized over `SymbolicCost`
-rather than `AsymptoticClass`). The substrate enforces this structurally:
-`§1.5` splits the transformation coproduct into
-`ClassTierTightnessTransformation` (3 arms) + `SymbolicTierTightnessTransformation`
-(3 arms), and class-level `Loose.first_transformation` is typed
-`ClassTierTightnessTransformation` (symbolic-tier variants non-instantiable
-at the type level per codex BLOCKING PR #3067 #11795 2026-05-14).
+rather than `AsymptoticClass`). The **planned substrate** (design §1.5 — not yet
+landed in `src/v3/std/`) enforces this structurally: §1.5 splits the
+transformation coproduct into `ClassTierTightnessTransformation` (3 arms) +
+`SymbolicTierTightnessTransformation` (3 arms), and class-level
+`Loose.first_transformation` will be typed `ClassTierTightnessTransformation`
+(symbolic-tier variants non-instantiable at the type level per codex BLOCKING
+PR #3067 #11795 2026-05-14).
 
 **Carved to R4**: **cross-algorithm optimality** — compiler proves a
 DIFFERENT algorithm with equivalent semantics achieves better
