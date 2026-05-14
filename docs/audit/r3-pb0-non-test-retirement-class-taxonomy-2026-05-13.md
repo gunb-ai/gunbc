@@ -2,14 +2,14 @@
 
 **Authority:** R3 Debt-Paydown Mgr (`zesty-boar-261`) — Director dispatch **msg_84abadad-35fd-4c92-8db3-0e7737adfa4f** (operator-ratified); **scope correction** **msg_dda96d21-b937-448c-a72d-f7c8a44b691c** (PM awk-range verification **msg_bda6867a**).
 **Procedure:** `docs/audit/r3-sg0-trajectory-tracker.md` §2 (`awk` window on `sg0_census_test.rs`).
-**Snapshot:** post–**PR #3046** (`main` @ merge **2026-05-14**); counts from per-const `awk` windows on `sg0_census_test.rs` at this branch tip.
+**Snapshot:** `main` after **PR #3046** + **PR #3048** (2026-05-14); counts from per-const `awk` windows on `sg0_census_test.rs` (tracker §2 — **only** lines between the const opener and `];` that match `^\s*"src/v3/`).
 
 ## §0. Count discipline vs close-plan narrative
 
-- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **50** (this table has one row per path) — **Gap 1 / Debt-Paydown lane** scope per Director **msg_dda96d21** (awk-range extraction; PM **msg_bda6867a**).
+- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **43** (this table has one row per path) — **Gap 1 / Debt-Paydown lane** scope per Director **msg_dda96d21** (awk-range extraction; PM **msg_bda6867a**).
 - **Live `EXPECTED_HAND_AUTHORED_TEST` paths:** **122** — **Gap 5 / Verification lane** (`bright-bee-903` / `still-moth-538`); **not** classified here.
-- **Combined `NON_TEST` + `TEST`:** **172** (`50 + 122`) — matches close-plan Σ narrative **excluding** fragments.
-- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **175** (`50 + 122 + 3`).
+- **Combined `NON_TEST` + `TEST`:** **165** (`43 + 122`) — matches close-plan Σ narrative **excluding** fragments.
+- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **168** (`43 + 122 + 3`).
 - **Earlier relay inflation:** loose `grep -c` over the whole `sg0_census_test.rs` file inflated a **non-test-only** headline count; **authoritative** counts are always the **per-const `awk` windows** (tracker §2).
 
 ## §1. Classification legend
@@ -110,7 +110,7 @@ Same **(a)/(b)/(c)** lens as §3; **3** rows at this snapshot (`awk` window on `
 | `src/v3/compiler/parse_parser_body.txt` | **(b)** | **SG-2b / SG-3f** parser-body reflection follow-on; census header ties dissolution to the same trigger as this scaffold’s own header (`parse_parser_body.txt` — not an opportunistic delete without SG program). |
 | `src/v3/compiler/src/lens_testgen_body.txt` | **(b)** | **Lens testgen** producer-body scaffold; dissolves when producer-owned/generated path owns the same surface (see census commentary on `lens_testgen` / gate **#6** retirement arc — not isolated fragment-only work). |
 
-**Director read (msg_5b04ea2c):** all three rows classify under **(b) named prereq**-shaped blockers (SG / lens-testgen / cementing programs), **same debt grammar** as the bulk of the 50-row `NON_TEST` table — they **fold into Gap 1 / gate #8** ratchet work rather than minting a **third** parallel “fragment-only” close program. No separate Director sub-program request from this pass.
+**Director read (msg_5b04ea2c):** all three rows classify under **(b) named prereq**-shaped blockers (SG / lens-testgen / cementing programs), **same debt grammar** as the bulk of the 43-row `NON_TEST` table — they **fold into Gap 1 / gate #8** ratchet work rather than minting a **third** parallel “fragment-only” close program. No separate Director sub-program request from this pass.
 
 ## §5. Changelog
 
@@ -119,3 +119,4 @@ Same **(a)/(b)/(c)** lens as §3; **3** rows at this snapshot (`awk` window on `
 | 2026-05-13 | Initial taxonomy + Track A six-path dispatch list (Director msg_84abadad). |
 | 2026-05-13 | §4: `EXPECTED_HAND_AUTHORED_FRAGMENTS` (2) classified (Director msg_5b04ea2c). |
 | 2026-05-14 | Reconcile §0/§2/§3/§4 with **PR #3046** landed on `main`: **50** `NON_TEST`, **3** `FRAGMENTS`; remove retired `.rs` rows; refresh `cementing_dispatch` + fragment rows. |
+| 2026-05-14 | Reconcile §0/§3 with **PR #3048** (cycle-4 seven-path retirement): **43** `NON_TEST`; §3 rows match live `awk` window only (drop stale paths). |
