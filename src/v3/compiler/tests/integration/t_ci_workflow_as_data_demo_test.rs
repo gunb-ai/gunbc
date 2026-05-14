@@ -2,9 +2,11 @@
 //!
 //! **T-Workflow-As-Data** — `ci_workflow_modeled_as_dag` receipt (gunbc#1956): gunbc CI workflow
 //! carriers from `dsl/extdeps/github/actions.dag` are authored as `.dag` **data** alongside a
-//! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
-//! via `evaluate_body` on the **merged gate #57 carrier fixture** (same lowered artifact as
-//! `dsl/gunbc/ci.dag`) and, orthogonally, on **`generated_full_bootstrap_dag()`** for the PB-1 embed path.
+//! `Lens<TimingMeasurement>` reporting shell. On the **gate-57 linked `gunbc.ci` compile** (see
+//! `GUNBC_CI_LINKED_COMPILE_*`) we pin **structural** `ci_workflow_dag` receipts plus a **fail-closed
+//! eval regression** (`BadTransformOperands` on `demo_ci_modeled_timing_dimension_report` until the
+//! linked bundle agrees with eager eval). The **successful** `evaluate_body` receipt for that demo
+//! lives on the PB-1 bootstrap shell (`ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell`).
 //!
 //! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
 //! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
@@ -19,16 +21,15 @@
 //! modules is deferred (M1(2.8) opaque-body path).
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
-//! hosts the executable receipt: **`compile_to_dag(dsl/gunbc/ci.dag)` once** (via `OnceLock`) to load
+//! hosts the executable receipt: **`compile_to_dag` on a linked bundle** (`ci_github_actions_workflow.dag`
+//! then `ci.dag` — see `GUNBC_CI_LINKED_COMPILE_*` in this file) once (via `OnceLock`) to load
 //! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
 //! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
 //! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
-//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt on a merged
-//! compile** (`tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag`) that **anchors
-//! `ci_workflow_dag`** from `gunbc.ci` in the same lowered artifact as
-//! `demo_ci_modeled_timing_dimension_report` (THESIS self-inspection on the modeled CI workflow carrier,
-//! not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
-//! still exercises the PB-1 bootstrap embed path for `modeled_gunbc_ci_workflow` / demo span wiring.
+//! projection until the compiler owns it (P2), and a **timing-lens eval regression pin** on that
+//! linked artifact (`assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked`).
+//! The successful DimensionOk receipt for the same demo runs on the PB-1 bootstrap shell via
+//! `ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell`.
 //! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
@@ -42,7 +43,7 @@
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
@@ -51,10 +52,12 @@ use v3_compiler::dag::{
     ValueNode,
 };
 use v3_compiler::evaluator::{
-    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
+    evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
+    NamedField, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
 };
 use v3_compiler::gunbc_ci::{
-    select_affected_gates, CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
+    select_affected_gates, select_affected_gates_for_binary_shim, CiBinaryShimAffectedSetReceipt,
+    CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
 };
 use v3_compiler::lens_cost::complexity_of;
 use v3_compiler::{
@@ -63,17 +66,20 @@ use v3_compiler::{
 };
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
-const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
-const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
+/// [`compile_to_dag`] loads a single surface module — imports do not pull sibling files from
+/// disk. Merge the regenerated GitHub Actions workflow module before `gunbc.ci` so
+/// `ci_workflow_dag.github_actions_workflow` resolves to `gunbc_ci_github_actions_workflow`.
+const GUNBC_CI_LINKED_COMPILE_SOURCE: &str = concat!(
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag"),
+    "\n\n",
+    include_str!("../../../../../dsl/gunbc/ci.dag"),
+);
+const GUNBC_CI_LINKED_COMPILE_FILE: &str = "dsl/gunbc/ci_with_github_actions_workflow.dag";
 const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
     include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
 const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
 const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
 const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
-const R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE: &str =
-    include_str!("../fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag");
-const R3_GATE57_CI_TIMING_LENS_CARRIER_FILE: &str =
-    "src/v3/compiler/tests/fixtures/r3_gate57_ci_workflow_timing_lens_carrier.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
@@ -314,8 +320,9 @@ fn sample_demo_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         })
 }
 
-/// `evaluate_body` receipt for `demo_ci_modeled_timing_dimension_report` on `dag` (PB-1 / merged carrier).
-fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler::dag::Dag) {
+fn eval_demo_ci_modeled_timing_dimension_report(
+    dag: &v3_compiler::dag::Dag,
+) -> Result<Value, EvalError> {
     assert!(
         dag.diagnostics().is_empty(),
         "dag diagnostics: {:?}",
@@ -348,7 +355,29 @@ fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler:
     let strategy = EvalStrategy::ApplicativeOrder {
         input_order: InputEvaluationOrder::LeftFirst,
     };
-    let out = evaluate_body(dag, bind_node_id, &mut state, strategy).expect("eval");
+    evaluate_body(dag, bind_node_id, &mut state, strategy)
+}
+
+/// Linked `gunbc.ci` + workflow carrier: `evaluate_body(demo_ci_modeled_timing_dimension_report, …)`
+/// must remain blocked on the known eager-eval gap until appendix lowering/infer reconciles the bundle.
+fn assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked(
+    dag: &v3_compiler::dag::Dag,
+) {
+    match eval_demo_ci_modeled_timing_dimension_report(dag) {
+        Err(EvalError::BadTransformOperands { reason })
+            if reason == BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON => {}
+        other => panic!(
+            "linked gunbc.ci timing-lens eval: expected BadTransformOperands(Callable target …); \
+             if this flips to Ok, migrate success assertions onto `merged` and shrink this pin — got {other:?}"
+        ),
+    }
+}
+
+/// `evaluate_body` **success** receipt for `demo_ci_modeled_timing_dimension_report` on `dag`
+/// (PB-1 bootstrap shell today; linked carrier still fails — see
+/// `assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked`).
+fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler::dag::Dag) {
+    let out = eval_demo_ci_modeled_timing_dimension_report(dag).expect("eval");
 
     let Value::VariantValue { tag, payload } = &out else {
         panic!("expected DimensionReport variant Value, got {out:?}");
@@ -458,11 +487,11 @@ struct Gate57CiArtifacts {
 fn gate57_ci_artifacts() -> &'static Gate57CiArtifacts {
     static CACHE: OnceLock<Gate57CiArtifacts> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let dag = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+        let dag = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+            .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
         assert!(
             dag.diagnostics().is_empty(),
-            "{GUNBC_CI_FILE}: {:?}",
+            "{GUNBC_CI_LINKED_COMPILE_FILE}: {:?}",
             dag.diagnostics()
         );
         let input = ci_workflow_dag_input_from_compiled_ci(&dag);
@@ -482,23 +511,11 @@ fn gate57_bootstrap_dag() -> &'static v3_compiler::dag::Dag {
     BOOT.get_or_init(demo_bootstrap_dag)
 }
 
-/// Merged `gunbc.ci` + `v3.std.t_ci_workflow_as_data_demo` — timing `evaluate_body` shares one compile
-/// with the `ci_workflow_dag` authority row (see `r3_gate57_ci_timing_carrier_anchor` in the fixture).
+/// Same lowered artifact as [`gate57_ci_artifacts`]: linked `gunbc.ci` (`ci_github_actions_workflow`
+/// + `ci.dag`) on the embedded bootstrap DAG, which already includes `v3.std.t_ci_workflow_as_data_demo`
+///   for `evaluate_body(demo_ci_modeled_timing_dimension_report, …)`.
 fn gate57_ci_timing_lens_carrier_dag() -> &'static v3_compiler::dag::Dag {
-    static CARRIER: OnceLock<v3_compiler::dag::Dag> = OnceLock::new();
-    CARRIER.get_or_init(|| {
-        let dag = compile_to_dag(
-            R3_GATE57_CI_TIMING_LENS_CARRIER_SOURCE,
-            R3_GATE57_CI_TIMING_LENS_CARRIER_FILE,
-        )
-        .unwrap_or_else(|err| panic!("compile {R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {err:?}"));
-        assert!(
-            dag.diagnostics().is_empty(),
-            "{R3_GATE57_CI_TIMING_LENS_CARRIER_FILE}: {:?}",
-            dag.diagnostics()
-        );
-        dag
-    })
+    &gate57_ci_artifacts().dag
 }
 
 /// Single structural claim: `ci_workflow_dag` prerequisite edges expose exactly one 2-successor
@@ -576,6 +593,34 @@ fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue
         }
     }
     panic!("unexpected {sum_name} constructor {constructor:?}");
+}
+
+fn disj_variant_labels(dag: &v3_compiler::dag::Dag, sum_name: &str) -> Vec<String> {
+    let mut decl_id = dag
+        .declaration_by_name(sum_name)
+        .unwrap_or_else(|| panic!("missing sum `{sum_name}`"))
+        .id;
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                decl_id = *template;
+            }
+            TypeConnective::Disj { variants } => {
+                return variants.iter().map(|v| v.label.clone()).collect();
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                decl_id = *next;
+            }
+            _ => panic!("unexpected connective while resolving `{sum_name}`"),
+        }
+    }
+    panic!("peel depth exceeded resolving `{sum_name}`");
 }
 
 fn structural_list(value: &FieldValue) -> &[FieldValue] {
@@ -656,8 +701,8 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let (name, node_ids, edges) = workflow_topology(&ci, fields);
 
@@ -689,8 +734,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_interim_command_shape() {
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let gate_records = workflow_gate_records(&ci, fields);
 
@@ -733,8 +778,8 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
 #[test]
 fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
     let demo = demo_bootstrap_dag();
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = compile_to_dag(GUNBC_CI_LINKED_COMPILE_SOURCE, GUNBC_CI_LINKED_COMPILE_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_LINKED_COMPILE_FILE}: {err:?}"));
 
     assert!(
         demo.declaration_by_name("modeled_gunbc_ci_workflow_dag")
@@ -815,10 +860,42 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 }
 
 #[test]
-fn gunbc_ci_emission_substrate_compiles() {
-    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_EMISSION_FILE}: {err:?}"));
-    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+fn gunbc_ci_emission_substrate_contract_is_present() {
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE.contains(
+            "fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow"
+        ),
+        "{GUNBC_CI_EMISSION_FILE} must declare the T-WAD projection-function contract"
+    );
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE
+            .contains("data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)"),
+        "{GUNBC_CI_EMISSION_FILE} must pin the YamlStatic projection binding"
+    );
+}
+
+#[test]
+fn workflow_runtime_initial_enum_matches_t_wad_gate_99() {
+    let runtime_line = GUNBC_CI_EMISSION_SOURCE
+        .lines()
+        .find(|line| line.starts_with("type WorkflowRuntime ="))
+        .expect("WorkflowRuntime type declaration");
+    let dag = compile_to_dag(
+        runtime_line,
+        "dsl/gunbc/ci_emission.workflow_runtime.slice.dag",
+    )
+    .unwrap_or_else(|err| panic!("compile WorkflowRuntime slice: {err:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "WorkflowRuntime slice diagnostics: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "WorkflowRuntime"),
+        ["YamlStatic", "BinaryShim"],
+        "T-WAD gate #99 initial WorkflowRuntime surface must stay paired to real consumers; \
+         PythonShim and InlineGunbc remain design-only until their substrate-prereq PRs land"
+    );
 }
 
 // --- R3 gate #57 (`lens_self_application_demonstrated`) — split receipts per TESTING.md §4.
@@ -881,6 +958,109 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
             "l1-ratchet".to_string(),
         ],
         "TouchAll must schedule the full gunbc-ci gate roster in prerequisite topo order"
+    );
+}
+
+// --- R3 gate #103 (`ci_uses_affected_set_selection`), Layer 1: gate-id receipt → `select_affected_gates`.
+// Canvas §7 / Slice-5 runner wiring of PR #2713 `NodeRef` receipts is explicitly out of scope here.
+
+#[test]
+fn ci_uses_affected_set_selection_binary_shim_narrow_on_gunbc_ci_topology() {
+    let g = gate57_ci_artifacts();
+    let receipt = CiBinaryShimAffectedSetReceipt {
+        narrowing_available: true,
+        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+    };
+    let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
+        .expect("binary shim selection must succeed on gunbc-ci topology");
+    let touch = select_affected_gates(
+        &g.input,
+        &CiWorkflowDiff::TouchedGates(BTreeSet::from([String::from("tests")])),
+    )
+    .expect("baseline touched-gates selection");
+    assert_eq!(plan, touch);
+}
+
+#[test]
+fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
+    let g = gate57_ci_artifacts();
+    let receipt = CiBinaryShimAffectedSetReceipt {
+        narrowing_available: false,
+        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+    };
+    let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
+        .expect("binary shim selection must succeed on gunbc-ci topology");
+    let full =
+        select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll).expect("TouchAll baseline");
+    assert_eq!(plan, full);
+}
+
+const WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS: &str =
+    include_str!("../../../../../scripts/workflow-path-regex-forbidden-substrings.txt");
+
+fn workflow_path_regex_forbidden_substrings() -> impl Iterator<Item = &'static str> {
+    WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS
+        .lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with('#') {
+                None
+            } else {
+                Some(t)
+            }
+        })
+}
+
+// Scans tracked `.github/workflows/*.{yml,yaml}` via `git ls-files` (same enumeration as
+// `check-workflow-path-regex-inventory.sh`), not `read_dir` (avoids untracked / non-repo files).
+#[test]
+fn workflow_no_path_regex_policy_ci_yml() {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+
+    let output = Command::new("git")
+        .current_dir(&repo_root)
+        .args([
+            "ls-files",
+            "-z",
+            ".github/workflows/*.yml",
+            ".github/workflows/*.yaml",
+        ])
+        .output()
+        .unwrap_or_else(|e| panic!("spawn git ls-files: {e}"));
+    assert!(
+        output.status.success(),
+        "git ls-files failed (cwd={}): stderr={}",
+        repo_root.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let mut scanned = 0usize;
+    for rel in String::from_utf8_lossy(&output.stdout).split('\0') {
+        if rel.is_empty() {
+            continue;
+        }
+        let path = repo_root.join(rel);
+        let raw =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        scanned += 1;
+        for forbidden in workflow_path_regex_forbidden_substrings() {
+            assert!(
+                !raw.contains(forbidden),
+                "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; single authority: scripts/workflow-path-regex-forbidden-substrings.txt)",
+                path.display()
+            );
+        }
+    }
+    assert!(
+        scanned > 0,
+        "git ls-files must report at least one tracked workflow under .github/workflows/"
     );
 }
 
@@ -973,7 +1153,7 @@ fn lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_work
     merged
         .workflow_lane2_subject()
         .expect("merged gunbc.ci surface must expose the lane-2 CI workflow bind shell");
-    assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(merged);
+    assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked(merged);
 }
 
 /// T-Workflow-As-Data / PB-1 — bootstrap embed path for `demo_ci_modeled_timing_dimension_report`

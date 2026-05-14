@@ -45,6 +45,7 @@ POSITIVE_ROWS=(
   "src/v3/lenses/effect_enumeration.dag:RedundantReadError"
   "src/v3/lenses/effect_enumeration.dag:TransactionalPattern"
   "src/v3/lenses/effect_enumeration.dag:EffectEnumerationReport"
+  "src/v3/lenses/effect_enumeration.dag:EffectEnumerationAuthoritySite"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentBinding"
   "src/v3/lenses/parallelism.dag:LinearBranchesLookup"
   "src/v3/lenses/provenance.dag:Origin"

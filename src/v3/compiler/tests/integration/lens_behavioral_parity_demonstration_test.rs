@@ -20,14 +20,15 @@
 //! (`ComplexitySummary`, workflow parallelism, effect enumeration) track under
 //! `Gate73_ReportPredicateCarriers`.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AsymptoticClass, Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
-    OperationEffect, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
-    WorkflowParallelismReport,
+    AsymptoticClass, Behavior, CallableRef, CompositionVerdict, HttpMethodScalar, InputField,
+    NonSingletonList, Operation, PathTemplate, PortId, RestEndpointBinding, SymbolicCost,
+    TransformTarget, TypeConnective, WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost::ComplexitySummary;
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup};
@@ -113,10 +114,18 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
     }
 }
 
-fn read_op(name: &str) -> OperationEffect {
-    OperationEffect {
-        operation_name: name.to_string(),
-        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+fn read_op(dag: &Dag) -> Operation {
+    let callable = dag
+        .declaration_by_name("get_method")
+        .expect("bootstrap should provide get_method declaration")
+        .id;
+    Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Get,
+            path: PathTemplate { tokens: vec![] },
+        },
     }
 }
 
@@ -235,10 +244,10 @@ fn r3_gate_73_demonstrates_parallelism_parity_snapshot() {
     let workflow = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op("read_user")],
+                ops: vec![read_op(&dag)],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op("read_account")],
+                ops: vec![read_op(&dag)],
             }),
         ])
         .expect("two branches satisfy NonSingletonList"),

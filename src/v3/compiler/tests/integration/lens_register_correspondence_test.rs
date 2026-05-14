@@ -25,11 +25,10 @@
 //!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
-//! allowed. `idempotency.dag` and `parallelism.dag` are the current
-//! example: both have register rows (as `BEHAVIORALLY STUB` lenses
-//! whose authority lives in Rust) but no `regen.dag` entry, because
-//! they are not regenerated into a `lens_*_generated.rs`. That is
-//! exactly the posture the register documents; a bidirectional
+//! allowed. `idempotency.dag` is a current example: it has a register row
+//! but no matching `LensRegistryEntry` in `regen.dag` (it is not wired
+//! through that registry's `regen_lens` / `lens_*_generated.rs` path).
+//! That is exactly the posture the register documents; a bidirectional
 //! ratchet would misread those rows as drift.
 
 use std::collections::BTreeSet;
@@ -296,8 +295,12 @@ fn r3_gate_83_lens_capability_register_scope_is_explicit() {
     );
 }
 
+// Full §1.8 gate #83 / Cluster F F-γ.2 closure is tracked in `docs/r3-actual-close-plan.md`
+// Gap 4 (post-all-four-BEHAVIORALLY-COMPLETE). The test below is only the markdown
+// PROXY/STUB slice; `r3_gate_83_current_register_blockers_are_explicit` was removed as
+// a duplicate of the same predicate — keep Gap 4 + this assert message in sync when
+// `parallelism.dag` / `effect_enumeration.dag` move PARTIAL → COMPLETE.
 #[test]
-#[ignore = "strict-fire gate #83; unignore when cost/parallelism sibling slices remove PROXY/STUB"]
 fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
     let rows = capability_table_rows();
     let blockers: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
@@ -320,38 +323,11 @@ fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
         .collect();
     assert!(
         blockers.is_empty(),
-        "R3 gate #83 requires ZERO PROXY / ZERO STUB in the capability register for \
-         the four in-R3 T-Lens-Behavioral-Parity lenses. Remaining blocker(s): {blockers:?}."
-    );
-}
-
-#[test]
-fn r3_gate_83_current_register_blockers_are_explicit() {
-    let rows = capability_table_rows();
-    let blockers: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
-        .iter()
-        .copied()
-        .filter_map(|basename| {
-            let behavioral = rows
-                .iter()
-                .find(|(row_basename, _)| row_basename == basename)
-                .map(|(_, behavioral)| behavioral.as_str())
-                .unwrap_or("<missing>");
-            let normalized = behavioral
-                .trim()
-                .trim_matches('*')
-                .trim()
-                .to_ascii_uppercase();
-            (normalized == "PROXY" || normalized == "STUB")
-                .then(|| format!("{basename}: {behavioral}"))
-        })
-        .collect();
-    assert_eq!(
-        blockers,
-        Vec::<String>::new(),
-        "Gate #83 is not ready to strict-fire until sibling lens-completion slices \
-         remove all PROXY/STUB statuses. If this changed, update the strict-fire \
-         posture in `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`."
+        "R3 gate #83 — narrow markdown register ratchet (`docs/v3-lens-capability-register.md` \
+         `## Capability table`): the four T-Lens-Behavioral-Parity basenames must not read \
+         BEHAVIORALLY PROXY or BEHAVIORALLY STUB. Necessary for gate #83, not the full §1.8 / \
+         Cluster F F-γ.2 close (that stays downstream of all-four-BEHAVIORALLY-COMPLETE per \
+         `docs/r3-actual-close-plan.md` Gap 4). Remaining PROXY/STUB blocker(s): {blockers:?}."
     );
 }
 

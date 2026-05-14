@@ -55,7 +55,10 @@ Lane 3 closes all three.
 
 ### Stage 3b — Diagnostics as corrections (M)
 
-**Scope:** every diagnostic carries `fix: List<Correction>` where each `Correction` is literal code the user can paste.
+**Scope:** every diagnostic carries mandatory `correction: Correction`.
+`LiveCorrection` carries literal `.dag` code the user can apply;
+`DeferredCorrection` carries the named retirement plan when that live
+witness is not available yet.
 
 Per `docs/error-examples.md`:
 
@@ -66,18 +69,22 @@ ERROR at line 2: field `c` does not exist on Point
                                        ^
 
 Available fields: a, b
-FIX (option 1): did you mean `point.a`?
-FIX (option 2): did you mean `point.b`?
+DEFERRED CORRECTION: field `c` has multiple valid replacements: a, b
 ```
 
-Type shapes are **locked in [DB-1](./design-correction-shape.md)**. Lane 3 does not restate them here — see DB-1 for the `Correction` record, the `Diagnostic.fixes` field (plural `fixes`, a `List`), `CorrectionStyle` per-target style, rejected alternatives, and the source-only-by-construction rationale. Lane 3 Stage 3b consumes that locked shape without re-deriving it.
+Type shapes are **locked in [DB-1](./design-correction-shape.md)**,
+as superseded by R3 Gap 9 row #106. Lane 3 does not restate them
+here — see DB-1 for `CorrectionWitness`, `RetirementPlan`, the
+`Correction = LiveCorrection | DeferredCorrection` sum, and the
+source-only-by-construction rationale. Lane 3 Stage 3b consumes that
+locked shape without re-deriving it.
 
 Per-target correction style is declared in each target spec alongside its `CleanEmissionContract` — DB-1 specifies the exact field set. Don't restate here; reference the locked shape.
 
 **Acceptance:**
-- Every T-series test in `thesis_validation_test.rs` (T1.1–T1.5, T2.4) emits at least one Correction
-- Diagnostic rendering in test output shows the FIX lines from error-examples.md
-- Renaming variants in source → non-exhaustive match diagnostic emits the missing-variant Correction
+- Every T-series test in `thesis_validation_test.rs` (T1.1–T1.5, T2.4) emits a mandatory Correction
+- Diagnostic rendering in test output shows FIX lines only for `LiveCorrection`
+- Renaming variants in source → non-exhaustive match diagnostic emits a live correction that covers every missing variant in one roundtrip edit
 - Applying shipped corrections at `Correction.span` reparses the repaired source (and cleanly recompiles for the Stage 3b fully-repairing fixtures)
 
 **Escalation:** if corrections need semantic information the diagnostic site doesn't have (e.g., "suggest the right field" requires schema lookup from wherever the type is defined), surface — that's a legitimate API extension. Don't fabricate corrections without the needed context.

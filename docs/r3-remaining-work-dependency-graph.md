@@ -99,10 +99,10 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 **Gates**: #98-#103 (6 gates added today per PR #2744 §1, Director ratification msg_5cbdad24)
 
 **Status today**:
-- #99 `workflow_runtime_open_enum_landed` — CLOSED (PR #2745 merged earlier today, BUT see audit caveat; substrate landed elsewhere)
-- #100 `project_github_actions_landed` — CLOSED-ish (substrate in flight via PR #2774)
-- #101 `test_cost_dimension_landed` — CLOSED (PR #2761 merged)
-- #102 `slow_test_exemptions_dissolved` — CLOSED (PR #2764 merged)
+- #99 `workflow_runtime_open_enum_landed` — **CONSUMER_LANDED + PASSING** (PR #2774 merged 2026-05-12; `WorkflowRuntime` declared at `dsl/gunbc/ci_emission.dag:27`; drift-guard consumer green). §1.8 row ratified 2026-05-13.
+- #100 `project_github_actions_landed` — **CONSUMER_LANDED + PASSING** (PR #2774; `project_github_actions` declared at `dsl/gunbc/ci_emission.dag:87` with pinned binding `gunbc_ci_yml_workflow` at :95). §1.8 row ratified 2026-05-13.
+- #101 `test_cost_dimension_landed` — **CONSUMER_LANDED + PASSING** (PR #2761; `TestNodeCostDimension` at `src/v3/std/verification.dag:578` + `dsl/std/verification.dag:75`; P5 receipt `test_cost_dimension_landed_on_test_node`). §1.8 row ratified 2026-05-13.
+- #102 `slow_test_exemptions_dissolved` — **DECLARED** (pass target: `TestNodeCostDimension` timing facts; interim warn-token bridge in flight — not GREEN)
 - #98 `ci_yml_hand_authority_dissolved` — IN-FLIGHT/OPEN
 - #103 `ci_uses_affected_set_selection` — OPEN (Slice 7; cool-crab-565 canvas at PR #2766)
 

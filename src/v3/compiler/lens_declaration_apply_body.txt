@@ -1,11 +1,15 @@
-//! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
-//! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
-//!
-//! **R3 gate #5 (`lens_apply_dot_rs_retired`):** the legacy path
-//! `src/v3/compiler/src/lens_apply.rs` is **retired** (path absent from the tree).
-//! Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
-//! readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
-//! `INVARIANTS` P5(b) deferral language on the tracking PR.
+// PB-0 cycle-2: bounded lens application module body (`lens_declaration_apply_body.txt`), included
+// from `lib.rs` so `src/v3/compiler/src/lens_declaration_apply.rs` retires from SG-0 NON_TEST census
+// (path-only retirement; same semantics per gate #5 notes). Dissolution: PB-Runtime / Row-4.
+//
+// Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
+// over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
+//
+// R3 gate #5 (`lens_apply_dot_rs_retired`): the legacy path
+// `src/v3/compiler/src/lens_apply.rs` is retired (path absent from the tree).
+// Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
+// readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
+// `INVARIANTS` P5(b) deferral language on the tracking PR.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -1148,7 +1152,7 @@ mod tests {
 
     #[test]
     fn named_function_count_on_trivial_program() {
-        let src = include_str!("../../lenses/named_function_count.dag");
+        let src = include_str!("../lenses/named_function_count.dag");
         let lens_dag =
             compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
         let prog = compile_to_dag("let x: Int = 1", "lens_apply_prog.v3").expect("prog compiles");
@@ -1612,11 +1616,10 @@ mod substrate_reflection {
 
     use crate::dag::{
         AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
-        BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
-        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
-        IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
-        OperationEffect, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
-        TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
+        BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, ClusterId, Dag,
+        DeclarationId, FieldMap, FieldValue, HttpMethodScalar, LiteralBits, LoopBound, LoopNode,
+        NodeId, NonSingletonList, Operation, OperatorKind, Path, PayloadBinding, PortId,
+        TransformNode, TransformTarget, TypeConnective, UrlPathToken, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
 
@@ -1864,21 +1867,6 @@ mod substrate_reflection {
         Ok(tail)
     }
 
-    fn reflect_string_list_spine(dag: &Dag, strings: &[String]) -> ReflectResult<FieldValue> {
-        let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
-        let mut tail = FieldValue::Variant {
-            constructor: empty_id,
-            payload: vec![],
-        };
-        for s in strings.iter().rev() {
-            tail = FieldValue::Variant {
-                constructor: cons_id,
-                payload: vec![FieldValue::Literal(LiteralBits::String(s.clone())), tail],
-            };
-        }
-        Ok(tail)
-    }
-
     fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
         sum_variant_payload(dag, sum_name, label, vec![])
     }
@@ -1952,115 +1940,67 @@ mod substrate_reflection {
         reflect_unit_variant(dag, "HttpMethod", label)
     }
 
-    fn reflect_create_cause(dag: &Dag, c: &CreateCause) -> ReflectResult<FieldValue> {
-        match c {
-            CreateCause::PostAlways => {
-                sum_variant_payload(dag, "CreateCause", "PostAlways", vec![])
-            }
-            CreateCause::KeylessFallback { method } => sum_variant_payload(
-                dag,
-                "CreateCause",
-                "KeylessFallback",
-                vec![reflect_http_method_scalar(dag, *method)?],
-            ),
-        }
-    }
-
-    fn reflect_key_source(dag: &Dag, ks: &KeySource) -> ReflectResult<FieldValue> {
-        match ks {
-            KeySource::PathParam { param } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "PathParam",
-                vec![FieldValue::Literal(LiteralBits::String(param.clone()))],
-            ),
-            KeySource::InputField { field } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "InputField",
-                vec![FieldValue::Literal(LiteralBits::String(field.clone()))],
-            ),
-            KeySource::CompositeKey { fields } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "CompositeKey",
-                vec![reflect_string_list_spine(dag, fields)?],
-            ),
-        }
-    }
-
-    fn reflect_idempotent_shape(dag: &Dag, s: &IdempotentShape) -> ReflectResult<FieldValue> {
-        match s {
-            IdempotentShape::ReadEffect => {
-                sum_variant_payload(dag, "IdempotentShape", "ReadEffect", vec![])
-            }
-            IdempotentShape::UpsertEffect { key_source } => sum_variant_payload(
-                dag,
-                "IdempotentShape",
-                "UpsertEffect",
-                vec![reflect_key_source(dag, key_source)?],
-            ),
-            IdempotentShape::DeleteEffect { key_source } => sum_variant_payload(
-                dag,
-                "IdempotentShape",
-                "DeleteEffect",
-                vec![reflect_key_source(dag, key_source)?],
-            ),
-        }
-    }
-
-    fn reflect_breaking_shape(dag: &Dag, s: &BreakingShape) -> ReflectResult<FieldValue> {
-        match s {
-            BreakingShape::CreateEffect { cause } => sum_variant_payload(
-                dag,
-                "BreakingShape",
-                "CreateEffect",
-                vec![reflect_create_cause(dag, cause)?],
-            ),
-            BreakingShape::AppendEffect => {
-                sum_variant_payload(dag, "BreakingShape", "AppendEffect", vec![])
-            }
-        }
-    }
-
-    fn reflect_effect_shape(dag: &Dag, s: &EffectShape) -> ReflectResult<FieldValue> {
-        match s {
-            EffectShape::IsIdempotent(inner) => sum_variant_payload(
-                dag,
-                "EffectShape",
-                "IsIdempotent",
-                vec![reflect_idempotent_shape(dag, inner)?],
-            ),
-            EffectShape::IsBreaking(inner) => sum_variant_payload(
-                dag,
-                "EffectShape",
-                "IsBreaking",
-                vec![reflect_breaking_shape(dag, inner)?],
-            ),
-        }
-    }
-
-    fn reflect_operation_effect(dag: &Dag, op: &OperationEffect) -> ReflectResult<FieldValue> {
+    fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {
+        let tokens = op
+            .endpoint
+            .path
+            .tokens
+            .iter()
+            .map(|token| match token {
+                UrlPathToken::LiteralToken { text } => sum_variant_payload(
+                    dag,
+                    "UrlPathToken",
+                    "LiteralToken",
+                    vec![FieldValue::Literal(LiteralBits::String(text.clone()))],
+                ),
+                UrlPathToken::ParamToken { name } => sum_variant_payload(
+                    dag,
+                    "UrlPathToken",
+                    "ParamToken",
+                    vec![FieldValue::Literal(LiteralBits::String(name.clone()))],
+                ),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let inputs = FieldMap::from_entries(
+            op.inputs
+                .keys()
+                .map(|name| (name.clone(), FieldValue::Record(vec![])))
+                .collect(),
+        )
+        .map_err(|_| ReflectError("duplicate operation input key"))?;
         Ok(FieldValue::Record(vec![
             (
-                "operation_name".to_string(),
-                FieldValue::Literal(LiteralBits::String(op.operation_name.clone())),
+                "callable".to_string(),
+                FieldValue::Record(vec![(
+                    "decl".to_string(),
+                    FieldValue::Reference(op.callable.decl),
+                )]),
             ),
-            ("shape".to_string(), reflect_effect_shape(dag, &op.shape)?),
+            ("inputs".to_string(), FieldValue::Map(inputs)),
+            (
+                "endpoint".to_string(),
+                FieldValue::Record(vec![
+                    (
+                        "method".to_string(),
+                        reflect_http_method_scalar(dag, op.endpoint.method)?,
+                    ),
+                    (
+                        "path".to_string(),
+                        FieldValue::Record(vec![("tokens".to_string(), FieldValue::List(tokens))]),
+                    ),
+                ]),
+            ),
         ]))
     }
 
-    fn reflect_operation_effect_vec_spine(
-        dag: &Dag,
-        ops: &[OperationEffect],
-    ) -> ReflectResult<FieldValue> {
+    fn reflect_operation_vec_spine(dag: &Dag, ops: &[Operation]) -> ReflectResult<FieldValue> {
         let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
         let mut tail = FieldValue::Variant {
             constructor: empty_id,
             payload: vec![],
         };
         for op in ops.iter().rev() {
-            let head = reflect_operation_effect(dag, op)?;
+            let head = reflect_operation(dag, op)?;
             tail = FieldValue::Variant {
                 constructor: cons_id,
                 payload: vec![head, tail],
@@ -2082,7 +2022,7 @@ mod substrate_reflection {
                 dag,
                 "WorkflowEffect",
                 "LinearEffect",
-                vec![reflect_operation_effect_vec_spine(dag, ops)?],
+                vec![reflect_operation_vec_spine(dag, ops)?],
             ),
             WorkflowEffect::BranchEffect { arms } => sum_variant_payload(
                 dag,
@@ -2989,11 +2929,71 @@ fn get_x(point: Point) -> Int = point.x
     }
 }
 
+// PB-0 cycle-2: T-LAS structural carriers nested under `lens_declaration_apply` for SG-0
+// `.rs` path retirement; `lib.rs` re-exports `v3_compiler::lens_t_las_carrier` at crate root.
+// Dissolution: emit-time carriers owned by `.dag` / generated substrate without host mirrors.
+pub mod lens_t_las_carrier {
+    //! Structural carriers for Rust emission of T-LAS lens surfaces that reference
+    //! `v3.std.lens::Lens`, `std.algebra::Monoid`, and `v3.std.lens_application`
+    //! (`gate #92`). Shapes mirror the `.dag` authorities; they are not used by the
+    //! compiler runtime outside `emit_rust_module` snapshots linking against
+    //! `v3_compiler`.
+
+    use std::rc::Rc;
+
+    use crate::dag::{Behavior, Dag, LoopBound};
+    use crate::diagnostics::Diagnostic;
+    use crate::dimension::Witness;
+
+    /// Mirrors `OptionalDiagnostic` in `v3.std.dimensions` for emitted lens code.
+    #[allow(clippy::large_enum_variant)]
+    #[derive(Clone, Debug)]
+    pub enum OptionalDiagnostic {
+        NoDiagnostic,
+        SomeDiagnostic { value: Diagnostic },
+    }
+
+    pub type LensReadFn<T> = dyn Fn(&Dag, &Behavior) -> Witness<T>;
+    pub type LensValidateFn<T> = dyn Fn(&Dag, T) -> OptionalDiagnostic;
+
+    /// Mirrors `Monoid<T>` in `dsl/std/algebra.dag`.
+    #[derive(Clone)]
+    pub struct Monoid<T> {
+        pub op: Rc<dyn Fn(T, T) -> T>,
+        pub identity: T,
+    }
+
+    /// Mirrors `Lens<T>` in `v3.std.lens`.
+    #[derive(Clone)]
+    pub struct Lens<T> {
+        pub name: String,
+        pub read: Rc<LensReadFn<T>>,
+        pub sequential: Monoid<T>,
+        pub branch: Rc<dyn Fn(T, T) -> T>,
+        pub iterate: Rc<dyn Fn(T, LoopBound) -> T>,
+        pub validate: Rc<LensValidateFn<T>>,
+    }
+
+    /// Mirrors `LensEnforcement<Output, Budget, Projected>` in `v3.std.lens_application`.
+    #[derive(Clone)]
+    pub struct LensEnforcement<Output, Budget, Projected> {
+        pub project: Rc<dyn Fn(Output) -> Projected>,
+        pub violates: Rc<dyn Fn(Output, Budget) -> bool>,
+    }
+
+    /// Mirrors `EnforceableLens<Output, Budget, Projected>` in `v3.std.lens_application`.
+    #[derive(Clone)]
+    pub struct EnforceableLens<Output, Budget, Projected> {
+        pub lens: Lens<Output>,
+        pub enforcement: LensEnforcement<Output, Budget, Projected>,
+    }
+}
+
 // R3 gate #6 (`lens_testgen_dot_rs_retired`): the standalone `lens_testgen.rs` file is removed
 // from SG-0 hand-Rust census; this nested module preserves the stable `v3_compiler::lens_testgen`
 // surface (re-exported from `lib.rs`) until PB-Runtime owns testgen end-to-end.
 pub mod lens_testgen {
-    include!("lens_testgen_body.txt");
+    include!("src/lens_testgen_body.txt");
 }
 
 pub use substrate_reflection::reflect_behavior_list;

@@ -550,7 +550,9 @@ fn test_runner_dispatches_pb_census_predicate_shapes() {
 import std.verification {
   compiler_std_positive_set_ratchet,
   expected_hand_authored_non_test,
-  lens_producer_files_subset_predicate
+  lens_producer_files_subset_predicate,
+  PendingFact,
+  ResolvedFact
 }
 
 data census_authority: Int = 0
@@ -598,7 +600,14 @@ data generated_from_dag_claim: TestClaim = {
   name: "pb_test_file_generated_from_dag",
   source: "let x: Int = 1",
   file_name: "pb_test_file_generated_from_dag.v3",
-  predicate: GeneratedFromDag(census_authority, ["src/v3/compiler/tests/integration.rs"]),
+  predicate: GeneratedFromDag(census_authority, [
+    PendingFact { output_path: "src/v3/compiler/tests/integration.rs" },
+    ResolvedFact {
+      output_path: "src/v3/compiler/tests/integration.rs",
+      dag_source: census_authority,
+      source_hash: "test-runner-resolved-fact-decode-coverage"
+    }
+  ]),
   requires: []
 }
 
@@ -647,9 +656,52 @@ data suite: TestSuite = {
         "pb_compiler_std_ratchet_zero",
         "compiler_std_positive_set_ratchet",
     );
-    assert_fail_contains(
-        "pb_test_file_generated_from_dag",
-        "not in the generated-file authority",
+    assert!(
+        matches!(result_for("pb_test_file_generated_from_dag"), ClaimResult::Fail(reason)
+            if reason.contains("duplicate")
+                || reason.contains("only-in-manifest")
+                || reason.contains("missing-from-manifest")),
+        "expected `pb_test_file_generated_from_dag` to fail on manifest vs `GENERATED_FILES` authority mismatch, got {:?}",
+        result_for("pb_test_file_generated_from_dag")
+    );
+}
+
+#[test]
+fn generated_from_dag_resolved_fact_requires_non_empty_source_hash() {
+    let source = r#"
+import std.verification { ResolvedFact }
+
+data census_authority: Int = 0
+data resolved_source: Int = 1
+
+data generated_from_dag_claim: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "let x: Int = 1",
+  file_name: "pb_test_file_generated_from_dag.v3",
+  predicate: GeneratedFromDag(census_authority, [
+    ResolvedFact {
+      output_path: "src/v3/compiler/tests/integration.rs",
+      dag_source: resolved_source,
+      source_hash: ""
+    }
+  ]),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "pb_census_predicate_shapes",
+  claims: [Enumerated(generated_from_dag_claim)]
+}
+"#;
+    let dag = compile_clean(source, "pb_resolved_fact_empty_hash.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(&results[0].result, ClaimResult::Fail(reason)
+            if reason.contains("ResolvedFact `source_hash` must be non-empty")),
+        "expected empty ResolvedFact source_hash to fail closed, got {:?}",
+        results[0].result
     );
 }
 

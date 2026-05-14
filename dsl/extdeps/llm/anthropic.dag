@@ -274,12 +274,18 @@ type AnthropicMessages200ContentBlock
 // by `server_tool_input_payloads_unmodeled`.
 type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
 
+// 🟢 TERMINAL provider-domain enum for Anthropic Messages 200 `usage.service_tier`.
+// Dissolution receipt: the field is a closed API string domain, not free-form
+// metadata; fact placement would duplicate the usage field authority, algebraic
+// form has no operator surface, and dimensional split has no independent axes.
+type AnthropicMessages200ServiceTier = Standard | Priority | Batch
+
 type AnthropicMessages200Usage {
   input_tokens: Int
   output_tokens: Int
   cache_creation_input_tokens: Int?
   cache_read_input_tokens: Int?
-  service_tier: String?
+  service_tier: AnthropicMessages200ServiceTier?
 }
 
 // Anthropic Messages 200 response role. The API currently returns only
@@ -332,6 +338,10 @@ data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+]
+
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessages200ContentBlock|residue:messages_200_content_block_internally_tagged_object_unproved|trigger:generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
 ]
 
 // -- Service: REST transport wiring ------------------------------

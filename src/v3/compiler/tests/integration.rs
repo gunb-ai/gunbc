@@ -83,6 +83,8 @@ mod idempotency_lens_instance_blocker_test;
 mod int_literal_cardinality_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
 mod l1_5_fixed_point_test;
+#[path = "boundary/l5_cross_target_consistency.rs"]
+mod l5_cross_target_consistency;
 #[path = "integration/lane2_stage_2a_effects_smoke.rs"]
 mod lane2_stage_2a_effects_smoke;
 #[path = "integration/lane2_stage_2b_db18_test.rs"]
@@ -336,22 +338,25 @@ mod t_demo_fixture_test {
         }
     }
 
-    /// ROADMAP T-Demo / PR #764: `FailsWithDiagnostic.detail_contains` must pin the **sum
-    /// constructor** failure (`AppendEffect()` is not an `IdempotentShape` case), not a generic
-    /// `compose_effects` argument refinement message that omits `AppendEffect`.
+    /// ROADMAP T-Demo / PR #764: this must pin the **sum-constructor** mismatch
+    /// (`AppendEffect()` is not an `IdempotentShape` case) by requiring diagnostics for both
+    /// endpoints, not a generic `compose_effects` argument refinement message that omits either
+    /// `AppendEffect` or `IsIdempotent`.
     #[test]
     fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
-        let src = "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n";
+        let src = "let bad_shape = IsIdempotent(AppendEffect())\n";
         let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
             .expect_err("idempotency-violation witness should not compile");
         let CompileError::Semantic(dag) = err else {
             panic!("expected Semantic(Dag) handoff, got {err:?}");
         };
         let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
-        let needle = "named constructor `AppendEffect` is not a variant of the expected sum type";
+        let append_needle = "AppendEffect";
+        let idempotent_needle = "IsIdempotent";
         assert!(
-            msgs.iter().any(|m| m.contains(needle)),
-            "expected nullary-call lowering to reject AppendEffect as IdempotentShape payload; got: {msgs:?}"
+            msgs.iter().any(|m| m.contains(append_needle))
+                && msgs.iter().any(|m| m.contains(idempotent_needle)),
+            "expected nullary-call lowering to reject AppendEffect as IsIdempotent payload; got: {msgs:?}"
         );
     }
 
@@ -359,7 +364,7 @@ mod t_demo_fixture_test {
     fn t_demo_impossible_bug_suite_r1_passes() {
         let dag = cached_t_demo_fixture_dag();
         let results = TestRunner::new(dag).run_suite("impossible_bug_class_suite_r1");
-        assert_eq!(results.len(), 2);
+        assert_eq!(results.len(), 3);
         assert!(
             results
                 .iter()

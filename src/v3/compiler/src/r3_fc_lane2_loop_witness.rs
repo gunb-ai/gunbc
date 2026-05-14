@@ -28,8 +28,40 @@
 //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect};
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use std::collections::BTreeMap;
+
+use crate::dag::{
+    CallableRef, Dag, HttpMethodScalar, InputField, Operation, PathTemplate, RestEndpointBinding,
+    UrlPathToken, WorkflowEffect,
+};
+use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
+
+fn lane2_witness_operation(
+    dag: &Dag,
+    name: &str,
+    method: HttpMethodScalar,
+    tokens: Vec<UrlPathToken>,
+) -> Operation {
+    let callable = dag
+        .declaration_by_name(name)
+        .expect("bootstrap should provide requested method declaration")
+        .id;
+    let inputs = tokens
+        .iter()
+        .filter_map(|token| match token {
+            UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
+            UrlPathToken::LiteralToken { .. } => None,
+        })
+        .collect::<BTreeMap<String, InputField>>();
+    Operation {
+        callable: CallableRef { decl: callable },
+        inputs,
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
+    }
+}
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
 
@@ -114,7 +146,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
             dag.attach_diagnostic(Diagnostic::ParseError {
                 message,
                 span,
-                fixes: vec![],
+                correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
             });
         }
         WitnessScan::Ok {
@@ -127,22 +159,24 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
             let wf = match kind {
                 WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![OperationEffect {
-                            operation_name: "r3_fc_read".to_string(),
-                            shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-                        }],
+                        ops: vec![lane2_witness_operation(
+                            dag,
+                            "get_method",
+                            HttpMethodScalar::Get,
+                            vec![],
+                        )],
                     }),
                 },
                 WitnessKind::UpsertLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![OperationEffect {
-                            operation_name: "r3_fc_upsert".to_string(),
-                            shape: EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-                                key_source: KeySource::PathParam {
-                                    param: "id".to_string(),
-                                },
-                            }),
-                        }],
+                        ops: vec![lane2_witness_operation(
+                            dag,
+                            "map_insert_method",
+                            HttpMethodScalar::Put,
+                            vec![UrlPathToken::ParamToken {
+                                name: "id".to_string(),
+                            }],
+                        )],
                     }),
                 },
                 WitnessKind::Unproven => unreachable!("filtered above"),
@@ -151,7 +185,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 dag.attach_diagnostic(Diagnostic::ParseError {
                     message: "`lane2_loop_witness` directive requires a workflow shell `Bind` to attach `lane2_workflow`; this program has no `Bind`".to_string(),
                     span: directive_span,
-                    fixes: vec![],
+                    correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
                 });
                 return;
             };
@@ -159,7 +193,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 dag.attach_diagnostic(Diagnostic::ParseError {
                     message: "`lane2_loop_witness`: cannot attach `lane2_workflow` (substrate supports Value/Bind nodes only)".to_string(),
                     span: directive_span,
-                    fixes: vec![],
+                    correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
                 });
             }
         }
@@ -169,7 +203,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
 #[cfg(test)]
 mod tests {
     use crate::compile_to_dag;
-    use crate::dag::{EffectShape, IdempotentShape, WorkflowEffect};
+    use crate::dag::{operation_effect_shape, EffectShape, IdempotentShape, WorkflowEffect};
     use crate::diagnostics::Diagnostic;
     use crate::CompileError;
 
@@ -200,8 +234,8 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                ops[0].shape,
-                                EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+                                operation_effect_shape(&dag, &ops[0]),
+                                Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
                             )
                 )
         ));
@@ -228,8 +262,8 @@ mod tests {
                     WorkflowEffect::LinearEffect { ops }
                         if ops.len() == 1
                             && matches!(
-                                ops[0].shape,
-                                EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+                                operation_effect_shape(&dag, &ops[0]),
+                                Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
                             )
                 )
         ));

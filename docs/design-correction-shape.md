@@ -1,10 +1,17 @@
 > Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 2 (all stages), Lane 3 Stage 3b, Lane 4 Stages 4b/4c
 
-# Design DB-1 — `Diagnostic.fix: List<Correction>` shape
+# Design DB-1 — mandatory `Diagnostic.correction: Correction` shape
 
 **Design blocker:** DB-1
 **Consumers:** Lane 2 (workflow idempotency lens, symbolic cost lens, parallelism lens); Lane 3 Stage 3b (diagnostics-as-corrections); Lane 4 Stages 4b/4c (side effects, space bounds — same Dimension diagnostic shape)
-**Status:** Design ready for implementer review.
+**Status:** Updated by R3 Gap 9 row #106. The original DB-1
+`fixes: List<Correction>` sketch is superseded for the authoritative
+diagnostic carrier by a mandatory sum:
+`Correction = LiveCorrection(CorrectionWitness) | DeferredCorrection`.
+Live multi-edit repairs are bundled into one source-level witness when
+applying a partial fix would leave the same diagnostic class failing;
+true alternative user choices remain future correction-workflow
+surface, not the mandatory carrier.
 
 ---
 
@@ -24,7 +31,7 @@ Available fields: a, b
 FIX: did you mean `point.a` or `point.b`?
 ```
 
-`FIX` lines are structured data (a *Correction* type), not free-text appended to messages. This lets IDE integrations apply the fix automatically, and it lets the compiler emit multiple alternative corrections.
+`FIX` lines are structured data (a *Correction* type), not free-text appended to messages. R3 row #106 tightened this from a list that could mean "no fix" into a single mandatory carrier: apply-able source rewrites are `LiveCorrection`, and residuals are explicit `DeferredCorrection` values with a retirement plan.
 
 Lane 2's property lenses will emit diagnostics when workflows break. If Lane 2 ships without knowing the Correction shape, every diagnostic gets retrofit in Lane 3b. That's avoidable.
 
@@ -37,11 +44,20 @@ Lane 2's property lenses will emit diagnostics when workflows break. If Lane 2 s
 Add to `src/v3/std/diagnostics.dag` (new, or extend existing):
 
 ```dag
-type Correction {
+type CorrectionWitness {
   description: String       // human-facing label for the fix option
   span: SourceSpan          // what the fix replaces (always in .dag source)
   new_source: String        // literal replacement code (always .dag syntax)
 }
+
+type RetirementPlan {
+  owner: String
+  exit_condition: String
+}
+
+type Correction
+  = LiveCorrection { witness: CorrectionWitness }
+  | DeferredCorrection { reason: String, retirement_plan: RetirementPlan }
 ```
 
 **Source-only by construction.** A `Correction` edits `.dag` source. There is no `target_language` field and no target-conditioned variant — if a fix were target-specific (e.g., "add `async` keyword to emitted Rust"), it would edit a derived target file, not `.dag` source, and therefore belongs in a different carrier (see "Future extension: TargetCorrection" below). Mixing the two domains inside one `Correction` admits a state the type cannot locate or own cleanly; the illegal-states-unrepresentable discipline forbids that shape.
@@ -53,13 +69,14 @@ type Diagnostic {
   kind: DiagnosticKind
   span: SourceSpan
   message: String
-  fixes: List<Correction>   // NEW: may be empty; never null
+  correction: Correction    // mandatory: live witness or explicit deferral
 }
 ```
 
 **Field discipline:**
-- `fixes: List<Correction>` not `fix: Correction?` — multiple alternative fixes are common (the `point.c` → `point.a OR point.b` case)
-- Empty list is legal — not every diagnostic has a mechanical fix. Type mismatch on a user's domain value may need human judgment.
+- `correction: Correction` not `fix: Correction?` or `fixes: List<Correction>` — absence is represented by a named `DeferredCorrection`, not by `None` or an empty list.
+- Multi-edit repairs that are needed together are bundled into one `LiveCorrection` witness. For example, a non-exhaustive match missing two constructors inserts both arms in one edit so the roundtrip can reach zero diagnostics.
+- Ambiguous human-choice alternatives are not smuggled in as an empty or partial fix. Until a richer choice workflow is modeled, diagnostics with no canonical source rewrite use `DeferredCorrection` and name their retirement plan.
 - `description` is short (≤60 chars), user-facing. e.g., "did you mean `point.a`?" or "wrap in Some"
 - `new_source` is the literal text that replaces `span`'s range. No markup, no placeholders.
 - `span` always locates within the user's `.dag` source. Target-file spans do not appear in this carrier.
@@ -121,25 +138,28 @@ Diagnostic generators producing target-specific fixes consult this style. Source
 
 ### Fix generators per diagnostic kind
 
-Each `DiagnosticKind` variant has an associated fix generator. Not every kind needs fixes; those that don't emit an empty list.
+Each `DiagnosticKind` variant has an associated correction generator.
+Generators return one mandatory `Correction`: a `LiveCorrection` when
+they can produce an apply-able source rewrite, otherwise a
+`DeferredCorrection` naming the retirement plan.
 
 Starter catalog (more added as lanes progress):
 
-| DiagnosticKind | Fix generator | Number of fixes emitted |
+| DiagnosticKind | Correction generator | Carrier shape |
 |---|---|---|
-| `FieldNotFound { type_name, bad_field, available }` | "did you mean `{available[i]}`?" for each field | len(available), bounded to 5 |
-| `NonExhaustiveMatch { scrutinee, missing_variants }` | Insert arm `{variant} => todo()` for each missing | len(missing) (or 1 bundled) |
-| `TypeMismatch { expected, got, expr_span }` | Option A: change annotation to `got`; Option B: change value to match `expected` | 2 |
-| `UnresolvedIdentifier { name, suggestions }` | "did you mean `{suggestions[i]}`?" | len(suggestions), bounded |
-| `UnusedParameter { param_name }` | Prefix `_` to param (rename) OR remove param | 2 |
-| `IdempotencyBreak { op_name, reason }` | Wrap op in idempotent adapter (if possible) OR remove from retry context | 1–2 |
-| `NonTerminatingRecursion { fn_name }` | Add `where` clause with descent evidence; add bound parameter | 2 |
-| `WorkflowBreaksIdempotency { breaking_op }` | Remove op from workflow; replace with idempotent equivalent | 0–2 |
+| `FieldNotFound { type_name, bad_field, available }` | "did you mean `{available[i]}`?" when one structural suggestion is canonical | `LiveCorrection` or `DeferredCorrection` for ambiguous choices |
+| `NonExhaustiveMatch { scrutinee, missing_variants }` | Insert all missing arms in one edit | `LiveCorrection` |
+| `TypeMismatch { expected, got, expr_span }` | Canonical rewrite when structurally known | `LiveCorrection` or `DeferredCorrection` for semantic choices |
+| `UnresolvedIdentifier { name, suggestions }` | Rename to the sole structural suggestion | `LiveCorrection` or `DeferredCorrection` for ambiguous suggestions |
+| `UnusedParameter { param_name }` | Prefix `_` when that is the canonical repair | `LiveCorrection` |
+| `IdempotencyBreak { op_name, reason }` | Wrap op in idempotent adapter when available | `LiveCorrection` or `DeferredCorrection` |
+| `NonTerminatingRecursion { fn_name }` | Add descent evidence when derivable | `LiveCorrection` or `DeferredCorrection` |
+| `WorkflowBreaksIdempotency { breaking_op }` | Remove/replace op when canonical | `LiveCorrection` or `DeferredCorrection` |
 
 A fix generator is a pure function:
 
 ```dag
-fn generate_fixes(d: Dag, diag: Diagnostic) -> List<Correction>
+fn generate_correction(d: Dag, diag: Diagnostic) -> Correction
 ```
 
 Dispatched by `diag.kind` variant. Implementation per variant lives in `src/v3/lenses/corrections.dag` (new).
@@ -161,18 +181,10 @@ Diagnostic {
   }
   span: <p.c span>
   message: "field `c` does not exist on Point"
-  fixes: [
-    Correction {
-      description: "did you mean `p.a`?"
-      span: <p.c span>
-      new_source: "p.a"
-    }
-    Correction {
-      description: "did you mean `p.b`?"
-      span: <p.c span>
-      new_source: "p.b"
-    }
-  ]
+  correction: DeferredCorrection {
+    reason: "FieldNotFound has multiple valid field repairs: a, b"
+    retirement_plan: { owner: "R3 Gap 9 row #106", exit_condition: "field-choice correction workflow lands" }
+  }
 }
 ```
 
@@ -184,15 +196,16 @@ ERROR at line 1, col 27: field `c` does not exist on Point
                               ^
 
 Available fields: a, b
-FIX (option 1): did you mean `p.a`?
-FIX (option 2): did you mean `p.b`?
+No `FIX` line renders until the diagnostic carries a `LiveCorrection`;
+the explicit deferral remains machine-visible for the row #106
+retirement tally.
 ```
 
 ---
 
 ## Rationale
 
-**Why `List<Correction>` not `Option<Correction>`?** Multiple valid fixes are common. `point.c` could be `point.a` or `point.b`. Type mismatch has two symmetric fixes (change the annotation vs change the value). Forcing a single fix means picking arbitrarily or synthesizing a "fix = null, see message" case.
+**Why mandatory `Correction` not `Option<Correction>` or `List<Correction>`?** Multiple valid user choices are common, but a list also made absence look legitimate (`[]`) and allowed partial repairs to masquerade as complete fixes. Row #106 makes the state explicit: one live witness when the compiler knows a roundtrip repair, or one named deferral when it does not. A future choice workflow can add a separate carrier without weakening the mandatory diagnostic contract.
 
 **Why `new_source: String` not `Edit { insertions, deletions }`?** The replacement text IS the fix. Span + new text = minimal information. Edits are reconstructable from span+new: the editor sees "replace span with new_source" and does a simple substitution. Modeling granular edits is premature (the IDE will chunk them anyway).
 
@@ -210,7 +223,7 @@ FIX (option 2): did you mean `p.b`?
 
 **`Fix` as an enum (`Rename`, `Insert`, `Replace`, `Remove`)** — too taxonomy-heavy. All fixes reduce to "at span X, new text is Y." Rejected; would need to be reassembled on the way out anyway.
 
-**One `Correction` per diagnostic, add separate `alternatives: List<Correction>`** — implies hierarchy the compiler doesn't actually have. `point.a` is not more correct than `point.b`. Rejected.
+**One `LiveCorrection` plus hidden alternatives** — implies hierarchy the compiler doesn't actually have. `point.a` is not more correct than `point.b`. Until alternatives are first-class, use `DeferredCorrection` instead of picking arbitrarily.
 
 **Per-target Correction type (`RustCorrection`, `PythonCorrection`, etc.)** — violates single-authority. The Correction type IS language-agnostic; the style IS per-target. Clean separation. Rejected (the hyphenated design above).
 
@@ -218,11 +231,10 @@ FIX (option 2): did you mean `p.b`?
 
 ## Implementation notes
 
-- **Empty `fixes: []`** is the default for any diagnostic lacking a generator. Implementers adding new `DiagnosticKind` variants MUST either add a fix generator or document why no fix is possible.
-- **Fix generation is pure** — no I/O, no mutation. Takes `(Dag, Diagnostic)`, returns `List<Correction>`.
-- **Generated fixes MUST parse in context** — Lane 3 Stage 3b adds a test gate: apply each emitted `Correction` to the source at `Correction.span`, then re-run tokenize + parse (and for the shipped fixtures, full `compile_to_dag`). If the applied source hits `TokenizerError` or `ParseError`, the fix generator is broken. Fragment fixes like `ok` or `A => 1` are not standalone programs; the gate is on the repaired source artifact, not the raw replacement string in isolation.
-- **Generated fixes MUST NOT break the program** — stronger test gate (optional, Lane 3b extension): applying a fix should at minimum reduce the diagnostic count, not increase it.
-- **Ordering matters** — fixes are shown to users in list order. Most-likely first. `point.a OR point.b` ordering can be alphabetic; `change annotation OR change value` should order by which the user probably wants (heuristic: keep-annotation-change-value first for explicit annotations, flip otherwise).
+- **DeferredCorrection is the default for any diagnostic lacking a live generator.** Implementers adding new `DiagnosticKind` variants MUST either add a live generator or name the deferral retirement plan.
+- **Correction generation is pure** — no I/O, no mutation. Takes `(Dag, Diagnostic)`, returns `Correction`.
+- **Generated live corrections MUST parse in context** — Lane 3 Stage 3b adds a test gate: apply each emitted `LiveCorrection` to the source at `CorrectionWitness.span`, then re-run tokenize + parse (and for the shipped fixtures, full `compile_to_dag`). Fragment fixes like `ok` or `A => 1` are not standalone programs; the gate is on the repaired source artifact, not the raw replacement string in isolation.
+- **Generated live corrections MUST NOT leave the same diagnostic class failing** — when a repair needs multiple edits in the same span, bundle them into one witness.
 
 ---
 
@@ -240,16 +252,16 @@ FIX (option 2): did you mean `p.b`?
 ## Acceptance (Lane 3 Stage 3b owns)
 
 - [ ] `Correction` type declared in `std/diagnostics.dag` with receipt 🟢
-- [ ] `Diagnostic.fixes: List<Correction>` field added (empty list = "no mechanical fix")
+- [ ] `Diagnostic.correction: Correction` field added (live witness or explicit deferral)
 - [ ] `CorrectionStyle` type declared in `std/clean_emission.dag`; `rust_correction_style`, `python_correction_style`, `go_correction_style` data items in each target spec
-- [ ] Fix generators for the 8 starter diagnostic kinds (table above) live in `lenses/corrections.dag` and pass unit tests
-- [ ] Every new `DiagnosticKind` variant added after this design either has a fix generator OR documents why not (code comment at the variant declaration)
-- [ ] Gate test: every emitted fix applies to the source at `Correction.span` and the repaired source reparses (plus cleanly recompiles for the shipped Stage 3b fixtures)
+- [ ] Correction generators for the 8 starter diagnostic kinds (table above) live in `lenses/corrections.dag` and pass unit tests
+- [ ] Every new `DiagnosticKind` variant added after this design either has a live generator OR emits a `DeferredCorrection` with a named retirement plan
+- [ ] Gate test: every emitted live correction applies to the source at `CorrectionWitness.span` and the repaired source reparses (plus cleanly recompiles for the shipped Stage 3b fixtures)
 
 ---
 
 ## Open questions
 
-1. **Should Corrections carry confidence scores?** For ambiguous cases (multiple fields within edit distance 1), ranking matters. For now: skip scores, rely on list ordering. If IDE integration needs scores, add in a follow-up.
+1. **Should ambiguous alternatives carry confidence scores?** For ambiguous cases (multiple fields within edit distance 1), ranking belongs to the future structured-choice workflow, not to the mandatory `Correction` carrier. For now: emit `DeferredCorrection` with the concrete candidate labels in `reason`; when IDE integration needs ranked choices, add them to that separate workflow surface.
 2. **Can fixes reference other parts of the program?** E.g., "create a missing type `Point` at top of file to match this usage." Cross-span fixes are a stretch goal. For now: single-span fixes only.
 3. **What about target-conditional fixes?** Not in this carrier. A diagnostic that specifically lives at the emitted-target level (e.g., "the emitted Rust triggers a rustfmt warning; here's how to fix the Rust") edits target source, not `.dag` source, and therefore belongs in the future `TargetCorrection` type (sketched in §"Future extension"). The split is by authoring domain, not by flag on a shared carrier.

@@ -11,9 +11,13 @@
 //! no intentionally-wrong deferred carrier here; unsupported control
 //! flow is modeled via explicit sums, not silent placeholders.
 //!
-//! Extracted from `dag.rs` (L4b). No behavior change.
+//! The L4b extraction has since grown the native Stage 2 bridge for
+//! `Operation`-based effect classification; see `operation_effect_shape` for
+//! the live transitional contract and dissolution receipt.
 
-use super::{BoolPortRef, Dag, ElementRef, NodeId, NonSingletonList};
+use std::collections::BTreeMap;
+
+use super::{BoolPortRef, Dag, DeclarationId, ElementRef, NodeId, NonSingletonList};
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
 /// naming authority is `effects.dag`.
@@ -34,7 +38,6 @@ pub enum HttpMethodScalar {
 pub enum KeySource {
     PathParam { param: String },
     InputField { field: String },
-    CompositeKey { fields: Vec<String> },
 }
 
 /// 🟢 **TERMINAL.** Why a create-shaped op is classified breaking — mirrors
@@ -70,17 +73,57 @@ pub enum EffectShape {
     IsBreaking(BreakingShape),
 }
 
-/// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
-/// `OperationEffect` record in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OperationEffect {
-    pub operation_name: String,
-    pub shape: EffectShape,
+pub enum EffectClassificationFailure {
+    StdMethodAnchorResolutionFailed,
+}
+
+/// 🟢 **TERMINAL.** Path token used by `Operation.endpoint.path`; mirrors the
+/// path-template authority imported by `services.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UrlPathToken {
+    LiteralToken { text: String },
+    ParamToken { name: String },
+}
+
+/// 🟢 **TERMINAL.** REST path template carried by `Operation.endpoint`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PathTemplate {
+    pub tokens: Vec<UrlPathToken>,
+}
+
+/// 🟢 **TERMINAL.** Per-input metadata slot keyed by `Operation.inputs`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct InputField {}
+
+/// 🟡 **TRANSITIONAL.** Native mirror of `services.dag::CallableRef`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallableRef {
+    pub decl: DeclarationId,
+}
+
+/// 🟢 **TERMINAL.** Native mirror of `services.dag::RestEndpointBinding`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestEndpointBinding {
+    pub method: HttpMethodScalar,
+    pub path: PathTemplate,
+}
+
+/// 🟢 **TERMINAL.** Canonical service operation row.
+///
+/// This intentionally has no authored effect-shape field. Stage 2 derives the
+/// effect partition from `endpoint` until callable inhabitance facts are
+/// executable through the bootstrapped evaluator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Operation {
+    pub callable: CallableRef,
+    pub inputs: BTreeMap<String, InputField>,
+    pub endpoint: RestEndpointBinding,
 }
 
 /// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
 /// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
-/// `ElementRef<OperationEffect>` closes the "copied standalone breaker
+/// `ElementRef<Operation>` closes the "copied standalone breaker
 /// record" hole by replacing the copied payload with a validated index,
 /// but it does not by itself preserve the owner list identity or prove
 /// the pointed operation is breaking. Those facts are still established
@@ -92,7 +135,7 @@ pub struct OperationEffect {
 pub enum CompositionVerdict {
     IdempotentComposition,
     BrokenBy {
-        first_breaker: ElementRef<OperationEffect>,
+        first_breaker: ElementRef<Operation>,
     },
 }
 
@@ -111,7 +154,7 @@ pub struct BranchArm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowEffect {
     LinearEffect {
-        ops: Vec<OperationEffect>,
+        ops: Vec<Operation>,
     },
     BranchEffect {
         arms: NonSingletonList<BranchArm>,
@@ -147,7 +190,7 @@ impl BranchArm {
 }
 
 impl WorkflowEffect {
-    pub fn operation_at(&self, element: ElementRef<OperationEffect>) -> Option<&OperationEffect> {
+    pub fn operation_at(&self, element: ElementRef<Operation>) -> Option<&Operation> {
         match self {
             Self::LinearEffect { ops } => element.get(ops),
             Self::ParallelEffect { branches } => {
@@ -232,15 +275,161 @@ pub enum WorkflowParallelismReport {
 // co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
-pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
+pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> Option<EffectShape> {
+    classify_operation_effect(dag, effect).ok()
+}
+
+pub(crate) fn classify_operation_effect(
+    dag: &Dag,
+    effect: &Operation,
+) -> Result<EffectShape, EffectClassificationFailure> {
+    let callable = effect.callable.decl;
+    let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
+        return Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed);
+    };
+    if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
+        return Ok(EffectShape::IsBreaking(BreakingShape::AppendEffect));
+    }
+    if callable == methods.concat && effect.endpoint.method == HttpMethodScalar::Post {
+        return Ok(EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        }));
+    }
+    if methods.reads.contains(&callable) && method_is_read(effect.endpoint.method) {
+        return Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect));
+    }
+    if methods.upserts.contains(&callable) && method_is_upsert(effect.endpoint.method) {
+        return Ok(keyed_upsert_or_keyless_break(effect));
+    }
+    if callable == methods.delete && effect.endpoint.method == HttpMethodScalar::Delete {
+        return Ok(keyed_delete_or_keyless_break(effect));
+    }
+    Ok(transport_effect_shape(effect))
+}
+
+struct StdEffectMethodAnchors {
+    append: DeclarationId,
+    concat: DeclarationId,
+    reads: [DeclarationId; 7],
+    upserts: [DeclarationId; 3],
+    delete: DeclarationId,
+}
+
+impl StdEffectMethodAnchors {
+    fn resolve(dag: &Dag) -> Option<Self> {
+        Some(Self {
+            append: unique_decl_id(dag, "append_method")?,
+            concat: unique_decl_id(dag, "concat_method")?,
+            reads: [
+                unique_decl_id(dag, "get_method")?,
+                unique_decl_id(dag, "lookup_method")?,
+                unique_decl_id(dag, "map_get_method")?,
+                unique_decl_id(dag, "has_method")?,
+                unique_decl_id(dag, "map_has_method")?,
+                unique_decl_id(dag, "count_method")?,
+                unique_decl_id(dag, "length_method")?,
+            ],
+            upserts: [
+                unique_decl_id(dag, "map_insert_method")?,
+                unique_decl_id(dag, "replace_method")?,
+                unique_decl_id(dag, "with_method")?,
+            ],
+            delete: unique_decl_id(dag, "diff_method")?,
+        })
+    }
+}
+
+fn unique_decl_id(dag: &Dag, name: &str) -> Option<DeclarationId> {
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.name.as_deref() == Some(name))
+        .map(|decl| decl.id);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first)
+}
+
+fn transport_effect_shape(effect: &Operation) -> EffectShape {
+    match effect.endpoint.method {
+        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        }
+        HttpMethodScalar::Put | HttpMethodScalar::Patch => keyed_upsert_or_keyless_break(effect),
+        HttpMethodScalar::Delete => keyed_delete_or_keyless_break(effect),
+        HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        }),
+    }
+}
+
+fn keyed_upsert_or_keyless_break(effect: &Operation) -> EffectShape {
+    match operation_resource_key(effect) {
+        Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::PathParam { param },
+        }),
+        None => keyless_break(effect),
+    }
+}
+
+fn keyed_delete_or_keyless_break(effect: &Operation) -> EffectShape {
+    match operation_resource_key(effect) {
+        Some(param) => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::PathParam { param },
+        }),
+        None => keyless_break(effect),
+    }
+}
+
+fn keyless_break(effect: &Operation) -> EffectShape {
+    EffectShape::IsBreaking(BreakingShape::CreateEffect {
+        cause: CreateCause::KeylessFallback {
+            method: effect.endpoint.method,
+        },
+    })
+}
+
+fn method_is_read(method: HttpMethodScalar) -> bool {
+    matches!(
+        method,
+        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options
+    )
+}
+
+fn method_is_upsert(method: HttpMethodScalar) -> bool {
+    matches!(method, HttpMethodScalar::Put | HttpMethodScalar::Patch)
+}
+
+fn operation_resource_key(effect: &Operation) -> Option<String> {
+    last_path_param(effect)
+}
+
+fn last_path_param(effect: &Operation) -> Option<String> {
+    effect.endpoint.path.tokens.iter().rev().find_map(|token| {
+        let UrlPathToken::ParamToken { name } = token else {
+            return None;
+        };
+        effect.inputs.contains_key(name).then(|| name.clone())
+    })
+}
+
+pub(crate) fn compose_operation_effects(
+    dag: &Dag,
+    effects: &[Operation],
+) -> Result<CompositionVerdict, EffectClassificationFailure> {
     for (index, effect) in effects.iter().enumerate() {
-        if matches!(effect.shape, EffectShape::IsBreaking(_)) {
+        if matches!(
+            classify_operation_effect(dag, effect)?,
+            EffectShape::IsBreaking(_)
+        ) {
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
-            return CompositionVerdict::BrokenBy { first_breaker };
+            return Ok(CompositionVerdict::BrokenBy { first_breaker });
         }
     }
-    CompositionVerdict::IdempotentComposition
+    Ok(CompositionVerdict::IdempotentComposition)
 }
 
 /// Pure projection used by Stage 2b — kept aligned with
@@ -261,17 +450,29 @@ pub fn report_unsupported_workflow_variant(
 
 /// Native-Dag entry for the `std.effects::lane2_workflow_idempotency_report`
 /// algebra (same cases as the `.dag` `match`).
-pub fn lane2_workflow_idempotency_report(workflow: &WorkflowEffect) -> WorkflowIdempotencyReport {
-    project_workflow_idempotency_report(workflow)
+pub fn lane2_workflow_idempotency_report(
+    dag: &Dag,
+    workflow: &WorkflowEffect,
+) -> WorkflowIdempotencyReport {
+    project_workflow_idempotency_report(dag, workflow)
 }
 
 pub(crate) fn project_workflow_idempotency_report(
+    dag: &Dag,
     workflow: &WorkflowEffect,
 ) -> WorkflowIdempotencyReport {
     match workflow {
-        WorkflowEffect::LinearEffect { ops } => WorkflowIdempotencyReport::WorkflowCompositionVerdict(
-            compose_operation_effects(ops.as_slice()),
-        ),
+        WorkflowEffect::LinearEffect { ops } => match compose_operation_effects(dag, ops.as_slice())
+        {
+            Ok(verdict) => WorkflowIdempotencyReport::WorkflowCompositionVerdict(verdict),
+            Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
+                    variant_name: "LinearEffect".to_string(),
+                    downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
+                    reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely produce a CompositionVerdict".to_string(),
+                })
+            }
+        },
         WorkflowEffect::BranchEffect { .. } => WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
                 variant_name: "BranchEffect".to_string(),
@@ -313,5 +514,5 @@ pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyRe
                 .to_string(),
         });
     };
-    project_workflow_idempotency_report(workflow)
+    project_workflow_idempotency_report(d, workflow)
 }

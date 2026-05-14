@@ -52,7 +52,7 @@ fn effects_dag_bootstraps_without_diagnostics() {
 fn effects_dag_exposes_five_representative_function_signatures() {
     let dag = Dag::new();
 
-    // Five representative function signatures from the Stage 2a scope
+    // Representative function signatures from the Stage 2a scope
     // — one per algebraic concern the downstream lens pipeline uses.
     // Per-arrow body-state is not asserted here because bootstrap
     // lowers bodies into whatever shape the current compiler can
@@ -61,8 +61,6 @@ fn effects_dag_exposes_five_representative_function_signatures() {
     for name in [
         "is_idempotent_effect",
         "compose_effects",
-        "derive_effect_shape",
-        "check_modifier_vs_derivation",
         "generate_idempotency_obligations",
     ] {
         let _body = arrow_body(&dag, name);
@@ -94,10 +92,7 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "KeySource",
         "IdempotencyEvidence",
         "CompositionVerdict",
-        "OperationEffect",
-        "ModifierAgreement",
-        "ModifierAxisCheck",
-        "ModifierCheck",
+        "Operation",
         "WorkflowEffect",
         "BoolPortRef",
         "BranchArm",
