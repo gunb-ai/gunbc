@@ -23,16 +23,24 @@ This doc specifies the compiler-derived-optimal shape as a NEW lens-tier feature
 
 ### §1.1 Lens output
 
-For any program scope (function body / region / module), the tightness lens produces:
+For any program scope (function body / region / module), the tightness lens produces a discriminated result — the variant tag IS the proof relationship (no derivation-witness-detached-from-axes shape):
 
 ```
-data TightnessAnalysis = {
-  actual: AsymptoticClass,            // complexity as-written (current lens output post-Gap-11)
-  tight: AsymptoticClass,             // complexity achievable via semantics-preserving transformations
-  transformations: List<TightnessTransformation>,  // named transformations bridging actual → tight
-  section: SectionRef,                // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
-}
+data TightnessAnalysis
+  = AlreadyTight {
+      actual: AsymptoticClass,        // = tight by construction; no derivation needed
+      section: SectionRef,
+    }
+  | Loose {
+      actual: AsymptoticClass,        // complexity as-written (current lens output post-Gap-11)
+      tight: AsymptoticClass,         // structurally distinct from actual (asymptotic_dominates(actual, tight))
+      first_transformation: TightnessTransformation,         // ≥1 enforced structurally (no empty/disconnected derivation)
+      additional_transformations: List<TightnessTransformation>,  // optional ordered tail
+      section: SectionRef,            // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
+    }
 ```
+
+The discrimination encodes the Loose-vs-AlreadyTight precondition into the type: `AlreadyTight` cannot carry a transformation (no field exists); `Loose` cannot exist without ≥1 transformation (`first_transformation` is non-optional). The cases `actual == tight` ∧ `transformations non-empty` AND `actual > tight` ∧ `transformations empty` are both structurally impossible.
 
 ### §1.2 Transformation vocabulary
 
@@ -49,13 +57,16 @@ data TightnessAnalysis = {
 
 ### §1.3 Diagnostic
 
-When `asymptotic_dominates(actual, tight)` is True AND actual ≠ tight:
+When the lens produces a `Loose` variant (variant tag IS the precondition check — no runtime `actual > tight` comparison; structurally enforced via the discriminated TightnessAnalysis at §1.1):
 
 ```
-TightnessViolation: code as written is {actual_class} but structurally-derivable
-tight bound is {tight_class}. Applicable transformations: [{transformation_list}].
+TightnessViolation: code as written is {loose.actual} but structurally-derivable
+tight bound is {loose.tight}. Applicable transformations:
+  [{loose.first_transformation}, ...loose.additional_transformations].
   --> {span_at_the_loose_region}
 ```
+
+`AlreadyTight` variants emit no diagnostic — structurally cannot enter the violation path.
 
 - **Severity**: `Error` (always-on for compiler-internal; per-`EnforcedTightness` declared for user programs)
 - **Layer-1 kind label**: `TightnessViolation` (new diagnostic class)
@@ -209,22 +220,42 @@ type TightnessTransformation
 // cannot pair with AssociativeReduce evidence. No parallel TransformationEvidence
 // coproduct + no bare List<NodeId> admitting wrong arities.
 
-// 🟢 TERMINAL at the tightness-analysis scope. Bundles lens output (actual + tight
-// asymptotic classes), the bridging transformation list with evidence proofs,
-// and the section the analysis applies to.
-type TightnessAnalysis = {
-  actual: AsymptoticClass
-  tight: AsymptoticClass
-  transformations: List<TightnessTransformation>
-  section: SectionRef
-  // Note: section: SectionRef (NOT DeclarationScope which is a variant of SectionRef)
-  // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
-}
+// 🟢 TERMINAL at the tightness-analysis scope. Discriminated result —
+// variant tag IS the derivation predicate (AlreadyTight ≡ actual == tight;
+// Loose ≡ asymptotic_dominates(actual, tight) ∧ actual ≠ tight).
+//
+// Per openai-pro BLOCKING PR #3067 2026-05-14: previous flat-field shape
+// (actual + tight + transformations: List<TightnessTransformation> + section)
+// admitted two illegal states:
+//   1. actual == tight with non-empty `transformations` (violation reported on
+//      a non-violation result)
+//   2. actual > tight with empty `transformations` (violation with empty/
+//      disconnected derivation; the diagnostic at §1.3 promises an "applicable
+//      transformations" list but the carrier didn't structurally enforce it)
+// Fix per `feedback_state_space_vs_behavioral_invariants`: discriminate the
+// result. AlreadyTight has no `tight` field (it equals `actual` by construction)
+// and no `transformations` field (none needed). Loose enforces ≥1 transformation
+// structurally via `first_transformation` + `additional_transformations`
+// decomposition (matches the MapFilterFoldFusion ≥2 enforcement at §1.5/
+// TightnessTransformation block — same Practice-2 pattern).
+type TightnessAnalysis
+  = AlreadyTight {
+      actual: AsymptoticClass             // = tight by construction; no separate tight field
+      section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
+    }
+  | Loose {
+      actual: AsymptoticClass             // complexity as-written
+      tight: AsymptoticClass              // structurally distinct from actual (asymptotic_dominates(actual, tight) by construction)
+      first_transformation: TightnessTransformation         // ≥1 enforced — no empty derivation possible
+      additional_transformations: List<TightnessTransformation>  // ordered tail; empty for single-transformation derivations
+      section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178
+    }
 
 // Self-comparison carrier — STRUCTURALLY DISTINCT from EnforcedApplication
 // (which is user-budget comparison). Tightness is self-comparison: lens
-// produces TightnessAnalysis carrying both projection axes (actual + tight);
-// enforcement compares them internally. No user-declared budget field.
+// produces discriminated TightnessAnalysis (AlreadyTight carries actual only;
+// Loose carries actual + tight + ≥1 transformation derivation); enforcement
+// dispatches on the variant tag. No user-declared budget field.
 //
 // Per codex BLOCKING #11751 PR #3067 2026-05-14: previous 3-param mirror of
 // EnforcedApplication<Output, Budget, Projected> created structural mismatch
@@ -237,9 +268,10 @@ type TightnessAnalysis = {
 // Per codex BLOCKING PR #3067 2026-05-14: previous `EnforcedTightness<Output>`
 // generic over any `Lens<Output>` was too permissive — admitted invalid
 // instantiations like `EnforcedTightness<ComplexitySummary>` (where
-// ComplexitySummary lacks the actual/tight projection axes the enforcement
-// logic requires). Prose-only "Output MUST be TightnessAnalysis-like" contract
-// is NOT type-enforcement; concretization locks the contract at the type level.
+// ComplexitySummary lacks the AlreadyTight|Loose discrimination the
+// enforcement logic dispatches on). Prose-only "Output MUST be
+// TightnessAnalysis-like" contract is NOT type-enforcement; concretization
+// locks the contract at the type level.
 //
 // Tightness-style enforcement for OTHER lens output domains (e.g., future
 // timing-tightness, memory-tightness) creates its own concrete carrier
@@ -248,14 +280,17 @@ type TightnessAnalysis = {
 // how `EnforcedApplication<Output, Budget, Projected>` family members handle
 // per-domain budget enforcement at the type level rather than via prose contract.
 type EnforcedTightness {
-  lens: Lens<TightnessAnalysis>       // type-locked to TightnessAnalysis (which carries actual + tight projection axes)
+  lens: Lens<TightnessAnalysis>       // type-locked to TightnessAnalysis (discriminated AlreadyTight | Loose per §1.1 / §1.5)
   section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 (SectionRef type, DeclarationScope is a variant)
   diagnostic_severity: DiagnosticSeverity  // src/v3/std/lens_application.dag:84 (single-variant Error per feedback_fail_closed_discipline + INVARIANTS C-8); NOT dsl/std/behavioral.dag::Severity (4-variant unrelated to lens discipline)
   span: SourceSpan
   //
-  // Enforcement logic (lens-internal): asymptotic_dominates(TightnessAnalysis.actual,
-  // TightnessAnalysis.tight) — if True AND actual ≠ tight, emit TightnessViolation
-  // diagnostic at span. Both projection axes are compiler-derived; no user budget.
+  // Enforcement logic (lens-internal): the lens produces a discriminated
+  // TightnessAnalysis (AlreadyTight | Loose). On AlreadyTight: no-op. On Loose:
+  // emit TightnessViolation diagnostic at span citing `Loose.first_transformation`
+  // + `Loose.additional_transformations`. No runtime `actual > tight` comparison
+  // needed at enforcement-time — the variant tag IS the precondition check (per
+  // openai-pro BLOCKING PR #3067 2026-05-14 + §1.1 discriminated shape).
   //
   // Semantic distinction from EnforcedApplication<Output, Budget, Projected>:
   //   - EnforcedApplication carries a USER-DECLARED `budget: Budget` field; user
@@ -276,7 +311,7 @@ Example use-site declaration (1-param self-comparison shape; lens is `Lens<Tight
 
 ```
 data witness_tightness: EnforcedTightness = {
-  lens: lens_complexity_tight              // produces TightnessAnalysis with actual + tight projections
+  lens: lens_complexity_tight              // produces discriminated TightnessAnalysis (AlreadyTight | Loose); Loose carries actual + tight + ≥1 transformation
   section: DeclarationScope { declaration: my_function }
   diagnostic_severity: Error
   span: { file: "...", start: ..., end: ... }
@@ -306,9 +341,11 @@ Per `feedback_no_textual_enforcement_bridges` — close criterion is a substrate
 # Predicate at gate close:
 cargo test --release -p v3-compiler --test integration complexity_tightness_compile_error_demonstrated
 # returns: PASS with at least 1 fixture demonstrating:
-#   - code structurally classified as ClassQuadratic
-#   - tight_class proved as ClassLinear via ConstantBoundPropagation transformation
-#   - Error/TightnessViolation diagnostic produced at fixture span
+#   - lens produces TightnessAnalysis::Loose variant (per §1.1 discriminated shape)
+#   - Loose.actual = ClassQuadratic
+#   - Loose.tight = ClassLinear
+#   - Loose.first_transformation = ConstantBoundPropagation { ... }
+#   - Error/TightnessViolation diagnostic produced at fixture span citing transformations
 ```
 
 Plus compiler-internal-code build invariant:
@@ -316,7 +353,8 @@ Plus compiler-internal-code build invariant:
 ```
 # Every compiler-authored function (.dag or Rust) ratchet-checked tightness-clean at HEAD:
 cargo test --release -p v3-compiler --test integration compiler_internal_code_tightness_clean
-# returns: PASS — no tightness violation in src/v3/* or dsl/std/*
+# returns: PASS — every src/v3/* and dsl/std/* function produces TightnessAnalysis::AlreadyTight
+# (no Loose variants permitted in compiler-internal code)
 ```
 
 ## §5. PM-recommended gate-row shape
@@ -325,7 +363,7 @@ Two options for §1.8 placement:
 
 **Option A — Sub-promise under existing gate #79**:
 - Gate #79 `complexity_lens_behaviorally_complete` expanded scope to include tightness lens behavior
-- Sub-promise wording: "complexity lens produces both `ComplexitySummary` (actual class) AND `TightnessAnalysis` (tight class + transformations); EnforcedApplication + EnforcedTightness both fail-closed on violations"
+- Sub-promise wording: "complexity lens produces both `ComplexitySummary` (actual class) AND `TightnessAnalysis` (discriminated `AlreadyTight | Loose` per §1.1 — Loose carries tight + ≥1-enforced transformation derivation); EnforcedApplication + EnforcedTightness both fail-closed on violations (Loose variant emits TightnessViolation; AlreadyTight is no-op)"
 - Pro: doesn't expand §1.8 row count; folds into existing lens-behavioral-parity work
 - Con: gate #79 already has substantial scope (symbolic CostExpr + work/span split + asymptotic classification + cementing receipt); adding tightness may blur the gate's success criterion
 
