@@ -1010,33 +1010,42 @@ fn workflow_path_regex_forbidden_substrings() -> impl Iterator<Item = &'static s
         })
 }
 
-// Scans every `.github/workflows/*.{yml,yaml}` (same fingerprint scope as the shell ratchet).
+// Scans tracked `.github/workflows/*.{yml,yaml}` via `git ls-files` (same enumeration as
+// `check-workflow-path-regex-inventory.sh`), not `read_dir` (avoids untracked / non-repo files).
 #[test]
 fn workflow_no_path_regex_policy_ci_yml() {
     use std::fs;
     use std::path::Path;
+    use std::process::Command;
 
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let repo_root = repo_root
         .canonicalize()
         .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
-    let workflows_dir = repo_root.join(".github/workflows");
-    let entries = fs::read_dir(&workflows_dir)
-        .unwrap_or_else(|e| panic!("read_dir {}: {e}", workflows_dir.display()));
+
+    let output = Command::new("git")
+        .current_dir(&repo_root)
+        .args([
+            "ls-files",
+            "-z",
+            ".github/workflows/*.yml",
+            ".github/workflows/*.yaml",
+        ])
+        .output()
+        .unwrap_or_else(|e| panic!("spawn git ls-files: {e}"));
+    assert!(
+        output.status.success(),
+        "git ls-files failed (cwd={}): stderr={}",
+        repo_root.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let mut scanned = 0usize;
-    for entry in entries {
-        let entry = entry.expect("workflow dir entry");
-        let path = entry.path();
-        if !path.is_file() {
+    for rel in String::from_utf8_lossy(&output.stdout).split('\0') {
+        if rel.is_empty() {
             continue;
         }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !(name.ends_with(".yml") || name.ends_with(".yaml")) {
-            continue;
-        }
+        let path = repo_root.join(rel);
         let raw =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         scanned += 1;
@@ -1050,8 +1059,7 @@ fn workflow_no_path_regex_policy_ci_yml() {
     }
     assert!(
         scanned > 0,
-        "{} must contain at least one workflow file (.yml / .yaml)",
-        workflows_dir.display()
+        "git ls-files must report at least one tracked workflow under .github/workflows/"
     );
 }
 
