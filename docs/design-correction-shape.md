@@ -262,6 +262,6 @@ retirement tally.
 
 ## Open questions
 
-1. **Should Corrections carry confidence scores?** For ambiguous cases (multiple fields within edit distance 1), ranking matters. For now: skip scores, rely on list ordering. If IDE integration needs scores, add in a follow-up.
+1. **Should ambiguous alternatives carry confidence scores?** For ambiguous cases (multiple fields within edit distance 1), ranking belongs to the future structured-choice workflow, not to the mandatory `Correction` carrier. For now: emit `DeferredCorrection` with the concrete candidate labels in `reason`; when IDE integration needs ranked choices, add them to that separate workflow surface.
 2. **Can fixes reference other parts of the program?** E.g., "create a missing type `Point` at top of file to match this usage." Cross-span fixes are a stretch goal. For now: single-span fixes only.
 3. **What about target-conditional fixes?** Not in this carrier. A diagnostic that specifically lives at the emitted-target level (e.g., "the emitted Rust triggers a rustfmt warning; here's how to fix the Rust") edits target source, not `.dag` source, and therefore belongs in the future `TargetCorrection` type (sketched in §"Future extension"). The split is by authoring domain, not by flag on a shared carrier.

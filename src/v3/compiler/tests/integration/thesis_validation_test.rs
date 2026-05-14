@@ -118,7 +118,7 @@ fn read(point: Point) -> Int = point.c
     );
     let rendered = rendered_rust_diagnostic(&dag, diag);
     assert!(
-        !rendered.contains("FIX (option 1):"),
+        !rendered.contains("FIX:"),
         "ambiguous missing-field diagnostic should not render an arbitrary FIX line, got {rendered}"
     );
     assert!(

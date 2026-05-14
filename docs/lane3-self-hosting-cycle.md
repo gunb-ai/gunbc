@@ -69,8 +69,7 @@ ERROR at line 2: field `c` does not exist on Point
                                        ^
 
 Available fields: a, b
-FIX (option 1): did you mean `point.a`?
-FIX (option 2): did you mean `point.b`?
+DEFERRED CORRECTION: field `c` has multiple valid replacements: a, b
 ```
 
 Type shapes are **locked in [DB-1](./design-correction-shape.md)**,

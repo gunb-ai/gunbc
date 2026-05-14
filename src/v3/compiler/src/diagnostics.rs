@@ -542,10 +542,7 @@ fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyle
         diagnostic.message()
     )];
     if let Correction::LiveCorrection { .. } = diagnostic.correction() {
-        lines.push(format!(
-            "FIX (option 1): {}",
-            diagnostic.correction().description()
-        ));
+        lines.push(format!("FIX: {}", diagnostic.correction().description()));
         lines.push(render_correction_source(diagnostic.correction(), style));
     } else {
         lines.push(format!(
@@ -1447,7 +1444,7 @@ mod tests {
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n    \"point.a\";"));
     }
 
@@ -1492,7 +1489,7 @@ mod tests {
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n\t\"point.a\""));
         assert!(!rendered.contains("\n\t\"point.a\";"));
     }
@@ -1514,7 +1511,7 @@ mod tests {
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n    \"point.a\""));
         assert!(!rendered.contains("\n    \"point.a\";"));
     }
