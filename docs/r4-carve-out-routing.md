@@ -92,6 +92,49 @@ consumer beyond `EpochMs` surfaces concrete demand for Aspect axis
 landing). Substrate Mgr authors Aspect-axis carrier brief; emission
 consumers (Grounding) wire downstream.
 
+### C7 — Cross-algorithm complexity optimality (algorithm synthesis)
+
+**R3 status**: **Same-algorithm tightness lens IS in R3** per operator
+ratification 2026-05-14 (PR #3067 design substrate +
+`docs/design-complexity-tightness-lens.md`). Same-algorithm tightness
+reasons about a program AS WRITTEN and applies semantics-preserving
+structural transformations (LoopFusion / LoopHoisting /
+DeadCodeElimination / ConstantBoundPropagation / AggregationRecognition
+/ MapFilterFoldFusion) to derive a tight bound; errors if actual class
+is loose against compiler-derived tight class. Compiler-internal code
+always-on; user programs opt-in via
+`EnforcedTightness<Output, Budget, Projected>`.
+
+**Carved to R4**: **cross-algorithm optimality** — compiler proves a
+DIFFERENT algorithm with equivalent semantics achieves better
+complexity (e.g., bubble sort → merge sort, naive matmul → Strassen).
+Explicitly out of scope in the tightness lens design (§2): *"requires
+algorithm synthesis or pattern-recognition + semantic-equivalence-tier
+transformation library; major research-tier feature beyond lens-tier
+scope."*
+
+The discrimination is structural: same-algorithm tightness reasons
+about ONE program structure and proves it can be transformed to a
+tighter form via semantics-preserving rewrites (loop fusion, hoisting,
+etc.). Cross-algorithm optimality reasons about TWO DIFFERENT program
+structures that compute the same input→output relation and proves
+algorithm B has better complexity than algorithm A.
+
+**R4 dispatch trigger**: substantive use-case surfaces concrete demand
+for cross-algorithm reasoning (e.g., a programmer writes O(n²) sort
+expecting compiler to suggest merge sort). Requires research-tier
+groundwork — semantic equivalence reasoning, algorithm transformation
+library, pattern-recognition rules tied to abstract specifications
+(input/output relations) rather than program syntax. Not feasible at
+lens-tier; needs a new compiler analysis layer (perhaps a "synthesis
+lens" or "optimization-recommendation lens" with weaker enforcement —
+warning rather than error since algorithm choice is design-tier).
+
+**Authority**: operator wishlist routing 2026-05-14 via PM
+(deep-wolf-155); operator-recommended R4 dispatch when same-algorithm
+tightness lens has settled and concrete cross-algorithm use-cases
+surface.
+
 ## Cascade messages (cross-Mgr consumption)
 
 ### To Verification Mgr (#1740) — T-LAS / T-LSA cross-program impact
@@ -145,6 +188,7 @@ When the R4 program plan is authored, the items above are inputs:
 4. C4 — additional MachineConstraint axes per consumer demand
 5. C5 — rounding-mode product-shape extension per consumer demand
 6. C6 — Aspect-axis (PointKind) follow-on for `EpochMs` and future instant/rate-shaped refinements (2-axis Measure carrier already in R3)
+7. C7 — Cross-algorithm complexity optimality (algorithm synthesis): pattern-recognition + semantic-equivalence-tier transformation library for proving alternate algorithms achieve better complexity than user-written; downstream of same-algorithm tightness lens landing in R3 + concrete cross-algorithm use-case surfacing
 
 ## Provenance
 
