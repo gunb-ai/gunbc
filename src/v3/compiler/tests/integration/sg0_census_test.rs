@@ -234,6 +234,13 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
 // not generated output. Dissolution: fold into a `.dag` or generated authority when one
 // owns receipt schema; until then this module + census line are the bounded ratchet receipt.
+//
+// PB-0 / Director **msg_84abadad** + scope correction **msg_dda96d21** (2026-05-13): **43-entry**
+// `NON_TEST` + **3** `FRAGMENTS` taxonomy (§3 + §4) in
+// `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md`
+// (substitute visibility for dependency tree; not enforcement — see INVARIANTS). Inline
+// `// blocked: …` comments on individual census lines are deferred until taxonomy stabilizes
+// across sibling merges.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
