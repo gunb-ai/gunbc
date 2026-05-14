@@ -23,6 +23,9 @@ ROADMAP-adjacent carve-routing row that moved that lane into R3.
 
 - `docs/r3-program-plan.md` §1.8 gate #82,
   `effect_enumeration_lens_behaviorally_complete`.
+- `ROADMAP.md` §"Q-Lens-Behavioral-Parity-R3-Closeability" row,
+  whose 2026-05-09 amendment promotes effect_enumeration into the R3
+  Cluster F load-bearing scope.
 - `docs/r4-carve-out-routing.md` §"C2 —
   `effect_enumeration_lens_behaviorally_complete`" (dissolved
   carve-promotion-IN-R3 row), which names Cluster F sub-phases F-beta.1 /
