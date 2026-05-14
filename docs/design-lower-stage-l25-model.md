@@ -328,6 +328,13 @@ Two paths for invariant enforcement:
 
 **Director-recommend: (b) phased** for risk management on 11895-line migration. Each phase is its own PR with its own parity test + dissolution receipt. Operator/PM ratification on phasing acceptable per `feedback_paper_shrink_variants` (genuine deletion, not relocation).
 
+**Per-phase parity witness shape** (per claude PR #3077 exploratory observation 2): the phase decomposition crosses Pass-1/Pass-2 boundary. Pass-1's output (declaration placeholders + symbol table) is intermediate state consumed only by Pass-2; it isn't a complete `PreInferDag` and cannot be parity-tested in isolation. Two phasing-discipline options:
+
+- **(b.i) Per-pass parity via intermediate-state carrier**: Phase 4a authors a typed-state intermediate carrier (e.g., `Pass1Output { declarations: List<Declaration>, symbol_table: SymbolTable }`) + parity asserts `pass1_via_rust(surface) == pass1_via_dag(surface)`. Pass-2 then takes Pass1Output + completes elaboration. Slight refactoring of lower.rs to expose Pass-1 boundary cleanly.
+- **(b.ii) End-to-end per-phase, partial lower.rs deletion**: each phase deletes a SECTION of lower.rs (specific surface variants); parity is end-to-end `lower_via_rust(surface) == lower_via_dag(surface)` BUT only for the surface variants the phase migrated; Rust still handles others. Requires lower.rs + lower.dag delegation during transition — same shape as paper-shrink-relocation risk per `feedback_paper_shrink_variants`.
+
+Director-recommend: **(b.i)** per Modeling Practice 2 illegal-states-unrepresentable (Pass1Output IS a typed carrier; its existence enforces the boundary). (b.ii) introduces transient delegating-dispatch coupling that risks paper-shrink class. Step 2 brief locks the per-phase parity-witness carrier shape.
+
 ### Q6: PB-3 parse landing dependency
 
 PB-4 lower's input is `SurfaceModule` from parse (PB-3). PB-3 parse migration is downstream in the bottom-up order. **Does PB-4 lower migration block on PB-3 parse migration completing?**
