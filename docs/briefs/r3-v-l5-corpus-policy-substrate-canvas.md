@@ -93,14 +93,14 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 ### Q5 — Per-row policy attachment shape (where does it live?)
 
 **E1.** Add `corpus_policy: Maybe<L5CorpusRowPolicy>` field directly on `TestClaim` (universal — every claim can carry it, only L5 rows populate it).
-**E2.** New sibling carrier `L5CorpusRow { claim: TestClaim, policy: L5CorpusRowPolicy }` indexed by `TestClaim.name`; lives in a separate `std.r3_l5_corpus` module.
+**E2.** New sibling carrier `L5CorpusRow { claim: TestClaim, policy: L5CorpusRowPolicy }` carrying a **typed edge to the `TestClaim`** (not a `String` name key — string-keyed join would defer P2 boundary discipline to a runner check rather than making invalid policy rows unrepresentable); lives in a separate `std.r3_l5_corpus` module.
 **E3.** New `TestPredicate` variant `ForAllTargetsWithPolicy { …existing ForAllTargets fields…, policy: L5CorpusRowPolicy }` — disqualified by **upstream worker brief** §"Explicitly out of scope": *"New `TestPredicate` variants — `ForAllTargets` already on substrate; INVARIANTS §P1 only for genuinely new facts."*
 
 **Disqualifiers:**
 - **E3** ruled out by [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md) §"Explicitly out of scope".
 - **E1** introduces a universal field for a single-consumer fact — most `TestClaim` rows have no L5 semantics; `Maybe<>` slot is parallel-representation drift unless ratified explicitly.
 
-**Canvas recommendation:** **E2**. Keeps `TestClaim` shape stable; co-locates L5 policy facts in their own module under the existing `r3_verification_l5_corpus` fixture authority. Boundary consumer (`l5_cross_target_consistency.rs`) gains a 1:1 fail-closed mapping check (every L5 corpus `TestClaim.name` must appear exactly once in the policy table; every policy row must point at a `TestClaim.name` present in the fixture). Mirrors the **`SuiteClaim`** pattern (`src/v3/std/verification.dag:619`) — closed two-variant ordered carrier scoped to its own consumer.
+**Canvas recommendation:** **E2**. Keeps `TestClaim` shape stable; co-locates L5 policy facts in their own module under the existing `r3_verification_l5_corpus` fixture authority. The typed `claim: TestClaim` edge means a policy row pointing at a non-existent claim is **unrepresentable at the type level** (INVARIANTS §P2 boundary discipline cashed at the carrier, not at a runner string-equality check). Boundary consumer (`l5_cross_target_consistency.rs`) only enforces the remaining cardinality fact: every L5 corpus claim appears in exactly one `L5CorpusRow`. Mirrors the **`SuiteClaim`** pattern (`src/v3/std/verification.dag:619`) — closed coproduct over `TestClaim` / `QuantifiedTestClaim`, typed edges throughout.
 
 ## 5. Substrate carrier shape (preliminary, conditional on Q1–Q5 ratification)
 
@@ -131,7 +131,7 @@ type CoverageReason
   | L4CorpusLift(DeclarationRef)
 
 type L5CorpusRowPolicy {
-  claim_name: String
+  claim: TestClaim
   observation: ExpectedObservation
   effect: EffectShape
   numeric: NumericPolicy
