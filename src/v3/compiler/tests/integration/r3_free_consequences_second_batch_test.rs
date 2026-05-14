@@ -195,12 +195,8 @@ let demo: Int = countdown(3) + 1
         "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive costs from Rust LanguageSpec rows"
     );
 
-    let observed_target_cost = compose_observed_structural_cost(
-        algebra_cost.clone(),
-        &table,
-        int_decl,
-        &realized_rows,
-    );
+    let observed_target_cost =
+        compose_observed_structural_cost(algebra_cost.clone(), &table, int_decl, &realized_rows);
     let expected_structural_cost = compose_expected_structural_cost(
         algebra_cost,
         &table,
