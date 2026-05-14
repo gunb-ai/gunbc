@@ -3795,17 +3795,31 @@ pub mod lens_effect_enumeration {
         use crate::diagnostics::*;
 
         fn operation_effect_shape(op: &Operation) -> EffectShape {
-            crate::dag::operation_effect_shape(&Dag::new(), op)
-                .expect("bootstrapped std.effects operation anchors must classify Operation")
+            crate::dag::operation_effect_shape(&Dag::new(), op).unwrap_or_else(|| {
+                EffectShape::IsBreaking(BreakingShape::CreateEffect {
+                    cause: CreateCause::KeylessFallback {
+                        method: op.endpoint.method,
+                    },
+                })
+            })
         }
 
         include!("lens_effect_enumeration_generated.rs");
     }
 
     pub use generated::{
-        enumerate_effects, operation_structural_effect_shape, CoverageGap, EffectEnumerationReport,
-        EffectFact, RedundantReadError, StructuralEffectShape, TransactionalPattern,
+        enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
+        StructuralEffectShape, TransactionalPattern,
     };
+
+    pub fn operation_structural_effect_shape(op: &crate::dag::Operation) -> StructuralEffectShape {
+        match crate::dag::operation_effect_shape(&crate::dag::Dag::new(), op) {
+            Some(shape) => generated::effect_shape_to_structural(&shape),
+            None => StructuralEffectShape::UnknownEffect {
+                reason: "std.effects operation anchors unavailable".to_string(),
+            },
+        }
+    }
 }
 
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
