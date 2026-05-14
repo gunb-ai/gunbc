@@ -157,6 +157,8 @@ mod m2_lens_variant_payload_migration_test;
 mod m2_substrate_inhabitance_test;
 #[path = "integration/cementing/memory_peak_cost_basis_demo.rs"]
 mod memory_peak_cost_basis_demo;
+#[path = "integration/no_coercion_cost_dimension_ratchet_test.rs"]
+mod no_coercion_cost_dimension_ratchet_test;
 #[path = "integration/method_registry_test.rs"]
 mod method_registry_test;
 #[path = "integration/method_template_contract_test.rs"]
