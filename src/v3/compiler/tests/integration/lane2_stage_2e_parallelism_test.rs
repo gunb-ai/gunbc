@@ -82,9 +82,6 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::ClassifierAnchorResolutionFailed,
-        }) => panic!("anchor-resolution failure is not synthesizable as a normal Operation"),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::InputField { field },
         })
@@ -314,7 +311,7 @@ fn parallel_append_in_branch_is_broken_by() {
         .expect("parallel breaker ref should resolve in branch-order flattening");
     assert!(matches!(
         operation_effect_shape(&dag, breaker),
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        Some(EffectShape::IsBreaking(BreakingShape::AppendEffect))
     ));
 }
 

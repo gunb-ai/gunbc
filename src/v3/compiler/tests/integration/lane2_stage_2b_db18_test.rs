@@ -58,9 +58,6 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::ClassifierAnchorResolutionFailed,
-        }) => panic!("anchor-resolution failure is not synthesizable as a normal Operation"),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::InputField { field },
         })
@@ -196,11 +193,11 @@ fn keyless_upsert_fails_closed_as_breaking() {
     };
     assert!(matches!(
         operation_effect_shape(&dag, &keyless_upsert),
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback {
                 method: HttpMethodScalar::Put
             }
-        })
+        }))
     ));
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![keyless_upsert],
@@ -214,12 +211,13 @@ fn keyless_upsert_fails_closed_as_breaking() {
 }
 
 #[test]
-fn ambiguous_std_method_anchor_fails_closed_as_classifier_diagnostic() {
-    let dag = compile_to_dag(
+fn ambiguous_std_method_anchor_fails_closed_as_idempotency_unsupported() {
+    let mut dag = compile_to_dag(
         "type append_method {}\nlet _ = 1",
         "lane2_ambiguous_std_method_anchor.v3",
     )
     .expect("compile");
+    let root = lane2_anchor(&dag);
     let callable = dag
         .declaration_by_name("map_insert_method")
         .expect("bootstrap should provide map_insert_method")
@@ -233,12 +231,19 @@ fn ambiguous_std_method_anchor_fails_closed_as_classifier_diagnostic() {
         },
     };
 
-    assert!(matches!(
-        operation_effect_shape(&dag, &operation),
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::ClassifierAnchorResolutionFailed
-        })
+    assert!(operation_effect_shape(&dag, &operation).is_none());
+    assert!(dag.try_register_lane2_workflow_effect(
+        root,
+        WorkflowEffect::LinearEffect {
+            ops: vec![operation],
+        },
     ));
+    let WorkflowIdempotencyReport::IdempotencyUnsupported(detail) = analyze_workflow(&dag, root)
+    else {
+        panic!("classifier-anchor ambiguity should surface as unsupported, not CompositionVerdict");
+    };
+    assert_eq!(detail.variant_name, "LinearEffect");
+    assert!(detail.reason.contains("method anchors"));
 }
 
 #[test]
@@ -262,11 +267,11 @@ fn undeclared_path_param_fails_closed_as_breaking() {
     };
     assert!(matches!(
         operation_effect_shape(&dag, &undeclared_param_upsert),
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback {
                 method: HttpMethodScalar::Put
             }
-        })
+        }))
     ));
 }
 
@@ -293,7 +298,7 @@ fn append_effect_breaks_linear_chain() {
         .expect("breaker ref should resolve into linear ops");
     assert!(matches!(
         operation_effect_shape(&dag, breaker),
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        Some(EffectShape::IsBreaking(BreakingShape::AppendEffect))
     ));
 }
 

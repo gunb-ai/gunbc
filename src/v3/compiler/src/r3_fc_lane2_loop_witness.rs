@@ -235,7 +235,7 @@ mod tests {
                         if ops.len() == 1
                             && matches!(
                                 operation_effect_shape(&dag, &ops[0]),
-                                EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+                                Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
                             )
                 )
         ));
@@ -263,7 +263,7 @@ mod tests {
                         if ops.len() == 1
                             && matches!(
                                 operation_effect_shape(&dag, &ops[0]),
-                                EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+                                Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
                             )
                 )
         ));

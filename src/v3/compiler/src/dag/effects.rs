@@ -46,7 +46,6 @@ pub enum KeySource {
 pub enum CreateCause {
     PostAlways,
     KeylessFallback { method: HttpMethodScalar },
-    ClassifierAnchorResolutionFailed,
 }
 
 /// 🟢 **TERMINAL.** Idempotent-side effect shapes — mirrors `IdempotentShape`
@@ -72,6 +71,11 @@ pub enum BreakingShape {
 pub enum EffectShape {
     IsIdempotent(IdempotentShape),
     IsBreaking(BreakingShape),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectClassificationFailure {
+    StdMethodAnchorResolutionFailed,
 }
 
 /// 🟢 **TERMINAL.** Path token used by `Operation.endpoint.path`; mirrors the
@@ -271,29 +275,36 @@ pub enum WorkflowParallelismReport {
 // co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
-pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
+pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> Option<EffectShape> {
+    classify_operation_effect(dag, effect).ok()
+}
+
+pub(crate) fn classify_operation_effect(
+    dag: &Dag,
+    effect: &Operation,
+) -> Result<EffectShape, EffectClassificationFailure> {
     let callable = effect.callable.decl;
     let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
-        return classifier_anchor_resolution_break();
+        return Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed);
     };
     if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
-        return EffectShape::IsBreaking(BreakingShape::AppendEffect);
+        return Ok(EffectShape::IsBreaking(BreakingShape::AppendEffect));
     }
     if callable == methods.concat && effect.endpoint.method == HttpMethodScalar::Post {
-        return EffectShape::IsBreaking(BreakingShape::CreateEffect {
+        return Ok(EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
-        });
+        }));
     }
     if methods.reads.contains(&callable) && method_is_read(effect.endpoint.method) {
-        return EffectShape::IsIdempotent(IdempotentShape::ReadEffect);
+        return Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect));
     }
     if methods.upserts.contains(&callable) && method_is_upsert(effect.endpoint.method) {
-        return keyed_upsert_or_keyless_break(effect);
+        return Ok(keyed_upsert_or_keyless_break(effect));
     }
     if callable == methods.delete && effect.endpoint.method == HttpMethodScalar::Delete {
-        return keyed_delete_or_keyless_break(effect);
+        return Ok(keyed_delete_or_keyless_break(effect));
     }
-    transport_effect_shape(effect)
+    Ok(transport_effect_shape(effect))
 }
 
 struct StdEffectMethodAnchors {
@@ -380,12 +391,6 @@ fn keyless_break(effect: &Operation) -> EffectShape {
     })
 }
 
-fn classifier_anchor_resolution_break() -> EffectShape {
-    EffectShape::IsBreaking(BreakingShape::CreateEffect {
-        cause: CreateCause::ClassifierAnchorResolutionFailed,
-    })
-}
-
 fn method_is_read(method: HttpMethodScalar) -> bool {
     matches!(
         method,
@@ -410,18 +415,18 @@ fn last_path_param(effect: &Operation) -> Option<String> {
     })
 }
 
-pub(crate) fn compose_operation_effects(dag: &Dag, effects: &[Operation]) -> CompositionVerdict {
+pub(crate) fn compose_operation_effects(
+    dag: &Dag,
+    effects: &[Operation],
+) -> Result<CompositionVerdict, EffectClassificationFailure> {
     for (index, effect) in effects.iter().enumerate() {
-        if matches!(
-            operation_effect_shape(dag, effect),
-            EffectShape::IsBreaking(_)
-        ) {
+        if matches!(classify_operation_effect(dag, effect)?, EffectShape::IsBreaking(_)) {
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
-            return CompositionVerdict::BrokenBy { first_breaker };
+            return Ok(CompositionVerdict::BrokenBy { first_breaker });
         }
     }
-    CompositionVerdict::IdempotentComposition
+    Ok(CompositionVerdict::IdempotentComposition)
 }
 
 /// Pure projection used by Stage 2b — kept aligned with
@@ -454,9 +459,17 @@ pub(crate) fn project_workflow_idempotency_report(
     workflow: &WorkflowEffect,
 ) -> WorkflowIdempotencyReport {
     match workflow {
-        WorkflowEffect::LinearEffect { ops } => WorkflowIdempotencyReport::WorkflowCompositionVerdict(
-            compose_operation_effects(dag, ops.as_slice()),
-        ),
+        WorkflowEffect::LinearEffect { ops } => match compose_operation_effects(dag, ops.as_slice())
+        {
+            Ok(verdict) => WorkflowIdempotencyReport::WorkflowCompositionVerdict(verdict),
+            Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
+                    variant_name: "LinearEffect".to_string(),
+                    downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
+                    reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely produce a CompositionVerdict".to_string(),
+                })
+            }
+        },
         WorkflowEffect::BranchEffect { .. } => WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
                 variant_name: "BranchEffect".to_string(),

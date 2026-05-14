@@ -34,11 +34,8 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
 }
 
 fn operations_commute(dag: &Dag, a: &Operation, b: &Operation) -> bool {
-    match (
-        &operation_effect_shape(dag, a),
-        &operation_effect_shape(dag, b),
-    ) {
-        (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
+    match (operation_effect_shape(dag, a), operation_effect_shape(dag, b)) {
+        (Some(EffectShape::IsIdempotent(ia)), Some(EffectShape::IsIdempotent(ib))) => {
             idempotent_shapes_commute(&ia, &ib)
         }
         _ => false,
@@ -103,12 +100,18 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         );
     };
     match compose_operation_effects(p0, flatten_branch_ops(&branch_ops).as_slice()) {
-        CompositionVerdict::BrokenBy { first_breaker } => {
+        Ok(CompositionVerdict::BrokenBy { first_breaker }) => {
             return WorkflowParallelismReport::ParallelCompositionVerdict(
                 CompositionVerdict::BrokenBy { first_breaker },
             );
         }
-        CompositionVerdict::IdempotentComposition => {}
+        Ok(CompositionVerdict::IdempotentComposition) => {}
+        Err(_) => {
+            return parallel_unsupported(
+                ParallelismUnsupportedKind::PairwiseNonCommute,
+                "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism",
+            );
+        }
     }
     match pairwise_cross_branch_commutes(p0, &branch_ops) {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
@@ -137,7 +140,7 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
     for op in ops {
         if !matches!(
             operation_effect_shape(p0, op),
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+            Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
         ) {
             return 0;
         }
