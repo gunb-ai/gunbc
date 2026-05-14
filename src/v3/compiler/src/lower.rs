@@ -6452,15 +6452,17 @@ fn optional_some_none_surface_form(expr: &SurfaceExpr) -> bool {
 
 // Optional/sum payload surface vs lowered field names: `docs/v3-spec.md` Scenario 6 shows
 // `Some { value: v }` style patterns; lowering may use synthetic `_0` for the inner payload field.
-// Treat `value` ↔ `_0` as one alias so record literals (e.g. `with:` / `env:` rows in
-// `dsl/gunbc/ci_github_actions_workflow.dag`) match the inferred sum-variant arm consistently.
+// Single pairing authority for this lowering seam (P2: avoid scattering `"value"`/`"_0"` literals).
+const SURFACE_SUM_PAYLOAD_FIELD: &str = "value";
+const LOWERED_SUM_PAYLOAD_FIELD: &str = "_0";
+
 fn surface_record_field_for_variant_payload<'a>(
     fields: &'a [crate::parse::SurfaceRecordField],
     payload_label: &str,
 ) -> Option<&'a crate::parse::SurfaceRecordField> {
     fields.iter().find(|f| f.name == payload_label).or_else(|| {
-        (payload_label == "_0")
-            .then(|| fields.iter().find(|f| f.name == "value"))
+        (payload_label == LOWERED_SUM_PAYLOAD_FIELD)
+            .then(|| fields.iter().find(|f| f.name == SURFACE_SUM_PAYLOAD_FIELD))
             .flatten()
     })
 }
@@ -6472,7 +6474,7 @@ fn surface_record_field_matches_variant_payload_label(
     if authored_field == payload_label {
         return true;
     }
-    authored_field == "value" && payload_label == "_0"
+    authored_field == SURFACE_SUM_PAYLOAD_FIELD && payload_label == LOWERED_SUM_PAYLOAD_FIELD
 }
 
 fn list_element_type_with_subst(
