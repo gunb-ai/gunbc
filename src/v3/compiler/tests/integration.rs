@@ -227,6 +227,8 @@ mod shape_a_target_source_filtering_authority_test;
 mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
+#[path = "integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs"]
+mod t_gate_106_show_correct_code_diagnostic_coverage_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
 mod t_gate_58_apply_lens_self_application_test;
 #[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
