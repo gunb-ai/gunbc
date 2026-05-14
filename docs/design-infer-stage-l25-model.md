@@ -264,6 +264,8 @@ Current `infer.rs` is forward-only (propagation per port dependency order). Cons
 
 **Director-recommend: (a) Builder pattern** per `feedback_state_space_vs_behavioral_invariants` (constructor enforces invariants; Builder is implementation detail). (b) introduces fixed-point complexity that violates decidability discipline. Operator/PM ratification.
 
+**CODING.md fluent-builder note** (per cursor PR #3085 exploratory observation): the Builder here is a substrate-owned typed-state accumulator with an explicit non-fluent API (e.g., `push_anonymous_instantiation(d, decl)` + `finalize(b) -> InferredDag`), NOT a Rust-side fluent chained builder. The .dag substrate idiom is data + free functions per CODING.md; the "Builder" terminology is conceptual (accumulator pattern), not the Rust BuilderPattern anti-discipline. Step 3 brief authoring against this constraint.
+
 ### Q3: InferDiagnostic post-sweep generic diagnostic
 
 Per `infer.rs:21-25`, post-sweep lifts remaining `Uninferred` ports to `Unresolved` with a "generic diagnostic". This generic-ness loses specificity — the user gets "type not inferred" without explanation of why.
@@ -278,7 +280,7 @@ Multi-port inference can emit multiple diagnostics. Order matters for golden-fix
 
 ### Q5: Migration scope — full single-PR OR phased?
 
-`infer.rs` is ~8000+ lines (per `wc -l`). Per `feedback_paper_shrink_variants` discipline, phased migration with per-phase P5 receipts is acceptable. Possible phasing:
+`infer.rs` is 7262 lines (per `wc -l src/v3/compiler/src/infer.rs` at this doc's HEAD; verified per cursor APPROVE_WITH_COMMENTS PR #3085). Per `feedback_paper_shrink_variants` discipline, phased migration with per-phase P5 receipts is acceptable. Possible phasing:
 
 - **5a**: TypeConnective dispatch core (Arrow + Atom + lookup walk) → `.dag`; corresponding `infer.rs` block deleted
 - **5b**: Algebra inhabitance fold → `.dag`; corresponding block deleted
