@@ -215,7 +215,8 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
 
         let after_bang = bang + 1;
         let open = skip_rust_trivia(bytes, &code_mask, after_bang);
-        if bytes.get(open) != Some(&b'(') {
+        let Some((open_delimiter, close_delimiter)) = macro_delimiters(bytes.get(open).copied())
+        else {
             continue;
         };
         let mut depth = 0usize;
@@ -226,8 +227,8 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
                 continue;
             }
             match ch {
-                '(' => depth += 1,
-                ')' => {
+                _ if ch == open_delimiter => depth += 1,
+                _ if ch == close_delimiter => {
                     if depth == 0 {
                         break;
                     }
@@ -263,6 +264,15 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
         }
     }
     offenders
+}
+
+fn macro_delimiters(open: Option<u8>) -> Option<(char, char)> {
+    match open? {
+        b'(' => Some(('(', ')')),
+        b'[' => Some(('[', ']')),
+        b'{' => Some(('{', '}')),
+        _ => None,
+    }
 }
 
 #[test]
@@ -301,13 +311,17 @@ fn include_str_pipeline_dag_ratchet_catches_split_literals() {
 const OK: &str = include{}("other.dag");
 const BAD: &str = include{}(concat!("../../", "pipeline", ".dag"));
 const ALSO_BAD: &str = include_str /* trivia */ ! (concat!("../../", "pipeline", ".dag"));
+const BRACKET_BAD: &str = include_str![concat!("../../", "pipeline", ".dag")];
+const BRACE_BAD: &str = include_str!{concat!("../../", "pipeline", ".dag")};
 "#,
         "_str!", "_str!"
     );
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
-    assert_eq!(offenders.len(), 2);
+    assert_eq!(offenders.len(), 4);
     assert!(offenders[0].contains("synthetic.rs:3:"));
     assert!(offenders[1].contains("synthetic.rs:4:"));
+    assert!(offenders[2].contains("synthetic.rs:5:"));
+    assert!(offenders[3].contains("synthetic.rs:6:"));
 }
 
 #[test]
