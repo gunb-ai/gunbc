@@ -280,12 +280,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
-<<<<<<< HEAD
-    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
-    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
-=======
-    "src/v3/compiler/src/infer.rs",
->>>>>>> 3918a149f (WIP: PB-0 cycle 3 REDO NON_TEST — r3_fc_lane2_loop_witness wall_clock_ratchet)
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
     // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
@@ -294,26 +288,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // receipts; PB-Runtime for lens application (R3 §1.8).
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-<<<<<<< HEAD
-    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
-    "src/v3/compiler/src/memory_peak_cost.rs",
-    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
-    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
-    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
-    // `.dag` program owns the OpenAPI artifact projection end-to-end.
-    "src/v3/compiler/src/omni_shape_b_openapi.rs",
-    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
-    "src/v3/compiler/src/process_exit.rs",
-    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
-    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
-    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
-    "src/v3/compiler/src/r1c_e_gates.rs",
-    // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
-    "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
-=======
-    "src/v3/compiler/src/pipeline_authority.rs",
-    "src/v3/compiler/src/post_emit_verifier.rs",
->>>>>>> 3918a149f (WIP: PB-0 cycle 3 REDO NON_TEST — r3_fc_lane2_loop_witness wall_clock_ratchet)
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
