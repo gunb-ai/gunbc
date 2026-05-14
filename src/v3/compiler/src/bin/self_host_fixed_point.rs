@@ -6,6 +6,11 @@
 //! `docs/r3-structure.md` §"T-FixedPoint" (two-horizon framing),
 //! `docs/briefs/r3-pb-t-fixedpoint-worker.md` (dispatch preconditions; future
 //! `pb_self_compile_fixed_point_strong`), and `docs/briefs/r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md`.
+//! 2026-05-13 joint-precondition coordination audit:
+//! `docs/audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md` — all four
+//! joint preconditions read non-green at HEAD; `pb_self_compile_fixed_point_strong`
+//! must not be authored in `src/v3/std/verification.dag` until the single dispatch
+//! ledger read turns green (per that audit's sequencing rule).
 //! History and CI posture for this binary: `docs/db-history/db-8.md`.
 //!
 //! Full cycle (emit → `rustc` → run → byte-diff) requires a v3-parseable
