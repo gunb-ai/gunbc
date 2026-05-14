@@ -184,6 +184,8 @@ fn substrate_gap_function_valued_data_executes_through_evaluator() {
         user_defined_arrow_names,
         vec![
             "add_one",
+            "gate61_empty_int_witnesses",
+            "gate61_int_witnesses",
             "report_int",
             "test_function_valued_data",
             "test_function_valued_dimension_report",
@@ -260,7 +262,7 @@ fn substrate_gap_function_valued_data_produces_dimension_report() {
         .expect("function-valued data should produce DimensionReport through evaluator");
 
     let Value::VariantValue { tag, payload } = value else {
-        panic!("expected Gate61DimensionReport::Gate61DimensionOk VariantValue");
+        panic!("expected DimensionReport::DimensionOk VariantValue");
     };
     let variant_label = dag.declarations().iter().find_map(|decl| {
         let TypeConnective::Disj { variants } = &decl.connective else {
@@ -273,8 +275,8 @@ fn substrate_gap_function_valued_data_produces_dimension_report() {
     });
     assert_eq!(
         variant_label,
-        Some("Gate61DimensionOk"),
-        "E6-G0d must materialize the Gate61DimensionOk variant constructor"
+        Some("DimensionOk"),
+        "E6-G0d must materialize the canonical DimensionOk variant constructor"
     );
     let Value::RecordValue(fields) = *payload else {
         panic!("DimensionOk payload must be a RecordValue");
