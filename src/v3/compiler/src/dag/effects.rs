@@ -420,7 +420,10 @@ pub(crate) fn compose_operation_effects(
     effects: &[Operation],
 ) -> Result<CompositionVerdict, EffectClassificationFailure> {
     for (index, effect) in effects.iter().enumerate() {
-        if matches!(classify_operation_effect(dag, effect)?, EffectShape::IsBreaking(_)) {
+        if matches!(
+            classify_operation_effect(dag, effect)?,
+            EffectShape::IsBreaking(_)
+        ) {
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
             return Ok(CompositionVerdict::BrokenBy { first_breaker });
