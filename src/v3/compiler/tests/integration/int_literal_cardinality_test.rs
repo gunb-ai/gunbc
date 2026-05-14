@@ -80,14 +80,6 @@ fn assert_data_value_scalar_typed_u8(
     );
 }
 
-fn assert_int_value_port_resolves_to_uint8(
-    dag: &v3_compiler::dag::Dag,
-    literal: i64,
-    context: &str,
-) {
-    assert_int_value_port_resolves_to_uint8_in_file(dag, literal, context, None)
-}
-
 fn assert_int_value_port_resolves_to_uint8_in_file(
     dag: &v3_compiler::dag::Dag,
     literal: i64,
@@ -249,19 +241,12 @@ fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
 #[test]
 fn call_site_u8_literal_narrows_against_uint8_parameter() {
     // Avoid `id8` / `id_u8` name collisions with std/bootstrap templates.
-    let dag = match compile_to_dag(
+    let dag = compile_to_dag(
         "fn u8_id_for_call_site_test(x: UInt8) -> UInt8 = x\n\
          let r: UInt8 = u8_id_for_call_site_test(7)\n",
         "call_u8_narrow.v3",
-    ) {
-        Ok(d) => d,
-        Err(e) => {
-            if let CompileError::Semantic(dag) = &e {
-                eprintln!("diagnostics: {:?}", dag.diagnostics());
-            }
-            panic!("compile: {e:?}");
-        }
-    };
+    )
+    .expect("call with u8-sized literal at UInt8 parameter should compile");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     assert_int_value_port_resolves_to_uint8_in_file(
         &dag,
