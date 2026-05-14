@@ -140,3 +140,193 @@ This is the discipline §5.2 will codify. By applying it to Phase 2 itself, we v
 8. **Eighth (Phase 2.7)**: §5.2 process discipline (synthesis; last)
 
 Director-tier ratify + admin-merge per operator broad-authorization on each PR open.
+
+## §8. Dispatch commands per task — actual CLI invocations
+
+Each Phase 2 task maps to a concrete sequence of CLI commands. **Most tasks are PM-direct (deep-wolf-155 authors the PR)**; a few involve Mgr-coordination messages or Director-tier ratification asks. NO Phase 2 tasks spawn child agents via `dashboard-ops work-items create` — they're all PM-author + Director-ratify shape.
+
+### Phase 2.0 — Audit doc landing + §5.1 5th axis enforcement [IN REVIEW]
+
+Already actioned; commands logged for the record:
+
+```bash
+# Branch + PR created earlier this session:
+git checkout -b docs/r3-comprehensive-audit-2026-05-14
+git add docs/audit/r3-comprehensive-design-brief-implementation-audit-2026-05-14.md
+git commit -m "docs(r3-audit): comprehensive R3 audit + Phase 2 substrate"
+git push -u origin docs/r3-comprehensive-audit-2026-05-14
+gh pr create --title "..." --body "..."   # PR #3061
+
+# Fix-forward commits per BLOCKING reviews:
+# - codex BLOCKING #11655 → commit d44502362 (§5.1 class-C tightening)
+# - codex BLOCKING #3 scheduled review → commit 3c69dc2ab
+# - openai-pro REQUEST_CHANGES #11663 → commit 8b88e0388
+# - codex APPROVE_WITH_COMMENTS #11667 → commit b2caa55c5
+# - codex REQUEST_CHANGES #11675 → commit aeb533cdc
+# - openai-pro REQUEST_CHANGES #11678 → commit 687c72b1e
+# - dispatch plan addition → commit ec8d428c7
+
+# Merge command (when ≥2 distinct approvals + CI green + mergeable=CLEAN):
+gh pr merge 3061 --squash --delete-branch
+```
+
+### Phase 2.1 — Close plan Gap 1 amendment [QUEUED]
+
+PM-direct authoring; new branch + PR off main.
+
+```bash
+git checkout main && git pull
+git checkout -b docs/r3-close-gap1-pbx-routing
+# Edit docs/r3-actual-close-plan.md Gap 1 (lines 23-56) to route through:
+#   - PB-X lanes (PB-Substrate / PB-1 / PB-3 / PB-4 / PB-5 / PB-6 / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build)
+#   - SELF_HOSTING.md §2 4-step discipline citation
+#   - PB-X-numbering-vs-migration-order distinction (emit→lower→infer→parse = PB-6→PB-4→PB-5→PB-3)
+git add docs/r3-actual-close-plan.md
+git commit -m "docs(r3-close): route Gap 1 sub-program through PB-X lanes + SELF_HOSTING §2 4-step (Phase 2.1 per dispatch plan)"
+git push -u origin docs/r3-close-gap1-pbx-routing
+gh pr create --title "docs(r3-close): route Gap 1 PB-0 sub-program through design-pure-bootstrap-zero PB-X lanes + SELF_HOSTING §2 4-step (Phase 2.1)" --body "..."
+
+# Surface to Director on open:
+dashboard-message send --to zesty-bear-812 --body "Phase 2.1 PR open: #<PR_NUM> — Gap 1 amend per dispatch plan §1"
+```
+
+### Phase 2.2 — §1.8 PB-X reference rows [QUEUED]
+
+PM-direct authoring; depends on 2.1 merged.
+
+```bash
+git checkout main && git pull   # after 2.1 merges
+git checkout -b docs/r3-program-plan-pbx-reference-rows
+# Edit docs/r3-program-plan.md §1.8: add reference rows (NOT parallel substrate) for
+#   PB-Substrate / PB-1 / PB-3 / PB-4 / PB-5 / PB-6 / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build
+# Each row cites design-pure-bootstrap-zero.md as authority (single-source predicate)
+git add docs/r3-program-plan.md
+git commit -m "docs(r3-program): add §1.8 reference rows for PB-X lanes per design-pure-bootstrap-zero authority (Phase 2.2)"
+git push -u origin docs/r3-program-plan-pbx-reference-rows
+gh pr create --title "..." --body "..."
+
+dashboard-message send --to zesty-bear-812 --body "Phase 2.2 PR open: #<PR_NUM>"
+```
+
+### Phase 2.3 — Track A taxonomy reclassification + §1.1 cleanup [QUEUED]
+
+PM-direct authoring; coordinated with zesty-boar-261 (R3 Debt-Paydown Mgr who owns the taxonomy doc) for review.
+
+```bash
+git checkout main && git pull   # after 2.1 + 2.2 merge
+git checkout -b docs/r3-track-a-taxonomy-pbx-reclassification
+# Edit docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md §3:
+#   reclassify (b)-class pipeline-stage entries with explicit PB-X lane prereq + L2.5 domain-model-set citation
+#   §1.1 bootstrap/regen cluster mapped to PB-X lanes
+git add docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md
+git commit -m "docs(r3-audit): reclassify Track A pipeline-stage entries per PB-X lane prereq (Phase 2.3)"
+git push -u origin docs/r3-track-a-taxonomy-pbx-reclassification
+gh pr create --title "..." --body "..."
+
+# Coord with zesty-boar-261 since they own the taxonomy doc:
+dashboard-message send --to zesty-boar-261 --body "Phase 2.3 PR open reclassifying Track A taxonomy you authored — see PR #<NUM> for the PB-X lane mapping shape"
+```
+
+### Phase 2.4 — Gap 3 R2-Evaluator amendment + §1.8 single-reference to r2-closure-ledger [QUEUED, parallel-eligible with 2.1]
+
+PM-direct authoring.
+
+```bash
+git checkout main && git pull   # after 2.0 merges
+git checkout -b docs/r3-close-gap3-r2-evaluator-ratified
+# Edit docs/r3-actual-close-plan.md Gap 3 (lines 93-133) + docs/r3-program-plan.md §1.8 gate #16:
+#   - Gap 3 framing: update to ratified state (warm-wolf-698 expanded scope; NOT "pending §4 Item 5 staffing")
+#   - §1.8 gate #16: single cross-reference to docs/r2-closure-ledger.md:250-263 (NOT 5 parallel rows)
+git add docs/r3-actual-close-plan.md docs/r3-program-plan.md
+git commit -m "docs(r3-close): update Gap 3 + §1.8 gate #16 to reflect ratified R2-Evaluator owner + closure-ledger single-source predicate (Phase 2.4)"
+git push -u origin docs/r3-close-gap3-r2-evaluator-ratified
+gh pr create --title "..." --body "..."
+
+dashboard-message send --to zesty-bear-812 --body "Phase 2.4 PR open"
+```
+
+### Phase 2.5 — Gap 9 substrate-shape canvas authoring [QUEUED, parallel-eligible]
+
+PM-direct canvas authoring + Director + Substrate Mgr ratification messages.
+
+```bash
+git checkout main && git pull
+git checkout -b docs/r3-gap9-correction-substrate-canvas
+# Author new file: docs/design-correction-substrate-canvas-2026-05-14.md
+#   sum-variant Correction { LiveCorrection | DeferredCorrection } substrate carrier
+#   absolute (100%) coverage predicate per operator §4 Item 4 IN-R3 ratification 2026-05-13
+git add docs/design-correction-substrate-canvas-2026-05-14.md
+git commit -m "docs(r3-canvas): author Gap 9 sum-variant Correction substrate-shape canvas for Director + Substrate Mgr ratification (Phase 2.5)"
+git push -u origin docs/r3-gap9-correction-substrate-canvas
+gh pr create --title "docs(r3-canvas): Gap 9 sum-variant Correction substrate-shape canvas (Phase 2.5)" --body "..."
+
+# Surface to Director for ratification:
+dashboard-message send --to zesty-bear-812 --body "Phase 2.5 canvas PR open: #<NUM> — Gap 9 sum-variant Correction substrate per operator §4 Item 4 ratification; needs Director + Substrate Mgr sign-off before show-correct-code worker brief dispatch can unblock"
+
+# Surface to warm-wolf-698 (Substrate Mgr) for substrate review:
+dashboard-message send --to warm-wolf-698 --body "Phase 2.5 canvas PR #<NUM> needs Substrate Mgr substantive review per dispatch plan §1; sum-variant Correction shape lands in your lane post-ratification"
+```
+
+### Phase 2.6 — Cluster F Phase 2 canvas coordination [QUEUED, parallel-eligible]
+
+PM coordination message; Substrate Mgr (warm-wolf-698) owns the canvas-ratification work.
+
+```bash
+# NO PM-authored PR for this phase — Mgr-coord message only.
+# Surface to warm-wolf-698 (R3 Substrate Mgr; Cluster F lane owner):
+dashboard-message send --to warm-wolf-698 --body "Phase 2.6 per dispatch plan §1: F-β.1 canvas (docs/design-f-beta-1-effect-enum-migration-shape-canvas-2026-05-12.md) needs Substrate Mgr ratification to unblock F-α walker port worker dispatch. quiet-seal-699 PR #3016 F-β.2 work is already in flight; coordinate F-β.1 ratification timeline against F-β.2 to avoid sub-phase ordering conflicts."
+
+# Surface to Director for visibility:
+dashboard-message send --to zesty-bear-812 --body "Phase 2.6 Cluster F coord routed to warm-wolf-698; no PM-authored PR for this phase — Substrate Mgr canvas-ratification action."
+```
+
+### Phase 2.7 — §5.2 brief-dispatch authority-gate discipline (root-cause systemic fix) [QUEUED, synthesis-last]
+
+PM-direct authoring; depends on 2.1-2.6 evidence base.
+
+```bash
+git checkout main && git pull   # after 2.1-2.6 land
+git checkout -b docs/r3-close-section-5-2-brief-dispatch-authority-gate
+# Edit docs/r3-actual-close-plan.md to add §5.2 (after §5.1):
+#   "Brief-dispatch authority-gate discipline" — every brief must cite design-doc authority + named Mgr lane + canvas-ratification status BEFORE dispatch
+# Cross-reference this dispatch plan doc as exemplar
+# Reviewer-grep enforcement at PR-template tier
+git add docs/r3-actual-close-plan.md
+git commit -m "docs(r3-close): add §5.2 brief-dispatch authority-gate discipline (Phase 2.7 — root-cause systemic fix per audit doc §3)"
+git push -u origin docs/r3-close-section-5-2-brief-dispatch-authority-gate
+gh pr create --title "docs(r3-close): add §5.2 brief-dispatch authority-gate (Phase 2.7)" --body "..."
+
+dashboard-message send --to zesty-bear-812 --body "Phase 2.7 PR open — §5.2 discipline; synthesis-last per dispatch plan §7 sequencing; references this dispatch plan as exemplar"
+```
+
+### Standing commands (any time during Phase 2 execution)
+
+```bash
+# Check PR review state for currently-active Phase 2 PR:
+gh pr view <PR_NUM> --json reviews,mergeStateStatus,mergeable,statusCheckRollup
+
+# Check subtree status if dispatching a child (NONE expected for Phase 2):
+dashboard-ops graph deep-wolf-155
+
+# Inspect recent inbound messages:
+dashboard-ops messages mine 24 100
+
+# Reply to PR review (after fix-forward commit):
+gh pr comment <PR_NUM> --body "..."
+
+# Squash-merge per dashboard merge-readiness criteria:
+gh pr merge <PR_NUM> --squash --delete-branch
+```
+
+### Mapping to Mermaid graph nodes
+
+Each `P2X` node in §2 Mermaid graph maps to the corresponding "Phase 2.X" command block above:
+
+- **P20** ↔ Phase 2.0 commands (IN REVIEW)
+- **P21** ↔ Phase 2.1 commands
+- **P22** ↔ Phase 2.2 commands
+- **P23** ↔ Phase 2.3 commands
+- **P24** ↔ Phase 2.4 commands
+- **P25** ↔ Phase 2.5 commands
+- **P26** ↔ Phase 2.6 commands (Mgr-coord only; NO PR)
+- **P27** ↔ Phase 2.7 commands
