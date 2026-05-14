@@ -272,45 +272,72 @@ pub enum WorkflowParallelismReport {
 
 pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
     let callable = effect.callable.decl;
-    if callable_is(dag, callable, "append_method")
-        && effect.endpoint.method == HttpMethodScalar::Post
-    {
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
-    } else if callable_is(dag, callable, "concat_method")
-        && effect.endpoint.method == HttpMethodScalar::Post
-    {
-        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+    let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
+        return transport_effect_shape(effect);
+    };
+    if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
+        return EffectShape::IsBreaking(BreakingShape::AppendEffect);
+    }
+    if callable == methods.concat && effect.endpoint.method == HttpMethodScalar::Post {
+        return EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
+        });
+    }
+    if methods.reads.contains(&callable) && method_is_read(effect.endpoint.method) {
+        return EffectShape::IsIdempotent(IdempotentShape::ReadEffect);
+    }
+    if methods.upserts.contains(&callable) && method_is_upsert(effect.endpoint.method) {
+        return keyed_upsert_or_keyless_break(effect);
+    }
+    if callable == methods.delete && effect.endpoint.method == HttpMethodScalar::Delete {
+        return keyed_delete_or_keyless_break(effect);
+    }
+    transport_effect_shape(effect)
+}
+
+struct StdEffectMethodAnchors {
+    append: DeclarationId,
+    concat: DeclarationId,
+    reads: [DeclarationId; 7],
+    upserts: [DeclarationId; 3],
+    delete: DeclarationId,
+}
+
+impl StdEffectMethodAnchors {
+    fn resolve(dag: &Dag) -> Option<Self> {
+        Some(Self {
+            append: unique_decl_id(dag, "append_method")?,
+            concat: unique_decl_id(dag, "concat_method")?,
+            reads: [
+                unique_decl_id(dag, "get_method")?,
+                unique_decl_id(dag, "lookup_method")?,
+                unique_decl_id(dag, "map_get_method")?,
+                unique_decl_id(dag, "has_method")?,
+                unique_decl_id(dag, "map_has_method")?,
+                unique_decl_id(dag, "count_method")?,
+                unique_decl_id(dag, "length_method")?,
+            ],
+            upserts: [
+                unique_decl_id(dag, "map_insert_method")?,
+                unique_decl_id(dag, "replace_method")?,
+                unique_decl_id(dag, "with_method")?,
+            ],
+            delete: unique_decl_id(dag, "diff_method")?,
         })
-    } else if (callable_is(dag, callable, "get_method")
-        || callable_is(dag, callable, "lookup_method")
-        || callable_is(dag, callable, "map_get_method")
-        || callable_is(dag, callable, "has_method")
-        || callable_is(dag, callable, "map_has_method")
-        || callable_is(dag, callable, "count_method")
-        || callable_is(dag, callable, "length_method"))
-        && method_is_read(effect.endpoint.method)
-    {
-        EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-    } else if (callable_is(dag, callable, "map_insert_method")
-        || callable_is(dag, callable, "replace_method")
-        || callable_is(dag, callable, "with_method"))
-        && method_is_upsert(effect.endpoint.method)
-    {
-        keyed_upsert_or_keyless_break(effect)
-    } else if callable_is(dag, callable, "diff_method")
-        && effect.endpoint.method == HttpMethodScalar::Delete
-    {
-        keyed_delete_or_keyless_break(effect)
-    } else {
-        transport_effect_shape(effect)
     }
 }
 
-fn callable_is(dag: &Dag, callable: DeclarationId, imported_method_name: &str) -> bool {
-    dag.declaration_by_name(imported_method_name)
-        .map(|decl| decl.id == callable)
-        .unwrap_or(false)
+fn unique_decl_id(dag: &Dag, name: &str) -> Option<DeclarationId> {
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.name.as_deref() == Some(name))
+        .map(|decl| decl.id);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first)
 }
 
 fn transport_effect_shape(effect: &Operation) -> EffectShape {
