@@ -65,7 +65,7 @@ tight bound is {tight_class}. Applicable transformations: [{transformation_list}
 
 **Compiler-internal code** (`src/v3/*`, `dsl/std/*`): **always-on**. Every compiler-authored function ratchet-checks tightness as part of build. Any tightness violation is a build-break. This is the SELF_HOSTING.md "compiler is canonical example" framing made operational — the compiler's own code is the most-aggressively-checked codebase in the project.
 
-**User programs**: opt-in via `EnforcedTightness<TightnessAnalysis>` data declaration (1-param self-comparison carrier; structurally distinct from EnforcedApplication's 3-param user-budget shape per codex BLOCKING #11751 PR #3067 resolution 2026-05-14 — see §1.5 for the carrier shape + example use-site at §1.5 instantiation block). Backwards-compatible with existing programs; users opt their functions in as they're ready.
+**User programs**: opt-in via `EnforcedTightness` data declaration (CONCRETE non-generic carrier; Output type-locked to `TightnessAnalysis` per codex BLOCKING PR #3067 2026-05-14 — see §1.5 for the carrier shape + example use-site at §1.5 instantiation block). Backwards-compatible with existing programs; users opt their functions in as they're ready.
 
 ### §1.5 Substrate carriers
 
@@ -188,22 +188,29 @@ type TightnessAnalysis = {
 // codex correctly flagged that the compromise is incomplete. Resolved here:
 // distinct carrier shape for self-comparison; lens carrier is Lens<Output> (NOT
 // EnforceableLens which is budget-shaped).
-type EnforcedTightness<Output> {
-  lens: Lens<Output>                  // generic lens; NOT EnforceableLens (which is user-budget shape)
+// Concrete (NON-generic) carrier — Output type-locked to `TightnessAnalysis`.
+// Per codex BLOCKING PR #3067 2026-05-14: previous `EnforcedTightness<Output>`
+// generic over any `Lens<Output>` was too permissive — admitted invalid
+// instantiations like `EnforcedTightness<ComplexitySummary>` (where
+// ComplexitySummary lacks the actual/tight projection axes the enforcement
+// logic requires). Prose-only "Output MUST be TightnessAnalysis-like" contract
+// is NOT type-enforcement; concretization locks the contract at the type level.
+//
+// Tightness-style enforcement for OTHER lens output domains (e.g., future
+// timing-tightness, memory-tightness) creates its own concrete carrier
+// (e.g., `EnforcedTimingTightness { lens: Lens<TimingTightnessAnalysis>, ... }`),
+// NOT a generic over `Lens<Output>`. This per-domain carrier discipline matches
+// how `EnforcedApplication<Output, Budget, Projected>` family members handle
+// per-domain budget enforcement at the type level rather than via prose contract.
+type EnforcedTightness {
+  lens: Lens<TightnessAnalysis>       // type-locked to TightnessAnalysis (which carries actual + tight projection axes)
   section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 (SectionRef type, DeclarationScope is a variant)
   diagnostic_severity: DiagnosticSeverity  // src/v3/std/lens_application.dag:84 (single-variant Error per feedback_fail_closed_discipline + INVARIANTS C-8); NOT dsl/std/behavioral.dag::Severity (4-variant unrelated to lens discipline)
   span: SourceSpan
   //
-  // Output type contract: Output MUST be a TightnessAnalysis-like carrier with
-  // two compiler-derived projection axes (actual + tight) over a common comparison
-  // type (e.g., AsymptoticClass for complexity). Comparison is internal to the
-  // lens's enforcement logic, NOT user-declared.
-  //
-  // For complexity-tightness instantiation: Output = TightnessAnalysis
-  //   - TightnessAnalysis.actual: AsymptoticClass (computed from program structure)
-  //   - TightnessAnalysis.tight: AsymptoticClass (compiler-derived tighter bound)
-  //   - Comparison: asymptotic_dominates(actual, tight) — if True AND actual ≠ tight,
-  //     emit TightnessViolation diagnostic at span.
+  // Enforcement logic (lens-internal): asymptotic_dominates(TightnessAnalysis.actual,
+  // TightnessAnalysis.tight) — if True AND actual ≠ tight, emit TightnessViolation
+  // diagnostic at span. Both projection axes are compiler-derived; no user budget.
   //
   // Semantic distinction from EnforcedApplication<Output, Budget, Projected>:
   //   - EnforcedApplication carries a USER-DECLARED `budget: Budget` field; user
@@ -223,7 +230,7 @@ lens lens_complexity_tight: (Dag) -> TightnessAnalysis
 Example use-site declaration (1-param self-comparison shape; lens is `Lens<TightnessAnalysis>` not `EnforceableLens`):
 
 ```
-data witness_tightness: EnforcedTightness<TightnessAnalysis> = {
+data witness_tightness: EnforcedTightness = {
   lens: lens_complexity_tight              // produces TightnessAnalysis with actual + tight projections
   section: DeclarationScope { declaration: my_function }
   diagnostic_severity: Error

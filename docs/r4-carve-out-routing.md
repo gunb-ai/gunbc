@@ -103,7 +103,7 @@ DeadCodeElimination / ConstantBoundPropagation / AggregationRecognition
 / MapFilterFoldFusion) to derive a tight bound; errors if actual class
 is loose against compiler-derived tight class. Compiler-internal code
 always-on; user programs opt-in via
-`EnforcedTightness<Output>` (1-param self-comparison carrier per `docs/design-complexity-tightness-lens.md` §1.5; structurally distinct from `EnforcedApplication`'s 3-param user-budget shape).
+`EnforcedTightness` (concrete non-generic self-comparison carrier with `lens: Lens<TightnessAnalysis>` type-locked per `docs/design-complexity-tightness-lens.md` §1.5; structurally distinct from `EnforcedApplication`'s 3-param user-budget shape).
 
 **Carved to R4**: **cross-algorithm optimality** — compiler proves a
 DIFFERENT algorithm with equivalent semantics achieves better
