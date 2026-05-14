@@ -6501,6 +6501,10 @@ fn surface_expr_is_authored_optional_none(expr: &SurfaceExpr) -> bool {
     }
 }
 
+// Recognize already-authored optional disj syntax (`Some` / `None`) so lowering does not
+// double-wrap. Spelling matches the language's optional constructors (see `docs/v3-spec.md`
+// Scenario 6), not an arbitrary callable: a hypothetical user-defined `Some`/`None` at an
+// `Optional<T>` site would skip implicit `Some` wrapping here by design.
 fn optional_some_none_surface_form(expr: &SurfaceExpr) -> bool {
     match expr {
         SurfaceExpr::VariantRecord { target, .. } => target == "Some" || target == "None",
