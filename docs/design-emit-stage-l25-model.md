@@ -67,7 +67,7 @@ Per-target structural facts: primitive set with refinement bounds, algebra inhab
 
 Selects which Shape A target to emit to (Rust / Python / Go for R3). **EmissionConfig is Shape-A-only by construction** — Shape B is user-space artifact emission (SPICE / English / YAML / Verilog / Terraform), authored by users as standalone `.dag` programs walking typed values via `concat`/`fold`/`match`. Shape B is NOT a compiler-emit dispatch axis and does NOT belong in PB-6 EmissionConfig surface (per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission" + `r3-structure.md` framing). PB-6 emit substrate is compiler-emit only.
 
-**Substrate authority**: `src/v3/std/emit_config.dag` (proposed; may already exist as part of emit_model.dag — needs grep verification at Step 2 authoring).
+**Substrate authority**: `src/v3/std/emit_config.dag` is a NEW substrate file PB-6 must author. Verified at this doc's HEAD via `grep -rn "type EmissionConfig" src/v3/std/ dsl/std/` (no existing declaration; the only `LanguageSpec`-adjacent types in `src/v3/std/emit_model.dag` cover realization meta-types, not target-selection / dispatch config). Per `feedback_substrate_principle_audit` 6-question audit: target-selection is a structural axis (which-target-of-N) requiring its own carrier; refinement of `LanguageSpec` would conflate per-target-realization-facts with per-emission-target-selection. Authoring routes via Step 2 (pipeline-slot ExternalRealization PR) — Director-tier substrate-fact-introduction.
 
 ---
 
@@ -298,7 +298,11 @@ The director-recommend in the earlier draft (keep plain `Dag` + runtime `Uninfer
 
 **Option (c) — sum-variant `Dag = PreInferDag | InferredDag`**: model the pipeline state as a closed-axis sum-variant on `Dag` itself; infer produces `InferredDag`, emit accepts only that variant. Pros: explicit state machine; aligns with `feedback_coproduct_dissolution` + closed-axis modeling discipline. Cons: requires refactoring all `Dag`-consuming code to handle both variants.
 
-**Director-recommend now: option (b) refinement-via-where-clause IF refinement substrate at HEAD; otherwise option (a) newtype as transition shape**. Reasoning: option (b) is most aligned with the language's structural-refinement framing (refinements are first-class facts about typed values, not marker types); option (a) is the pragmatic fallback when refinement substrate isn't ready. Option (c) is most structurally explicit but has higher refactoring cost across all `Dag`-consuming sites; operator can pick (c) if the explicit-state-machine framing is preferred over wrapper-types.
+**Director-recommend now: option (c) sum-variant** per `feedback_coproduct_dissolution` Practice 2 (dissolve coproducts into coordinates; make implicit coordinate-axes structurally explicit). Reasoning: options (a) newtype and (b) refinement both gate AT the stage boundary (emit's signature) but leave the parent `Dag` type as an implicit coproduct admitting both pre-infer and post-infer states in OTHER contexts (infer's intermediate stages, lower's output, error-recovery paths). Option (c) makes the coproduct explicit — every `Dag` value is structurally one variant or the other; pre-infer state cannot exist outside `PreInferDag`. This is the strongest version of "illegal states unrepresentable" (Practice 2) AND aligns with `feedback_coproduct_dissolution` for not-yet-explicit type-level distinctions.
+
+**Cost of (c)**: higher refactoring across all `Dag`-consuming sites (lower output type changes, infer output type changes, error-recovery sum-variant matching). **Mitigation**: this refactoring IS the substantive PB-X migration work — pipeline-stage migrations from hand-Rust to `.dag` substrate inherently restructure these types. Option (c) absorbs the typed-state restructuring INTO the PB-X work rather than carrying it as separate later technical debt.
+
+**Fallback to (a) or (b)** if operator scopes (c) out-of-PB-6: option (a) newtype as transition shape; option (b) refinement-via-where-clause if refinement substrate is at HEAD by Step 2 dispatch time.
 
 Whatever shape is picked, the constraint is: **post-infer readiness IS modeled in the type at emit's signature; the runtime `UninferredPortPresent` framing is retired.**
 
