@@ -834,7 +834,19 @@ If a brief dispatches without the 3-axis citation block AND a reviewer flags it,
 
 By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition. **Validation receipt** (per codex BLOCKING #11738 PR #3071 follow-up 2026-05-14): the §1 task table's three citation columns (Design authority + Mgr lane + Canvas-ratification status) correspond to the §5.2.1 3-axis citation block; the exemplar claim is grep-verifiable against the dispatch plan §1 header at `docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md`.
 
-**§5.2.1 multi-entry discipline applied to the exemplar itself** (per codex BLOCKING re-review PR #3072 2026-05-14): 7 of 8 Phase 2 rows (2.0-2.7) cover single-entry scope (one close-plan section / one canvas / one §1.8 row) — single-entry citation suffices. Phase 2.8 covers multi-entry scope (~122 TEST entries; T-γ-subset post-framework). Per §5.2.1 multi-entry requirement: per-entry mapping OR static pre-dispatch inventory artifact citation. **Phase 2.8's deliverable IS the §5.2.1-compliant inventory artifact** — dispatch cannot fire until the artifact lands. The dispatch plan's Phase 2.8 status field shows "HOLD pending operator-ratified test-deletion framework," demonstrating §5.2 enforcement firing correctly: dispatch withheld because §5.2.1 multi-entry requirement isn't yet satisfied. This is the discipline working as designed at the very boundary the rule was added to enforce, NOT a §5.2.1 dilution.
+**§5.2.1 multi-entry discipline applied to the exemplar itself** (per codex BLOCKING re-review PR #3072 2026-05-14):
+
+- **6 of 8 Phase 2 rows are single-entry scope** (2.0 / 2.1 / 2.2 / 2.4 / 2.5 / 2.6 / 2.7 — each touches one close-plan section / one canvas / one §1.8 row / one Mgr-coord channel). Single-entry citation suffices for these.
+
+- **2 of 8 Phase 2 rows are multi-entry scope** — Phase 2.3 + Phase 2.8 — and require §5.2.1 multi-entry compliance:
+  - **Phase 2.3 — Track A taxonomy reclassification** (multi-entry: ~37 NON_TEST entries at HEAD). Per-entry inventory artifact ALREADY EXISTS at `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` (Track A taxonomy doc; per-row classification for each NON_TEST entry). Phase 2.3 deliverable RECLASSIFIES this existing per-entry inventory with PB-X lane prereq citations. §5.2.1 multi-entry requirement is satisfied by the existing-inventory-citation path: design-authority field references the Track A taxonomy doc as the per-entry mapping artifact.
+  - **Phase 2.8 — Cluster M Phase 3 per-test design enumeration** (multi-entry: ~122 TEST entries; T-γ-subset post-framework). Per-entry inventory artifact DOES NOT YET EXIST. Phase 2.8 deliverable IS the §5.2.1-compliant inventory artifact (creates the per-test inventory + pilot/bulk split). §5.2.1 multi-entry requirement is NOT-SATISFIED at HEAD; dispatch withheld via HOLD-pending-framework status — demonstrating §5.2 enforcement firing correctly at the very boundary the rule targets.
+
+The two multi-entry phases demonstrate complementary §5.2.1 enforcement modes:
+- **Phase 2.3** = existing-inventory-citation path (dispatch eligible; Track A taxonomy doc IS the per-entry artifact)
+- **Phase 2.8** = inventory-not-yet-existing path (dispatch HELD until artifact lands; Phase 2.8 deliverable produces the artifact)
+
+Both demonstrate §5.2.1 working at multi-entry boundaries, NOT diluting the rule. The dispatch plan applies §5.2 to itself — including correctly handling both multi-entry sub-cases.
 
 **§5.2.5 — Foreclosure clause** (analogous to §5.1)
 
