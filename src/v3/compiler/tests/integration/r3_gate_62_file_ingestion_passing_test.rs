@@ -1,19 +1,20 @@
 //! **Layer:** integration
 //!
-//! R3 §1.8 gate **#62** `substrate_gap_file_ingestion_closed` — PASSING
-//! receipt. CONSUMER_LANDED already supplied via the `FileAttachment`
+//! R3 §1.8 gate **#62** `substrate_gap_file_ingestion_closed` —
+//! **negative-bridge audit (supporting evidence; NOT a §Acceptance
+//! PASSING receipt)**. CONSUMER_LANDED supplied via the `FileAttachment`
 //! carrier landing in `src/v3/std/timing_lens.dag` plus the structural
 //! ratchet in `file_attachment_substrate_carrier_test.rs` and the
 //! `gate_62_file_attachment_demo_record` existence proof (PR #2823).
 //!
-//! §Acceptance per `docs/r3-program-plan.md` §1.8 row #62: ".dag program
-//! ingests external file w/o `include_str!`". The gate is forward-looking
-//! (Director-verified at ratification time on PR #2820 canvas — no
-//! `include_str!` matches under `dsl/`). This test promotes that
-//! one-time grep into a CI-visible ratchet on tree state, distinct from
-//! grep-on-doc-comment textual-enforcement (`feedback_no_textual_enforcement_bridges`):
-//! the predicate is over the file tree's authoritative substrate body,
-//! not over comments or briefs that mention the string.
+//! Per operator BLOCKING on PR #3111 (2026-05-14T19:13:37Z): §1.4/§4.3
+//! of `docs/r3-program-plan.md` require a positive `.dag` program that
+//! ingests an external file via `FileAttachment`, not just absence of
+//! the old bridge (THESIS/P1 modeling faithfulness). This audit
+//! ratchets that no `.dag`/`.v3` program body under `dsl/` re-introduces
+//! `include_str!` while the positive ingestion-via-`FileAttachment`
+//! demonstration is built out; it is paired with that future positive
+//! receipt, not a substitute for it.
 //!
 //! Per codex REQUEST_CHANGES on PR #3111 (2026-05-14 review #11981): the
 //! check operates over **program body** text, not raw bytes — line

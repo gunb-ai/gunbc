@@ -650,15 +650,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
     // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
-    // R3 gate #62 `substrate_gap_file_ingestion_closed` §Acceptance receipt: tree-state
-    // ratchet asserting zero `include_str!` matches under `dsl/`. Pairs with the carrier
+    // R3 gate #62 `substrate_gap_file_ingestion_closed` negative-bridge audit
+    // (supporting evidence; NOT a §Acceptance PASSING receipt — operator BLOCKING
+    // 2026-05-14T19:13:37Z held PASSING flip pending a positive
+    // ingestion-via-`FileAttachment` `.dag` demonstration). Pairs with the carrier
     // ratchet `file_attachment_substrate_carrier_test.rs` + `gate_62_file_attachment_demo_record`
-    // (PR #2823) and the `FileAttachment` Refined-B-1 carrier in
-    // `src/v3/std/timing_lens.dag`. Hand-Rust because the predicate is over the
-    // workspace `.dag`/`.v3` file tree (filesystem walk + read), distinct from
-    // grep-on-doc-comment textual-enforcement per `feedback_no_textual_enforcement_bridges`.
-    // Dissolves when a `.dag` `TestClaim` / PB-B-1 runner can assert
-    // file-tree predicates fail-closed without a host-side filesystem walker.
+    // (PR #2823) and the `FileAttachment` Refined-B-1 carrier in `src/v3/std/timing_lens.dag`.
+    // Hand-Rust because the predicate is over the workspace `.dag`/`.v3` file tree
+    // (filesystem walk + read) with comments / string literals stripped from each
+    // program body, distinct from grep-on-doc-comment textual-enforcement per
+    // `feedback_no_textual_enforcement_bridges`. T-PB-B deferral lane
+    // (`pb_rust_tests_outside_residual_zero`); dissolves when a `.dag` `TestClaim` /
+    // PB-B-1 runner can assert the file-tree audit fail-closed without a host-side
+    // filesystem walker, or when the gate flips PASSING via a positive ingestion
+    // demonstration and the carrier-reachability ratchets alone carry the audit.
     "src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_passing_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
