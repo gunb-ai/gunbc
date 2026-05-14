@@ -5,7 +5,7 @@
 **Authoring date:** 2026-05-14.
 **Authoring tier:** Director (zesty-bear-812).
 **Lane:** PB-3 (parse) per `docs/design-pure-bootstrap-zero.md` + `src/v3/SELF_HOSTING.md` §2 4-step migration discipline.
-**Migration order rank:** 4th (per `docs/substrate-reflection-design.md` §12.6 — emit → lower → infer → parse for the 4 pipeline-stage migrations explicitly tabled there; `docs/design-pure-bootstrap-zero.md` PB-2 lane extends with tokenize; PB-6 emit landed PR #3066, PB-4 lower at PR #3077, PB-5 infer at PR #3085).
+**Migration order rank:** 4th (per `docs/substrate-reflection-design.md` §12.6 — emit → lower → infer → parse for the 4 pipeline-stage migrations explicitly tabled there; `docs/design-pure-bootstrap.md` §"PB-2 — tokenize retire" (line ~134) extends with tokenize; PB-6 emit landed PR #3066, PB-4 lower at PR #3077, PB-5 infer at PR #3085).
 **Routing authority chain:** operator-ratification + PM-delegate (per 2026-05-14 directive) → PM amends close plan + §1.8 PB-3 gate row → Director authors per-step worker briefs → R3 Substrate Mgr (warm-wolf-698) dispatches workers.
 
 ---
