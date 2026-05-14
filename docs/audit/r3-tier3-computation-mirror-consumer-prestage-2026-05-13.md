@@ -74,6 +74,15 @@
 
 **Parallel to PB-0:** Retire **`NON_TEST`** census paths that are **pure wiring** to deprecated mirror call-sites **only** when a **same-PR** dissolution receipt exists (Dispatch-Discipline **(b)**). Use PB-0 cycle briefs + this audit as cross-links when opening those PRs.
 
+**Wave-1 PB1 receipt (2026-05-14):** terminal carrier exposure for
+`ShrinkFactor` / `IterationPrimitive` is now guarded by
+`tier3_computation_terminal_carriers_have_no_parallel_executable_helpers`.
+That test asserts the carrier shapes from the lowered `std.computation` DAG
+and forbids new public helper functions that would turn those terminal
+carriers into a parallel executable Rust authority. This is a narrow
+CONSUMER_LANDED slice only; it does not retire the `SizeBound` / `CallPattern`
+lowering scaffold or promote row #2 to PASSING.
+
 ---
 
 ## §4. Worker brief stub (fires when Evaluator Mgr lane unblocks)
