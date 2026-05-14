@@ -18,16 +18,22 @@ use v3_compiler::dag::{Dag, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 #[test]
-fn r3_gate_90_lens_enforcement_carrier_bundles_locked() {
+fn r3_gate_90_timing_lens_enforcement_carrier_bundle_locked() {
     let boot = generated_full_bootstrap_dag();
     assert_lens_enforcement_bundle(&boot, "timing_lens.dag", "timing_enforcement");
+}
 
+#[test]
+fn r3_gate_90_complexity_lens_enforcement_carrier_bundle_locked() {
     let complexity = cached_compile_to_dag(
         include_str!("../../../lenses/complexity.dag"),
         "src/v3/lenses/complexity.dag",
     );
     assert_lens_enforcement_bundle(&complexity, "complexity.dag", "complexity_enforcement");
+}
 
+#[test]
+fn r3_gate_90_cost_lens_enforcement_carrier_bundle_locked() {
     let cost = cached_compile_to_dag(
         include_str!("../../../lenses/cost.dag"),
         "src/v3/lenses/cost.dag",
