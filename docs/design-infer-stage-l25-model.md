@@ -104,16 +104,30 @@ type IdentifierRef
   = SurfaceVarRef { name: NonEmptyStr, span: SourceSpan }
   // Future: TypePathRef, ModulePathRef per Step 2 brief
 
-type AlgebraAxisRef
-  = AlgebraAxis(NonEmptyStr)  // closed-axis on algebra names per algebra.dag
-  // Specific axes will enumerate as TypeConnective evolves
+// Proper closed-axis enum (per codex BLOCKING PR #3085 /api/reviews/12088 —
+// earlier draft had `AlgebraAxisRef = AlgebraAxis(NonEmptyStr)` which was a
+// String-wrapper masquerading as typed; that contradicts the typed-carrier
+// discipline + creates a second authority on algebra identity. Closed-axis
+// enum is the structurally honest form):
+type AlgebraAxis
+  = Closure
+  | Associativity
+  | Commutativity
+  | Identity
+  | Inverse
+  | Distributivity
+  | OrderingTotality
+  | OrderingTransitivity
+  | OrderingAntisymmetry
+  // Step 2 brief enumerates the full closed set against infer.rs algebra-inhabitance check sites;
+  // adjacent to verification.dag:146 `AlgebraicLawKind` which has the 3-variant subset already live
 
 type InferDiagnostic
   = UnresolvedIdentifier { identifier: IdentifierRef, scope: SectionRef }
   | NotCallable { type_connective: TypeConnective }
   | ArgumentArityMismatch { expected: Nat, actual: Nat }
   | TypeMismatch { expected: TypeShape, actual: TypeShape }
-  | AlgebraInhabitanceFail { connective: TypeConnective, axis: AlgebraAxisRef }
+  | AlgebraInhabitanceFail { connective: TypeConnective, axis: AlgebraAxis }
   | PostSweepUninferred { port_id: PortId, fallback_reason: String }   // per §12 Q3; fallback_reason is human display detail
   | (additional variants per Step 2 worker brief authoring against infer.rs; ALL classification fields are typed closed-axis carriers, not String)
 ```
