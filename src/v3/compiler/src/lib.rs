@@ -21,6 +21,7 @@ pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
+pub use enforced_lens_application::parallelism_iteration_opt_in_enforcement_violates;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
 // need the helpers below as **`pub`**: the consolidated integration test binary is a separate
 // crate that links this library and cannot call `pub(crate)` items on `v3_compiler`.
@@ -5239,6 +5240,8 @@ pub mod lens_parallelism {
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::OptionalDiagnostic;
+        use crate::Witness;
 
         include!("lens_parallelism_generated.rs");
     }
@@ -5251,6 +5254,15 @@ pub mod lens_parallelism {
     ) -> i64 {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
+
+    pub(crate) fn parallelism_iteration_observed_mode(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> ParallelismMode {
+        generated::parallelism_iteration_observed_mode(dag, workflow_root)
+    }
+
+    pub(crate) use generated::ParallelismMode;
 }
 
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
@@ -5627,15 +5639,40 @@ fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> b
     })
 }
 
+fn is_lenses_parallelism_authority_module(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Module { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "parallelism"
+        )
+    })
+}
+
+fn needs_parallelism_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    if is_lenses_parallelism_authority_module(module) {
+        return false;
+    }
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "parallelism"
+        )
+    })
+}
+
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = if needs_complexity_lens_authority_prepended(&surface) {
-        lower::lower_prepending_complexity_lens_authority(&surface)
-    } else {
-        lower::lower(&surface)
-    };
+    let mut dag = lower::lower_compile_module(
+        &surface,
+        needs_complexity_lens_authority_prepended(&surface),
+        needs_parallelism_lens_authority_prepended(&surface),
+    );
     infer::infer(&mut dag);
     r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {

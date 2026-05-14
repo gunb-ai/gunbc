@@ -173,3 +173,78 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
     }
     1
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParallelismMode {
+    OptInIndependent,
+    Sequential,
+}
+
+fn behavior_parallelism_root(behavior: &Behavior) -> NodeId {
+    match behavior {
+        Behavior::Value(v) => v.id,
+        Behavior::Transform(t) => t.id,
+        Behavior::Branch(b) => b.id,
+        Behavior::Loop(l) => l.id,
+        Behavior::Bind(bind) => bind.id,
+    }
+}
+
+pub(super) fn parallelism_iteration_observed_mode(p0: &Dag, p1: NodeId) -> ParallelismMode {
+    if loop_iteration_parallel_emission_indicator(p0, p1) == 1 {
+        ParallelismMode::OptInIndependent
+    } else {
+        ParallelismMode::Sequential
+    }
+}
+
+pub(super) fn parallelism_lens_read(p0: &Dag, p1: &Behavior) -> Witness<ParallelismMode> {
+    Witness::Inhabits(parallelism_iteration_observed_mode(p0, behavior_parallelism_root(p1)))
+}
+
+pub(super) fn parallelism_lens_iterate(
+    body: ParallelismMode,
+    _bound: &LoopBound,
+) -> ParallelismMode {
+    body
+}
+
+pub(super) fn parallelism_lens_validate(
+    _p0: &Dag,
+    _p1: &ParallelismMode,
+) -> OptionalDiagnostic {
+    OptionalDiagnostic::NoDiagnostic
+}
+
+pub(super) fn parallelism_enforcement_project(m: ParallelismMode) -> ParallelismMode {
+    m
+}
+
+pub(super) fn parallelism_enforcement_violates(
+    observed: &ParallelismMode,
+    declared: &ParallelismMode,
+) -> bool {
+    match declared {
+        ParallelismMode::OptInIndependent => match observed {
+            ParallelismMode::Sequential => true,
+            ParallelismMode::OptInIndependent => false,
+        },
+        ParallelismMode::Sequential => match observed {
+            ParallelismMode::OptInIndependent => false,
+            ParallelismMode::Sequential => false,
+        },
+    }
+}
+
+pub(super) fn parallelism_lens_combine(
+    a: &ParallelismMode,
+    b: &ParallelismMode,
+) -> ParallelismMode {
+    match a {
+        ParallelismMode::Sequential => ParallelismMode::Sequential,
+        ParallelismMode::OptInIndependent => match b {
+            ParallelismMode::Sequential => ParallelismMode::Sequential,
+            ParallelismMode::OptInIndependent => ParallelismMode::OptInIndependent,
+        },
+    }
+}
