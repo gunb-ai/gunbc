@@ -25,11 +25,11 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Verdict (Phase 2 index population)
 
-**OVERALL: PENDING** — 51 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 55 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
+**OVERALL: PENDING** — 52 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 54 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
 ## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
-This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The current table re-derives affected rows present in the merged ledger snapshot, including row #15 (PR #3060 — `DECLARED` → `CONSUMER_LANDED`), row #22 (PR #3080 — `DECLARED` → `CONSUMER_LANDED + PASSING`), and row #33 (PR #3116 — `CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, full §Acceptance receipt at HEAD via the four-category `canonical_lens_bridge_ratchet_test`, `bridge_retirement_demonstration` DeclarationRef-routed lens-output-equals, and `src/v3/std/bridge_ledger.dag` row `bridge_canonical_lens_name_patching_residual` `Retired`). If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
+This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The current table re-derives affected rows present in the merged ledger snapshot, including row #15 (PR #3060 — `DECLARED` → `CONSUMER_LANDED`), row #20 (`DECLARED` → `CONSUMER_LANDED + PASSING`, predicate index row upgraded to **HARNESS_NAMED** per §1.8 + integration ratchet in `m2_substrate_inhabitance_test.rs`), row #22 (PR #3080 — `DECLARED` → `CONSUMER_LANDED + PASSING`), and row #33 (PR #3116 — `CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, full §Acceptance receipt at HEAD via the four-category `canonical_lens_bridge_ratchet_test`, `bridge_retirement_demonstration` DeclarationRef-routed lens-output-equals, and `src/v3/std/bridge_ledger.dag` row `bridge_canonical_lens_name_patching_residual` `Retired`). If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
 
 ## Row-count parity (ledger source of truth)
 
@@ -43,11 +43,11 @@ At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleto
 
 ## Status-bucket distribution after current re-derivation
 
-Derived from the one-row-per-gate table below after applying the current merged §1.8 deltas, including row #15 (`DECLARED` → `CONSUMER_LANDED`, PR #3060), row #22 (`DECLARED` → `CONSUMER_LANDED + PASSING`, PR #3080), and row #33 (`CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, PR #3116):
+Derived from the one-row-per-gate table below after applying the current merged §1.8 deltas, including row #15 (`DECLARED` → `CONSUMER_LANDED`, PR #3060), row #20 (`DECLARED` → `CONSUMER_LANDED + PASSING`, §1.8 + predicate index), row #22 (`DECLARED` → `CONSUMER_LANDED + PASSING`, PR #3080), and row #33 (`CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, PR #3116):
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
-| `PASSING` | 48 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
+| `PASSING` | 49 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `SATISFIED-BY-CONSTRUCTION` | 3 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `CONSUMER_LANDED` | 18 | not yet — not at PASSING |
 | `DECLARED` | 29 | not yet — not at PASSING |
@@ -83,7 +83,7 @@ Close-time canonical predicate harness for `PASSING` / `SATISFIED-BY-CONSTRUCTIO
 | 17 | `numeric_abstract_carriers_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #17 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 18 | `numeric_width_refinements_landed` | substrate-shape | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `numeric_width_refinements_landed` and sibling ratchets cited under §1.8 row #18 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #18. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 19 | `numeric_aliases_align_to_refinements` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #19 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
-| 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #20 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `numeric_inherited_bake_ins_dissolved_int_inherited_aliases_use_abstract_int` in `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`; sibling ratchets cited under §1.8 row #20 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #20. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 21 | `int_refinement_overflow_proven_parametric` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #21 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 22 | `int_lit_full_magnitude_consumer` | substrate-shape | **HARNESS_NAMED** | `cargo test -p v3-compiler --test integration int_literal_full_magnitude_carrier_rejects_beyond_documented_boundary` plus sibling endpoint ratchets named in §1.8 row #22 Notes; cross-ref `docs/r3-structure.md` §Acceptance gate #22. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 audit. |
 | 23 | `string_audit_receipt` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #23 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
