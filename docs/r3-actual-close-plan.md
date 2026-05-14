@@ -294,20 +294,28 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Promise** (THESIS.md:103-105): *"Diagnostics should point to the structurally correct program, not just report that the current one is wrong."*
 
-**HEAD evidence**:
-- **No §1.8 gate** exists for this promise
-- `docs/audit/` does not have a "show-correct-code coverage" tracking doc
-- Closure ledger doesn't carry it
+**HEAD evidence** (revised Phase 2.5 per substrate-state grep 2026-05-14):
+- **§1.8 gate #106** `show_correct_code_diagnostic_coverage` — landed per PR #3027 (gate row in §1.8 ledger)
+- **Substrate carriers LANDED at HEAD** per `src/v3/std/diagnostics.dag`:
+  - `type Correction = LiveCorrection { witness: CorrectionWitness } | DeferredCorrection { reason: String, retirement_plan: RetirementPlan }` (lines 67-69)
+  - `type CorrectionWitness { description, span, new_source }` (lines 37-44)
+  - `type RetirementPlan { owner, exit_condition }` (lines 49-52)
+  - `type Diagnostic { ..., correction: Correction }` — mandatory field per line 154
+- Substrate matches Gap 9 §4 spec exactly (sum-variant `Correction { LiveCorrection | DeferredCorrection }`, NOT `Option<Witness>`); shape ratified per `feedback_state_space_vs_behavioral_invariants` + `feedback_practice_2_vs_4_same_variant_vs_cross_variant` discipline
+- Closure ledger references the substrate as authority
 
-**What's missing**: §1.8 gate + per-diagnostic-class audit + close criterion.
+**What's missing** (revised — substrate-landed; consumer-tier work remains):
+- Per-diagnostic-class audit (parse / type / lens / emit / ...) — every diagnostic-firing path must use the `correction: Correction` field
+- Test-corpus ratchet: every fired `Diagnostic` value in the test corpus must carry the `LiveCorrection` variant (absolute 100% per operator §4 Item 4 ratification 2026-05-13). Equivalently: `count(diagnostic.correction == DeferredCorrection { .. })` = 0 across the test corpus.
+- DeferredCorrection retirement: each `DeferredCorrection` entry encountered during close-walk ratchets to zero per its own `retirement_plan` field
 
-**Plan to cash**:
-- **Owner**: PM (deep-wolf-155) authors the new §1.8 row → Substrate Mgr (warm-wolf-698) authors canvas → Verification Mgr (swift-deer-459) implements
-- **Sub-program**:
-  1. Author new §1.8 row #106 `show_correct_code_diagnostic_coverage` with substrate-shape gate type
-  2. Enumerate diagnostic classes (parse / type / lens / emit / ...)
-  3. For each class, audit existing diagnostics + check whether they cite "Y would be right" or only "X is wrong"
-  4. **Substrate-shape canvas authored by Substrate Mgr BEFORE worker dispatch** (per claude review exploratory observation #2 — this plan doc surfaces a sub-program step, but the actual substrate-shape commitment must be ratified via Mgr canvas, not implemented from this prose). **Canvas substrate-shape constraint (briansrls + codex BLOCKING PR #3013 2026-05-13 dual enforcement: `Option<Witness>` shape RETRACTED; absolute thesis shape and pragmatic residual policy SEPARATED into named carrier variants)**: per `feedback_state_space_vs_behavioral_invariants` ("check if the type admits illegal state combinations; type enforcement > API enforcement") + `feedback_optional_models_recovery_as_exception` ("T? where absence is the norm conceals plurality") + `feedback_practice_2_vs_4_same_variant_vs_cross_variant`, the Correction field MUST inhabit exactly one of two named carrier variants (NOT `Option<Witness>`):
+**Plan to cash** (revised — substrate-landed; remaining work is consumer-tier):
+- **Owner**: warm-wolf-698 (R3 Substrate Mgr; substrate authored + landed) → still-moth-538/tidy-ram-467 (R3 Verification Mgr; implements per-diagnostic-class consumer audit + test-corpus ratchet enforcement)
+- **Sub-program** (substrate-step DONE; consumer-step ACTIVE):
+  1. ~~Author new §1.8 row #106~~ — LANDED via PR #3027
+  2. **Substrate-shape canvas** — LANDED at `src/v3/std/diagnostics.dag` (sum-variant Correction carrier matches Gap 9 §4 spec exactly)
+  3. Enumerate diagnostic classes (parse / type / lens / emit / ...) — per-diagnostic-class consumer audit at HEAD; verify each diagnostic-firing path uses `correction: Correction` field
+  4. For each class, audit existing diagnostics + check whether they construct `LiveCorrection { witness: CorrectionWitness { description, span, new_source } }` for live fixes, or `DeferredCorrection { reason, retirement_plan: { owner, exit_condition } }` for accepted residuals **Canvas substrate-shape constraint (briansrls + codex BLOCKING PR #3013 2026-05-13 dual enforcement: `Option<Witness>` shape RETRACTED; absolute thesis shape and pragmatic residual policy SEPARATED into named carrier variants)**: per `feedback_state_space_vs_behavioral_invariants` ("check if the type admits illegal state combinations; type enforcement > API enforcement") + `feedback_optional_models_recovery_as_exception` ("T? where absence is the norm conceals plurality") + `feedback_practice_2_vs_4_same_variant_vs_cross_variant`, the Correction field MUST inhabit exactly one of two named carrier variants (NOT `Option<Witness>`):
 
      ```dag
      sum Correction {
@@ -320,7 +328,7 @@ plus #85 SuiteClaim wrapper consumer landed.
      }
      ```
 
-     **LiveCorrection** is the 100% THESIS-correct path — diagnostic points to the structurally correct program via Witness. **DeferredCorrection** models any accepted residual as an explicit named-deferral carrier with retirement plan (codex BLOCKING #3 enforcement: *"model any accepted residual as an explicit deferral carrier with named reason"*). The Option-wrapped form admits `None` = "diagnostic without correction" — exactly the state THESIS.md "show the correct code" forbids — AND collapses the absolute-thesis vs pragmatic-residual axes into a single nullable boolean. Practice-2 carrier refinement: type-level enforcement that every Diagnostic value carries a Correction; the residual path is structurally named with retirement-plan accountability rather than absorbed silently into None. **Gate #84/#106 close condition** requires every `DeferredCorrection` entry to be ratchetable to zero per its own retirement plan. Canvas authors the substrate shape that admits Diagnostic-with-correction *by construction* via the sum variant; Director ratifies; worker dispatches against ratified shape.
+     **LiveCorrection** is the 100% THESIS-correct path — diagnostic points to the structurally correct program via Witness. **DeferredCorrection** models any accepted residual as an explicit named-deferral carrier with retirement plan (codex BLOCKING #3 enforcement: *"model any accepted residual as an explicit deferral carrier with named reason"*). The Option-wrapped form admits `None` = "diagnostic without correction" — exactly the state THESIS.md "show the correct code" forbids — AND collapses the absolute-thesis vs pragmatic-residual axes into a single nullable boolean. Practice-2 carrier refinement: type-level enforcement that every Diagnostic value carries a Correction; the residual path is structurally named with retirement-plan accountability rather than absorbed silently into None. **Gate #84/#106 close condition** requires every `DeferredCorrection` entry to be ratchetable to zero per its own retirement plan. **Substrate-shape canvas DONE** (Phase 2.5 status update 2026-05-14): carrier landed at `src/v3/std/diagnostics.dag` lines 65-69 + `type Diagnostic.correction: Correction` mandatory field line 154; matches spec exactly. Worker dispatch (per-diagnostic-class consumer audit + test-corpus ratchet enforcement) is now the active execution-tier work, owned by R3 Verification Mgr lane.
   5. Worker brief dispatch to retrofit existing diagnostics
 - **Effort estimate**: 4-8 weeks (depends on diagnostic class count; potentially smaller if substrate already supports it). **Caveat (per claude review exploratory observation #3 — estimates unsourced)**: this estimate is PM-prior-cycle-experience-based, NOT cited against specific velocity data. Substrate Mgr canvas surfaces the actual scope + worker effort; final estimate calibrates post-canvas-ratification.
 
