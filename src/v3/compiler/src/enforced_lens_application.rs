@@ -324,9 +324,7 @@ fn parallelism_iteration_budget_violates(
 fn parallelism_mode_disj_decl_id(dag: &Dag) -> Option<DeclarationId> {
     dag.declarations()
         .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("ParallelismMode") && d.span.file.ends_with("parallelism.dag")
-        })
+        .find(|d| d.name.as_deref() == Some("ParallelismMode"))
         .map(|d| d.id)
 }
 
@@ -495,10 +493,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     let parallelism_enforceable_id = dag
         .declarations()
         .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("parallelism_enforceable")
-                && d.span.file.ends_with("parallelism.dag")
-        })
+        .find(|d| d.name.as_deref() == Some("parallelism_enforceable"))
         .map(|d| d.id);
     let parallelism_mode_disj = parallelism_mode_disj_decl_id(dag);
     let Some(diagnostic_severity_disj) = diagnostic_severity_substrate_disj(dag) else {
@@ -1583,19 +1578,13 @@ mod gate_95_parallelism_iteration_enforcement_tests {
         let pm_disj = dag
             .declarations()
             .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("ParallelismMode")
-                    && d.span.file.ends_with("parallelism.dag")
-            })
+            .find(|d| d.name.as_deref() == Some("ParallelismMode"))
             .expect("ParallelismMode")
             .id;
         let parallelism_enforceable = dag
             .declarations()
             .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("parallelism_enforceable")
-                    && d.span.file.ends_with("parallelism.dag")
-            })
+            .find(|d| d.name.as_deref() == Some("parallelism_enforceable"))
             .expect("parallelism_enforceable")
             .id;
         let section_ref_disj = dag
@@ -1727,6 +1716,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
     fn opt_in_budget_is_clean_when_lane2_reads_parallelizable_indicator() {
         let mut dag = compile_to_dag(
             "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
              fn gate95_demo_fn() -> Int = 0\n",
             "gate95_iteration_parallelism_clean.v3",
         )
@@ -1760,6 +1750,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
     fn opt_in_budget_violates_when_lane2_reads_sequential_indicator() {
         let mut dag = compile_to_dag(
             "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
              fn gate95_demo_fn() -> Int = 0\n",
             "gate95_iteration_parallelism_violation.v3",
         )

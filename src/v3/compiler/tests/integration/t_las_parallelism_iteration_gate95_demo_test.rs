@@ -36,6 +36,7 @@ fn gate_95_opt_in_iteration_parallelism_via_lens_application_demonstrated_indica
                    expect_violation: bool| {
         let source = format!(
             "// gunbc::r3_free_consequences::lane2_loop_witness: {directive}\n\
+             import lenses.parallelism {{ parallelism_enforceable }}\n\
              fn gate95_integration_probe() -> Int = 0\n"
         );
         let dag = compile_to_dag(source.as_str(), witness_file).expect("compile staged lane2 loop harness");

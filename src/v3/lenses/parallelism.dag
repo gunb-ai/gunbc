@@ -27,7 +27,7 @@ import v3.std.substrate {
   Dag,
   NodeId,
   NonSingletonList,
-  lane2_workflow_at,
+  lane2_workflow_at
 }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
