@@ -4708,10 +4708,24 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let entries = match sg0_census_list_entries(&list_constant_name) {
+        let mut entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
+        // Lens-producer paths may live on `EXPECTED_HAND_AUTHORED_FRAGMENTS` after a path-only
+        // retirement (e.g. `lens_declaration_apply_body.txt`). `CensusSubsetCount` for
+        // `lens_producer_files_remaining` still names `expected_hand_authored_non_test` in `.dag`
+        // claims — union the fragment list so the subset predicate cannot silently drop to zero.
+        if list_constant_name == "expected_hand_authored_non_test"
+            && subset_name == "lens_producer_files_subset_predicate"
+        {
+            match sg0_census_list_entries("expected_hand_authored_fragments") {
+                Ok(fragments) => entries.extend(fragments),
+                Err(reason) => return ClaimResult::Fail(reason),
+            }
+            entries.sort();
+            entries.dedup();
+        }
         let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
@@ -5015,9 +5029,28 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, FieldValue::List(generated_paths)] = payload else {
+        // R3 Cluster M generator-manifest integration (Gap 5 / Cluster M lane).
+        // **This predicate implements the Gate #84 slice:** exact `manifest_entries`
+        // `output_path` set vs `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS`, plus the
+        // empty `expected_hand_authored_test` census (failure copy cites **#84** only).
+        // **Gate #85** (`Quantified` / quantifier substrate) is a sibling obligation:
+        // shape validation + `NotYetImplemented` posture lives on the `Quantified`
+        // suite arm (~`run_suite` / `validate_quantified_claim_shape`, ~2503–2518),
+        // not inside `GeneratedFromDag`.
+        // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
+        // (`PendingFact { output_path }` | `ResolvedFact { output_path,
+        // dag_source, source_hash }`). Runner-side today: extract `output_path`
+        // from each arm; require the manifest `output_path` set to equal
+        // `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS` exactly (set equality
+        // implies membership; no dupes / omissions — every REGEN survivor is
+        // attached); then require the SG-0 `expected_hand_authored_test` census is empty.
+        // The 3-way byte-equality assertion on `ResolvedFact` lands in the
+        // follow-up Evaluator-Mgr-owned runtime PR; both arms are accepted
+        // structurally here without consuming resolution data.
+        let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
-                "GeneratedFromDag payload should be (DeclarationRef, List<Path>)".to_string(),
+                "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
+                    .to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
@@ -5025,19 +5058,65 @@ impl<'a> TestRunner<'a> {
         }
         let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
         let mut named_paths = Vec::new();
-        for value in generated_paths {
-            match value {
-                FieldValue::Literal(LiteralBits::String(path)) => named_paths.push(path.as_str()),
-                other => {
+        for entry in manifest_entries {
+            let Some((label, variant_payload)) = self.variant_value(entry) else {
+                return ClaimResult::Fail(format!(
+                    "GeneratedFromDag manifest_entries must contain only GeneratedManifestEntry variants (PendingFact | ResolvedFact), got {entry:?}"
+                ));
+            };
+            if label != "PendingFact" && label != "ResolvedFact" {
+                return ClaimResult::Fail(format!(
+                    "GeneratedFromDag manifest_entries variant `{label}` is not a GeneratedManifestEntry arm (expected PendingFact | ResolvedFact)"
+                ));
+            }
+            // The v3 lowerer hands variant payloads back in three shapes depending
+            // on field arity / construction style:
+            //  - single-field record variants (e.g., `PendingFact { output_path }`)
+            //    inline the field-value as `payload = [<bare-literal>]`;
+            //  - multi-field record variants (e.g., `ResolvedFact { output_path,
+            //    dag_source, source_hash }`) lower positionally as
+            //    `payload = [<output_path>, <dag_source>, <source_hash>]`;
+            //  - some construction paths wrap the fields in a single
+            //    `[Record([(name, value), ...])]` slot.
+            // For both arms of `GeneratedManifestEntry` the declared field order
+            // begins with `output_path`, so the first payload slot carries the
+            // path literal in every supported lowering shape. We accept all three
+            // by inspecting the first slot and, if it is a record, looking up
+            // `output_path` by field name.
+            let output_path = variant_payload.first().and_then(|head| match head {
+                FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
+                _ => record_fields(head).and_then(|fields| {
+                    field(fields, "output_path").and_then(|v| match v {
+                        FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
+                        _ => None,
+                    })
+                }),
+            });
+            match output_path {
+                Some(path) => named_paths.push(path),
+                None => {
                     return ClaimResult::Fail(format!(
-                        "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
-                    ))
+                        "GeneratedFromDag GeneratedManifestEntry `{label}` payload missing String `output_path` slot: {variant_payload:?}"
+                    ));
                 }
             }
         }
-        if let Some(path) = named_paths.iter().find(|path| !generated.contains(**path)) {
+        let manifest_set: BTreeSet<&str> = named_paths.iter().map(|path| path.as_str()).collect();
+        if manifest_set.len() != named_paths.len() {
+            return ClaimResult::Fail(
+                "GeneratedFromDag manifest_entries contains duplicate `output_path` values; each \
+                 `build.rs::REGEN_OUTPUTS` path must appear exactly once"
+                    .to_string(),
+            );
+        }
+        if manifest_set != generated {
+            let only_manifest: Vec<&str> = manifest_set.difference(&generated).copied().collect();
+            let only_authority: Vec<&str> = generated.difference(&manifest_set).copied().collect();
             return ClaimResult::Fail(format!(
-                "GeneratedFromDag path `{path}` is not in the generated-file authority"
+                "GeneratedFromDag manifest_entries must enumerate exactly the `build.rs::REGEN_OUTPUTS` \
+                 / `GENERATED_FILES` authority ({} path(s)); only-in-manifest={only_manifest:?}; \
+                 missing-from-manifest={only_authority:?}",
+                generated.len(),
             ));
         }
         let test_count = match sg0_census_list_count("expected_hand_authored_test") {
@@ -5048,7 +5127,10 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside generated paths"
+                "GeneratedFromDag: `expected_hand_authored_test` census is non-empty ({test_count} path(s)); \
+                 Gate #84 negative authority requires an empty hand-authored integration-test ratchet \
+                 at R3 close (positive authority: manifest lists {} REGEN output path(s))",
+                manifest_set.len(),
             ))
         }
     }
@@ -6330,13 +6412,15 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 
 /// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
 ///
-/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
-/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
-/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
+/// `lens_apply.rs` → `lens_declaration_apply.rs` → `lens_declaration_apply_body.txt` is a **path**
+/// retirement chain only; the bounded lens host remains a lens-producer residual until PB-Runtime
+/// owns application/reflection (Row-4 / §7.1). `eval_census_subset_count_shape` unions
+/// `EXPECTED_HAND_AUTHORED_FRAGMENTS` when applying this predicate to `expected_hand_authored_non_test`
+/// so a fragment move cannot fake census progress.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/lens_declaration_apply_body.txt" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
 }
 
