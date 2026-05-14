@@ -1391,10 +1391,10 @@ fn v2_cementing_basenames_from_capability_rows(
         )?;
         let is_v2_complete = behavioral_label == "LensCapabilityBehavioralComplete"
             && v2_label == "LensCapabilityV2RealV2";
-        let is_effect_enumeration_native_complete =
-            behavioral_label == "LensCapabilityBehavioralComplete"
-                && v2_label == "LensCapabilityV2NoneV3Native"
-                && lens_basename == "effect_enumeration.dag";
+        let is_effect_enumeration_native_complete = behavioral_label
+            == "LensCapabilityBehavioralComplete"
+            && v2_label == "LensCapabilityV2NoneV3Native"
+            && lens_basename == "effect_enumeration.dag";
         if is_v2_complete || is_effect_enumeration_native_complete {
             basenames.insert(lens_basename);
         }
