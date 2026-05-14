@@ -74,14 +74,75 @@ New `.dag` declarations needed (shapes mirror existing `EnforcedApplication` 3-p
 ```
 // In src/v3/std/complexity_tightness.dag (or analogous):
 
-data TightnessTransformation =
-  | LoopFusion
-  | LoopHoisting
-  | DeadCodeElimination
-  | ConstantBoundPropagation
-  | AggregationRecognition
-  | MapFilterFoldFusion
+// 🟡 SCAFFOLD until Gap 11 LogCost/ProductCost/SumCost composition lands.
+// Per-variant evidence-payload `proof: TightnessProof` carries the structural
+// witness that the named transformation is APPLICABLE to the affected DAG nodes
+// per INVARIANTS.md P1 (Modeling Faithfulness) + P2 (single authority — evidence
+// variants reference existing substrate types like SymbolicCostExpr, NOT parallel
+// substrate). Tag-only labels rejected per codex BLOCKING #11738 PR #3067 2026-05-14
+// (would rest proof on convention rather than structural evidence).
+type TightnessTransformation
+  = LoopFusion { proof: TightnessProof }
+  | LoopHoisting { proof: TightnessProof }
+  | DeadCodeElimination { proof: TightnessProof }
+  | ConstantBoundPropagation { proof: TightnessProof }
+  | AggregationRecognition { proof: TightnessProof }
+  | MapFilterFoldFusion { proof: TightnessProof }
 
+// 🟡 SCAFFOLD. Per-variant proof bundle: structural identifiers (affected_nodes)
+// + transformation-specific evidence (TransformationEvidence sum-variant).
+// Lens emits this from structural facts in the DAG; the proof IS the evidence
+// that the transformation applies — not a label.
+type TightnessProof {
+  affected_nodes: List<NodeRef>
+  evidence: TransformationEvidence
+}
+
+// 🟡 SCAFFOLD. Per-transformation evidence shape — concrete variant fields
+// finalize post-Gap-11 SymbolicCostExpr / ProductCost / SumCost composition
+// (which provides the algebraic facts these evidence variants consume).
+// Each variant cites the structural facts the lens proves before constructing
+// the transformation. NO new parallel substrate — `SymbolicCostExpr` + `NodeRef`
+// are existing types per src/v3/std/algebra.dag + substrate.dag.
+type TransformationEvidence
+  = IterationSpaceEquivalence { space_a: IterationSpaceFacts, space_b: IterationSpaceFacts }
+  | LoopInvariance { variable_independence: VariableIndependenceFacts }
+  | NoConsumer { port_consumption_facts: PortConsumptionFacts }
+  | ConstantBound { bound_expression: SymbolicCostExpr }
+  | AssociativeReduce { algebraic_facts: AlgebraicReduceFacts }
+  | SharedIterationSpace { spaces: List<IterationSpaceFacts> }
+
+// 🟡 SCAFFOLD. Iteration-space structural facts the lens derives from loop nodes
+// (loop variable + bound expression in SymbolicCostExpr form).
+// Finalizes post-Gap-11 SymbolicCostExpr composition.
+type IterationSpaceFacts {
+  loop_variable: SizeVariable
+  bound: SymbolicCostExpr
+}
+
+// 🟡 SCAFFOLD. Loop-invariance facts: variables read in subgraph that are
+// independent of loop variables of enclosing loops. Lens derives from
+// Port read-set analysis.
+type VariableIndependenceFacts {
+  independent_variables: List<SizeVariable>
+}
+
+// 🟡 SCAFFOLD. Port-consumption facts: the lens proves no downstream Port
+// reads the dead subgraph's output. Lens derives from Port consumption walk.
+type PortConsumptionFacts {
+  unconsumed_outputs: List<NodeRef>
+}
+
+// 🟡 SCAFFOLD. Algebraic-reduce facts: accumulator pattern matches an
+// associative-reduce shape (e.g., +/min/max). Lens derives from the
+// accumulator's algebraic structure per existing src/v3/std/algebra.dag.
+type AlgebraicReduceFacts {
+  associative_op: NodeRef  // points at the +/min/max operation node
+}
+
+// 🟢 TERMINAL at the tightness-analysis scope. Bundles lens output (actual + tight
+// asymptotic classes), the bridging transformation list with evidence proofs,
+// and the section the analysis applies to.
 type TightnessAnalysis = {
   actual: AsymptoticClass
   tight: AsymptoticClass
