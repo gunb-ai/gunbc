@@ -280,13 +280,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
-<<<<<<< HEAD
-    "src/v3/compiler/src/emit_rust_bin_shim.rs",
-    "src/v3/compiler/src/enforced_lens_application.rs",
-=======
-    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
-    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
->>>>>>> origin/main
     "src/v3/compiler/src/infer.rs",
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
@@ -296,21 +289,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // receipts; PB-Runtime for lens application (R3 §1.8).
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-<<<<<<< HEAD
-    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
-    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
-    // PB-zero / v2-retirement consumers (decision in
-    // `docs/decisions/r3-row85-method-template-read-surface.md`).
-    "src/v3/compiler/src/pb_method_template_projection.rs",
-=======
-    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
-    "src/v3/compiler/src/memory_peak_cost.rs",
-    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
-    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
-    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
-    // `.dag` program owns the OpenAPI artifact projection end-to-end.
-    "src/v3/compiler/src/omni_shape_b_openapi.rs",
->>>>>>> origin/main
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
@@ -1482,7 +1460,7 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
     assert!(
-        list.contains("\"process_exit.rs\""),
-        "hand_maintained_src should exclude process_exit.rs (PB-1 host mirror) from recursive freshness drift"
+        !list.contains("\"process_exit.rs\""),
+        "hand_maintained_src should exclude deleted process_exit.rs; the inline process_exit module is accounted in EXPECTED_HAND_AUTHORED_INLINE_NON_TEST"
     );
 }
