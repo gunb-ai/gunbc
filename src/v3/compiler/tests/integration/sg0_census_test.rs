@@ -230,11 +230,10 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // this helper should consume those declared rows directly or move behind
 // generated substrate accessors.
 //
-// R3 T-FixedPoint P0 / DB-8: the `self_host_receipt_p0` module is intentionally
-// hand-authored receipt-key surface (stable JSON field names for `self_host_fixed_point`
-// trend reads), not generated output. PB-0 cycle 3 folded the former standalone
-// `self_host_receipt_p0.rs` path into `lib.rs`; the remaining dissolution trigger is a
-// `.dag` or generated authority that owns the receipt schema.
+// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0.rs` is intentionally hand-authored
+// receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
+// not generated output. Dissolution: fold into a `.dag` or generated authority when one
+// owns receipt schema; until then this module + census line are the bounded ratchet receipt.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
@@ -280,6 +279,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
+    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
@@ -289,30 +290,30 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // receipts; PB-Runtime for lens application (R3 §1.8).
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
+    "src/v3/compiler/src/memory_peak_cost.rs",
+    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
+    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
+    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
+    // `.dag` program owns the OpenAPI artifact projection end-to-end.
+    "src/v3/compiler/src/omni_shape_b_openapi.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
+    "src/v3/compiler/src/process_exit.rs",
+    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
+    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
+    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
+    "src/v3/compiler/src/r1c_e_gates.rs",
+    // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
+    "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
+    "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-];
-
-// PB-0 cycle 3 path retirement accounting: these former standalone files were
-// folded into `lib.rs` to remove eight separate census paths, but their
-// hand-maintained Rust bodies still exist. They remain explicitly counted here
-// as inline non-test authority until each body moves to `.dag` / generated
-// authority or otherwise dissolves. This prevents a file-path shrink from being
-// mistaken for Pure Bootstrap body dissolution.
-const EXPECTED_HAND_AUTHORED_INLINE_NON_TEST: &[&str] = &[
-    "src/v3/compiler/src/lib.rs::emit_rust_roundtrip_fixtures",
-    "src/v3/compiler/src/lib.rs::memory_peak_cost",
-    "src/v3/compiler/src/lib.rs::omni_shape_b_openapi",
-    "src/v3/compiler/src/lib.rs::process_exit",
-    "src/v3/compiler/src/lib.rs::r1c_e_gates",
-    "src/v3/compiler/src/lib.rs::r3_fc_lane2_loop_witness",
-    "src/v3/compiler/src/lib.rs::self_host_receipt_p0",
-    "src/v3/compiler/src/lib.rs::wall_clock_ratchet_manifest",
+    "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];
 
 // All test .rs files under `src/v3/compiler` that are currently
@@ -1084,43 +1085,6 @@ fn sg0_v3_non_test_hand_authored_subratchet() {
 }
 
 #[test]
-fn sg0_v3_inline_non_test_hand_authored_subratchet() {
-    let ws = workspace_root();
-    let lib = fs::read_to_string(ws.join("src/v3/compiler/src/lib.rs")).expect("read lib.rs");
-
-    for entry in EXPECTED_HAND_AUTHORED_INLINE_NON_TEST {
-        let Some(module) = entry.strip_prefix("src/v3/compiler/src/lib.rs::") else {
-            panic!("inline non-test entry must be lib.rs::<module>, got {entry}");
-        };
-        let pub_mod = format!("pub mod {module} {{");
-        let private_mod = format!("mod {module} {{");
-        assert!(
-            lib.contains(&pub_mod) || lib.contains(&private_mod),
-            "inline non-test hand-Rust module `{module}` must remain explicitly accounted \
-             until it dissolves into .dag/generated authority"
-        );
-    }
-
-    let expected: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_INLINE_NON_TEST
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(
-        expected.len(),
-        EXPECTED_HAND_AUTHORED_INLINE_NON_TEST.len(),
-        "EXPECTED_HAND_AUTHORED_INLINE_NON_TEST must not contain duplicate entries"
-    );
-}
-
-#[test]
-fn sg0_v3_inline_non_test_entries_are_not_path_retirements() {
-    assert!(
-        !EXPECTED_HAND_AUTHORED_INLINE_NON_TEST.is_empty(),
-        "inline hand-Rust accounting must stay explicit while PB-0 folded bodies remain in lib.rs"
-    );
-}
-
-#[test]
 fn sg0_v3_test_hand_authored_subratchet() {
     let ws = workspace_root();
     let census_root = ws.join(CENSUS_ROOT);
@@ -1460,7 +1424,7 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
     assert!(
-        !list.contains("\"process_exit.rs\""),
-        "hand_maintained_src should exclude deleted process_exit.rs; the inline process_exit module is accounted in EXPECTED_HAND_AUTHORED_INLINE_NON_TEST"
+        list.contains("\"process_exit.rs\""),
+        "hand_maintained_src should exclude process_exit.rs (PB-1 host mirror) from recursive freshness drift"
     );
 }
