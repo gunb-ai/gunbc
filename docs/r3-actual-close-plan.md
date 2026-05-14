@@ -61,30 +61,22 @@ Neither override alone is sufficient. The PB-0 design doc admits no escape hatch
 **Promise** (r3-structure.md §Acceptance + §3.1 of interrogation doc): *"for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus."*
 
 **HEAD evidence**:
-- Gate #15 `l5_cross_target_consistency` = **DECLARED**
-- Python emission: only `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs` (boundary test, not lane acceptance)
-- Go emission: no equivalent boundary test
-- No `.dag → {Rust, Python, Go}` stdout-parity demo on main
+- Gate #15 `l5_cross_target_consistency` = **CONSUMER_LANDED** after PR #3060, not PASSING.
+- `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` defines an L5 `ForAllTargets` scaffold suite with four rows: `add_then_branch_seed`, `branch_literal_true_seed`, `branch_literal_false_seed`, and `nested_branch_seed`.
+- `src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs` keeps the embedded `TestClaim.source` bytes equal to the authority `.v3` fixtures under `src/v3/compiler/tests/fixtures/r3_l5_corpus/`.
+- The `TestRunner` L5 path consumes `ProgramOutputBind`, validates exact `TestClaim.requires` toolchain edges (`L5RustcToolchain`, `L5Python3Toolchain`, `L5GoToolchain`), emits each corpus program to Rust/Python/Go, executes each target, and fails closed unless the observed `Int` stdout values agree.
 
-**What's missing**: certification corpus + 3-target emission per corpus program + stdout-parity assertion.
+**What's missing**: per `docs/design-cross-target-equivalence.md` Corpus Policy, each valid L5 corpus row must carry the expected semantic observation or oracle authority, the effect class, the numeric policy, and a coverage reason. The #3060 rows model target requirements and output binds, but not those locked policy facts; they are scaffold evidence rather than full L5 certification rows.
 
-**Plan to cash**:
-- **Owner**: swift-deer-459 (R3 Verification Mgr) + warm-wolf-698 (for any missing carrier-level support)
-- **Sub-program** (5 phases):
-  1. **Define certification corpus**: enumerate the `.dag` programs that constitute the L5 corpus; ratify with operator (estimate 10-20 programs covering 5 dimensions × 3 algebra-classes)
-  2. **Land Python emitter** as lane-acceptance code path (not boundary-test scope)
-  3. **Land Go emitter** as lane-acceptance code path
-  4. **Per-corpus-program L5 assertion**: each program runs through Rust + Python + Go; stdout compared; assertion fail-closed on divergence
-  5. **CI integration**: corpus runs on every PR; ratchet on coverage growth
-- **Effort estimate**: 4-8 weeks (Python emitter alone is significant; Go follows pattern)
+**Plan to cash**: extend the L5 corpus substrate so every row records the locked design facts above, then update the runner/fixtures to consume them fail-closed before the §1.8 row flips to PASSING. PR #3060 remains the target-execution runner scaffold and can be reused once those corpus-policy facts are modeled.
 
 **Close criterion**:
 ```bash
 # Predicate at gate #15 close:
 cargo test --release -p v3-compiler --test integration l5_
-# returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on stdout
+# returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on semantic observations
 ```
-plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cited.
+plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumeration and per-row design-policy facts cited.
 
 **Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 enforcement: prior framing semantically weakened the §3.1 3-Shape-A target into Rust-only-narrow, violating the no-carves authority before operator-decision substrate cashed; retained here as audit-trail of the foreclosed path): operator §4 Item 2 ratified **IN-R3 (full 3-target Python+Go)** 2026-05-13; R4-defer / Rust-only-narrow paths NOT available. Any future re-opening of this disposition requires explicit operator override of the §4 ratification at gunbc#828.
 
@@ -143,8 +135,7 @@ The closure-ledger was refreshed against HEAD on 2026-05-14 UTC. Close still req
 - #80 cost = **PASSING** ✓
 - #81 parallelism = **R3-LOAD-BEARING**, F-α sub-phase pending (Stage 2e walker port from `workflow_parallelism.rs` → `.dag`)
 - #82 effect_enum = **R3-LOAD-BEARING**, F-β.1 canvas + F-β.2 atomic-migration pending
-- #83 `lens_capability_register_zero_proxy_zero_stub` (**§1.8 program gate / Cluster F sub-phase F-γ.2**) = **DECLARED** — canonical receipt is the **post-all-four-BEHAVIORALLY-COMPLETE** register cascade per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.4.2 and `docs/r3-structure.md` §Acceptance (not merely "no PROXY/STUB" while two rows stay **PARTIAL**). `parallelism.dag` and `effect_enumeration.dag` remain **PARTIAL** in `docs/v3-lens-capability-register.md` and `std.verification` `lens_capability_register_rows` until **#81** / **#82** land; **§1.8 #83 PASSING** stays **downstream of F-γ.2** (INVARIANTS P2 — one close predicate; no dilution).
-- **Narrow CI ratchet (green at HEAD, necessary not sufficient):** `lens_register_correspondence_test::r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub` enforces **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` on the four T-LBP basenames in the markdown capability table — does **not** replace the F-γ.2 §1.8 gate.
+- #83 `lens_capability_register_zero_proxy_zero_stub` (**§1.8 program gate / Cluster F sub-phase F-γ.2**) = **DECLARED** — canonical receipt is the **post-all-four-BEHAVIORALLY-COMPLETE** register cascade per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.4.2 and `docs/r3-structure.md` §Acceptance (not merely PROXY/STUB-zero while two rows stay **PARTIAL**). `parallelism.dag` and `effect_enumeration.dag` remain **PARTIAL** in `docs/v3-lens-capability-register.md` and `std.verification` `lens_capability_register_rows` until **#81** / **#82** land. **Supporting CI (necessary not sufficient):** `lens_register_correspondence_test.rs` (`every_regen_lens_entry_has_a_capability_register_row`, `r3_gate_83_lens_capability_register_scope_is_explicit`, `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`, `lens_capability_register_rows_match_md_v2_cementing_projection`) — regen→register discipline, **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` on the four T-LBP basenames in the markdown capability table, and Band-C v2-cementing-slice alignment vs `std.verification` `lens_capability_register_rows`; **does not** advance the §1.8 ledger Status for gate #83 (INVARIANTS P2 — one predicate; no parallel "narrow PASSING" row state).
 
 **What's missing**:
 - Complexity: `ComplexitySummary` TestClaim literals (bridge-Rust to native-.dag migration)

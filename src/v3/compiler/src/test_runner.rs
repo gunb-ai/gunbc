@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
+    ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -31,8 +32,9 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
-    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
+    analyze_parallelism, analyze_symbolic_cost_dimension, compare_stage_snapshots,
+    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
+    DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -3151,6 +3153,19 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
+            "gate87_parallelism_literal_no_workflow_projection" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                let report = analyze_parallelism(program_dag, bind.id);
+                i64::from(matches!(
+                    report,
+                    WorkflowParallelismReport::ParallelismUnsupported(detail)
+                        if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+                ))
+            }
             _ => return None,
         };
 
@@ -4708,24 +4723,10 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let mut entries = match sg0_census_list_entries(&list_constant_name) {
+        let entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        // Lens-producer paths may live on `EXPECTED_HAND_AUTHORED_FRAGMENTS` after a path-only
-        // retirement (e.g. `lens_declaration_apply_body.txt`). `CensusSubsetCount` for
-        // `lens_producer_files_remaining` still names `expected_hand_authored_non_test` in `.dag`
-        // claims — union the fragment list so the subset predicate cannot silently drop to zero.
-        if list_constant_name == "expected_hand_authored_non_test"
-            && subset_name == "lens_producer_files_subset_predicate"
-        {
-            match sg0_census_list_entries("expected_hand_authored_fragments") {
-                Ok(fragments) => entries.extend(fragments),
-                Err(reason) => return ClaimResult::Fail(reason),
-            }
-            entries.sort();
-            entries.dedup();
-        }
         let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
@@ -5039,14 +5040,12 @@ impl<'a> TestRunner<'a> {
         // not inside `GeneratedFromDag`.
         // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
         // (`PendingFact { output_path }` | `ResolvedFact { output_path,
-        // dag_source, source_hash }`). Runner-side today: extract `output_path`
-        // from each arm; require the manifest `output_path` set to equal
-        // `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS` exactly (set equality
-        // implies membership; no dupes / omissions — every REGEN survivor is
-        // attached); then require the SG-0 `expected_hand_authored_test` census is empty.
-        // The 3-way byte-equality assertion on `ResolvedFact` lands in the
-        // follow-up Evaluator-Mgr-owned runtime PR; both arms are accepted
-        // structurally here without consuming resolution data.
+        // dag_source, source_hash }`). The runner consumes the shared
+        // `output_path` field from both arms, and validates that every
+        // `ResolvedFact` also carries a real declaration edge plus a non-empty
+        // hash token. The later byte-regeneration check can then treat
+        // `ResolvedFact` as already shape-materialized, not as a PendingFact
+        // with inert extra payload.
         let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
                 "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
@@ -5098,6 +5097,47 @@ impl<'a> TestRunner<'a> {
                     return ClaimResult::Fail(format!(
                         "GeneratedFromDag GeneratedManifestEntry `{label}` payload missing String `output_path` slot: {variant_payload:?}"
                     ));
+                }
+            }
+            if label == "ResolvedFact" {
+                let (dag_source, source_hash) = match variant_payload.as_slice() {
+                    [FieldValue::Record(fields)] => {
+                        (field(fields, "dag_source"), field(fields, "source_hash"))
+                    }
+                    [_, dag_source, source_hash] => (Some(dag_source), Some(source_hash)),
+                    _ => (None, None),
+                };
+                match dag_source {
+                    Some(FieldValue::Reference(_)) => {}
+                    Some(other) => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact `dag_source` must be a DeclarationRef edge, got {other:?}"
+                        ));
+                    }
+                    None => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact payload missing `dag_source` DeclarationRef: {variant_payload:?}"
+                        ));
+                    }
+                }
+                match source_hash {
+                    Some(FieldValue::Literal(LiteralBits::String(hash))) if !hash.is_empty() => {}
+                    Some(FieldValue::Literal(LiteralBits::String(_))) => {
+                        return ClaimResult::Fail(
+                            "GeneratedFromDag ResolvedFact `source_hash` must be non-empty"
+                                .to_string(),
+                        );
+                    }
+                    Some(other) => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact `source_hash` must be a String literal, got {other:?}"
+                        ));
+                    }
+                    None => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact payload missing `source_hash`: {variant_payload:?}"
+                        ));
+                    }
                 }
             }
         }
@@ -6412,15 +6452,13 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 
 /// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
 ///
-/// `lens_apply.rs` → `lens_declaration_apply.rs` → `lens_declaration_apply_body.txt` is a **path**
-/// retirement chain only; the bounded lens host remains a lens-producer residual until PB-Runtime
-/// owns application/reflection (Row-4 / §7.1). `eval_census_subset_count_shape` unions
-/// `EXPECTED_HAND_AUTHORED_FRAGMENTS` when applying this predicate to `expected_hand_authored_non_test`
-/// so a fragment move cannot fake census progress.
+/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
+/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
+/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/lens_declaration_apply_body.txt" | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
 }
 

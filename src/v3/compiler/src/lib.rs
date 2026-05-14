@@ -16,14 +16,9 @@
 //   payload.
 
 pub mod cementing_dispatch;
-pub use cementing_dispatch::gunbc_ci;
-pub use cementing_dispatch::integration_rs_wiring_scan;
-pub use cementing_dispatch::r3_gate_87_cementing_regen_runner_suites;
-#[path = "complexity_lattice_generated.rs"]
 pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
-#[path = "enforced_lens_application_generated.rs"]
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
@@ -35,8 +30,10 @@ pub use enforced_lens_application::check_enforced_lens_applications;
 pub use enforced_lens_application::gate_58_test_parse_timing_budget_violation_max_ns_pair;
 #[doc(hidden)]
 pub use enforced_lens_application::gate_58_test_raise_modeled_ci_timing_measurement_duration_ns;
-#[path = "pb_method_template_projection_generated.rs"]
+pub mod integration_rs_wiring_scan;
+pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
+pub mod r3_gate_87_cementing_regen_runner_suites;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
 
@@ -55,7 +52,6 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
-#[path = "emit_rust_bin_shim_generated.rs"]
 pub mod emit_rust_bin_shim;
 pub mod omni_shape_b_openapi;
 pub mod process_exit;
@@ -3773,18 +3769,10 @@ pub mod evaluator {
         }
     }
 }
-#[path = "int_literal_ranges_generated.rs"]
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
-/// (R3 gate #5: `lens_apply.rs` retired; body in `lens_declaration_apply_body.txt`, included here
-/// for SG-0 census path retirement until PB-Runtime / Row-4).
-pub mod lens_declaration_apply {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/lens_declaration_apply_body.txt"
-    ));
-}
-pub use lens_declaration_apply::lens_t_las_carrier;
+/// (see module docs in `lens_declaration_apply.rs`).
+pub mod lens_declaration_apply;
 pub use lens_declaration_apply::lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
@@ -4057,6 +4045,7 @@ pub mod lens_unused_parameters {
 
 /// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
 pub mod emit_rust_roundtrip_fixtures;
+pub mod gunbc_ci;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates;
 pub mod test_runner;
@@ -4996,7 +4985,6 @@ pub use bootstrap_regen_fresh::{
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
 };
 
-#[path = "cost_basis_declaration_generated.rs"]
 mod cost_basis_declaration;
 mod dimension;
 mod infer;

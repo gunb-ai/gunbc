@@ -25,11 +25,11 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Verdict (Phase 2 index population)
 
-**OVERALL: PENDING** — 47 of 106 gates have HARNESS_NAMED at the §1.8-ledger snapshot this index is derived from; the remaining 59 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
+**OVERALL: PENDING** — 47 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 59 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
 ## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
-This index is derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of this PR; `git merge-base HEAD main` at authoring time). **This PR adds only this audit document; it does not modify `docs/r3-program-plan.md` or any other §1.8 authority surface.** Therefore the derivation is valid for any HEAD that includes commit `c055495c8` and has not subsequently modified §1.8. If a future PR edits §1.8, that PR must re-derive this table in the same change per the row-count parity check below.
+This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 only, after PR #3060 landed the L5 corpus runner scaffold and this PR records §1.8 gate #15 as `CONSUMER_LANDED` rather than PASSING. If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
 
 ## Row-count parity (ledger source of truth)
 
@@ -41,16 +41,16 @@ grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 
 At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleton row count of 105 + row #106 `show_correct_code_diagnostic_coverage` added by merged PR #3020 per Gap 9 of `docs/r3-actual-close-plan.md`). The table below contains 106 rows mirroring that ledger one-for-one.
 
-## Status-bucket distribution at the ledger-snapshot anchor
+## Status-bucket distribution after row #15 re-derivation
 
-Derived mechanically from §1.8 Status column at commit `c055495c8`:
+Derived from the `c055495c8` §1.8 status snapshot plus the single 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED`) recorded in this follow-up:
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
 | `PASSING` | 44 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `SATISFIED-BY-CONSTRUCTION` | 3 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
-| `CONSUMER_LANDED` | 20 | not yet — not at PASSING |
-| `DECLARED` | 31 | not yet — not at PASSING |
+| `CONSUMER_LANDED` | 21 | not yet — not at PASSING |
+| `DECLARED` | 30 | not yet — not at PASSING |
 | `R3-LOAD-BEARING` (declaration-stage) | 3 | not yet — not at PASSING |
 | `INTEGRATION_RECEIPT` | 3 | not yet — not at PASSING |
 | `CANVAS_RATIFIED` | 2 | not yet — not at PASSING |
@@ -78,7 +78,7 @@ Close-time canonical predicate harness for `PASSING` / `SATISFIED-BY-CONSTRUCTIO
 | 12 | `tc2_church_rosser_executable` | DimensionReport-typed | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc2_church_rosser_executable` and sibling ratchets cited under §1.8 row #12 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #12. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 13 | `tc3_pattern_a_second_mover_executable` | DimensionReport-typed | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc3_pattern_a_second_mover_executable` and sibling ratchets cited under §1.8 row #13 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #13. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 14 | `rust_dag_isomorphism_executable` | Dag-iso | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `rust_dag_isomorphism_executable` and sibling ratchets cited under §1.8 row #14 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #14. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
-| 15 | `l5_cross_target_consistency` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #15 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 15 | `l5_cross_target_consistency` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (PR #3060 landed `ForAllTargets` runner scaffold + four Int stdout rows, but the rows do not yet carry the full `docs/design-cross-target-equivalence.md` Corpus Policy facts required for PASSING). | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 16 | `pb_self_compile_fixed_point` | fixed-point | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #16 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 17 | `numeric_abstract_carriers_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #17 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 18 | `numeric_width_refinements_landed` | substrate-shape | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `numeric_width_refinements_landed` and sibling ratchets cited under §1.8 row #18 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #18. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
@@ -146,7 +146,7 @@ Close-time canonical predicate harness for `PASSING` / `SATISFIED-BY-CONSTRUCTIO
 | 80 | `cost_lens_behaviorally_complete` | structural-fold | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `cost_lens_behaviorally_complete` and sibling ratchets cited under §1.8 row #80 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #80. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 81 | `parallelism_lens_behaviorally_complete` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #81 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 82 | `effect_enumeration_lens_behaviorally_complete` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `R3-LOAD-BEARING` carve-promoted (declaration-stage; no PASSING claim) per §1.8 row #82 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
-| 83 | `lens_capability_register_zero_proxy_zero_stub` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #83 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 83 | `lens_capability_register_zero_proxy_zero_stub` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (canonical Gap-4 / F-γ.2 Pass not satisfied at HEAD) per §1.8 row #83 Notes; partial supporting harness `lens_register_correspondence_test.rs` (`lens_register_correspondence` filter) does not advance the ledger status (INVARIANTS P2). | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 84 | `every_rust_test_ports_to_dag_or_generated` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #84 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 85 | `forall_exists_quantifier_substrate_landed` | substrate-shape | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #85 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 86 | `program_generator_carrier_landed` | substrate-shape | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `program_generator_carrier_landed` and sibling ratchets cited under §1.8 row #86 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #86. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
