@@ -112,13 +112,33 @@ type Diagnostic {
 }
 
 // Per-stage shape variants attach via CompilerDiagnosticKind extension OR
-// separate lane-local sums per Step 2 worker brief authoring decision:
+// separate lane-local sums per Step 2 worker brief authoring decision.
+// IMPORTANT: surface-form references MUST be typed closed-axis carriers
+// (parse_surface.dag SurfaceExpr | SurfaceItem | SurfacePattern | etc are
+// closed sums). Per openai-pro PR #3077 BLOCKING + INVARIANTS P2/P3:
+// stringifying a closed-axis variant boundary would be a typed-carrier
+// regression. `reason: String` is intentional human display detail only.
+//
+// Typed surface-form reference for unsupported-form diagnostic:
+type SurfaceFormRef
+  = ExprForm(SurfaceExpr)
+  | ItemForm(SurfaceItem)
+  | PatternForm(SurfacePattern)
+  | TypeForm(SurfaceType)
+  | LiteralForm(SurfaceLiteral)
+
+// Typed identifier reference for resolve errors (identifier-as-typed-fact,
+// not stringified). PR #3077 BLOCKING applies same discipline.
+type IdentifierRef
+  = SurfaceVarRef { name: NonEmptyStr, span: SourceSpan }
+  // Future: TypePathRef, ModulePathRef per Step 2 brief authoring
+
 type LowerDiagnostic
-  = ResolveError { identifier: String, scope_chain: List<DeclarationId> }
-  | UnsupportedSurfaceForm { form: String, reason: String }
-  | DuplicateDeclaration { name: String, prior_span: SourceSpan }
-  | DuplicateRecordFieldLabel { label: String, prior_span: SourceSpan }  // per PR #3075 ratchet
-  | (additional variants per Step 2 worker brief authoring against lower.rs)
+  = ResolveError { identifier: IdentifierRef, scope_chain: List<DeclarationId> }
+  | UnsupportedSurfaceForm { form: SurfaceFormRef, reason: String }  // form is typed; reason is human display
+  | DuplicateDeclaration { name: NonEmptyStr, prior_span: SourceSpan }
+  | DuplicateRecordFieldLabel { label: NonEmptyStr, prior_span: SourceSpan }  // per PR #3075 ratchet
+  | (additional variants per Step 2 worker brief authoring against lower.rs; ALL variants carry typed closed-axis facts at boundaries, not String)
 ```
 
 **Substrate authority — SUBSTRATE EXTENSION REQUIRED**: PB-4 lower's diagnostic substrate requires either (i) extending live `Diagnostic` carrier at `src/v3/std/diagnostics.dag:150` with `source: DiagnosticSource` field per Decision 2.B, or (ii) lane-local `LowerDiagnostic` sum that maps into existing `AnyDiagnosticKind::CompilerKind` (downstream consumer concern per the line 163-168 anti-bridge note). The current `EmissionDiagnostic` at line 201 is a SEPARATE carrier (per Q6.5 anti-bridge); PB-4 does NOT extend that.
