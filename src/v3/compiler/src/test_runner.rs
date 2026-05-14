@@ -5100,10 +5100,9 @@ impl<'a> TestRunner<'a> {
             }
             if label == "ResolvedFact" {
                 let (dag_source, source_hash) = match variant_payload.as_slice() {
-                    [FieldValue::Record(fields)] => (
-                        field(fields, "dag_source"),
-                        field(fields, "source_hash"),
-                    ),
+                    [FieldValue::Record(fields)] => {
+                        (field(fields, "dag_source"), field(fields, "source_hash"))
+                    }
                     [_, dag_source, source_hash] => (Some(dag_source), Some(source_hash)),
                     _ => (None, None),
                 };
