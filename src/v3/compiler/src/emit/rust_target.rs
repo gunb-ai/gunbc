@@ -3296,6 +3296,39 @@ enum ArrowRustEmitPolicy {
     StorageRcDynFn,
 }
 
+/// Machine-width slot in `Compose<Algebra, MachineWidth<…>>`: gate-#60 may allocate a fresh
+/// literal-nat id per occurrence while std aliases reuse a different id for the same bit width.
+/// Compare widths via [`crate::int_literal_ranges::gate60_machine_width_bits`], not raw
+/// `DeclarationId` equality.
+fn gate60_compose_machine_width_slots_equal(dag: &Dag, a: DeclarationId, b: DeclarationId) -> bool {
+    if a == b {
+        return true;
+    }
+    match (
+        crate::int_literal_ranges::gate60_machine_width_bits(dag, a),
+        crate::int_literal_ranges::gate60_machine_width_bits(dag, b),
+    ) {
+        (Some(ba), Some(bb)) => ba == bb,
+        _ => false,
+    }
+}
+
+/// Structural equivalence for the two `Compose` template arguments: algebra slot (position 0)
+/// must match by declaration identity; width slot (position 1) matches by gate-#60 bit width.
+fn gate60_compose_template_args_equivalent(
+    dag: &Dag,
+    left: &[TemplateArgument],
+    right: &[TemplateArgument],
+) -> bool {
+    if left.len() != 2 || right.len() != 2 {
+        return false;
+    }
+    left[0].parameter == right[0].parameter
+        && left[1].parameter == right[1].parameter
+        && left[0].value == right[0].value
+        && gate60_compose_machine_width_slots_equal(dag, left[1].value, right[1].value)
+}
+
 /// Named substrate alias (`type Int32 = Compose<…>` / `Real64`, …) that **instantiates `Compose`
 /// with the same template-argument spine** as `declaration` after gate-#60 peeling, and owns a
 /// `TypeRealization` row in `rust.dag`.
@@ -3342,11 +3375,7 @@ fn gate60_realized_named_compose_peer(
         if *other_template != compose || other_args.len() != arguments.len() {
             continue;
         }
-        if !other_args
-            .iter()
-            .zip(arguments.iter())
-            .all(|(l, r)| l.parameter == r.parameter && l.value == r.value)
-        {
+        if !gate60_compose_template_args_equivalent(dag, other_args, arguments) {
             continue;
         }
         matches.push(decl.id);
