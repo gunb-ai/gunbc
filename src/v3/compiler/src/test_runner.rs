@@ -5033,10 +5033,10 @@ impl<'a> TestRunner<'a> {
         // lane): payload carries `manifest_entries: List<GeneratedManifestEntry>`
         // (`PendingFact { output_path }` | `ResolvedFact { output_path,
         // dag_source, source_hash }`). Runner-side today: extract `output_path`
-        // from each arm; require every path ∈ `GENERATED_FILES` (`build.rs`
-        // `REGEN_OUTPUTS`); require the manifest set equals that authority
-        // exactly (no dupes / omissions — every REGEN survivor is attached);
-        // then require the SG-0 `expected_hand_authored_test` census is empty.
+        // from each arm; require the manifest `output_path` set to equal
+        // `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS` exactly (set equality
+        // implies membership; no dupes / omissions — every REGEN survivor is
+        // attached); then require the SG-0 `expected_hand_authored_test` census is empty.
         // The 3-way byte-equality assertion on `ResolvedFact` lands in the
         // follow-up Evaluator-Mgr-owned runtime PR; both arms are accepted
         // structurally here without consuming resolution data.
@@ -5093,14 +5093,6 @@ impl<'a> TestRunner<'a> {
                     ));
                 }
             }
-        }
-        if let Some(path) = named_paths
-            .iter()
-            .find(|path| !generated.contains(path.as_str()))
-        {
-            return ClaimResult::Fail(format!(
-                "GeneratedFromDag manifest_entries output_path `{path}` is not in the generated-file authority"
-            ));
         }
         let manifest_set: BTreeSet<&str> = named_paths.iter().map(|path| path.as_str()).collect();
         if manifest_set.len() != named_paths.len() {
