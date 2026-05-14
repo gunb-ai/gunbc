@@ -466,6 +466,12 @@ fn effect_shape_is_breaking(shape: EffectShape) -> Bool =
   }
 
 fn operation_effect_shape(op: Operation) -> EffectShape {
+  // The native Stage-2 bridge resolves imported std method anchors from the
+  // host Dag before evaluating these cases and returns
+  // `EffectClassificationFailed` if those anchors are missing or ambiguous.
+  // In the `.dag` body the imports below are already bound declarations, so
+  // unmatched callables intentionally fall through to transport facts until the
+  // bootstrapped evaluator can execute this body as the sole authority.
   if op.callable.decl == append_method && method_is_post(op.endpoint.method) then
     IsBreaking(AppendEffect)
   else

@@ -33,13 +33,17 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
     }
 }
 
-fn operations_commute(dag: &Dag, a: &Operation, b: &Operation) -> bool {
-    match (operation_effect_shape(dag, a), operation_effect_shape(dag, b)) {
-        (Some(EffectShape::IsIdempotent(ia)), Some(EffectShape::IsIdempotent(ib))) => {
+fn operations_commute(
+    dag: &Dag,
+    a: &Operation,
+    b: &Operation,
+) -> Result<bool, EffectClassificationFailure> {
+    Ok(match (classify_operation_effect(dag, a)?, classify_operation_effect(dag, b)?) {
+        (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
             idempotent_shapes_commute(&ia, &ib)
         }
         _ => false,
-    }
+    })
 }
 
 fn extract_linear_branches(
@@ -65,13 +69,29 @@ fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
 fn pairwise_cross_branch_commutes(
     dag: &Dag,
     branch_ops: &[Vec<Operation>],
-) -> Result<(), (Operation, Operation)> {
+) -> Result<(), ParallelismUnsupportedDetail> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
                 for ob in &branch_ops[j] {
-                    if !operations_commute(dag, oa, ob) {
-                        return Err((oa.clone(), ob.clone()));
+                    match operations_commute(dag, oa, ob) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return Err(ParallelismUnsupportedDetail {
+                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                downstream_stage: DOWNSTREAM.to_string(),
+                                reason: "parallel branch operations do not commute under parallel scheduling"
+                                    .to_string(),
+                            });
+                        }
+                        Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                            return Err(ParallelismUnsupportedDetail {
+                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                downstream_stage: DOWNSTREAM.to_string(),
+                                reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
+                                    .to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -117,10 +137,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((_left, _right)) => parallel_unsupported(
-            ParallelismUnsupportedKind::PairwiseNonCommute,
-            "parallel branch operations do not commute under parallel scheduling",
-        ),
+        Err(detail) => WorkflowParallelismReport::ParallelismUnsupported(detail),
     }
 }
 
@@ -138,11 +155,9 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
         return 0;
     }
     for op in ops {
-        if !matches!(
-            operation_effect_shape(p0, op),
-            Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
-        ) {
-            return 0;
+        match classify_operation_effect(p0, op) {
+            Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) => {}
+            Ok(_) | Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => return 0,
         }
     }
     1
