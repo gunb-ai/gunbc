@@ -30,7 +30,7 @@ data TightnessAnalysis = {
   actual: AsymptoticClass,            // complexity as-written (current lens output post-Gap-11)
   tight: AsymptoticClass,             // complexity achievable via semantics-preserving transformations
   transformations: List<TightnessTransformation>,  // named transformations bridging actual → tight
-  scope: DeclarationScope,            // function/region the analysis applies to
+  section: SectionRef,                // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
 }
 ```
 
@@ -69,7 +69,7 @@ tight bound is {tight_class}. Applicable transformations: [{transformation_list}
 
 ### §1.5 Substrate carriers
 
-New `.dag` declarations needed:
+New `.dag` declarations needed (shapes mirror existing `EnforcedApplication` 3-param pattern at `src/v3/std/lens_application.dag:176-182` per Director ratification 4-axis audit msg_d45523da):
 
 ```
 // In src/v3/std/complexity_tightness.dag (or analogous):
@@ -82,18 +82,34 @@ data TightnessTransformation =
   | AggregationRecognition
   | MapFilterFoldFusion
 
-data TightnessAnalysis = {
+type TightnessAnalysis = {
   actual: AsymptoticClass
   tight: AsymptoticClass
   transformations: List<TightnessTransformation>
-  scope: DeclarationScope
+  section: SectionRef
+  // Note: section: SectionRef (NOT DeclarationScope which is a variant of SectionRef)
+  // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
 }
 
-data EnforcedTightness<L> = {
-  lens: L                              // the tightness lens (lens_complexity_tight)
-  section: DeclarationScope            // the function or region
-  diagnostic_severity: Severity        // Error / Warning per program
-  span: SourceSpan                     // the EnforcedTightness application site
+type EnforcedTightness<Output, Budget, Projected> {
+  enforceable_lens: EnforceableLens<Output, Budget, Projected>
+  section: SectionRef
+  diagnostic_severity: DiagnosticSeverity
+  span: SourceSpan
+  // NOTE: 3-param shape mirrors EnforcedApplication<Output, Budget, Projected> at
+  // src/v3/std/lens_application.dag:176-182. Key semantic difference from EnforcedApplication:
+  // NO `budget: Budget` field — compiler derives both actual + tight internally via the lens's
+  // TightnessAnalysis output. The Output type (TightnessAnalysis) carries both actual + tight
+  // fields; comparison is internal to the lens's enforcement logic, NOT user-declared.
+  // For complexity-tightness instantiation:
+  //   Output = TightnessAnalysis
+  //   Budget = AsymptoticClass (acts as type-level constraint on the tight-class side)
+  //   Projected = AsymptoticClass (the actual-class side, projected from TightnessAnalysis.actual)
+  //
+  // diagnostic_severity: DiagnosticSeverity (single-variant Error per src/v3/std/lens_application.dag:84
+  // and feedback_fail_closed_discipline). NOT dsl/std/behavioral.dag::Severity (4-variant
+  // Low|Medium|High|Critical) which is unrelated to lens-application discipline and would admit
+  // illegal use-site values violating INVARIANTS C-8 + Practice 2 (illegal-states-unrepresentable).
 }
 ```
 
@@ -102,6 +118,19 @@ Plus a new lens declaration:
 ```
 lens lens_complexity_tight: (Dag) -> TightnessAnalysis
 ```
+
+Example use-site declaration (mirroring `EnforcedApplication` instantiation patterns):
+
+```
+data witness_tightness: EnforcedTightness<TightnessAnalysis, AsymptoticClass, AsymptoticClass> = {
+  enforceable_lens: complexity_tight_enforceable
+  section: DeclarationScope { declaration: my_function }
+  diagnostic_severity: Error
+  span: { file: "...", start: ..., end: ... }
+}
+```
+
+The `DeclarationScope { declaration: my_function }` is a VALUE of type `SectionRef` (per the variant at lens_application.dag:67) — uses the variant constructor at value-position; the field type at type-position is `SectionRef`.
 
 ## §2. Out of scope
 
