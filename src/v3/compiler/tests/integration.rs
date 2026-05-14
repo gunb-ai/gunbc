@@ -257,6 +257,8 @@ mod value_body_substrate_mirror_isomorphism_test;
 mod wiring_scanner_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
+#[path = "integration/workflow_substrate_carriers_test.rs"]
+mod workflow_substrate_carriers_test;
 
 mod t_demo_fixture_test {
     //! **Layer:** integration
