@@ -848,6 +848,12 @@ The two multi-entry phases demonstrate complementary §5.2.1 enforcement modes:
 
 Both demonstrate §5.2.1 working at multi-entry boundaries, NOT diluting the rule. The dispatch plan applies §5.2 to itself — including correctly handling both multi-entry sub-cases.
 
+**Grep-verifiable count receipt** (mechanical check for this exemplar section):
+- **Single-entry IDs (7)**: `2.0, 2.1, 2.2, 2.4, 2.5, 2.6, 2.7`
+- **Multi-entry IDs (2)**: `2.3, 2.8`
+- **Dispatch plan §1 ID universe (9)**: `2.0` through `2.8`
+- **Closure check**: `7 + 2 = 9`
+
 **§5.2.5 — Foreclosure clause** (analogous to §5.1)
 
 §5.2 does NOT impose a hard "all briefs must have all citations perfect" rule. Briefs can be DRAFTED without all 3 axes (per `feedback_pre_authored_brief_queue` queue discipline); the gate fires at DISPATCH time, not authoring time. Draft briefs sitting in queue may be incomplete; the §5.2 discipline applies when the brief is dispatched as a directive.
