@@ -310,6 +310,23 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/test_runner.rs",
 ];
 
+// PB-0 cycle 3 path retirement accounting: these former standalone files were
+// folded into `lib.rs` to remove eight separate census paths, but their
+// hand-maintained Rust bodies still exist. They remain explicitly counted here
+// as inline non-test authority until each body moves to `.dag` / generated
+// authority or otherwise dissolves. This prevents a file-path shrink from being
+// mistaken for Pure Bootstrap body dissolution.
+const EXPECTED_HAND_AUTHORED_INLINE_NON_TEST: &[&str] = &[
+    "src/v3/compiler/src/lib.rs::emit_rust_roundtrip_fixtures",
+    "src/v3/compiler/src/lib.rs::memory_peak_cost",
+    "src/v3/compiler/src/lib.rs::omni_shape_b_openapi",
+    "src/v3/compiler/src/lib.rs::process_exit",
+    "src/v3/compiler/src/lib.rs::r1c_e_gates",
+    "src/v3/compiler/src/lib.rs::r3_fc_lane2_loop_witness",
+    "src/v3/compiler/src/lib.rs::self_host_receipt_p0",
+    "src/v3/compiler/src/lib.rs::wall_clock_ratchet_manifest",
+];
+
 // All test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
 // workspace root. T-PB-B owns shrinking this subset toward the
@@ -1075,6 +1092,43 @@ fn sg0_v3_non_test_hand_authored_subratchet() {
         "T-PB-A non-test SG-0 sub-ratchet drifted. Retirements should be removed \
          from EXPECTED_HAND_AUTHORED_NON_TEST; new non-test hand-Rust needs director \
          sign-off."
+    );
+}
+
+#[test]
+fn sg0_v3_inline_non_test_hand_authored_subratchet() {
+    let ws = workspace_root();
+    let lib = fs::read_to_string(ws.join("src/v3/compiler/src/lib.rs")).expect("read lib.rs");
+
+    for entry in EXPECTED_HAND_AUTHORED_INLINE_NON_TEST {
+        let Some(module) = entry.strip_prefix("src/v3/compiler/src/lib.rs::") else {
+            panic!("inline non-test entry must be lib.rs::<module>, got {entry}");
+        };
+        let pub_mod = format!("pub mod {module} {{");
+        let private_mod = format!("mod {module} {{");
+        assert!(
+            lib.contains(&pub_mod) || lib.contains(&private_mod),
+            "inline non-test hand-Rust module `{module}` must remain explicitly accounted \
+             until it dissolves into .dag/generated authority"
+        );
+    }
+
+    let expected: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_INLINE_NON_TEST
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(
+        expected.len(),
+        EXPECTED_HAND_AUTHORED_INLINE_NON_TEST.len(),
+        "EXPECTED_HAND_AUTHORED_INLINE_NON_TEST must not contain duplicate entries"
+    );
+}
+
+#[test]
+fn sg0_v3_inline_non_test_entries_are_not_path_retirements() {
+    assert!(
+        !EXPECTED_HAND_AUTHORED_INLINE_NON_TEST.is_empty(),
+        "inline hand-Rust accounting must stay explicit while PB-0 folded bodies remain in lib.rs"
     );
 }
 
