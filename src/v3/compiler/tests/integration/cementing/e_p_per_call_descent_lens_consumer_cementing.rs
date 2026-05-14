@@ -332,13 +332,13 @@ fn ep_count_acc_f(xs: EpListF, acc: Int, limit: Int) -> Int =
         let mut ports = Vec::new();
         linear_size_ports(&cost, &mut ports);
         assert!(
-            ports.iter().any(|p| *p == descending_parameter),
+            ports.contains(&descending_parameter),
             "multi-arg recursion SizeVariable must include the descending head \
              parameter port {descending_parameter:?}, got cost={cost:?} ports={ports:?}"
         );
-        for non_descending in bind.params.iter().skip(1).copied() {
+        for non_descending in bind.params.iter().skip(1) {
             assert!(
-                !ports.contains(&non_descending),
+                !ports.contains(non_descending),
                 "multi-arg recursion must not introduce a SizeVariable for \
                  non-descending parameter {non_descending:?} (accumulator / \
                  preserved-arg), got cost={cost:?}"

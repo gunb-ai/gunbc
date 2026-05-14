@@ -59,8 +59,6 @@ mod cementing_provenance_origin_integration_test;
 mod complexity_lens_behavioral_completion;
 #[path = "integration/cementing/cost_lens_symbolic_consumer_test.rs"]
 mod cost_lens_symbolic_consumer_test;
-#[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
-mod e_p_per_call_descent_lens_consumer_cementing;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
 #[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
@@ -69,6 +67,8 @@ mod ctrl_pr_digests_dag_smoke_test;
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
+mod e_p_per_call_descent_lens_consumer_cementing;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
