@@ -6,26 +6,35 @@ use std::path::{Path, PathBuf};
 
 use v3_compiler::dag::{ArrowBody, TypeConnective};
 use v3_compiler::{
-    compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, parse_for_test,
-    tokenize_for_test, Dag,
+    compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, Dag,
 };
 
 /// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
 const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
 #[test]
-fn pipeline_dag_parses() {
-    let source = include_str!("../../pipeline.dag");
-    let tokens = tokenize_for_test(source, "pipeline.dag")
-        .unwrap_or_else(|diag| panic!("tokenize pipeline.dag failed: {diag:?}"));
-    let _module = parse_for_test(&tokens, "pipeline.dag")
-        .unwrap_or_else(|diag| panic!("parse pipeline.dag failed: {diag:?}"));
+fn pipeline_dag_bootstrap_authority_is_loaded_structurally() {
+    let dag = Dag::new();
+    let pipeline_types = [
+        "PipelineStageBinding",
+        "PipelineSnapshotKind",
+        "CompilerHostRealization",
+    ];
+    for name in pipeline_types {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("pipeline authority declaration `{name}` present"));
+        assert_eq!(
+            decl.span.file.as_str(),
+            PIPELINE_AUTHORITY_FILE,
+            "`{name}` must come from the bootstrapped pipeline authority"
+        );
+    }
 }
 
 /// Ratchet for `bridge_include_str_side_channels_retired` (pipeline slice): library sources under
-/// `src/v3/compiler/src/` must not embed `pipeline.dag` via `include_str!` — ordering authority
-/// stays structural (`PipelineStageBinding` / bootstrap witness). Integration tests may still
-/// `include_str!("../../pipeline.dag")` for parse fixtures (`pipeline_dag_parses`).
+/// `src/v3/compiler/src/` and compiler tests must not embed `pipeline.dag` via `include_str!` —
+/// ordering authority stays structural (`PipelineStageBinding` / bootstrap witness).
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries =
         fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {} failed: {e}", dir.display()));
@@ -41,13 +50,15 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
-fn compiler_src_has_no_include_str_pipeline_dag_authority() {
+fn compiler_sources_and_tests_have_no_include_str_pipeline_dag_authority() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let src_dir = manifest_dir.join("src");
     let mut files = Vec::new();
-    collect_rs_files(&src_dir, &mut files);
+    collect_rs_files(&manifest_dir.join("src"), &mut files);
+    collect_rs_files(&manifest_dir.join("tests"), &mut files);
     files.sort();
     let mut offenders = Vec::new();
+    let forbidden_macro = concat!("include", "_str!");
+    let forbidden_path = concat!("pipeline", ".dag");
     for path in files {
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {} failed: {e}", path.display()));
@@ -56,7 +67,7 @@ fn compiler_src_has_no_include_str_pipeline_dag_authority() {
             if trimmed.starts_with("//") {
                 continue;
             }
-            if line.contains("include_str!") && line.contains("pipeline.dag") {
+            if line.contains(forbidden_macro) && line.contains(forbidden_path) {
                 offenders.push(format!(
                     "{}:{}:{}",
                     path.strip_prefix(&manifest_dir).unwrap_or(&path).display(),
@@ -68,8 +79,10 @@ fn compiler_src_has_no_include_str_pipeline_dag_authority() {
     }
     assert!(
         offenders.is_empty(),
-        "`src/**/*.rs` must not use include_str! on pipeline.dag (see bridge_ledger \
+        "`src/**/*.rs` and `tests/**/*.rs` must not use {} on {} (see bridge_ledger \
          bridge_include_str_side_channels_retired + pipeline_authority.rs). Offenders:\n{}",
+        forbidden_macro,
+        forbidden_path,
         offenders.join("\n")
     );
 }
