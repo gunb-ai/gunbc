@@ -2,8 +2,8 @@
 //! `tier3_mirror_dissolution_perf_within_budget`).
 //!
 //! Maps 1:1 to the four mirror dissolution slices in
-//! `docs/briefs/r3-pb-tier3-perf-budget-worker.md` (termination / computation /
-//! induction / effect-carrier). See that brief for thresholds (≤2× median,
+//! `docs/briefs/r3-pb-tier3-perf-budget-worker.md` (active Phase-1 mirrors:
+//! computation / effect-carrier; termination and induction are retired). See that brief for thresholds (≤2× median,
 //! ≤5× p99) and Phase 1 / Phase 2 split.
 //!
 //! **Frozen baseline** (`tier3_baseline.json` alongside this bench): Phase-1
