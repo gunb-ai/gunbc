@@ -230,10 +230,11 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // this helper should consume those declared rows directly or move behind
 // generated substrate accessors.
 //
-// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0.rs` is intentionally hand-authored
-// receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
-// not generated output. Dissolution: fold into a `.dag` or generated authority when one
-// owns receipt schema; until then this module + census line are the bounded ratchet receipt.
+// R3 T-FixedPoint P0 / DB-8: the `self_host_receipt_p0` module is intentionally
+// hand-authored receipt-key surface (stable JSON field names for `self_host_fixed_point`
+// trend reads), not generated output. PB-0 cycle 3 folded the former standalone
+// `self_host_receipt_p0.rs` path into `lib.rs`; the remaining dissolution trigger is a
+// `.dag` or generated authority that owns the receipt schema.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
