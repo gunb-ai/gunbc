@@ -593,11 +593,11 @@ fn method_is_delete(method: HttpMethod) -> Bool =
 
 fn operation_resource_key(op: Operation) -> String? =
   match last_path_param(op.endpoint.path) {
-    Some { value: param } =>
-      if map_contains_key(op.inputs, param) then
-        Some(param)
-      else
-        None
+    Some(param) =>
+      match map_get(op.inputs, param) {
+        Some { value: _ } => Some(param)
+        None => None
+      }
     None => None
   }
 
