@@ -294,17 +294,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/enforced_lens_application.rs",
-    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
-    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
-    "src/v3/compiler/src/gunbc_ci.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
-    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
-    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
-    // `tests/integration/common/mod.rs`).
-    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
-    "src/v3/compiler/src/lens_declaration_apply.rs",
-    "src/v3/compiler/src/lens_t_las_carrier.rs",
+    // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
+    // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
+    // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
+    // re-exports). Bounded lens application body lives in `lens_declaration_apply_body.txt`
+    // (see `EXPECTED_HAND_AUTHORED_FRAGMENTS`). Dissolution: substrate-owned CI + cementing
+    // receipts; PB-Runtime for lens application (R3 §1.8).
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
@@ -329,9 +326,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/r1c_e_gates.rs",
     // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
     "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
-    // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
-    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
-    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
@@ -779,6 +773,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
 const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
+    "src/v3/compiler/lens_declaration_apply_body.txt",
     "src/v3/compiler/parse_parser_body.txt",
     "src/v3/compiler/src/lens_testgen_body.txt",
 ];
