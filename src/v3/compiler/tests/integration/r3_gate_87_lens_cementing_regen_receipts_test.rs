@@ -40,8 +40,12 @@ use std::path::PathBuf;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
+use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedKind, ValueBody,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -155,6 +159,29 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
     assert!(
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
+    );
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
+    let bind = dag
+        .nodes()
+        .iter()
+        .find_map(|n| match n {
+            Behavior::Bind(b) if b.name == "lit" => Some(b),
+            _ => None,
+        })
+        .expect("lit bind");
+    let report = analyze_parallelism(&dag, bind.id);
+    assert!(
+        matches!(
+            &report,
+            WorkflowParallelismReport::ParallelismUnsupported(detail)
+                if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+        ),
+        "unstaged literal should classify as NoWorkflowProjection, got {report:?}"
     );
 }
 
