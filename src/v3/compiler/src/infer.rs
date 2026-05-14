@@ -102,7 +102,17 @@ fn try_reconcile_int_literal_decision_set(
                     None
                 }
             }
-            Ok(None) => None,
+            Ok(None) => {
+                if int_literal_allowed_integral_seed_for_real_decl(
+                    dag,
+                    &literal,
+                    existing.declaration,
+                ) {
+                    Some(IntLiteralSetReconciliation::Keep)
+                } else {
+                    None
+                }
+            }
             Err(diag) => {
                 if !matches!(dag.port(port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(port, diag);
@@ -130,7 +140,14 @@ fn try_reconcile_int_literal_decision_set(
                     None
                 }
             }
-            Ok(None) => None,
+            Ok(None) => {
+                if int_literal_allowed_integral_seed_for_real_decl(dag, &literal, ty.declaration) {
+                    dag.set_port_type(port, ty);
+                    Some(IntLiteralSetReconciliation::SetNarrow)
+                } else {
+                    None
+                }
+            }
             Err(diag) => {
                 if !matches!(dag.port(port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(port, diag);
@@ -922,7 +939,13 @@ fn int_literal_magnitude_narrow_merge(
             }
         },
         Err(diag) => IntLiteralNarrowMerge::reject(diag),
-        Ok(None) => IntLiteralNarrowMerge::NotApplicable,
+        Ok(None) => {
+            if int_literal_allowed_integral_seed_for_real_decl(dag, &lit, to.declaration) {
+                IntLiteralNarrowMerge::Merge
+            } else {
+                IntLiteralNarrowMerge::NotApplicable
+            }
+        }
     }
 }
 
@@ -1402,6 +1425,24 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 // Default literal shape is `Int`; align the argument port with
                                 // the callee's narrow range-backed type (same as `let` / `data`
                                 // pre-seed + `Decision::Set` reunion for annotated literals).
+                                return Decision::Set(*input_port, *expected_ty);
+                            }
+                            Ok(None)
+                                if int_literal_allowed_integral_seed_for_real_decl(
+                                    dag,
+                                    &literal,
+                                    expected_ty.declaration,
+                                ) =>
+                            {
+                                if let Some(diag) = check_refinement_discharge(
+                                    dag,
+                                    actual,
+                                    expected_ty,
+                                    &t.target,
+                                    &t.span,
+                                ) {
+                                    return Decision::fail(t.output, diag);
+                                }
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
@@ -2711,7 +2752,9 @@ fn int_literal_implicit_bind_tolerated_for_expected(
             IntegerRangeLookup::Invalid(diag) => Err(diag),
             IntegerRangeLookup::Missing => Ok(false),
         },
-        Ok(None) => Ok(false),
+        Ok(None) => Ok(int_literal_allowed_integral_seed_for_real_decl(
+            dag, &literal, expected,
+        )),
         Err(diag) => Err(diag),
     }
 }
