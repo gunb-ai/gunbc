@@ -285,7 +285,7 @@ data rust_pilot_primitives: List<RustPrimitive> = [
   // Rust Reference §3.4. Floating-point types are IEEE 754 binary32/binary64.
   // Substrate authority: `dsl/std/float.dag` declares Float32/Float64 as
   // aliases of `Real32` / `Real64`, where each `Real*` is
-  // `Compose<Real, MachineWidth<Word32|Word64>>`; `Real` itself is
+  // `Compose<Real, MachineWidth<32|64>>` (literal-Nat slot-2); `Real` itself is
   // `ApproximateField<FieldOfFractions<Int>>`, keeping exact-rational carrier
   // and approximate witness layers distinct.
 

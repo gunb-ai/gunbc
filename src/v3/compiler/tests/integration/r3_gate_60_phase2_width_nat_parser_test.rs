@@ -1,7 +1,9 @@
 //! R3 gate #60 Phase 2.1 — parser + lower receipt for `Algebra<N>` surface sugar
 //! (`Int<64>` → `Compose<Int, MachineWidth<64>>` with literal-Nat phantom slot).
 //!
-//! Full gate #60 closure still requires follow-on slices Z/D/E/F per `docs/audit/r3-gate-60-decomposition.md`.
+//! Slice Z (`MachineWidth<Word*>` → literal-Nat slot-2 in `dsl/std/{integer,float}.dag`) lands with
+//! this workstream; §1.4 conjuncts D (class-bridge census) and F (v2 parity) remain per
+//! `docs/audit/r3-gate-60-decomposition.md`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AtomPayload, Dag, LiteralBits, TypeConnective};
@@ -19,6 +21,20 @@ fn assert_compose_algebra_machine_width_literal(
     expected_width_decimal: &str,
 ) {
     let ty = bind_value_type_decl(dag, bind_name);
+    assert_root_type_is_compose_algebra_machine_width_literal(
+        dag,
+        ty,
+        algebra_name,
+        expected_width_decimal,
+    );
+}
+
+fn assert_root_type_is_compose_algebra_machine_width_literal(
+    dag: &Dag,
+    ty: v3_compiler::dag::DeclarationId,
+    algebra_name: &str,
+    expected_width_decimal: &str,
+) {
     let decl = dag.declaration(ty);
     let TypeConnective::Instantiation {
         template,
@@ -26,7 +42,7 @@ fn assert_compose_algebra_machine_width_literal(
     } = &decl.connective
     else {
         panic!(
-            "expected root Instantiation for `{bind_name}`, got {:?}",
+            "expected root Instantiation for lowered width type, got {:?}",
             decl.connective
         );
     };
@@ -34,8 +50,8 @@ fn assert_compose_algebra_machine_width_literal(
         .declaration_by_name("Compose")
         .unwrap_or_else(|| panic!("Compose"))
         .id;
-    assert_eq!(*template, compose_id, "`{bind_name}` root template");
-    assert_eq!(arguments.len(), 2, "`{bind_name}` Compose arity");
+    assert_eq!(*template, compose_id, "root template");
+    assert_eq!(arguments.len(), 2, "Compose arity");
 
     let algebra_id = dag
         .declaration_by_name(algebra_name)
@@ -43,7 +59,7 @@ fn assert_compose_algebra_machine_width_literal(
         .id;
     assert_eq!(
         arguments[0].value, algebra_id,
-        "`{bind_name}` slot-1 algebra"
+        "slot-1 algebra `{algebra_name}`"
     );
 
     let mw_decl = dag.declaration(arguments[1].value);
@@ -53,7 +69,7 @@ fn assert_compose_algebra_machine_width_literal(
     } = &mw_decl.connective
     else {
         panic!(
-            "expected MachineWidth instantiation for `{bind_name}`, got {:?}",
+            "expected MachineWidth instantiation, got {:?}",
             mw_decl.connective
         );
     };
@@ -184,6 +200,21 @@ let probe: Int<64> = 0
 ";
     let dag = compile_to_dag(source, FILE).expect("compile");
     assert_compose_algebra_machine_width_literal(&dag, "probe", "Int", "64");
+}
+
+#[test]
+fn gate_60_phase2_real_64_lowers_to_compose_real_machine_width_literal() {
+    let source = "\
+import std.float { Real }
+
+type Probe = Real<64>
+";
+    let dag = compile_to_dag(source, FILE).expect("compile");
+    let ty = dag
+        .declaration_by_name("Probe")
+        .unwrap_or_else(|| panic!("type Probe"))
+        .id;
+    assert_root_type_is_compose_algebra_machine_width_literal(&dag, ty, "Real", "64");
 }
 
 #[test]
