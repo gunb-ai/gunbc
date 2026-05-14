@@ -476,6 +476,38 @@ fn int128_min_literal_tokenizes_and_narrows() {
 }
 
 #[test]
+fn int_literal_full_magnitude_carrier_rejects_beyond_documented_boundary() {
+    // R3 gate #22: the surface carrier intentionally accepts the full host narrowing range
+    // and then fails closed immediately past it, before any narrower host integer parse.
+    let cases = [
+        (
+            "data x: UInt128 = 340282366920938463463374607431768211456",
+            "invalid integer literal `340282366920938463463374607431768211456`",
+        ),
+        (
+            "data x: Int128 = -170141183460469231731687303715884105729",
+            "integer literal out of range for signed decimal literal",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        let err = compile_to_dag(source, "int_literal_full_magnitude_boundary.v3")
+            .expect_err("literal just beyond the full-magnitude carrier must fail closed");
+        let CompileError::Tokenize(v3_compiler::diagnostics::Diagnostic::TokenizerError {
+            message,
+            ..
+        }) = err
+        else {
+            panic!("expected tokenizer diagnostic for `{source}`, got {err:?}");
+        };
+        assert!(
+            message.contains(expected),
+            "expected tokenizer diagnostic containing `{expected}`, got `{message}`"
+        );
+    }
+}
+
+#[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
         .expect_err("UInt8 overflow must fail closed");
