@@ -55,8 +55,9 @@ use std::str::FromStr;
 use num_bigint::BigInt;
 
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_bigint_at,
-    magnitude_out_of_range_for_interval, IntegerRangeLookup,
+    int_literal_allowed_integral_seed_for_real_decl, int_literal_fits_expected_type,
+    integer_range_for_decl, literal_bigint_at, magnitude_out_of_range_for_interval,
+    IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1003,6 +1004,15 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 }
                                 Err(diag) => return Decision::fail(v.output, diag),
                                 Ok(None) => {}
+                            }
+                            // No integer `range(min,max)` facts: allow lossless integral literals to
+                            // seed fixed-width `Real<N>` / `Float<N>` while float lexemes are absent.
+                            if int_literal_allowed_integral_seed_for_real_decl(
+                                dag,
+                                &literal,
+                                existing.declaration,
+                            ) {
+                                return Decision::Set(v.output, *existing);
                             }
                         }
                     }

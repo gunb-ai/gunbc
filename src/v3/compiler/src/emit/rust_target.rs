@@ -3296,6 +3296,77 @@ enum ArrowRustEmitPolicy {
     StorageRcDynFn,
 }
 
+/// Canonical Rust primitive for anonymous `Compose<Algebra, MachineWidth<N>>` from gate-#60
+/// surface sugar (`Int<32>`, `Real<64>`, …), aligned with `rust.dag` `TypeRealization` carriers.
+/// `Compose` slot order matches lowering today; width vs algebra slots are detected independently
+/// (same spirit as `structural_compose_real_machine_width`).
+fn rust_carrier_for_compose_algebra_machine_width(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Option<&'static str> {
+    let compose = dag.declaration_by_name("Compose")?.id;
+    let peeled =
+        crate::int_literal_ranges::peel_decl_head_for_integral_float_seed(dag, declaration);
+    let d = dag.declaration(peeled);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &d.connective
+    else {
+        return None;
+    };
+    if *template != compose || arguments.len() != 2 {
+        return None;
+    }
+    let int_id = dag.declaration_by_name("Int")?.id;
+    let uint_id = dag.declaration_by_name("UInt")?.id;
+    let real_id = dag.declaration_by_name("Real")?.id;
+
+    let mut algebra: Option<DeclarationId> = None;
+    let mut bits: Option<u32> = None;
+    for arg in arguments {
+        if let Some(b) = crate::int_literal_ranges::gate60_machine_width_bits(dag, arg.value) {
+            bits = Some(b);
+            continue;
+        }
+        if arg.value == int_id || arg.value == uint_id || arg.value == real_id {
+            algebra = Some(arg.value);
+            continue;
+        }
+        return None;
+    }
+    let algebra = algebra?;
+    let bits = bits?;
+    if algebra == int_id {
+        return match bits {
+            8 => Some("i8"),
+            16 => Some("i16"),
+            32 => Some("i32"),
+            64 => Some("i64"),
+            128 => Some("i128"),
+            _ => None,
+        };
+    }
+    if algebra == uint_id {
+        return match bits {
+            8 => Some("u8"),
+            16 => Some("u16"),
+            32 => Some("u32"),
+            64 => Some("u64"),
+            128 => Some("u128"),
+            _ => None,
+        };
+    }
+    if algebra == real_id {
+        return match bits {
+            32 => Some("f32"),
+            64 => Some("f64"),
+            _ => None,
+        };
+    }
+    None
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum InputConsumer<'a> {
@@ -3609,6 +3680,22 @@ impl<'a> Ctx<'a> {
         self.dispatch_producer(port, &RenderLocals::default(), RenderMode::OwnedConstruct)
     }
 
+    /// Integer literals lowered from surface `Real<N> = <int>` (R3 gate #67) retain
+    /// `LiteralBits::Int` but resolve to `f32`/`f64` Rust types — rustc rejects `let x: f64 = 0`.
+    fn render_value_with_port_rust_type(
+        &self,
+        port: PortId,
+        v: &ValueNode,
+    ) -> Result<String, EmitError> {
+        if let LiteralBits::Int(decimal) = &v.data {
+            let rust_ty = self.rust_type_name_for_port(port)?;
+            if rust_ty == "f32" || rust_ty == "f64" {
+                return Ok(format!("{decimal}.0"));
+            }
+        }
+        Ok(render_value(v, &self.indexes.syntax.literals))
+    }
+
     fn dispatch_producer(
         &self,
         port: PortId,
@@ -3623,12 +3710,13 @@ impl<'a> Ctx<'a> {
         match self.dag.node(node_id) {
             Behavior::Value(v) => match mode {
                 RenderMode::BorrowedRead => {
-                    self.render_borrowed_expr(port, render_value(v, &self.indexes.syntax.literals))
+                    let expr = self.render_value_with_port_rust_type(port, v)?;
+                    self.render_borrowed_expr(port, expr)
                 }
                 RenderMode::CopyRead
                 | RenderMode::OwnedConstruct
                 | RenderMode::OwnedConstructLastUse => {
-                    Ok(render_value(v, &self.indexes.syntax.literals))
+                    self.render_value_with_port_rust_type(port, v)
                 }
             },
             Behavior::Transform(t) => self.render_transform(t, locals, mode),
@@ -5581,6 +5669,10 @@ impl<'a> Ctx<'a> {
         }
         if let Some(binding) = self.indexes.types.get(&declaration) {
             return Ok(binding.carrier.clone());
+        }
+        if let Some(carrier) = rust_carrier_for_compose_algebra_machine_width(self.dag, declaration)
+        {
+            return Ok(carrier.to_string());
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
