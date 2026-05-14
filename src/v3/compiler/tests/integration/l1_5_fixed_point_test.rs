@@ -312,7 +312,7 @@ const OK: &str = include{}("other.dag");
 const BAD: &str = include{}(concat!("../../", "pipeline", ".dag"));
 const ALSO_BAD: &str = include_str /* trivia */ ! (concat!("../../", "pipeline", ".dag"));
 const BRACKET_BAD: &str = include_str![concat!("../../", "pipeline", ".dag")];
-const BRACE_BAD: &str = include_str!{concat!("../../", "pipeline", ".dag")};
+const BRACE_BAD: &str = include_str!{{concat!("../../", "pipeline", ".dag")}};
 "#,
         "_str!", "_str!"
     );
