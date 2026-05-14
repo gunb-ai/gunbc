@@ -25,11 +25,11 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Verdict (Phase 2 index population)
 
-**OVERALL: PENDING** — 47 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 59 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
+**OVERALL: PENDING** — 48 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 58 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
 ## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
-This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 only, after PR #3060 landed the L5 corpus runner scaffold and this PR records §1.8 gate #15 as `CONSUMER_LANDED` rather than PASSING. If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
+This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 after PR #3060 landed the L5 corpus runner scaffold and records §1.8 gate #15 as `CONSUMER_LANDED` rather than PASSING. PR #3080 also re-derives row #22 after promoting `int_lit_full_magnitude_consumer` to `CONSUMER_LANDED + PASSING`. If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
 
 ## Row-count parity (ledger source of truth)
 
@@ -41,16 +41,16 @@ grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 
 At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleton row count of 105 + row #106 `show_correct_code_diagnostic_coverage` added by merged PR #3020 per Gap 9 of `docs/r3-actual-close-plan.md`). The table below contains 106 rows mirroring that ledger one-for-one.
 
-## Status-bucket distribution after row #15 re-derivation
+## Status-bucket distribution after row #15 / row #22 re-derivation
 
-Derived from the `c055495c8` §1.8 status snapshot plus the single 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED`) recorded in this follow-up:
+Derived from the `c055495c8` §1.8 status snapshot plus the 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED`) and PR #3080 row #22 delta (`DECLARED` → `CONSUMER_LANDED + PASSING`):
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
-| `PASSING` | 44 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
+| `PASSING` | 45 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `SATISFIED-BY-CONSTRUCTION` | 3 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `CONSUMER_LANDED` | 21 | not yet — not at PASSING |
-| `DECLARED` | 30 | not yet — not at PASSING |
+| `DECLARED` | 29 | not yet — not at PASSING |
 | `R3-LOAD-BEARING` (declaration-stage) | 3 | not yet — not at PASSING |
 | `INTEGRATION_RECEIPT` | 3 | not yet — not at PASSING |
 | `CANVAS_RATIFIED` | 2 | not yet — not at PASSING |
