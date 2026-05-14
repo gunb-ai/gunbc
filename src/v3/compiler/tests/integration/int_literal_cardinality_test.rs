@@ -80,14 +80,6 @@ fn assert_data_value_scalar_typed_u8(
     );
 }
 
-fn assert_int_value_port_resolves_to_uint8(
-    dag: &v3_compiler::dag::Dag,
-    literal: i64,
-    context: &str,
-) {
-    assert_int_value_port_resolves_to_uint8_in_file(dag, literal, context, None)
-}
-
 fn assert_int_value_port_resolves_to_uint8_in_file(
     dag: &v3_compiler::dag::Dag,
     literal: i64,
@@ -195,7 +187,10 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(value) if value.data == literal_bits_int(5) => {
+            v3_compiler::dag::Behavior::Value(value)
+                if value.data == literal_bits_int(5)
+                    && value.span.file == "int_literal_default.v3" =>
+            {
                 Some(value)
             }
             _ => None,
@@ -253,7 +248,12 @@ fn call_site_u8_literal_narrows_against_uint8_parameter() {
     )
     .expect("call with u8-sized literal at UInt8 parameter should compile");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
-    assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
+    assert_int_value_port_resolves_to_uint8_in_file(
+        &dag,
+        7,
+        "call id_u8(7) argument literal",
+        Some("call_u8_narrow.v3"),
+    );
 }
 
 /// Emit must surface narrow Rust backing (`u8`) for UInt8 — this ratchets the
@@ -335,7 +335,11 @@ fn call_site_uint8_literal_narrows() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(v) if v.data == literal_bits_int(7) => Some(v),
+            v3_compiler::dag::Behavior::Value(v)
+                if v.data == literal_bits_int(7) && v.span.file == "call_u8_narrow.v3" =>
+            {
+                Some(v)
+            }
             _ => None,
         })
         .expect("call literal 7");
