@@ -23,7 +23,7 @@ This doc specifies the compiler-derived-optimal shape as a NEW lens-tier feature
 
 ### §1.1 Lens output
 
-For any program scope (function body / region / module), the tightness lens produces a discriminated result — the variant tag IS the proof relationship (no derivation-witness-detached-from-axes shape):
+For any program scope (function body / region / module), the tightness lens produces a discriminated result — the variant tag + named improvement witness IS the proof relationship (no two-adjacent-class-fields shape):
 
 ```
 data TightnessAnalysis
@@ -32,15 +32,19 @@ data TightnessAnalysis
       section: SectionRef,
     }
   | Loose {
-      actual: AsymptoticClass,        // complexity as-written (current lens output post-Gap-11)
-      tight: AsymptoticClass,         // structurally distinct from actual (asymptotic_dominates(actual, tight))
+      improvement: AsymptoticStrictDominance,   // named improvement witness: dominator strictly dominates dominated (see §1.5)
       first_transformation: TightnessTransformation,         // ≥1 enforced structurally (no empty/disconnected derivation)
       additional_transformations: List<TightnessTransformation>,  // optional ordered tail
       section: SectionRef,            // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
     }
 ```
 
-The discrimination encodes the Loose-vs-AlreadyTight precondition into the type: `AlreadyTight` cannot carry a transformation (no field exists); `Loose` cannot exist without ≥1 transformation (`first_transformation` is non-optional). The cases `actual == tight` ∧ `transformations non-empty` AND `actual > tight` ∧ `transformations empty` are both structurally impossible.
+The discrimination + improvement witness encodes the Loose-vs-AlreadyTight precondition into the type:
+- `AlreadyTight` cannot carry a transformation (no field exists) — no spurious derivation.
+- `Loose` cannot exist without ≥1 transformation (`first_transformation` is non-optional) — no empty derivation.
+- `Loose` cannot exist without a named `AsymptoticStrictDominance` improvement witness — the relation `actual > tight ∧ actual ≠ tight` is a named-carrier obligation, not two adjacent fields that admit `(ClassLinear, ClassLinear)` or `(ClassLinear, ClassQuadratic)` inversions.
+
+The four illegal states `actual == tight ∧ transformations non-empty`, `actual > tight ∧ transformations empty`, `actual == tight ∧ Loose tag`, and `actual < tight ∧ Loose tag` are all structurally impossible.
 
 ### §1.2 Transformation vocabulary
 
@@ -55,13 +59,16 @@ The discrimination encodes the Loose-vs-AlreadyTight precondition into the type:
 | `AggregationRecognition` | Explicit accumulator with associative-reduce shape | substrate-folded to declarative `sum`/`fold` op |
 | `MapFilterFoldFusion` | Chained collection ops sharing iteration space | O(n)+O(n)+O(n) → O(n) single-pass |
 
+**Class-level dominance caveat** (openai-pro exploratory observation PR #3067 #11790 2026-05-14): some entries above tighten the SYMBOLIC cost expression but do not produce an AsymptoticClass-level strict dominance for all inputs. For instance, `LoopFusion`'s `O(n+m) → O(max(n,m))` is symbolic-cost tighter but `n+m` and `max(n,m)` are both `ClassLinear` in the BoundedLattice<AsymptoticClass> at `src/v3/std/algebra.dag:418`; the lens-level result for that case is `AlreadyTight` at the class level. A future sibling lens at the symbolic-cost-tightness tier (NOT this lens) would carry the symbolic-only-tighter result. This lens (class-level) emits `Loose` only when `AsymptoticStrictDominance.dominator ≠ dominated` holds in the lattice — same-class symbolic tightening remains AlreadyTight here by construction.
+
 ### §1.3 Diagnostic
 
-When the lens produces a `Loose` variant (variant tag IS the precondition check — no runtime `actual > tight` comparison; structurally enforced via the discriminated TightnessAnalysis at §1.1):
+When the lens produces a `Loose` variant (variant tag + `improvement: AsymptoticStrictDominance` witness IS the precondition check — no runtime `actual > tight` comparison; structurally enforced via the discriminated TightnessAnalysis at §1.1):
 
 ```
-TightnessViolation: code as written is {loose.actual} but structurally-derivable
-tight bound is {loose.tight}. Applicable transformations:
+TightnessViolation: code as written is {loose.improvement.dominator} but
+structurally-derivable tight bound is {loose.improvement.dominated}.
+Applicable transformations:
   [{loose.first_transformation}, ...loose.additional_transformations].
   --> {span_at_the_loose_region}
 ```
@@ -220,32 +227,65 @@ type TightnessTransformation
 // cannot pair with AssociativeReduce evidence. No parallel TransformationEvidence
 // coproduct + no bare List<NodeId> admitting wrong arities.
 
-// 🟢 TERMINAL at the tightness-analysis scope. Discriminated result —
-// variant tag IS the derivation predicate (AlreadyTight ≡ actual == tight;
-// Loose ≡ asymptotic_dominates(actual, tight) ∧ actual ≠ tight).
+// 🟡 SCAFFOLD per Gap 11 SymbolicCost composition trigger — named witness
+// carrier for "asymptotic strict dominance" (the relation
+// `asymptotic_dominates(dominator, dominated) ∧ dominator ≠ dominated`).
 //
-// Per openai-pro BLOCKING PR #3067 2026-05-14: previous flat-field shape
-// (actual + tight + transformations: List<TightnessTransformation> + section)
-// admitted two illegal states:
-//   1. actual == tight with non-empty `transformations` (violation reported on
-//      a non-violation result)
-//   2. actual > tight with empty `transformations` (violation with empty/
-//      disconnected derivation; the diagnostic at §1.3 promises an "applicable
-//      transformations" list but the carrier didn't structurally enforce it)
-// Fix per `feedback_state_space_vs_behavioral_invariants`: discriminate the
-// result. AlreadyTight has no `tight` field (it equals `actual` by construction)
-// and no `transformations` field (none needed). Loose enforces ≥1 transformation
-// structurally via `first_transformation` + `additional_transformations`
-// decomposition (matches the MapFilterFoldFusion ≥2 enforcement at §1.5/
-// TightnessTransformation block — same Practice-2 pattern).
+// Grounds against existing substrate:
+//   - AsymptoticClass inhabits BoundedLattice<AsymptoticClass> per
+//     src/v3/std/algebra.dag:418 — partial order is defined by the lattice.
+//   - asymptotic_dominates(a, b) at src/v3/std/algebra.dag:428 — implements
+//     the lattice's `a ≥ b` relation (reflexive). Strict dominance = `≥ ∧ ≠`.
+//
+// Per openai-pro BLOCKING PR #3067 #11790 2026-05-14: previous Loose carrier
+// had `actual: AsymptoticClass` + `tight: AsymptoticClass` as TWO ADJACENT
+// FIELDS with no structural proof of strict dominance. Admitted illegal pairs:
+//   - `Loose { actual: ClassLinear, tight: ClassLinear, ... }` (equal — not strict)
+//   - `Loose { actual: ClassLinear, tight: ClassQuadratic, ... }` (inverted — not dominance)
+//   - `Loose { actual: ClassUnknown, tight: ClassConstant, ... }` (incomparable
+//     in some readings — relies on lens construction discipline alone)
+// Fix: name the relation as a carrier. Role-named fields `dominator` (= former
+// `actual`) and `dominated` (= former `tight`) make the ordering explicit.
+//
+// SCAFFOLD content: current shape has named fields ordered by role but no
+// type-level proof of the dominance relation between them (no AsymptoticClass-
+// pair-witnesses tier in std yet). Construction discipline = lens-side
+// (Practice 6 API enforcement): `lens_complexity_tight` constructs
+// `AsymptoticStrictDominance` only when `asymptotic_dominates(dominator,
+// dominated) ∧ dominator ≠ dominated` is structurally verified against
+// SymbolicCost composition. Consumers receive the named witness as a
+// proof-relation receipt (NOT a "compiler-said-so" promise), same discipline
+// as the 6 transformation-evidence witnesses below.
+//
+// SCAFFOLD → TERMINAL trigger: Gap 11 SymbolicCost composition + lattice-
+// strict-ordering proof shape ratified per Substrate Mgr canvas. Concrete
+// post-Gap-11 shape: likely carries a `SymbolicCostDifferenceWitness` or
+// equivalent lattice-strict-ordering proof carrier per the chosen Gap 11
+// composition algebra.
+type AsymptoticStrictDominance {
+  dominator: AsymptoticClass             // role: strictly larger class (= former `actual`)
+  dominated: AsymptoticClass             // role: strictly smaller class (= former `tight`)
+  // Future SCAFFOLD-→-TERMINAL field (post-Gap-11): strict_dominance_proof: SymbolicCostStrictDominanceWitness
+}
+
+// 🟢 TERMINAL at the tightness-analysis scope. Discriminated result —
+// variant tag + named improvement witness IS the derivation predicate
+// (AlreadyTight ≡ actual == tight; Loose ≡ asymptotic_dominates(actual, tight)
+// ∧ actual ≠ tight, expressed structurally via AsymptoticStrictDominance).
+//
+// Per openai-pro BLOCKING PR #3067 #11790 2026-05-14: previous shape with
+// adjacent `actual`/`tight` fields admitted four illegal states (equal pair,
+// inverted pair, equal-pair with Loose tag, inverted-pair with Loose tag).
+// Fix: replace adjacent class fields with named AsymptoticStrictDominance
+// improvement witness above. Plus prior fix (openai-pro #11789): discriminate
+// the result + structural ≥1 transformation enforcement.
 type TightnessAnalysis
   = AlreadyTight {
       actual: AsymptoticClass             // = tight by construction; no separate tight field
       section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
     }
   | Loose {
-      actual: AsymptoticClass             // complexity as-written
-      tight: AsymptoticClass              // structurally distinct from actual (asymptotic_dominates(actual, tight) by construction)
+      improvement: AsymptoticStrictDominance  // named witness: dominator strictly dominates dominated (see above)
       first_transformation: TightnessTransformation         // ≥1 enforced — no empty derivation possible
       additional_transformations: List<TightnessTransformation>  // ordered tail; empty for single-transformation derivations
       section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178
@@ -287,10 +327,13 @@ type EnforcedTightness {
   //
   // Enforcement logic (lens-internal): the lens produces a discriminated
   // TightnessAnalysis (AlreadyTight | Loose). On AlreadyTight: no-op. On Loose:
-  // emit TightnessViolation diagnostic at span citing `Loose.first_transformation`
-  // + `Loose.additional_transformations`. No runtime `actual > tight` comparison
-  // needed at enforcement-time — the variant tag IS the precondition check (per
-  // openai-pro BLOCKING PR #3067 2026-05-14 + §1.1 discriminated shape).
+  // emit TightnessViolation diagnostic at span citing
+  // `Loose.improvement.dominator` + `Loose.improvement.dominated` +
+  // `Loose.first_transformation` + `Loose.additional_transformations`. No
+  // runtime `actual > tight` comparison needed at enforcement-time — the
+  // variant tag + AsymptoticStrictDominance witness IS the precondition check
+  // (per openai-pro BLOCKING PR #3067 #11789 + #11790 2026-05-14 + §1.1
+  // discriminated shape).
   //
   // Semantic distinction from EnforcedApplication<Output, Budget, Projected>:
   //   - EnforcedApplication carries a USER-DECLARED `budget: Budget` field; user
@@ -342,10 +385,9 @@ Per `feedback_no_textual_enforcement_bridges` — close criterion is a substrate
 cargo test --release -p v3-compiler --test integration complexity_tightness_compile_error_demonstrated
 # returns: PASS with at least 1 fixture demonstrating:
 #   - lens produces TightnessAnalysis::Loose variant (per §1.1 discriminated shape)
-#   - Loose.actual = ClassQuadratic
-#   - Loose.tight = ClassLinear
+#   - Loose.improvement = AsymptoticStrictDominance { dominator: ClassQuadratic, dominated: ClassLinear, ... }
 #   - Loose.first_transformation = ConstantBoundPropagation { ... }
-#   - Error/TightnessViolation diagnostic produced at fixture span citing transformations
+#   - Error/TightnessViolation diagnostic produced at fixture span citing improvement.dominator/dominated + transformations
 ```
 
 Plus compiler-internal-code build invariant:
@@ -363,7 +405,7 @@ Two options for §1.8 placement:
 
 **Option A — Sub-promise under existing gate #79**:
 - Gate #79 `complexity_lens_behaviorally_complete` expanded scope to include tightness lens behavior
-- Sub-promise wording: "complexity lens produces both `ComplexitySummary` (actual class) AND `TightnessAnalysis` (discriminated `AlreadyTight | Loose` per §1.1 — Loose carries tight + ≥1-enforced transformation derivation); EnforcedApplication + EnforcedTightness both fail-closed on violations (Loose variant emits TightnessViolation; AlreadyTight is no-op)"
+- Sub-promise wording: "complexity lens produces both `ComplexitySummary` (actual class) AND `TightnessAnalysis` (discriminated `AlreadyTight | Loose` per §1.1 — Loose carries named `AsymptoticStrictDominance` improvement witness + ≥1-enforced transformation derivation); EnforcedApplication + EnforcedTightness both fail-closed on violations (Loose variant emits TightnessViolation; AlreadyTight is no-op)"
 - Pro: doesn't expand §1.8 row count; folds into existing lens-behavioral-parity work
 - Con: gate #79 already has substantial scope (symbolic CostExpr + work/span split + asymptotic classification + cementing receipt); adding tightness may blur the gate's success criterion
 
