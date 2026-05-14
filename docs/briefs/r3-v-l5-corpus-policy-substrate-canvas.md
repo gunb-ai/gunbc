@@ -1,6 +1,6 @@
 # R3 Lane 2 — L5 corpus-policy substrate canvas (gate #15 CONSUMER_LANDED → PASSING precondition)
 
-**Status:** PROPOSAL — research-only canvas. **No implementation in this PR.** This document enumerates the substrate shape needed to flip `r3-program-plan.md` §1.8 row **#15 `l5_cross_target_consistency`** from **CONSUMER_LANDED** (PR #3060 runner + 4 Int-stdout scaffold rows) to **PASSING**, and routes the carrier shape to Director per **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** before any `.dag` edit to `src/v3/std/verification.dag` lands.
+**Status:** PROPOSAL — research-only canvas. **No implementation in this PR.** This document enumerates the substrate shape needed to flip `r3-program-plan.md` §1.8 row **#15 `l5_cross_target_consistency`** from **CONSUMER_LANDED** (PR #3060 runner + 4 Int-stdout scaffold rows) to **PASSING**, and routes the carrier shape to Director per **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** before any `.dag` substrate edits land. Intended landing surface (per §5/§6): a **new module `src/v3/std/r3_l5_corpus.dag`** plus an `import` line in the L5 fixture; `src/v3/std/verification.dag` is not edited.
 
 ## 1. Authority
 
@@ -153,7 +153,7 @@ type L5CorpusRow {
 ## 6. Dispatch sequence (if Director ratifies)
 
 1. **PR-1 (this PR):** canvas land as research-only `.md`. **No substrate edit.**
-2. **PR-2 (follow-up worker):** substrate land in `src/v3/std/verification.dag` per ratified shape. Sample one of the 4 existing rows; rest blocked.
+2. **PR-2 (follow-up worker):** substrate land in **new module `src/v3/std/r3_l5_corpus.dag`** per ratified §5 shape (Q5-E2 placement). `src/v3/std/verification.dag` is **not** edited; only the L5 fixture `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` gains an `import std.r3_l5_corpus` line. Sample one of the 4 existing rows; rest blocked.
 3. **PR-3 (follow-up worker):** all 4 existing rows back-fill `L5CorpusRow` companions; boundary consumer enforces 1:1 fail-closed.
 4. **PR-4 (Verification Mgr):** flip §1.8 row #15 Status `CONSUMER_LANDED` → **PASSING** with §1.8 Notes citing the four landed `L5CorpusRow` rows.
 
