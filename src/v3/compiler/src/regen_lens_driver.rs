@@ -1,26 +1,31 @@
-// Unified lens-regen driver. Narrow host shim for
-// `src/v3/compiler/regen.dag`: reads every
-// `data <name>_entry: LensRegistryEntry` record out of the bootstrap
-// Dag, compiles the referenced `.dag` lens, and writes the
-// `emit_rust_module` projection to the declared output path. Adding
-// a new lens is an edit to `regen.dag`, not to this driver.
-//
-// Usage:
-//   cargo run -p v3-compiler --bin regen_lens
-//     → regenerates every lens in the registry.
-//   cargo run -p v3-compiler --bin regen_lens -- --lens cost
-//     → regenerates only the entry whose `name` field is "cost".
+//! Unified lens-regen driver for `src/v3/compiler/regen.dag`.
+//!
+//! Reads every `data <name>_entry: LensRegistryEntry` record out of the
+//! bootstrap `Dag`, compiles the referenced `.dag` lens, and writes the
+//! `emit_rust_module` projection to the declared output path. Adding a new
+//! lens is an edit to `regen.dag`, not to this driver.
+//!
+//! **R3 gate #7 (`regen_lens_dot_rs_retired`):** the former program-sized
+//! `src/bin/regen_lens.rs` shim is retired from the SG-0 hand-authored census.
+//! The `regen_lens` Cargo `[[bin]]` target is the thin `main` in
+//! `src/regen_lens_entry.rs`, which constructs the bootstrap `Dag` once and
+//! delegates here.
+//!
+//! Usage (unchanged for operators):
+//!   cargo run -p v3-compiler --bin regen_lens
+//!   cargo run -p v3-compiler --bin regen_lens -- --lens cost
 
 use std::collections::HashMap;
 use std::env;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 
-use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
-use v3_compiler::emit_rust::emit_rust_module;
-use v3_compiler::generated_files::GENERATED_FILES;
-use v3_compiler::{compile_to_dag, CompileError};
+use crate::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use crate::emit_rust::emit_rust_module;
+use crate::generated_files::GENERATED_FILES;
+use crate::process_exit::ProcessExit;
+use crate::{compile_to_dag, CompileError};
 
 const LENS_REGISTRY_ENTRY_TYPE: &str = "LensRegistryEntry";
 
@@ -30,20 +35,24 @@ struct Entry {
     generated_file: String,
 }
 
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(message) => {
-            let _ = writeln!(io::stderr(), "{message}");
-            ExitCode::FAILURE
-        }
+/// Entry surface for PB-1 bin-shim staging (`ProcessExit` carrier).
+///
+/// `dag` must be the bootstrap `Dag` from `Dag::new()` — the same authority used for
+/// `LensRegistryEntry` enumeration. Call sites store that `Dag` in a local and pass `&dag`
+/// (`let dag = Dag::new(); regen_lens_main(&dag)` in the `regen_lens` bin), not `&Dag::new()`.
+pub fn regen_lens_main(dag: &Dag) -> ProcessExit {
+    match run(dag) {
+        Ok(()) => ProcessExit::ExitSuccess,
+        Err(message) => ProcessExit::ExitFailure {
+            code: 1,
+            reason: message,
+        },
     }
 }
 
-fn run() -> Result<(), String> {
+fn run(dag: &Dag) -> Result<(), String> {
     let requested_name = parse_args()?;
 
-    let dag = Dag::new();
     if !dag.diagnostics().is_empty() {
         return Err(format!(
             "bootstrap Dag carries {} diagnostic(s): {:#?}",
@@ -52,7 +61,7 @@ fn run() -> Result<(), String> {
         ));
     }
 
-    let entries = read_registry(&dag)?;
+    let entries = read_registry(dag)?;
     if entries.is_empty() {
         return Err("lens registry is empty; check `src/v3/compiler/regen.dag`".to_string());
     }
