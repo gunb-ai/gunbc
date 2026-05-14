@@ -368,6 +368,6 @@ Subsequent L2.5 models (PB-4 lower / PB-5 infer / PB-3 parse / PB-2 tokenize) fo
 - `feedback_substrate_principle_audit` (4-axis grep + invariant-conformance)
 
 **Surfaces awaiting**:
-- Operator ratification on §12 Q1–Q6
+- Operator ratification on §12 Q1, Q2, Q3, Q5, Q6, Q7 (Q4 RESOLVED inline per codex BLOCKING #3066)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - R3 Grounding Mgr lane re-spawn (post-deployment-trigger) for substrate-prereq closure cascade
