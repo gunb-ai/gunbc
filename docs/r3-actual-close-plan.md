@@ -34,7 +34,7 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
 **Plan to cash** (revised Phase 2.1 per operator wrong-framework finding 2026-05-14 + Director ratification msg_e66f4326 + α-ratification expanded warm-wolf-698 scope 2026-05-14):
 
 - **Owner**: warm-wolf-698 (R3 Substrate Mgr, expanded scope absorbs all 8 PB-X lanes as sub-programs per operator §4 Item 5 α-ratification 2026-05-14) for substrate + per-stage L2.5 model + 4-step migration work; zesty-boar-261 (R3 Debt-Paydown Mgr) for non-pipeline-stage census-line discipline + ratchet-direction enforcement
-- **Routing authority** — primary: `docs/design-pure-bootstrap-zero.md` (LIVE since 2026-04-25 cascade PR #780) names the 8 load-bearing PB-X lanes:
+- **Routing authority** — primary: `docs/design-pure-bootstrap-zero.md` (LIVE since 2026-04-25 cascade PR #780) names the 9 load-bearing PB-X lanes:
   - **PB-Substrate**: generate `dag.rs` / `dag/ports.rs` / `dag/effects.rs` from `src/v3/std/substrate.dag`
   - **PB-1**: data-driven bootstrap loader emission
   - **PB-3**: parse retire (generate `parse.rs` from L2.5 parse domain model)
@@ -44,6 +44,7 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
   - **PB-Bootstrap-Process**: replace `bootstrap.rs` with generated trampoline from `bootstrap.dag` authority
   - **PB-Runtime**: generate `test_runner.rs` / `lens_apply.rs` / `lens_testgen.rs` / `post_emit_verifier.rs` from `.dag` authorities
   - **PB-Lib + PB-Build**: generate `lib.rs` (module declarations + crate exports) + `build.rs` (Cargo build script) as trampolines that `include!()` generated content
+  - **PB-Tier1-Sweep**: per-file fast-retire (sized S each) for the 13 Tier-1 files (regen binaries + bin helpers — `bin/regen_*.rs` / `bin/gunbc_ci.rs` / `bin/r1c_e_emit_gates.rs` / `bin/self_host_fixed_point.rs`) downstream of their backing migrations; per `docs/design-pure-bootstrap-zero.md:127` — "not blocked on PB-Substrate / PB-Lib / etc., but blocked on PB-1 + PB-4/5/6"
 - **Routing authority** — secondary: `src/v3/SELF_HOSTING.md` §2 names the **4-step per-stage migration discipline** for each pipeline-stage lane (PB-3 / PB-4 / PB-5 / PB-6):
   1. **Model review** (§2.2 Step 1): declare the stage's L2.5 domain-model SET in `std/` and `extdeps/` — per-stage enumeration in §2.2 (parse domain / lower domain / infer domain / emit domain). Every type that crosses a stage boundary or is consumed by a lens goes in `std/`; walker-local state stays in stage body per `std/`-vs-implementation split.
   2. **Pipeline slot** (§2.2 Step 2): add the stage's typed function signature to the pipeline composition; body starts as `ArrowBody::ExternalRealization` (Rust-backed scaffold).
@@ -61,7 +62,9 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
 - **Sub-program** — replaced (a)/(b)/(c) entry classification with per-PB-X-lane routing per design-doc-tier authority:
   - **Pipeline-stage entries** (`emit.rs` / `emit/*.rs` / `emit_rust.rs` / `lower.rs` / `infer.rs` / `parse.rs` / adjacent): route through PB-3 / PB-4 / PB-5 / PB-6 lanes; each is multi-PR project per §2.2 4-step discipline. Cannot retire via file-by-file cycle dispatch (cycles 2/3/4/5/6 PRs #3046/#3047/#3048/#3057/#3056/#3058 demonstrated this anti-pattern; under revert/close directive).
   - **DAG substrate entries** (`dag.rs` / `dag/builder.rs` / `dag/cardinality_payload.rs` / `dag/effects.rs` / `dag/ports.rs`): route through PB-Substrate lane.
-  - **Bootstrap-process entries** (`bootstrap.rs` / `bootstrap_regen_fresh.rs` / `bin/regen_*.rs` / `bin/gunbc_ci.rs` / `bin/r1c_e_emit_gates.rs` / `bin/self_host_fixed_point.rs` / `build.rs`): route through PB-Bootstrap-Process + PB-1 + PB-Lib+PB-Build lanes.
+  - **Bootstrap-process entries** (`bootstrap.rs` / `bootstrap_regen_fresh.rs`): route through PB-Bootstrap-Process lane (per design-pure-bootstrap-zero.md `bootstrap.dag`-replaces-bootstrap.rs).
+  - **Cargo trampoline entries** (`lib.rs` / `build.rs`): route through PB-Lib+PB-Build lane (per design-pure-bootstrap-zero.md trampoline shape).
+  - **Tier-1-sweep entries** (`bin/regen_*.rs` / `bin/gunbc_ci.rs` / `bin/r1c_e_emit_gates.rs` / `bin/self_host_fixed_point.rs`): route through **PB-Tier1-Sweep** lane (per `docs/design-pure-bootstrap-zero.md:127`: *"the 13 Tier-1 files (regen binaries + bin helpers) retire as their backing migrations land. Not blocked on PB-Substrate / PB-Lib / etc., but blocked on PB-1 + PB-4/5/6"*). Per-file fast-retire (sized S each) downstream of PB-1 + PB-4/5/6 landing.
   - **Runtime / lens-producer entries** (`test_runner.rs` / `lens_apply.rs` / `lens_testgen.rs` / `post_emit_verifier.rs`): route through PB-Runtime lane.
   - **Adjacent infrastructure entries** (`cementing_dispatch.rs` / `diagnostics.rs` / `dimension.rs`): retire when their consuming pipeline-stage lane lands (e.g., `cementing_dispatch.rs` post-gate-#87 dissolution; `diagnostics.rs` per-stage boundary contracts).
   - **Genuinely transient files** (cycle-cementing receipts that retire post-pipeline-stage-completion): file-by-file cycle dispatch shape is acceptable IF the file is verifiably transient + retires alongside the parent pipeline-stage lane.
