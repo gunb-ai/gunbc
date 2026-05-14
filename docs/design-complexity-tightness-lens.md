@@ -33,8 +33,8 @@ data TightnessAnalysis
     }
   | Loose {
       improvement: AsymptoticStrictDominance,   // named improvement witness: dominator strictly dominates dominated (see §1.5)
-      first_transformation: TightnessTransformation,         // ≥1 enforced structurally (no empty/disconnected derivation)
-      additional_transformations: List<TightnessTransformation>,  // optional ordered tail
+      first_transformation: ClassTierTightnessTransformation,        // ≥1 enforced structurally (no empty/disconnected derivation); class-tier-only by type
+      additional_transformations: List<ClassTierTightnessTransformation>,  // optional ordered tail; class-tier-only by type
       section: SectionRef,            // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
     }
 ```
@@ -48,7 +48,7 @@ The four illegal states `actual == tight ∧ transformations non-empty`, `actual
 
 ### §1.2 Transformation vocabulary
 
-`TightnessTransformation` enumerates the patterns the lens RECOGNIZES (without mutating code — purely deriving a "would-be-tighter-if-applied" judgment):
+The §1.5 substrate models the patterns as two type-level-distinct coproducts (`ClassTierTightnessTransformation` + `SymbolicTierTightnessTransformation` — see §1.5 declarations). The table below enumerates the shared documentation-level vocabulary; the types are split so each lens's `Loose.first_transformation` field structurally cannot carry a wrong-tier variant:
 
 Per-transformation tier classification (class-tier vs symbolic-tier-only) — class-tier transformations can produce an `AsymptoticStrictDominance` improvement at the lattice level; symbolic-tier-only transformations tighten the symbolic cost expression but keep the same class:
 
@@ -63,7 +63,7 @@ Per-transformation tier classification (class-tier vs symbolic-tier-only) — cl
 
 The vocabulary is shared across the lens family. This lens (class-level `lens_complexity_tight` producing `TightnessAnalysis` per §1.5) emits `Loose` only when an `AsymptoticStrictDominance` improvement is derivable — restricting to the 3 class-tier transformations above. The 3 symbolic-tier-only transformations are deferred to a future symbolic-cost-tightness sibling lens (per §2 out-of-scope carve), which produces `Loose` for same-class symbolic tightening that the class-level lens correctly reports as `AlreadyTight`.
 
-**Per openai-pro BLOCKING PR #3067 #11790 2026-05-14**: original 6-row table without tier classification admitted the design tension where `Loose.first_transformation` could carry a symbolic-tier-only variant — structurally an invalid pairing for class-level Loose. The tier annotation makes the substrate-consumer contract explicit: class-level Loose's `first_transformation` field is constrained to the class-tier subset by the lens implementation's construction discipline (Practice 6 API enforcement). Future hardening (post-Gap-11): split `TightnessTransformation` into `ClassTierTightnessTransformation | SymbolicTierTightnessTransformation` to make tier-pairing structurally enforced.
+**Per openai-pro BLOCKING PR #3067 #11790 2026-05-14**: original 6-row table without tier classification admitted the design tension where `Loose.first_transformation` could carry a symbolic-tier-only variant. **Per codex BLOCKING PR #3067 #11795 2026-05-14**: original tier-by-implementation-discipline was insufficient — must be type-level enforced. Fix: §1.5 substrate splits `TightnessTransformation` into `ClassTierTightnessTransformation` (3 arms: LoopHoisting / DeadCodeElimination / ConstantBoundPropagation) and `SymbolicTierTightnessTransformation` (3 arms: LoopFusion / AggregationRecognition / MapFilterFoldFusion). The class-level `Loose.first_transformation` field is typed `ClassTierTightnessTransformation` — symbolic-tier variants are structurally non-instantiable at the type level (Practice 2 / modeling-discipline). The vocabulary in this table is shared at the documentation tier across the lens family; the types are split at the substrate tier.
 
 ### §1.3 Diagnostic
 
@@ -158,19 +158,24 @@ New `.dag` declarations needed (grounded against existing lens-application subst
 // instantiations); proof obligations stated in comments were not type-enforced.
 // Fix: role-specific named NodeId fields (NOT bare List<NodeId>) + typed
 // proof-witness carriers (one per variant, NOT a parallel coproduct).
-type TightnessTransformation
-  = LoopFusion {
-      // Loop fusion = SIBLING/SEQUENTIAL loops with compatible iteration spaces
-      // (NOT outer/inner nested-loop relationship — that's ConstantBoundPropagation's
-      // shape). Per openai-pro BLOCKING PR #3067 2026-05-14: outer/inner naming
-      // misled toward nested-loop semantics; corrected to sequential first/second.
-      first_loop_node: NodeId                 // role: first sequential loop in fusion sequence
-      second_loop_node: NodeId                // role: second sequential loop (compatible iteration space)
-      space_a: SymbolicCost                   // first-loop iteration-space cost expression
-      space_b: SymbolicCost                   // second-loop iteration-space cost expression
-      equivalence_witness: IterationSpaceEquivalenceWitness  // structural witness: space_a ≡ space_b + sequential-not-nested + no inter-loop dependency-order blocker; shape TBD post-Gap-11
-    }
-  | LoopHoisting {
+
+// Per codex BLOCKING PR #3067 #11795 2026-05-14: original single
+// `TightnessTransformation` coproduct admitted `Loose.first_transformation`
+// pairing with the 3 symbolic-tier-only variants (LoopFusion /
+// AggregationRecognition / MapFilterFoldFusion). The §1.2 tier classification
+// described the constraint, but it was only Practice-6 API enforcement
+// (lens-implementation construction discipline), not Practice-2 structural
+// enforcement. Fix: split the coproduct into TWO TYPE-LEVEL DISTINCT
+// coproducts so the class-level lens cannot accept a symbolic-tier variant
+// at the type level. The class-level Loose carrier references
+// `ClassTierTightnessTransformation` (3 arms); the future symbolic-cost-
+// tightness sibling lens (per §2 out-of-scope carve) will reference
+// `SymbolicTierTightnessTransformation` (3 arms). No common parent type —
+// vocabulary is shared at the §1.2 documentation level, not the type-system
+// level, because the two lenses' Loose variants are structurally different.
+
+type ClassTierTightnessTransformation       // produces AsymptoticStrictDominance in BoundedLattice<AsymptoticClass>
+  = LoopHoisting {
       enclosing_loop_node: NodeId             // role: outer loop containing the invariant subgraph
       invariant_subgraph_node: NodeId         // role: subgraph proved loop-invariant
       independent_size_variables: List<SizeVariable>  // size-vars proved independent of loop var
@@ -185,6 +190,19 @@ type TightnessTransformation
       inner_loop_node: NodeId                 // role: inner loop with constant-bound
       inner_bound: SymbolicCost               // proved variable-independent of outer-loop SizeVariable
       bound_independence_witness: ConstantBoundWitness  // structural witness: inner_bound has no SizeVariable dependency on outer; shape TBD post-Gap-11
+    }
+
+type SymbolicTierTightnessTransformation    // produces same-class symbolic-cost tightening; future symbolic-cost-tightness sibling lens carrier
+  = LoopFusion {
+      // Loop fusion = SIBLING/SEQUENTIAL loops with compatible iteration spaces
+      // (NOT outer/inner nested-loop relationship — that's ConstantBoundPropagation's
+      // shape). Per openai-pro BLOCKING PR #3067 2026-05-14: outer/inner naming
+      // misled toward nested-loop semantics; corrected to sequential first/second.
+      first_loop_node: NodeId                 // role: first sequential loop in fusion sequence
+      second_loop_node: NodeId                // role: second sequential loop (compatible iteration space)
+      space_a: SymbolicCost                   // first-loop iteration-space cost expression
+      space_b: SymbolicCost                   // second-loop iteration-space cost expression
+      equivalence_witness: IterationSpaceEquivalenceWitness  // structural witness: space_a ≡ space_b + sequential-not-nested + no inter-loop dependency-order blocker; shape TBD post-Gap-11
     }
   | AggregationRecognition {
       accumulator_subgraph_node: NodeId       // role: subgraph implementing the accumulator pattern
@@ -290,8 +308,8 @@ type TightnessAnalysis
     }
   | Loose {
       improvement: AsymptoticStrictDominance  // named witness: dominator strictly dominates dominated (see above)
-      first_transformation: TightnessTransformation         // ≥1 enforced — no empty derivation possible
-      additional_transformations: List<TightnessTransformation>  // ordered tail; empty for single-transformation derivations
+      first_transformation: ClassTierTightnessTransformation         // ≥1 enforced — no empty derivation possible; class-tier-only by type (codex BLOCKING #11795)
+      additional_transformations: List<ClassTierTightnessTransformation>  // ordered tail; empty for single-transformation derivations; class-tier-only by type
       section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178
     }
 
@@ -413,7 +431,7 @@ Tightness lens is **same-algorithm-only**: it reasons about the program AS WRITT
 
 1. **§1.8 gate #79 `complexity_lens_behaviorally_complete`** — currently SATISFIED-BY-CONSTRUCTION via temporary Rust cementing receipt; full behavioral completion requires `ComplexitySummary` TestClaim literals + ProductCost/SumCost composition (Gap 11).
 2. **Close-plan Gap 11 LogCost / ProductCost / SumCost composition** — without this, `actual_class` collapses to ClassUnknown for composite expressions; `tight_class` would inherit the same limitation. Tightness lens consumes Gap 11's composition algebra.
-3. **`TightnessTransformation` substrate** — new `.dag` carriers per §1.5; needs ratification per `feedback_grep_carrier_semantic_before_ratification` 4-axis audit.
+3. **`ClassTierTightnessTransformation` + `SymbolicTierTightnessTransformation` substrate** — two new `.dag` coproducts per §1.5 (split landed per codex BLOCKING PR #3067 #11795); needs ratification per `feedback_grep_carrier_semantic_before_ratification` 4-axis audit. Sibling lens (symbolic-cost-tightness) consumes the `SymbolicTier...` carrier; this lens (class-level) consumes only the `ClassTier...` carrier.
 4. **Lens dispatch infrastructure** — `lens_complexity_tight` is declared as a `data` instance of `Lens<TightnessAnalysis>` (6-field carrier per `src/v3/std/lens.dag:70` — see §1.5 declaration) and registers in `lens_capability_register`; framework application via `fold_lens<TightnessAnalysis>` at `src/v3/std/lens.dag:6`. Consumer wiring follows the established lens-fold pipeline (no parallel custom dispatcher).
 
 ## §4. Close criterion (substrate-debt-shaped predicate)
