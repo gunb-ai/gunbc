@@ -121,23 +121,27 @@ If multiple candidates satisfy a Behavior at a target, `LanguageSpec` must decla
 
 ### §5.3 Mechanical walker dispatch via CleanEmissionContract
 
-Per `docs/design-clean-emission-contract.md` (DB-4):
+Per live substrate authority `src/v3/std/clean_emission.dag:13` (the canonical type declaration; supplements `docs/design-clean-emission-contract.md` DB-4 framing):
 
-CleanEmissionContract declares 8 typed rule enums per target covering constructive rendering concerns:
-1. Variable binding rule (e.g., `_ = ` on unused in Go; `_` underscore in Rust/Python)
-2. Wrap-only-in-operand-position rule
-3. EmitUnderscoreWhenUnused rule
-4. IncludeOnlyReferenced rule
-5. NoWrappingOnTerminalExpression rule
-6. (3 additional rules per design-clean-emission-contract.md — Step 2 authoring should enumerate exactly)
+`CleanEmissionContract` declares **9 typed rule fields** per target covering constructive rendering + verifier-gate concerns (verified via `grep -n "type CleanEmissionContract" src/v3/std/clean_emission.dag`):
+
+1. `expression_wrapping: ExpressionWrappingRule` (precedence-paren handling; rustc's `unused_parens`)
+2. `pattern_bindings: PatternBindingRule` (match-arm payload binding emission; rustc's `unused_variables`)
+3. `variant_payload_field_access: VariantPayloadFieldAccessRule` (variant payload access in pattern + body contexts)
+4. `imports: ImportRule` (import emission policy; `unused_imports`)
+5. `block_return: BlockReturnRule` (terminal-expression block-return handling)
+6. `variable_bindings: VariableBindingRule` (variable binding rule; `_` underscore-when-unused vs explicit-name)
+7. `match_arm_body: MatchArmBodyRule` (match-arm body formation)
+8. `correction_style: CorrectionStyle` (formatting/lint correction emission strategy)
+9. `post_emit_verifier: PostEmitVerifier` (embedded verifier-gate field — the contract itself carries the per-target verifier reference)
 
 Walker dispatch is **mechanical**: match on rule variant, emit accordingly. **No `#[allow(...)]` / `# noqa` / pragma escape hatches** — violation = emission bug per `feedback_no_textual_enforcement_bridges`.
 
 ### §5.4 PostEmitVerifier discipline
 
-Per `docs/design-clean-emission-contract.md:160-182`: emit output gates through PostEmitVerifier (command + args + syntax_only + expected_exit_code + output_policy). For Rust: `rustc --edition=2021 -D warnings`. CI enforces no-suppression; verifier failure = emit failure (`PostEmitVerifier` substrate authority).
+Per `docs/design-clean-emission-contract.md:160-182` + live carrier at `src/v3/std/clean_emission.dag:22` (field of `CleanEmissionContract`): emit output gates through `PostEmitVerifier` (command + args + syntax_only + expected_exit_code + output_policy). For Rust: `rustc --edition=2021 -D warnings`. CI enforces no-suppression; verifier failure = emit failure.
 
-**Substrate authority**: `src/v3/std/post_emit_verifier.dag` (Step 3 lane PB-Runtime authors).
+**Substrate authority**: `src/v3/std/clean_emission.dag` declares `PostEmitVerifier` as the 9th field of `CleanEmissionContract` (NOT a separate top-level substrate file); PB-Runtime substrate work at `post_emit_verifier.rs` migrates the Rust-side runtime that consumes this field per cycle-5 PR #3057 paper-shrink revert pending.
 
 ---
 
@@ -266,11 +270,13 @@ The earlier draft proposed `EmissionConfig.target_kind: ShapeAVariant | ShapeBVa
 
 This question is RETIRED from open-ratification status; resolution captured here for traceability.
 
-### Q5: CleanEmissionContract 8 rules — enumeration completeness
+### Q5: CleanEmissionContract enumeration — RESOLVED (per codex BLOCKING #3066)
 
-`docs/design-clean-emission-contract.md` enumerates 5 named rule categories explicitly; the "8 rules" framing suggests 3 more not enumerated in current authoring. **Step 2 brief should grep design-clean-emission-contract.md for full enumeration + author missing rules into the model.**
+Earlier draft framed this as "8 rules with 3 missing per design-clean-emission-contract.md" enumeration drift. The live substrate authority `src/v3/std/clean_emission.dag:13` carries **9 typed fields** (verified + enumerated in §5.3 update): `expression_wrapping` / `pattern_bindings` / `variant_payload_field_access` / `imports` / `block_return` / `variable_bindings` / `match_arm_body` / `correction_style` / `post_emit_verifier`.
 
-Director-recommend: defer enumeration to Step 2 worker brief authoring; Step 2 worker substantiates the 8-rule list against current Rust/Python/Go verifier outputs.
+Note in particular `variant_payload_field_access: VariantPayloadFieldAccessRule` which the earlier draft dropped — codex BLOCKING #3066 flagged this as INVARIANTS P2 (parallel-authority risk) + Modeling Practice 3 (facts-carry-forward) violation. The fix carries the live `clean_emission.dag` field set forward as substrate authority.
+
+This question is RETIRED from open-ratification status; enumeration is live in §5.3 + carrier-of-truth is `src/v3/std/clean_emission.dag`.
 
 ### Q6: PB-Runtime PostEmitVerifier substrate dependency
 
@@ -325,7 +331,7 @@ This doc lands on main when:
 8. ✅ D-1 determinism preservation discipline (§10)
 9. ✅ Cost lens cross-cutting consistency (§11)
 10. ✅ Open design questions enumerated for operator ratification (§12)
-11. ⏳ Operator ratification on §12 Q1, Q2, Q3, Q5, Q6, Q7 (Q4 RESOLVED inline per codex BLOCKING #3066 — Shape B removed from PB-6 substrate; ratification of remaining 6 questions lands as Director-tier follow-on or inline updates)
+11. ⏳ Operator ratification on §12 Q1, Q2, Q3, Q6, Q7 (Q4 + Q5 both RESOLVED inline per codex BLOCKING #3066 (Q4 Shape B removed from PB-6 substrate; Q5 CleanEmissionContract 9-field enumeration adopted from src/v3/std/clean_emission.dag:13); ratification of remaining 5 questions lands as Director-tier follow-on or inline updates)
 
 Post-ratification: this doc becomes the substrate authority for Step 2 worker brief authoring (pipeline-slot ExternalRealization PR) + §1.8 PB-6 gate row close-criterion predicate.
 
@@ -333,7 +339,7 @@ Post-ratification: this doc becomes the substrate authority for Step 2 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator ratifies §12 Q1, Q2, Q3, Q5, Q6, Q7** (or surfaces revisions; Q4 RESOLVED inline per codex BLOCKING #3066)
+1. **Operator ratifies §12 Q1, Q2, Q3, Q6, Q7** (or surfaces revisions; Q4 + Q5 both RESOLVED inline per codex BLOCKING #3066)
 2. **PM amends close plan Gap 1** to route through PB-X lanes + cite this doc as PB-6 L2.5 substrate
 3. **PM amends §1.8** with PB-6 gate row citing this doc as close-criterion authority
 4. **Director authors PB-6 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope) — for R3 Substrate Mgr (warm-wolf-698)
@@ -376,6 +382,6 @@ Subsequent L2.5 models (PB-4 lower / PB-5 infer / PB-3 parse / PB-2 tokenize) fo
 - `feedback_substrate_principle_audit` (4-axis grep + invariant-conformance)
 
 **Surfaces awaiting**:
-- Operator ratification on §12 Q1, Q2, Q3, Q5, Q6, Q7 (Q4 RESOLVED inline per codex BLOCKING #3066)
+- Operator ratification on §12 Q1, Q2, Q3, Q6, Q7 (Q4 + Q5 both RESOLVED inline per codex BLOCKING #3066)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - R3 Grounding Mgr lane re-spawn (post-deployment-trigger) for substrate-prereq closure cascade
