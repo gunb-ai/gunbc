@@ -712,48 +712,52 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
         Diagnostic::TokenizerError {
             message,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::TokenizerError {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            "Diagnostic::TokenizerError {{ message: {message:?}.to_string(), span: {}, correction: {} }}",
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::ParseError {
             message,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::ParseError {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            "Diagnostic::ParseError {{ message: {message:?}.to_string(), span: {}, correction: {} }}",
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::TypeMismatch {
             expected,
             actual,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::TypeMismatch {{ expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, fixes: {} }}",
+            "Diagnostic::TypeMismatch {{ expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, correction: {} }}",
             render_declaration_id(expected.declaration),
             render_declaration_id(actual.declaration),
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::ArityMismatch {
             function,
             expected,
             actual,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::ArityMismatch {{ function: {function:?}.to_string(), expected: {expected}, actual: {actual}, span: {}, fixes: {} }}",
+            "Diagnostic::ArityMismatch {{ function: {function:?}.to_string(), expected: {expected}, actual: {actual}, span: {}, correction: {} }}",
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
-        Diagnostic::ResolveError { name, span, fixes } => format!(
-            "Diagnostic::ResolveError {{ name: {name:?}.to_string(), span: {}, fixes: {} }}",
+        Diagnostic::ResolveError {
+            name,
+            span,
+            correction,
+        } => format!(
+            "Diagnostic::ResolveError {{ name: {name:?}.to_string(), span: {}, correction: {} }}",
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::UnitMismatch {
             operator,
@@ -761,25 +765,25 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             expected,
             actual,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::UnitMismatch {{ operator: {operator:?}.to_string(), parameter: {parameter:?}.to_string(), expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, fixes: {} }}",
+            "Diagnostic::UnitMismatch {{ operator: {operator:?}.to_string(), parameter: {parameter:?}.to_string(), expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, correction: {} }}",
             render_declaration_id(expected.declaration),
             render_declaration_id(actual.declaration),
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::BranchConditionNotBool {
             port,
             actual_type,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::BranchConditionNotBool {{ port: {}, actual_type: {}, span: {}, fixes: {} }}",
+            "Diagnostic::BranchConditionNotBool {{ port: {}, actual_type: {}, span: {}, correction: {} }}",
             render_port_id(*port),
             render_opt_type_shape(*actual_type),
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::MagnitudeOutOfRange {
             literal,
@@ -788,50 +792,57 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             range_max_inclusive,
             expected,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::MagnitudeOutOfRange {{ literal: {literal:?}.to_string(), target: {target:?}.to_string(), range_min_inclusive: {range_min_inclusive:?}.to_string(), range_max_inclusive: {range_max_inclusive:?}.to_string(), expected: TypeShape::new({}), span: {}, fixes: {} }}",
+            "Diagnostic::MagnitudeOutOfRange {{ literal: {literal:?}.to_string(), target: {target:?}.to_string(), range_min_inclusive: {range_min_inclusive:?}.to_string(), range_max_inclusive: {range_max_inclusive:?}.to_string(), expected: TypeShape::new({}), span: {}, correction: {} }}",
             render_declaration_id(expected.declaration),
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::MalformedIntegerRangeFact {
             message,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::MalformedIntegerRangeFact {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            "Diagnostic::MalformedIntegerRangeFact {{ message: {message:?}.to_string(), span: {}, correction: {} }}",
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
         Diagnostic::NominalOpacityViolation {
             declaration,
             accessor,
             span,
-            fixes,
+            correction,
         } => format!(
-            "Diagnostic::NominalOpacityViolation {{ declaration: {}, accessor: {}, span: {}, fixes: {} }}",
+            "Diagnostic::NominalOpacityViolation {{ declaration: {}, accessor: {}, span: {}, correction: {} }}",
             render_declaration_id(*declaration),
             render_opt_declaration_id(*accessor),
             render_source_span(span),
-            render_corrections(fixes),
+            render_correction(correction),
         ),
     }
 }
 
-fn render_corrections(corrections: &[crate::diagnostics::Correction]) -> String {
-    let values: Vec<String> = corrections
-        .iter()
-        .map(|correction| {
+fn render_correction(correction: &crate::diagnostics::Correction) -> String {
+    match correction {
+        crate::diagnostics::Correction::LiveCorrection { witness } => {
             format!(
-                "crate::diagnostics::Correction {{ description: {:?}.to_string(), span: {}, new_source: {:?}.to_string() }}",
-                correction.description,
-                render_source_span(&correction.span),
-                correction.new_source,
+                "crate::diagnostics::Correction::live({:?}, {}, {:?})",
+                witness.description,
+                render_source_span(&witness.span),
+                witness.new_source,
             )
-        })
-        .collect();
-    render_vec(&values)
+        }
+        crate::diagnostics::Correction::DeferredCorrection {
+            reason,
+            retirement_plan,
+        } => {
+            format!(
+                "crate::diagnostics::Correction::deferred({:?}, {:?}, {:?})",
+                reason, retirement_plan.owner, retirement_plan.exit_condition
+            )
+        }
+    }
 }
 
 fn render_clusters(dag: &Dag) -> String {

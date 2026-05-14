@@ -67,10 +67,25 @@ impl SourceByteSpan {
 
 
 CORRECTION_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Correction {
+pub struct CorrectionWitness {
     pub description: String,
     pub span: SourceSpan,
     pub new_source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetirementPlan {
+    pub owner: String,
+    pub exit_condition: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Correction {
+    LiveCorrection { witness: CorrectionWitness },
+    DeferredCorrection {
+        reason: String,
+        retirement_plan: RetirementPlan,
+    },
 }
 """
 
