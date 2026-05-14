@@ -27,7 +27,7 @@
 //! the same PR removes its row from `sg0_census_test::EXPECTED_HAND_AUTHORED_TEST` — no
 //! parallel cementing inventory is allowed to track the Rust→`.dag` migration separately.
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
-//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
+//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in the **current PR
 //! description**; module comments must not assert deletes for paths that never existed on
 //! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
@@ -47,7 +47,9 @@ use v3_compiler::dag::{
     WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
-use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use v3_compiler::lens_effect_enumeration::{
+    enumerate_effects, StructuralEffectShape, TransactionalPattern,
+};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -163,6 +165,59 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
 }
 
 #[test]
+fn r3_gate_87_effect_enumeration_reports_no_effect_shape() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::NoEffect)),
+        "effect enumeration should prove NoEffect facts for source/value nodes, got {:?}",
+        report.facts
+    );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_read_shape() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::ReadShaped)),
+        "effect enumeration should derive ReadShaped facts from callable arrow bodies, got {:?}",
+        report.facts
+    );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_write_shape() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
+    assert!(
+        report
+            .facts
+            .iter()
+            .any(|fact| matches!(fact.shape, StructuralEffectShape::WriteShaped)),
+        "effect enumeration should derive WriteShaped facts from returned-resource arrow signatures, got {:?}",
+        report.facts
+    );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_non_arrow_coverage_gap() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
+    assert!(
+        !report.coverage_gaps.is_empty(),
+        "effect enumeration should surface coverage gaps explicitly, got {:?}",
+        report.coverage_gaps
+    );
+}
+
+#[test]
 fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
     let dag =
         compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
@@ -226,6 +281,11 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
