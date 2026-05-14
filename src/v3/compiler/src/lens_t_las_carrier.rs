@@ -14,7 +14,7 @@ use crate::dimension::Witness;
 #[derive(Clone, Debug)]
 pub enum OptionalDiagnostic {
     NoDiagnostic,
-    SomeDiagnostic { value: Diagnostic },
+    SomeDiagnostic { value: Box<Diagnostic> },
 }
 
 pub type LensReadFn<T> = dyn Fn(&Dag, &Behavior) -> Witness<T>;
