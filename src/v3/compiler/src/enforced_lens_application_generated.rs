@@ -68,8 +68,18 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
                   `lens_application.dag` (modeled authority missing; fail-closed)"
             .to_string(),
         span: dag.declaration(enforced_template).span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "EnforcedLensApplicationDiagnostic",
+        ),
     });
+}
+
+fn timing_lens_gate_58_retirement_correction() -> crate::diagnostics::Correction {
+    crate::diagnostics::Correction::deferred(
+        "Gate #58 timing enforcement does not yet retain a source span for a safe timing witness rewrite",
+        "R3 Gap 9 row #106 timing-lens diagnostic roundtrip",
+        "thread timing measurement/budget source spans through gate #58 enforcement and replace this scaffold diagnostic with a generated/data-backed LiveCorrection",
+    )
 }
 
 /// Reads `timing_enforcement_fault_sentinel_count` from the lowered `timing_lens.dag` declaration
@@ -401,7 +411,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `algebra.dag` (modeled authority missing; fail-closed)"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
                     });
                     continue;
                 };
@@ -416,7 +428,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: could not resolve function declaration for section"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
                     });
                     continue;
                 };
@@ -426,7 +440,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: could not resolve function result port for section"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
                     });
                     continue;
                 };
@@ -443,7 +459,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               use `ClassLinear` / `ClassQuadratic` for sub-cubic tiers)"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
                     });
                     continue;
                 };
@@ -457,7 +475,10 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                   cannot enforce budget"
                                     .to_string(),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "EnforcedLensApplicationDiagnostic",
+                                ),
                         });
                         continue;
                     }
@@ -474,7 +495,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                 "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
                                     .to_string(),
                             span: decl.span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                         });
                         continue;
                     }
@@ -508,7 +529,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `timing_lens.dag` (modeled authority missing; fail-closed)"
                             .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             };
@@ -520,7 +543,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               `EnforcedApplication` section"
                         .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             };
@@ -535,7 +560,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             }
@@ -546,7 +573,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             };
@@ -557,7 +586,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                 });
                 continue;
             };
@@ -569,7 +598,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                 });
                 continue;
             };
@@ -583,7 +612,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                         section_decl.name.as_deref().unwrap_or("?")
                     ),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             };
@@ -593,7 +624,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                               nanoseconds (expected `TimingBudget { max: Nanoseconds { count } }`)"
                         .to_string(),
                     span: decl.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "EnforcedLensApplicationDiagnostic",
+                    ),
                 });
                 continue;
             };
@@ -610,7 +643,7 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                                  from `timing_lens.dag` (needed for fault-path diagnostic text; fail-closed)"
                                     .to_string(),
                             span: decl.span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("EnforcedLensApplicationDiagnostic"),
                         });
                         continue;
                     };
@@ -625,7 +658,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                             "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
                                 .to_string(),
                         span: decl.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
                     });
                     continue;
                 }
@@ -775,7 +810,9 @@ fn enforced_violation_diagnostic(
             message: "lens enforcement: internal error (DiagnosticSeverity is not a sum type)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "EnforcedLensApplicationDiagnostic",
+            ),
         };
     };
     let Some(error_ctor) = variants.iter().find(|v| v.label == "Error").map(|v| v.ty) else {
@@ -783,7 +820,9 @@ fn enforced_violation_diagnostic(
             message: "lens enforcement: internal error (DiagnosticSeverity lacks `Error` variant)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "EnforcedLensApplicationDiagnostic",
+            ),
         };
     };
     let FieldValue::Variant {
@@ -796,7 +835,9 @@ fn enforced_violation_diagnostic(
                       variant value"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "EnforcedLensApplicationDiagnostic",
+            ),
         };
     };
     if *constructor != error_ctor {
@@ -805,7 +846,9 @@ fn enforced_violation_diagnostic(
                       `Error` (INVARIANTS C-8; fail-closed discipline)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "EnforcedLensApplicationDiagnostic",
+            ),
         };
     }
     // `lens_application.dag`: `type DiagnosticSeverity = Error` — the lone variant is nullary.
@@ -815,13 +858,15 @@ fn enforced_violation_diagnostic(
                       P1; malformed variant payload)"
                 .to_string(),
             span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "EnforcedLensApplicationDiagnostic",
+            ),
         };
     }
     Diagnostic::ParseError {
         message: violation_message,
         span,
-        fixes: Vec::new(),
+        correction: timing_lens_gate_58_retirement_correction(),
     }
 }
 
@@ -1040,9 +1085,14 @@ mod diagnostic_severity_fail_closed_tests {
 
     fn assert_parse_error_at(diag: Diagnostic, expected_span: &SourceSpan) {
         match diag {
-            Diagnostic::ParseError { span, fixes, .. } => {
+            Diagnostic::ParseError {
+                span, correction, ..
+            } => {
                 assert_eq!(&span, expected_span);
-                assert!(fixes.is_empty());
+                assert!(matches!(
+                    correction,
+                    crate::diagnostics::Correction::DeferredCorrection { .. }
+                ));
             }
             other => panic!("expected ParseError, got {other:?}"),
         }

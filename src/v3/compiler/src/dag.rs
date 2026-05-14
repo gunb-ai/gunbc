@@ -4994,7 +4994,9 @@ impl Dag {
             port,
             actual_type,
             span: condition_span,
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "BranchConditionNotBool",
+            ),
         });
         None
     }
@@ -5076,7 +5078,9 @@ fn malformed_target_clean_emission_binding(declaration: &Declaration, detail: &s
                 .unwrap_or("<anonymous target clean emission binding>")
         ),
         span: declaration.span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "MalformedTargetCleanEmissionBinding",
+        ),
     }
 }
 
@@ -5099,7 +5103,9 @@ fn duplicate_target_clean_emission_binding(
                 .unwrap_or("<anonymous target clean emission binding>")
         ),
         span: declaration.span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "DuplicateTargetCleanEmissionBinding",
+        ),
     }
 }
 

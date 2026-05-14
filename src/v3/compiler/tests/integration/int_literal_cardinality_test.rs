@@ -42,13 +42,11 @@ fn assert_magnitude_out_of_range(source: String, file: &str, case: IntegerOverfl
                     target,
                     range_min_inclusive,
                     range_max_inclusive,
-                    fixes,
                     ..
                 } if literal == case.literal
                     && target == case.target
                     && range_min_inclusive == case.min
                     && range_max_inclusive == case.max
-                    && fixes.is_empty()
             )
         }),
         "{file}: expected MagnitudeOutOfRange for {case:?}, got {:#?}",
@@ -317,13 +315,11 @@ fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
                     target,
                     range_min_inclusive,
                     range_max_inclusive,
-                    fixes,
                     ..
                 } if literal == "256"
                     && target == "u8"
                     && range_min_inclusive == "0"
                     && range_max_inclusive == "255"
-                    && fixes.is_empty()
             )
         }),
         "expected MagnitudeOutOfRange for let literal, got {:?}",
@@ -501,13 +497,11 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
                     target,
                     range_min_inclusive,
                     range_max_inclusive,
-                    fixes,
                     ..
                 } if literal == "256"
                     && target == "u8"
                     && range_min_inclusive == "0"
                     && range_max_inclusive == "255"
-                    && fixes.is_empty()
             )
         }),
         "MagnitudeOutOfRange should carry typed bounds and no fabricated correction, got {:#?}",

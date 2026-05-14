@@ -2946,6 +2946,7 @@ pub mod lens_t_las_carrier {
     use crate::dimension::Witness;
 
     /// Mirrors `OptionalDiagnostic` in `v3.std.dimensions` for emitted lens code.
+    #[allow(clippy::large_enum_variant)]
     #[derive(Clone, Debug)]
     pub enum OptionalDiagnostic {
         NoDiagnostic,
