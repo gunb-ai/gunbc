@@ -378,7 +378,7 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
 
 /// Receipt: all fixed-width signed/unsigned aliases are width refinements of
 /// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
-pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
+pub fn assert_bootstrap_numeric_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
         ("Int8", "Int", MachineWidthSlotWitness::LiteralNatBits("8")),
         (
@@ -429,6 +429,14 @@ pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     ] {
         assert_compose_with_machine_width(dag, alias, algebra, width);
     }
+
+    assert_bootstrap_float_aliases_real_width_refinements(dag);
+}
+
+/// Back-compat helper name retained for older tests; gate #19's canonical receipt
+/// is `assert_bootstrap_numeric_aliases_align_to_refinements`.
+pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
+    assert_bootstrap_numeric_aliases_align_to_refinements(dag);
 }
 
 /// Receipt: fixed-width reals refine abstract `Real` with literal-Nat `MachineWidth<N>`
