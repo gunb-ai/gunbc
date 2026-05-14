@@ -24,7 +24,7 @@
 //! **`SectionRef::DeclarationScope`** / workflow `DeclarationId`, `PerWrite`,
 //! **`LogCost(merge_replicas_port)`**, bind **`span`**) **after** verifying that port
 //! appears in **`LogCost` in [`compute_symbolic_costs`]** (fail-closed vs fabricated basis).
-//! The `.dag` carrier remains the type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`).
+//! The `.dag` carrier remains the type definitions in `lenses.cost` (`cost_symbolic_lens_generated.rs`).
 //! (2) **Full symbolic-cost lens table**
 //! ([`compute_symbolic_costs`]): some port still **`Hit`s `LogCost(merge_replicas_port)`**
 //! from divide lowering inside `crdt_merge_step` — the per-write O(log replicas)
