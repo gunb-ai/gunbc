@@ -1191,6 +1191,72 @@ mod tests {
     }
 
     #[test]
+    fn push_transform_resolved_field_project_seeds_output_from_label_authority() {
+        let mut dag = Dag::new();
+        let int_ty = dag.int_decl().expect("bootstrap Int");
+        let bool_ty = dag.bool_decl().expect("bootstrap Bool");
+        let point_ty = push_test_declaration(
+            &mut dag,
+            Some("Point"),
+            TypeConnective::Conj {
+                children: vec![
+                    Field {
+                        label: "x".to_string(),
+                        ty: int_ty,
+                    },
+                    Field {
+                        label: "y".to_string(),
+                        ty: bool_ty,
+                    },
+                ],
+            },
+            Vec::new(),
+        );
+        let parent = dag.alloc_port_with_shape(TypeShape::new(point_ty));
+
+        let output = dag.push_transform(
+            TransformTarget::ResolvedFieldProject {
+                field_label: "x".to_string(),
+            },
+            vec![parent],
+            span(),
+        );
+
+        assert_eq!(
+            dag.port(output).state(),
+            &PortState::Resolved(TypeShape::new(int_ty))
+        );
+    }
+
+    #[test]
+    fn push_transform_unresolved_field_project_does_not_seed_output_shape() {
+        let mut dag = Dag::new();
+        let int_ty = dag.int_decl().expect("bootstrap Int");
+        let point_ty = push_test_declaration(
+            &mut dag,
+            Some("Point"),
+            TypeConnective::Conj {
+                children: vec![Field {
+                    label: "x".to_string(),
+                    ty: int_ty,
+                }],
+            },
+            Vec::new(),
+        );
+        let parent = dag.alloc_port_with_shape(TypeShape::new(point_ty));
+
+        let output = dag.push_transform(
+            TransformTarget::UnresolvedFieldProject {
+                field_label: "x".to_string(),
+            },
+            vec![parent],
+            span(),
+        );
+
+        assert_eq!(dag.port(output).state(), &PortState::Uninferred);
+    }
+
+    #[test]
     fn push_bind_reuses_supplied_value_port() {
         let mut dag = Dag::new();
         let value = dag.push_value(LiteralBits::Bool(true), span());
