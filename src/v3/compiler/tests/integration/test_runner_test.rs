@@ -667,6 +667,45 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn generated_from_dag_resolved_fact_requires_non_empty_source_hash() {
+    let source = r#"
+import std.verification { ResolvedFact }
+
+data census_authority: Int = 0
+data resolved_source: Int = 1
+
+data generated_from_dag_claim: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "let x: Int = 1",
+  file_name: "pb_test_file_generated_from_dag.v3",
+  predicate: GeneratedFromDag(census_authority, [
+    ResolvedFact {
+      output_path: "src/v3/compiler/tests/integration.rs",
+      dag_source: resolved_source,
+      source_hash: ""
+    }
+  ]),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "pb_census_predicate_shapes",
+  claims: [Enumerated(generated_from_dag_claim)]
+}
+"#;
+    let dag = compile_clean(source, "pb_resolved_fact_empty_hash.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(&results[0].result, ClaimResult::Fail(reason)
+            if reason.contains("ResolvedFact `source_hash` must be non-empty")),
+        "expected empty ResolvedFact source_hash to fail closed, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn mock_backed_invariant_predicate_accepts_declaration_ref_like_lens_output_equals() {
     let source = r#"
 data claim: TestClaim = {
