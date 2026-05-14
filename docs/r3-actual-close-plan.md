@@ -763,7 +763,19 @@ This is `feedback_ratchet_only_down` drift; sustained pattern, not 5-commit anom
 
 3. **Net-direction commentary** per operator Decision A — if the PR ratchet-array length INCREASES net, name the structurally-unavoidable reason; if DECREASES net, name the retirement-class (a/b/c). Cascade-substitution PRs (class B above) name both.
 
-**Reviewer-grep enforcement**: PR reviewers (codex / cursor / openai-pro / claude) check stdout-artifact for ratchet-array length delta + classification cite. Missing classification cite = REQUEST_CHANGES (substantive). PR-template grep is the structural enforcement; Director-tier sanction is the policy escape hatch for genuine class-C structurally-unavoidable additions.
+**Three-tier review enforcement chain** (worker-tier → PR-template → Director-tier):
+
+1. **Worker-tier substrate-audit (first chain)**: workers authoring substrate-shape work that would add to ratchets MUST run a 4-axis pre-commit substrate audit per `feedback_grep_carrier_semantic_before_ratification` (extended 4-axis check 2026-05-13 per Director msg_c79a9b8d):
+   - **Axis 1 — name-shape**: does the carrier name follow `dsl/std/` convention + no collisions
+   - **Axis 2 — semantic-carrier-grep** (per existing memory): is there an existing carrier with the same SEMANTIC role (e.g., byte-identity vs registry-key vs content-hash discrimination per PR #2746 audit class)
+   - **Axis 3 — constructability under existing inhabitants**: can the carrier be constructed from existing `data` declarations + algebra inhabitances without requiring new substrate-shape work
+   - **Axis 4 — invariant-conformance vs §P1/§P2/§P5**: does the carrier obey Modeling Faithfulness, Boundary Discipline / single authority, and Progress is Dissolution per INVARIANTS.md
+   - Cross-link to `feedback_substrate_principle_audit` 6-question audit for broader substrate-shape decisions
+   - **Substantive evidence**: PR #3040 (warm-wolf-698 substrate refinement; warm-wren-479 worker) demonstrated this discipline — the canvas-to-merge cycle caught 3 sequential Director-tier ratification axis-failures (semantic → constructability → invariant-conformance) pre-merge via worker-tier substrate-canvas authoring. The 4-axis check IS the protective work that prevents drift from landing.
+
+2. **PR-template-grep (second chain)**: PR reviewers (codex / cursor / openai-pro / claude) check stdout-artifact for ratchet-array length delta + classification cite (A/B/C per discrimination above) + Gap classification (a/b/c per Track A taxonomy doc). Missing classification cite = REQUEST_CHANGES (substantive). Reviewer-grep is the structural enforcement at review-time.
+
+3. **Director-tier sanction (third chain)**: policy escape hatch for genuine class-C structurally-unavoidable additions per `project_no_r4_carves_directive` analogous discipline. Director-tier ratification required for any class-C add; Director cites the structural-unblockable reason.
 
 **Examples** (illustrative):
 
