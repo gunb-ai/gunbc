@@ -14,6 +14,18 @@ fn parallel_unsupported(
     })
 }
 
+fn pairwise_non_commute(
+    left: Operation,
+    right: Operation,
+    reason: impl Into<String>,
+) -> ParallelismUnsupportedDetail {
+    ParallelismUnsupportedDetail {
+        kind: ParallelismUnsupportedKind::PairwiseNonCommute { left, right },
+        downstream_stage: DOWNSTREAM.to_string(),
+        reason: reason.into(),
+    }
+}
+
 fn key_sources_equal(a: &KeySource, b: &KeySource) -> bool {
     match (a, b) {
         (KeySource::PathParam { param: pa }, KeySource::PathParam { param: pb }) => pa == pb,
@@ -77,16 +89,15 @@ fn pairwise_cross_branch_commutes(
                     match operations_commute(dag, oa, ob) {
                         Ok(true) => {}
                         Ok(false) => {
-                            return Err(ParallelismUnsupportedDetail {
-                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
-                                downstream_stage: DOWNSTREAM.to_string(),
-                                reason: "parallel branch operations do not commute under parallel scheduling"
-                                    .to_string(),
-                            });
+                            return Err(pairwise_non_commute(
+                                oa.clone(),
+                                ob.clone(),
+                                "parallel branch operations do not commute under parallel scheduling",
+                            ));
                         }
                         Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
                             return Err(ParallelismUnsupportedDetail {
-                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                kind: ParallelismUnsupportedKind::EffectClassificationUnavailable,
                                 downstream_stage: DOWNSTREAM.to_string(),
                                 reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
                                     .to_string(),
@@ -128,7 +139,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(CompositionVerdict::IdempotentComposition) => {}
         Err(_) => {
             return parallel_unsupported(
-                ParallelismUnsupportedKind::PairwiseNonCommute,
+                ParallelismUnsupportedKind::EffectClassificationUnavailable,
                 "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism",
             );
         }
