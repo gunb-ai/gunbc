@@ -446,6 +446,12 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
 /// this body) is the separate T-LP-Retirement program; this path is the bounded PB-0 census
 /// partition receipt per `docs/briefs/r3-pb0-non-test-retirement-worker.md`.
 ///
+/// **Checked-in outputs:** the emitted `*_generated.rs` paths are tracked in git like other
+/// `REGEN_OUTPUTS` modules (not gitignored). `cargo build` / `cargo check` runs this `build.rs`
+/// hook before `rustc` sees `lib.rs`, and `cargo:rerun-if-changed` on the template directory
+/// forces a rebuild when `.rs.in` edits land — refresh committed `*_generated.rs` in the same PR
+/// as template edits (CI exercises the full path).
+///
 /// Do not hand-edit `*_generated.rs`; edit the `.rs.in` templates and rebuild.
 fn emit_pb0_cycle4_host_authority_modules(repo_root: &Path) {
     const HEADER: &str = concat!(
