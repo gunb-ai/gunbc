@@ -1,11 +1,14 @@
 //! DB-18 / Lane 2 Stage 2b — `WorkflowEffect`, `bool_port_of`, and idempotency analysis.
 
+use std::collections::BTreeMap;
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
+
 use v3_compiler::dag::{
-    ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape,
-    IdempotentShape, KeySource, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
-    WorkflowIdempotencyReport,
+    operation_effect_shape, ArrowBody, Behavior, BreakingShape, CallableRef, CompositionVerdict,
+    CreateCause, EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource,
+    NonSingletonList, Operation, PathTemplate, RestEndpointBinding, TypeConnective, UrlPathToken,
+    WorkflowEffect, WorkflowIdempotencyReport,
 };
 use v3_compiler::diagnostics::{Diagnostic, SourceSpan};
 use v3_compiler::Dag;
@@ -22,10 +25,62 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(name: &str, shape: EffectShape) -> OperationEffect {
-    OperationEffect {
-        operation_name: name.to_string(),
-        shape,
+fn op(dag: &Dag, shape: EffectShape) -> Operation {
+    let callable_name = match &shape {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => "get_method",
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }) => "map_insert_method",
+        EffectShape::IsIdempotent(IdempotentShape::DeleteEffect { .. }) => "diff_method",
+        EffectShape::IsBreaking(BreakingShape::CreateEffect { .. }) => "concat_method",
+        EffectShape::IsBreaking(BreakingShape::AppendEffect) => "append_method",
+    };
+    let callable = dag
+        .declaration_by_name(callable_name)
+        .unwrap_or_else(|| panic!("missing callable declaration `{callable_name}`"))
+        .id;
+    let (method, tokens) = match shape {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect) => (HttpMethodScalar::Get, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (
+            HttpMethodScalar::Put,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
+        EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::PathParam { param },
+        }) => (
+            HttpMethodScalar::Delete,
+            vec![UrlPathToken::ParamToken { name: param }],
+        ),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        }) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::AppendEffect) => (HttpMethodScalar::Post, vec![]),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback { method },
+        }) => (method, vec![]),
+        EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+            key_source: KeySource::InputField { field },
+        })
+        | EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+            key_source: KeySource::InputField { field },
+        }) => panic!(
+            "Operation endpoints cannot rederive InputField key source `{field}` at Stage 2 scope"
+        ),
+    };
+    let inputs = tokens
+        .iter()
+        .filter_map(|token| match token {
+            UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
+            UrlPathToken::LiteralToken { .. } => None,
+        })
+        .collect::<BTreeMap<String, InputField>>();
+    Operation {
+        callable: CallableRef { decl: callable },
+        inputs,
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
     }
 }
 
@@ -67,7 +122,7 @@ fn bool_port_of_requires_bool_port() {
     let bool_bind = binds.iter().find(|b| b.name == "y").expect("y");
     let linear = || WorkflowEffect::LinearEffect {
         ops: vec![op(
-            "noop",
+            &dag,
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],
     };
@@ -98,22 +153,16 @@ fn gcp_style_linear_chain_idempotent() {
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
             op(
-                "get_secret",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
-            op(
-                "put_secret",
+                &dag,
                 EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                     key_source: KeySource::PathParam {
                         param: "name".into(),
                     },
                 }),
             ),
-            op(
-                "grant",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
         ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
@@ -127,19 +176,113 @@ fn gcp_style_linear_chain_idempotent() {
 }
 
 #[test]
+fn keyless_upsert_fails_closed_as_breaking() {
+    let mut dag = compile_to_dag("let _ = 1", "lane2_keyless_upsert.v3").expect("compile");
+    let root = lane2_anchor(&dag);
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let keyless_upsert = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate { tokens: vec![] },
+        },
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &keyless_upsert),
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        }))
+    ));
+    let wf = WorkflowEffect::LinearEffect {
+        ops: vec![keyless_upsert],
+    };
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
+    assert!(matches!(
+        r,
+        WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy { .. })
+    ));
+}
+
+#[test]
+fn ambiguous_std_method_anchor_fails_closed_as_idempotency_unsupported() {
+    let mut dag = compile_to_dag(
+        "type append_method {}\nlet _ = 1",
+        "lane2_ambiguous_std_method_anchor.v3",
+    )
+    .expect("compile");
+    let root = lane2_anchor(&dag);
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let operation = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate { tokens: vec![] },
+        },
+    };
+
+    assert!(operation_effect_shape(&dag, &operation).is_none());
+    assert!(dag.try_register_lane2_workflow_effect(
+        root,
+        WorkflowEffect::LinearEffect {
+            ops: vec![operation],
+        },
+    ));
+    let WorkflowIdempotencyReport::IdempotencyUnsupported(detail) = analyze_workflow(&dag, root)
+    else {
+        panic!("classifier-anchor ambiguity should surface as unsupported, not CompositionVerdict");
+    };
+    assert_eq!(detail.variant_name, "LinearEffect");
+    assert!(detail.reason.contains("method anchors"));
+}
+
+#[test]
+fn undeclared_path_param_fails_closed_as_breaking() {
+    let dag = compile_to_dag("let _ = 1", "lane2_undeclared_path_param.v3").expect("compile");
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let undeclared_param_upsert = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate {
+                tokens: vec![UrlPathToken::ParamToken {
+                    name: "id".to_string(),
+                }],
+            },
+        },
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &undeclared_param_upsert),
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        }))
+    ));
+}
+
+#[test]
 fn append_effect_breaks_linear_chain() {
     let mut dag = compile_to_dag("let _ = 1", "lane2_append.v3").expect("compile");
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![
-            op(
-                "read",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            ),
-            op(
-                "append_audit",
-                EffectShape::IsBreaking(BreakingShape::AppendEffect),
-            ),
+            op(&dag, EffectShape::IsIdempotent(IdempotentShape::ReadEffect)),
+            op(&dag, EffectShape::IsBreaking(BreakingShape::AppendEffect)),
         ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf.clone()));
@@ -153,10 +296,9 @@ fn append_effect_breaks_linear_chain() {
     let breaker = wf
         .operation_at(first_breaker)
         .expect("breaker ref should resolve into linear ops");
-    assert_eq!(breaker.operation_name, "append_audit");
     assert!(matches!(
-        breaker.shape,
-        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        operation_effect_shape(&dag, breaker),
+        Some(EffectShape::IsBreaking(BreakingShape::AppendEffect))
     ));
 }
 
@@ -166,7 +308,7 @@ fn post_create_is_breaking() {
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: vec![op(
-            "post_create",
+            &dag,
             EffectShape::IsBreaking(BreakingShape::CreateEffect {
                 cause: CreateCause::PostAlways,
             }),
@@ -189,7 +331,7 @@ fn diagnostic_paths_name_stage2b() {
     let stage = "lane2_stage2b_idempotency_lens";
     let linear = WorkflowEffect::LinearEffect {
         ops: vec![op(
-            "r",
+            &dag,
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
         )],
     };

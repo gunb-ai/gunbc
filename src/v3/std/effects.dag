@@ -24,32 +24,32 @@
 //   - `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` (partition)
 //   - `IdempotentShape`, `BreakingShape`
 //   - `CreateCause`, `KeySource`, `IdempotencyEvidence`
-//   - `OperationEffect`
-//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<OperationEffect> }`
+//   - `Operation`
+//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<Operation> }`
 //   - `is_idempotent_effect`, `operation_is_breaking`
-//   - `compose_effects(effects: List<OperationEffect>) -> CompositionVerdict`
-//   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
-//   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
+//   - `compose_effects(effects: List<Operation>) -> CompositionVerdict`
+//   - `generate_idempotency_obligations`
 // v2-specific imports, parser quirks, and Rust bridge code do NOT
 // come over. Pure `.dag` declarations.
 //
 // Stage 2a follow-ups (cleared):
 //
-// 1. `DerivedOpEffect` was collapsed into `OperationEffect` (PR #521).
-// The previous shape carried `method` and `path_template` fields
-// alongside `operation_name` + `shape`, but nothing downstream ever
-// read the transport fields — the modifier check and obligation
-// generator both project through `shape` alone, and the
+// 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521), and the
+// later operation-effect retirement removed the transport-derived
+// `transport-effect derivation` bridge entirely.
+// The previous shape carried REST transport fields alongside an
+// authored name/effect partition, but downstream consumers only read
+// the effect partition. The
 // `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS."
-// `OperationEffect` is the durable carrier Stage 2b's `compose_effects`
-// walks; `derive_op_effect` now returns it directly. Future diagnostic
+// `Operation` is the durable carrier Stage 2b's `compose_effects`
+// walks. Future diagnostic
 // rendering that wants the originating method/path should attach a
 // separate evidence carrier to the diagnostic, not smuggle transport
 // facts onto the effect record.
 //
 // 2. `ComposedEffect { operations, idempotent: Bool, breaking_operation: String? }`
 // was removed entirely. `compose_effects` now returns
-// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<OperationEffect> }`
+// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<Operation> }`
 // directly. The earlier intermediate form wrapped the verdict in a
 // `{ operations, verdict }` record so callers could get the walk and
 // the judgment from one value, but reviewer feedback on the
@@ -65,12 +65,12 @@
 //
 // 3. `EffectShape` was partitioned into
 // `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`.
-// The earlier flat `BrokenBy { first_breaker: OperationEffect }` shape
-// still admitted `OperationEffect { shape: ReadEffect }` — an
+// The earlier flat `BrokenBy { first_breaker: Operation }` shape
+// still admitted `Operation { shape: ReadEffect }` — an
 // idempotent op in the breaker slot — enforced only by the
 // `compose_effects` filter. Partitioning EffectShape at the type
 // level dissolved that hole for carrier copies like
-// `BreakingOperation`, while `ElementRef<OperationEffect>` replaces the
+// `BreakingOperation`, while `ElementRef<Operation>` replaces the
 // copied payload with an index validated against a caller-owned evidence
 // list. Current trade-off: the handle only proves "in-bounds element of
 // some list the constructor saw", not "this exact owner list" and not
@@ -113,7 +113,24 @@ module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons, enumerate }
+import v3.std.lookup { map_get }
+import std.methods {
+  append_method,
+  concat_method,
+  count_method,
+  diff_method,
+  get_method,
+  has_method,
+  length_method,
+  lookup_method,
+  map_get_method,
+  map_has_method,
+  map_insert_method,
+  replace_method,
+  with_method
+}
 import v3.std.substrate { ElementRef, NonSingletonList, PortId }
+import v3.std.services { Operation, CallableRef }
 
 // ── Path-template carriers ──────────────────────────────────────
 //
@@ -335,6 +352,13 @@ type CreateCause
   = PostAlways
   | KeylessFallback { method: HttpMethod }
 
+type EffectClassificationFailure
+  = ClassifierAnchorResolutionFailed
+
+type EffectClassificationResult
+  = EffectClassified { shape: EffectShape }
+  | EffectClassificationFailed { failure: EffectClassificationFailure }
+
 // 🟢 TERMINAL. These are the durable structural places an idempotency
 // key can come from in the current effect algebra: path, one field,
 // or a structural tuple of fields. They classify key provenance
@@ -347,12 +371,9 @@ type CreateCause
 //
 //   PathParam:     key extracted from URL/path template ({id}, {name})
 //   InputField:    key is a declared input field of the operation
-//   CompositeKey:  key is a tuple of multiple fields
-
 type KeySource
   = PathParam { param: String }
   | InputField { field: String }
-  | CompositeKey { fields: List<String> }
 
 // ── Effect evidence ─────────────────────────────────────────────
 //
@@ -417,34 +438,12 @@ fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
-// Per-operation effect entry in a workflow.
-type OperationEffect {
-  operation_name: String
-  shape: EffectShape
-}
-
-// 🟡 SCAFFOLD. Mirrored staged receipt for the temporary derivation boundary
-// coproduct. Richer source exists: once v3 routes unknown-method and malformed-
-// path failures through the shared compiler diagnostic/result boundary and the
-// string-input bridge dissolves, this local enum should disappear in favor of
-// that boundary-owned channel.
-type DeriveOpEffectResult
-  = DerivedEffect { effect: OperationEffect }
-  | UnknownHttpMethodInput { operation_name: String, method_str: String }
-  | MalformedPathInput {
-      operation_name: String,
-      method: HttpMethod,
-      raw_path: String,
-      segment: String,
-      reason: String
-    }
-
 // 🟢 TERMINAL. The composition of idempotent lattice meets is
 // idempotent; a single non-idempotent operation poisons the chain.
 // The judgment space is therefore exactly two states: the workflow
 // converges, or some operation broke convergence. No third state.
 //
-// `first_breaker: ElementRef<OperationEffect>` is an index witness
+// `first_breaker: ElementRef<Operation>` is an index witness
 // validated against a caller-owned evidence list. It closes the
 // "copied standalone breaker record" hole, but not the full owner or
 // subset proof: `ElementRef` proves list membership for the list used
@@ -453,29 +452,186 @@ type DeriveOpEffectResult
 // still established behaviorally.
 type CompositionVerdict
   = IdempotentComposition
-  | BrokenBy { first_breaker: ElementRef<OperationEffect> }
+  | BrokenBy { first_breaker: ElementRef<Operation> }
 
 // True if this operation is non-idempotent. Reads the partition
 // directly off `EffectShape` — no evidence-projection round-trip.
-fn operation_is_breaking(op: OperationEffect) -> Bool {
-  match op.shape {
+fn operation_is_breaking(op: Operation) -> Bool =
+  operation_effect_shape(op) |> effect_shape_is_breaking
+
+fn effect_shape_is_breaking(shape: EffectShape) -> Bool =
+  match shape {
     IsIdempotent => false
     IsBreaking => true
   }
+
+fn operation_effect_shape(op: Operation) -> EffectShape {
+  // The native Stage-2 bridge resolves imported std method anchors from the
+  // host Dag before evaluating these cases and returns
+  // `EffectClassificationFailed` if those anchors are missing or ambiguous.
+  // In the `.dag` body the imports below are already bound declarations, so
+  // unmatched callables intentionally fall through to transport facts until the
+  // bootstrapped evaluator can execute this body as the sole authority.
+  if op.callable.decl == append_method && method_is_post(op.endpoint.method) then
+    IsBreaking(AppendEffect)
+  else
+    if op.callable.decl == concat_method && method_is_post(op.endpoint.method) then
+      IsBreaking(CreateEffect { cause: PostAlways })
+  else
+    if op.callable.decl == get_method ||
+       op.callable.decl == lookup_method ||
+       op.callable.decl == map_get_method ||
+       op.callable.decl == has_method ||
+       op.callable.decl == map_has_method ||
+       op.callable.decl == count_method ||
+       op.callable.decl == length_method then
+      if method_is_read(op.endpoint.method) then
+      IsIdempotent(ReadEffect)
+      else
+        transport_effect_shape(op)
+    else
+    if op.callable.decl == map_insert_method ||
+       op.callable.decl == replace_method ||
+       op.callable.decl == with_method then
+      if method_is_upsert(op.endpoint.method) then
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(UpsertEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
+      else
+        transport_effect_shape(op)
+    else
+    if op.callable.decl == diff_method then
+      if method_is_delete(op.endpoint.method) then
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(DeleteEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
+      else
+        transport_effect_shape(op)
+    else
+      transport_effect_shape(op)
 }
 
-fn breaker_ref(index: Int) -> ElementRef<OperationEffect> {
+fn classify_operation_effect(op: Operation) -> EffectClassificationResult {
+  EffectClassified { shape: operation_effect_shape(op) }
+}
+
+fn transport_effect_shape(op: Operation) -> EffectShape {
+  if method_is_read(op.endpoint.method) then
+    IsIdempotent(ReadEffect)
+  else
+    if method_is_upsert(op.endpoint.method) then
+      match operation_resource_key(op) {
+        Some(key) =>
+          IsIdempotent(UpsertEffect {
+            key_source: PathParam { param: key }
+          })
+        None =>
+          IsBreaking(CreateEffect {
+            cause: KeylessFallback { method: op.endpoint.method }
+          })
+      }
+    else
+      if method_is_delete(op.endpoint.method) then
+        match operation_resource_key(op) {
+          Some(key) =>
+            IsIdempotent(DeleteEffect {
+              key_source: PathParam { param: key }
+            })
+          None =>
+            IsBreaking(CreateEffect {
+              cause: KeylessFallback { method: op.endpoint.method }
+            })
+        }
+      else
+        if method_is_post(op.endpoint.method) then
+          IsBreaking(CreateEffect { cause: PostAlways })
+        else
+        IsBreaking(CreateEffect {
+          cause: KeylessFallback { method: op.endpoint.method }
+        })
+}
+
+fn method_is_read(method: HttpMethod) -> Bool =
+  match method {
+    GET => true
+    HEAD => true
+    OPTIONS => true
+    POST => false
+    PUT => false
+    PATCH => false
+    DELETE => false
+  }
+
+fn method_is_upsert(method: HttpMethod) -> Bool =
+  match method {
+    PUT => true
+    PATCH => true
+    GET => false
+    POST => false
+    DELETE => false
+    HEAD => false
+    OPTIONS => false
+  }
+
+fn method_is_post(method: HttpMethod) -> Bool =
+  match method {
+    POST => true
+    GET => false
+    PUT => false
+    PATCH => false
+    DELETE => false
+    HEAD => false
+    OPTIONS => false
+  }
+
+fn method_is_delete(method: HttpMethod) -> Bool =
+  match method {
+    DELETE => true
+    GET => false
+    POST => false
+    PUT => false
+    PATCH => false
+    HEAD => false
+    OPTIONS => false
+  }
+
+fn operation_resource_key(op: Operation) -> String? {
+  match last_path_param(op.endpoint.path) {
+    Some(param) =>
+      match map_get(op.inputs, param) {
+        Some(field) => Some(param)
+        None => None
+      }
+    None => None
+  }
+}
+
+fn breaker_ref(index: Int) -> ElementRef<Operation> {
   { index: index }
 }
 
-fn indexed_breaker_ref(op: IndexedElement<OperationEffect>) -> ElementRef<OperationEffect>? {
+fn indexed_breaker_ref(op: IndexedElement<Operation>) -> ElementRef<Operation>? {
   if operation_is_breaking(op.value) then
     Some(breaker_ref(op.index))
   else
     None
 }
 
-fn first_breaker_ref(effects: List<OperationEffect>) -> ElementRef<OperationEffect>? {
+fn first_breaker_ref(effects: List<Operation>) -> ElementRef<Operation>? {
   let breaker_candidates = effects |> enumerate |> flat_map(op =>
     match indexed_breaker_ref(op) {
       Some(r) => [r]
@@ -488,7 +644,7 @@ fn first_breaker_ref(effects: List<OperationEffect>) -> ElementRef<OperationEffe
 // Compose a list of operation effects into a workflow-level verdict.
 // Returns `CompositionVerdict` directly — no enclosing record around
 // the verdict plus the input list. Callers that want the evidence
-// chain keep the input `List<OperationEffect>` in scope; pairing the
+// chain keep the input `List<Operation>` in scope; pairing the
 // verdict with the walk inside a record would create a second
 // authority (the list) alongside the projected one (the verdict),
 // and `.dag` records are directly constructible, so the two could
@@ -498,7 +654,7 @@ fn first_breaker_ref(effects: List<OperationEffect>) -> ElementRef<OperationEffe
 // position (if any). `BrokenBy` carries that validated position instead
 // of copying a second breaker record; callers still have to resolve it
 // against the same evidence list they validated it against.
-fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
+fn compose_effects(effects: List<Operation>) -> CompositionVerdict {
   match first_breaker_ref(effects) {
     Some(b) => BrokenBy { first_breaker: b }
     None => IdempotentComposition
@@ -547,7 +703,7 @@ type BranchArm {
 // landed as PR #543) both consumed this sum without a shape change. Additional
 // variants remain gated by DB-18 STOP-AND-ESCALATE — not ad-hoc growth here.
 type WorkflowEffect
-  = LinearEffect { ops: List<OperationEffect> }
+  = LinearEffect { ops: List<Operation> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
   | LoopEffect { body: WorkflowEffect }
   | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
@@ -646,207 +802,6 @@ fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyR
 // Rust authority `v3_compiler::analyze_parallelism` (emit can now lower `match`
 // on `WorkflowEffect` in lens modules; port the walk here when ready).
 
-// ── Effect derivation from transport facts ──────────────────────
-//
-// The compiler derives `EffectShape` from facts it already has on
-// the service operation:
-//
-// | HTTP method | Key in path? | Derived shape           | Idempotent? |
-// |-------------|--------------|-------------------------|-------------|
-// | GET         | —            | ReadEffect              | Yes         |
-// | PUT         | Yes ({id})   | UpsertEffect(PathParam) | Yes         |
-// | PUT         | No           | CreateEffect(KeylessFallback(PUT))      | No          |
-// | DELETE      | Yes ({id})   | DeleteEffect(PathParam) | Yes         |
-// | POST        | —            | CreateEffect(PostAlways) | No         |
-// | PATCH       | Yes ({id})   | UpsertEffect(PathParam) | Yes         |
-//
-// POST always derives `CreateEffect { cause: PostAlways }` — the
-// table cannot distinguish
-// parent-scoped paths (POST /projects/{id}/secrets creates a CHILD)
-// from resource-identity paths without a structural subject-key
-// witness. This is conservative: declared `idempotent` modifiers on
-// POST ops surface as `DerivationUnknown`, not as false proofs.
-//
-// PUT/PATCH/DELETE require a proven path key. Without one, the
-// derivation returns `CreateEffect { cause: KeylessFallback { ... } }`
-// (non-idempotent) rather than fabricating an empty InputField key.
-
-fn parse_http_method(raw: String) -> HttpMethod? {
-  if raw == "GET" then Some(GET)
-  else if raw == "PUT" then Some(PUT)
-  else if raw == "POST" then Some(POST)
-  else if raw == "DELETE" then Some(DELETE)
-  else if raw == "PATCH" then Some(PATCH)
-  else if raw == "HEAD" then Some(HEAD)
-  else if raw == "OPTIONS" then Some(OPTIONS)
-  else None
-}
-
-fn keyless_create(method: HttpMethod) -> EffectShape {
-  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } })
-}
-
-// Given a last-param lookup result, build the Upsert variant when
-// the key is present; fall back to a keyless CreateEffect when the
-// path has no parameter. Factored out so `derive_effect_shape` can
-// share one key-resolution strategy across PUT and PATCH.
-fn upsert_or_create(last_param: String?, method: HttpMethod) -> EffectShape {
-  match last_param {
-    Some(p) => IsIdempotent(UpsertEffect { key_source: PathParam { param: p } })
-    None => keyless_create(method: method)
-  }
-}
-
-fn delete_or_create(last_param: String?, method: HttpMethod) -> EffectShape {
-  match last_param {
-    Some(p) => IsIdempotent(DeleteEffect { key_source: PathParam { param: p } })
-    None => keyless_create(method: method)
-  }
-}
-
-fn derive_effect_shape(
-  method: HttpMethod,
-  path: PathTemplate
-) -> EffectShape {
-  match method {
-    GET     => IsIdempotent(ReadEffect)
-    HEAD    => IsIdempotent(ReadEffect)
-    OPTIONS => IsIdempotent(ReadEffect)
-    POST    => IsBreaking(CreateEffect { cause: PostAlways })
-    DELETE  => delete_or_create(last_param: last_path_param(template: path), method: method)
-    PUT     => upsert_or_create(last_param: last_path_param(template: path), method: method)
-    PATCH   => upsert_or_create(last_param: last_path_param(template: path), method: method)
-  }
-}
-
-fn derive_op_effect(
-  operation_name: String,
-  method: HttpMethod,
-  path: PathTemplate
-) -> DeriveOpEffectResult {
-  DerivedEffect {
-    effect: OperationEffect {
-      operation_name: operation_name,
-      shape: derive_effect_shape(
-        method: method,
-        path: path
-      )
-    }
-  }
-}
-
-// ── Modifier falsification ──────────────────────────────────────
-//
-// The derivation replaces the manual `idempotent: Bool` on
-// `OperationBehavior`. `check_modifier_vs_derivation` is the
-// cross-check that surfaces divergence: if a user wrote
-// `idempotent` but the derived shape disagrees, the compiler
-// reports `Disagrees` or `DerivationUnknown` rather than silently
-// trusting one source over the other.
-
-// 🟢 TERMINAL. This is the irreducible judgment space for a declared
-// modifier against structural derivation: it agrees, it disagrees,
-// or derivation cannot decide and must say so explicitly.
-type ModifierAgreement
-  = Agrees
-  | Disagrees          { reason: String }
-  | DerivationUnknown  { reason: String }
-
-// 🟢 TERMINAL at modifier-check scope. The two states are genuinely
-// distinct: a modifier was never declared, or it was declared and
-// therefore must carry a structural judgment. This prevents
-// "declared but no verdict" from becoming representable.
-//
-// Per-axis modifier result. `ModifierNotDeclared` means the user did
-// not state that modifier; `ModifierDeclared` guarantees there is a
-// judgment for every declared modifier fact.
-type ModifierAxisCheck
-  = ModifierNotDeclared
-  | ModifierDeclared { agreement: ModifierAgreement }
-
-type ModifierCheck {
-  operation_name: String
-  derived_shape: EffectShape
-  idempotent_check: ModifierAxisCheck
-  readonly_check: ModifierAxisCheck
-}
-
-// Disagreement classifier when the user declared idempotent but
-// the derivation says otherwise. Takes `BreakingShape` directly —
-// the partition already guarantees the derivation says
-// non-idempotent, so no idempotent-shape arms are reachable.
-// POST-create stays the fail-closed-but-maybe-idempotent case
-// (DerivationUnknown); a keyless fallback on PUT/PATCH/DELETE is a
-// hard disagreement because the required subject-key witness is
-// missing; AppendEffect is a hard disagreement because free-monoid
-// append cannot be retried convergently.
-fn classify_idempotent_disagreement(shape: BreakingShape) -> ModifierAgreement {
-  match shape {
-    CreateEffect { cause } =>
-      match cause {
-        PostAlways =>
-          DerivationUnknown {
-            reason: "POST derives CreateEffect { cause: PostAlways }; idempotency may be spec-declared"
-          }
-        KeylessFallback =>
-          Disagrees {
-            reason: "declared idempotent but method-derived effect fell back to keyless CreateEffect"
-          }
-      }
-    AppendEffect =>
-      Disagrees { reason: "declared idempotent but derivation says non-idempotent via append-shaped effect" }
-  }
-}
-
-// Readonly-declaration classifier: only `ReadEffect` agrees; every
-// other idempotent shape (upsert/delete) writes the target, and every
-// breaking shape does too. Nested match keeps the specific reasons per
-// write-shape available, but the `IsBreaking` arm collapses because the
-// verdict is identical across create/append.
-fn classify_readonly_agreement(shape: EffectShape) -> ModifierAgreement {
-  match shape {
-    IsIdempotent(inner) =>
-      match inner {
-        ReadEffect => Agrees
-        UpsertEffect =>
-          Disagrees { reason: "readonly declared but derived effect writes target state" }
-        DeleteEffect =>
-          Disagrees { reason: "readonly declared but derived effect writes target state" }
-      }
-    IsBreaking =>
-      Disagrees { reason: "readonly declared but derived effect writes target state" }
-  }
-}
-
-fn check_modifier_vs_derivation(
-  op: OperationEffect,
-  declared_idempotent: Bool,
-  declared_readonly: Bool
-) -> ModifierCheck {
-  let idempotent_check = if declared_idempotent then
-    match op.shape {
-      IsIdempotent => ModifierDeclared { agreement: Agrees }
-      IsBreaking(breaking) =>
-        ModifierDeclared {
-          agreement: classify_idempotent_disagreement(shape: breaking)
-        }
-    }
-  else
-    ModifierNotDeclared
-  let readonly_check = if declared_readonly then
-    ModifierDeclared {
-      agreement: classify_readonly_agreement(shape: op.shape)
-    }
-  else
-    ModifierNotDeclared
-  ModifierCheck {
-    operation_name: op.operation_name,
-    derived_shape: op.shape,
-    idempotent_check: idempotent_check,
-    readonly_check: readonly_check
-  }
-}
-
 // ── Test obligation generation ──────────────────────────────────
 //
 // For each idempotent op, the compiler emits a test asserting
@@ -855,19 +810,19 @@ fn check_modifier_vs_derivation(
 // test body.
 
 type IdempotencyTestObligation {
-  operation_name: String
+  callable: CallableRef
   effect_shape: EffectShape
   claim: String
   witness_required: Bool
 }
 
 fn generate_idempotency_obligations(
-  ops: List<OperationEffect>
+  ops: List<Operation>
 ) -> List<IdempotencyTestObligation> {
-  ops |> filter(o => is_idempotent_effect(shape: o.shape))
+  ops |> filter(o => is_idempotent_effect(shape: operation_effect_shape(o)))
       |> map(o => IdempotencyTestObligation {
-           operation_name: o.operation_name,
-           effect_shape: o.shape,
+           callable: o.callable,
+           effect_shape: operation_effect_shape(o),
            claim: "f(f(x)) == f(x)",
            witness_required: true
          })
