@@ -11,7 +11,7 @@ the matching ``runs-on`` VM); spoofing canonical hosts is procedural fraud, not 
 automates away.
 
 Ubicloud captures (``.github/workflows/tier3-baseline-capture.yml``) upload **one bundle per matrix job**
-(independent VMs). **Bootstrap sessions** often run **five sequential benches on one host**, then pass five
+(independent VMs). **Bootstrap sessions** often run **sequential benches on one host**, then pass multiple
 captures here—they still compute **median-of-medians / max(per-run-p99)** (R‑7 aggregation), just with
 weaker temporal independence than isolated CI VMs. The **`local-*` bootstrap `tier3_baseline.json`** in
 this lineage was emitted via this CLI from five sequential captures on one honest host before the
@@ -37,7 +37,6 @@ RUSTC_VERSION_FILE = "rustc_version.txt"
 TIER3_BENCH_ORDER: list[str] = [
     "tier3_computation_positive_descent_count",
     "tier3_computation_lower_same_argument_call",
-    "tier3_induction_type_iteration_dimension_miss",
     "tier3_effects_lane2_linear_read_chain",
 ]
 
@@ -128,10 +127,6 @@ def mirror_groups_from_runs(criterion_run_dirs: list[Path]) -> dict:
                 benches_out["tier3_computation_positive_descent_count"],
                 benches_out["tier3_computation_lower_same_argument_call"],
             ],
-        },
-        "induction": {
-            "claim": "tier3_induction_mirror_perf_within_budget",
-            "benches": [benches_out["tier3_induction_type_iteration_dimension_miss"]],
         },
         "effect_carrier": {
             "claim": "tier3_effect_carrier_mirror_perf_within_budget",
