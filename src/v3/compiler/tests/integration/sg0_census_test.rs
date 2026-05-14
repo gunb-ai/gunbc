@@ -751,6 +751,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
     "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
+    // §1.8 gate #106 (`show_correct_code_diagnostic_coverage`): structural bootstrap locks on
+    // `Correction` / substrate `Diagnostic` + one live-correction roundtrip anchor (`compile_to_dag`
+    // → `apply_correction_and_reparse` → clean recompile). **P5 receipt:** matching INVARIANTS.md
+    // SG-0 integration-test table row + this census literal land in the same PR — see row for
+    // `t_gate_106_show_correct_code_diagnostic_coverage_test.rs`.
+    "src/v3/compiler/tests/integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
     // diagnostics (timing `EnforcedApplication` row in `t_ci_workflow_as_data_demo.dag`).
