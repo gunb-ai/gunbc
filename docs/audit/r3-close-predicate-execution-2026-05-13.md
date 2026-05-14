@@ -21,7 +21,7 @@ Phase 2 (this PR) is an **index population**, not a close-time execution receipt
 
 The actual `EXECUTED` receipts (PASS/FAIL per gate, ratchet output / log pointer, merge-commit SHA) are produced by the §10 close ceremony 24h workspace re-sweep and recorded in the aggregate `docs/audit/r3-close-YYYY-MM-DD.md` artifact.
 
-Overall verdict remains **PENDING** until (a) every non-PASSING row transitions to PASSING (or is operator-accepted as R4-DEFERRED per §10), (b) the §10 24h workspace re-sweep completes with PASS receipts per PASSING gate, and (c) operator + Director sign-offs land on the §10 close-audit doc.
+Overall verdict remains **PENDING** until (a) every non-PASSING row reaches the closure disposition assigned to it by `docs/r3-actual-close-plan.md` — for Gaps 1/2/3/9 R4-defer / THESIS-reframe paths are **STRUCTURALLY FORECLOSED** per operator §4 IN-R3 ratification 2026-05-13 (close-plan §11) and the only closure path is PROVEN-with-landed-PR; for other gaps the close-plan's per-gap disposition (PROVEN / R4-DEFERRED-with-operator-acceptance / etc.) is authoritative; this audit doc inherits the close-plan dispositions and does **not** introduce a generic R4-defer escape hatch; (b) the §10 24h workspace re-sweep completes with PASS receipts per PASSING gate; and (c) operator + Director sign-offs land on the §10 close-audit doc.
 
 ## Verdict (Phase 2 index population)
 
