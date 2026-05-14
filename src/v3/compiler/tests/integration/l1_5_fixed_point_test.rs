@@ -11,6 +11,8 @@ use v3_compiler::{
 
 /// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
 const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
+const FORBIDDEN_PIPELINE_DAG_MACRO: &str = concat!("include", "_str!");
+const FORBIDDEN_PIPELINE_DAG_PATH: &str = concat!("pipeline", ".dag");
 
 #[test]
 fn pipeline_dag_bootstrap_authority_is_loaded_structurally() {
@@ -50,10 +52,8 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &str) -> Vec<String> {
-    let forbidden_macro = concat!("include", "_str!");
-    let forbidden_path = concat!("pipeline", ".dag");
     let mut offenders = Vec::new();
-    for (idx, _) in text.match_indices(forbidden_macro) {
+    for (idx, _) in text.match_indices(FORBIDDEN_PIPELINE_DAG_MACRO) {
         let line_start = text[..idx].rfind('\n').map_or(0, |pos| pos + 1);
         let line = &text[line_start..text[idx..].find('\n').map_or(text.len(), |pos| idx + pos)];
         let trimmed = line.trim_start();
@@ -61,7 +61,7 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
             continue;
         }
 
-        let after_macro = idx + forbidden_macro.len();
+        let after_macro = idx + FORBIDDEN_PIPELINE_DAG_MACRO.len();
         let Some(open_offset) = text[after_macro..].find('(') else {
             continue;
         };
@@ -78,6 +78,9 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
             match ch {
                 '(' => depth += 1,
                 ')' => {
+                    if depth == 0 {
+                        break;
+                    }
                     depth -= 1;
                     if depth == 0 {
                         close = Some(open + pos);
@@ -98,7 +101,9 @@ fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &s
             .step_by(2)
             .collect::<Vec<_>>()
             .join("");
-        if macro_arg.contains(forbidden_path) || joined_literals.contains(forbidden_path) {
+        if macro_arg.contains(FORBIDDEN_PIPELINE_DAG_PATH)
+            || joined_literals.contains(FORBIDDEN_PIPELINE_DAG_PATH)
+        {
             offenders.push(format!(
                 "{}:{}:{}",
                 path.strip_prefix(manifest_dir).unwrap_or(path).display(),
@@ -118,8 +123,6 @@ fn compiler_sources_and_tests_have_no_include_str_pipeline_dag_authority() {
     collect_rs_files(&manifest_dir.join("tests"), &mut files);
     files.sort();
     let mut offenders = Vec::new();
-    let forbidden_macro = concat!("include", "_str!");
-    let forbidden_path = concat!("pipeline", ".dag");
     for path in files {
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {} failed: {e}", path.display()));
@@ -133,8 +136,8 @@ fn compiler_sources_and_tests_have_no_include_str_pipeline_dag_authority() {
         offenders.is_empty(),
         "`src/**/*.rs` and `tests/**/*.rs` must not use {} on {} (see bridge_ledger \
          bridge_include_str_side_channels_retired + pipeline_authority.rs). Offenders:\n{}",
-        forbidden_macro,
-        forbidden_path,
+        FORBIDDEN_PIPELINE_DAG_MACRO,
+        FORBIDDEN_PIPELINE_DAG_PATH,
         offenders.join("\n")
     );
 }
