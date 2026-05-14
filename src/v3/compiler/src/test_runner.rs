@@ -6728,10 +6728,19 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 /// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
 /// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
 /// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
+///
+/// **R3 gate #7 (`regen_lens_dot_rs_retired`) is not lens-producer dissolution:** retiring
+/// `src/bin/regen_lens.rs` relocates the Cargo `[[bin]]` entry to `regen_lens_entry.rs` and
+/// moves producer logic to `regen_lens_driver.rs`. Both remain hand-authored regen-lens
+/// producer surfaces until PB-1 emits the bin from `.dag` / PB-Runtime owns the pipeline — so
+/// they stay in this subset; shrinking the predicate after a path move would falsely claim
+/// census progress without dissolving the producer.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_declaration_apply.rs"
+            | "src/v3/compiler/src/regen_lens_driver.rs"
+            | "src/v3/compiler/src/regen_lens_entry.rs"
     )
 }
 
