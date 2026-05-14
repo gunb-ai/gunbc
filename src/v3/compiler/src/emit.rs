@@ -15,7 +15,9 @@
 //! target-private carriers stay inside their target module and no
 //! cross-target code should read them.
 
-pub(crate) mod collection_ops_method_contract;
+pub(crate) mod collection_ops_method_contract {
+    include!("emit/collection_ops_method_contract_generated.rs");
+}
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
 

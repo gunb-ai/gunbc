@@ -267,8 +267,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
     "src/v3/compiler/src/cementing_dispatch.rs",
-    "src/v3/compiler/src/complexity_lattice.rs",
-    "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     // Closed Cardinality payload + idempotent target shim (API closure).
@@ -278,14 +276,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
-    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
-    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
-    "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
+<<<<<<< HEAD
     "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
@@ -295,6 +291,18 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // re-exports). Bounded lens application body lives in `lens_declaration_apply_body.txt`
     // (see `EXPECTED_HAND_AUTHORED_FRAGMENTS`). Dissolution: substrate-owned CI + cementing
     // receipts; PB-Runtime for lens application (R3 §1.8).
+=======
+    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
+    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
+    "src/v3/compiler/src/gunbc_ci.rs",
+    "src/v3/compiler/src/infer.rs",
+    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
+    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
+    // `tests/integration/common/mod.rs`).
+    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
+    "src/v3/compiler/src/lens_declaration_apply.rs",
+    "src/v3/compiler/src/lens_t_las_carrier.rs",
+>>>>>>> e79e73838 (WIP: PB-0 cycle-4 NON_TEST retirement (msg_5d7f3491): 7 paths — complexity_la)
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
@@ -304,11 +312,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
     // `.dag` program owns the OpenAPI artifact projection end-to-end.
     "src/v3/compiler/src/omni_shape_b_openapi.rs",
-    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
-    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
-    // PB-zero / v2-retirement consumers (decision in
-    // `docs/decisions/r3-row85-method-template-read-surface.md`).
-    "src/v3/compiler/src/pb_method_template_projection.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
@@ -1436,7 +1439,7 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
     assert!(
-        list.contains("\"emit_rust_bin_shim.rs\""),
-        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
+        list.contains("\"process_exit.rs\""),
+        "hand_maintained_src should exclude process_exit.rs (PB-1 host mirror) from recursive freshness drift"
     );
 }
