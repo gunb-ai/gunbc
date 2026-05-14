@@ -105,13 +105,13 @@ plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cit
 **What's missing**: the 4 joint preconditions all need to land before R3-strong-form self-host can be claimed. **R2-Evaluator joint precondition itself decomposes into 5 sub-lane closures** per the Director audit; the closure-ledger needs refresh + sub-lane ratchet-to-PASSING via §1.8 gate ratifications.
 
 **Plan to cash**:
-- **Owner**: Director-tier coordination (cross-Mgr); PM tracks. **R2-Evaluator joint precondition specifically requires a 5th R3 Mgr lane decision** (see §4 sub-item 5 below) — re-spawn evaluator Mgr / fold into existing R3 Mgrs / Director-direct ad-hoc dispatch.
+- **Owner**: Director-tier coordination (cross-Mgr); PM tracks. **R2-Evaluator joint precondition owner resolved 2026-05-14** via §4 sub-item 5 re-spawn of the R3 Evaluator Mgr lane.
 - **Sub-program**: each precondition has its own program; this gap is meta-blocked
   - R2-Evaluator: 5 sub-lanes per Director audit (runtime_value_model + body_evaluator + lens_application_complete_reflection + witness_construction + cross_target_equivalence_harness); brief surface comprehensive per Director (c) (r2-evaluator-manager.md + 4 sub-briefs + 10+ PR-A-E + R3-tier per-slice briefs). Q-EVAL ratifications landed 2026-05-06/07 (G0d-Dispatch / Descent-Termination-Contract / Lens-Fold-First-Slice). **Owner resolved 2026-05-14:** R3 Evaluator Mgr lane re-spawned; ledger refresh currently leaves lens_application + witness_construction in-flight.
   - R2-Grounding-Rust+Python: gate #18 + extdeps work
   - T-LP/SG-0: same as Gap 1
   - Row-B materialization: T-LBP work
-- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure is the dominant tail — 2 not-started sub-lanes + 3 in-flight per audit.
+- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure remains a dominant tail, but the 2026-05-14 ledger refresh narrows the Evaluator portion to 2 in-flight sub-lanes.
 
 **Close criterion** (substrate-debt-shaped only — Director note msg_f0a54769 2026-05-13 Note 2 enforcement: staffing/dispatch shape is a PRECONDITION for execution, not a close criterion for the substrate-debt itself; moved to "Dispatch staffing prereq" below):
 ```bash
@@ -697,13 +697,13 @@ PM requests operator confirmation (default IN-R3) or explicit override (R4-carve
 4. **Gap 9 (show-correct-code)**: IN-R3 default = new §1.8 gate + Diagnostic-with-correction coverage at **100% absolute** (no threshold negotiation; codex BLOCKING PR #3013 2026-05-13 retracted prior `≥X%` pragmatic-relaxation framing as THESIS-promise-dilution). **PM-recommended: do not defer.** Single operator sub-decision:
    - (a) IN-R3 at 100% absolute (recommended) OR not-R3-promised reframe (= R4-carve per directive; requires explicit operator override of `project_no_r4_carves_directive`)
 
-**5. R3 Evaluator Mgr dispatch (subtree-shape decision; surfaced per Director audit msg_82b9c4bb 2026-05-13)**: structurally distinct from the 4 scope decisions above — this decision changes Director subtree shape rather than R3 surface scope. Per Director audit findings: (a) R2-Evaluator closed-with-residuals with 5 sub-lanes carried into R3; (b) R3 Evaluator Mgr merry-gull-128 (#1743) ABSENT from current subtree at HEAD; (c) brief surface comprehensive; (d) Director-recommends re-spawn as 4th R3 Mgr lane. PM-recommendation **OPTION A: re-spawn evaluator Mgr** per:
+**5. R3 Evaluator Mgr dispatch (subtree-shape decision; surfaced per Director audit msg_82b9c4bb 2026-05-13; RATIFIED (a) re-spawn by operator briansrls 2026-05-13 via bundled-5-asks PM-routing — executed 2026-05-14 after `dashboard-ops --shape` landed)**: structurally distinct from the 4 scope decisions above — this decision changes Director subtree shape rather than R3 surface scope. Per Director audit findings at decision time: (a) R2-Evaluator closed-with-residuals with 5 sub-lanes carried into R3; (b) R3 Evaluator Mgr merry-gull-128 (#1743) absent from the then-current subtree; (c) brief surface comprehensive; (d) Director-recommends re-spawn as 4th R3 Mgr lane. PM-recommendation **OPTION A: re-spawn evaluator Mgr** per:
    - `feedback_standing_managers_need_owned_deliverables` — 5 named sub-lanes (runtime_value_model + body_evaluator + lens_application_complete_reflection + witness_construction + cross_target_equivalence_harness) is an owned-program count that justifies a Mgr lane.
    - `feedback_pre_authored_brief_queue` — brief surface already comprehensive per Director (c); re-spawn does NOT bottleneck on Mgr-tier dispatch authoring.
    - Operator standing directive *"staffing not a concern"* (2026-05-13 PR #3013 ratification thread) frames 4th R3 Mgr lane as IN-policy.
    - Existing 3-Mgr R3 template (Substrate / Verification / Debt-Paydown) symmetry — 4th lane is structurally parallel, not a new Mgr-tier shape.
 
-   Operator sub-decisions:
+   Operator sub-decisions (resolved by 2026-05-13 ratification):
    - (a) **Re-spawn R3 Evaluator Mgr as 4th lane** (PM-recommended; Director-recommended primary option). Brief surface ready; sub-lanes named; owned-program count meets bar.
    - (b) **Fold into existing R3 Mgrs**: witness_construction + cross_target_equivalence to Verification (swift-deer-459); runtime_value_model + body_evaluator to Substrate (warm-wolf-698); lens_application_complete_reflection to whichever has lower load. Lower agent-spawn cost; risk: scope-bloat under existing R3-lane load creates dual-program lane (the same anti-pattern that produced the dispersion).
    - (c) **Director-direct ad-hoc dispatch**: structurally equivalent to retracted r2-structure.md:73 anti-pattern ("standing managers without owned deliverables degenerate into pass-through hops; concentrating brief-authoring on Director starved lanes"); PM does NOT recommend.
