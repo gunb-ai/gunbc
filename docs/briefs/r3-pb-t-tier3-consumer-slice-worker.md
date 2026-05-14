@@ -93,10 +93,10 @@ data tier3_bench_computation_lower_same_argument_call_baseline: PerfBaselineMeas
 data tier3_bench_effects_lane2_linear_read_chain_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
 
 // Phase-2 measurements — one row per budgeted bench (3 total)
-// ... four rows, one per budgeted bench
+// ... one row per active budgeted bench
 
-// Per-mirror claims — conjunction over the mirror's contributing benches.
-// Induction / effect-carrier each cover ONE bench → trivial 1-element conj.
+// Per-mirror claims — conjunction over each active mirror's contributing benches.
+// Effect-carrier covers ONE bench → trivial 1-element conj.
 // Computation covers TWO benches → 2-element conj enforcing per-bench fail-closed.
 data tier3_computation_mirror_perf_within_budget: TestClaim = TestClaim {
   predicate: Conj {  // both per-bench checks must pass
@@ -122,7 +122,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = Conj {
 ### 4. Cementing receipt: end-to-end T-Tier3 R-4 gate clearing
 
 **Shape:**
-- After mirror-dissolution PRs land (the 4 per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all 4 mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
+- After mirror-dissolution PRs land (the per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all active mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
 - Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — **audit metadata only**: lists `.dag data` declaration names + corresponding `tier3_baseline.json` rows by bench-name + the commit SHA at which each was captured + the gate-clearing pass/fail status per mirror. **Does not duplicate numeric values** — the reader follows the cited SHA to read values from `.dag` source and JSON. (The JSON ↔ `.dag` parallel representation is procedure-forced per §2 above; the receipt does not introduce a third copy.) Carries explicit "execute when per-mirror dispatch completes" note tying the measurement run to retirement-chain landing.
 - §1.8 ledger row update: `tier3_mirror_dissolution_perf_within_budget` flips DECLARED → PASSING with PR-link evidence.
 
