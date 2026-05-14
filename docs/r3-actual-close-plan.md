@@ -800,10 +800,15 @@ This is `feedback_ratchet_only_down` drift; sustained pattern, not 5-commit anom
 
 Every brief (Mgr-tier OR worker-tier) dispatched per any Phase / Mgr lane MUST include in its frontmatter or §0 a 3-axis citation block:
 
-1. **Design-doc authority cite** (NAMED design doc + section + named lane/step):
-   - Example for PB-X retirement work: *"design authority: `docs/design-pure-bootstrap-zero.md` (PB-6 emit lane) + `src/v3/SELF_HOSTING.md` §2.2 Step 1 L2.5 model review prereq"*
-   - Example for Gap 13 T-Ground sub-lane: *"design authority: `docs/r2-closure-ledger.md:108-122` (T-Ground sub-lane registration) + `docs/design-emission-model.md` §3 (no-engine discipline)"*
-   - Vague "see design docs" or "per `docs/`" does NOT satisfy. Cite the SPECIFIC section + named lane.
+1. **Design-doc authority cite** (NAMED design doc + section + named lane/step) — **AND per-entry citation when brief scope is enumerable** (per operator discipline 2026-05-14: *"every test/file should clearly map to a design section that explains how/where it's going"*):
+   - **Single-entry briefs** (one file/test/scope): one design-authority citation suffices.
+     - Example for PB-X retirement work: *"design authority: `docs/design-pure-bootstrap-zero.md` (PB-6 emit lane) + `src/v3/SELF_HOSTING.md` §2.2 Step 1 L2.5 model review prereq"*
+     - Example for Gap 13 T-Ground sub-lane: *"design authority: `docs/r2-closure-ledger.md:108-122` (T-Ground sub-lane registration) + `docs/design-emission-model.md` §3 (no-engine discipline)"*
+   - **Multi-entry briefs** (class-level / cycle / sweep covering >1 file/test/scope): MUST cite **per-entry design** OR a **static pre-dispatch enumeration artifact** (e.g., per-test inventory doc, per-file taxonomy doc) that maps each entry to its design section. Lane-level citation alone is insufficient when scope is enumerable; that's exactly the Cluster M class-level-only failure mode the audit doc §3 systemic-pattern finding identified (codex BLOCKING #11738 PR #3071 follow-up). Examples:
+     - **Wrong** (lane-level only): *"design authority: `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`"* (one citation covering 20+ unrelated tests)
+     - **Right** (per-entry mapping): brief includes a table mapping each test ID to its design section, OR cites a static pre-dispatch inventory doc that has the per-entry mapping (e.g., *"per-test inventory: `docs/audit/r3-cluster-m-per-test-inventory-YYYY-MM-DD.md` §X (covering tests T1-T20)"*)
+     - **Right** (single-entry breakdown): if the brief covers N entries, each entry's design section is named in the brief frontmatter
+   - **Vague "see design docs" or "per `docs/`" does NOT satisfy**. Cite the SPECIFIC section + named lane (single-entry) OR specific section per entry / specific inventory artifact (multi-entry).
 
 2. **Mgr lane ownership confirmation** (NAMED Mgr session at time of dispatch):
    - Example: *"owner Mgr: warm-wolf-698 (R3 Substrate Mgr expanded scope per α-ratification 2026-05-14)"*
@@ -825,9 +830,29 @@ If a brief dispatches without the 3-axis citation block AND a reviewer flags it,
 
 **§5.2.4 — Exemplar substrate**
 
-`docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md` is the exemplar artifact applying this discipline to the Phase 2 corrective sweep itself. Every Phase 2.0-2.8 task in §1 task table has the 3-axis citation block; §8 dispatches reference the task IDs; §9 design-coverage gap audit surfaces per-entry coverage status that the brief-dispatch authority-gate would catch.
+`docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md` is the exemplar artifact applying this discipline to the Phase 2 corrective sweep itself. The dispatch plan §1 task table covers the 3-axis citation block via these columns: **Design authority** column maps to axis 1 (per-task design-doc citation); **Mgr lane** column maps to axis 2 (named owner Mgr / PM-direct); **Canvas-ratification status** column maps to axis 3 (substrate-tier ratified canvas authority / N/A for consumer-tier). §8 dispatch commands per task reference the task IDs; §9 design-coverage gap audit surfaces per-entry coverage status that the brief-dispatch authority-gate would catch.
 
-By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition.
+By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition. **Validation receipt** (per codex BLOCKING #11738 PR #3071 follow-up 2026-05-14): the §1 task table's three citation columns (Design authority + Mgr lane + Canvas-ratification status) correspond to the §5.2.1 3-axis citation block; the exemplar claim is grep-verifiable against the dispatch plan §1 header at `docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md`.
+
+**§5.2.1 multi-entry discipline applied to the exemplar itself** (per codex BLOCKING re-review PR #3072 2026-05-14):
+
+- **7 of 9 Phase 2 rows are single-entry scope** (2.0 / 2.1 / 2.2 / 2.4 / 2.5 / 2.6 / 2.7 — each touches one close-plan section / one canvas / one §1.8 row / one Mgr-coord channel). Single-entry citation suffices for these.
+
+- **2 of 9 Phase 2 rows are multi-entry scope** — Phase 2.3 + Phase 2.8 — and require §5.2.1 multi-entry compliance:
+  - **Phase 2.3 — Track A taxonomy reclassification** (multi-entry: ~37 NON_TEST entries at HEAD). Per-entry inventory artifact ALREADY EXISTS at `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` (Track A taxonomy doc; per-row classification for each NON_TEST entry). Phase 2.3 deliverable RECLASSIFIES this existing per-entry inventory with PB-X lane prereq citations. §5.2.1 multi-entry requirement is satisfied by the existing-inventory-citation path: design-authority field references the Track A taxonomy doc as the per-entry mapping artifact.
+  - **Phase 2.8 — Cluster M Phase 3 per-test design enumeration** (multi-entry: ~122 TEST entries; T-γ-subset post-framework). Per-entry inventory artifact DOES NOT YET EXIST. Phase 2.8 deliverable IS the §5.2.1-compliant inventory artifact (creates the per-test inventory + pilot/bulk split). §5.2.1 multi-entry requirement is NOT-SATISFIED at HEAD; dispatch withheld via HOLD-pending-framework status — demonstrating §5.2 enforcement firing correctly at the very boundary the rule targets.
+
+The two multi-entry phases demonstrate complementary §5.2.1 enforcement modes:
+- **Phase 2.3** = existing-inventory-citation path (dispatch eligible; Track A taxonomy doc IS the per-entry artifact)
+- **Phase 2.8** = inventory-not-yet-existing path (dispatch HELD until artifact lands; Phase 2.8 deliverable produces the artifact)
+
+Both demonstrate §5.2.1 working at multi-entry boundaries, NOT diluting the rule. The dispatch plan applies §5.2 to itself — including correctly handling both multi-entry sub-cases.
+
+**Grep-verifiable count receipt** (mechanical check for this exemplar section):
+- **Single-entry IDs (7)**: `2.0, 2.1, 2.2, 2.4, 2.5, 2.6, 2.7`
+- **Multi-entry IDs (2)**: `2.3, 2.8`
+- **Dispatch plan §1 ID universe (9)**: `2.0` through `2.8`
+- **Closure check**: `7 + 2 = 9`
 
 **§5.2.5 — Foreclosure clause** (analogous to §5.1)
 
