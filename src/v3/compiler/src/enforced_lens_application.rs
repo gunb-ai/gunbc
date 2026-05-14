@@ -927,10 +927,21 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     });
                     continue;
                 };
-                if !matches!(
-                    &dag.declaration(fn_decl).connective,
-                    TypeConnective::Arrow { .. }
-                ) {
+                let Some(fn_subject) = dag.declaration_opt(&fn_decl) else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: parallelism `SectionRef::NodeScope.declaration` \
+                             names a substrate `DeclarationId` that is absent from this `Dag` \
+                             (structured reference out of bounds; fail-closed)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                if !matches!(&fn_subject.connective, TypeConnective::Arrow { .. }) {
                     violations.push(Diagnostic::ParseError {
                         message:
                             "lens enforcement: parallelism `NodeScope.declaration` must name a \
@@ -1720,7 +1731,7 @@ mod gate_58_timing_enforcement_unit_tests {
 mod gate_95_parallelism_iteration_enforcement_tests {
     use super::*;
     use crate::compile_to_dag;
-    use crate::dag::{Declaration, TemplateArgument, TypeConnective, ValueBody};
+    use crate::dag::{Declaration, DeclarationId, TemplateArgument, TypeConnective, ValueBody};
     use crate::diagnostics::Diagnostic;
 
     fn push_parallelism_iteration_enforced_declaration(
@@ -1986,6 +1997,39 @@ mod gate_95_parallelism_iteration_enforcement_tests {
         };
         assert!(
             message.contains("fail closed") && message.contains("NodeScope"),
+            "unexpected message: {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_absent_declaration_reference_in_node_scope() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_absent_decl_ref.v3",
+        )
+        .expect("compile");
+        let subject = dag.workflow_lane2_subject().expect("workflow shell bind");
+        let phantom_decl = DeclarationId::test_raw(u32::MAX);
+        assert!(
+            dag.declaration_opt(&phantom_decl).is_none(),
+            "fixture phantom `DeclarationId` must be absent from the declaration table"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_absent_decl_ref_witness",
+            phantom_decl,
+            subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected ParseError absent-declaration coupling failure; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("absent") && message.contains("`Dag`"),
             "unexpected message: {message:?}"
         );
     }
