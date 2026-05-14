@@ -351,6 +351,7 @@ type EffectShape
 type CreateCause
   = PostAlways
   | KeylessFallback { method: HttpMethod }
+  | ClassifierAnchorResolutionFailed
 
 // 🟢 TERMINAL. These are the durable structural places an idempotency
 // key can come from in the current effect algebra: path, one field,
