@@ -114,10 +114,11 @@ data pb_compiler_std_ratchet_zero_gate: TestClaim = {
 
 // `manifest_entries` enumerates every path in the SG-0 generated-file manifest
 // (`src/v3/compiler/src/lib.rs::generated_files`, emitted from
-// `build.rs::REGEN_OUTPUTS`). The runner requires set equality against
-// `GENERATED_FILES` (no dupes / omissions) so every codegen survivor stays
-// structurally attached at the `.dag` predicate boundary. The gate's
-// load-bearing T-PB-B check remains that the `EXPECTED_HAND_AUTHORED_TEST`
+// `build.rs::REGEN_OUTPUTS`). **Keep this list in lockstep with that literal**
+// (same paths, same order as `build.rs`) so `GeneratedFromDag` set-equality
+// against `GENERATED_FILES` stays single-authority (INVARIANTS P2 / MODELING
+// Practice 5). The runner requires set equality (no dupes / omissions). The
+// gate's load-bearing T-PB-B check remains that the `EXPECTED_HAND_AUTHORED_TEST`
 // census is empty (Gate #84 negative authority).
 //
 // R3 Cluster M substrate-shape (msg_3b99a90f): entries are typed sum-variants —
@@ -133,7 +134,9 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
       PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs" },
       PendingFact { output_path: "src/v3/compiler/src/bootstrap_std_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/complexity_lattice_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/complexity_lens_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/cost_basis_declaration_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/dag_branch_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/dag_cluster_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/dag_cost_generated.rs" },
@@ -141,7 +144,11 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
       PendingFact { output_path: "src/v3/compiler/src/dag_scalar_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/dag_value_body_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/diagnostics_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/emit/collection_ops_method_contract_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/emit_rust_bin_shim_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/enforced_lens_application_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/infer_helpers_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/int_literal_ranges_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_cost_symbolic_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_cost_target_realization_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lens_effect_enumeration_generated.rs" },
@@ -151,6 +158,7 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
       PendingFact { output_path: "src/v3/compiler/src/lens_unused_parameters_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/lower_helpers_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/operators_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/pb_method_template_projection_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/parse_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/parse_surface_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/parse_tables_generated.rs" },
