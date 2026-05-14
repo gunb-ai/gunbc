@@ -594,6 +594,53 @@ fn tier3_computation_mirror_kernel_algebra_profile_substrate_authority() {
 }
 
 #[test]
+fn tier3_computation_terminal_carriers_have_no_parallel_executable_helpers() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 #2, Wave-1 slice):
+    // `ShrinkFactor` and `IterationPrimitive` are terminal carriers in
+    // `src/v3/std/computation.dag`, so the Rust side may expose the typed
+    // inhabitants needed by current generated consumers, but must not grow
+    // executable helper functions that become a second authority for their
+    // semantics. The remaining executable mirror debt is explicitly limited
+    // to `SizeBound` / `CallPattern` lowering until std block bodies evaluate.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in [
+        "pub fn shrink_factor_",
+        "pub fn iteration_primitive_",
+        "pub fn fold_iteration_primitive",
+        "pub fn descend_iteration_primitive",
+        "pub fn repeat_iteration_primitive",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not export terminal `std.computation` carrier helper `{forbidden}`; \
+             `src/v3/std/computation.dag` is the authority"
+        );
+    }
+
+    assert_eq!(
+        sum_variants(&Dag::new(), "ShrinkFactor"),
+        vec![
+            (String::from("UnitShrink"), Vec::new()),
+            (String::from("ConstantShrink"), vec![String::from("steps")]),
+            (
+                String::from("ProportionalShrink"),
+                vec![String::from("divisor")],
+            ),
+        ],
+        "`ShrinkFactor` variant shape must continue to come from the lowered std computation DAG"
+    );
+    assert_eq!(
+        sum_variants(&Dag::new(), "IterationPrimitive"),
+        vec![
+            (String::from("Fold"), Vec::new()),
+            (String::from("Descend"), Vec::new()),
+            (String::from("Repeat"), Vec::new()),
+        ],
+        "`IterationPrimitive` variant shape must continue to come from the lowered std computation DAG"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_side_table_reads_recursive_call() {
     let dag = compile_to_dag(
         "\

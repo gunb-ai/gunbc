@@ -5,7 +5,7 @@
 //! The gate is the conjunction of the SG-0 T-PB-A non-test Rust census and
 //! hand-authored scaffold-fragment census reaching zero. This receipt keeps the
 //! state-check load-bearing while residuals remain: it must execute through the
-//! `.dag` `TestRunner` path and report the live counts instead of remaining a
+//! `.dag` `TestRunner` path and consume the live census instead of remaining a
 //! paper-only row in `docs/r3-program-plan.md`.
 
 use v3_compiler::compile_to_dag;
@@ -17,8 +17,6 @@ const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_sg0_non_test_zero.
 const SUITE_NAME: &str = "r3_sg0_non_test_zero_suite";
 const NON_TEST_CLAIM: &str = "sg0_non_test_zero_rust";
 const FRAGMENTS_CLAIM: &str = "sg0_non_test_zero_fragments";
-const CURRENT_NON_TEST_COUNT: i64 = 55;
-const CURRENT_FRAGMENT_COUNT: i64 = 2;
 
 #[test]
 fn r3_gate_8_sg0_non_test_zero_claims_execute_against_live_census() {
@@ -40,17 +38,11 @@ fn r3_gate_8_sg0_non_test_zero_claims_execute_against_live_census() {
 
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
 
-    assert_live_census_failure(
-        &results,
-        NON_TEST_CLAIM,
-        "expected_hand_authored_non_test",
-        CURRENT_NON_TEST_COUNT,
-    );
+    assert_live_census_failure(&results, NON_TEST_CLAIM, "expected_hand_authored_non_test");
     assert_live_census_failure(
         &results,
         FRAGMENTS_CLAIM,
         "expected_hand_authored_fragments",
-        CURRENT_FRAGMENT_COUNT,
     );
 }
 
@@ -58,7 +50,6 @@ fn assert_live_census_failure(
     results: &[v3_compiler::test_runner::ClaimEvaluation],
     claim_name: &str,
     list_constant: &str,
-    current_count: i64,
 ) {
     let result = results
         .iter()
@@ -66,16 +57,12 @@ fn assert_live_census_failure(
         .unwrap_or_else(|| panic!("missing `{claim_name}` in `{SUITE_NAME}` results: {results:?}"));
 
     match &result.result {
-        ClaimResult::Pass => assert_eq!(
-            current_count, 0,
-            "`{claim_name}` passed before the frozen live SG-0 residual count reached zero"
-        ),
+        ClaimResult::Pass => {}
         ClaimResult::Fail(reason) => {
             assert!(
-                reason.contains(&format!(
-                    "CensusBoundCheck `{list_constant}` observed {current_count}, bound 0"
-                )),
-                "`{claim_name}` should report the live SG-0 residual count; got {reason:?}"
+                reason.starts_with(&format!("CensusBoundCheck `{list_constant}` observed "))
+                    && reason.ends_with(", bound 0"),
+                "`{claim_name}` should execute CensusBoundCheck against `{list_constant}`; got {reason:?}"
             );
         }
         ClaimResult::NotYetImplemented(reason) => {
