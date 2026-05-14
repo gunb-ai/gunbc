@@ -821,8 +821,11 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
 /// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
 /// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
 ///
-/// **R3 gate #59 (`recursive_flex_demonstration_landed`):** emit-back consumer is
-/// [`recursive_flex_demonstration_landed`] (full-file `compile_to_dag` + structural equality). This
+/// **R3 gate #59 (`recursive_flex_demonstration_landed`):** the runnable receipt is
+/// [`recursive_flex_demonstration_landed`] — linked `gunbc.ci` (`ci_github_actions_workflow` +
+/// `ci.dag`, same bundle as gate #57) for **structural** equality of the YamlStatic carrier plus
+/// `ci_emission.dag` source-text anchors for `project_github_actions` / `gunbc_ci_yml_workflow`
+/// (**not** end-to-end `compile_to_dag` on `ci_emission.dag`; see module-level M1(2.8) note). This
 /// test only ratchets **YAML authority → generator → derived `.dag` bytes** for the pinned workflow
 /// module (orthogonal to `project_github_actions`).
 #[test]
