@@ -27,11 +27,11 @@ This lane owns the R2-Evaluator joint precondition under Gap 3 (`pb_self_compile
 | `witness_construction_structural` | in-flight | Dispatch/own complete witness materialization work, including non-stub `Violates` read-channel reporting. |
 | `cross_target_equivalence_harness_structural` | green | Monitor for drift only; broader L5 corpus breadth remains R3 §1.8 gate #15, not this sub-lane. |
 
-The current ledger refresh intentionally does not overclaim the two in-flight rows. Static E6-G1.a lens report production, descent proof consumption, bounded L7 witness receipts, and the L5 primitive harness are evidence, but Q-Reification / reflected-program authority and complete witness materialization remain the load-bearing tail.
+The current ledger refresh intentionally does not overclaim the two in-flight rows. Static E6-G1.a lens report production, descent proof consumption, bounded L7 witness receipts, and the L5 primitive harness are evidence, but real lens-over-`Dag` body authority, generic fold/runtime-callee execution, and complete witness materialization remain the load-bearing tail.
 
 ## First Dispatches When Unblocked
 
-1. **Lens application completion worker**: consume the Phase 5 handoff and Q-Reification boundary; produce complete reflection + real lens-over-`Dag` evidence without routing through host-side reflection shortcuts or widening `fold_lens<C>` before X1.b S1/S3 authority is present.
+1. **Lens application completion worker**: consume the Phase 5 handoff and the Q-Reification Option A decision (`Dag` is the reflected-program carrier); produce complete reflection + real lens-over-`Dag` evidence without routing through host-side reflection shortcuts or widening `fold_lens<C>` before X1.b S1/S3 authority is present.
 2. **Witness construction worker**: make witness materialization complete over the accepted evaluator surface, including a real `Violates` / diagnostic path rather than the E6-G1.a fail-closed empty-list stub.
 3. **Ledger signal follow-up**: after each worker lands, send the exact row transition evidence through the R2 Release Manager signal/ack protocol, or land a Director-ratified ledger refresh PR that names that protocol exception. Keep `scripts/check-r2-evaluator-ledger-refresh.sh` bound to the acknowledged row-level evidence.
 
