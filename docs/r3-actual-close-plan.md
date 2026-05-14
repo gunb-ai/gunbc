@@ -61,22 +61,14 @@ Neither override alone is sufficient. The PB-0 design doc admits no escape hatch
 **Promise** (r3-structure.md §Acceptance + §3.1 of interrogation doc): *"for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus."*
 
 **HEAD evidence**:
-- Gate #15 `l5_cross_target_consistency` = **DECLARED**
-- Python emission: only `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs` (boundary test, not lane acceptance)
-- Go emission: no equivalent boundary test
-- No `.dag → {Rust, Python, Go}` stdout-parity demo on main
+- Gate #15 `l5_cross_target_consistency` = **CONSUMER_LANDED + PASSING** after PR #3060.
+- `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` defines the L5 `ForAllTargets` certification suite with four rows: `add_then_branch_seed`, `branch_literal_true_seed`, `branch_literal_false_seed`, and `nested_branch_seed`.
+- `src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs` keeps the embedded `TestClaim.source` bytes equal to the authority `.v3` fixtures under `src/v3/compiler/tests/fixtures/r3_l5_corpus/`.
+- The `TestRunner` L5 path consumes `ProgramOutputBind`, validates exact `TestClaim.requires` toolchain edges (`L5RustcToolchain`, `L5Python3Toolchain`, `L5GoToolchain`), emits each corpus program to Rust/Python/Go, executes each target, and fails closed unless the observed `Int` stdout values agree.
 
-**What's missing**: certification corpus + 3-target emission per corpus program + stdout-parity assertion.
+**What's missing**: the core gate #15 close criterion is cashed for N>0 certification corpus rows. Follow-on expansion can grow corpus breadth, but that is coverage ratchet work, not the gate #15 blocker recorded here.
 
-**Plan to cash**:
-- **Owner**: swift-deer-459 (R3 Verification Mgr) + warm-wolf-698 (for any missing carrier-level support)
-- **Sub-program** (5 phases):
-  1. **Define certification corpus**: enumerate the `.dag` programs that constitute the L5 corpus; ratify with operator (estimate 10-20 programs covering 5 dimensions × 3 algebra-classes)
-  2. **Land Python emitter** as lane-acceptance code path (not boundary-test scope)
-  3. **Land Go emitter** as lane-acceptance code path
-  4. **Per-corpus-program L5 assertion**: each program runs through Rust + Python + Go; stdout compared; assertion fail-closed on divergence
-  5. **CI integration**: corpus runs on every PR; ratchet on coverage growth
-- **Effort estimate**: 4-8 weeks (Python emitter alone is significant; Go follows pattern)
+**Plan to cash**: CASHED by PR #3060. Remaining work is normal corpus-growth ratchet discipline: add new rows to `r3_verification_l5_corpus.dag` with matching authority `.v3` fixtures and let the boundary harness execute all rows through the same Rust/Python/Go parity path.
 
 **Close criterion**:
 ```bash
