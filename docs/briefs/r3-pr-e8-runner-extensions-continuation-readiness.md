@@ -68,7 +68,7 @@ The W1-specific blocker/proposal is recorded in
 | Workstream | Current gate | Allowed next action |
 |---|---|---|
 | **W1 - `DifferentialEquals` producers** | `ProgramObservation<Value>` exists, but producer identity and observation channel authority do not. `dag_eval_output` also depends on enough eager evaluator semantics to execute the claim body. | Docs-only producer-contract/test-plan slice. Do not add name-keyed runner dispatch for `rust_emit_output` / `dag_eval_output`. |
-| **W2 - `AlgebraicLaw`** | `Associativity` and `Commutativity` are already wired. `Identity` waits on a lens identity-element edge; `Distributivity` waits on P1 substrate routing. | Keep fail-closed wording/tests current; no new runner law until the substrate edge exists. |
+| **W2 - `AlgebraicLaw`** | `Associativity`, `Commutativity`, and bounded `Identity` are already wired as transitional runner witnesses. Per-carrier identity-element metadata and `Distributivity` still wait on P1 substrate routing. | Keep fail-closed wording/tests current; no non-enum runner law or per-carrier identity overclaim until the substrate edge exists. |
 | **W3 - `ForAllTargets`** | Existing predicate fields are command-shaped and exit-code-shaped. Strict L5 still needs typed target capability and structural observation. | Docs-only readiness updates; no target enumeration or raw-output comparison. |
 
 ## Explicit Non-Goals

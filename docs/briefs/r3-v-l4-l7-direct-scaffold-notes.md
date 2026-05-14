@@ -105,8 +105,8 @@ The current `AlgebraicLawKind` enum is narrower than the model: it lacks distrib
 1. **Slice 1:** one Rust L4 `DifferentialEquals` row over the minimal `add_then_branch` program, frozen until PR-B makes `dag_eval_output` real.
 2. **Slice 2:** add Python and Go L4 rows as Shape A grounding closes; each row compares target output to `.dag` eval, not target-to-target.
 3. **Slice 3:** add one `AlgebraicLaw(Associativity, ...)` seed using the current runner-wired path.
-4. **Slice 4:** extend L7 to `Commutativity` and `Identity` only after runner support exists.
-5. **Slice 5+:** enumerate the algebra coverage matrix from `dsl/std/algebra.dag`; for laws not represented by `AlgebraicLawKind`, escalate substrate shape rather than inventing fixture-local encodings.
+4. **Slice 4:** extend the consumer matrix across the current runner-wired `AlgebraicLawKind` surface (`Associativity`, `Commutativity`, bounded `Identity`) without claiming per-inhabitant closure.
+5. **Slice 5+:** enumerate the algebra coverage matrix from `dsl/std/algebra.dag`; for laws not represented by `AlgebraicLawKind`, or identity laws requiring per-carrier identity-element metadata, escalate substrate shape rather than inventing fixture-local encodings.
 
 Partial slice coverage remains lane evidence only. Lane 1 closes only when both `l4_emit_eval_match` and `l7_algebraic_laws_witnessed` satisfy the parent brief and `r3-structure.md` authorities.
 
