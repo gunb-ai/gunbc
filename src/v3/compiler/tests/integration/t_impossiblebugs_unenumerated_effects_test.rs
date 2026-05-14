@@ -22,8 +22,18 @@ fn read_workspace_file(rel: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
 }
 
+fn assert_retired_operation_carriers_absent(rel: &str) {
+    let source = read_workspace_file(rel);
+    for retired in ["OperationEffect", "WorkflowOperation"] {
+        assert!(
+            !source.contains(retired),
+            "{rel} must not reintroduce retired operation-effect carrier `{retired}`"
+        );
+    }
+}
+
 #[test]
-fn effect_enumeration_lens_anchors_on_signature_shape_not_operation_effect() {
+fn effect_enumeration_lens_anchors_on_signature_shape_not_retired_operation_carrier() {
     let lens = read_workspace_file("src/v3/lenses/effect_enumeration.dag");
 
     assert!(
@@ -34,9 +44,11 @@ fn effect_enumeration_lens_anchors_on_signature_shape_not_operation_effect() {
         lens.contains("callable_arrow_effect"),
         "effect_enumeration lens must recognize returned-modified-resource shape without a primitive bool helper"
     );
-    assert!(
-        !lens.contains("OperationEffect"),
-        "effect_enumeration lens must not re-anchor on the retired OperationEffect taxonomy"
+    assert_retired_operation_carriers_absent("src/v3/lenses/effect_enumeration.dag");
+    assert_retired_operation_carriers_absent("src/v3/std/effects.dag");
+    assert_retired_operation_carriers_absent("src/v3/compiler/src/dag/effects.rs");
+    assert_retired_operation_carriers_absent(
+        "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
     );
 }
 

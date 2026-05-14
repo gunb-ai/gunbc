@@ -43,17 +43,11 @@ import v3.spec.v3_l1 { DeclarationRef }
 //
 // Downstream consumers (after PR-β..ω land):
 //   - `analyze_workflow` / `analyze_parallelism`
-//     (`src/v3/compiler/src/dag/effects.rs`, `lenses/parallelism.dag`) derive
-//     `OperationEffect` per `std.effects::derive_op_effect(method, path)` from
-//     loaded `Operation` records; authored `lane2_workflow` retires.
-//   - `OperationEffect` substrate type
-//     (`src/v3/compiler/src/dag/effects.rs`, `src/v3/std/effects.dag`)
-//     retires once derivation replaces the authored shape — path (ii) of
-//     the T-ImpossibleBugs unenumerated-effects design (PR #808 / #971,
-//     `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md` Q5.5).
+//     (`src/v3/compiler/src/dag/effects.rs`, `lenses/parallelism.dag`) consume
+//     `Operation` rows as the shared per-operation carrier.
 
 // 🟢 TERMINAL at PR-α scope. Per-input-field metadata slot. Empty in PR-α
-// because `derive_op_effect` keys path-segment binding by name only and
+// because operation path-segment binding is keyed by name only and
 // does not consume per-field type data today. Reserved as a record so
 // PR-β can grow a `ty: …` field (or similar) without changing
 // `Operation.inputs`'s map shape. The canonical name is held by the
@@ -62,18 +56,13 @@ import v3.spec.v3_l1 { DeclarationRef }
 // field that could disagree with the map key).
 type InputField {}
 
-// 🟢 TERMINAL at PR-α scope. Carries the structural facts
-// `std.effects::derive_op_effect(method, path)` needs to derive
-// `OperationEffect.shape` from a callable's REST
-// realization: the HTTP verb, and the path template whose last segment
-// drives the create-vs-upsert-vs-delete branch via
-// `last_path_param(template)`. `path` reuses the upstream `PathTemplate`
+// 🟢 TERMINAL at PR-α scope. Carries the HTTP verb and path template for a
+// callable's REST realization. `path` reuses the upstream `PathTemplate`
 // authority from `std.effects` so mixed parameter/literal segments
 // (`{secret_name}:addVersion`) are representable without loss.
 //
 // Body-shape (which input fields compose into the request body) is not
-// modeled here in PR-α. `derive_op_effect` does not consume body shape
-// today; if a future shape needs it, extend with a `body_inputs: …`
+// modeled here in PR-α. If a future shape needs it, extend with a `body_inputs: …`
 // field whose entries are validated against `Operation.inputs` keys at
 // fixture load (same boundary discipline as `ParamToken.name`).
 // Omission preserves the minimal-PR-α scope.
@@ -113,11 +102,6 @@ type CallableRef {
 // `CallableRef`, not bare `DeclarationRef`); fail-closed callable-target
 // resolution lands at fixture load with PR-β.
 //
-// The product is `std.effects::OperationEffect`'s prerequisite shape:
-// every `OperationEffect.operation_name + endpoint.method + endpoint.path`
-// is recoverable from one `Operation` (operation_name = name resolved
-// from `callable.decl`), dissolving the parallel-rep that motivates the
-// retirement (T-ImpossibleBugs path (ii)).
 type Operation {
   callable: CallableRef
   inputs:   Map<String, InputField>

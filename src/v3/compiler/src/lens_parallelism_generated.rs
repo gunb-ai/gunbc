@@ -18,9 +18,6 @@ fn key_sources_equal(a: &KeySource, b: &KeySource) -> bool {
     match (a, b) {
         (KeySource::PathParam { param: pa }, KeySource::PathParam { param: pb }) => pa == pb,
         (KeySource::InputField { field: fa }, KeySource::InputField { field: fb }) => fa == fb,
-        (KeySource::CompositeKey { fields: fa }, KeySource::CompositeKey { fields: fb }) => {
-            fa == fb
-        }
         _ => false,
     }
 }
@@ -36,18 +33,22 @@ fn idempotent_shapes_commute(a: &IdempotentShape, b: &IdempotentShape) -> bool {
     }
 }
 
-fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
-    match (&a.shape, &b.shape) {
+fn operations_commute(
+    dag: &Dag,
+    a: &Operation,
+    b: &Operation,
+) -> Result<bool, EffectClassificationFailure> {
+    Ok(match (classify_operation_effect(dag, a)?, classify_operation_effect(dag, b)?) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
-            idempotent_shapes_commute(ia, ib)
+            idempotent_shapes_commute(&ia, &ib)
         }
         _ => false,
-    }
+    })
 }
 
 fn extract_linear_branches(
     branches: &NonSingletonList<Box<WorkflowEffect>>,
-) -> Option<Vec<Vec<OperationEffect>>> {
+) -> Option<Vec<Vec<Operation>>> {
     let mut out = Vec::new();
     for br in branches.iter() {
         match br.as_ref() {
@@ -58,7 +59,7 @@ fn extract_linear_branches(
     Some(out)
 }
 
-fn flatten_branch_ops(branch_ops: &[Vec<OperationEffect>]) -> Vec<OperationEffect> {
+fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
     branch_ops
         .iter()
         .flat_map(|ops| ops.iter().cloned())
@@ -66,14 +67,31 @@ fn flatten_branch_ops(branch_ops: &[Vec<OperationEffect>]) -> Vec<OperationEffec
 }
 
 fn pairwise_cross_branch_commutes(
-    branch_ops: &[Vec<OperationEffect>],
-) -> Result<(), (String, String)> {
+    dag: &Dag,
+    branch_ops: &[Vec<Operation>],
+) -> Result<(), ParallelismUnsupportedDetail> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
                 for ob in &branch_ops[j] {
-                    if !operations_commute(oa, ob) {
-                        return Err((oa.operation_name.clone(), ob.operation_name.clone()));
+                    match operations_commute(dag, oa, ob) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return Err(ParallelismUnsupportedDetail {
+                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                downstream_stage: DOWNSTREAM.to_string(),
+                                reason: "parallel branch operations do not commute under parallel scheduling"
+                                    .to_string(),
+                            });
+                        }
+                        Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                            return Err(ParallelismUnsupportedDetail {
+                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                downstream_stage: DOWNSTREAM.to_string(),
+                                reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
+                                    .to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -101,22 +119,25 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
             "Stage 2e v1 requires every parallel branch to be `LinearEffect`",
         );
     };
-    match compose_operation_effects(flatten_branch_ops(&branch_ops).as_slice()) {
-        CompositionVerdict::BrokenBy { first_breaker } => {
+    match compose_operation_effects(p0, flatten_branch_ops(&branch_ops).as_slice()) {
+        Ok(CompositionVerdict::BrokenBy { first_breaker }) => {
             return WorkflowParallelismReport::ParallelCompositionVerdict(
                 CompositionVerdict::BrokenBy { first_breaker },
             );
         }
-        CompositionVerdict::IdempotentComposition => {}
+        Ok(CompositionVerdict::IdempotentComposition) => {}
+        Err(_) => {
+            return parallel_unsupported(
+                ParallelismUnsupportedKind::PairwiseNonCommute,
+                "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism",
+            );
+        }
     }
-    match pairwise_cross_branch_commutes(&branch_ops) {
+    match pairwise_cross_branch_commutes(p0, &branch_ops) {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((_a, _b)) => parallel_unsupported(
-            ParallelismUnsupportedKind::PairwiseNonCommute,
-            "parallel branch operations do not commute under parallel scheduling",
-        ),
+        Err(detail) => WorkflowParallelismReport::ParallelismUnsupported(detail),
     }
 }
 
@@ -134,11 +155,9 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
         return 0;
     }
     for op in ops {
-        if !matches!(
-            op.shape,
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-        ) {
-            return 0;
+        match classify_operation_effect(p0, op) {
+            Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) => {}
+            Ok(_) | Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => return 0,
         }
     }
     1
