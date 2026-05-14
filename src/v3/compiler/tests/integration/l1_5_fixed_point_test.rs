@@ -12,7 +12,7 @@ use v3_compiler::{
 /// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
 const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 // Split these sentinel strings so the ratchet does not match its own source.
-const FORBIDDEN_PIPELINE_DAG_MACRO: &str = concat!("include", "_str!");
+const FORBIDDEN_PIPELINE_DAG_MACRO_NAME: &str = concat!("include", "_str");
 const FORBIDDEN_PIPELINE_DAG_PATH: &str = concat!("pipeline", ".dag");
 
 #[test]
@@ -52,30 +52,161 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn code_position_mask(text: &str) -> Vec<bool> {
+    let bytes = text.as_bytes();
+    let mut mask = vec![true; bytes.len()];
+    let mut idx = 0;
+
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'/' if bytes.get(idx + 1) == Some(&b'/') => {
+                let start = idx;
+                idx += 2;
+                while idx < bytes.len() && bytes[idx] != b'\n' {
+                    idx += 1;
+                }
+                mask[start..idx].fill(false);
+            }
+            b'/' if bytes.get(idx + 1) == Some(&b'*') => {
+                let start = idx;
+                idx += 2;
+                let mut depth = 1usize;
+                while idx < bytes.len() && depth > 0 {
+                    if bytes[idx] == b'/' && bytes.get(idx + 1) == Some(&b'*') {
+                        depth += 1;
+                        idx += 2;
+                    } else if bytes[idx] == b'*' && bytes.get(idx + 1) == Some(&b'/') {
+                        depth -= 1;
+                        idx += 2;
+                    } else {
+                        idx += 1;
+                    }
+                }
+                mask[start..idx].fill(false);
+            }
+            b'b' | b'c' if bytes.get(idx + 1) == Some(&b'"') => {
+                idx = mask_quoted_literal(bytes, &mut mask, idx, idx + 1);
+            }
+            b'b' if bytes.get(idx + 1) == Some(&b'r') => {
+                if let Some(end) = raw_string_end(bytes, idx + 2) {
+                    mask[idx..end].fill(false);
+                    idx = end;
+                } else {
+                    idx += 1;
+                }
+            }
+            b'r' => {
+                if let Some(end) = raw_string_end(bytes, idx + 1) {
+                    mask[idx..end].fill(false);
+                    idx = end;
+                } else {
+                    idx += 1;
+                }
+            }
+            b'"' => {
+                idx = mask_quoted_literal(bytes, &mut mask, idx, idx);
+            }
+            b'\'' => {
+                idx = mask_quoted_literal(bytes, &mut mask, idx, idx);
+            }
+            _ => idx += 1,
+        }
+    }
+
+    mask
+}
+
+fn raw_string_end(bytes: &[u8], mut idx: usize) -> Option<usize> {
+    let hash_start = idx;
+    while bytes.get(idx) == Some(&b'#') {
+        idx += 1;
+    }
+    if bytes.get(idx) != Some(&b'"') {
+        return None;
+    }
+    let hash_count = idx - hash_start;
+    idx += 1;
+    while idx < bytes.len() {
+        if bytes[idx] == b'"' {
+            let hashes_match =
+                (0..hash_count).all(|offset| bytes.get(idx + 1 + offset) == Some(&b'#'));
+            if hashes_match {
+                return Some(idx + 1 + hash_count);
+            }
+        }
+        idx += 1;
+    }
+    Some(bytes.len())
+}
+
+fn mask_quoted_literal(bytes: &[u8], mask: &mut [bool], start: usize, quote: usize) -> usize {
+    let delimiter = bytes[quote];
+    let mut idx = quote + 1;
+    while idx < bytes.len() {
+        if bytes[idx] == b'\\' {
+            idx = (idx + 2).min(bytes.len());
+        } else if bytes[idx] == delimiter {
+            idx += 1;
+            break;
+        } else {
+            idx += 1;
+        }
+    }
+    mask[start..idx].fill(false);
+    idx
+}
+
+fn is_rust_ident_byte(byte: u8) -> bool {
+    byte == b'_' || byte.is_ascii_alphanumeric()
+}
+
+fn skip_rust_trivia(bytes: &[u8], code_mask: &[bool], mut idx: usize) -> usize {
+    while idx < bytes.len()
+        && (bytes[idx].is_ascii_whitespace() || !code_mask.get(idx).copied().unwrap_or(false))
+    {
+        idx += 1;
+    }
+    idx
+}
+
 fn include_str_pipeline_dag_offenders(manifest_dir: &Path, path: &Path, text: &str) -> Vec<String> {
     let mut offenders = Vec::new();
-    for (idx, _) in text.match_indices(FORBIDDEN_PIPELINE_DAG_MACRO) {
-        let line_start = text[..idx].rfind('\n').map_or(0, |pos| pos + 1);
-        let line = &text[line_start..text[idx..].find('\n').map_or(text.len(), |pos| idx + pos)];
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("//") {
+    let code_mask = code_position_mask(text);
+    let bytes = text.as_bytes();
+    for (idx, _) in text.match_indices(FORBIDDEN_PIPELINE_DAG_MACRO_NAME) {
+        if !code_mask.get(idx).copied().unwrap_or(false) {
             continue;
         }
-
-        let after_macro = idx + FORBIDDEN_PIPELINE_DAG_MACRO.len();
-        let Some(open_offset) = text[after_macro..].find('(') else {
+        if idx > 0 && is_rust_ident_byte(bytes[idx - 1]) {
             continue;
-        };
-        if !text[after_macro..after_macro + open_offset]
-            .chars()
-            .all(char::is_whitespace)
+        }
+        let after_macro_name = idx + FORBIDDEN_PIPELINE_DAG_MACRO_NAME.len();
+        if bytes
+            .get(after_macro_name)
+            .is_some_and(|byte| is_rust_ident_byte(*byte))
         {
             continue;
         }
-        let open = after_macro + open_offset;
+        let bang = skip_rust_trivia(bytes, &code_mask, after_macro_name);
+        if bytes.get(bang) != Some(&b'!') {
+            continue;
+        }
+        let line_start = text[..idx].rfind('\n').map_or(0, |pos| pos + 1);
+        let line = &text[line_start..text[idx..].find('\n').map_or(text.len(), |pos| idx + pos)];
+        let trimmed = line.trim_start();
+
+        let after_bang = bang + 1;
+        let open = skip_rust_trivia(bytes, &code_mask, after_bang);
+        if bytes.get(open) != Some(&b'(') {
+            continue;
+        };
         let mut depth = 0usize;
         let mut close = None;
         for (pos, ch) in text[open..].char_indices() {
+            let absolute_pos = open + pos;
+            if !code_mask.get(absolute_pos).copied().unwrap_or(false) {
+                continue;
+            }
             match ch {
                 '(' => depth += 1,
                 ')' => {
@@ -137,7 +268,7 @@ fn compiler_sources_and_tests_have_no_include_str_pipeline_dag_authority() {
         offenders.is_empty(),
         "`src/**/*.rs` and `tests/**/*.rs` must not use {} on {} (see bridge_ledger \
          bridge_include_str_side_channels_retired + pipeline_authority.rs). Offenders:\n{}",
-        FORBIDDEN_PIPELINE_DAG_MACRO,
+        format_args!("{FORBIDDEN_PIPELINE_DAG_MACRO_NAME}!"),
         FORBIDDEN_PIPELINE_DAG_PATH,
         offenders.join("\n")
     );
@@ -151,12 +282,35 @@ fn include_str_pipeline_dag_ratchet_catches_split_literals() {
         r#"
 const OK: &str = include{}("other.dag");
 const BAD: &str = include{}(concat!("../../", "pipeline", ".dag"));
+const ALSO_BAD: &str = include_str /* trivia */ ! (concat!("../../", "pipeline", ".dag"));
 "#,
         "_str!", "_str!"
     );
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
-    assert_eq!(offenders.len(), 1);
+    assert_eq!(offenders.len(), 2);
     assert!(offenders[0].contains("synthetic.rs:3:"));
+    assert!(offenders[1].contains("synthetic.rs:4:"));
+}
+
+#[test]
+fn include_str_pipeline_dag_ratchet_ignores_inert_text() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("tests/integration/inert.rs");
+    let synthetic = format!(
+        r##"
+const STRING: &str = "include{}(\"pipeline.dag\")";
+const RAW: &str = r#"include{}("pipeline.dag")"#;
+// include{}("pipeline.dag")
+/*
+include{}("pipeline.dag")
+*/
+let _actual = include{}(concat!("../../", "pipeline", ".dag"));
+"##,
+        "_str!", "_str!", "_str!", "_str!", "_str!"
+    );
+    let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
+    assert_eq!(offenders.len(), 1);
+    assert!(offenders[0].contains("inert.rs:8:"));
 }
 
 #[test]
