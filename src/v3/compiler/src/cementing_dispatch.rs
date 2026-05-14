@@ -1275,8 +1275,8 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
 }
 
 /// Closed roster of Band-C `(registry_name, module_stem, kind)` receipts implied by the
-/// current `regen.dag` × v2-complete register projection. When a new v2-complete lens
-/// lands in `regen.dag`, extend this expansion in the same PR as `cementing_dispatch.dag`
+/// current `regen.dag` × cementing register projection. When a new projected lens lands
+/// in `regen.dag`, extend this expansion in the same PR as `cementing_dispatch.dag`
 /// receipt rows — otherwise the dispatch predicate fail-closes with an explicit error.
 fn expected_cementing_receipt_triples(
     registry_pairs: &[(String, String)],
@@ -1319,9 +1319,16 @@ fn expected_cementing_receipt_triples(
                     "temporary-rust".to_string(),
                 ));
             }
+            ("effect_enumeration", "effect_enumeration.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_effect_enumeration".to_string(),
+                    "dag".to_string(),
+                ));
+            }
             _ => {
                 return Err(format!(
-                    "Band-C v2 cementing projection includes `LensRegistryEntry` \
+                    "Band-C cementing projection includes `LensRegistryEntry` \
                      (`name={name}`, `lens_file` basename `{basename}`) but \
                      `expected_cementing_receipt_triples` has no receipt expansion — \
                      land matching `cementing_band_c_v2_complete_receipts` rows in \
@@ -1382,18 +1389,23 @@ fn v2_cementing_basenames_from_capability_rows(
             "v2_counterpart",
             "capability_register row",
         )?;
-        if behavioral_label == "LensCapabilityBehavioralComplete"
-            && v2_label == "LensCapabilityV2RealV2"
-        {
+        let is_v2_complete = behavioral_label == "LensCapabilityBehavioralComplete"
+            && v2_label == "LensCapabilityV2RealV2";
+        let is_effect_enumeration_native_complete =
+            behavioral_label == "LensCapabilityBehavioralComplete"
+                && v2_label == "LensCapabilityV2NoneV3Native"
+                && lens_basename == "effect_enumeration.dag";
+        if is_v2_complete || is_effect_enumeration_native_complete {
             basenames.insert(lens_basename);
         }
     }
     Ok(basenames)
 }
 
-/// Lens basenames that participate in Band-C v2 cementing: `LensCapabilityBehavioralComplete`
-/// plus `LensCapabilityV2RealV2` in the canonical `std.verification` `lens_capability_register_rows`
-/// list (same projection `CementingDispatchMatchesProjection` uses before intersecting `regen.dag`).
+/// Lens basenames that participate in Band-C cementing: `LensCapabilityBehavioralComplete`
+/// plus `LensCapabilityV2RealV2`, plus the v3-native effect-enumeration behavioral receipt,
+/// in the canonical `std.verification` `lens_capability_register_rows` list (same projection
+/// `CementingDispatchMatchesProjection` uses before intersecting `regen.dag`).
 ///
 /// Exposed for integration tests that mechanically ratchet the markdown capability table against
 /// this structural authority (`lens_register_correspondence_test`).
