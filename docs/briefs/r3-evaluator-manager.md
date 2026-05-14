@@ -34,6 +34,22 @@ The current ledger refresh intentionally does not overclaim the two in-flight ro
 2. **Witness construction worker**: make witness materialization complete over the accepted evaluator surface, including a real `Violates` / diagnostic path rather than the E6-G1.a fail-closed empty-list stub.
 3. **Ledger refresh follow-up**: after each worker lands, update the exact R2 closure-ledger row and keep `scripts/check-r2-evaluator-ledger-refresh.sh` bound to the row-level evidence.
 
+## Remaining Closure Predicates
+
+`lens_application_complete_reflection` turns green only when all of these are true at HEAD:
+
+- the evaluator consumes `Dag` as the reflected-program authority rather than a host-side registry or scalar declaration-reference shortcut;
+- a lens-over-`Dag` path produces a real `DimensionReport<C>` through declared substrate values;
+- the path covers complete reflection per [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md), not only the static E6-G1.a representative;
+- any generic `fold_lens<C>` claim is backed by the required X1.b S1/S3 runtime-callee authority or by an explicit Director reroute.
+
+`witness_construction_structural` turns green only when all of these are true at HEAD:
+
+- `Witness::Inhabits` and `Witness::Violates` both materialize through evaluator-executed declared constructors;
+- `Violates` carries a non-stub diagnostic path instead of the current E6-G1.a empty-list fail-closed receipt;
+- algebraic-law witness rows stay tied to faithful law carriers and do not widen beyond the bounded Int receipts until substrate authority exists;
+- the result updates the exact `witness_construction_structural` row in [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) and keeps the row-bound ratchet current.
+
 ## Cross-Manager Dependencies
 
 - **Substrate Manager** owns substrate-shape authority for Q-Reification, generic runtime-callee authority, and any new fact carriers required by lens folding.
