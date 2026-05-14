@@ -257,14 +257,10 @@ pub(crate) fn ensure_kernel_bool_lane1e2b_bootstrap_witness(dag: &mut Dag) {
     if dag.declaration(bool_id).inhabits.is_none() {
         crate::lower::wire_kernel_bool_boolean_algebra_inhabits(dag, bool_id);
     }
-    if dag.declaration(bool_id).inhabits.is_none() {
+    let Some(inh_id) = dag.declaration(bool_id).inhabits else {
         return;
-    }
+    };
 
-    let inh_id = dag
-        .declaration(bool_id)
-        .inhabits
-        .expect("just set or pre-existing");
     let inh_decl = dag.declaration(inh_id);
     let ok = match &inh_decl.connective {
         TypeConnective::Instantiation {
