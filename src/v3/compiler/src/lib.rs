@@ -55,10 +55,12 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
+pub use crate::emit::omni_shape_b_openapi;
+pub use crate::emit::process_exit;
+pub use crate::emit_rust::emit_rust_roundtrip_fixtures;
+pub use crate::emit_rust::r1c_e_gates;
 #[path = "emit_rust_bin_shim_generated.rs"]
 pub mod emit_rust_bin_shim;
-pub mod omni_shape_b_openapi;
-pub mod process_exit;
 pub mod realization_cost {
     //! Rust-side realization-cost table for T-CostLens-Composition's epsilon path.
     //!
@@ -439,7 +441,6 @@ pub mod realization_cost {
         }
     }
 }
-pub mod self_host_receipt_p0;
 pub mod evaluator {
     //! E2 evaluator frame helpers.
     //!
@@ -4055,12 +4056,8 @@ pub mod lens_unused_parameters {
     }
 }
 
-/// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
-pub mod emit_rust_roundtrip_fixtures;
 pub mod post_emit_verifier;
-pub mod r1c_e_gates;
 pub mod test_runner;
-pub mod wall_clock_ratchet_manifest;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
     use crate::diagnostics::Diagnostic;
@@ -4596,8 +4593,6 @@ pub mod lens_cost_symbolic {
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
-pub mod memory_peak_cost;
-
 /// `cost_target_realization.dag` `.dag`-tier consumer of the
 /// `declaration_by_name` substrate accessor (T-CostLens-Composition
 /// Slice 1a.1; gunb-ai/gunbc#2141 ε scope per gunbc#2181 ratification).
@@ -4983,6 +4978,8 @@ pub mod lens_structural_resolution {
 mod bootstrap;
 
 pub use bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
+pub use bootstrap::self_host_receipt_p0;
+pub use bootstrap::wall_clock_ratchet_manifest;
 
 #[cfg(feature = "bootstrap-regen-fresh")]
 mod bootstrap_regen_fresh;
@@ -5000,6 +4997,8 @@ pub use bootstrap_regen_fresh::{
 mod cost_basis_declaration;
 mod dimension;
 mod infer;
+
+pub use infer::memory_peak_cost;
 
 /// SG-4 prep: first .dag-authority slice of `infer.rs`. Authority
 /// lives in `src/v3/lenses/infer_helpers.dag`; the Rust projection is
@@ -5416,8 +5415,6 @@ pub(crate) mod variant_payload {
         }
     }
 }
-mod r3_fc_lane2_loop_witness;
-
 pub use cost_basis_declaration::{
     try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
 };
@@ -5602,7 +5599,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
         lower::lower(&surface)
     };
     infer::infer(&mut dag);
-    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
+    lower::r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {
         Ok(dag)
     } else {
@@ -5640,7 +5637,7 @@ fn compile_onto_parse_surface_free_bootstrap(
     lower::lower_into(&mut dag, &surface);
     lower::finalize_strict_user_lower_range(&mut dag, user_start);
     infer::infer(&mut dag);
-    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
+    lower::r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {
         Ok(dag)
     } else {

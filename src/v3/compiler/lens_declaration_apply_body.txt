@@ -339,7 +339,7 @@ fn try_apply_lens_via_evaluator_literals_only(
 /// out-of-band test-runner mutation.
 ///
 /// **Db18 deviation:** this reads `lane2_workflow` that may have been staged by
-/// [`crate::r3_fc_lane2_loop_witness`] from a magic comment — a parallel authority to lowering until
+/// [`crate::lower::r3_fc_lane2_loop_witness`] from a magic comment — a parallel authority to lowering until
 /// the loop workflow is authored from surface syntax. Budget + dissolution: `ROADMAP.md` §"R3
 /// second-batch auto-loop scaffold"; SG-0 pairing class **(b)** on census-touching PRs.
 pub fn apply_lens_declaration(

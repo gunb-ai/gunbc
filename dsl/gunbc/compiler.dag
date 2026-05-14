@@ -93,8 +93,6 @@ data stage0: GeneratedCrate = {
     "lower.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
-    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.
-    "process_exit.rs",
     "regen_parse_emit.rs"
   ]
 }

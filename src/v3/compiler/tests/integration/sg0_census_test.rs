@@ -230,10 +230,10 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // this helper should consume those declared rows directly or move behind
 // generated substrate accessors.
 //
-// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0.rs` is intentionally hand-authored
-// receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
-// not generated output. Dissolution: fold into a `.dag` or generated authority when one
-// owns receipt schema; until then this module + census line are the bounded ratchet receipt.
+// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0` lives under `bootstrap.rs` (stable JSON field
+// names for `self_host_fixed_point` trend reads), not generated output. Dissolution: fold into a
+// `.dag` or generated authority when one owns receipt schema; until then this module + census line
+// are the bounded ratchet receipt.
 //
 // PB-0 / Director **msg_84abadad** + scope correction **msg_dda96d21** (2026-05-13): **43-entry**
 // `NON_TEST` + **3** `FRAGMENTS` taxonomy (§3 + §4) in
@@ -280,8 +280,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+<<<<<<< HEAD
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
+=======
+    "src/v3/compiler/src/infer.rs",
+>>>>>>> 3918a149f (WIP: PB-0 cycle 3 REDO NON_TEST — r3_fc_lane2_loop_witness wall_clock_ratchet)
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
     // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
@@ -290,6 +294,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // receipts; PB-Runtime for lens application (R3 §1.8).
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+<<<<<<< HEAD
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
     "src/v3/compiler/src/memory_peak_cost.rs",
     // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
@@ -305,13 +310,15 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/r1c_e_gates.rs",
     // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
     "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
+=======
+    "src/v3/compiler/src/pipeline_authority.rs",
+    "src/v3/compiler/src/post_emit_verifier.rs",
+>>>>>>> 3918a149f (WIP: PB-0 cycle 3 REDO NON_TEST — r3_fc_lane2_loop_witness wall_clock_ratchet)
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
-    "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/wall_clock_ratchet_manifest.rs",
 ];
 
 // All test .rs files under `src/v3/compiler` that are currently
@@ -1428,7 +1435,7 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
     assert!(
-        list.contains("\"process_exit.rs\""),
-        "hand_maintained_src should exclude process_exit.rs (PB-1 host mirror) from recursive freshness drift"
+        !list.contains("\"process_exit.rs\""),
+        "process_exit authority is nested under emit.rs; standalone process_exit.rs must not reappear in hand_maintained_src"
     );
 }
