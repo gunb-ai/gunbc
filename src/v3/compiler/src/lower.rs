@@ -2598,12 +2598,13 @@ pub(crate) fn outer_predicate_slots(
 /// treat that as "cannot produce a well-formed composite."
 ///
 /// DB-16 (3a.3 closure): the `subst` parameter carries the active
-/// substitution stack so Transform targets with `Callable(id)` or
-/// `FieldProject.field_child` referencing template TypeParams get
-/// re-rooted to their concrete instantiations. DB-11 callers
-/// (`build_narrowed_refinement`) pass an empty `SubstStack`, which
-/// makes the Transform-target walk a structural no-op (no
-/// substitution lookup ever fires).
+/// substitution stack so Transform targets with `Callable(id)` referencing
+/// template TypeParams get re-rooted to their concrete instantiations.
+/// `ResolvedFieldProject` keeps only its label; the substituted parent input
+/// type remains the authority for the projected child. DB-11 callers
+/// (`build_narrowed_refinement`) pass an empty `SubstStack`, which makes the
+/// Transform-target walk a structural no-op (no substitution lookup ever
+/// fires).
 pub(crate) fn clone_predicate_body(
     dag: &mut Dag,
     source_port: PortId,

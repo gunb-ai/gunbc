@@ -169,7 +169,7 @@ type EvalMemoKey {
 //         when the call returns. Other `ArrowBody` variants are
 //         non-evaluable (`ExternalRealization` dispatches to host;
 //         `Pending` / `NoBody` / `Unparsed` are evaluation-time errors).
-//       - `FieldProject { field_label, field_child }` → project
+//       - `ResolvedFieldProject { field_label }` → project
 //         `field_label` from the (single-input) record value.
 //       - `Operator(op_kind)` → apply the primitive operator to inputs.
 //   - `Behavior::Branch(b)` → evaluate `b.input`; pattern-match against
