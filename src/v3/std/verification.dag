@@ -462,11 +462,13 @@ type TestPredicate
   // + amendment msg_606e0e50). `manifest_entries` replaces `generated_paths`
   // ahead of the follow-up Evaluator-Mgr-owned runtime PR that introduces the
   // 3-way byte-equality assertion + directory-walk orphan-output detection at
-  // the well-known `src/v3/compiler/tests/` scan-root. This PR lands the
-  // shape-only readiness; runtime currently preserves the prior one-direction
-  // set-membership + outside-paths hand-count semantics. A future `scan_root:
-  // Path` (or `TestRootRef`) field is a Q4-amendment trigger flagged for the
-  // follow-up runtime PR.
+  // the well-known `src/v3/compiler/tests/` scan-root. At the runner boundary
+  // today: each `output_path` must be in `GENERATED_FILES` (from
+  // `build.rs::REGEN_OUTPUTS`), the manifest must enumerate that authority
+  // **exactly once each** (no duplicates / omissions), and the SG-0
+  // `expected_hand_authored_test` census must be empty (Gate #84 negative
+  // authority). A future `scan_root: Path` (or `TestRootRef`) field is a
+  // Q4-amendment trigger flagged for the follow-up runtime PR.
   | GeneratedFromDag {
       authority: DeclarationRef
       manifest_entries: List<GeneratedManifestEntry>

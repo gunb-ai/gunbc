@@ -23,9 +23,10 @@
 //         census; same dissolution-pacing dependency as D.1.
 //   D.3 — `FixedPointConverges` runs DB-8 twice and compares snapshots.
 //   D.4 — `RatchetZero` checks the consolidation ratchet count.
-//   D.5 — `GeneratedFromDag` checks that the test census is empty
-//         (same dissolution gating as D.6) AND that the listed paths
-//         all live in the SG-0 generated-file manifest.
+//   D.5 — `GeneratedFromDag` requires the `.dag` manifest to enumerate every
+//         `build.rs::REGEN_OUTPUTS` path exactly once (set equality with
+//         `GENERATED_FILES`) and that the `EXPECTED_HAND_AUTHORED_TEST` census
+//         is empty (Gate #84 negative authority).
 //
 // Lives under `src/v3/compiler/tests/dag/` alongside other `TestRunner`
 // harness modules (R3 Cluster M #84 pilot — tests-as-data layout). The
@@ -111,19 +112,17 @@ data pb_compiler_std_ratchet_zero_gate: TestClaim = {
   requires: []
 }
 
-// `manifest_entries` enumerates a representative subset of the SG-0
-// generated-file manifest (`src/v3/compiler/src/lib.rs::generated_files`,
-// emitted by `build.rs::REGEN_OUTPUTS`). The runner validates each entry's
-// `output_path` is in `GENERATED_FILES`; the gate's load-bearing check is
-// that the `EXPECTED_HAND_AUTHORED_TEST` census is empty.
+// `manifest_entries` enumerates every path in the SG-0 generated-file manifest
+// (`src/v3/compiler/src/lib.rs::generated_files`, emitted from
+// `build.rs::REGEN_OUTPUTS`). The runner requires set equality against
+// `GENERATED_FILES` (no dupes / omissions) so every codegen survivor stays
+// structurally attached at the `.dag` predicate boundary. The gate's
+// load-bearing T-PB-B check remains that the `EXPECTED_HAND_AUTHORED_TEST`
+// census is empty (Gate #84 negative authority).
 //
-// R3 Cluster M substrate-shape-only migration (brief
-// r3-cluster-m-generator-manifest-substrate-refinement-worker.md RE-AMENDED
-// 2026-05-13 msg_3b99a90f): manifest entries are typed sum-variants —
-// `PendingFact { output_path }` IS the typed "unknown" carrier (P3 / C-9:
-// no fabricated `dag_source` / `source_hash` values). The follow-up
-// Evaluator-Mgr-owned runtime PR materialises `ResolvedFact` instances as
-// hash-derivation produces real values.
+// R3 Cluster M substrate-shape (msg_3b99a90f): entries are typed sum-variants —
+// `PendingFact { output_path }` IS the P3/C-9 honest "unknown" carrier; the
+// follow-up runtime PR materialises `ResolvedFact` as hash-derivation lands.
 data pb_test_file_generated_from_dag_gate: TestClaim = {
   name: "pb_test_file_generated_from_dag",
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
@@ -131,9 +130,34 @@ data pb_test_file_generated_from_dag_gate: TestClaim = {
   predicate: GeneratedFromDag {
     authority: sg0_census_test_authority,
     manifest_entries: [
+      PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/bootstrap_std_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/complexity_lens_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_branch_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_cluster_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_cost_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_lookup_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_scalar_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/dag_value_body_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/diagnostics_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/infer_helpers_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_cost_symbolic_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_cost_target_realization_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_effect_enumeration_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_parallelism_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_provenance_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_structural_resolution_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lens_unused_parameters_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/lower_helpers_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/operators_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/parse_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/parse_surface_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/parse_tables_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/serialize_generated.rs" },
       PendingFact { output_path: "src/v3/compiler/src/tokenize_generated.rs" },
-      PendingFact { output_path: "src/v3/compiler/src/types_generated.rs" }
+      PendingFact { output_path: "src/v3/compiler/src/types_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/variant_payload_generated.rs" }
     ]
   },
   requires: []
