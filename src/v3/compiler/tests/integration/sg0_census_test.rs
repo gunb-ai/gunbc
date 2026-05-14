@@ -495,6 +495,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // R3 §1.8 gate #89 (`section_ref_substrate_landed`): `SectionRef` disjoint-sum substrate receipt.
+    "src/v3/compiler/tests/integration/lens_application_substrate_carrier_test.rs",
     // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
     // receipt for the four-lens parity snapshot while LensOutputEquals /
     // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
@@ -536,9 +538,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
-    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
-    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
-    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
@@ -601,6 +600,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
     "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
+    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
+    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
+    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
     // `pb_method_template_projection` consumer hook. Stays hand-Rust
@@ -722,6 +724,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
+    // T-CostLens-Composition): mechanical ratchet pinning the executable
+    // dispatch arm + evaluator wiring in `test_runner.rs`, so accidental
+    // retirement back to the `NotYetImplemented` shell trips here. Wider
+    // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
+    "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap

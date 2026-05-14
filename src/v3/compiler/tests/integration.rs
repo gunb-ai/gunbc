@@ -99,6 +99,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lens_application_substrate_carrier_test.rs"]
+mod lens_application_substrate_carrier_test;
 #[path = "integration/lens_behavioral_parity_demonstration_test.rs"]
 mod lens_behavioral_parity_demonstration_test;
 #[path = "integration/lens_cost_target_realization_test.rs"]
@@ -223,6 +225,8 @@ mod sg6_hand_authored_census_test;
 mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
+#[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
+mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
