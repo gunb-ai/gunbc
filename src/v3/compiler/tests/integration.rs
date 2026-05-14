@@ -67,6 +67,8 @@ mod ctrl_pr_digests_dag_smoke_test;
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
+mod e_p_per_call_descent_lens_consumer_cementing;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
@@ -163,8 +165,8 @@ mod method_registry_test;
 mod method_template_contract_test;
 #[path = "integration/method_template_projection_emit_shim_coherence_test.rs"]
 mod method_template_projection_emit_shim_coherence_test;
-#[path = "integration/p0_std_render_repeat_string_test.rs"]
-mod p0_std_render_repeat_string_test;
+#[path = "integration/no_coercion_cost_dimension_ratchet_test.rs"]
+mod no_coercion_cost_dimension_ratchet_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pb_method_template_projection_test.rs"]
@@ -229,6 +231,8 @@ mod t_impossiblebugs_unenumerated_effects_test;
 mod t_las_complexity_contract_compile_error_test;
 #[path = "integration/t_las_crdt_cost_basis_demo_test.rs"]
 mod t_las_crdt_cost_basis_demo_test;
+#[path = "integration/t_lens_application_carrier_test.rs"]
+mod t_lens_application_carrier_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
@@ -257,6 +261,8 @@ mod value_body_substrate_mirror_isomorphism_test;
 mod wiring_scanner_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
+#[path = "integration/workflow_substrate_carriers_test.rs"]
+mod workflow_substrate_carriers_test;
 
 mod t_demo_fixture_test {
     //! **Layer:** integration

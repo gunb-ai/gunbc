@@ -137,8 +137,8 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // `tests/integration.rs` binary still includes them via `#[path =
 // "boundary/..."]` so the one-bootstrap compile amortization holds.
 //
-// P0-A / R1C-B: `tests/integration/p0_std_render_repeat_string_test.rs` hosts the
-// v3 `TestRunner` gate suite `p0_repeat_string_correct_gate` (live v2 oracle retired).
+// P0-A / R1C-B: `p0_repeat_string_correct_gate` lives in `tests/fixtures/r1_gates.dag`;
+// `test_runner_test::test_runner_runs_p0_repeat_string_correct_gate` is the integration receipt.
 //
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
@@ -404,6 +404,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
     // `cost_symbolic` COMPLETE receipt.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+    // R3 gate #76 (`e_p_per_call_descent_evidence_full_coverage`) Phase-3 lens-consumer
+    // cementing ratchets (#[ignore]'d) pinning the consumer-path expectation for
+    // match-payload + multi-arg per-arg vectors against `complexity_of` + `symbolic_cost_of`.
+    // Lane E-P per ROADMAP.md "Lane E-P — per-call descent-evidence provenance (M)" — see
+    // INVARIANTS.md §P5 row for dissolution trigger (lens-consumer match-arm walker extension).
+    "src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
@@ -530,6 +536,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
+    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
+    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
+    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
@@ -592,7 +601,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
     "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
-    "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
     // `pb_method_template_projection` consumer hook. Stays hand-Rust
@@ -718,6 +726,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // §1.8 gate #88 (`lens_application_carrier_landed`): bootstrap field / arity locks for
+    // `EnforcedApplication` + `IntrospectApplication` in `src/v3/std/lens_application.dag`.
+    "src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs",
     // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
     // R1C-D/E runner receipts (co-located harness).
     //
@@ -771,6 +782,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `.dag` `TestClaim` form when testgen covers compile-and-fold
     // structural assertions.
     "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
+    // R3 §1.8 gate #53 `workflow_substrate_carriers_landed` structural
+    // ratchet: locks Slice 1 β-ratified carriers (`WorkflowSecret`,
+    // `SecretScope`, `CronSchedule`, `CronField`) against the full
+    // bootstrap Dag. Sibling shape to gate #62
+    // `file_attachment_substrate_carrier_test.rs`. Dissolves into
+    // `.dag` `TestClaim` form when testgen covers structural-shape
+    // assertions over substrate carriers.
+    "src/v3/compiler/tests/integration/workflow_substrate_carriers_test.rs",
 ];
 
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
