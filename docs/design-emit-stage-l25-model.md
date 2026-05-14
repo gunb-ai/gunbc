@@ -45,7 +45,7 @@ Three input types feed emit:
 
 ### §3.1 `Dag` (post-infer)
 
-The fully-resolved `.dag` program after parse → lower → infer. All `Port.state` are `Inferred(TypeShape)` or `Unresolved(Diagnostic)` per `src/v3/compiler/src/infer.rs:1-30` framing. emit consumes this as substrate input.
+The fully-resolved `.dag` program after parse → lower → infer. After infer completes, every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with `state != Uninferred` invariant per the infer.rs header comment: `state == Unresolved iff diagnostics.contains(port_id)` — the diagnostic payload lives in the diagnostic table indexed by port_id, NOT in the `PortState` payload). The `Uninferred` variant is a pre-completion transient that infer guarantees is absent in the post-infer `Dag` emit consumes.
 
 **Substrate authority**: `src/v3/std/substrate.dag` (defines `Dag`, `Declaration`, `Port`, `TypeShape`).
 **Lane dependency**: PB-Substrate (generates dag.rs from substrate.dag).
@@ -54,7 +54,7 @@ The fully-resolved `.dag` program after parse → lower → infer. All `Port.sta
 
 Per-target structural facts: primitive set with refinement bounds, algebra inhabitance, structural axes distinguishing candidates, diagnostic enumeration order, construction patterns, operator dispatch, external-realization shape (per `docs/design-emission-model.md:193-209`).
 
-**Substrate authority**: each target has its own `LanguageSpec` instance — `dsl/extdeps/languages/rust/spec.dag` / `dsl/extdeps/languages/python/spec.dag` / `dsl/extdeps/languages/go/spec.dag` (Shape A targets per `THESIS.md` §1505).
+**Substrate authority**: each target has its own `LanguageSpec` instance — `dsl/extdeps/languages/rust/spec.dag` / `dsl/extdeps/languages/python/spec.dag` / `dsl/extdeps/languages/go/spec.dag` (Shape A targets per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission").
 **Lane dependency**: T-Ground-LanguageSpec (R3 Grounding Mgr lane / Gap 13) — schema authoring; T-Ground-CrossTarget-Meta (R3 Grounding Mgr lane / Gap 13) — portability requirements.
 
 ### §3.3 `EmissionConfig` (target selection + shape disambiguation)
@@ -105,7 +105,7 @@ emit composes from these substrate facts via fold:
 
 ### §5.1 Per-Behavior projection rule
 
-For each `Behavior` variant in `Dag` (per `feedback_compiler_is_dag_processor`: compiler knows ONLY Node/Conj/Disj/Cardinality/Bit — 5 primitives via the substrate), emit declares **one structural rule per behavior**, NOT decision logic. Per `feedback_lenses_not_passes`: each behavior has exactly one structural projection to the target language; if projection requires "deciding" between multiple targets, that's a missing LanguageSpec fact (axis distinguishing candidates).
+For each `Behavior` variant in `Dag` — substrate-level `Value | Transform | Branch | Loop | Bind` per `src/v3/std/substrate.dag` (verified `src/v3/compiler/src/dag.rs:2600-2606`) — emit declares **one structural rule per behavior**, NOT decision logic. Note this `Behavior` axis is distinct from the type-level DAG primitive vocabulary (`Node/Conj/Disj/Cardinality/Bit` per `feedback_compiler_is_dag_processor`); the two operate at different layers (L1 substrate vs type-level primitives) and should not be conflated in worker briefs. Per `feedback_lenses_not_passes`: each `Behavior` variant has exactly one structural projection to the target language; if projection requires "deciding" between multiple targets, that's a missing `LanguageSpec` fact (axis distinguishing candidates).
 
 ### §5.2 Per-target inhabitance lookup
 
@@ -178,7 +178,7 @@ When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations 
 
 ## §8 Two shapes of omni-emission
 
-Per `THESIS.md` §1505 + `r3-structure.md` framing:
+Per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission" + `r3-structure.md` framing:
 
 ### §8.1 Shape A — compiler targets (R3 scope)
 
@@ -329,7 +329,7 @@ Subsequent L2.5 models (PB-4 lower / PB-5 infer / PB-3 parse / PB-2 tokenize) fo
 
 **Secondary authority / context**:
 - `THESIS.md` §"Tier 1" (coercion = emission claim)
-- `THESIS.md` §1505 (Two-shape omni-emission framing)
+- `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission" (Shape A vs Shape B framing; see also THESIS.md Shape A/B references at the omni-emission claims)
 - `src/v3/compiler/src/emit.rs:1-30` (current emit.rs structure + D-1 invariant)
 - `docs/r3-structure.md` (R3 scope; Shape A/B deferral)
 - `docs/r3-actual-close-plan.md` Gap 1 (PB-0 close plan; pending Phase 2 amendment per msg_b9f9c36b)
