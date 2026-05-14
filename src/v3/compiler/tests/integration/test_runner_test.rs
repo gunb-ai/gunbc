@@ -550,7 +550,9 @@ fn test_runner_dispatches_pb_census_predicate_shapes() {
 import std.verification {
   compiler_std_positive_set_ratchet,
   expected_hand_authored_non_test,
-  lens_producer_files_subset_predicate
+  lens_producer_files_subset_predicate,
+  PendingFact,
+  ResolvedFact
 }
 
 data census_authority: Int = 0
@@ -598,7 +600,14 @@ data generated_from_dag_claim: TestClaim = {
   name: "pb_test_file_generated_from_dag",
   source: "let x: Int = 1",
   file_name: "pb_test_file_generated_from_dag.v3",
-  predicate: GeneratedFromDag(census_authority, ["src/v3/compiler/tests/integration.rs"]),
+  predicate: GeneratedFromDag(census_authority, [
+    PendingFact { output_path: "src/v3/compiler/tests/integration.rs" },
+    ResolvedFact {
+      output_path: "src/v3/compiler/tests/integration.rs",
+      dag_source: census_authority,
+      source_hash: "test-runner-resolved-fact-decode-coverage"
+    }
+  ]),
   requires: []
 }
 
