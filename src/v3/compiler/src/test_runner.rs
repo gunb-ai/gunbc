@@ -5029,8 +5029,15 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        // R3 Cluster M generator-manifest integration (Gap 5 / gates #84–#85
-        // lane): payload carries `manifest_entries: List<GeneratedManifestEntry>`
+        // R3 Cluster M generator-manifest integration (Gap 5 / Cluster M lane).
+        // **This predicate implements the Gate #84 slice:** exact `manifest_entries`
+        // `output_path` set vs `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS`, plus the
+        // empty `expected_hand_authored_test` census (failure copy cites **#84** only).
+        // **Gate #85** (`Quantified` / quantifier substrate) is a sibling obligation:
+        // shape validation + `NotYetImplemented` posture lives on the `Quantified`
+        // suite arm (~`run_suite` / `validate_quantified_claim_shape`, ~2503–2518),
+        // not inside `GeneratedFromDag`.
+        // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
         // (`PendingFact { output_path }` | `ResolvedFact { output_path,
         // dag_source, source_hash }`). Runner-side today: extract `output_path`
         // from each arm; require the manifest `output_path` set to equal
