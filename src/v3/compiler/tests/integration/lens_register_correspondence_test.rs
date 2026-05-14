@@ -332,6 +332,39 @@ fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
 }
 
 #[test]
+fn r3_gate_83_lens_capability_register_std_verification_behavioral_axis_has_zero_stub() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for std.verification lens_capability_register_rows \
+         behavioral-axis ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let labels = cementing_dispatch::lens_capability_register_behavioral_label_by_basename(&dag)
+        .expect("read behavioral axis from lens_capability_register_rows");
+    let mut blockers = Vec::new();
+    for basename in R3_LENS_BEHAVIORAL_PARITY_SCOPE {
+        let Some(label) = labels.get(*basename) else {
+            panic!(
+                "R3 gate #83: `lens_capability_register_rows` must include `{basename}` — add the row \
+                 in `src/v3/std/verification.dag` in the same PR as the capability-table entry."
+            );
+        };
+        if label == "LensCapabilityBehavioralStub" {
+            blockers.push(format!("{basename}: {label}"));
+        }
+    }
+    assert!(
+        blockers.is_empty(),
+        "R3 gate #83 — `std.verification` `lens_capability_register_rows` behavioral-axis ratchet \
+         (field `behavioral: LensCapabilityBehavioralStatus`): the four T-Lens-Behavioral-Parity \
+         basenames must not carry `LensCapabilityBehavioralStub`. Pairs with the markdown PROXY/STUB \
+         string ratchet (`r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub` on \
+         `docs/v3-lens-capability-register.md`). Remaining STUB blocker(s): {blockers:?}."
+    );
+}
+
+#[test]
 fn lens_capability_register_rows_match_md_v2_cementing_projection() {
     let dag = Dag::new();
     assert!(
