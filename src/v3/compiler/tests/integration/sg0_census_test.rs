@@ -731,6 +731,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // §1.8 gate #88 (`lens_application_carrier_landed`): bootstrap field / arity locks for
+    // `EnforcedApplication` + `IntrospectApplication` in `src/v3/std/lens_application.dag`.
+    "src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs",
     // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
     // R1C-D/E runner receipts (co-located harness).
     //
