@@ -74,8 +74,7 @@ fn compile_fixture(src: &str, file: &str) -> v3_compiler::dag::Dag {
 #[test]
 fn symbolic_cost_expr_equals_well_shaped_claim_passes_and_never_returns_not_yet_implemented() {
     let dag = compile_fixture(WELL_SHAPED_FIXTURE, "ratchet_well_shaped.dag");
-    let results = TestRunner::new(&dag)
-        .run_suite("symbolic_cost_expr_equals_executable_ratchet_well_shaped_suite");
+    let results = TestRunner::new(&dag).run_suite("well_shaped_suite");
     assert_eq!(results.len(), 1, "exactly one claim in the ratchet suite");
     let result = &results[0].result;
     match result {
