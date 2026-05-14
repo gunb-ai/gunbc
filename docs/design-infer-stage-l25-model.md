@@ -93,17 +93,29 @@ Two extension paths apply equally to PB-5 infer (same as PB-4 lower per PR #3077
 
 Per PR #3077 §12 Q7 director-recommend: **(b) lane-local sum + mapping** per Q6.5 anti-bridge preservation. Operator/PM ratification needed; same decision applies to all 4 pipeline stages (Parse/Lower/Infer/Emit).
 
-InferDiagnostic variant shape (Step 2 brief authors against full set):
+InferDiagnostic variant shape (Step 2 brief authors against full set).
+
+**Typed-carrier discipline** (per openai-pro PR #3077 BLOCKING + INVARIANTS P2/P3): diagnostic boundaries carry typed facts, NOT String. Closed-axis variants (TypeConnective / AlgebraAxis / etc.) must be typed-referenced. Human display details may be String but classification fields must be typed.
 
 ```
+// Typed reference carriers (same discipline as PB-4 lower's
+// SurfaceFormRef/IdentifierRef per PR #3077 commit 9feecacec):
+type IdentifierRef
+  = SurfaceVarRef { name: NonEmptyStr, span: SourceSpan }
+  // Future: TypePathRef, ModulePathRef per Step 2 brief
+
+type AlgebraAxisRef
+  = AlgebraAxis(NonEmptyStr)  // closed-axis on algebra names per algebra.dag
+  // Specific axes will enumerate as TypeConnective evolves
+
 type InferDiagnostic
-  = UnresolvedIdentifier { identifier: String, scope: SectionRef }
+  = UnresolvedIdentifier { identifier: IdentifierRef, scope: SectionRef }
   | NotCallable { type_connective: TypeConnective }
   | ArgumentArityMismatch { expected: Nat, actual: Nat }
   | TypeMismatch { expected: TypeShape, actual: TypeShape }
-  | AlgebraInhabitanceFail { connective: TypeConnective, axis: String }
-  | PostSweepUninferred { port_id: PortId, fallback_reason: String }   // per §12 Q3
-  | (additional variants per Step 2 worker brief authoring against infer.rs)
+  | AlgebraInhabitanceFail { connective: TypeConnective, axis: AlgebraAxisRef }
+  | PostSweepUninferred { port_id: PortId, fallback_reason: String }   // per §12 Q3; fallback_reason is human display detail
+  | (additional variants per Step 2 worker brief authoring against infer.rs; ALL classification fields are typed closed-axis carriers, not String)
 ```
 
 **Lane dependency**: PB-Substrate Decision 2.B extension path landing; Director-tier authoring for `InferDiagnostic` variant shape.
