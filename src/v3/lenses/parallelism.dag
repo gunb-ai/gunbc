@@ -290,6 +290,7 @@ fn loop_iteration_parallel_emission_indicator(d: Dag, workflow_root: NodeId) -> 
       }
   }
 
+// --- T-Lens-Application-Surface / gate #95 (§4.4) — iteration-opt-in parallelism
 //
 // DESIGN LOCK: docs/design-lens-application-surface.md §2 parallelism bundle + §4.4 — user
 // `apply_lens(parallelism, loop_node, Enforce { budget: OptInIndependent, … })` authorizes parallel

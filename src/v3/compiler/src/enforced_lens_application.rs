@@ -459,9 +459,9 @@ fn resolve_node_scope_section(
 }
 
 /// Returns `true` when an authored **`ParallelismMode::OptInIndependent`** budget violates the
-/// observed iteration-parallelism emission contract carried by
-/// `loop_iteration_parallel_emission_indicator` (`1` ⇒ independence witness under today's Lane‑2
-/// scaffold; `0` ⇒ sequential-only emission).
+/// observed iteration-parallelism emission contract from authored
+/// `parallelism_iteration_observed_mode` (Lane‑2 `loop_iteration_parallel_emission_indicator`:
+/// indicator `1` ⇒ `OptInIndependent`; otherwise `Sequential`).
 ///
 /// **Gate #95 interim surface** (see `docs/design-lens-application-surface.md` §4.4): pairs with
 /// [`check_enforced_lens_applications`] for full `EnforcedApplication`/`NodeScope` routing.
