@@ -16,9 +16,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use v3_compiler::dag::WorkflowEffect;
 use v3_compiler::dag::{
-    lower_call_pattern, positive_amount_from_i64, positive_descent_count, type_iteration_dimension,
-    CallPattern, CallableRef, HttpMethodScalar, InputField, Operation, PathTemplate,
-    RestEndpointBinding,
+    lower_call_pattern, positive_amount_from_i64, positive_descent_count, CallPattern, CallableRef,
+    HttpMethodScalar, InputField, Operation, PathTemplate, RestEndpointBinding,
 };
 use v3_compiler::lane2_workflow_idempotency_report;
 use v3_compiler::Dag;
@@ -32,17 +31,6 @@ fn bench_computation_mirror(c: &mut Criterion) {
     c.bench_function("tier3_computation_lower_same_argument_call", |bencher| {
         bencher.iter(|| {
             black_box(lower_call_pattern(black_box(CallPattern::SameArgumentCall)));
-        });
-    });
-}
-
-fn bench_induction_mirror(c: &mut Criterion) {
-    // Public projection on the induction mirror; unknown types fail closed.
-    c.bench_function("tier3_induction_type_iteration_dimension_miss", |bencher| {
-        bencher.iter(|| {
-            black_box(type_iteration_dimension(black_box(
-                "__tier3_bench_unknown__",
-            )));
         });
     });
 }
@@ -82,7 +70,6 @@ fn bench_effect_carrier_mirror(c: &mut Criterion) {
 criterion_group!(
     tier3_mirror_phase1,
     bench_computation_mirror,
-    bench_induction_mirror,
     bench_effect_carrier_mirror
 );
 criterion_main!(tier3_mirror_phase1);
