@@ -784,6 +784,62 @@ This is `feedback_ratchet_only_down` drift; sustained pattern, not 5-commit anom
 - PM cross-messages still-moth-538 / warm-wolf-698 with class-A/B/C discrimination per Director msg_0b8f9283 framing
 - Director-tier reinforce if any Mgr-tier escalation surfaces
 
+### §5.2 Brief-dispatch authority-gate discipline
+
+**Authority**: Phase 2.7 of Phase 2 corrective sweep per `docs/audit/r3-comprehensive-design-brief-implementation-audit-2026-05-14.md` §3 systemic-pattern findings + operator discipline 2026-05-14 ("no worker starts working without a design ready ... every test/file should clearly map to a design section that explains how/where it's going").
+
+**Origin**: PR #3061 audit doc §3 identified 4 sub-patterns of systemic failure that produced the 5 authority chain breaks (PB-0 framework bypass + R2-Evaluator authority dispersal + Gap 9 canvas-stall + Cluster F sequencing-stall + Cluster M class-level-only design):
+1. **Briefs lack mandatory design-authority citations** — worker briefs authored as task checklists without design-doc-tier authority embedded as preconditions
+2. **Mgr lane ownership not synchronized across design / brief / implementation layers**
+3. **Canvas ratification not synchronously gated with brief dispatch** — pre-authored briefs allowed against unratified canvases
+4. **Audit findings reactive, not pre-dispatch blocking** — audit docs catch the pattern AFTER work merges, not before dispatch
+
+§5.2 codifies the corrective: every worker / Mgr-tier brief dispatch MUST satisfy a 3-axis authority-gate check pre-dispatch.
+
+**§5.2.1 — Mandatory pre-dispatch citations**
+
+Every brief (Mgr-tier OR worker-tier) dispatched per any Phase / Mgr lane MUST include in its frontmatter or §0 a 3-axis citation block:
+
+1. **Design-doc authority cite** (NAMED design doc + section + named lane/step):
+   - Example for PB-X retirement work: *"design authority: `docs/design-pure-bootstrap-zero.md` (PB-6 emit lane) + `src/v3/SELF_HOSTING.md` §2.2 Step 1 L2.5 model review prereq"*
+   - Example for Gap 13 T-Ground sub-lane: *"design authority: `docs/r2-closure-ledger.md:108-122` (T-Ground sub-lane registration) + `docs/design-emission-model.md` §3 (no-engine discipline)"*
+   - Vague "see design docs" or "per `docs/`" does NOT satisfy. Cite the SPECIFIC section + named lane.
+
+2. **Mgr lane ownership confirmation** (NAMED Mgr session at time of dispatch):
+   - Example: *"owner Mgr: warm-wolf-698 (R3 Substrate Mgr expanded scope per α-ratification 2026-05-14)"*
+   - For new-Mgr-spawn cycles, the dispatch must reference the operator-ratified ownership decision (e.g., §4 Item N ratification)
+   - Cross-reference at least one of: `dashboard-ops graph <parent>` live state, prior ratification message ID, or close-plan §4 ratification
+
+3. **Canvas-ratification status** (for substrate-tier work — explicit ratification or N/A):
+   - Substrate-shape worker briefs MUST cite the ratified canvas authority (e.g., *"substrate ratified per Director msg_X 2026-05-Y; canvas at `docs/design-Z.md`"*) — NOT "canvas authoring in flight" or "Mgr canvas authoring pre-dispatch"
+   - Worker briefs MAY pre-author against draft canvases per `feedback_pre_authored_brief_queue` BUT MUST NOT dispatch until canvas-ratification cite is present
+   - For consumer-tier work (no new substrate; consuming existing types/lenses), cite "N/A — no new substrate authoring"
+
+**§5.2.2 — Reviewer-grep enforcement at PR-template tier**
+
+PR reviewers (codex / cursor / openai-pro / claude — typically the 4 dashboard-tier reviewers) check PR body / brief frontmatter for the 3-axis citation block. Missing or vague citations = `REQUEST_CHANGES` (substantive). PR-template-grep is the structural enforcement at review-time, analogous to §5.1's ratchet-direction enforcement.
+
+**§5.2.3 — Director-tier sanction for missing citation**
+
+If a brief dispatches without the 3-axis citation block AND a reviewer flags it, Director-tier sanction = pause-dispatch + require brief amendment + re-dispatch with citations. This is NOT a build-break (briefs are coordination artifacts not code); the sanction shape is dispatch-pause + visibility-surface to operator if the pattern repeats.
+
+**§5.2.4 — Exemplar substrate**
+
+`docs/audit/r3-phase2-corrective-sweep-dispatch-plan-2026-05-14.md` is the exemplar artifact applying this discipline to the Phase 2 corrective sweep itself. Every Phase 2.0-2.8 task in §1 task table has the 3-axis citation block; §8 dispatches reference the task IDs; §9 design-coverage gap audit surfaces per-entry coverage status that the brief-dispatch authority-gate would catch.
+
+By applying the discipline to the corrective sweep itself, the dispatch plan validates the discipline shape BEFORE codifying it as a permanent §5 process discipline addition.
+
+**§5.2.5 — Foreclosure clause** (analogous to §5.1)
+
+§5.2 does NOT impose a hard "all briefs must have all citations perfect" rule. Briefs can be DRAFTED without all 3 axes (per `feedback_pre_authored_brief_queue` queue discipline); the gate fires at DISPATCH time, not authoring time. Draft briefs sitting in queue may be incomplete; the §5.2 discipline applies when the brief is dispatched as a directive.
+
+**§5.2.6 — Cross-Mgr coordination handoff**
+
+Same coordination shape as §5.1:
+- zesty-boar-261 R3 Debt-Paydown Mgr surfaces dispatch-discipline violations from sibling Mgrs to PM
+- PM cross-messages owning Mgr with the 3-axis citation correction
+- Director-tier reinforce if Mgr-tier escalation surfaces
+
 ---
 
 ## §6. Pending Director + operator decisions
