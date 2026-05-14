@@ -15,6 +15,10 @@
 //! cost `1` before the folded literal target (`3`) is applied. Gate #52 keeps the cost-related
 //! `BinaryDimensionReportEquals` shape at the generic runner boundary and adds a host-side
 //! executable receipt that composes `Lens<SymbolicCost>` with `LanguageSpec` realization rows.
+//! **R3 §1.8 gate #38** (`coercion_cost_equals_complexity_by_construction`, T-CostLens-Composition)
+//! reuses that structural derivation and additionally pins that `complexity_of(..).work` matches
+//! `symbolic_cost_of` on the same port — coercion-shaped cost folds into the same `SymbolicCost`
+//! carrier as complexity, not a parallel substrate dimension.
 
 use std::sync::OnceLock;
 
@@ -25,6 +29,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::realization_cost::{RealizationCostKey, RealizationCostTable};
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
@@ -132,81 +137,114 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
     }
 }
 
-#[test]
-fn cross_target_optimization_cost_structurally_derived_receipt() {
-    run_on_larger_stack(|| {
-        let boot = generated_full_bootstrap_dag();
-        let rust_language = named_id(&boot, "rust_language");
-        let int_decl = named_id(&boot, "Int");
-        let table = RealizationCostTable::for_language(&boot, rust_language)
-            .expect("Rust LanguageSpec realization-cost table should build");
+/// Host-side structural receipt shared by **gate #52** (`cross_target_optimization_cost_structurally_derived`)
+/// and **gate #38** (`coercion_cost_equals_complexity_by_construction`).
+///
+/// Returns the compiled user program so callers can assert additional T-CostLens-Composition
+/// invariants on the same certification-shaped fixture.
+fn cross_target_structural_cost_derivation_fixture() -> Dag {
+    let boot = generated_full_bootstrap_dag();
+    let rust_language = named_id(&boot, "rust_language");
+    let int_decl = named_id(&boot, "Int");
+    let table = RealizationCostTable::for_language(&boot, rust_language)
+        .expect("Rust LanguageSpec realization-cost table should build");
 
-        let user = compile_to_dag(
-            "\
+    let user = compile_to_dag(
+        "\
 fn countdown(n: Int) -> Int =
   if n == 0 then 0 else countdown(n - 1) + 1
 
 let demo: Int = countdown(3) + 1
 ",
-            GATE_52_PROGRAM_FILE,
-        )
-        .expect("gate #52 representative program compiles");
-        let emitted = emit_rust(&user).expect("gate #52 representative program emits to Rust");
-        assert!(
-            emitted.contains("fn countdown")
-                && emitted.contains("(countdown(&(((*(p0)) - 1))) + 1)")
-                && emitted.contains("let demo: i64 = (countdown(&(3)) + 1);"),
-            "gate #52 must exercise the emitted target program, got:\n{emitted}"
-        );
+        GATE_52_PROGRAM_FILE,
+    )
+    .expect("gate #52 representative program compiles");
+    let emitted = emit_rust(&user).expect("gate #52 representative program emits to Rust");
+    assert!(
+        emitted.contains("fn countdown")
+            && emitted.contains("(countdown(&(((*(p0)) - 1))) + 1)")
+            && emitted.contains("let demo: i64 = (countdown(&(3)) + 1);"),
+        "gate #52 must exercise the emitted target program, got:\n{emitted}"
+    );
 
-        let countdown = find_bind_value(&user, "countdown");
-        let algebra_cost = match symbolic_cost_of(&user, &countdown) {
-            SymbolicCostLookup::Hit(cost) => cost,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
-        };
+    let countdown = find_bind_value(&user, "countdown");
+    let algebra_cost = match symbolic_cost_of(&user, &countdown) {
+        SymbolicCostLookup::Hit(cost) => cost,
+        SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
+    };
 
-        let realized_rows = realized_primitive_rows_from_program(&boot, &user, int_decl);
-        assert_eq!(
-            realized_rows
-                .iter()
-                .map(|row| (row.name, row.op))
-                .collect::<Vec<_>>(),
-            expected_gate_52_realization_rows(&boot, int_decl)
-                .iter()
-                .map(|row| (row.name, row.op))
-                .collect::<Vec<_>>(),
-            "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive row identities from the program DAG"
-        );
-        let realized_costs = realized_rows
+    let realized_rows = realized_primitive_rows_from_program(&boot, &user, int_decl);
+    assert_eq!(
+        realized_rows
             .iter()
-            .map(|row| realization_cost(&table, int_decl, row.op))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            realized_costs,
-            vec![1, 1, 1, 1, 1],
-            "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive costs from Rust LanguageSpec rows"
-        );
+            .map(|row| (row.name, row.op))
+            .collect::<Vec<_>>(),
+        expected_gate_52_realization_rows(&boot, int_decl)
+            .iter()
+            .map(|row| (row.name, row.op))
+            .collect::<Vec<_>>(),
+        "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive row identities from the program DAG"
+    );
+    let realized_costs = realized_rows
+        .iter()
+        .map(|row| realization_cost(&table, int_decl, row.op))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        realized_costs,
+        vec![1, 1, 1, 1, 1],
+        "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive costs from Rust LanguageSpec rows"
+    );
 
-        let observed_target_cost = compose_observed_structural_cost(
-            algebra_cost.clone(),
-            &table,
-            int_decl,
-            &realized_rows,
-        );
-        let expected_structural_cost = compose_expected_structural_cost(
-            algebra_cost,
-            &table,
-            int_decl,
-            expected_gate_52_realization_rows(&boot, int_decl),
-        );
+    let observed_target_cost = compose_observed_structural_cost(
+        algebra_cost.clone(),
+        &table,
+        int_decl,
+        &realized_rows,
+    );
+    let expected_structural_cost = compose_expected_structural_cost(
+        algebra_cost,
+        &table,
+        int_decl,
+        expected_gate_52_realization_rows(&boot, int_decl),
+    );
 
+    assert_eq!(
+        observed_target_cost, expected_structural_cost,
+        "gate #52 target-cost reading must equal Lens<SymbolicCost> composed with LanguageSpec realization costs"
+    );
+    assert!(
+        mentions_linear(&observed_target_cost),
+        "gate #52 receipt should preserve the recursive program's structural linear bound, got {observed_target_cost:?}"
+    );
+    user
+}
+
+#[test]
+fn cross_target_optimization_cost_structurally_derived_receipt() {
+    run_on_larger_stack(|| {
+        let _user = cross_target_structural_cost_derivation_fixture();
+    });
+}
+
+/// R3 §1.8 gate #38 — T-CostLens-Composition: structural target-cost composition uses the same
+/// `SymbolicCost` semiring as the complexity lens (`ComplexitySummary.work`), verified on the same
+/// certification-shaped fixture as gate #52.
+#[test]
+fn coercion_cost_equals_complexity_by_construction() {
+    run_on_larger_stack(|| {
+        let user = cross_target_structural_cost_derivation_fixture();
+        let demo_port = find_bind_value(&user, "demo");
+        let via_cost = match symbolic_cost_of(&user, &demo_port) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `demo`"),
+        };
+        let via_complexity = match complexity_of(&user, &demo_port) {
+            ComplexityLookup::Hit(summary) => summary,
+            ComplexityLookup::Miss => panic!("complexity_of Miss for `demo`"),
+        };
         assert_eq!(
-            observed_target_cost, expected_structural_cost,
-            "gate #52 target-cost reading must equal Lens<SymbolicCost> composed with LanguageSpec realization costs"
-        );
-        assert!(
-            mentions_linear(&observed_target_cost),
-            "gate #52 receipt should preserve the recursive program's structural linear bound, got {observed_target_cost:?}"
+            via_complexity.work, via_cost,
+            "gate #38: complexity lens `work` must agree with symbolic cost on the same port (single SymbolicCost authority)"
         );
     });
 }
