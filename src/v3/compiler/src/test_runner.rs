@@ -5029,9 +5029,22 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, FieldValue::List(generated_paths)] = payload else {
+        // R3 Cluster M substrate-shape-only migration (brief
+        // r3-cluster-m-generator-manifest-substrate-refinement-worker.md
+        // §2.1 + msg_3b99a90f sum-variant re-amendment): payload carries
+        // `manifest_entries: List<GeneratedManifestEntry>` where each entry
+        // is one of the typed-state sum variants `PendingFact { output_path }`
+        // or `ResolvedFact { output_path, dag_source, source_hash }`. This PR
+        // reads only `output_path` (always present on either arm) for the
+        // existing one-direction set-membership + outside-paths hand-count
+        // semantics. The 3-way byte-equality assertion that consumes
+        // `dag_source` + `source_hash` from `ResolvedFact` arms lands in the
+        // follow-up Evaluator-Mgr-owned runtime PR; this PR accepts both arms
+        // structurally without firing on the resolution data.
+        let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
-                "GeneratedFromDag payload should be (DeclarationRef, List<Path>)".to_string(),
+                "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
+                    .to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
@@ -5039,19 +5052,55 @@ impl<'a> TestRunner<'a> {
         }
         let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
         let mut named_paths = Vec::new();
-        for value in generated_paths {
-            match value {
-                FieldValue::Literal(LiteralBits::String(path)) => named_paths.push(path.as_str()),
-                other => {
+        for entry in manifest_entries {
+            let Some((label, variant_payload)) = self.variant_value(entry) else {
+                return ClaimResult::Fail(format!(
+                    "GeneratedFromDag manifest_entries must contain only GeneratedManifestEntry variants (PendingFact | ResolvedFact), got {entry:?}"
+                ));
+            };
+            if label != "PendingFact" && label != "ResolvedFact" {
+                return ClaimResult::Fail(format!(
+                    "GeneratedFromDag manifest_entries variant `{label}` is not a GeneratedManifestEntry arm (expected PendingFact | ResolvedFact)"
+                ));
+            }
+            // The v3 lowerer hands variant payloads back in three shapes depending
+            // on field arity / construction style:
+            //  - single-field record variants (e.g., `PendingFact { output_path }`)
+            //    inline the field-value as `payload = [<bare-literal>]`;
+            //  - multi-field record variants (e.g., `ResolvedFact { output_path,
+            //    dag_source, source_hash }`) lower positionally as
+            //    `payload = [<output_path>, <dag_source>, <source_hash>]`;
+            //  - some construction paths wrap the fields in a single
+            //    `[Record([(name, value), ...])]` slot.
+            // For both arms of `GeneratedManifestEntry` the declared field order
+            // begins with `output_path`, so the first payload slot carries the
+            // path literal in every supported lowering shape. We accept all three
+            // by inspecting the first slot and, if it is a record, looking up
+            // `output_path` by field name.
+            let output_path = variant_payload.first().and_then(|head| match head {
+                FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
+                _ => record_fields(head).and_then(|fields| {
+                    field(fields, "output_path").and_then(|v| match v {
+                        FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
+                        _ => None,
+                    })
+                }),
+            });
+            match output_path {
+                Some(path) => named_paths.push(path),
+                None => {
                     return ClaimResult::Fail(format!(
-                        "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
-                    ))
+                        "GeneratedFromDag GeneratedManifestEntry `{label}` payload missing String `output_path` slot: {variant_payload:?}"
+                    ));
                 }
             }
         }
-        if let Some(path) = named_paths.iter().find(|path| !generated.contains(**path)) {
+        if let Some(path) = named_paths
+            .iter()
+            .find(|path| !generated.contains(path.as_str()))
+        {
             return ClaimResult::Fail(format!(
-                "GeneratedFromDag path `{path}` is not in the generated-file authority"
+                "GeneratedFromDag manifest_entries output_path `{path}` is not in the generated-file authority"
             ));
         }
         let test_count = match sg0_census_list_count("expected_hand_authored_test") {
@@ -5062,7 +5111,7 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside generated paths"
+                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside manifest_entries output_paths"
             ))
         }
     }
