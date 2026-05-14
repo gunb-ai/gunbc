@@ -2,8 +2,8 @@
 //!
 //! R3 §1.8 gate **#95** (`opt_in_iteration_parallelism_via_lens_application_demonstrated`):
 //! opt-in iteration parallelism surfaced through `parallelism_enforceable` /
-//! `v3_compiler::parallelism_iteration_opt_in_enforcement_violates(&dag, indicator)` (`Result`, unwrap in harness)
-//! together with Lane-2
+//! `parallelism_iteration_opt_in_enforcement_violates(&dag, indicator)` returns `Result<bool, LensApplyError>`
+//! (integration harness uses `.expect` after `compile_to_dag` staging). Together with Lane-2
 //! `v3_compiler::loop_iteration_parallel_emission_indicator` (same contract as second-batch
 //! auto-loop receipts).
 //!
