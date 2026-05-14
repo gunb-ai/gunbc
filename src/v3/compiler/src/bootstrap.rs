@@ -67,15 +67,15 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 //
-// **PB-1-e split — what stays here:** `patch_kernel_bool_boolean_algebra_inhabits`,
-// `materialize_pipeline_realizations`, and `report_pipeline_authority_error` remain
+// **PB-1-e split — what stays here:** `materialize_pipeline_realizations`, and
+// `report_pipeline_authority_error` remain
 // in this file because the `#[cfg(test)]` module below exercises them on
 // `Dag::new()` snapshots. The regen-only fresh tokenize/parse/lower loop lives in
 // `bootstrap_regen_fresh.rs` (feature `bootstrap-regen-fresh`); do not duplicate
 // pipeline materialization there without relocating or rewriting these unit tests.
 
-use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::dag::{ArrowBody, Dag, TemplateArgument, TypeConnective};
+use crate::diagnostics::{BootstrapAuthorityKey, Correction, Diagnostic, SourceSpan};
 use crate::pipeline_authority::ordered_pipeline_stages;
 
 // Used by `materialize_pipeline_realizations` (regen + unit tests below). When
@@ -106,121 +106,6 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "dsl/extdeps/github/actions.dag",
     "dsl/extdeps/github/ci.dag",
 ];
-
-/// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
-///
-/// `dsl/std/types.dag` must stay free of `type … inhabits … =` until the
-/// bootstrap/gist fixture closure accepts surface `inhabits` on kernel sum
-/// types (see `dsl/std/types.dag` header; `compile_to_dag` over the transitive
-/// `dsl/` import hull is the structural receipt). After the std
-/// fixtures lower, wire `Bool` to `BooleanAlgebra<Bool>` the same way surface
-/// `inhabits` lowering would, without shadowing `Bool` (which would reallocate
-/// sum variants and break `src/v3/std/algebra.dag` pattern wiring).
-///
-/// Preconditions are checked: any failure attaches a bootstrap
-/// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
-/// fails closed instead of silently omitting `inhabits`.
-///
-/// **Dissolution:** remove this patch once substrate `inhabits` on sum types
-/// is first-class in `dsl/` (then express
-/// `type Bool inhabits BooleanAlgebra<Bool> = True | False`
-/// in `dsl/std/types.dag` and delete this helper).
-#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
-pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
-    // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
-    // The path-string `dsl/std/types.dag` is encapsulated behind
-    // `BootstrapAuthorityKey::for_kernel_bool()` and is no longer named
-    // in this file outside doc-comments. The participation gate is
-    // retained — `declaration_by_name` still rank-biases on `span.file`
-    // (audit row #14, separate owner) so a bare lookup could surface a
-    // non-kernel duplicate; we walk the declarations directly and gate
-    // by the authority's `path()` egress so the witness, not a free
-    // constant, is the structural source. Full dissolution (delete the
-    // gate; rely on a structural kernel-`Bool` `DeclarationId` accessor)
-    // lands when row #14 retires.
-    let bool_authority = crate::diagnostics::BootstrapAuthorityKey::for_kernel_bool();
-    let Some(bool_decl) = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path())
-    else {
-        let authority_span = SourceSpan::new(bool_authority.path(), 0, 0);
-        dag.attach_bootstrap_diagnostic(
-            bool_authority,
-            Diagnostic::ResolveError {
-                name: "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in bootstrap Dag; \
-                     cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
-                    .to_string(),
-                span: authority_span,
-                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                    "BootstrapDiagnostic",
-                ),
-            },
-        );
-        return;
-    };
-    let bool_id = bool_decl.id;
-    let span_for_inst = bool_decl.span.clone();
-    if dag.declaration(bool_id).inhabits.is_some() {
-        return;
-    }
-    let (ba_template, param_id) = {
-        let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
-            dag.attach_bootstrap_diagnostic(
-                bool_authority,
-                Diagnostic::ResolveError {
-                    name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
-                           bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
-                        .to_string(),
-                    span: span_for_inst.clone(),
-                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "BootstrapDiagnostic",
-                    ),
-                },
-            );
-            return;
-        };
-        let Some(&param_id) = ba.type_params.first() else {
-            dag.attach_bootstrap_diagnostic(
-                bool_authority,
-                Diagnostic::ResolveError {
-                    name:
-                        "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
-                           cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
-                            .to_string(),
-                    span: span_for_inst.clone(),
-                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-                        "BootstrapDiagnostic",
-                    ),
-                },
-            );
-            return;
-        };
-        (ba.id, param_id)
-    };
-    let inst_id = dag.alloc_declaration_id();
-    dag.push_declaration(Declaration {
-        id: inst_id,
-        name: None,
-        connective: TypeConnective::Instantiation {
-            template: ba_template,
-            arguments: vec![TemplateArgument {
-                parameter: param_id,
-                value: bool_id,
-            }],
-        },
-        type_params: Vec::new(),
-        phantom_params: Vec::new(),
-        meta_tag: None,
-        specialization_parent: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        nominal_opacity: None,
-        span: span_for_inst,
-    });
-    dag.declaration_mut(bool_id).inhabits = Some(inst_id);
-}
 
 // DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
 // deliberately NOT materialized at bootstrap. Their Arrow bodies stay
@@ -333,6 +218,76 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String, span: SourceSpan
             ),
         },
     );
+}
+
+/// Fail-closed witness for Lane 1e-2b: authoritative kernel `Bool` in
+/// [`BootstrapAuthorityKey::for_kernel_bool`] must exist and carry
+/// `Declaration.inhabits` for `BooleanAlgebra<Bool>`.
+///
+/// Lowering wires this on the `dsl/std/types.dag` `TypeSum` path
+/// ([`crate::lower::wire_kernel_bool_boolean_algebra_inhabits`]); this
+/// finalization check restores the bootstrap-wide guarantee previously carried
+/// by the post-parse patch sweep so regressions still surface through
+/// [`Dag::attach_bootstrap_diagnostic`] (INVARIANTS P3) if that branch is ever
+/// skipped or the snapshot drifts.
+pub(crate) fn ensure_kernel_bool_lane1e2b_bootstrap_witness(dag: &mut Dag) {
+    let key = BootstrapAuthorityKey::for_kernel_bool();
+    let bool_id = match dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == key.path())
+    {
+        Some(d) => d.id,
+        None => {
+            dag.attach_bootstrap_diagnostic(
+                key.clone(),
+                Diagnostic::ResolveError {
+                    name: "bootstrap: Lane 1e-2b Path A — kernel `Bool` missing from bootstrap Dag \
+                           (`dsl/std/types.dag` authority); cannot establish `BooleanAlgebra<Bool>` \
+                           inhabitance"
+                        .to_string(),
+                    span: SourceSpan::new(key.path(), 0, 0),
+                    correction: Correction::deferred_for_diagnostic_class("BootstrapDiagnostic"),
+                },
+            );
+            return;
+        }
+    };
+
+    if dag.declaration(bool_id).inhabits.is_none() {
+        crate::lower::wire_kernel_bool_boolean_algebra_inhabits(dag, bool_id);
+    }
+    let Some(inh_id) = dag.declaration(bool_id).inhabits else {
+        return;
+    };
+
+    let inh_decl = dag.declaration(inh_id);
+    let ok = match &inh_decl.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            dag.declaration(*template).name.as_deref() == Some("BooleanAlgebra")
+                && matches!(
+                    arguments.as_slice(),
+                    [TemplateArgument { value, .. }] if *value == bool_id
+                )
+        }
+        _ => false,
+    };
+    if !ok {
+        let span = dag.declaration(bool_id).span.clone();
+        dag.attach_bootstrap_diagnostic(
+            key,
+            Diagnostic::ResolveError {
+                name: "bootstrap: Lane 1e-2b Path A — kernel `Bool` `inhabits` is not a \
+                       `BooleanAlgebra<Bool>` instantiation"
+                    .to_string(),
+                span,
+                correction: Correction::deferred_for_diagnostic_class("BootstrapDiagnostic"),
+            },
+        );
+    }
 }
 
 #[cfg(test)]
@@ -559,7 +514,7 @@ mod tests {
             .id;
         dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
 
-        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
+        crate::lower::wire_kernel_bool_boolean_algebra_inhabits(&mut dag, bool_id);
 
         assert!(
             dag.declaration(bool_id).inhabits.is_none(),
@@ -598,7 +553,7 @@ mod tests {
             .id;
         dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
 
-        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
+        crate::lower::wire_kernel_bool_boolean_algebra_inhabits(&mut dag, bool_id);
 
         let expected_key = BootstrapAuthorityKey::for_kernel_bool();
         let mut bootstrap_attributed = 0usize;
