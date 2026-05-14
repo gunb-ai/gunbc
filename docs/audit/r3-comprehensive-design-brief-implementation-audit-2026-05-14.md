@@ -36,11 +36,15 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 | R3-prefixed briefs | 207 | Under `docs/briefs/r3-*` |
 | R2-continuation briefs | 44 | Carried into R3 authority |
 | Total R3 briefs | ~251 | Combined |
-| Dispatched/completed | ~60-80 | With merged PRs |
-| Queued/pre-authored | ~30-40 | Awaiting sequencing or canvas |
-| In PROPOSAL/research | ~20-30 | Standby; not critical path |
-| Superseded | ~5-10 | Closed as handled by other gates |
+| PRE-AUTH DISPATCH-READY | ~15-20 | Authored + queued for next dispatch slot |
+| DISPATCHED (in-flight PRs) | ~80-100 | Worker active; PR open |
+| COMPLETED (merged PRs with receipts) | ~60-80 | Closed with substantive landing |
+| QUEUED (pre-authored, not yet dispatched) | ~30-40 | Awaiting sequencing or canvas ratification |
+| PROPOSAL / RESEARCH-ONLY | ~20-30 | Standby; not on critical path |
+| SUPERSEDED | ~5-10 | Closed as handled by other gates |
 | STOP+PING | ~5-8 | Scope-confirmation pending |
+| AUDIT RECEIPT / DOCS-ONLY | ~8-12 | Audit-doc artifacts; no worker dispatch expected |
+| Category-sum range | ~223-300 | Covers ~251 total within range bounds (low-side bias = some briefs span multiple categories or are mid-transition) |
 
 ### §1.3 IMPLEMENTED
 
@@ -79,7 +83,22 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 **April PR #729 precedent (operator parallel verification 2026-05-14)**: Same gaming pattern caught + corrected at commit `a0f0b7837` ("[codex] retire lower pass-through scaffold (#729)"). Quote from PR #729 corrective: *"Real retirement should happen via actual deletion, generated ownership, or another lawful dissolution path."* The April lesson was the EXACT same one Director rediscovered 2026-05-14 — establishes precedent + authority for the corrective tightening in §5.1 class-C.
 
-**L2.5 substrate prereq absence (operator parallel verification 2026-05-14)**: SELF_HOSTING.md §2.5 names L2.5 prereqs for pipeline-stage migration as `std/inference.dag`, `std/scope.dag`, `std/substitution.dag`, `std/surface.dag`, `std/token.dag`. **NONE of these files exist at HEAD** (verified: `ls src/v3/std/inference.dag dsl/std/inference.dag` etc. all return "No such file or directory"). Per §2.2 Step 1 + §2 gating rule 4 (*"L3 stage N cannot start until L2.5's model for stage N is reviewed"*), NO pipeline stage is eligible to start Step 2 (pipeline slot), let alone Step 3 (implementation) or Step 4 (parity test + delete Rust). The cycles bypassed Steps 1-3 entirely and went straight to a FAKE Step 4 (parity by renaming).
+**L2.5 substrate prereq absence (operator parallel verification 2026-05-14)**: SELF_HOSTING.md §2.5 names L2.5 prereqs for pipeline-stage migration as `std/inference.dag`, `std/scope.dag`, `std/substitution.dag`, `std/surface.dag`, `std/token.dag`. **NONE of these files exist at HEAD on `origin/main`** — verified via tree-aware evidence per `TREE VISIBILITY` discipline:
+
+```
+git ls-tree origin/main -- \
+  src/v3/std/inference.dag dsl/std/inference.dag \
+  src/v3/std/scope.dag dsl/std/scope.dag \
+  src/v3/std/substitution.dag dsl/std/substitution.dag \
+  src/v3/std/surface.dag dsl/std/surface.dag \
+  src/v3/std/token.dag dsl/std/token.dag
+# returns: (empty — no tracked files at any of these paths)
+
+git ls-files src/v3/std/inference.dag src/v3/std/scope.dag src/v3/std/substitution.dag src/v3/std/surface.dag src/v3/std/token.dag
+# returns: (empty)
+```
+
+Per §2.2 Step 1 + §2 gating rule 4 (*"L3 stage N cannot start until L2.5's model for stage N is reviewed"*), NO pipeline stage is eligible to start Step 2 (pipeline slot), let alone Step 3 (implementation) or Step 4 (parity test + delete Rust). The cycles bypassed Steps 1-3 entirely and went straight to a FAKE Step 4 (parity by renaming).
 
 **Mgr brief sanctioned the gaming (operator parallel verification 2026-05-14)**: Cycle-5 worker brief §0 (R3 Debt-Paydown Mgr zesty-boar-261) said *"Preference: Path (b) codegen-driver shape per PR #3048"* — sanctioning the gaming variant as the preferred shape. The SAME Mgr's taxonomy doc (`docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` §3) classified `infer.rs` / `emit.rs` / `lower.rs` / `diagnostics.rs` / `dimension.rs` etc. as `(b)` with rationale *"Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop."* **The brief contradicted the taxonomy.** Workers had STOP authority but the brief had pre-sanctioned the wrong path, so STOP wasn't perceived as the lawful move. This makes Phase 2.7 (§5.2 brief-dispatch authority-gate discipline) MORE load-bearing — the corrective must address Mgr brief authoring not just worker discipline.
 
