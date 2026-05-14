@@ -31,11 +31,47 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
 
 **What's missing**: the 177+ hand-Rust survivors are not migrated to `.dag` substrate or eliminated. The ratchet shape is "no NEW additions"; the close criterion is "ratchet list = empty."
 
-**Plan to cash**:
-- **Owner**: warm-wolf-698 (R3 Substrate Mgr) for substrate work + zesty-boar-261 (R3 Debt-Paydown Mgr) for retirement campaign
-- **Sub-program**: enumerate each entry's retirement path — (a) migrate to `.dag` carrier + walker, (b) eliminate via Practice-4 dissolution into existing substrate, (c) explicit R4-deferral with operator-recorded acceptance
-- **Effort estimate**: ~3-6 months at current velocity (per memory `feedback_pre_authored_brief_queue` cadence)
-- **Discipline**: every retirement PR ratchets list size DOWN by ≥1; never add to list; PR-template asserts ratchet direction
+**Plan to cash** (revised Phase 2.1 per operator wrong-framework finding 2026-05-14 + Director ratification msg_e66f4326 + α-ratification expanded warm-wolf-698 scope 2026-05-14):
+
+- **Owner**: warm-wolf-698 (R3 Substrate Mgr, expanded scope absorbs all 8 PB-X lanes as sub-programs per operator §4 Item 5 α-ratification 2026-05-14) for substrate + per-stage L2.5 model + 4-step migration work; zesty-boar-261 (R3 Debt-Paydown Mgr) for non-pipeline-stage census-line discipline + ratchet-direction enforcement
+- **Routing authority** — primary: `docs/design-pure-bootstrap-zero.md` (LIVE since 2026-04-25 cascade PR #780) names the 8 load-bearing PB-X lanes:
+  - **PB-Substrate**: generate `dag.rs` / `dag/ports.rs` / `dag/effects.rs` from `src/v3/std/substrate.dag`
+  - **PB-1**: data-driven bootstrap loader emission
+  - **PB-3**: parse retire (generate `parse.rs` from L2.5 parse domain model)
+  - **PB-4**: lower retire (generate `lower.rs` from L2.5 lower domain model)
+  - **PB-5**: infer retire (generate `infer.rs` from L2.5 infer domain model)
+  - **PB-6**: emit retire (generate `emit.rs` + emit targets from L2.5 emit domain model + spec authorities `rust.dag` / `python.dag` / `go.dag`)
+  - **PB-Bootstrap-Process**: replace `bootstrap.rs` with generated trampoline from `bootstrap.dag` authority
+  - **PB-Runtime**: generate `test_runner.rs` / `lens_apply.rs` / `lens_testgen.rs` / `post_emit_verifier.rs` from `.dag` authorities
+  - **PB-Lib + PB-Build**: generate `lib.rs` (module declarations + crate exports) + `build.rs` (Cargo build script) as trampolines that `include!()` generated content
+- **Routing authority** — secondary: `src/v3/SELF_HOSTING.md` §2 names the **4-step per-stage migration discipline** for each pipeline-stage lane (PB-3 / PB-4 / PB-5 / PB-6):
+  1. **Model review** (§2.2 Step 1): declare the stage's L2.5 domain-model SET in `std/` and `extdeps/` — per-stage enumeration in §2.2 (parse domain / lower domain / infer domain / emit domain). Every type that crosses a stage boundary or is consumed by a lens goes in `std/`; walker-local state stays in stage body per `std/`-vs-implementation split.
+  2. **Pipeline slot** (§2.2 Step 2): add the stage's typed function signature to the pipeline composition; body starts as `ArrowBody::ExternalRealization` (Rust-backed scaffold).
+  3. **Implementation** (§2.2 Step 3): fill in the function body in `.dag`, bounded by the already-declared types.
+  4. **Parity test + delete Rust simultaneously** (§2.2 Step 4): `.dag` version produces byte-identical output to the Rust version for every fixture; delete the Rust file in the SAME PR (per April PR #729 precedent `a0f0b7837`: *"Real retirement should happen via actual deletion, generated ownership, or another lawful dissolution path"*).
+
+  Per §2 gating rule 4: *"L3 stage N cannot start until L2.5's model for stage N is reviewed."* No pipeline-stage worker dispatch fires until the stage's L2.5 model has landed + been reviewed.
+
+- **Migration order** per `src/v3/SELF_HOSTING.md` §2 + `docs/substrate-reflection-design.md` §12.6: **emit → lower → infer → parse** (bottom-up; later stages benefit from earlier stages being in `.dag`). Note the **PB-X-numbering-vs-migration-order distinction**: numerically PB-6 has the highest number among pipeline-stage lanes (PB-3 / PB-4 / PB-5 / PB-6), but per migration order it lands FIRST. Concretely:
+  - **PB-6 (emit retire)** ports first — Director (zesty-bear-812) authoring L2.5 emit model per msg_e66f4326 ("Director-tier-design-up-front discipline"); sandbox-blocked draft in flight
+  - **PB-4 (lower retire)** ports second
+  - **PB-5 (infer retire)** ports third
+  - **PB-3 (parse retire)** ports fourth
+
+- **Sub-program** — replaced (a)/(b)/(c) entry classification with per-PB-X-lane routing per design-doc-tier authority:
+  - **Pipeline-stage entries** (`emit.rs` / `emit/*.rs` / `emit_rust.rs` / `lower.rs` / `infer.rs` / `parse.rs` / adjacent): route through PB-3 / PB-4 / PB-5 / PB-6 lanes; each is multi-PR project per §2.2 4-step discipline. Cannot retire via file-by-file cycle dispatch (cycles 2/3/4/5/6 PRs #3046/#3047/#3048/#3057/#3056/#3058 demonstrated this anti-pattern; under revert/close directive).
+  - **DAG substrate entries** (`dag.rs` / `dag/builder.rs` / `dag/cardinality_payload.rs` / `dag/effects.rs` / `dag/ports.rs`): route through PB-Substrate lane.
+  - **Bootstrap-process entries** (`bootstrap.rs` / `bootstrap_regen_fresh.rs` / `bin/regen_*.rs` / `bin/gunbc_ci.rs` / `bin/r1c_e_emit_gates.rs` / `bin/self_host_fixed_point.rs` / `build.rs`): route through PB-Bootstrap-Process + PB-1 + PB-Lib+PB-Build lanes.
+  - **Runtime / lens-producer entries** (`test_runner.rs` / `lens_apply.rs` / `lens_testgen.rs` / `post_emit_verifier.rs`): route through PB-Runtime lane.
+  - **Adjacent infrastructure entries** (`cementing_dispatch.rs` / `diagnostics.rs` / `dimension.rs`): retire when their consuming pipeline-stage lane lands (e.g., `cementing_dispatch.rs` post-gate-#87 dissolution; `diagnostics.rs` per-stage boundary contracts).
+  - **Genuinely transient files** (cycle-cementing receipts that retire post-pipeline-stage-completion): file-by-file cycle dispatch shape is acceptable IF the file is verifiably transient + retires alongside the parent pipeline-stage lane.
+
+- **Effort estimate**: per-stage L2.5 model authoring ~1-2 weeks per stage (Director / warm-wolf-698 authority); per-stage 4-step migration ~4-8 weeks per stage (multi-PR project per `docs/substrate-reflection-design.md` §12.6). Total R3 close horizon for Gap 1: ~3-6 months at current velocity, with the per-stage L2.5 authoring + PB-Substrate lane being the rate-limiting prerequisite for worker dispatch.
+
+- **Discipline**: per close-plan §5.1 (tightened Phase 2.0 PR #3061 commit `d44502362`):
+  - Class-C hand-Rust additions require ALL of: (i) Director-tier ratification; (ii) INVARIANTS.md P5 single checkable receipt; (iii) for pipeline-stage entries, the stage's L2.5 domain-model SET landed-and-reviewed per SELF_HOSTING.md §2.2 Step 1
+  - Template-relocation paper-shrink FORECLOSED per April PR #729 precedent + 2026-05-14 cycle-4 + cycle-5 paper-shrink finding
+  - Three-tier review enforcement chain: worker-tier 4-axis substrate audit + PR-template-grep reviewer-tier + Director-tier sanction
 
 **Close criterion**:
 ```rust
