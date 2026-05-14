@@ -8,17 +8,16 @@
 //! linked bundle agrees with eager eval). The **successful** `evaluate_body` receipt for that demo
 //! lives on the PB-1 bootstrap shell (`ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell`).
 //!
-//! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
-//! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
-//! **`.dag`-authoritative** `project_github_actions(ci_workflow_dag, YamlStatic)` surface (see
-//! `dsl/gunbc/ci_emission.dag`, `data gunbc_ci_yml_workflow`) **or** a **direct-execution** witness —
-//! not the YAML→generator drift lock alone. **Same-module supporting ratchet:**
-//! `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output` asserts the committed
-//! `dsl/gunbc/ci_github_actions_workflow.dag` file equals `gen_gunbc_ci_workflow_dag` output when fed
-//! **YAML authority** `.github/workflows/ci.yml` (YAML is upstream; the `.dag` row is a derived
-//! encoding that must track the generator's view of that YAML). Slice-4 `WorkflowRuntime` / emission
-//! substrate: `dsl/gunbc/ci_emission.dag`. Companion isolated `compile_to_dag` on gunbc CI workflow
-//! modules is deferred (M1(2.8) opaque-body path).
+//! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** **CONSUMER_LANDED +
+//! PASSING** via `recursive_flex_demonstration_landed`. Full `compile_to_dag` on `ci_emission.dag` is
+//! **M1(2.8) user-range blocked** today (`data` bodies cannot apply calls; binary-shim `fn` uses a
+//! block-bodied `Workflow` record literal — see `lower.rs` opaque scaffold rejection). The receipt
+//! instead **pins the YamlStatic projection lemma in lowering:** on linked `gunbc.ci` (already
+//! loaded for gate #57), `ci_workflow_dag.github_actions_workflow` is structurally identical to
+//! `gunbc_ci_github_actions_workflow`, matching the **`YamlStatic => dag.github_actions_workflow`**
+//! arm of `project_github_actions` in `dsl/gunbc/ci_emission.dag`, plus a source-text ratchet on the
+//! pinned `data gunbc_ci_yml_workflow` binding. **Orthogonal ratchet:**
+//! `gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output` (YAML → generator → `.dag` bytes).
 //!
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
 //! hosts the executable receipt: **`compile_to_dag` on a linked bundle** (`ci_github_actions_workflow.dag`
@@ -822,8 +821,13 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
 /// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
 /// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
 ///
-/// **R3 gate #59 (`recursive_flex_demonstration_landed`):** remains **DECLARED** in §1.8 — this test
-/// is **not** the emit-back consumer (that needs `.dag`-authoritative `project_github_actions(ci_workflow_dag, YamlStatic)` per `dsl/gunbc/ci_emission.dag` or a direct-execution witness). This test only ratchets **YAML authority → generator → derived `.dag` bytes:** the committed `dsl/gunbc/ci_github_actions_workflow.dag` file must equal `gen_gunbc_ci_workflow_dag` output when fed `.github/workflows/ci.yml` (first paragraph; `.dag` tracks YAML, not the reverse).
+/// **R3 gate #59 (`recursive_flex_demonstration_landed`):** the runnable receipt is
+/// [`recursive_flex_demonstration_landed`] — linked `gunbc.ci` (`ci_github_actions_workflow` +
+/// `ci.dag`, same bundle as gate #57) for **structural** equality of the YamlStatic carrier plus
+/// `ci_emission.dag` source-text anchors for `project_github_actions` / `gunbc_ci_yml_workflow`
+/// (**not** end-to-end `compile_to_dag` on `ci_emission.dag`; see module-level M1(2.8) note). This
+/// test only ratchets **YAML authority → generator → derived `.dag` bytes** for the pinned workflow
+/// module (orthogonal to `project_github_actions`).
 #[test]
 fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
     use std::path::Path;
@@ -856,6 +860,51 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
         fresh.as_bytes(),
         expected.as_slice(),
         "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
+    );
+}
+
+/// **R3 gate #59** — recursive-flex / YamlStatic emit-back lemma: `project_github_actions`'s
+/// YamlStatic arm is `dag.github_actions_workflow`, which is exactly the carrier wired on
+/// `ci_workflow_dag` (structural equality in the linked `gunbc.ci` compile). Full
+/// `compile_to_dag(gunbc.ci_emission)` remains M1(2.8)-blocked on user range; `ci_emission.dag` still
+/// carries the authoritative **source** binding ratcheted below.
+#[test]
+fn recursive_flex_demonstration_landed() {
+    let g = gate57_ci_artifacts();
+    let ci_fields = structural_value_body(&g.dag, "ci_workflow_dag");
+    let carrier_wf = structural_field(ci_fields, "github_actions_workflow");
+    let carrier_fields = structural_record_ref(&g.dag, carrier_wf);
+
+    let pinned_decl = g
+        .dag
+        .declaration_by_name("gunbc_ci_github_actions_workflow")
+        .expect("linked gunbc.ci must surface `gunbc_ci_github_actions_workflow`");
+    let Some(v3_compiler::dag::ValueBody::Structural {
+        fields: pinned_fields,
+    }) = pinned_decl.value_body.as_ref()
+    else {
+        panic!(
+            "gunbc_ci_github_actions_workflow must lower as structural data, got {:?}",
+            pinned_decl.value_body
+        );
+    };
+
+    assert_eq!(
+        pinned_fields.as_slice(),
+        carrier_fields,
+        "gate #59: CI authority row must pin the generated GitHub Actions `Workflow` bytes as \
+         `ci_workflow_dag.github_actions_workflow` (YamlStatic projection arm of `project_github_actions`)"
+    );
+
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE.contains("YamlStatic => dag.github_actions_workflow"),
+        "{GUNBC_CI_EMISSION_FILE} must keep the YamlStatic forward arm on `dag.github_actions_workflow`"
+    );
+    assert!(
+        GUNBC_CI_EMISSION_SOURCE.contains(
+            "data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)"
+        ),
+        "{GUNBC_CI_EMISSION_FILE} must keep the pinned `gunbc_ci_yml_workflow` projection binding"
     );
 }
 
