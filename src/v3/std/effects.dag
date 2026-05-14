@@ -744,7 +744,8 @@ type ParallelismUnsupportedKind
   = NoWorkflowProjection
   | NotParallelEffectRoot
   | NonLinearParallelBranch
-  | PairwiseNonCommute
+  | PairwiseNonCommute { left: Operation, right: Operation }
+  | EffectClassificationUnavailable
   | LensSurfacePending
 
 type ParallelismUnsupportedDetail {
