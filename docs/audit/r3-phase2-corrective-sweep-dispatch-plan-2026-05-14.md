@@ -86,9 +86,9 @@ graph TD
   P26 -.evidence.-> P27
 
   %% Status coloring
-  classDef inreview fill:#fff3cd,stroke:#856404
+  classDef active fill:#fff3cd,stroke:#856404
   classDef queued fill:#d1ecf1,stroke:#0c5460
-  class P20 inreview
+  class P20 active
   class P21,P22,P23,P24,P25,P26,P27 queued
 ```
 
@@ -102,7 +102,7 @@ graph TD
 
 ## §4. Status legend
 
-- **IN REVIEW**: PR open, reviews + CI in flight
+- **ACTIVE**: task is currently in-flight; see referenced PR for live review + CI state
 - **QUEUED**: design authority cited, dependencies enumerated, awaiting upstream completion or dispatch
 - **DISPATCHED**: PR open, worker active
 - **MERGED**: substantive landing complete
@@ -130,7 +130,7 @@ This is the discipline §5.2 will codify. By applying it to Phase 2 itself, we v
 
 ## §7. Sequencing recommendation (per Director msg_e66f4326)
 
-1. **First (this PR, Phase 2.0)**: audit doc landing + §5.1 5th axis enforcement (IN REVIEW)
+1. **First (this PR, Phase 2.0)**: audit doc landing + §5.1 5th axis enforcement (**ACTIVE** — see PR #3061 for live review + CI state)
 2. **Second (Phase 2.1)**: close plan Gap 1 amendment
 3. **Third (Phase 2.4)**: Gap 3 R2-Evaluator amendment (parallel-eligible with 2.1)
 4. **Fourth (Phase 2.2)**: §1.8 PB-X reference rows
@@ -145,7 +145,7 @@ Director-tier ratify + admin-merge per operator broad-authorization on each PR o
 
 Each Phase 2 task maps to a concrete sequence of CLI commands. **Most tasks are PM-direct (deep-wolf-155 authors the PR)**; a few involve Mgr-coordination messages or Director-tier ratification asks. NO Phase 2 tasks spawn child agents via `dashboard-ops work-items create` — they're all PM-author + Director-ratify shape.
 
-### Phase 2.0 — Audit doc landing + §5.1 5th axis enforcement [IN REVIEW]
+### Phase 2.0 — Audit doc landing + §5.1 5th axis enforcement [ACTIVE — see PR #3061 for live review + CI state]
 
 Already actioned; commands logged for the record:
 
@@ -322,7 +322,7 @@ gh pr merge <PR_NUM> --squash --delete-branch
 
 Each `P2X` node in §2 Mermaid graph maps to the corresponding "Phase 2.X" command block above:
 
-- **P20** ↔ Phase 2.0 commands (IN REVIEW)
+- **P20** ↔ Phase 2.0 commands (ACTIVE — see PR #3061 for live review + CI state)
 - **P21** ↔ Phase 2.1 commands
 - **P22** ↔ Phase 2.2 commands
 - **P23** ↔ Phase 2.3 commands
