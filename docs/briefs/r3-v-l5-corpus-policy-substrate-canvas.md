@@ -13,7 +13,7 @@
 
 ## 2. What is missing (Corpus Policy → substrate gap)
 
-`design-cross-target-equivalence.md` §Corpus Policy requires every valid L5 row to carry **six** facts. Mapped against HEAD substrate (`src/v3/std/verification.dag` `TestClaim` + `TestPredicate::ForAllTargets` + `ProgramOutputBind`):
+`design-cross-target-equivalence.md` §Corpus Policy requires every valid L5 row to carry **seven** facts (L39–L45 bullets). Mapped against HEAD substrate (`src/v3/std/verification.dag` `TestClaim` + `TestPredicate::ForAllTargets` + `ProgramOutputBind`):
 
 | Corpus Policy fact | Already cashed by HEAD substrate? | Where |
 |---|---|---|
