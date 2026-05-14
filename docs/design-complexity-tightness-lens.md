@@ -44,7 +44,7 @@ The discrimination + improvement witness encodes the Loose-vs-AlreadyTight preco
 - `Loose` cannot exist without ≥1 transformation (`first_transformation` is non-optional) — no empty derivation.
 - `Loose` cannot exist without a named `AsymptoticStrictDominance` improvement witness — the relation `actual > tight ∧ actual ≠ tight` is a named-carrier obligation, not two adjacent fields that admit `(ClassLinear, ClassLinear)` or `(ClassLinear, ClassQuadratic)` inversions.
 
-The four illegal states `actual == tight ∧ transformations non-empty`, `actual > tight ∧ transformations empty`, `actual == tight ∧ Loose tag`, and `actual < tight ∧ Loose tag` are all structurally impossible.
+The four illegal states `actual == tight ∧ transformations non-empty`, `actual > tight ∧ transformations empty`, `actual == tight ∧ Loose tag`, and `actual < tight ∧ Loose tag` are blocked at the carrier level — three by the discriminated-sum + ≥1-transformation enforcement (no implementation discretion possible), and the inverted/equal-pair cases via the named `AsymptoticStrictDominance` carrier. **Substrate-honesty qualifier (per cursor APPROVE_WITH_COMMENTS PR #3067 2026-05-14)**: `AsymptoticStrictDominance` is 🟡 SCAFFOLD per Gap 11 trigger (see §1.5) — its `dominator ≠ dominated ∧ asymptotic_dominates(dominator, dominated)` invariant is currently held by lens-side construction discipline (Practice 6 API enforcement) until Gap 11 finalizes the strict-dominance proof witness shape. The named-carrier-vs-adjacent-fields step IS the type-level move; full Practice-2 ("structurally impossible") for the inverted/equal-pair cases is achieved when AsymptoticStrictDominance becomes 🟢 TERMINAL post-Gap-11.
 
 ### §1.2 Transformation vocabulary
 
@@ -316,7 +316,8 @@ type TightnessAnalysis
 // Self-comparison carrier — STRUCTURALLY DISTINCT from EnforcedApplication
 // (which is user-budget comparison). Tightness is self-comparison: lens
 // produces discriminated TightnessAnalysis (AlreadyTight carries actual only;
-// Loose carries actual + tight + ≥1 transformation derivation); enforcement
+// Loose carries `improvement: AsymptoticStrictDominance` + ≥1 transformation
+// derivation); enforcement
 // dispatches on the variant tag. No user-declared budget field.
 //
 // Per codex BLOCKING #11751 PR #3067 2026-05-14: previous 3-param mirror of
@@ -389,7 +390,7 @@ data lens_complexity_tight: Lens<TightnessAnalysis> = {
   name: "complexity_tightness"
   read: tightness_lens_read              // TBD: fn(Dag, Behavior) -> Witness<TightnessAnalysis>
                                           //   Per-behavior classification — produces AlreadyTight or Loose
-                                          //   depending on whether a TightnessTransformation derives a
+                                          //   depending on whether a ClassTierTightnessTransformation derives a
                                           //   strictly-dominated class via Gap 11 SymbolicCost composition.
   sequential: tightness_lens_sequential  // monoid above — sequential composition law
   branch: tightness_branch_op            // TBD: fn(TightnessAnalysis, TightnessAnalysis) -> TightnessAnalysis
@@ -410,7 +411,7 @@ Example use-site declaration (1-param self-comparison shape; lens is `Lens<Tight
 
 ```
 data witness_tightness: EnforcedTightness = {
-  lens: lens_complexity_tight              // produces discriminated TightnessAnalysis (AlreadyTight | Loose); Loose carries actual + tight + ≥1 transformation
+  lens: lens_complexity_tight              // produces discriminated TightnessAnalysis (AlreadyTight | Loose); Loose carries `improvement: AsymptoticStrictDominance` + ≥1 ClassTierTightnessTransformation
   section: DeclarationScope { declaration: my_function }
   diagnostic_severity: Error
   span: { file: "...", start: ..., end: ... }
@@ -439,7 +440,7 @@ Tightness lens is **same-algorithm-only**: it reasons about the program AS WRITT
 Per `feedback_no_textual_enforcement_bridges` — close criterion is a substrate-fact-at-HEAD predicate, not narrative:
 
 ```
-# Predicate at gate close — one fixture per class-tier TightnessTransformation
+# Predicate at gate close — one fixture per ClassTierTightnessTransformation
 # arm per §1.2 (LoopHoisting, DeadCodeElimination, ConstantBoundPropagation;
 # symbolic-tier-only arms LoopFusion/AggregationRecognition/MapFilterFoldFusion
 # are carved to a future sibling lens and have no class-level fixture):
