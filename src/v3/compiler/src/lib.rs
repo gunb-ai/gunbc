@@ -4998,7 +4998,7 @@ mod cost_basis_declaration;
 mod dimension;
 mod infer;
 
-pub use infer::memory_peak_cost;
+pub mod memory_peak_cost;
 
 /// SG-4 prep: first .dag-authority slice of `infer.rs`. Authority
 /// lives in `src/v3/lenses/infer_helpers.dag`; the Rust projection is
