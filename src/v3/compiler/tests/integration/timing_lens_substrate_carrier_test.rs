@@ -417,6 +417,110 @@ fn timing_measurement_iterate_fail_closed_on_observed_with_loop_bound() {
     );
 }
 
+/// §1.8 gate #55 `shared_external_attachment_pattern_documented` — load-bearing
+/// aggregating receipt. Six invariants per `docs/design-timing-lens.md` §2 are
+/// each ratcheted by a per-field/per-variant test above; this aggregator binds
+/// them under a single named harness so the §1.8 row #55 predicate is
+/// load-bearing under workspace sweep (audit predicate-execution requirement).
+///
+/// inv.1 stable subject identity (NodeId, not String) — `workflow_observation_anchor_subject_node_is_node_id`
+/// inv.2 observed-artifact identity (ContentHash, not String) — `workflow_observation_anchor_artifact_digest_is_content_hash`
+/// inv.3 producer/observer/prover separation (branded nominals) — `workflow_observation_anchor_provenance_ids_are_branded`
+/// inv.4 attachment time + run context (Nanoseconds + WorkflowRunId) — `workflow_observation_anchor_attached_at_ns_is_nanoseconds` + above
+/// inv.5 report-state coproduct (Observed | Unobserved | Ambiguous | Stale) — `timing_measurement_variants_locked`
+/// inv.6 fail-closed on non-observed/non-valid — `timing_lens_validate_surfaces_diagnostic_for_non_observed_states` + `timing_measurement_iterate_fail_closed_on_observed_with_loop_bound`
+#[test]
+fn r3_gate_55_shared_external_attachment_pattern_documented() {
+    let dag = generated_full_bootstrap_dag();
+
+    // inv.1
+    let node_id = dag
+        .declaration_by_name("NodeId")
+        .expect("inv.1 NodeId nominal")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "subject_node"),
+        node_id,
+        "gate #55 inv.1: subject_node must be NodeId"
+    );
+
+    // inv.2
+    let content_hash = dag
+        .declaration_by_name("ContentHash")
+        .expect("inv.2 ContentHash nominal")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "artifact_digest"),
+        content_hash,
+        "gate #55 inv.2: artifact_digest must be ContentHash"
+    );
+
+    // inv.3
+    for (field, brand) in [
+        ("producer_id", "WorkflowProducerId"),
+        ("observer_id", "WorkflowObserverId"),
+        ("prover_id", "WorkflowProverId"),
+    ] {
+        let brand_id = dag
+            .declaration_by_name(brand)
+            .unwrap_or_else(|| panic!("inv.3 brand {brand} present"))
+            .id;
+        assert_eq!(
+            conj_field_ty(&dag, "WorkflowObservationAnchor", field),
+            brand_id,
+            "gate #55 inv.3: {field} must brand to {brand}"
+        );
+    }
+
+    // inv.4
+    let ns = dag
+        .declaration_by_name("Nanoseconds")
+        .expect("inv.4 Nanoseconds")
+        .id;
+    let run = dag
+        .declaration_by_name("WorkflowRunId")
+        .expect("inv.4 WorkflowRunId")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "attached_at_ns"),
+        ns,
+        "gate #55 inv.4: attached_at_ns must be Nanoseconds"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "workflow_run_id"),
+        run,
+        "gate #55 inv.4: workflow_run_id must be WorkflowRunId"
+    );
+
+    // inv.5
+    let variants: HashSet<String> = disj_variant_labels(&dag, "TimingMeasurement")
+        .into_iter()
+        .collect();
+    let expected: HashSet<&str> = ["Observed", "Unobserved", "Ambiguous", "Stale"]
+        .into_iter()
+        .collect();
+    let actual: HashSet<&str> = variants.iter().map(String::as_str).collect();
+    assert_eq!(
+        actual, expected,
+        "gate #55 inv.5: TimingMeasurement report-state coproduct"
+    );
+
+    // inv.6 — the per-arm fail-closed structural checks live in dedicated
+    // tests above; this aggregator re-asserts the source-level fail-closed
+    // sentinel so a regression in `timing_lens_validate` cannot quietly
+    // collapse this gate without tripping the aggregator too.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    assert!(
+        src.contains("timing_lens_validate_non_observed"),
+        "gate #55 inv.6: timing_lens_validate_non_observed must remain wired (fail-closed on non-Observed)"
+    );
+    assert!(
+        !src.contains("Empty => NoDiagnostic"),
+        "gate #55 inv.6: empty behavior_spine must not fail-open to NoDiagnostic"
+    );
+}
+
 /// §1.8 gate #54 `timing_lens_carrier_landed`: `type TimingLens = Lens<TimingMeasurement>` is the
 /// substrate nominal for the parameterized lens surface (`docs/design-timing-lens.md` §1).
 #[test]
