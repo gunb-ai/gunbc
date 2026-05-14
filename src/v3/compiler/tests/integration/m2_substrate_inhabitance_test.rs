@@ -1520,6 +1520,62 @@ fn caller(n: Int) -> Int = helper(n)
 }
 
 #[test]
+fn e_p_call_pattern_lookup_authoritative_consumers_use_query_surface() {
+    let cost_lens = include_str!("../../../lenses/cost.dag");
+    let complexity_lens = include_str!("../../../lenses/complexity.dag");
+    let generated_cost = include_str!("../../src/cost_symbolic_lens_generated.rs");
+    let generated_complexity = include_str!("../../src/complexity_lens_generated.rs");
+
+    for (name, source) in [
+        ("src/v3/lenses/cost.dag", cost_lens),
+        ("src/v3/lenses/complexity.dag", complexity_lens),
+    ] {
+        assert!(
+            source.contains("per_call_pattern_at"),
+            "{name} must consume CallPattern facts through the authoritative \
+             std.computation::per_call_pattern_at query"
+        );
+        assert!(
+            !source.contains("per_call_descent_evidence"),
+            "{name} must not read per_call_descent_evidence directly; \
+             per_call_pattern_at is the L-7 consumer surface"
+        );
+        assert!(
+            !source.contains("lower_call_pattern"),
+            "{name} must not consume compiler-internal lower_call_pattern; \
+             lens-facing CallPattern lookup is per_call_pattern_at"
+        );
+    }
+
+    for (name, source) in [
+        (
+            "src/v3/compiler/src/cost_symbolic_lens_generated.rs",
+            generated_cost,
+        ),
+        (
+            "src/v3/compiler/src/complexity_lens_generated.rs",
+            generated_complexity,
+        ),
+    ] {
+        assert!(
+            source.contains("per_call_pattern_at("),
+            "{name} must retain generated calls to the authoritative \
+             per_call_pattern_at substrate accessor"
+        );
+        assert!(
+            !source.contains("per_call_descent_evidence("),
+            "{name} must not regenerate a direct side-table consumer; \
+             CallPattern consumers route through per_call_pattern_at"
+        );
+        assert!(
+            !source.contains("lower_call_pattern("),
+            "{name} must not regenerate compiler-internal lowering as a \
+             lens-facing CallPattern consumer"
+        );
+    }
+}
+
+#[test]
 fn e_p_runtime_mirror_matches_induction_carrier_shape() {
     let dag = Dag::new();
 
