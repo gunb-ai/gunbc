@@ -4583,6 +4583,18 @@ pub mod lens_cost_symbolic {
         generated::lookup_cost(&compute_symbolic_costs(dag), port)
     }
 
+    /// Scan a single port against a table from [`compute_symbolic_costs`].
+    ///
+    /// Callers that need many ports should compute once and use this instead of
+    /// [`symbolic_cost_of`], which rebuilds the full table on every lookup.
+    #[inline]
+    pub fn lookup_symbolic_cost(
+        table: &[SymbolicCostEntry],
+        port: &crate::dag::PortId,
+    ) -> SymbolicCostLookup {
+        generated::lookup_cost(table, port)
+    }
+
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
     /// returns `Lookup<SymbolicCost>` directly; this name stays for

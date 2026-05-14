@@ -1,9 +1,10 @@
 // std/float.dag -- Floating-point types as algebraic compositions.
 //
 // Fixed-width floats are compatibility aliases for fixed-width reals:
-// `Float<N> = Real<N> = Compose<Real, MachineWidth<Word*>>` (R3 §1.8 gate #67
-// `numeric_construction_demonstration`). IEEE 754 rounding still breaks pure
-// field laws — approximate semantics remain Grounding's concern.
+// `Float<N> = Real<N> = Compose<Real, MachineWidth<N>>` with literal-Nat `N`
+// (R3 gate #60 Slice Z; R3 §1.8 gate #67 `numeric_construction_demonstration`).
+// IEEE 754 rounding still breaks pure field laws — approximate semantics remain
+// Grounding's concern.
 //
 // T-Numeric-Construction / R3 gate #17 — abstract `Real` (construction-chain
 // layer 5). Spelling per
@@ -16,7 +17,6 @@
 module std.float
 
 import std.algebra { Field, FieldOfFractions }
-import std.bit { Word32, Word64 }
 import std.integer { Int }
 import std.machine_constraints { Compose, MachineWidth }
 import v3.std.approximate_field { ApproximateField }
@@ -34,8 +34,8 @@ type Real = ApproximateField<FieldOfFractions<Int>>
 // Fixed-width reals: abstract `Real` × machine width (refinement-shaped Compose).
 // These are the R3 gate #67 `numeric_construction_demonstration` Real<N>
 // construction entries; Rust Grounding maps Real64 to `f64`.
-type Real32 = Compose<Real, MachineWidth<Word32>>
-type Real64 = Compose<Real, MachineWidth<Word64>>
+type Real32 = Compose<Real, MachineWidth<32>>
+type Real64 = Compose<Real, MachineWidth<64>>
 
 type Float32 = Real32
 type Float64 = Real64
