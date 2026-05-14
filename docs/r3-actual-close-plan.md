@@ -34,7 +34,7 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
 **Plan to cash** (revised Phase 2.1 per operator wrong-framework finding 2026-05-14 + Director ratification msg_e66f4326 + α-ratification expanded warm-wolf-698 scope 2026-05-14):
 
 - **Owner**: warm-wolf-698 (R3 Substrate Mgr, expanded scope absorbs all 8 PB-X lanes as sub-programs per operator §4 Item 5 α-ratification 2026-05-14) for substrate + per-stage L2.5 model + 4-step migration work; zesty-boar-261 (R3 Debt-Paydown Mgr) for non-pipeline-stage census-line discipline + ratchet-direction enforcement
-- **Routing authority** — primary: `docs/design-pure-bootstrap-zero.md` (LIVE since 2026-04-25 cascade PR #780) names the 9 load-bearing PB-X lanes:
+- **Routing authority** — primary: `docs/design-pure-bootstrap-zero.md` (LIVE since 2026-04-25 cascade PR #780) names the 11 load-bearing PB-X lanes:
   - **PB-Substrate**: generate `dag.rs` / `dag/ports.rs` / `dag/effects.rs` from `src/v3/std/substrate.dag`
   - **PB-1**: data-driven bootstrap loader emission
   - **PB-3**: parse retire (generate `parse.rs` from L2.5 parse domain model)
@@ -44,6 +44,7 @@ Each gap below has: **Promise** (verbatim quote + citation), **HEAD evidence** (
   - **PB-Bootstrap-Process**: replace `bootstrap.rs` with generated trampoline from `bootstrap.dag` authority
   - **PB-Runtime**: generate `test_runner.rs` / `lens_apply.rs` / `lens_testgen.rs` / `post_emit_verifier.rs` from `.dag` authorities
   - **PB-Lib + PB-Build**: generate `lib.rs` (module declarations + crate exports) + `build.rs` (Cargo build script) as trampolines that `include!()` generated content
+  - **PB-Workflow** (existing scope continued per `docs/design-pure-bootstrap-zero.md:125`): `workflow_idempotency.rs` and `workflow_parallelism.rs` migrate as Lane 2 dissolution lands
   - **PB-Tier1-Sweep**: per-file fast-retire (sized S each) for the 13 Tier-1 files (regen binaries + bin helpers — `bin/regen_*.rs` / `bin/gunbc_ci.rs` / `bin/r1c_e_emit_gates.rs` / `bin/self_host_fixed_point.rs`) downstream of their backing migrations; per `docs/design-pure-bootstrap-zero.md:127` — "not blocked on PB-Substrate / PB-Lib / etc., but blocked on PB-1 + PB-4/5/6"
 - **Routing authority** — secondary: `src/v3/SELF_HOSTING.md` §2 names the **4-step per-stage migration discipline** for each pipeline-stage lane (PB-3 / PB-4 / PB-5 / PB-6):
   1. **Model review** (§2.2 Step 1): declare the stage's L2.5 domain-model SET in `std/` and `extdeps/` — per-stage enumeration in §2.2 (parse domain / lower domain / infer domain / emit domain). Every type that crosses a stage boundary or is consumed by a lens goes in `std/`; walker-local state stays in stage body per `std/`-vs-implementation split.
