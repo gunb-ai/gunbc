@@ -65,7 +65,7 @@ tight bound is {tight_class}. Applicable transformations: [{transformation_list}
 
 **Compiler-internal code** (`src/v3/*`, `dsl/std/*`): **always-on**. Every compiler-authored function ratchet-checks tightness as part of build. Any tightness violation is a build-break. This is the SELF_HOSTING.md "compiler is canonical example" framing made operational — the compiler's own code is the most-aggressively-checked codebase in the project.
 
-**User programs**: opt-in via `EnforcedTightness<TightnessAnalysis, AsymptoticClass, AsymptoticClass>` data declaration (3-param mirror of `EnforcedApplication<Output, Budget, Projected>` per Director ratification msg_d45523da; see §1.5 for the carrier shape + example use-site at §1.5 instantiation block). Backwards-compatible with existing programs; users opt their functions in as they're ready.
+**User programs**: opt-in via `EnforcedTightness<TightnessAnalysis>` data declaration (1-param self-comparison carrier; structurally distinct from EnforcedApplication's 3-param user-budget shape per codex BLOCKING #11751 PR #3067 resolution 2026-05-14 — see §1.5 for the carrier shape + example use-site at §1.5 instantiation block). Backwards-compatible with existing programs; users opt their functions in as they're ready.
 
 ### §1.5 Substrate carriers
 
@@ -121,70 +121,48 @@ New `.dag` declarations needed (shapes mirror existing `EnforcedApplication` 3-p
 // same Structure-pattern discrimination — coproduct stays open to new
 // structural-pattern variants discovered post-Gap-11.
 //
-// Per-variant evidence-payload `proof: TightnessProof` carries the structural
-// witness that the named transformation is APPLICABLE to the affected DAG nodes
-// per INVARIANTS.md P1 (Modeling Faithfulness) + P2 (single authority — evidence
-// variants reference existing substrate types like SymbolicCostExpr, NOT parallel
-// substrate). Tag-only labels rejected per codex BLOCKING #11738 PR #3067 2026-05-14
-// (would rest proof on convention rather than structural evidence).
+// Per-variant evidence-payload INLINED into each variant arm (NOT a parallel
+// TransformationEvidence coproduct, per codex BLOCKING #11751 PR #3067 2026-05-14:
+// parallel coproducts admit invalid pairings — e.g., LoopFusion arm could pair
+// with NoConsumer evidence). Inlining makes the pairing type-enforced.
+//
+// All variant payloads cite LIVE substrate types per `feedback_corrections_must_grep_verify_source`
+// (codex BLOCKING #11751 PR #3067 2026-05-14):
+//   - `SymbolicCost` per `src/v3/std/algebra.dag:190` (NOT `SymbolicCostExpr` — non-live)
+//   - `NodeId` per `src/v3/std/substrate.dag:5` (NOT `NodeRef` — non-live)
+//   - `SizeVariable` per existing T-CostLens substrate (cited in close-plan §1.8 row #80)
 type TightnessTransformation
-  = LoopFusion { proof: TightnessProof }
-  | LoopHoisting { proof: TightnessProof }
-  | DeadCodeElimination { proof: TightnessProof }
-  | ConstantBoundPropagation { proof: TightnessProof }
-  | AggregationRecognition { proof: TightnessProof }
-  | MapFilterFoldFusion { proof: TightnessProof }
+  = LoopFusion {
+      affected_nodes: List<NodeId>            // outer_loop + inner_loop NodeId pair
+      space_a: SymbolicCost                   // outer-loop iteration-space cost expression
+      space_b: SymbolicCost                   // inner-loop iteration-space cost expression
+      // Lens proves space_a + space_b are equivalent before constructing this variant
+    }
+  | LoopHoisting {
+      affected_nodes: List<NodeId>            // enclosing-loop + invariant-subgraph NodeId pair
+      independent_size_variables: List<SizeVariable>  // size-vars proved independent of loop var
+    }
+  | DeadCodeElimination {
+      affected_nodes: List<NodeId>            // unconsumed-subgraph NodeIds
+      // Lens proves zero downstream Port reads subgraph output (port_consumption walk)
+    }
+  | ConstantBoundPropagation {
+      affected_nodes: List<NodeId>            // outer_loop + inner_loop NodeId pair
+      inner_bound: SymbolicCost               // proved variable-independent of outer-loop SizeVariable
+    }
+  | AggregationRecognition {
+      affected_nodes: List<NodeId>            // accumulator-pattern NodeIds
+      associative_op_node: NodeId             // +/min/max operation node at reduce-point
+    }
+  | MapFilterFoldFusion {
+      affected_nodes: List<NodeId>            // chain pipeline NodeIds (≥2)
+      shared_iteration_cost: SymbolicCost     // common iteration-space cost across chain elements
+    }
 
-// 🟡 SCAFFOLD. Per-variant proof bundle: structural identifiers (affected_nodes)
-// + transformation-specific evidence (TransformationEvidence sum-variant).
-// Lens emits this from structural facts in the DAG; the proof IS the evidence
-// that the transformation applies — not a label.
-type TightnessProof {
-  affected_nodes: List<NodeRef>
-  evidence: TransformationEvidence
-}
-
-// 🟡 SCAFFOLD. Per-transformation evidence shape — concrete variant fields
-// finalize post-Gap-11 SymbolicCostExpr / ProductCost / SumCost composition
-// (which provides the algebraic facts these evidence variants consume).
-// Each variant cites the structural facts the lens proves before constructing
-// the transformation. NO new parallel substrate — `SymbolicCostExpr` + `NodeRef`
-// are existing types per src/v3/std/algebra.dag + substrate.dag.
-type TransformationEvidence
-  = IterationSpaceEquivalence { space_a: IterationSpaceFacts, space_b: IterationSpaceFacts }
-  | LoopInvariance { variable_independence: VariableIndependenceFacts }
-  | NoConsumer { port_consumption_facts: PortConsumptionFacts }
-  | ConstantBound { bound_expression: SymbolicCostExpr }
-  | AssociativeReduce { algebraic_facts: AlgebraicReduceFacts }
-  | SharedIterationSpace { spaces: List<IterationSpaceFacts> }
-
-// 🟡 SCAFFOLD. Iteration-space structural facts the lens derives from loop nodes
-// (loop variable + bound expression in SymbolicCostExpr form).
-// Finalizes post-Gap-11 SymbolicCostExpr composition.
-type IterationSpaceFacts {
-  loop_variable: SizeVariable
-  bound: SymbolicCostExpr
-}
-
-// 🟡 SCAFFOLD. Loop-invariance facts: variables read in subgraph that are
-// independent of loop variables of enclosing loops. Lens derives from
-// Port read-set analysis.
-type VariableIndependenceFacts {
-  independent_variables: List<SizeVariable>
-}
-
-// 🟡 SCAFFOLD. Port-consumption facts: the lens proves no downstream Port
-// reads the dead subgraph's output. Lens derives from Port consumption walk.
-type PortConsumptionFacts {
-  unconsumed_outputs: List<NodeRef>
-}
-
-// 🟡 SCAFFOLD. Algebraic-reduce facts: accumulator pattern matches an
-// associative-reduce shape (e.g., +/min/max). Lens derives from the
-// accumulator's algebraic structure per existing src/v3/std/algebra.dag.
-type AlgebraicReduceFacts {
-  associative_op: NodeRef  // points at the +/min/max operation node
-}
+// Type-enforced pairing: each variant arm carries the EXACT evidence shape
+// applicable to that transformation. LoopFusion cannot pair with NoConsumer
+// evidence; ConstantBoundPropagation cannot pair with AssociativeReduce evidence.
+// No parallel TransformationEvidence coproduct needed.
 
 // 🟢 TERMINAL at the tightness-analysis scope. Bundles lens output (actual + tight
 // asymptotic classes), the bridging transformation list with evidence proofs,
@@ -198,25 +176,41 @@ type TightnessAnalysis = {
   // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
 }
 
-type EnforcedTightness<Output, Budget, Projected> {
-  enforceable_lens: EnforceableLens<Output, Budget, Projected>
-  section: SectionRef
-  diagnostic_severity: DiagnosticSeverity
+// Self-comparison carrier — STRUCTURALLY DISTINCT from EnforcedApplication
+// (which is user-budget comparison). Tightness is self-comparison: lens
+// produces TightnessAnalysis carrying both projection axes (actual + tight);
+// enforcement compares them internally. No user-declared budget field.
+//
+// Per codex BLOCKING #11751 PR #3067 2026-05-14: previous 3-param mirror of
+// EnforcedApplication<Output, Budget, Projected> created structural mismatch
+// — Budget type param was unused (no budget field) → admits invalid states.
+// Director ratification msg_d45523da had locked-in 3-param mirror as compromise;
+// codex correctly flagged that the compromise is incomplete. Resolved here:
+// distinct carrier shape for self-comparison; lens carrier is Lens<Output> (NOT
+// EnforceableLens which is budget-shaped).
+type EnforcedTightness<Output> {
+  lens: Lens<Output>                  // generic lens; NOT EnforceableLens (which is user-budget shape)
+  section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 (SectionRef type, DeclarationScope is a variant)
+  diagnostic_severity: DiagnosticSeverity  // src/v3/std/lens_application.dag:84 (single-variant Error per feedback_fail_closed_discipline + INVARIANTS C-8); NOT dsl/std/behavioral.dag::Severity (4-variant unrelated to lens discipline)
   span: SourceSpan
-  // NOTE: 3-param shape mirrors EnforcedApplication<Output, Budget, Projected> at
-  // src/v3/std/lens_application.dag:176-182. Key semantic difference from EnforcedApplication:
-  // NO `budget: Budget` field — compiler derives both actual + tight internally via the lens's
-  // TightnessAnalysis output. The Output type (TightnessAnalysis) carries both actual + tight
-  // fields; comparison is internal to the lens's enforcement logic, NOT user-declared.
-  // For complexity-tightness instantiation:
-  //   Output = TightnessAnalysis
-  //   Budget = AsymptoticClass (acts as type-level constraint on the tight-class side)
-  //   Projected = AsymptoticClass (the actual-class side, projected from TightnessAnalysis.actual)
   //
-  // diagnostic_severity: DiagnosticSeverity (single-variant Error per src/v3/std/lens_application.dag:84
-  // and feedback_fail_closed_discipline). NOT dsl/std/behavioral.dag::Severity (4-variant
-  // Low|Medium|High|Critical) which is unrelated to lens-application discipline and would admit
-  // illegal use-site values violating INVARIANTS C-8 + Practice 2 (illegal-states-unrepresentable).
+  // Output type contract: Output MUST be a TightnessAnalysis-like carrier with
+  // two compiler-derived projection axes (actual + tight) over a common comparison
+  // type (e.g., AsymptoticClass for complexity). Comparison is internal to the
+  // lens's enforcement logic, NOT user-declared.
+  //
+  // For complexity-tightness instantiation: Output = TightnessAnalysis
+  //   - TightnessAnalysis.actual: AsymptoticClass (computed from program structure)
+  //   - TightnessAnalysis.tight: AsymptoticClass (compiler-derived tighter bound)
+  //   - Comparison: asymptotic_dominates(actual, tight) — if True AND actual ≠ tight,
+  //     emit TightnessViolation diagnostic at span.
+  //
+  // Semantic distinction from EnforcedApplication<Output, Budget, Projected>:
+  //   - EnforcedApplication carries a USER-DECLARED `budget: Budget` field; user
+  //     authority on the constraint; lens checks observed Projected ≤ budget.
+  //   - EnforcedTightness has NO budget field; COMPILER is authority on what the
+  //     constraint should be; lens internally derives both sides of the comparison.
+  //   - Same axes (constraint + observed), different authority source (user vs compiler).
 }
 ```
 
@@ -226,11 +220,11 @@ Plus a new lens declaration:
 lens lens_complexity_tight: (Dag) -> TightnessAnalysis
 ```
 
-Example use-site declaration (mirroring `EnforcedApplication` instantiation patterns):
+Example use-site declaration (1-param self-comparison shape; lens is `Lens<TightnessAnalysis>` not `EnforceableLens`):
 
 ```
-data witness_tightness: EnforcedTightness<TightnessAnalysis, AsymptoticClass, AsymptoticClass> = {
-  enforceable_lens: complexity_tight_enforceable
+data witness_tightness: EnforcedTightness<TightnessAnalysis> = {
+  lens: lens_complexity_tight              // produces TightnessAnalysis with actual + tight projections
   section: DeclarationScope { declaration: my_function }
   diagnostic_severity: Error
   span: { file: "...", start: ..., end: ... }
