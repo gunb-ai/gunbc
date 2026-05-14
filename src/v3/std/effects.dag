@@ -592,7 +592,7 @@ fn method_is_delete(method: HttpMethod) -> Bool =
     OPTIONS => false
   }
 
-fn operation_resource_key(op: Operation) -> String? =
+fn operation_resource_key(op: Operation) -> String? {
   match last_path_param(op.endpoint.path) {
     Some(param) =>
       match map_get(op.inputs, param) {
@@ -601,6 +601,7 @@ fn operation_resource_key(op: Operation) -> String? =
       }
     None => None
   }
+}
 
 fn breaker_ref(index: Int) -> ElementRef<Operation> {
   { index: index }
