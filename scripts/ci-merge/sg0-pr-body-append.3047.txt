@@ -1,1 +1,1 @@
-SG-0 hand-path delta: -2
+SG-0 hand-path delta: -8
