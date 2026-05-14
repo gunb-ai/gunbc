@@ -217,7 +217,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // `dag.rs` itself replaces these submodules simultaneously.
 //
 // T-Substrate cardinality subset for int literals (2026-04-25): the
-// range-comparison shim in `int_literal_ranges.rs` is host-side
+// range-comparison shim in `int_literal_ranges_generated.rs` (build.rs-spliced
 // reconciliation glue over already-declared String-decimal range facts
 // while `rust_pilot_primitives.value_body` remains an unparsed top-level
 // list. It intentionally compares only source literals that already fit
@@ -267,8 +267,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
     // predicate substrate owns the walk without host FS coupling).
     "src/v3/compiler/src/cementing_dispatch.rs",
-    "src/v3/compiler/src/complexity_lattice.rs",
-    "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     // Closed Cardinality payload + idempotent target shim (API closure).
@@ -278,17 +276,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
-    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
-    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
-    "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
-    "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
-    "src/v3/compiler/src/int_literal_ranges.rs",
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
     // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
@@ -304,11 +297,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
     // `.dag` program owns the OpenAPI artifact projection end-to-end.
     "src/v3/compiler/src/omni_shape_b_openapi.rs",
-    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
-    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
-    // PB-zero / v2-retirement consumers (decision in
-    // `docs/decisions/r3-row85-method-template-read-surface.md`).
-    "src/v3/compiler/src/pb_method_template_projection.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
@@ -346,13 +334,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // "ported-but-still-listed" or "pending-port" set); the ratchet's whole point is that one
 // monotonically-shrinking authority tracks the Rust→`.dag` migration.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
+    "src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
-    "src/v3/compiler/tests/boundary/l5_cross_target_consistency.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
@@ -1442,7 +1430,7 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
     assert!(
-        list.contains("\"emit_rust_bin_shim.rs\""),
-        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
+        list.contains("\"process_exit.rs\""),
+        "hand_maintained_src should exclude process_exit.rs (PB-1 host mirror) from recursive freshness drift"
     );
 }
