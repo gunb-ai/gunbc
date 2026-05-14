@@ -60,7 +60,7 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 **B1.** New nominal sum `NumericPolicy = Int64OverflowFree | NamedOverflowSemantics(RefinementRef) | FloatExcluded | FloatPolicyDeferred`. Captures extension-spec §1.1 directly.
 **B2.** Reuse existing refinement vocabulary (`dsl/std/integer.dag` Int<N> + width refinements per gate #18) — no new carrier; row carries a `RefinementRef`.
-**B3.** Free-form `String` policy slot — disqualified up front (P5 boundary-discipline violation; substring authority is exactly what design doc §"Oracle Policy" forbids).
+**B3.** Free-form `String` policy slot — disqualified up front (INVARIANTS §P2 boundary-discipline / §P3 fail-closed violation; substring authority is exactly what design doc §"Oracle Policy" forbids).
 
 **Disqualifiers:**
 - **B3** ruled out by design doc §"Oracle Policy" *"Diagnostic string matching, substring checks, … are invalid"*.
