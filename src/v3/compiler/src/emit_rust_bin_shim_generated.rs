@@ -7,7 +7,7 @@
 //! PB-1 — Rust `main.rs` shell for generated `[[bin]]` shims (Item 5).
 //!
 //! **SG-0 / bounded-seed receipt:** this body is spliced from
-//! `pb0_cycle4_emit_templates/emit_rust_bin_shim.rs` by `build.rs`
+//! `tools/pb0_cycle4_emit_templates/emit_rust_bin_shim.rs.in` by `build.rs`
 //! (`emit_pb0_cycle4_host_authority_modules`); the output path is in
 //! `GENERATED_FILES` / `REGEN_OUTPUTS` (not `EXPECTED_HAND_AUTHORED_NON_TEST`).
 //! Narrow host helper for §4.2 shell text only; see
