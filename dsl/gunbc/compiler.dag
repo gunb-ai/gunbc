@@ -72,8 +72,15 @@ type GeneratedCrate {
 data stage0: GeneratedCrate = {
   package_name: "v3-compiler",
   source_dir: "src/v3/compiler/src",
+  // SG-0 / stage0: every root-level `source_dir` `*.rs` hand file must appear here so
+  // `clean_stage0_generated_command` / copy / freshness diffs cannot treat census-listed
+  // hand paths as generated (INVARIANTS P2; keep in lockstep with
+  // `EXPECTED_HAND_AUTHORED_NON_TEST` root `src/v3/compiler/src/*.rs` rows).
   hand_maintained_src: [
     "bootstrap.rs",
+    "bootstrap_regen_fresh.rs",
+    "cementing_dispatch.rs",
+    "complexity_lattice.rs",
     "cost_basis_declaration.rs",
     "dag.rs",
     "diagnostics.rs",
@@ -84,20 +91,39 @@ data stage0: GeneratedCrate = {
     "emit_rust.rs",
     // PB-1 Item 5: hand-authored `main.rs` shell formatter (not emitted into src/).
     "emit_rust_bin_shim.rs",
-    "python_target.rs",
-    "rust_target.rs",
+    "emit_rust_roundtrip_fixtures.rs",
+    "enforced_lens_application.rs",
+    "gunbc_ci.rs",
     "infer.rs",
+    "int_literal_ranges.rs",
+    "integration_rs_wiring_scan.rs",
+    "lens_declaration_apply.rs",
+    "lens_t_las_carrier.rs",
     // R3 gate #6: `lens_testgen.rs` retired — body is this hand-authored include fragment
     // (`lens_declaration_apply.rs` `include!`). Must stay in `hand_maintained_src` so stage0 recursive
     // freshness diff does not treat it as generated drift (P2 boundary discipline).
     "lens_testgen_body.txt",
     "lib.rs",
     "lower.rs",
+    "memory_peak_cost.rs",
+    "omni_shape_b_openapi.rs",
+    "pb_method_template_projection.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.
     "process_exit.rs",
-    "regen_parse_emit.rs"
+    "python_target.rs",
+    "r1c_e_gates.rs",
+    "r3_fc_lane2_loop_witness.rs",
+    "r3_gate_87_cementing_regen_runner_suites.rs",
+    "regen_bootstrap_emit.rs",
+    "regen_parse_emit.rs",
+    "regen_parse_tables_emit.rs",
+    "regen_tokenize.rs",
+    "rust_target.rs",
+    "self_host_receipt_p0.rs",
+    "test_runner.rs",
+    "wall_clock_ratchet_manifest.rs",
   ]
 }
 
