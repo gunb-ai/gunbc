@@ -88,7 +88,8 @@ fn read(x: Pair) -> Int = x.bad
     assert!(
         matches!(
             diagnostic.correction(),
-            Correction::DeferredCorrection { .. }
+            Correction::DeferredCorrection { reason, .. }
+                if reason.contains("left") && reason.contains("right")
         ),
         "ambiguous missing-field repair should defer instead of choosing an arbitrary field: {:?}",
         diagnostic.correction()

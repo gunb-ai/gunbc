@@ -4319,7 +4319,20 @@ fn resolve_field_project(
                 SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
                 field.label.clone(),
             ),
-            _ => Correction::deferred_for_diagnostic_class("InferenceDiagnostic"),
+            fields => {
+                let candidates = fields
+                    .iter()
+                    .map(|field| field.label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Correction::deferred(
+                    format!(
+                        "field `{field_label}` has multiple valid replacements: {candidates}"
+                    ),
+                    "R3 Gap 9 row #106 field-choice correction workflow",
+                    "model structured alternative corrections so each candidate can be surfaced without choosing arbitrarily",
+                )
+            }
         };
         return FieldProjectResolution::fail(Diagnostic::ResolveError {
             name: format!(

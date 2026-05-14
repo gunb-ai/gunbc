@@ -547,6 +547,11 @@ fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyle
             diagnostic.correction().description()
         ));
         lines.push(render_correction_source(diagnostic.correction(), style));
+    } else {
+        lines.push(format!(
+            "DEFERRED CORRECTION: {}",
+            diagnostic.correction().description()
+        ));
     }
     lines.join(&style.line_ending)
 }
@@ -1463,6 +1468,10 @@ mod tests {
         assert!(
             !rendered.contains("FIX (option"),
             "deferred corrections are explicit residual carriers, not user-facing fixes: {rendered}"
+        );
+        assert!(
+            rendered.contains("DEFERRED CORRECTION: ParseError does not yet compute"),
+            "deferred corrections should remain visible without rendering as applyable fixes: {rendered}"
         );
     }
 

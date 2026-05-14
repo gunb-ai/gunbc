@@ -122,6 +122,13 @@ fn read(point: Point) -> Int = point.c
         "ambiguous missing-field diagnostic should not render an arbitrary FIX line, got {rendered}"
     );
     assert!(
+        rendered.contains("DEFERRED CORRECTION:")
+            && rendered.contains("multiple valid replacements")
+            && rendered.contains("a")
+            && rendered.contains("b"),
+        "ambiguous missing-field diagnostic should surface concrete alternatives without marking them applyable, got {rendered}"
+    );
+    assert!(
         !rendered.contains("\n    \"a\";") && !rendered.contains("\n    \"b\";"),
         "ambiguous missing-field diagnostic should not choose between fields, got {rendered}"
     );
