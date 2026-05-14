@@ -71,12 +71,15 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 ### Q3 — Coverage reason carrier
 
 **C1.** Free-form `String coverage_reason` — fast, but design extension §1 already classifies coverage by **program-class taxonomy** (Phase A primitives / Phase B collections / Lane 1 import). String is unstructured.
-**C2.** Closed enum `CoverageReason = LanguageConstruct | RuntimeValueShape | TargetRealizationEdge | L4CorpusLift(L4ClaimRef)` matching design doc §"Corpus Policy" L45 verbatim.
-**C3.** `(CoverageReason, NonEmptyStr description)` pair — closed taxonomy + author-supplied prose for triage.
+**C2.** Closed enum `CoverageReason = LanguageConstruct | RuntimeValueShape | TargetRealizationEdge | L4CorpusLift(L4ClaimRef)` — closed taxonomy but no payload edges, so the *which construct / which value-shape / which target edge / which L4 row* identity falls back to author prose. Not structural under INVARIANTS §P2.
+**C3.** `(CoverageReason, NonEmptyStr description)` pair — same taxonomy + author prose for triage; inherits **C2**'s missing-payload-edge gap (description carries the identity fact rather than the carrier).
+**C4.** Closed sum with **typed payload per arm**: `LanguageConstruct(DeclarationRef)` / `RuntimeValueShape(DeclarationRef)` / `TargetRealizationEdge(TargetEdgeRef)` / `L4CorpusLift(DeclarationRef)`. Identity of the covered construct / value-shape / target edge / L4 row is a typed edge, so invalid coverage rows are unrepresentable.
 
-**Disqualifiers:** **C1** loses the L4-lift edge — design extension §"Slice 4" makes the L4 corpus identity load-bearing; need a typed `L4ClaimRef` not a string description.
+**Disqualifiers:**
+- **C1** loses the L4-lift edge — design extension §"Slice 4" makes the L4 corpus identity load-bearing; need a typed `DeclarationRef` not a string description.
+- **C2** + **C3** record only the *category*; the actual construct / value-shape / target-edge / L4 row identity falls back to `coverage_description` prose, so the Corpus Policy coverage fact is not structural under INVARIANTS §P2 (string sidecar carries the identity, not the carrier).
 
-**Canvas recommendation:** **C3**. Closed enum gives structural triage + `feedback_reason_not_label` discipline; `NonEmptyStr` description is human-readable evidence at audit time (mirror existing `Notes` discipline in §1.8 ledger).
+**Canvas recommendation:** **C4**. Closed sum + per-arm typed payload edges. Coverage identity is cashed at the type level; no `coverage_description` prose slot. (`TargetRealizationEdge` requires a `TargetEdgeRef` substrate authority — either a new nominal or an existing carrier from the per-target spec layer; this canvas asks Director to name the existing authority if one exists, otherwise routes its introduction in the same ratification.)
 
 ### Q4 — Expected semantic observation / oracle authority carrier
 
@@ -125,10 +128,10 @@ type NumericPolicy
   | FloatPolicyDeferred
 
 type CoverageReason
-  = LanguageConstruct
-  | RuntimeValueShape
-  | TargetRealizationEdge
-  | L4CorpusLift(DeclarationRef)
+  = LanguageConstruct(DeclarationRef)       // typed edge to the std-library construct
+  | RuntimeValueShape(DeclarationRef)       // typed edge to the value-shape type
+  | TargetRealizationEdge(TargetEdgeRef)    // typed edge to the per-target realization fact
+  | L4CorpusLift(DeclarationRef)            // typed edge to the originating L4 TestClaim
 
 type L5CorpusRowPolicy {
   claim: TestClaim
@@ -136,7 +139,6 @@ type L5CorpusRowPolicy {
   effect: EffectShape
   numeric: NumericPolicy
   coverage: CoverageReason
-  coverage_description: NonEmptyStr
 }
 ```
 
