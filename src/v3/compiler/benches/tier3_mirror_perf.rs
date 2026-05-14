@@ -1,10 +1,11 @@
 //! Phase 1 — hand-Rust Tier-3 mirror timing (C1 perf-budget worker toward
 //! `tier3_mirror_dissolution_perf_within_budget`).
 //!
-//! Maps 1:1 to the four mirror dissolution slices in
-//! `docs/briefs/r3-pb-tier3-perf-budget-worker.md` (active Phase-1 mirrors:
-//! computation / effect-carrier; termination and induction are retired). See that brief for thresholds (≤2× median,
-//! ≤5× p99) and Phase 1 / Phase 2 split.
+//! Tracks the historical four-slice mirror dissolution program in
+//! `docs/briefs/r3-pb-tier3-perf-budget-worker.md`; active Phase-1 benches cover
+//! the remaining computation / effect-carrier mirrors after termination and
+//! induction retirement. See that brief for thresholds (≤2× median, ≤5× p99)
+//! and Phase 1 / Phase 2 split.
 //!
 //! **Frozen baseline** (`tier3_baseline.json` alongside this bench): Phase-1
 //! committed median + p99 (ns) per budgeted `bench_function` (regen via
