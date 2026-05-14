@@ -1,0 +1,2 @@
+SG-0 hand-path delta: +17
+SG-0 pairing: (b) Director corrective revert + SG-0 census restoration after rescinded PB-0 template-relocation cycle (#3057/#3048/#3046). https://github.com/gunb-ai/gunbc/pull/3059
