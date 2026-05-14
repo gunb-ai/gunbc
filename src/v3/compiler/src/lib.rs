@@ -4528,6 +4528,10 @@ pub mod lens_cost_symbolic {
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::{
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
+        };
+        use crate::Witness;
 
         include!("lens_cost_symbolic_generated.rs");
     }
@@ -5218,6 +5222,7 @@ pub mod lens_parallelism {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
 }
+
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),

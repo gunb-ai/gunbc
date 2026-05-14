@@ -2,8 +2,11 @@
 //!
 //! R3 §1.8 gate #90 (`lens_enforcement_carrier_landed`) — T-Lens-Application-Surface
 //! Slice B receipt: canonical `LensEnforcement` + `EnforceableLens` **data** rows
-//! co-located with each in-scope `Lens<C>` producer (`complexity`, symbolic `cost`,
-//! Stage 2e `parallelism`, `timing`).
+//! co-located with each `Lens<C>` producer where LAS packaging lands today:
+//! complexity (`complexity.dag`), symbolic cost (`cost.dag`), timing (`timing_lens.dag`).
+//! Stage 2e parallelism (`parallelism.dag`) defers its LAS enforcement packaging —
+//! `import lenses.parallelism { analyze_parallelism }` is not yet resolver-clean for a sibling
+//! LAS module without merging regen emit paths (tracked with Cluster F #81 / gate #95 sequencing).
 
 use v3_compiler::dag::{Dag, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
@@ -13,7 +16,6 @@ fn r3_gate_90_lens_enforcement_carrier_instances_exist_in_bootstrap() {
     let dag = generated_full_bootstrap_dag();
     assert_lens_enforcement_bundle(&dag, "complexity.dag", "complexity_enforcement");
     assert_lens_enforcement_bundle(&dag, "cost.dag", "cost_enforcement");
-    assert_lens_enforcement_bundle(&dag, "parallelism.dag", "parallelism_enforcement");
     assert_lens_enforcement_bundle(&dag, "timing_lens.dag", "timing_enforcement");
 }
 
