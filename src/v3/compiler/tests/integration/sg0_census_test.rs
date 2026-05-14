@@ -536,6 +536,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
+    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
+    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
+    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
