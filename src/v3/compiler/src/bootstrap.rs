@@ -637,3 +637,249 @@ mod tests {
         );
     }
 }
+
+// PB-0 cycle 3 census consolidation — nested `wall_clock_ratchet_manifest` (see PR body receipts).
+pub mod wall_clock_ratchet_manifest {
+    //! Interim per-test wall-clock **warn-token** projection for CI (`slow_test_exemptions`
+    //! paydown path) — reads modeled rows in `dsl/gunbc/test_node_wall_clock_ratchet.dag`
+    //! instead of a checked-in JSONL side file. **Not** R3 gate **#102** closure: #102’s
+    //! pass target is ratchet policy from `TestNodeCostDimension` / modeled timing facts,
+    //! not a maintained warn-name list.
+
+    use crate::dag::{FieldValue, LiteralBits, ValueBody};
+    use crate::Dag;
+
+    /// Repo-relative path to the modeled warn-token table (single edit surface).
+    pub const RATCHET_DAG_REL_PATH: &str = "dsl/gunbc/test_node_wall_clock_ratchet.dag";
+
+    /// One JSON object per line: `{"test":"<libtest token>","policy":"warn"}` — the
+    /// shape `scripts/check-test-timeout.sh` / `jq` already consume.
+    pub fn emit_warn_policy_jsonl_lines(dag: &Dag) -> Result<Vec<String>, String> {
+        let decl = dag
+            .declaration_by_name("wall_clock_warn_libtest_tokens")
+            .ok_or_else(|| {
+                "missing `wall_clock_warn_libtest_tokens` data row in ratchet .dag".to_string()
+            })?;
+        let body = decl
+            .value_body
+            .as_ref()
+            .ok_or_else(|| "wall_clock_warn_libtest_tokens: no value_body".to_string())?;
+        let ValueBody::List(rows) = body else {
+            return Err(format!(
+                "wall_clock_warn_libtest_tokens: expected ValueBody::List, got {body:?}"
+            ));
+        };
+        let mut out = Vec::with_capacity(rows.len());
+        for (idx, row) in rows.iter().enumerate() {
+            let fields = match row {
+                FieldValue::Record(f) => f.as_slice(),
+                other => {
+                    return Err(format!(
+                        "row {idx}: expected record `WallClockWarnLibtestToken`, got {other:?}"
+                    ));
+                }
+            };
+            let test_val = fields
+                .iter()
+                .find(|(l, _)| l == "test")
+                .map(|(_, v)| v)
+                .ok_or_else(|| format!("row {idx}: missing `test` field"))?;
+            let test = match test_val {
+                FieldValue::Literal(LiteralBits::String(s)) => s.as_str(),
+                other => {
+                    return Err(format!(
+                        "row {idx}: `test` must be a String literal, got {other:?}"
+                    ));
+                }
+            };
+            out.push(format!(
+                "{{\"test\":{},\"policy\":\"warn\"}}",
+                json_escape_string(test)
+            ));
+        }
+        Ok(out)
+    }
+
+    fn json_escape_string(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 2);
+        out.push('"');
+        for ch in s.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c if c.is_control() => {
+                    use std::fmt::Write;
+                    let _ = write!(&mut out, "\\u{:04x}", c as u32);
+                }
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::compile_to_dag;
+        use serde_json::Value;
+        use std::path::PathBuf;
+
+        fn load_ratchet_dag() -> Dag {
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let path = manifest_dir.join("../../../dsl/gunbc/test_node_wall_clock_ratchet.dag");
+            let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("read {}: {e}", path.display());
+            });
+            compile_to_dag(&source, path.to_string_lossy().as_ref()).unwrap_or_else(|err| {
+                panic!("compile {}: {err:?}", path.display());
+            })
+        }
+
+        #[test]
+        fn ratchet_dag_warn_manifest_lines_are_parseable_warn_policy_objects() {
+            let dag = load_ratchet_dag();
+            let lines = emit_warn_policy_jsonl_lines(&dag).expect("emit");
+            for (idx, line) in lines.iter().enumerate() {
+                let v: Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("line {idx} must be JSON: {e}; got {line:?}"));
+                let obj = v.as_object().unwrap_or_else(|| {
+                    panic!("line {idx} must be a JSON object; got {v:?}");
+                });
+                assert!(
+                    obj.get("test").and_then(Value::as_str).is_some(),
+                    "line {idx} must have string `test`"
+                );
+                assert_eq!(
+                    obj.get("policy").and_then(Value::as_str),
+                    Some("warn"),
+                    "line {idx} must have policy=warn"
+                );
+            }
+        }
+    }
+}
+
+// PB-0 cycle 3 census consolidation — nested `self_host_receipt_p0` (see PR body receipts).
+pub mod self_host_receipt_p0 {
+    //! P0 prerequisite pin: stable top-level JSON keys in `target/self_host/receipt.json`.
+    //!
+    //! Authority (workspace-root paths as code — not file-relative rustdoc URLs):
+    //! `docs/briefs/r3-pb-t-fixedpoint-worker.md` §P0 readiness checklist (DB-8 mechanical ratchet);
+    //! `docs/db-history/db-8.md`; `docs/design-fixed-point-ratchet.md`.
+    //! `self_host_fixed_point` consumes these identifiers so renames are deliberate (trend readers / DB-8).
+
+    /// Pipeline snapshot fixed-point on [`crate::default_fixed_point_source`] (always `ok` when the binary runs past that stage).
+    pub const K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE: &str = "pipeline_fixed_point_default_source";
+
+    /// `dsl/gunbc/compiler.dag` parse outcome under v3 (`ok` or encoded error string).
+    pub const K_COMPILER_DAG_V3_PARSE: &str = "compiler_dag_v3_parse";
+
+    /// Overall receipt status (`completed` or `failed_self_host_slice` today).
+    pub const K_STATUS: &str = "status";
+
+    /// Keys emitted on every path (parse failure still includes pipeline + parse + status).
+    pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
+        K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE,
+        K_COMPILER_DAG_V3_PARSE,
+        K_STATUS,
+    ];
+
+    /// Serialized top-level property opener emitted by `self_host_fixed_point` today
+    /// (`src/v3/compiler/src/bin/self_host_fixed_point.rs`, `run`): two ASCII spaces, `"`, key, `":`
+    /// — same shape as `format!("  \"{}\":"` / `format!("  \"{}\": {},\n", …` using
+    /// `K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE`, `K_COMPILER_DAG_V3_PARSE`, and `K_STATUS` (and the
+    /// parse-error branch). If the emitter changes indentation or switches to `serde_json` pretty-print
+    /// with different spacing, update this needle in the same change.
+    ///
+    /// **Emitter anchors in `run` (search for `receipt_p0::K_` on `receipt`):**
+    /// 1. **Pipeline** — first field after `{`: `format!(..., K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE)` with
+    ///    a string literal value (`"ok"`).
+    /// 2. **`compiler_dag_v3_parse`** — `match` `Ok`: `format!(..., K_COMPILER_DAG_V3_PARSE)` + `"ok"`; `Err`:
+    ///    `format!(..., K_COMPILER_DAG_V3_PARSE, json_string(&msg))`.
+    /// 3. **`status`** — last field before closing `}`: `format!(..., K_STATUS, json_string(exit_status))`.
+    ///
+    /// **False positives:** a `contains` needle could match inside a quoted JSON value; the fixed
+    /// snake_case P0 key names and the receipt's flat object shape keep that risk negligible for this
+    /// bounded DB-8 trend surface.
+    fn top_level_property_needle(key: &str) -> String {
+        let mut needle = String::with_capacity(key.len() + 8);
+        needle.push_str("  \"");
+        needle.push_str(key);
+        needle.push_str("\":");
+        needle
+    }
+
+    fn missing_always_emitted_key_properties(json_body: &str) -> Vec<&'static str> {
+        ALWAYS_EMITTED_TOP_LEVEL_KEYS
+            .iter()
+            .copied()
+            .filter(|key| !json_body.contains(&top_level_property_needle(key)))
+            .collect()
+    }
+
+    /// Every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry must appear as a top-level JSON property using
+    /// [`top_level_property_needle`]'s shape so the serialized receipt cannot drift from the P0 pin
+    /// without failing closed before `write_receipt`. Sole public entry point for this contract check.
+    pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
+        let missing = missing_always_emitted_key_properties(json_body);
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "receipt.json missing always-emitted P0 keys: {}",
+                missing.join(", ")
+            ))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::HashSet;
+
+        #[test]
+        fn always_emitted_keys_are_unique_nonempty() {
+            let mut seen = HashSet::new();
+            for key in super::ALWAYS_EMITTED_TOP_LEVEL_KEYS {
+                assert!(!key.is_empty(), "empty key");
+                assert!(seen.insert(*key), "duplicate key {key}");
+            }
+        }
+
+        #[test]
+        fn validate_accepts_minimal_receipt_shape() {
+            let body = r#"{
+      "pipeline_fixed_point_default_source": "ok",
+      "compiler_dag_v3_parse": "ok",
+      "status": "completed"
+    }
+    "#;
+            super::validate_receipt_json_always_emitted_keys(body).unwrap();
+        }
+
+        #[test]
+        fn validate_rejects_missing_pipeline_key() {
+            let body = r#"{
+      "compiler_dag_v3_parse": "ok",
+      "status": "completed"
+    }
+    "#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("pipeline_fixed_point_default_source"), "{err}");
+        }
+
+        #[test]
+        fn validate_rejects_missing_status_key() {
+            let body = r#"{
+      "pipeline_fixed_point_default_source": "ok",
+      "compiler_dag_v3_parse": "x",
+    }
+    "#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("status"), "{err}");
+        }
+    }
+}
