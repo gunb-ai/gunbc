@@ -15,9 +15,9 @@
 // lattice units vs free-monoid empty (codex review / PR #2394). Additive vs multiplicative identity
 // is expressed **only** by wiring distinct binary `Int` lenses (`+` vs `*`). Passing-matrix rows
 // below intentionally exclude obligations whose tags imply non-`Int` inhabitants or non-additive /
-// non-multiplicative operations until faithful witnesses exist. Gate #10 is load-bearing for the
-// current `AlgebraicLawKind` executable surface; non-enum laws such as distributivity / absorption
-// remain substrate §P1 extensions rather than fixture-local encodings.
+// non-multiplicative operations until faithful witnesses exist. This fixture is a consumer receipt
+// for the current `AlgebraicLawKind` executable surface; non-enum laws such as distributivity /
+// absorption remain substrate §P1 extensions rather than fixture-local encodings.
 
 module std.r3_verification_l7_algebraic_laws
 
@@ -58,7 +58,7 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
 //
 // §1.8 gate #10 canonical `TestClaim.name` / declaration id (`docs/r3-program-plan.md`): bounded
 // `AlgebraicLaw::Associativity` on honest `Int` `+` (Semigroup lead row). The suite below is the
-// load-bearing matrix receipt for every currently executable `AlgebraicLawKind` row.
+// non-ignored consumer matrix for every currently executable `AlgebraicLawKind` row.
 data l7_algebraic_laws_witnessed: TestClaim = {
   name: "l7_algebraic_laws_witnessed",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",

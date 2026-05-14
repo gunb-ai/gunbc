@@ -74,7 +74,7 @@ Current substrate and runner state:
 
 The L7 matrix fixture uses the currently executable law surface and honest additive/multiplicative `Int` witnesses. It remains intentionally separate from non-enum laws such as distributivity, which require substrate §P1 expansion rather than fixture-local encodings.
 
-The normal `r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts` ratchet is the gate #10 receipt for the current `AlgebraicLawKind` surface.
+The normal `r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts` ratchet is the gate #10 consumer receipt for the current `AlgebraicLawKind` surface. It is not the full exhaustive per-(algebra, inhabitant, law) closure.
 
 ## Algebra Coverage Audit
 

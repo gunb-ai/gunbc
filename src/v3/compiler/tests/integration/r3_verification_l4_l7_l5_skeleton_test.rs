@@ -9,9 +9,10 @@
 //! lenses** (`+` vs `*`). Canonical §1.8 gate **#10** `l7_algebraic_laws_witnessed` maps to the matrix
 //! lead row (`AlgebraicLaw::Associativity` on `Int` `+`). The L7 matrix suite locks claims whose **Int
 //! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); the
-//! normal (non-ignored) matrix ratchet is the §1.8 #10 receipt for the current `AlgebraicLawKind`
-//! executable surface. Lattice / Boolean / free-monoid obligations and non-enum laws remain
-//! substrate §P1 extensions, not fixture-local overclaims. Gate **#15**
+//! normal (non-ignored) matrix ratchet is the §1.8 #10 consumer receipt for the current
+//! `AlgebraicLawKind` executable surface, not full §Acceptance closure. Lattice / Boolean /
+//! free-monoid obligations and non-enum laws remain substrate §P1 extensions, not fixture-local
+//! overclaims. Gate **#15**
 //! `l5_cross_target_consistency` (Rust / Python / Go `ForAllTargets` corpus) lives in
 //! `tests/boundary/l5_cross_target_consistency.rs` (via `tests/integration.rs`).
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
@@ -249,7 +250,7 @@ fn l7_algebraic_laws_witnessed_passes_bounded_associativity_witness() {
     });
 }
 
-/// §1.8 gate #10 receipt for the current executable [`AlgebraicLawKind`] surface.
+/// §1.8 gate #10 consumer receipt for the current executable [`AlgebraicLawKind`] surface.
 ///
 /// One [`TestRunner::run_suite`] covers every [`L7_MATRIX_PASS_CLAIMS`] row (including semigroup
 /// associativity and commutative-monoid commutativity) plus embedded-source `a + b` / `a * b`

@@ -95,9 +95,11 @@ Recommended sequencing:
 
 ## Dispatch Readiness
 
-Option B is superseded for gate #10: the bounded matrix for enum-backed
-`Associativity`, `Commutativity`, and `Identity` over honest additive /
-multiplicative `Int` witnesses is now the `l7_algebraic_laws_witnessed`
-receipt. Future distributivity, absorption, complement, inverse, annihilation,
-order, and approximate-field semantics remain P1 law-surface expansion work,
-not fixture-local overloads of the existing enum variants.
+Option B remains the closure shape for full L7 coverage. The bounded matrix for
+enum-backed `Associativity`, `Commutativity`, and `Identity` over honest
+additive / multiplicative `Int` witnesses is now a non-ignored
+`l7_algebraic_laws_witnessed` consumer receipt, but full PASSING still requires
+the exhaustive per-(algebra, inhabitant, law) work described above. Future
+distributivity, absorption, complement, inverse, annihilation, order, and
+approximate-field semantics remain P1 law-surface expansion work, not
+fixture-local overloads of the existing enum variants.

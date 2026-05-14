@@ -88,8 +88,8 @@ search in `test_runner.rs`.
 Dispatch implication:
 
 - The L7 matrix fixture covers the current executable `AlgebraicLawKind`
-  surface for honest additive/multiplicative `Int` witnesses and is the gate
-  #10 receipt.
+  surface for honest additive/multiplicative `Int` witnesses and is a gate #10
+  consumer receipt, not the full exhaustive coverage closure.
 - `Distributivity` remains a substrate-fact-introduction candidate under
   `INVARIANTS.md` P1; do not encode it through another `AlgebraicLawKind` or a
   fixture-local oracle.
