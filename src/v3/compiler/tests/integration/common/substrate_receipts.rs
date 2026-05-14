@@ -323,7 +323,9 @@ fn assert_compose_with_machine_width(
             }
             let inner = &dag.declaration(mw_args[0].value).connective;
             let matches = match width {
-                MachineWidthSlotWitness::NamedCarrier(name) => mw_args[0].value == find_named(dag, name),
+                MachineWidthSlotWitness::NamedCarrier(name) => {
+                    mw_args[0].value == find_named(dag, name)
+                }
                 MachineWidthSlotWitness::LiteralNatBits(decimal) => {
                     matches!(
                         inner,
@@ -379,15 +381,51 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
 pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
         ("Int8", "Int", MachineWidthSlotWitness::NamedCarrier("Byte")),
-        ("Int16", "Int", MachineWidthSlotWitness::LiteralNatBits("16")),
-        ("Int32", "Int", MachineWidthSlotWitness::LiteralNatBits("32")),
-        ("Int64", "Int", MachineWidthSlotWitness::LiteralNatBits("64")),
-        ("Int128", "Int", MachineWidthSlotWitness::LiteralNatBits("128")),
-        ("UInt8", "UInt", MachineWidthSlotWitness::NamedCarrier("Byte")),
-        ("UInt16", "UInt", MachineWidthSlotWitness::LiteralNatBits("16")),
-        ("UInt32", "UInt", MachineWidthSlotWitness::LiteralNatBits("32")),
-        ("UInt64", "UInt", MachineWidthSlotWitness::LiteralNatBits("64")),
-        ("UInt128", "UInt", MachineWidthSlotWitness::LiteralNatBits("128")),
+        (
+            "Int16",
+            "Int",
+            MachineWidthSlotWitness::LiteralNatBits("16"),
+        ),
+        (
+            "Int32",
+            "Int",
+            MachineWidthSlotWitness::LiteralNatBits("32"),
+        ),
+        (
+            "Int64",
+            "Int",
+            MachineWidthSlotWitness::LiteralNatBits("64"),
+        ),
+        (
+            "Int128",
+            "Int",
+            MachineWidthSlotWitness::LiteralNatBits("128"),
+        ),
+        (
+            "UInt8",
+            "UInt",
+            MachineWidthSlotWitness::NamedCarrier("Byte"),
+        ),
+        (
+            "UInt16",
+            "UInt",
+            MachineWidthSlotWitness::LiteralNatBits("16"),
+        ),
+        (
+            "UInt32",
+            "UInt",
+            MachineWidthSlotWitness::LiteralNatBits("32"),
+        ),
+        (
+            "UInt64",
+            "UInt",
+            MachineWidthSlotWitness::LiteralNatBits("64"),
+        ),
+        (
+            "UInt128",
+            "UInt",
+            MachineWidthSlotWitness::LiteralNatBits("128"),
+        ),
     ] {
         assert_compose_with_machine_width(dag, alias, algebra, width);
     }
