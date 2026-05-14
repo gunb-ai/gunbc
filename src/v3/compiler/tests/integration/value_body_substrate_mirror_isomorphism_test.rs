@@ -23,6 +23,8 @@ struct VariantShape {
     payload: PayloadShape,
 }
 
+// 🟢 TERMINAL test-helper coproduct: generated Rust enum payload syntax for
+// this mirror parser is either tuple-shaped or record-shaped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PayloadShape {
     Tuple(String),
