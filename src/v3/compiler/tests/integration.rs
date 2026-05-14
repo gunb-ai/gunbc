@@ -243,6 +243,8 @@ mod t_impossiblebugs_unenumerated_effects_test;
 mod t_las_complexity_contract_compile_error_test;
 #[path = "integration/t_las_crdt_cost_basis_demo_test.rs"]
 mod t_las_crdt_cost_basis_demo_test;
+#[path = "integration/t_las_parallelism_iteration_gate95_demo_test.rs"]
+mod t_las_parallelism_iteration_gate95_demo_test;
 #[path = "integration/t_lens_application_carrier_test.rs"]
 mod t_lens_application_carrier_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
