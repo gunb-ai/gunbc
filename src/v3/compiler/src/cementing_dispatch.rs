@@ -20,7 +20,7 @@
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path as FsPath;
 
 use crate::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
@@ -256,54 +256,63 @@ fn expected_cementing_receipt_triples(
     Ok(out)
 }
 
+fn parse_capability_register_row(
+    dag: &Dag,
+    row: &FieldValue,
+) -> Result<(String, String, String, String), String> {
+    let Some(fields) = record_fields(row) else {
+        return Err(format!(
+            "capability_register list: expected record row, got {row:?}"
+        ));
+    };
+    let lens_basename = string_field(fields, "lens_basename")?;
+    let structural = record_field(fields, "structural").ok_or_else(|| {
+        "capability_register row: missing `structural` field (expected \
+         `LensCapabilityStructuralStatus` variant)"
+            .to_string()
+    })?;
+    let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
+        "capability_register row: missing `behavioral` field (expected \
+         `LensCapabilityBehavioralStatus` variant)"
+            .to_string()
+    })?;
+    let v2 = record_field(fields, "v2_counterpart").ok_or_else(|| {
+        "capability_register row: missing `v2_counterpart` field (expected \
+         `LensCapabilityV2Counterpart` variant)"
+            .to_string()
+    })?;
+    let structural_label = decode_nullary_sum_variant(
+        dag,
+        "LensCapabilityStructuralStatus",
+        structural,
+        "structural",
+        "capability_register row",
+    )?;
+    let behavioral_label = decode_nullary_sum_variant(
+        dag,
+        "LensCapabilityBehavioralStatus",
+        behavioral,
+        "behavioral",
+        "capability_register row",
+    )?;
+    let v2_label = decode_nullary_sum_variant(
+        dag,
+        "LensCapabilityV2Counterpart",
+        v2,
+        "v2_counterpart",
+        "capability_register row",
+    )?;
+    Ok((lens_basename, structural_label, behavioral_label, v2_label))
+}
+
 fn v2_cementing_basenames_from_capability_rows(
     dag: &Dag,
     capability_rows: &[FieldValue],
 ) -> Result<BTreeSet<String>, String> {
     let mut basenames = BTreeSet::new();
     for row in capability_rows {
-        let Some(fields) = record_fields(row) else {
-            return Err(format!(
-                "capability_register list: expected record row, got {row:?}"
-            ));
-        };
-        let lens_basename = string_field(fields, "lens_basename")?;
-        let structural = record_field(fields, "structural").ok_or_else(|| {
-            "capability_register row: missing `structural` field (expected \
-             `LensCapabilityStructuralStatus` variant)"
-                .to_string()
-        })?;
-        let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
-            "capability_register row: missing `behavioral` field (expected \
-             `LensCapabilityBehavioralStatus` variant)"
-                .to_string()
-        })?;
-        let v2 = record_field(fields, "v2_counterpart").ok_or_else(|| {
-            "capability_register row: missing `v2_counterpart` field (expected \
-             `LensCapabilityV2Counterpart` variant)"
-                .to_string()
-        })?;
-        decode_nullary_sum_variant(
-            dag,
-            "LensCapabilityStructuralStatus",
-            structural,
-            "structural",
-            "capability_register row",
-        )?;
-        let behavioral_label = decode_nullary_sum_variant(
-            dag,
-            "LensCapabilityBehavioralStatus",
-            behavioral,
-            "behavioral",
-            "capability_register row",
-        )?;
-        let v2_label = decode_nullary_sum_variant(
-            dag,
-            "LensCapabilityV2Counterpart",
-            v2,
-            "v2_counterpart",
-            "capability_register row",
-        )?;
+        let (lens_basename, _structural_label, behavioral_label, v2_label) =
+            parse_capability_register_row(dag, row)?;
         let is_v2_complete = behavioral_label == "LensCapabilityBehavioralComplete"
             && v2_label == "LensCapabilityV2RealV2";
         if is_v2_complete {
@@ -311,6 +320,38 @@ fn v2_cementing_basenames_from_capability_rows(
         }
     }
     Ok(basenames)
+}
+
+/// `lens_basename` → `LensCapabilityBehavioralStatus` variant label for every row in
+/// `std.verification` `lens_capability_register_rows`.
+///
+/// Used by gate #83 supporting CI to fail-closed on `LensCapabilityBehavioralStub` for the
+/// T-Lens-Behavioral-Parity quartet on the **`behavioral` field** of `lens_capability_register_rows`
+/// (narrow slice alongside Gap 4 in `docs/r3-actual-close-plan.md`).
+pub fn lens_capability_register_behavioral_label_by_basename(
+    dag: &Dag,
+) -> Result<BTreeMap<String, String>, String> {
+    let reg_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .ok_or_else(|| {
+            "bootstrap must declare `lens_capability_register_rows` (std.verification)".to_string()
+        })?;
+    let capability_rows =
+        list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
+    let mut out = BTreeMap::new();
+    for row in &capability_rows {
+        let (lens_basename, _structural_label, behavioral_label, _v2_label) =
+            parse_capability_register_row(dag, row)?;
+        if out
+            .insert(lens_basename.clone(), behavioral_label.clone())
+            .is_some()
+        {
+            return Err(format!(
+                "duplicate `lens_basename` `{lens_basename}` in `lens_capability_register_rows`"
+            ));
+        }
+    }
+    Ok(out)
 }
 
 /// Lens basenames that participate in Band-C cementing: `LensCapabilityBehavioralComplete`
