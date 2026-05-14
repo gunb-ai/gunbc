@@ -45,13 +45,6 @@ fn operations_commute(dag: &Dag, a: &Operation, b: &Operation) -> bool {
     }
 }
 
-fn operation_locator(dag: &Dag, op: &Operation) -> String {
-    dag.declaration_opt(&op.callable.decl)
-        .and_then(|decl| decl.name.as_deref())
-        .map(|name| format!("{}:{:?}", name, op.callable.decl))
-        .unwrap_or_else(|| format!("{:?}", op.callable.decl))
-}
-
 fn extract_linear_branches(
     branches: &NonSingletonList<Box<WorkflowEffect>>,
 ) -> Option<Vec<Vec<Operation>>> {
@@ -121,13 +114,9 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((left, right)) => parallel_unsupported(
+        Err((_left, _right)) => parallel_unsupported(
             ParallelismUnsupportedKind::PairwiseNonCommute,
-            format!(
-                "parallel branch operations do not commute under parallel scheduling: left={}, right={}",
-                operation_locator(p0, &left),
-                operation_locator(p0, &right)
-            ),
+            "parallel branch operations do not commute under parallel scheduling",
         ),
     }
 }

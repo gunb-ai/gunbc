@@ -233,11 +233,9 @@ fn parallel_different_path_param_names_not_proven_commute() {
         panic!("expected ParallelismUnsupported — distinct PathParam names are not a disjointness proof");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
-    assert!(
-        d.reason
-            .starts_with("parallel branch operations do not commute under parallel scheduling:"),
-        "reason should carry stable locator context, got {reason:?}",
-        reason = d.reason
+    assert_eq!(
+        d.reason,
+        "parallel branch operations do not commute under parallel scheduling"
     );
 }
 
@@ -267,11 +265,9 @@ fn parallel_read_vs_upsert_does_not_commute() {
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert_eq!(d.downstream_stage, "lane2_stage2e_parallelism_lens");
-    assert!(
-        d.reason
-            .starts_with("parallel branch operations do not commute under parallel scheduling:"),
-        "reason should carry stable locator context, got {reason:?}",
-        reason = d.reason
+    assert_eq!(
+        d.reason,
+        "parallel branch operations do not commute under parallel scheduling"
     );
 }
 
