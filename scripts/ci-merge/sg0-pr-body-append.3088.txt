@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (c) Net add is the single gate #39 ratchet module registered in `EXPECTED_HAND_AUTHORED_TEST`; no same-PR census retirement. Follow-on CostLens composition dispatch remains tracked under gunbc#2141 per docs/briefs/r3-substrate-t-costlens-composition-worker.md.
