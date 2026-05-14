@@ -793,32 +793,11 @@ enum TestsAsDataMigrationClass {
     PropertyBased,
 }
 
-fn r1c_d_pb_census_pending_fact_output_paths() -> BTreeSet<String> {
-    const DAG: &str = include_str!("../dag/t_r1c_d_pb_census_gates.dag");
-    DAG.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            let prefix = "PendingFact { output_path: \"";
-            line.strip_prefix(prefix).and_then(|rest| {
-                let end = rest.find('"')?;
-                Some(rest[..end].to_string())
-            })
-        })
-        .collect()
-}
-
-#[test]
-fn sg0_r1c_d_generated_from_dag_manifest_matches_regen_authority() {
-    let observed = r1c_d_pb_census_pending_fact_output_paths();
-    let expected: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
-    assert_eq!(
-        observed, expected,
-        "`src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag` PendingFact manifest must list \
-         exactly the `build.rs::REGEN_OUTPUTS` authority (Gate #84 positive structural carrier). \
-         When adding a regen output, extend `REGEN_OUTPUTS` and this `.dag` manifest together — \
-         do not satisfy this via new `EXPECTED_HAND_AUTHORED_TEST` ratchet paths."
-    );
-}
+// R1C-D `pb_test_file_generated_from_dag`: `GeneratedFromDag` manifest vs
+// `GENERATED_FILES` set-equality (both `PendingFact` and `ResolvedFact` arms)
+// is enforced in `test_runner::eval_generated_from_dag_shape` when the `.dag`
+// suite runs (`t_pb_b_1_dag_runner_test::r1c_d_pb_census_gates_suite_evaluates_through_runner`).
+// Do not duplicate that obligation with a string-scrape test here (P5 + sum-shape drift).
 
 // Transitional gate #84 audit only. As each class migrates to `.dag`
 // `TestClaim` data, remove that class's path matcher branch with the
