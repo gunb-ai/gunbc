@@ -35,8 +35,10 @@ fn value_body_substrate_mirror_isomorphism_executable() {
     let generated_variants = generated_value_body_variants(GENERATED_VALUE_BODY);
     let runtime_variants = rust_value_body_variants();
 
+    assert_generated_value_body_map_uses_field_map(&generated_variants);
     assert_eq!(
-        generated_variants, substrate_variants,
+        normalize_generated_value_body_variants(&generated_variants),
+        substrate_variants,
         "generated Rust `ValueBody` payload shape must stay isomorphic with `src/v3/std/substrate.dag`"
     );
     assert_eq!(
@@ -111,9 +113,7 @@ fn generated_value_body_variants(source: &str) -> Vec<VariantShape> {
         if let Some((name, rest)) = trimmed.split_once('(') {
             variants.push(VariantShape {
                 name: name.to_string(),
-                payload: PayloadShape::Tuple(normalize_rust_value_body_type(
-                    rest.trim_end_matches("),"),
-                )),
+                payload: PayloadShape::Tuple(rest.trim_end_matches("),").to_string()),
             });
             continue;
         }
@@ -129,7 +129,7 @@ fn generated_value_body_variants(source: &str) -> Vec<VariantShape> {
                     .trim_end_matches(',')
                     .split_once(": ")
                     .expect("generated ValueBody record field");
-                fields.push((label.to_string(), normalize_rust_value_body_type(ty)));
+                fields.push((label.to_string(), ty.to_string()));
             }
             variants.push(VariantShape {
                 name: name.to_string(),
@@ -200,7 +200,44 @@ fn parse_substrate_variant(text: &str) -> VariantShape {
     }
 }
 
-fn normalize_rust_value_body_type(ty: &str) -> String {
+fn assert_generated_value_body_map_uses_field_map(generated_variants: &[VariantShape]) {
+    let map = generated_variants
+        .iter()
+        .find(|variant| variant.name == "Map")
+        .expect("generated ValueBody includes Map variant");
+
+    assert_eq!(
+        map.payload,
+        PayloadShape::Tuple("FieldMap".to_string()),
+        "generated Rust `ValueBody::Map` must use `FieldMap` so duplicate-key rejection stays at the carrier boundary"
+    );
+}
+
+fn normalize_generated_value_body_variants(
+    generated_variants: &[VariantShape],
+) -> Vec<VariantShape> {
+    generated_variants
+        .iter()
+        .map(|variant| VariantShape {
+            name: variant.name.clone(),
+            payload: normalize_generated_payload(&variant.payload),
+        })
+        .collect()
+}
+
+fn normalize_generated_payload(payload: &PayloadShape) -> PayloadShape {
+    match payload {
+        PayloadShape::Tuple(ty) => PayloadShape::Tuple(normalize_generated_type(ty)),
+        PayloadShape::Record(fields) => PayloadShape::Record(
+            fields
+                .iter()
+                .map(|(label, ty)| (label.clone(), normalize_generated_type(ty)))
+                .collect(),
+        ),
+    }
+}
+
+fn normalize_generated_type(ty: &str) -> String {
     match ty {
         "Vec<(String, FieldValue)>" | "FieldMap" => "List<FieldEntry>".to_string(),
         "Vec<FieldValue>" => "List<FieldValue>".to_string(),
