@@ -288,21 +288,21 @@ pub(crate) fn classify_operation_effect(
     let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
         return Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed);
     };
-    if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
+    if callable == methods.append {
         return Ok(EffectShape::IsBreaking(BreakingShape::AppendEffect));
     }
-    if callable == methods.concat && effect.endpoint.method == HttpMethodScalar::Post {
+    if callable == methods.concat {
         return Ok(EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
         }));
     }
-    if methods.reads.contains(&callable) && method_is_read(effect.endpoint.method) {
+    if methods.reads.contains(&callable) {
         return Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect));
     }
-    if methods.upserts.contains(&callable) && method_is_upsert(effect.endpoint.method) {
+    if methods.upserts.contains(&callable) {
         return Ok(keyed_upsert_or_keyless_break(effect));
     }
-    if callable == methods.delete && effect.endpoint.method == HttpMethodScalar::Delete {
+    if callable == methods.delete {
         return Ok(keyed_delete_or_keyless_break(effect));
     }
     Ok(transport_effect_shape(effect))
@@ -390,17 +390,6 @@ fn keyless_break(effect: &Operation) -> EffectShape {
             method: effect.endpoint.method,
         },
     })
-}
-
-fn method_is_read(method: HttpMethodScalar) -> bool {
-    matches!(
-        method,
-        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options
-    )
-}
-
-fn method_is_upsert(method: HttpMethodScalar) -> bool {
-    matches!(method, HttpMethodScalar::Put | HttpMethodScalar::Patch)
 }
 
 fn operation_resource_key(effect: &Operation) -> Option<String> {

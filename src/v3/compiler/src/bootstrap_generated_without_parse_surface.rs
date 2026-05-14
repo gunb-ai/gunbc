@@ -1360,49 +1360,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(178),
             data: LiteralBits::Bool(true),
             output: PortId(179),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24067, 24071),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23723, 23727),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(179),
             data: LiteralBits::Bool(true),
             output: PortId(180),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24084, 24088),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23740, 23744),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(180),
             data: LiteralBits::Bool(true),
             output: PortId(181),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24104, 24108),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23760, 23764),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(181),
             data: LiteralBits::Bool(false),
             output: PortId(182),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24121, 24126),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23777, 23782),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(182),
             data: LiteralBits::Bool(false),
             output: PortId(183),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24138, 24143),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23794, 23799),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(183),
             data: LiteralBits::Bool(false),
             output: PortId(184),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24157, 24162),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23813, 23818),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(184),
             data: LiteralBits::Bool(false),
             output: PortId(185),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24177, 24182),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23833, 23838),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -1414,7 +1414,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(179),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "GET".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24060, 24063),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23716, 23719),
                     },
                     binding: None,
                 },
@@ -1423,7 +1423,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(180),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "HEAD".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24076, 24080),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23732, 23736),
                     },
                     binding: None,
                 },
@@ -1432,7 +1432,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(181),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "OPTIONS".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24093, 24100),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23749, 23756),
                     },
                     binding: None,
                 },
@@ -1441,7 +1441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(182),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "POST".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24113, 24117),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23769, 23773),
                     },
                     binding: None,
                 },
@@ -1450,7 +1450,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(183),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PUT".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24131, 24134),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23787, 23790),
                     },
                     binding: None,
                 },
@@ -1459,7 +1459,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(184),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PATCH".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24148, 24153),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23804, 23809),
                     },
                     binding: None,
                 },
@@ -1468,13 +1468,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(185),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DELETE".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24167, 24173),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23823, 23829),
                     },
                     binding: None,
                 },
             ],
             output: PortId(186),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24041, 24186),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23697, 23842),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -1482,7 +1482,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "method_is_read".to_string(),
             value: PortId(186),
             params: vec![PortId(178)],
-            span: SourceSpan::new("src/v3/std/effects.dag", 24041, 24186),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23697, 23842),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -1490,49 +1490,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(187),
             data: LiteralBits::Bool(true),
             output: PortId(188),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24266, 24270),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23922, 23926),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(188),
             data: LiteralBits::Bool(true),
             output: PortId(189),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24284, 24288),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23940, 23944),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(189),
             data: LiteralBits::Bool(false),
             output: PortId(190),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24300, 24305),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23956, 23961),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(190),
             data: LiteralBits::Bool(false),
             output: PortId(191),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24318, 24323),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23974, 23979),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(191),
             data: LiteralBits::Bool(false),
             output: PortId(192),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24338, 24343),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23994, 23999),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(192),
             data: LiteralBits::Bool(false),
             output: PortId(193),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24356, 24361),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24012, 24017),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(193),
             data: LiteralBits::Bool(false),
             output: PortId(194),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24377, 24382),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24033, 24038),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -1544,7 +1544,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(188),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PUT".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24259, 24262),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23915, 23918),
                     },
                     binding: None,
                 },
@@ -1553,7 +1553,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(189),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PATCH".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24275, 24280),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23931, 23936),
                     },
                     binding: None,
                 },
@@ -1562,7 +1562,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(190),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "GET".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24293, 24296),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23949, 23952),
                     },
                     binding: None,
                 },
@@ -1571,7 +1571,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(191),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "POST".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24310, 24314),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23966, 23970),
                     },
                     binding: None,
                 },
@@ -1580,7 +1580,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(192),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DELETE".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24328, 24334),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 23984, 23990),
                     },
                     binding: None,
                 },
@@ -1589,7 +1589,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(193),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "HEAD".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24348, 24352),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24004, 24008),
                     },
                     binding: None,
                 },
@@ -1598,13 +1598,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(194),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "OPTIONS".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24366, 24373),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24022, 24029),
                     },
                     binding: None,
                 },
             ],
             output: PortId(195),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24240, 24386),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23896, 24042),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -1612,7 +1612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "method_is_upsert".to_string(),
             value: PortId(195),
             params: vec![PortId(187)],
-            span: SourceSpan::new("src/v3/std/effects.dag", 24240, 24386),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23896, 24042),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -1620,49 +1620,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(196),
             data: LiteralBits::Bool(true),
             output: PortId(197),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24465, 24469),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24121, 24125),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(197),
             data: LiteralBits::Bool(false),
             output: PortId(198),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24481, 24486),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24137, 24142),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(198),
             data: LiteralBits::Bool(false),
             output: PortId(199),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24498, 24503),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24154, 24159),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(199),
             data: LiteralBits::Bool(false),
             output: PortId(200),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24517, 24522),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24173, 24178),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(200),
             data: LiteralBits::Bool(false),
             output: PortId(201),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24542),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24193, 24198),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(201),
             data: LiteralBits::Bool(false),
             output: PortId(202),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24555, 24560),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24211, 24216),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(202),
             data: LiteralBits::Bool(false),
             output: PortId(203),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24576, 24581),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24232, 24237),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -1674,7 +1674,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(197),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "POST".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24457, 24461),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24113, 24117),
                     },
                     binding: None,
                 },
@@ -1683,7 +1683,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(198),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "GET".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24474, 24477),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24130, 24133),
                     },
                     binding: None,
                 },
@@ -1692,7 +1692,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(199),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PUT".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24491, 24494),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24147, 24150),
                     },
                     binding: None,
                 },
@@ -1701,7 +1701,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(200),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PATCH".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24508, 24513),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24164, 24169),
                     },
                     binding: None,
                 },
@@ -1710,7 +1710,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(201),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DELETE".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24527, 24533),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24183, 24189),
                     },
                     binding: None,
                 },
@@ -1719,7 +1719,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(202),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "HEAD".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24547, 24551),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24203, 24207),
                     },
                     binding: None,
                 },
@@ -1728,13 +1728,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(203),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "OPTIONS".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24565, 24572),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24221, 24228),
                     },
                     binding: None,
                 },
             ],
             output: PortId(204),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24438, 24585),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24094, 24241),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -1742,7 +1742,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "method_is_post".to_string(),
             value: PortId(204),
             params: vec![PortId(196)],
-            span: SourceSpan::new("src/v3/std/effects.dag", 24438, 24585),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24094, 24241),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -1750,49 +1750,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(205),
             data: LiteralBits::Bool(true),
             output: PortId(206),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24668, 24672),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24324, 24328),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(206),
             data: LiteralBits::Bool(false),
             output: PortId(207),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24684, 24689),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24340, 24345),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(207),
             data: LiteralBits::Bool(false),
             output: PortId(208),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24702, 24707),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24358, 24363),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(208),
             data: LiteralBits::Bool(false),
             output: PortId(209),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24719, 24724),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24375, 24380),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(209),
             data: LiteralBits::Bool(false),
             output: PortId(210),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24738, 24743),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24394, 24399),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(210),
             data: LiteralBits::Bool(false),
             output: PortId(211),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24756, 24761),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24412, 24417),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(211),
             data: LiteralBits::Bool(false),
             output: PortId(212),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24777, 24782),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24433, 24438),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -1804,7 +1804,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(206),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DELETE".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24658, 24664),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24314, 24320),
                     },
                     binding: None,
                 },
@@ -1813,7 +1813,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(207),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "GET".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24677, 24680),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24333, 24336),
                     },
                     binding: None,
                 },
@@ -1822,7 +1822,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(208),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "POST".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24694, 24698),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24350, 24354),
                     },
                     binding: None,
                 },
@@ -1831,7 +1831,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(209),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PUT".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24712, 24715),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24368, 24371),
                     },
                     binding: None,
                 },
@@ -1840,7 +1840,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(210),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PATCH".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24729, 24734),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24385, 24390),
                     },
                     binding: None,
                 },
@@ -1849,7 +1849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(211),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "HEAD".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24748, 24752),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24404, 24408),
                     },
                     binding: None,
                 },
@@ -1858,13 +1858,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(212),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "OPTIONS".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24766, 24773),
+                        span: SourceSpan::new("src/v3/std/effects.dag", 24422, 24429),
                     },
                     binding: None,
                 },
             ],
             output: PortId(213),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24639, 24786),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24295, 24442),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -1872,7 +1872,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "method_is_delete".to_string(),
             value: PortId(213),
             params: vec![PortId(205)],
-            span: SourceSpan::new("src/v3/std/effects.dag", 24639, 24786),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24295, 24442),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -26295,7 +26295,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(959)],
                 output: DeclarationId(744),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 20525, 22739)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 20525, 22395)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26305,7 +26305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 20469, 22739),
+            span: SourceSpan::new("src/v3/std/effects.dag", 20469, 22395),
         });
         declarations.push(Declaration {
             id: DeclarationId(756),
@@ -26313,7 +26313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(959)],
                 output: DeclarationId(747),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 22815, 22875)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 22471, 22531)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26323,7 +26323,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 22741, 22875),
+            span: SourceSpan::new("src/v3/std/effects.dag", 22397, 22531),
         });
         declarations.push(Declaration {
             id: DeclarationId(757),
@@ -26331,7 +26331,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(959)],
                 output: DeclarationId(744),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 22933, 23989)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 22589, 23645)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26341,7 +26341,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 22877, 23989),
+            span: SourceSpan::new("src/v3/std/effects.dag", 22533, 23645),
         });
         declarations.push(Declaration {
             id: DeclarationId(758),
@@ -26359,7 +26359,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 23991, 24186),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23647, 23842),
         });
         declarations.push(Declaration {
             id: DeclarationId(759),
@@ -26377,7 +26377,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24188, 24386),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23844, 24042),
         });
         declarations.push(Declaration {
             id: DeclarationId(760),
@@ -26395,7 +26395,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24388, 24585),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24044, 24241),
         });
         declarations.push(Declaration {
             id: DeclarationId(761),
@@ -26413,7 +26413,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24587, 24786),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24243, 24442),
         });
         declarations.push(Declaration {
             id: DeclarationId(762),
@@ -26421,7 +26421,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(959)],
                 output: DeclarationId(1466),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24840, 25031)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24496, 24687)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26431,7 +26431,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24788, 25031),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24444, 24687),
         });
         declarations.push(Declaration {
             id: DeclarationId(763),
@@ -26439,7 +26439,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(87)],
                 output: DeclarationId(1467),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25085, 25107)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24741, 24763)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26449,7 +26449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25033, 25107),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24689, 24763),
         });
         declarations.push(Declaration {
             id: DeclarationId(764),
@@ -26457,7 +26457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1468)],
                 output: DeclarationId(1470),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25189, 25282)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24845, 24938)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26467,7 +26467,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25109, 25282),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24765, 24938),
         });
         declarations.push(Declaration {
             id: DeclarationId(765),
@@ -26475,7 +26475,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1471)],
                 output: DeclarationId(1473),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25357, 25540)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25013, 25196)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26485,7 +26485,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25284, 25540),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24940, 25196),
         });
         declarations.push(Declaration {
             id: DeclarationId(766),
@@ -26493,7 +26493,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1474)],
                 output: DeclarationId(752),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 26418, 26541)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 26074, 26197)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26503,7 +26503,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 26351, 26541),
+            span: SourceSpan::new("src/v3/std/effects.dag", 26007, 26197),
         });
         declarations.push(Declaration {
             id: DeclarationId(767),
@@ -26522,7 +26522,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27742, 27777),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27398, 27433),
         });
         declarations.push(Declaration {
             id: DeclarationId(768),
@@ -26547,7 +26547,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27862, 27928),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27518, 27584),
         });
         declarations.push(Declaration {
             id: DeclarationId(769),
@@ -26580,7 +26580,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28604, 28826),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28260, 28482),
         });
         declarations.push(Declaration {
             id: DeclarationId(770),
@@ -26609,7 +26609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29185, 29289),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28841, 28945),
         });
         declarations.push(Declaration {
             id: DeclarationId(771),
@@ -26634,7 +26634,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29428, 29566),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29084, 29222),
         });
         declarations.push(Declaration {
             id: DeclarationId(772),
@@ -26642,7 +26642,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(224), DeclarationId(224), DeclarationId(224)],
                 output: DeclarationId(771),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 29708, 29864)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 29364, 29520)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26652,7 +26652,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29568, 29864),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29224, 29520),
         });
         declarations.push(Declaration {
             id: DeclarationId(773),
@@ -26693,7 +26693,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30027, 30257),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29683, 29913),
         });
         declarations.push(Declaration {
             id: DeclarationId(774),
@@ -26722,7 +26722,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30259, 30375),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29915, 30031),
         });
         declarations.push(Declaration {
             id: DeclarationId(775),
@@ -26747,7 +26747,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30539, 30677),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30195, 30333),
         });
         declarations.push(Declaration {
             id: DeclarationId(776),
@@ -26755,7 +26755,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(773), DeclarationId(224)],
                 output: DeclarationId(775),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 30798, 30953)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 30454, 30609)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26765,7 +26765,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30679, 30953),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30335, 30609),
         });
         declarations.push(Declaration {
             id: DeclarationId(777),
@@ -26773,7 +26773,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(769)],
                 output: DeclarationId(771),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 31191, 32021)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 30847, 31677)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26783,7 +26783,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 31105, 32021),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30761, 31677),
         });
         declarations.push(Declaration {
             id: DeclarationId(778),
@@ -26816,7 +26816,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32778, 32905),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32434, 32561),
         });
         declarations.push(Declaration {
             id: DeclarationId(779),
@@ -26824,7 +26824,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1475)],
                 output: DeclarationId(1476),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 33004, 33298)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 32660, 32954)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26834,7 +26834,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32907, 33298),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32563, 32954),
         });
         declarations.push(Declaration {
             id: DeclarationId(780),
@@ -26863,7 +26863,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 33615, 33706),
+            span: SourceSpan::new("src/v3/std/effects.dag", 33271, 33362),
         });
         declarations.push(Declaration {
             id: DeclarationId(781),
@@ -48118,7 +48118,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24832, 24839),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24488, 24495),
         });
         declarations.push(Declaration {
             id: DeclarationId(1467),
@@ -48138,7 +48138,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25063, 25084),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24719, 24740),
         });
         declarations.push(Declaration {
             id: DeclarationId(1468),
@@ -48158,7 +48158,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25136, 25161),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24792, 24817),
         });
         declarations.push(Declaration {
             id: DeclarationId(1469),
@@ -48178,7 +48178,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25166, 25187),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24822, 24843),
         });
         declarations.push(Declaration {
             id: DeclarationId(1470),
@@ -48197,7 +48197,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25166, 25188),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24822, 24844),
         });
         declarations.push(Declaration {
             id: DeclarationId(1471),
@@ -48217,7 +48217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25314, 25329),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24970, 24985),
         });
         declarations.push(Declaration {
             id: DeclarationId(1472),
@@ -48237,7 +48237,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25334, 25355),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24990, 25011),
         });
         declarations.push(Declaration {
             id: DeclarationId(1473),
@@ -48256,7 +48256,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25334, 25356),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24990, 25012),
         });
         declarations.push(Declaration {
             id: DeclarationId(1474),
@@ -48276,7 +48276,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 26379, 26394),
+            span: SourceSpan::new("src/v3/std/effects.dag", 26035, 26050),
         });
         declarations.push(Declaration {
             id: DeclarationId(1475),
@@ -48296,7 +48296,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32951, 32966),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32607, 32622),
         });
         declarations.push(Declaration {
             id: DeclarationId(1476),
@@ -48316,7 +48316,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32972, 33003),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32628, 32659),
         });
         declarations.push(Declaration {
             id: DeclarationId(1477),
@@ -48852,7 +48852,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28648, 28663),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28304, 28319),
         });
         declarations.push(Declaration {
             id: DeclarationId(1506),
@@ -48871,7 +48871,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28628, 28665),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28284, 28321),
         });
         declarations.push(Declaration {
             id: DeclarationId(1507),
@@ -48891,7 +48891,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28691, 28718),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28347, 28374),
         });
         declarations.push(Declaration {
             id: DeclarationId(1508),
@@ -48910,7 +48910,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28670, 28720),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28326, 28376),
         });
         declarations.push(Declaration {
             id: DeclarationId(1509),
@@ -48929,7 +48929,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28725, 28760),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28381, 28416),
         });
         declarations.push(Declaration {
             id: DeclarationId(1510),
@@ -48949,7 +48949,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28792, 28824),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28448, 28480),
         });
         declarations.push(Declaration {
             id: DeclarationId(1511),
@@ -48968,7 +48968,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28765, 28826),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28421, 28482),
         });
         declarations.push(Declaration {
             id: DeclarationId(1512),
@@ -48987,7 +48987,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29463, 29509),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29119, 29165),
         });
         declarations.push(Declaration {
             id: DeclarationId(1513),
@@ -49006,7 +49006,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29514, 29566),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29170, 29222),
         });
         declarations.push(Declaration {
             id: DeclarationId(1514),
@@ -49020,7 +49020,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30063, 30083),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29719, 29739),
         });
         declarations.push(Declaration {
             id: DeclarationId(1515),
@@ -49034,7 +49034,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30088, 30109),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29744, 29765),
         });
         declarations.push(Declaration {
             id: DeclarationId(1516),
@@ -49048,7 +49048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30114, 30137),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29770, 29793),
         });
         declarations.push(Declaration {
             id: DeclarationId(1517),
@@ -49073,7 +49073,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30142, 30198),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29798, 29854),
         });
         declarations.push(Declaration {
             id: DeclarationId(1518),
@@ -49087,7 +49087,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30203, 30234),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29859, 29890),
         });
         declarations.push(Declaration {
             id: DeclarationId(1519),
@@ -49101,7 +49101,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30239, 30257),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29895, 29913),
         });
         declarations.push(Declaration {
             id: DeclarationId(1520),
@@ -49120,7 +49120,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30574, 30620),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30230, 30276),
         });
         declarations.push(Declaration {
             id: DeclarationId(1521),
@@ -49139,7 +49139,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30625, 30677),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30281, 30333),
         });
         declarations.push(Declaration {
             id: DeclarationId(1522),
@@ -68532,7 +68532,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24832, 24839),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24488, 24495),
         });
         declarations.push(Declaration {
             id: DeclarationId(2577),
@@ -68546,7 +68546,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24832, 24839),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24488, 24495),
         });
         declarations.push(Declaration {
             id: DeclarationId(2578),
@@ -68571,7 +68571,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24832, 24839),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24488, 24495),
         });
         declarations.push(Declaration {
             id: DeclarationId(2579),
@@ -68590,7 +68590,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25166, 25188),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24822, 24844),
         });
         declarations.push(Declaration {
             id: DeclarationId(2580),
@@ -68604,7 +68604,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25166, 25188),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24822, 24844),
         });
         declarations.push(Declaration {
             id: DeclarationId(2581),
@@ -68629,7 +68629,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25166, 25188),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24822, 24844),
         });
         declarations.push(Declaration {
             id: DeclarationId(2582),
@@ -68648,7 +68648,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25334, 25356),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24990, 25012),
         });
         declarations.push(Declaration {
             id: DeclarationId(2583),
@@ -68662,7 +68662,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25334, 25356),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24990, 25012),
         });
         declarations.push(Declaration {
             id: DeclarationId(2584),
@@ -68687,7 +68687,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25334, 25356),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24990, 25012),
         });
         declarations.push(Declaration {
             id: DeclarationId(2585),

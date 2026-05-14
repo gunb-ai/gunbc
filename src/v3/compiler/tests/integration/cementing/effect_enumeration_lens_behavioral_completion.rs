@@ -90,3 +90,31 @@ fn effect_enumeration_lens_behaviorally_complete_classifies_breaking_operations_
         StructuralEffectShape::WriteShaped
     ));
 }
+
+#[test]
+fn effect_enumeration_lens_behaviorally_complete_uses_callable_authority_over_transport() {
+    let dag = Dag::new();
+    let read_over_post = op(&dag, "get_method", HttpMethodScalar::Post, vec![]);
+    let write_over_get = op(
+        &dag,
+        "map_insert_method",
+        HttpMethodScalar::Get,
+        vec![UrlPathToken::ParamToken {
+            name: "id".to_string(),
+        }],
+    );
+    let breaking_over_get = op(&dag, "append_method", HttpMethodScalar::Get, vec![]);
+
+    assert!(matches!(
+        operation_structural_effect_shape(&read_over_post),
+        StructuralEffectShape::ReadShaped
+    ));
+    assert!(matches!(
+        operation_structural_effect_shape(&write_over_get),
+        StructuralEffectShape::WriteShaped
+    ));
+    assert!(matches!(
+        operation_structural_effect_shape(&breaking_over_get),
+        StructuralEffectShape::WriteShaped
+    ));
+}
