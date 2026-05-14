@@ -16,9 +16,9 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    literal_decimal_i64, per_call_descent_evidence, sequential, ArithmeticOp, Behavior,
-    ComparisonOp, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind,
-    SymbolicCost, TransformTarget, ValueBody,
+    literal_decimal_i64, per_call_descent_evidence, ArithmeticOp, Behavior, ComparisonOp, Dag,
+    Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, SymbolicCost,
+    TransformTarget, ValueBody,
 };
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
@@ -28,7 +28,8 @@ use v3_compiler::lens_cost_target_realization::{
     pattern_realization_meta, type_instantiation_realization_meta, type_realization_meta,
 };
 use v3_compiler::realization_cost::{
-    RealizationCostCategory, RealizationCostKey, RealizationCostTable,
+    compose_symbolic_cost_with_realization_costs, RealizationCostCategory, RealizationCostKey,
+    RealizationCostTable,
 };
 
 use crate::common::assert_recursive_countdown_linear_semantics;
@@ -187,11 +188,13 @@ fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
             "literal bind should stay constant zero at algebra layer, got {algebra_cost:?}"
         );
 
-        let composed = sequential(
+        let table = RealizationCostTable::for_language(&boot, named_id(&boot, "rust_language"))
+            .expect("rust realization-cost table should build");
+        let composed = compose_symbolic_cost_with_realization_costs(
             algebra_cost,
-            SymbolicCost::ConstantCost {
-                _0: target_primitive_cost,
-            },
+            [table
+                .cost(&RealizationCostKey::Type(named_id(&boot, "Int")))
+                .expect("Rust Int realization cost")],
         );
         assert!(
             matches!(composed, SymbolicCost::ConstantCost { _0: 1 }),
@@ -368,40 +371,40 @@ let demo: Int = countdown(3) + 1
 
         let type_cost = table
             .cost(&RealizationCostKey::Type(int_decl))
-            .expect("Rust Int realization cost")
-            .value();
+            .expect("Rust Int realization cost");
         let add_cost = table
             .cost(&RealizationCostKey::Operator {
                 target: int_decl,
                 op: add_op,
             })
-            .expect("Rust Int add realization cost")
-            .value();
+            .expect("Rust Int add realization cost");
         let sub_cost = table
             .cost(&RealizationCostKey::Operator {
                 target: int_decl,
                 op: sub_op,
             })
-            .expect("Rust Int sub realization cost")
-            .value();
+            .expect("Rust Int sub realization cost");
         let eq_cost = table
             .cost(&RealizationCostKey::Operator {
                 target: int_decl,
                 op: eq_op,
             })
-            .expect("Rust Int eq realization cost")
-            .value();
+            .expect("Rust Int eq realization cost");
         assert_eq!(
-            (type_cost, add_cost, sub_cost, eq_cost),
+            (
+                type_cost.value(),
+                add_cost.value(),
+                sub_cost.value(),
+                eq_cost.value()
+            ),
             (1, 1, 1, 1),
             "fixture rows should expose Rust Int/Add/Sub/Eq realization costs"
         );
 
-        let composed = [type_cost, add_cost, sub_cost, eq_cost]
-            .into_iter()
-            .fold(algebra_cost, |acc, cost| {
-                sequential(acc, SymbolicCost::ConstantCost { _0: cost })
-            });
+        let composed = compose_symbolic_cost_with_realization_costs(
+            algebra_cost,
+            [type_cost, add_cost, sub_cost, eq_cost],
+        );
         assert!(
             mentions_linear(&composed),
             "cost lens demo should preserve the observable linear bound while folding Rust realization rows, got {composed:?}"

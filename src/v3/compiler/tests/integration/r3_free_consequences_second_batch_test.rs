@@ -24,14 +24,17 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    sequential, ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, OperatorKind,
-    SymbolicCost, TransformTarget,
+    ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, OperatorKind, SymbolicCost,
+    TransformTarget,
 };
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
-use v3_compiler::realization_cost::{RealizationCostKey, RealizationCostTable};
+use v3_compiler::realization_cost::{
+    compose_symbolic_cost_with_realization_costs, RealizationCostAmount, RealizationCostKey,
+    RealizationCostTable,
+};
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -188,6 +191,7 @@ let demo: Int = countdown(3) + 1
     let realized_costs = realized_rows
         .iter()
         .map(|row| realization_cost(&table, int_decl, row.op))
+        .map(|cost| cost.value())
         .collect::<Vec<_>>();
     assert_eq!(
         realized_costs,
@@ -284,7 +288,7 @@ fn compose_expected_structural_cost(
     rows.into_iter()
         .map(|row| realization_cost(table, int_decl, row.op))
         .fold(algebra_cost, |acc, primitive_cost| {
-            sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
+            compose_symbolic_cost_with_realization_costs(acc, [primitive_cost])
         })
 }
 
@@ -306,7 +310,7 @@ fn realization_cost(
     table: &RealizationCostTable,
     int_decl: DeclarationId,
     op: DeclarationId,
-) -> i64 {
+) -> RealizationCostAmount {
     table
         .cost(&RealizationCostKey::Operator {
             target: int_decl,
@@ -315,7 +319,6 @@ fn realization_cost(
         .unwrap_or_else(|| {
             panic!("missing Rust LanguageSpec realization cost for operator row {op:?}")
         })
-        .value()
 }
 
 fn compose_observed_structural_cost(
@@ -327,7 +330,7 @@ fn compose_observed_structural_cost(
     rows.iter()
         .map(|row| realization_cost(table, int_decl, row.op))
         .fold(algebra_cost, |acc, primitive_cost| {
-            sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
+            compose_symbolic_cost_with_realization_costs(acc, [primitive_cost])
         })
 }
 
