@@ -4708,24 +4708,10 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let mut entries = match sg0_census_list_entries(&list_constant_name) {
+        let entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        // Lens-producer paths may live on `EXPECTED_HAND_AUTHORED_FRAGMENTS` after a path-only
-        // retirement (e.g. `lens_declaration_apply_body.txt`). `CensusSubsetCount` for
-        // `lens_producer_files_remaining` still names `expected_hand_authored_non_test` in `.dag`
-        // claims — union the fragment list so the subset predicate cannot silently drop to zero.
-        if list_constant_name == "expected_hand_authored_non_test"
-            && subset_name == "lens_producer_files_subset_predicate"
-        {
-            match sg0_census_list_entries("expected_hand_authored_fragments") {
-                Ok(fragments) => entries.extend(fragments),
-                Err(reason) => return ClaimResult::Fail(reason),
-            }
-            entries.sort();
-            entries.dedup();
-        }
         let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
@@ -6412,15 +6398,13 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 
 /// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
 ///
-/// `lens_apply.rs` → `lens_declaration_apply.rs` → `lens_declaration_apply_body.txt` is a **path**
-/// retirement chain only; the bounded lens host remains a lens-producer residual until PB-Runtime
-/// owns application/reflection (Row-4 / §7.1). `eval_census_subset_count_shape` unions
-/// `EXPECTED_HAND_AUTHORED_FRAGMENTS` when applying this predicate to `expected_hand_authored_non_test`
-/// so a fragment move cannot fake census progress.
+/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
+/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
+/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/lens_declaration_apply_body.txt" | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
 }
 

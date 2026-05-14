@@ -1,15 +1,11 @@
-// PB-0 cycle-2: bounded lens application module body (`lens_declaration_apply_body.txt`), included
-// from `lib.rs` so `src/v3/compiler/src/lens_declaration_apply.rs` retires from SG-0 NON_TEST census
-// (path-only retirement; same semantics per gate #5 notes). Dissolution: PB-Runtime / Row-4.
-//
-// Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
-// over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
-//
-// R3 gate #5 (`lens_apply_dot_rs_retired`): the legacy path
-// `src/v3/compiler/src/lens_apply.rs` is retired (path absent from the tree).
-// Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
-// readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
-// `INVARIANTS` P5(b) deferral language on the tracking PR.
+//! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
+//! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
+//!
+//! **R3 gate #5 (`lens_apply_dot_rs_retired`):** the legacy path
+//! `src/v3/compiler/src/lens_apply.rs` is **retired** (path absent from the tree).
+//! Bounded lens application and `lens_testgen` live here until PB-Runtime / Row-4
+//! readiness dissolves the host shim, per `docs/r3-program-plan.md` §1.8 and
+//! `INVARIANTS` P5(b) deferral language on the tracking PR.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -1152,7 +1148,7 @@ mod tests {
 
     #[test]
     fn named_function_count_on_trivial_program() {
-        let src = include_str!("../lenses/named_function_count.dag");
+        let src = include_str!("../../lenses/named_function_count.dag");
         let lens_dag =
             compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
         let prog = compile_to_dag("let x: Int = 1", "lens_apply_prog.v3").expect("prog compiles");
@@ -2993,71 +2989,11 @@ fn get_x(point: Point) -> Int = point.x
     }
 }
 
-// PB-0 cycle-2: T-LAS structural carriers nested under `lens_declaration_apply` for SG-0
-// `.rs` path retirement; `lib.rs` re-exports `v3_compiler::lens_t_las_carrier` at crate root.
-// Dissolution: emit-time carriers owned by `.dag` / generated substrate without host mirrors.
-pub mod lens_t_las_carrier {
-    //! Structural carriers for Rust emission of T-LAS lens surfaces that reference
-    //! `v3.std.lens::Lens`, `std.algebra::Monoid`, and `v3.std.lens_application`
-    //! (`gate #92`). Shapes mirror the `.dag` authorities; they are not used by the
-    //! compiler runtime outside `emit_rust_module` snapshots linking against
-    //! `v3_compiler`.
-
-    use std::rc::Rc;
-
-    use crate::dag::{Behavior, Dag, LoopBound};
-    use crate::diagnostics::Diagnostic;
-    use crate::dimension::Witness;
-
-    /// Mirrors `OptionalDiagnostic` in `v3.std.dimensions` for emitted lens code.
-    #[allow(clippy::large_enum_variant)]
-    #[derive(Clone, Debug)]
-    pub enum OptionalDiagnostic {
-        NoDiagnostic,
-        SomeDiagnostic { value: Diagnostic },
-    }
-
-    pub type LensReadFn<T> = dyn Fn(&Dag, &Behavior) -> Witness<T>;
-    pub type LensValidateFn<T> = dyn Fn(&Dag, T) -> OptionalDiagnostic;
-
-    /// Mirrors `Monoid<T>` in `dsl/std/algebra.dag`.
-    #[derive(Clone)]
-    pub struct Monoid<T> {
-        pub op: Rc<dyn Fn(T, T) -> T>,
-        pub identity: T,
-    }
-
-    /// Mirrors `Lens<T>` in `v3.std.lens`.
-    #[derive(Clone)]
-    pub struct Lens<T> {
-        pub name: String,
-        pub read: Rc<LensReadFn<T>>,
-        pub sequential: Monoid<T>,
-        pub branch: Rc<dyn Fn(T, T) -> T>,
-        pub iterate: Rc<dyn Fn(T, LoopBound) -> T>,
-        pub validate: Rc<LensValidateFn<T>>,
-    }
-
-    /// Mirrors `LensEnforcement<Output, Budget, Projected>` in `v3.std.lens_application`.
-    #[derive(Clone)]
-    pub struct LensEnforcement<Output, Budget, Projected> {
-        pub project: Rc<dyn Fn(Output) -> Projected>,
-        pub violates: Rc<dyn Fn(Output, Budget) -> bool>,
-    }
-
-    /// Mirrors `EnforceableLens<Output, Budget, Projected>` in `v3.std.lens_application`.
-    #[derive(Clone)]
-    pub struct EnforceableLens<Output, Budget, Projected> {
-        pub lens: Lens<Output>,
-        pub enforcement: LensEnforcement<Output, Budget, Projected>,
-    }
-}
-
 // R3 gate #6 (`lens_testgen_dot_rs_retired`): the standalone `lens_testgen.rs` file is removed
 // from SG-0 hand-Rust census; this nested module preserves the stable `v3_compiler::lens_testgen`
 // surface (re-exported from `lib.rs`) until PB-Runtime owns testgen end-to-end.
 pub mod lens_testgen {
-    include!("src/lens_testgen_body.txt");
+    include!("lens_testgen_body.txt");
 }
 
 pub use substrate_reflection::reflect_behavior_list;
