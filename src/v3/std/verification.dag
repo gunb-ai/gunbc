@@ -30,6 +30,30 @@ import v3.std.bridge_ledger { BridgeLedgerRef }
 type Path = FilePath
 type SnapshotRef = NonEmptyStr
 
+// R3 Cluster M generator-manifest substrate (Director ratifications
+// msg_05837745 + msg_606e0e50 + msg_8423d468 + msg_3b99a90f). One manifest
+// entry binds a generated output path to either a typed PENDING state (no
+// resolution data yet) or a fully RESOLVED state carrying its `DeclarationRef`
+// source authority + opaque `source_hash` reference (bare `NonEmptyStr` per
+// Q3-amend β; the follow-up runtime PR may re-introduce branded `ContentHash`
+// at its hash-derivation construction boundary).
+//
+// The sum-variant shape (Q-StubValuePosture (b), msg_3b99a90f) replaces the
+// prior struct-with-stubs framing that violated INVARIANTS P3 / C-9 ("missing
+// fields / values may not fabricate empty nodes or strings"). `PendingFact`
+// IS the typed "unknown" carrier — fixtures populate it without fabricating
+// `dag_source` / `source_hash` values; `ResolvedFact` materialization happens
+// in the follow-up Evaluator-Mgr-owned runtime PR as hash-derivation produces
+// real values. Gate #86 satisfies on shape (output_path is always present);
+// the 3-way byte-equality assertion only fires on `ResolvedFact` arms.
+type GeneratedManifestEntry
+  = PendingFact { output_path: Path }
+  | ResolvedFact {
+      output_path: Path
+      dag_source: DeclarationRef
+      source_hash: NonEmptyStr
+    }
+
 // R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
 //
 // Closed PB census-list constants are declared vocabulary, not string labels,
@@ -434,9 +458,18 @@ type TestPredicate
       authority: DeclarationRef
       ratchet_kind: DeclarationRef
     }
+  // R3 Cluster M substrate-shape refinement (Director ratification msg_05837745
+  // + amendment msg_606e0e50). `manifest_entries` replaces `generated_paths`
+  // ahead of the follow-up Evaluator-Mgr-owned runtime PR that introduces the
+  // 3-way byte-equality assertion + directory-walk orphan-output detection at
+  // the well-known `src/v3/compiler/tests/` scan-root. This PR lands the
+  // shape-only readiness; runtime currently preserves the prior one-direction
+  // set-membership + outside-paths hand-count semantics. A future `scan_root:
+  // Path` (or `TestRootRef`) field is a Q4-amendment trigger flagged for the
+  // follow-up runtime PR.
   | GeneratedFromDag {
       authority: DeclarationRef
-      generated_paths: List<Path>
+      manifest_entries: List<GeneratedManifestEntry>
     }
   // **🟢 TERMINAL — Band-C cementing dispatch.** The runner fail-closes unless the
   // `TestClaim` is declared in `src/v3/compiler/tests/dag/cementing_dispatch.dag`.
