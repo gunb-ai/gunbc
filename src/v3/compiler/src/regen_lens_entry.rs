@@ -17,7 +17,7 @@ fn main() -> ExitCode {
         ProcessExit::ExitSuccess => ExitCode::SUCCESS,
         ProcessExit::ExitFailure { code, reason } => {
             let _ = writeln!(std::io::stderr(), "{reason}");
-            ExitCode::from((code.max(1).min(255)) as u8)
+            ExitCode::from(code.clamp(1, 255) as u8)
         }
     }
 }
