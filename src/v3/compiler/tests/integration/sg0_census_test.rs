@@ -797,6 +797,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `.dag` `TestClaim` form when testgen covers compile-and-fold
     // structural assertions.
     "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
+    // R3 §1.8 gate #53 `workflow_substrate_carriers_landed` structural
+    // ratchet: locks Slice 1 β-ratified carriers (`WorkflowSecret`,
+    // `SecretScope`, `CronSchedule`, `CronField`) against the full
+    // bootstrap Dag. Sibling shape to gate #62
+    // `file_attachment_substrate_carrier_test.rs`. Dissolves into
+    // `.dag` `TestClaim` form when testgen covers structural-shape
+    // assertions over substrate carriers.
+    "src/v3/compiler/tests/integration/workflow_substrate_carriers_test.rs",
 ];
 
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
