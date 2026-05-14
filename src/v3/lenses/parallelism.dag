@@ -307,7 +307,7 @@ fn loop_iteration_parallel_emission_indicator(d: Dag, workflow_root: NodeId) -> 
 // `loop_iteration_parallel_emission_indicator` directly (timing-lens scaffold pattern).
 
 type ParallelismMode
-  | OptInIndependent
+  = OptInIndependent
   | Sequential
 
 fn parallelism_enforcement_project(m: ParallelismMode) -> ParallelismMode =
@@ -322,7 +322,8 @@ fn parallelism_enforcement_violates(observed: ParallelismMode, declared: Paralle
       }
     Sequential =>
       match observed {
-        _ => false
+        OptInIndependent => false
+        Sequential => false
       }
   }
 
@@ -336,8 +337,12 @@ fn parallelism_lens_combine(a: ParallelismMode, b: ParallelismMode) -> Paralleli
       }
   }
 
+// Scaffold read: conservative `Sequential` until per-Behavior evidence lands.
+fn parallelism_lens_read_scaffold_mode() -> ParallelismMode =
+  Sequential
+
 fn parallelism_lens_read(_d: Dag, _b: Behavior) -> Witness<ParallelismMode> =
-  Inhabits(Sequential)
+  Inhabits(parallelism_lens_read_scaffold_mode())
 
 fn parallelism_lens_iterate(body: ParallelismMode, _bound: LoopBound) -> ParallelismMode =
   body
