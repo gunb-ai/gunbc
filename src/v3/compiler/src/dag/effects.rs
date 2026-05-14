@@ -273,7 +273,7 @@ pub enum WorkflowParallelismReport {
 pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
     let callable = effect.callable.decl;
     let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
-        return transport_effect_shape(effect);
+        return keyless_break(effect);
     };
     if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
         return EffectShape::IsBreaking(BreakingShape::AppendEffect);
