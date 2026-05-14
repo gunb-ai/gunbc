@@ -7,9 +7,9 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         declarations: bootstrapped_fixture_without_parse_surface_dag_declarations(),
         ports: bootstrapped_fixture_without_parse_surface_dag_ports(),
         diagnostics: bootstrapped_fixture_without_parse_surface_dag_diagnostics(),
-        next_node_id: 945,
+        next_node_id: 937,
         next_declaration_id: 2892,
-        next_port_id: 1122,
+        next_port_id: 1109,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
         realization_metas: RealizationMetaCache::default(),
@@ -31,7 +31,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
     {
-        let mut nodes = Vec::with_capacity(945);
+        let mut nodes = Vec::with_capacity(937);
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(0),
             data: LiteralBits::Int("0".to_string()),
@@ -1879,304 +1879,194 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(214),
             target: TransformTarget::UnresolvedFieldProject {
-                field_label: "endpoint".to_string(),
+                field_label: "count".to_string(),
             },
-            inputs: vec![PortId(214)],
-            output: PortId(215),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24072, 24080),
+            inputs: vec![PortId(215)],
+            output: PortId(216),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18355, 18360),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(215),
             target: TransformTarget::UnresolvedFieldProject {
-                field_label: "path".to_string(),
-            },
-            inputs: vec![PortId(215)],
-            output: PortId(216),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24081, 24085),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(216),
-            target: TransformTarget::Callable(DeclarationId(735)),
-            inputs: vec![PortId(216)],
-            output: PortId(217),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24053, 24086),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(217),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "inputs".to_string(),
-            },
-            inputs: vec![PortId(214)],
-            output: PortId(219),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24131, 24137),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(218),
-            target: TransformTarget::Callable(DeclarationId(889)),
-            inputs: vec![PortId(219), PortId(218)],
-            output: PortId(220),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24120, 24145),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(219),
-            input: PortId(220),
-            paths: vec![
-                Path {
-                    body: NodeId(219),
-                    output: PortId(222),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "Some".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24156, 24167),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "field".to_string(),
-                        payload_port: PortId(221),
-                    }),
-                },
-                Path {
-                    body: NodeId(219),
-                    output: PortId(223),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "None".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24191, 24195),
-                    },
-                    binding: None,
-                },
-            ],
-            output: PortId(224),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24114, 24211),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(220),
-            input: PortId(217),
-            paths: vec![
-                Path {
-                    body: NodeId(219),
-                    output: PortId(224),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "Some".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24093, 24104),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "param".to_string(),
-                        payload_port: PortId(218),
-                    }),
-                },
-                Path {
-                    body: NodeId(220),
-                    output: PortId(225),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "None".to_string(),
-                        span: SourceSpan::new("src/v3/std/effects.dag", 24216, 24220),
-                    },
-                    binding: None,
-                },
-            ],
-            output: PortId(226),
-            span: SourceSpan::new("src/v3/std/effects.dag", 24047, 24232),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(221),
-            name: "operation_resource_key".to_string(),
-            value: PortId(226),
-            params: vec![PortId(214)],
-            span: SourceSpan::new("src/v3/std/effects.dag", 24047, 24232),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(222),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "count".to_string(),
-            },
-            inputs: vec![PortId(228)],
-            output: PortId(229),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18355, 18360),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(223),
-            target: TransformTarget::UnresolvedFieldProject {
                 field_label: "measure".to_string(),
             },
-            inputs: vec![PortId(230)],
-            output: PortId(231),
+            inputs: vec![PortId(217)],
+            output: PortId(218),
             span: SourceSpan::new("src/v3/std/substrate.dag", 18393, 18400),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(224),
-            input: PortId(227),
+            id: NodeId(216),
+            input: PortId(214),
             paths: vec![
                 Path {
-                    body: NodeId(222),
-                    output: PortId(229),
+                    body: NodeId(214),
+                    output: PortId(216),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cardinality".to_string(),
                         span: SourceSpan::new("src/v3/std/substrate.dag", 18323, 18343),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(228),
+                        payload_port: PortId(215),
                     }),
                 },
                 Path {
-                    body: NodeId(223),
-                    output: PortId(231),
+                    body: NodeId(215),
+                    output: PortId(218),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Descent".to_string(),
                         span: SourceSpan::new("src/v3/std/substrate.dag", 18365, 18381),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(230),
+                        payload_port: PortId(217),
                     }),
                 },
             ],
-            output: PortId(232),
+            output: PortId(219),
             span: SourceSpan::new("src/v3/std/substrate.dag", 18305, 18404),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(225),
+            id: NodeId(217),
             name: "loop_bound_measure".to_string(),
-            value: PortId(232),
-            params: vec![PortId(227)],
+            value: PortId(219),
+            params: vec![PortId(214)],
             span: SourceSpan::new("src/v3/std/substrate.dag", 18305, 18404),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(226),
+            id: NodeId(218),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "source_port".to_string(),
             },
-            inputs: vec![PortId(233)],
-            output: PortId(235),
+            inputs: vec![PortId(220)],
+            output: PortId(222),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7604, 7615),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(227),
+            id: NodeId(219),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "source_port".to_string(),
             },
-            inputs: vec![PortId(234)],
-            output: PortId(236),
+            inputs: vec![PortId(221)],
+            output: PortId(223),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7621, 7632),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(228),
+            id: NodeId(220),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(235), PortId(236)],
-            output: PortId(237),
+            inputs: vec![PortId(222), PortId(223)],
+            output: PortId(224),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7602, 7632),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(229),
+            id: NodeId(221),
             name: "size_variable_eq".to_string(),
-            value: PortId(237),
-            params: vec![PortId(233), PortId(234)],
+            value: PortId(224),
+            params: vec![PortId(220), PortId(221)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 7602, 7632),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(230),
+            id: NodeId(222),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(239),
+            output: PortId(226),
             span: SourceSpan::new("src/v3/std/algebra.dag", 10300, 10305),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(231),
+            id: NodeId(223),
             target: TransformTarget::Callable(DeclarationId(904)),
-            inputs: vec![PortId(239), PortId(238)],
-            output: PortId(240),
+            inputs: vec![PortId(226), PortId(225)],
+            output: PortId(227),
             span: SourceSpan::new("src/v3/std/algebra.dag", 10291, 10322),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(232),
+            id: NodeId(224),
             name: "dominate_scan_init".to_string(),
-            value: PortId(240),
-            params: vec![PortId(238)],
+            value: PortId(227),
+            params: vec![PortId(225)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 10291, 10322),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(233),
+            id: NodeId(225),
             target: TransformTarget::Callable(DeclarationId(1803)),
-            inputs: vec![PortId(241)],
-            output: PortId(243),
+            inputs: vec![PortId(228)],
+            output: PortId(230),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11495, 11507),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(234),
+            id: NodeId(226),
             target: TransformTarget::Callable(DeclarationId(1805)),
-            inputs: vec![PortId(243)],
-            output: PortId(244),
+            inputs: vec![PortId(230)],
+            output: PortId(231),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11488, 11535),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(235),
+            id: NodeId(227),
             target: TransformTarget::Callable(DeclarationId(1749)),
-            inputs: vec![PortId(241), PortId(242), PortId(244)],
-            output: PortId(245),
+            inputs: vec![PortId(228), PortId(229), PortId(231)],
+            output: PortId(232),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11149, 11539),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(236),
+            id: NodeId(228),
             name: "two_terms".to_string(),
-            value: PortId(245),
-            params: vec![PortId(241), PortId(242)],
+            value: PortId(232),
+            params: vec![PortId(228), PortId(229)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 11149, 11539),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(237),
+            id: NodeId(229),
             target: TransformTarget::Callable(DeclarationId(1751)),
-            inputs: vec![PortId(246), PortId(247), PortId(248)],
-            output: PortId(249),
+            inputs: vec![PortId(233), PortId(234), PortId(235)],
+            output: PortId(236),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11670, 11726),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(238),
+            id: NodeId(230),
             name: "many_terms".to_string(),
-            value: PortId(249),
-            params: vec![PortId(246), PortId(247), PortId(248)],
+            value: PortId(236),
+            params: vec![PortId(233), PortId(234), PortId(235)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 11670, 11726),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(239),
+            id: NodeId(231),
             target: TransformTarget::Callable(DeclarationId(1806)),
-            inputs: vec![PortId(250)],
-            output: PortId(251),
+            inputs: vec![PortId(237)],
+            output: PortId(238),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11795, 11810),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(240),
+            id: NodeId(232),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(252),
+            output: PortId(239),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11826, 11831),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(241),
+            id: NodeId(233),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(254),
+            output: PortId(241),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11847, 11852),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(242),
-            input: PortId(251),
+            id: NodeId(234),
+            input: PortId(238),
             paths: vec![
                 Path {
-                    body: NodeId(240),
-                    output: PortId(252),
+                    body: NodeId(232),
+                    output: PortId(239),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 11817, 11822),
@@ -2184,75 +2074,75 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(241),
-                    output: PortId(254),
+                    body: NodeId(233),
+                    output: PortId(241),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 11836, 11843),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(253),
+                        payload_port: PortId(240),
                     }),
                 },
             ],
-            output: PortId(255),
+            output: PortId(242),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11789, 11856),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(243),
+            id: NodeId(235),
             name: "reject_all_symbolic_costs".to_string(),
-            value: PortId(255),
-            params: vec![PortId(250)],
+            value: PortId(242),
+            params: vec![PortId(237)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 11789, 11856),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(244),
+            id: NodeId(236),
             data: LiteralBits::Int("2".to_string()),
-            output: PortId(257),
+            output: PortId(244),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11941, 11942),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(245),
+            id: NodeId(237),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "previous".to_string(),
             },
-            inputs: vec![PortId(258)],
-            output: PortId(259),
+            inputs: vec![PortId(245)],
+            output: PortId(246),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11994, 12002),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(246),
+            id: NodeId(238),
             target: TransformTarget::Callable(DeclarationId(911)),
-            inputs: vec![PortId(259)],
-            output: PortId(260),
+            inputs: vec![PortId(246)],
+            output: PortId(247),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11975, 12003),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(247),
+            id: NodeId(239),
             data: LiteralBits::Int("1".to_string()),
-            output: PortId(261),
+            output: PortId(248),
             span: SourceSpan::new("src/v3/std/algebra.dag", 12006, 12007),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(248),
+            id: NodeId(240),
             target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
-            inputs: vec![PortId(260), PortId(261)],
-            output: PortId(262),
+            inputs: vec![PortId(247), PortId(248)],
+            output: PortId(249),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11975, 12007),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(249),
-            input: PortId(256),
+            id: NodeId(241),
+            input: PortId(243),
             paths: vec![
                 Path {
-                    body: NodeId(244),
-                    output: PortId(257),
+                    body: NodeId(236),
+                    output: PortId(244),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DegreeTwo".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 11928, 11937),
@@ -2260,121 +2150,121 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(248),
-                    output: PortId(262),
+                    body: NodeId(240),
+                    output: PortId(249),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "DegreeSuccessor".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 11947, 11971),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(258),
+                        payload_port: PortId(245),
                     }),
                 },
             ],
-            output: PortId(263),
+            output: PortId(250),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11909, 12011),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
-            id: NodeId(250),
-            source: PortId(256),
-            init: PortId(256),
-            body: NodeId(249),
-            bound: LoopBound::Cardinality { count: PortId(256) },
-            output: PortId(264),
+            id: NodeId(242),
+            source: PortId(243),
+            init: PortId(243),
+            body: NodeId(241),
+            bound: LoopBound::Cardinality { count: PortId(243) },
+            output: PortId(251),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11909, 12011),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(251),
+            id: NodeId(243),
             name: "degree_raw".to_string(),
-            value: PortId(264),
-            params: vec![PortId(256)],
+            value: PortId(251),
+            params: vec![PortId(243)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 11909, 12011),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(244),
+            target: TransformTarget::Callable(DeclarationId(908)),
+            inputs: vec![PortId(252), PortId(253)],
+            output: PortId(254),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12333, 12348),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(245),
+            target: TransformTarget::Callable(DeclarationId(1790)),
+            inputs: vec![PortId(254)],
+            output: PortId(255),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12325, 12349),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(246),
+            target: TransformTarget::Callable(DeclarationId(924)),
+            inputs: vec![PortId(255)],
+            output: PortId(256),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12315, 12350),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(247),
+            name: "sequential".to_string(),
+            value: PortId(256),
+            params: vec![PortId(252), PortId(253)],
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12315, 12350),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(248),
+            target: TransformTarget::Callable(DeclarationId(908)),
+            inputs: vec![PortId(257), PortId(258)],
+            output: PortId(259),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12630, 12652),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(249),
+            target: TransformTarget::Callable(DeclarationId(1788)),
+            inputs: vec![PortId(259)],
+            output: PortId(260),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12618, 12653),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(250),
+            target: TransformTarget::Callable(DeclarationId(924)),
+            inputs: vec![PortId(260)],
+            output: PortId(261),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12608, 12654),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(251),
+            name: "iterate".to_string(),
+            value: PortId(261),
+            params: vec![PortId(257), PortId(258)],
+            span: SourceSpan::new("src/v3/std/algebra.dag", 12608, 12654),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(252),
-            target: TransformTarget::Callable(DeclarationId(908)),
-            inputs: vec![PortId(265), PortId(266)],
-            output: PortId(267),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12333, 12348),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(253),
-            target: TransformTarget::Callable(DeclarationId(1790)),
-            inputs: vec![PortId(267)],
-            output: PortId(268),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12325, 12349),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(254),
-            target: TransformTarget::Callable(DeclarationId(924)),
-            inputs: vec![PortId(268)],
-            output: PortId(269),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12315, 12350),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(255),
-            name: "sequential".to_string(),
-            value: PortId(269),
-            params: vec![PortId(265), PortId(266)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12315, 12350),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(256),
-            target: TransformTarget::Callable(DeclarationId(908)),
-            inputs: vec![PortId(270), PortId(271)],
-            output: PortId(272),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12630, 12652),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(257),
-            target: TransformTarget::Callable(DeclarationId(1788)),
-            inputs: vec![PortId(272)],
-            output: PortId(273),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12618, 12653),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(258),
-            target: TransformTarget::Callable(DeclarationId(924)),
-            inputs: vec![PortId(273)],
-            output: PortId(274),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12608, 12654),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(259),
-            name: "iterate".to_string(),
-            value: PortId(274),
-            params: vec![PortId(270), PortId(271)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 12608, 12654),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(260),
             target: TransformTarget::Callable(DeclarationId(917)),
-            inputs: vec![PortId(276), PortId(275)],
-            output: PortId(277),
+            inputs: vec![PortId(263), PortId(262)],
+            output: PortId(264),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13598, 13623),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(261),
+            id: NodeId(253),
             target: TransformTarget::Callable(DeclarationId(915)),
-            inputs: vec![PortId(275), PortId(276)],
-            output: PortId(278),
+            inputs: vec![PortId(262), PortId(263)],
+            output: PortId(265),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13654, 13681),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(262),
-            input: PortId(277),
+            id: NodeId(254),
+            input: PortId(264),
             paths: vec![
                 Path {
-                    body: NodeId(262),
-                    output: PortId(276),
+                    body: NodeId(254),
+                    output: PortId(263),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 13633, 13642),
@@ -2382,8 +2272,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(261),
-                    output: PortId(278),
+                    body: NodeId(253),
+                    output: PortId(265),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 13654, 13681),
@@ -2391,40 +2281,40 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(279),
+            output: PortId(266),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13595, 13681),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(263),
+            id: NodeId(255),
             name: "max_path_step".to_string(),
-            value: PortId(279),
-            params: vec![PortId(275), PortId(276)],
+            value: PortId(266),
+            params: vec![PortId(262), PortId(263)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 13595, 13681),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(264),
+            id: NodeId(256),
             target: TransformTarget::Callable(DeclarationId(917)),
-            inputs: vec![PortId(280), PortId(281)],
-            output: PortId(282),
+            inputs: vec![PortId(267), PortId(268)],
+            output: PortId(269),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13765, 13790),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(265),
+            id: NodeId(257),
             target: TransformTarget::Callable(DeclarationId(912)),
-            inputs: vec![PortId(280), PortId(281)],
-            output: PortId(283),
+            inputs: vec![PortId(267), PortId(268)],
+            output: PortId(270),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13815, 13841),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(266),
-            input: PortId(282),
+            id: NodeId(258),
+            input: PortId(269),
             paths: vec![
                 Path {
-                    body: NodeId(266),
-                    output: PortId(280),
+                    body: NodeId(258),
+                    output: PortId(267),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 13800, 13803),
@@ -2432,8 +2322,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(265),
-                    output: PortId(283),
+                    body: NodeId(257),
+                    output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 13815, 13841),
@@ -2441,790 +2331,175 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(284),
+            output: PortId(271),
             span: SourceSpan::new("src/v3/std/algebra.dag", 13762, 13841),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(267),
+            id: NodeId(259),
             name: "keep_or_sum".to_string(),
-            value: PortId(284),
-            params: vec![PortId(280), PortId(281)],
+            value: PortId(271),
+            params: vec![PortId(267), PortId(268)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 13762, 13841),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(268),
+            id: NodeId(260),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(286),
+            output: PortId(273),
             span: SourceSpan::new("src/v3/std/algebra.dag", 14227, 14228),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(269),
+            id: NodeId(261),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(286)],
-            output: PortId(287),
+            inputs: vec![PortId(273)],
+            output: PortId(274),
             span: SourceSpan::new("src/v3/std/algebra.dag", 14214, 14229),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(270),
+            id: NodeId(262),
             target: TransformTarget::Callable(DeclarationId(1808)),
-            inputs: vec![PortId(285), PortId(287)],
-            output: PortId(288),
+            inputs: vec![PortId(272), PortId(274)],
+            output: PortId(275),
             span: SourceSpan::new("src/v3/std/algebra.dag", 14202, 14245),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(271),
+            id: NodeId(263),
             name: "max_path".to_string(),
-            value: PortId(288),
-            params: vec![PortId(285)],
+            value: PortId(275),
+            params: vec![PortId(272)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 14202, 14245),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(272),
+            id: NodeId(264),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(292),
+            output: PortId(279),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15204, 15208),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(273),
+            id: NodeId(265),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(295),
+            output: PortId(282),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15275, 15279),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(274),
+            id: NodeId(266),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(297),
+            output: PortId(284),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15306, 15311),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(275),
+            id: NodeId(267),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(299),
+            output: PortId(286),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15337, 15342),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(276),
+            id: NodeId(268),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(301),
+            output: PortId(288),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15372, 15377),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(277),
+            id: NodeId(269),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(303),
+            output: PortId(290),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15404, 15409),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(278),
+            id: NodeId(270),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(305),
+            output: PortId(292),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15432, 15437),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(279),
+            id: NodeId(271),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(307),
+            output: PortId(294),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15460, 15465),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(280),
-            input: PortId(290),
+            id: NodeId(272),
+            input: PortId(277),
             paths: vec![
                 Path {
-                    body: NodeId(273),
-                    output: PortId(295),
+                    body: NodeId(265),
+                    output: PortId(282),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15256, 15271),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(294),
+                        payload_port: PortId(281),
                     }),
                 },
                 Path {
-                    body: NodeId(274),
-                    output: PortId(297),
+                    body: NodeId(266),
+                    output: PortId(284),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15288, 15302),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(296),
+                        payload_port: PortId(283),
                     }),
                 },
                 Path {
-                    body: NodeId(275),
-                    output: PortId(299),
+                    body: NodeId(267),
+                    output: PortId(286),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15320, 15333),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(298),
+                        payload_port: PortId(285),
                     }),
                 },
                 Path {
-                    body: NodeId(276),
-                    output: PortId(301),
+                    body: NodeId(268),
+                    output: PortId(288),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15351, 15368),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(300),
+                        payload_port: PortId(287),
                     }),
                 },
                 Path {
-                    body: NodeId(277),
-                    output: PortId(303),
+                    body: NodeId(269),
+                    output: PortId(290),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15386, 15400),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(302),
+                        payload_port: PortId(289),
                     }),
                 },
                 Path {
-                    body: NodeId(278),
-                    output: PortId(305),
+                    body: NodeId(270),
+                    output: PortId(292),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15418, 15428),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(304),
-                    }),
-                },
-                Path {
-                    body: NodeId(279),
-                    output: PortId(307),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15446, 15456),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(306),
-                    }),
-                },
-            ],
-            output: PortId(308),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15238, 15473),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(281),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(311),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15539, 15543),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(282),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(313),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15566, 15570),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(283),
-            target: TransformTarget::Callable(DeclarationId(918)),
-            inputs: vec![PortId(309), PortId(314)],
-            output: PortId(315),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15597, 15623),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(284),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(317),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15669, 15674),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(285),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(319),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15701, 15706),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(286),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(321),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15733, 15738),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(287),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(323),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15761, 15766),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(288),
-            input: PortId(290),
-            paths: vec![
-                Path {
-                    body: NodeId(281),
-                    output: PortId(311),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15520, 15535),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(310),
-                    }),
-                },
-                Path {
-                    body: NodeId(282),
-                    output: PortId(313),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15552, 15562),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(312),
-                    }),
-                },
-                Path {
-                    body: NodeId(283),
-                    output: PortId(315),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15579, 15593),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "vb".to_string(),
-                        payload_port: PortId(314),
-                    }),
-                },
-                Path {
-                    body: NodeId(284),
-                    output: PortId(317),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15632, 15655),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "payload".to_string(),
-                        payload_port: PortId(316),
-                    }),
-                },
-                Path {
-                    body: NodeId(285),
-                    output: PortId(319),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15683, 15697),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(318),
-                    }),
-                },
-                Path {
-                    body: NodeId(286),
-                    output: PortId(321),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15715, 15729),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(320),
-                    }),
-                },
-                Path {
-                    body: NodeId(287),
-                    output: PortId(323),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15747, 15757),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(322),
-                    }),
-                },
-            ],
-            output: PortId(324),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15502, 15774),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(289),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(327),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15844, 15848),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(290),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(329),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15871, 15875),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(291),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "var".to_string(),
-            },
-            inputs: vec![PortId(325)],
-            output: PortId(331),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15934, 15937),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(292),
-            target: TransformTarget::Callable(DeclarationId(918)),
-            inputs: vec![PortId(331), PortId(330)],
-            output: PortId(332),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15912, 15942),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(293),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "var".to_string(),
-            },
-            inputs: vec![PortId(325)],
-            output: PortId(334),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16008, 16011),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(294),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "var".to_string(),
-            },
-            inputs: vec![PortId(333)],
-            output: PortId(335),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16016, 16019),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(295),
-            target: TransformTarget::Callable(DeclarationId(918)),
-            inputs: vec![PortId(334), PortId(335)],
-            output: PortId(336),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15986, 16020),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(296),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "degree".to_string(),
-            },
-            inputs: vec![PortId(325)],
-            output: PortId(337),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16052, 16058),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(297),
-            target: TransformTarget::Callable(DeclarationId(911)),
-            inputs: vec![PortId(337)],
-            output: PortId(338),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16059),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(298),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "degree".to_string(),
-            },
-            inputs: vec![PortId(333)],
-            output: PortId(339),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16077, 16083),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(299),
-            target: TransformTarget::Callable(DeclarationId(911)),
-            inputs: vec![PortId(339)],
-            output: PortId(340),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16063, 16084),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(300),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(338), PortId(340)],
-            output: PortId(341),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16084),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(301),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(342),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16112, 16117),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(302),
-            input: PortId(336),
-            paths: vec![
-                Path {
-                    body: NodeId(300),
-                    output: PortId(341),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16084),
-                    },
-                    binding: None,
-                },
-                Path {
-                    body: NodeId(301),
-                    output: PortId(342),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16112, 16117),
-                    },
-                    binding: None,
-                },
-            ],
-            output: PortId(343),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15983, 16117),
-            emit_participation: None,
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(303),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(345),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16144, 16149),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(304),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(347),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16176, 16181),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(305),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(349),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16204, 16209),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(306),
-            input: PortId(290),
-            paths: vec![
-                Path {
-                    body: NodeId(289),
-                    output: PortId(327),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15825, 15840),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(326),
-                    }),
-                },
-                Path {
-                    body: NodeId(290),
-                    output: PortId(329),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15857, 15867),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(328),
-                    }),
-                },
-                Path {
-                    body: NodeId(292),
-                    output: PortId(332),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15884, 15898),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "vb".to_string(),
-                        payload_port: PortId(330),
-                    }),
-                },
-                Path {
-                    body: NodeId(302),
-                    output: PortId(343),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15951, 15969),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "pb".to_string(),
-                        payload_port: PortId(333),
-                    }),
-                },
-                Path {
-                    body: NodeId(303),
-                    output: PortId(345),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16126, 16140),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(344),
-                    }),
-                },
-                Path {
-                    body: NodeId(304),
-                    output: PortId(347),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16158, 16172),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(346),
-                    }),
-                },
-                Path {
-                    body: NodeId(305),
-                    output: PortId(349),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16190, 16200),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(348),
-                    }),
-                },
-            ],
-            output: PortId(350),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 15807, 16217),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(307),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(353),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16280, 16284),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(308),
-            target: TransformTarget::Callable(DeclarationId(918)),
-            inputs: vec![PortId(351), PortId(354)],
-            output: PortId(355),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16308, 16334),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(309),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(357),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16360, 16365),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(310),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(359),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16395, 16400),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(311),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(361),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16427, 16432),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(312),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(363),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16455, 16460),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(313),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(365),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16487, 16492),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(314),
-            input: PortId(290),
-            paths: vec![
-                Path {
-                    body: NodeId(307),
-                    output: PortId(353),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16261, 16276),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(352),
-                    }),
-                },
-                Path {
-                    body: NodeId(308),
-                    output: PortId(355),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16293, 16304),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "vb".to_string(),
-                        payload_port: PortId(354),
-                    }),
-                },
-                Path {
-                    body: NodeId(309),
-                    output: PortId(357),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16343, 16356),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(356),
-                    }),
-                },
-                Path {
-                    body: NodeId(310),
-                    output: PortId(359),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16374, 16391),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(358),
-                    }),
-                },
-                Path {
-                    body: NodeId(311),
-                    output: PortId(361),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16409, 16423),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(360),
-                    }),
-                },
-                Path {
-                    body: NodeId(312),
-                    output: PortId(363),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16441, 16451),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(362),
-                    }),
-                },
-                Path {
-                    body: NodeId(313),
-                    output: PortId(365),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 16469, 16483),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(364),
-                    }),
-                },
-            ],
-            output: PortId(366),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16243, 16500),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(315),
-            target: TransformTarget::Callable(DeclarationId(925)),
-            inputs: vec![PortId(367)],
-            output: PortId(368),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16927, 16945),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(316),
-            target: TransformTarget::Callable(DeclarationId(905)),
-            inputs: vec![PortId(290)],
-            output: PortId(369),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16957, 16978),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(317),
-            target: TransformTarget::Callable(DeclarationId(1810)),
-            inputs: vec![PortId(368), PortId(369)],
-            output: PortId(370),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16911, 17021),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(318),
-            target: TransformTarget::Callable(DeclarationId(941)),
-            inputs: vec![PortId(370)],
-            output: PortId(371),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 16893, 17029),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(319),
-            target: TransformTarget::Callable(DeclarationId(925)),
-            inputs: vec![PortId(372)],
-            output: PortId(373),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17092, 17110),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(320),
-            target: TransformTarget::Callable(DeclarationId(905)),
-            inputs: vec![PortId(290)],
-            output: PortId(374),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17122, 17143),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(321),
-            target: TransformTarget::Callable(DeclarationId(1812)),
-            inputs: vec![PortId(373), PortId(374)],
-            output: PortId(375),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17076, 17186),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(322),
-            target: TransformTarget::Callable(DeclarationId(941)),
-            inputs: vec![PortId(375)],
-            output: PortId(376),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17058, 17194),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(323),
-            input: PortId(289),
-            paths: vec![
-                Path {
-                    body: NodeId(272),
-                    output: PortId(292),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15186, 15200),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3232,177 +2507,792 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     }),
                 },
                 Path {
-                    body: NodeId(280),
-                    output: PortId(308),
+                    body: NodeId(271),
+                    output: PortId(294),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 15213, 15228),
+                        name: "LogCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15446, 15456),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
                         payload_port: PortId(293),
                     }),
                 },
+            ],
+            output: PortId(295),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15238, 15473),
+            emit_participation: Some(BranchEmitParticipation::UserMatch),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(273),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(298),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15539, 15543),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(274),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(300),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15566, 15570),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(275),
+            target: TransformTarget::Callable(DeclarationId(918)),
+            inputs: vec![PortId(296), PortId(301)],
+            output: PortId(302),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15597, 15623),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(276),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(304),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15669, 15674),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(277),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(306),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15701, 15706),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(278),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(308),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15733, 15738),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(279),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(310),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15761, 15766),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(280),
+            input: PortId(277),
+            paths: vec![
                 Path {
-                    body: NodeId(288),
-                    output: PortId(324),
+                    body: NodeId(273),
+                    output: PortId(298),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ConstantCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15520, 15535),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(297),
+                    }),
+                },
+                Path {
+                    body: NodeId(274),
+                    output: PortId(300),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LogCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15552, 15562),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(299),
+                    }),
+                },
+                Path {
+                    body: NodeId(275),
+                    output: PortId(302),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LinearCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15579, 15593),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "vb".to_string(),
+                        payload_port: PortId(301),
+                    }),
+                },
+                Path {
+                    body: NodeId(276),
+                    output: PortId(304),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "PolynomialCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15632, 15655),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "payload".to_string(),
+                        payload_port: PortId(303),
+                    }),
+                },
+                Path {
+                    body: NodeId(277),
+                    output: PortId(306),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "UnknownCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15683, 15697),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(305),
+                    }),
+                },
+                Path {
+                    body: NodeId(278),
+                    output: PortId(308),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ProductCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15715, 15729),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(307),
+                    }),
+                },
+                Path {
+                    body: NodeId(279),
+                    output: PortId(310),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "SumCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15747, 15757),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(309),
+                    }),
+                },
+            ],
+            output: PortId(311),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15502, 15774),
+            emit_participation: Some(BranchEmitParticipation::UserMatch),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(281),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(314),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15844, 15848),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(282),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(316),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15871, 15875),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(283),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
+            inputs: vec![PortId(312)],
+            output: PortId(318),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15934, 15937),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(284),
+            target: TransformTarget::Callable(DeclarationId(918)),
+            inputs: vec![PortId(318), PortId(317)],
+            output: PortId(319),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15912, 15942),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(285),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
+            inputs: vec![PortId(312)],
+            output: PortId(321),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16008, 16011),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(286),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
+            inputs: vec![PortId(320)],
+            output: PortId(322),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16016, 16019),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(287),
+            target: TransformTarget::Callable(DeclarationId(918)),
+            inputs: vec![PortId(321), PortId(322)],
+            output: PortId(323),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15986, 16020),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(288),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
+            inputs: vec![PortId(312)],
+            output: PortId(324),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16052, 16058),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(289),
+            target: TransformTarget::Callable(DeclarationId(911)),
+            inputs: vec![PortId(324)],
+            output: PortId(325),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16059),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(290),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
+            inputs: vec![PortId(320)],
+            output: PortId(326),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16077, 16083),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(291),
+            target: TransformTarget::Callable(DeclarationId(911)),
+            inputs: vec![PortId(326)],
+            output: PortId(327),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16063, 16084),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(292),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
+            inputs: vec![PortId(325), PortId(327)],
+            output: PortId(328),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16084),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(293),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(329),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16112, 16117),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(294),
+            input: PortId(323),
+            paths: vec![
+                Path {
+                    body: NodeId(292),
+                    output: PortId(328),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "True".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16038, 16084),
+                    },
+                    binding: None,
+                },
+                Path {
+                    body: NodeId(293),
+                    output: PortId(329),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "False".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16112, 16117),
+                    },
+                    binding: None,
+                },
+            ],
+            output: PortId(330),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15983, 16117),
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(295),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(332),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16144, 16149),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(296),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(334),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16176, 16181),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(297),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(336),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16204, 16209),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(298),
+            input: PortId(277),
+            paths: vec![
+                Path {
+                    body: NodeId(281),
+                    output: PortId(314),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ConstantCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15825, 15840),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(313),
+                    }),
+                },
+                Path {
+                    body: NodeId(282),
+                    output: PortId(316),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LogCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15857, 15867),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(315),
+                    }),
+                },
+                Path {
+                    body: NodeId(284),
+                    output: PortId(319),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LinearCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15884, 15898),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "vb".to_string(),
+                        payload_port: PortId(317),
+                    }),
+                },
+                Path {
+                    body: NodeId(294),
+                    output: PortId(330),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "PolynomialCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15951, 15969),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "pb".to_string(),
+                        payload_port: PortId(320),
+                    }),
+                },
+                Path {
+                    body: NodeId(295),
+                    output: PortId(332),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "UnknownCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16126, 16140),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(331),
+                    }),
+                },
+                Path {
+                    body: NodeId(296),
+                    output: PortId(334),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ProductCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16158, 16172),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(333),
+                    }),
+                },
+                Path {
+                    body: NodeId(297),
+                    output: PortId(336),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "SumCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16190, 16200),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(335),
+                    }),
+                },
+            ],
+            output: PortId(337),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 15807, 16217),
+            emit_participation: Some(BranchEmitParticipation::UserMatch),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(299),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(340),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16280, 16284),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(300),
+            target: TransformTarget::Callable(DeclarationId(918)),
+            inputs: vec![PortId(338), PortId(341)],
+            output: PortId(342),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16308, 16334),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(301),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(344),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16360, 16365),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(302),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(346),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16395, 16400),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(303),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(348),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16427, 16432),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(304),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(350),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16455, 16460),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(305),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(352),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16487, 16492),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(306),
+            input: PortId(277),
+            paths: vec![
+                Path {
+                    body: NodeId(299),
+                    output: PortId(340),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ConstantCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16261, 16276),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(339),
+                    }),
+                },
+                Path {
+                    body: NodeId(300),
+                    output: PortId(342),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LogCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16293, 16304),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "vb".to_string(),
+                        payload_port: PortId(341),
+                    }),
+                },
+                Path {
+                    body: NodeId(301),
+                    output: PortId(344),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LinearCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16343, 16356),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(343),
+                    }),
+                },
+                Path {
+                    body: NodeId(302),
+                    output: PortId(346),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "PolynomialCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16374, 16391),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(345),
+                    }),
+                },
+                Path {
+                    body: NodeId(303),
+                    output: PortId(348),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ProductCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16409, 16423),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(347),
+                    }),
+                },
+                Path {
+                    body: NodeId(304),
+                    output: PortId(350),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "SumCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16441, 16451),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(349),
+                    }),
+                },
+                Path {
+                    body: NodeId(305),
+                    output: PortId(352),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "UnknownCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 16469, 16483),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(351),
+                    }),
+                },
+            ],
+            output: PortId(353),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16243, 16500),
+            emit_participation: Some(BranchEmitParticipation::UserMatch),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(307),
+            target: TransformTarget::Callable(DeclarationId(925)),
+            inputs: vec![PortId(354)],
+            output: PortId(355),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16927, 16945),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(308),
+            target: TransformTarget::Callable(DeclarationId(905)),
+            inputs: vec![PortId(277)],
+            output: PortId(356),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16957, 16978),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(309),
+            target: TransformTarget::Callable(DeclarationId(1810)),
+            inputs: vec![PortId(355), PortId(356)],
+            output: PortId(357),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16911, 17021),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(310),
+            target: TransformTarget::Callable(DeclarationId(941)),
+            inputs: vec![PortId(357)],
+            output: PortId(358),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 16893, 17029),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(311),
+            target: TransformTarget::Callable(DeclarationId(925)),
+            inputs: vec![PortId(359)],
+            output: PortId(360),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17092, 17110),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(312),
+            target: TransformTarget::Callable(DeclarationId(905)),
+            inputs: vec![PortId(277)],
+            output: PortId(361),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17122, 17143),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(313),
+            target: TransformTarget::Callable(DeclarationId(1812)),
+            inputs: vec![PortId(360), PortId(361)],
+            output: PortId(362),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17076, 17186),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(314),
+            target: TransformTarget::Callable(DeclarationId(941)),
+            inputs: vec![PortId(362)],
+            output: PortId(363),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17058, 17194),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(315),
+            input: PortId(276),
+            paths: vec![
+                Path {
+                    body: NodeId(264),
+                    output: PortId(279),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "UnknownCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15186, 15200),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(278),
+                    }),
+                },
+                Path {
+                    body: NodeId(272),
+                    output: PortId(295),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ConstantCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 15213, 15228),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(280),
+                    }),
+                },
+                Path {
+                    body: NodeId(280),
+                    output: PortId(311),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15478, 15492),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "va".to_string(),
-                        payload_port: PortId(309),
+                        payload_port: PortId(296),
                     }),
                 },
                 Path {
-                    body: NodeId(306),
-                    output: PortId(350),
+                    body: NodeId(298),
+                    output: PortId(337),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 15779, 15797),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "pa".to_string(),
-                        payload_port: PortId(325),
+                        payload_port: PortId(312),
                     }),
                 },
                 Path {
-                    body: NodeId(314),
-                    output: PortId(366),
+                    body: NodeId(306),
+                    output: PortId(353),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 16222, 16233),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "va".to_string(),
-                        payload_port: PortId(351),
+                        payload_port: PortId(338),
                     }),
                 },
                 Path {
-                    body: NodeId(318),
-                    output: PortId(371),
+                    body: NodeId(310),
+                    output: PortId(358),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 16865, 16883),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
-                        payload_port: PortId(367),
+                        payload_port: PortId(354),
                     }),
                 },
                 Path {
-                    body: NodeId(322),
-                    output: PortId(376),
+                    body: NodeId(314),
+                    output: PortId(363),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 17034, 17048),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
-                        payload_port: PortId(372),
+                        payload_port: PortId(359),
                     }),
                 },
             ],
-            output: PortId(377),
+            output: PortId(364),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15172, 17198),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(324),
+            id: NodeId(316),
             name: "dominates".to_string(),
-            value: PortId(377),
-            params: vec![PortId(289), PortId(290)],
+            value: PortId(364),
+            params: vec![PortId(276), PortId(277)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 15172, 17198),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(325),
+            id: NodeId(317),
             target: TransformTarget::Callable(DeclarationId(901)),
-            inputs: vec![PortId(378), PortId(379)],
-            output: PortId(380),
+            inputs: vec![PortId(365), PortId(366)],
+            output: PortId(367),
             span: SourceSpan::new("src/v3/std/algebra.dag", 17268, 17290),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(326),
+            id: NodeId(318),
             name: "same_size_variable".to_string(),
-            value: PortId(380),
-            params: vec![PortId(378), PortId(379)],
+            value: PortId(367),
+            params: vec![PortId(365), PortId(366)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 17268, 17290),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(319),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(370),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18426, 18430),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(320),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(371),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18495, 18500),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(321),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(372),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18529, 18533),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(322),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(374),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18564, 18568),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(323),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(375),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18595, 18599),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(324),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(376),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18629, 18633),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(325),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(377),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18657, 18661),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(326),
+            target: TransformTarget::Callable(DeclarationId(518)),
+            inputs: vec![],
+            output: PortId(378),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18682, 18686),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(327),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(383),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18426, 18430),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(328),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(384),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18495, 18500),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(329),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(385),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18529, 18533),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(330),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(387),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18564, 18568),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(331),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(388),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18595, 18599),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(332),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(389),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18629, 18633),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(333),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(390),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18657, 18661),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(334),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(391),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18682, 18686),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(335),
-            target: TransformTarget::Callable(DeclarationId(518)),
-            inputs: vec![],
-            output: PortId(392),
+            output: PortId(379),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18712, 18716),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(336),
-            input: PortId(382),
+            id: NodeId(328),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(328),
-                    output: PortId(384),
+                    body: NodeId(320),
+                    output: PortId(371),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18479, 18491),
@@ -3410,8 +3300,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(329),
-                    output: PortId(385),
+                    body: NodeId(321),
+                    output: PortId(372),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18509, 18525),
@@ -3419,20 +3309,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(330),
-                    output: PortId(387),
+                    body: NodeId(322),
+                    output: PortId(374),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18542, 18560),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(386),
+                        payload_port: PortId(373),
                     }),
                 },
                 Path {
-                    body: NodeId(331),
-                    output: PortId(388),
+                    body: NodeId(323),
+                    output: PortId(375),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18577, 18591),
@@ -3440,8 +3330,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(332),
-                    output: PortId(389),
+                    body: NodeId(324),
+                    output: PortId(376),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18608, 18625),
@@ -3449,8 +3339,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(333),
-                    output: PortId(390),
+                    body: NodeId(325),
+                    output: PortId(377),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18642, 18653),
@@ -3458,8 +3348,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(334),
-                    output: PortId(391),
+                    body: NodeId(326),
+                    output: PortId(378),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18670, 18678),
@@ -3467,8 +3357,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(335),
-                    output: PortId(392),
+                    body: NodeId(327),
+                    output: PortId(379),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18695, 18708),
@@ -3476,105 +3366,105 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(393),
+            output: PortId(380),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18461, 18724),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(337),
+            id: NodeId(329),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "degree".to_string(),
             },
-            inputs: vec![PortId(394)],
-            output: PortId(395),
+            inputs: vec![PortId(381)],
+            output: PortId(382),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18747, 18758),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(338),
+            id: NodeId(330),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(396),
+            output: PortId(383),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18804, 18809),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(339),
+            id: NodeId(331),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(397),
+            output: PortId(384),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18838, 18843),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(340),
+            id: NodeId(332),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "degree".to_string(),
             },
-            inputs: vec![PortId(398)],
-            output: PortId(399),
+            inputs: vec![PortId(385)],
+            output: PortId(386),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18870, 18881),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(341),
+            id: NodeId(333),
             target: TransformTarget::Callable(DeclarationId(1133)),
-            inputs: vec![PortId(395)],
-            output: PortId(400),
+            inputs: vec![PortId(382)],
+            output: PortId(387),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18897, 18924),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(342),
+            id: NodeId(334),
             target: TransformTarget::Callable(DeclarationId(1133)),
-            inputs: vec![PortId(399)],
-            output: PortId(401),
+            inputs: vec![PortId(386)],
+            output: PortId(388),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18928, 18955),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(343),
+            id: NodeId(335),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(400), PortId(401)],
-            output: PortId(402),
+            inputs: vec![PortId(387), PortId(388)],
+            output: PortId(389),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18897, 18955),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(344),
+            id: NodeId(336),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(403),
+            output: PortId(390),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18982, 18986),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(345),
+            id: NodeId(337),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(404),
+            output: PortId(391),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19016, 19020),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(346),
+            id: NodeId(338),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(405),
+            output: PortId(392),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19044, 19048),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(347),
+            id: NodeId(339),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(406),
+            output: PortId(393),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19069, 19073),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(348),
+            id: NodeId(340),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(407),
+            output: PortId(394),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19099, 19103),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(349),
-            input: PortId(382),
+            id: NodeId(341),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(338),
-                    output: PortId(396),
+                    body: NodeId(330),
+                    output: PortId(383),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18788, 18800),
@@ -3582,8 +3472,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(339),
-                    output: PortId(397),
+                    body: NodeId(331),
+                    output: PortId(384),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18818, 18834),
@@ -3591,20 +3481,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(343),
-                    output: PortId(402),
+                    body: NodeId(335),
+                    output: PortId(389),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18852, 18883),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "d_b".to_string(),
-                        payload_port: PortId(398),
+                        payload_port: PortId(385),
                     }),
                 },
                 Path {
-                    body: NodeId(344),
-                    output: PortId(403),
+                    body: NodeId(336),
+                    output: PortId(390),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18964, 18978),
@@ -3612,8 +3502,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(345),
-                    output: PortId(404),
+                    body: NodeId(337),
+                    output: PortId(391),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18995, 19012),
@@ -3621,8 +3511,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(346),
-                    output: PortId(405),
+                    body: NodeId(338),
+                    output: PortId(392),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19029, 19040),
@@ -3630,8 +3520,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(347),
-                    output: PortId(406),
+                    body: NodeId(339),
+                    output: PortId(393),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19057, 19065),
@@ -3639,8 +3529,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(348),
-                    output: PortId(407),
+                    body: NodeId(340),
+                    output: PortId(394),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19082, 19095),
@@ -3648,73 +3538,73 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(408),
+            output: PortId(395),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18770, 19111),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(350),
+            id: NodeId(342),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(409),
+            output: PortId(396),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19175, 19179),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(351),
+            id: NodeId(343),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(410),
+            output: PortId(397),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19200, 19204),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(352),
+            id: NodeId(344),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(411),
+            output: PortId(398),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19228, 19232),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(353),
+            id: NodeId(345),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(412),
+            output: PortId(399),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19262, 19266),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(354),
+            id: NodeId(346),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(413),
+            output: PortId(400),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19293, 19297),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(355),
+            id: NodeId(347),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(415),
+            output: PortId(402),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19328, 19333),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(356),
+            id: NodeId(348),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(416),
+            output: PortId(403),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19362, 19367),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(357),
+            id: NodeId(349),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(417),
+            output: PortId(404),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19392, 19397),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(358),
-            input: PortId(382),
+            id: NodeId(350),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(350),
-                    output: PortId(409),
+                    body: NodeId(342),
+                    output: PortId(396),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19158, 19171),
@@ -3722,8 +3612,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(351),
-                    output: PortId(410),
+                    body: NodeId(343),
+                    output: PortId(397),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19188, 19196),
@@ -3731,8 +3621,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(352),
-                    output: PortId(411),
+                    body: NodeId(344),
+                    output: PortId(398),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19213, 19224),
@@ -3740,8 +3630,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(353),
-                    output: PortId(412),
+                    body: NodeId(345),
+                    output: PortId(399),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19241, 19258),
@@ -3749,8 +3639,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(354),
-                    output: PortId(413),
+                    body: NodeId(346),
+                    output: PortId(400),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19275, 19289),
@@ -3758,20 +3648,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(355),
-                    output: PortId(415),
+                    body: NodeId(347),
+                    output: PortId(402),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19306, 19324),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(414),
+                        payload_port: PortId(401),
                     }),
                 },
                 Path {
-                    body: NodeId(356),
-                    output: PortId(416),
+                    body: NodeId(348),
+                    output: PortId(403),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19342, 19358),
@@ -3779,8 +3669,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(357),
-                    output: PortId(417),
+                    body: NodeId(349),
+                    output: PortId(404),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19376, 19388),
@@ -3788,73 +3678,73 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(418),
+            output: PortId(405),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19140, 19405),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(359),
+            id: NodeId(351),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(419),
+            output: PortId(406),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19472, 19476),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(360),
+            id: NodeId(352),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(420),
+            output: PortId(407),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19497, 19501),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(361),
+            id: NodeId(353),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(421),
+            output: PortId(408),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19525, 19529),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(362),
+            id: NodeId(354),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(422),
+            output: PortId(409),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19559, 19563),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(363),
+            id: NodeId(355),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(423),
+            output: PortId(410),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19590, 19595),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(364),
+            id: NodeId(356),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(425),
+            output: PortId(412),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19626, 19631),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(365),
+            id: NodeId(357),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(426),
+            output: PortId(413),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19660, 19665),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(366),
+            id: NodeId(358),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(427),
+            output: PortId(414),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19690, 19695),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(367),
-            input: PortId(382),
+            id: NodeId(359),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(359),
-                    output: PortId(419),
+                    body: NodeId(351),
+                    output: PortId(406),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19455, 19468),
@@ -3862,8 +3752,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(360),
-                    output: PortId(420),
+                    body: NodeId(352),
+                    output: PortId(407),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19485, 19493),
@@ -3871,8 +3761,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(361),
-                    output: PortId(421),
+                    body: NodeId(353),
+                    output: PortId(408),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19510, 19521),
@@ -3880,8 +3770,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(362),
-                    output: PortId(422),
+                    body: NodeId(354),
+                    output: PortId(409),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19538, 19555),
@@ -3889,8 +3779,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(363),
-                    output: PortId(423),
+                    body: NodeId(355),
+                    output: PortId(410),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19572, 19586),
@@ -3898,20 +3788,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(364),
-                    output: PortId(425),
+                    body: NodeId(356),
+                    output: PortId(412),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19604, 19622),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(424),
+                        payload_port: PortId(411),
                     }),
                 },
                 Path {
-                    body: NodeId(365),
-                    output: PortId(426),
+                    body: NodeId(357),
+                    output: PortId(413),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19640, 19656),
@@ -3919,8 +3809,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(366),
-                    output: PortId(427),
+                    body: NodeId(358),
+                    output: PortId(414),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19674, 19686),
@@ -3928,73 +3818,73 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(428),
+            output: PortId(415),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19437, 19703),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(368),
+            id: NodeId(360),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(429),
+            output: PortId(416),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19764, 19768),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(369),
+            id: NodeId(361),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(430),
+            output: PortId(417),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19789, 19793),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(370),
+            id: NodeId(362),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(431),
+            output: PortId(418),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19817, 19821),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(371),
+            id: NodeId(363),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(432),
+            output: PortId(419),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19851, 19856),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(372),
+            id: NodeId(364),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(433),
+            output: PortId(420),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19883, 19888),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(373),
+            id: NodeId(365),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(435),
+            output: PortId(422),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19919, 19924),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(374),
+            id: NodeId(366),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(436),
+            output: PortId(423),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19953, 19958),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(375),
+            id: NodeId(367),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(437),
+            output: PortId(424),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19983, 19988),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(376),
-            input: PortId(382),
+            id: NodeId(368),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(368),
-                    output: PortId(429),
+                    body: NodeId(360),
+                    output: PortId(416),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19747, 19760),
@@ -4002,8 +3892,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(369),
-                    output: PortId(430),
+                    body: NodeId(361),
+                    output: PortId(417),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19777, 19785),
@@ -4011,8 +3901,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(370),
-                    output: PortId(431),
+                    body: NodeId(362),
+                    output: PortId(418),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19802, 19813),
@@ -4020,8 +3910,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(371),
-                    output: PortId(432),
+                    body: NodeId(363),
+                    output: PortId(419),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19830, 19847),
@@ -4029,8 +3919,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(372),
-                    output: PortId(433),
+                    body: NodeId(364),
+                    output: PortId(420),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19865, 19879),
@@ -4038,20 +3928,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(373),
-                    output: PortId(435),
+                    body: NodeId(365),
+                    output: PortId(422),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19897, 19915),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(434),
+                        payload_port: PortId(421),
                     }),
                 },
                 Path {
-                    body: NodeId(374),
-                    output: PortId(436),
+                    body: NodeId(366),
+                    output: PortId(423),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19933, 19949),
@@ -4059,8 +3949,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(375),
-                    output: PortId(437),
+                    body: NodeId(367),
+                    output: PortId(424),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19967, 19979),
@@ -4068,73 +3958,73 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(438),
+            output: PortId(425),
             span: SourceSpan::new("src/v3/std/algebra.dag", 19729, 19996),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(377),
+            id: NodeId(369),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(439),
+            output: PortId(426),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20054, 20058),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(378),
+            id: NodeId(370),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(440),
+            output: PortId(427),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20079, 20083),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(379),
+            id: NodeId(371),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(441),
+            output: PortId(428),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20107, 20112),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(380),
+            id: NodeId(372),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(442),
+            output: PortId(429),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20142, 20147),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(381),
+            id: NodeId(373),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(443),
+            output: PortId(430),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20174, 20179),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(382),
+            id: NodeId(374),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(445),
+            output: PortId(432),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20210, 20215),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(383),
+            id: NodeId(375),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(446),
+            output: PortId(433),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20244, 20249),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(384),
+            id: NodeId(376),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(447),
+            output: PortId(434),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20274, 20279),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(385),
-            input: PortId(382),
+            id: NodeId(377),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(377),
-                    output: PortId(439),
+                    body: NodeId(369),
+                    output: PortId(426),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20037, 20050),
@@ -4142,8 +4032,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(378),
-                    output: PortId(440),
+                    body: NodeId(370),
+                    output: PortId(427),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20067, 20075),
@@ -4151,8 +4041,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(379),
-                    output: PortId(441),
+                    body: NodeId(371),
+                    output: PortId(428),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20092, 20103),
@@ -4160,8 +4050,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(380),
-                    output: PortId(442),
+                    body: NodeId(372),
+                    output: PortId(429),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20121, 20138),
@@ -4169,8 +4059,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(381),
-                    output: PortId(443),
+                    body: NodeId(373),
+                    output: PortId(430),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20156, 20170),
@@ -4178,20 +4068,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(382),
-                    output: PortId(445),
+                    body: NodeId(374),
+                    output: PortId(432),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20188, 20206),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(444),
+                        payload_port: PortId(431),
                     }),
                 },
                 Path {
-                    body: NodeId(383),
-                    output: PortId(446),
+                    body: NodeId(375),
+                    output: PortId(433),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20224, 20240),
@@ -4199,8 +4089,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(384),
-                    output: PortId(447),
+                    body: NodeId(376),
+                    output: PortId(434),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20258, 20270),
@@ -4208,73 +4098,73 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(448),
+            output: PortId(435),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20019, 20287),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(386),
+            id: NodeId(378),
             target: TransformTarget::Callable(DeclarationId(518)),
             inputs: vec![],
-            output: PortId(449),
+            output: PortId(436),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20350, 20354),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(387),
+            id: NodeId(379),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(450),
+            output: PortId(437),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20375, 20380),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(388),
+            id: NodeId(380),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(451),
+            output: PortId(438),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20404, 20409),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(389),
+            id: NodeId(381),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(452),
+            output: PortId(439),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20439, 20444),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(390),
+            id: NodeId(382),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(453),
+            output: PortId(440),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20471, 20476),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(391),
+            id: NodeId(383),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(455),
+            output: PortId(442),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20507, 20512),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(392),
+            id: NodeId(384),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(456),
+            output: PortId(443),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20541, 20546),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(393),
+            id: NodeId(385),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(457),
+            output: PortId(444),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20571, 20576),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(394),
-            input: PortId(382),
+            id: NodeId(386),
+            input: PortId(369),
             paths: vec![
                 Path {
-                    body: NodeId(386),
-                    output: PortId(449),
+                    body: NodeId(378),
+                    output: PortId(436),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20333, 20346),
@@ -4282,8 +4172,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(387),
-                    output: PortId(450),
+                    body: NodeId(379),
+                    output: PortId(437),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20363, 20371),
@@ -4291,8 +4181,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(388),
-                    output: PortId(451),
+                    body: NodeId(380),
+                    output: PortId(438),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20389, 20400),
@@ -4300,8 +4190,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(389),
-                    output: PortId(452),
+                    body: NodeId(381),
+                    output: PortId(439),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20418, 20435),
@@ -4309,8 +4199,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(390),
-                    output: PortId(453),
+                    body: NodeId(382),
+                    output: PortId(440),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20453, 20467),
@@ -4318,20 +4208,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(391),
-                    output: PortId(455),
+                    body: NodeId(383),
+                    output: PortId(442),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20485, 20503),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(454),
+                        payload_port: PortId(441),
                     }),
                 },
                 Path {
-                    body: NodeId(392),
-                    output: PortId(456),
+                    body: NodeId(384),
+                    output: PortId(443),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20521, 20537),
@@ -4339,8 +4229,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(393),
-                    output: PortId(457),
+                    body: NodeId(385),
+                    output: PortId(444),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20555, 20567),
@@ -4348,17 +4238,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(458),
+            output: PortId(445),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20315, 20584),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(395),
-            input: PortId(381),
+            id: NodeId(387),
+            input: PortId(368),
             paths: vec![
                 Path {
-                    body: NodeId(327),
-                    output: PortId(383),
+                    body: NodeId(319),
+                    output: PortId(370),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18410, 18422),
@@ -4366,8 +4256,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(336),
-                    output: PortId(393),
+                    body: NodeId(328),
+                    output: PortId(380),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18435, 18451),
@@ -4375,20 +4265,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(349),
-                    output: PortId(408),
+                    body: NodeId(341),
+                    output: PortId(395),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 18729, 18760),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "d_a".to_string(),
-                        payload_port: PortId(394),
+                        payload_port: PortId(381),
                     }),
                 },
                 Path {
-                    body: NodeId(358),
-                    output: PortId(418),
+                    body: NodeId(350),
+                    output: PortId(405),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19116, 19130),
@@ -4396,8 +4286,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(367),
-                    output: PortId(428),
+                    body: NodeId(359),
+                    output: PortId(415),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19410, 19427),
@@ -4405,8 +4295,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(376),
-                    output: PortId(438),
+                    body: NodeId(368),
+                    output: PortId(425),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 19708, 19719),
@@ -4414,8 +4304,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(385),
-                    output: PortId(448),
+                    body: NodeId(377),
+                    output: PortId(435),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20001, 20009),
@@ -4423,8 +4313,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(394),
-                    output: PortId(458),
+                    body: NodeId(386),
+                    output: PortId(445),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20292, 20305),
@@ -4432,33 +4322,33 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(459),
+            output: PortId(446),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18396, 20588),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(396),
+            id: NodeId(388),
             name: "asymptotic_dominates".to_string(),
-            value: PortId(459),
-            params: vec![PortId(381), PortId(382)],
+            value: PortId(446),
+            params: vec![PortId(368), PortId(369)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 18396, 20588),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(397),
+            id: NodeId(389),
             target: TransformTarget::Callable(DeclarationId(920)),
-            inputs: vec![PortId(460), PortId(461)],
-            output: PortId(462),
+            inputs: vec![PortId(447), PortId(448)],
+            output: PortId(449),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20681, 20707),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(398),
-            input: PortId(462),
+            id: NodeId(390),
+            input: PortId(449),
             paths: vec![
                 Path {
-                    body: NodeId(398),
-                    output: PortId(461),
+                    body: NodeId(390),
+                    output: PortId(448),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20713, 20714),
@@ -4466,8 +4356,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(398),
-                    output: PortId(460),
+                    body: NodeId(390),
+                    output: PortId(447),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20720, 20721),
@@ -4475,33 +4365,33 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(463),
+            output: PortId(450),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20678, 20721),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(399),
+            id: NodeId(391),
             name: "meet_asymptotic_class".to_string(),
-            value: PortId(463),
-            params: vec![PortId(460), PortId(461)],
+            value: PortId(450),
+            params: vec![PortId(447), PortId(448)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 20678, 20721),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(400),
+            id: NodeId(392),
             target: TransformTarget::Callable(DeclarationId(920)),
-            inputs: vec![PortId(464), PortId(465)],
-            output: PortId(466),
+            inputs: vec![PortId(451), PortId(452)],
+            output: PortId(453),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20814, 20840),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(401),
-            input: PortId(466),
+            id: NodeId(393),
+            input: PortId(453),
             paths: vec![
                 Path {
-                    body: NodeId(401),
-                    output: PortId(464),
+                    body: NodeId(393),
+                    output: PortId(451),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20846, 20847),
@@ -4509,8 +4399,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(401),
-                    output: PortId(465),
+                    body: NodeId(393),
+                    output: PortId(452),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 20853, 20854),
@@ -4518,75 +4408,75 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(467),
+            output: PortId(454),
             span: SourceSpan::new("src/v3/std/algebra.dag", 20811, 20854),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(402),
+            id: NodeId(394),
             name: "join_asymptotic_class".to_string(),
-            value: PortId(467),
-            params: vec![PortId(464), PortId(465)],
+            value: PortId(454),
+            params: vec![PortId(451), PortId(452)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 20811, 20854),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(403),
+            id: NodeId(395),
             target: TransformTarget::Callable(DeclarationId(925)),
-            inputs: vec![PortId(469)],
-            output: PortId(470),
+            inputs: vec![PortId(456)],
+            output: PortId(457),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22044, 22062),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(404),
+            id: NodeId(396),
             target: TransformTarget::Callable(DeclarationId(926)),
-            inputs: vec![PortId(470)],
-            output: PortId(471),
+            inputs: vec![PortId(457)],
+            output: PortId(458),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22025, 22063),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(405),
+            id: NodeId(397),
             target: TransformTarget::Callable(DeclarationId(932)),
-            inputs: vec![PortId(471)],
-            output: PortId(472),
+            inputs: vec![PortId(458)],
+            output: PortId(459),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22014, 22064),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(406),
+            id: NodeId(398),
             target: TransformTarget::Callable(DeclarationId(925)),
-            inputs: vec![PortId(473)],
-            output: PortId(474),
+            inputs: vec![PortId(460)],
+            output: PortId(461),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22168, 22186),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(407),
+            id: NodeId(399),
             target: TransformTarget::Callable(DeclarationId(927)),
-            inputs: vec![PortId(474)],
-            output: PortId(475),
+            inputs: vec![PortId(461)],
+            output: PortId(462),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22136, 22187),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(408),
+            id: NodeId(400),
             target: TransformTarget::Callable(DeclarationId(929)),
-            inputs: vec![PortId(475)],
-            output: PortId(476),
+            inputs: vec![PortId(462)],
+            output: PortId(463),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22112, 22188),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(409),
+            id: NodeId(401),
             target: TransformTarget::Callable(DeclarationId(934)),
-            inputs: vec![PortId(476)],
-            output: PortId(477),
+            inputs: vec![PortId(463)],
+            output: PortId(464),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22097, 22189),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(410),
-            input: PortId(468),
+            id: NodeId(402),
+            input: PortId(455),
             paths: vec![
                 Path {
-                    body: NodeId(410),
-                    output: PortId(468),
+                    body: NodeId(402),
+                    output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21892, 21904),
@@ -4594,8 +4484,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(410),
-                    output: PortId(468),
+                    body: NodeId(402),
+                    output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21914, 21924),
@@ -4603,8 +4493,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(410),
-                    output: PortId(468),
+                    body: NodeId(402),
+                    output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21934, 21948),
@@ -4612,8 +4502,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(410),
-                    output: PortId(468),
+                    body: NodeId(402),
+                    output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21958, 21965),
@@ -4621,8 +4511,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(410),
-                    output: PortId(468),
+                    body: NodeId(402),
+                    output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21975, 21986),
@@ -4630,171 +4520,171 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(405),
-                    output: PortId(472),
+                    body: NodeId(397),
+                    output: PortId(459),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 21996, 22010),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
-                        payload_port: PortId(469),
+                        payload_port: PortId(456),
                     }),
                 },
                 Path {
-                    body: NodeId(409),
-                    output: PortId(477),
+                    body: NodeId(401),
+                    output: PortId(464),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 22069, 22087),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
-                        payload_port: PortId(473),
+                        payload_port: PortId(460),
                     }),
                 },
             ],
-            output: PortId(478),
+            output: PortId(465),
             span: SourceSpan::new("src/v3/std/algebra.dag", 21878, 22193),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(411),
+            id: NodeId(403),
             name: "normalize".to_string(),
-            value: PortId(478),
-            params: vec![PortId(468)],
+            value: PortId(465),
+            params: vec![PortId(455)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 21878, 22193),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(412),
+            id: NodeId(404),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "first".to_string(),
             },
-            inputs: vec![PortId(479)],
-            output: PortId(480),
+            inputs: vec![PortId(466)],
+            output: PortId(467),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22286, 22291),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(413),
+            id: NodeId(405),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "second".to_string(),
             },
-            inputs: vec![PortId(479)],
-            output: PortId(481),
+            inputs: vec![PortId(466)],
+            output: PortId(468),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22304, 22310),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(414),
+            id: NodeId(406),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "rest".to_string(),
             },
-            inputs: vec![PortId(479)],
-            output: PortId(482),
+            inputs: vec![PortId(466)],
+            output: PortId(469),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22318, 22322),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(415),
+            id: NodeId(407),
             target: TransformTarget::Callable(DeclarationId(1813)),
-            inputs: vec![PortId(481), PortId(482)],
-            output: PortId(483),
+            inputs: vec![PortId(468), PortId(469)],
+            output: PortId(470),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22293, 22323),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(416),
+            id: NodeId(408),
             target: TransformTarget::Callable(DeclarationId(1814)),
-            inputs: vec![PortId(480), PortId(483)],
-            output: PortId(484),
+            inputs: vec![PortId(467), PortId(470)],
+            output: PortId(471),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22275, 22324),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(417),
+            id: NodeId(409),
             name: "nsl_to_list".to_string(),
-            value: PortId(484),
-            params: vec![PortId(479)],
+            value: PortId(471),
+            params: vec![PortId(466)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 22275, 22324),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(418),
+            id: NodeId(410),
             target: TransformTarget::Callable(DeclarationId(1815)),
             inputs: vec![],
-            output: PortId(486),
+            output: PortId(473),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22603, 22610),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(419),
+            id: NodeId(411),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(487)],
-            output: PortId(488),
+            inputs: vec![PortId(474)],
+            output: PortId(475),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22666, 22670),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(420),
+            id: NodeId(412),
             target: TransformTarget::Callable(DeclarationId(930)),
-            inputs: vec![PortId(488)],
-            output: PortId(489),
+            inputs: vec![PortId(475)],
+            output: PortId(476),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22641, 22671),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(421),
+            id: NodeId(413),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(487)],
-            output: PortId(490),
+            inputs: vec![PortId(474)],
+            output: PortId(477),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22712, 22716),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(422),
+            id: NodeId(414),
             target: TransformTarget::Callable(DeclarationId(926)),
-            inputs: vec![PortId(490)],
-            output: PortId(491),
+            inputs: vec![PortId(477)],
+            output: PortId(478),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22685, 22717),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(423),
+            id: NodeId(415),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(487)],
-            output: PortId(492),
+            inputs: vec![PortId(474)],
+            output: PortId(479),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22750, 22754),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(424),
+            id: NodeId(416),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(487)],
-            output: PortId(493),
+            inputs: vec![PortId(474)],
+            output: PortId(480),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22783, 22787),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(425),
+            id: NodeId(417),
             target: TransformTarget::Callable(DeclarationId(926)),
-            inputs: vec![PortId(493)],
-            output: PortId(494),
+            inputs: vec![PortId(480)],
+            output: PortId(481),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22756, 22788),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(426),
+            id: NodeId(418),
             target: TransformTarget::Callable(DeclarationId(1816)),
-            inputs: vec![PortId(492), PortId(494)],
-            output: PortId(495),
+            inputs: vec![PortId(479), PortId(481)],
+            output: PortId(482),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22737, 22789),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(427),
-            input: PortId(489),
+            id: NodeId(419),
+            input: PortId(476),
             paths: vec![
                 Path {
-                    body: NodeId(422),
-                    output: PortId(491),
+                    body: NodeId(414),
+                    output: PortId(478),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 22685, 22717),
@@ -4802,8 +4692,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(426),
-                    output: PortId(495),
+                    body: NodeId(418),
+                    output: PortId(482),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 22737, 22789),
@@ -4811,17 +4701,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(496),
+            output: PortId(483),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22638, 22789),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(428),
-            input: PortId(485),
+            id: NodeId(420),
+            input: PortId(472),
             paths: vec![
                 Path {
-                    body: NodeId(418),
-                    output: PortId(486),
+                    body: NodeId(410),
+                    output: PortId(473),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 22594, 22599),
@@ -4829,82 +4719,82 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(427),
-                    output: PortId(496),
+                    body: NodeId(419),
+                    output: PortId(483),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 22615, 22628),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(487),
+                        payload_port: PortId(474),
                     }),
                 },
             ],
-            output: PortId(497),
+            output: PortId(484),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22576, 22793),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
-            id: NodeId(429),
-            source: PortId(485),
-            init: PortId(485),
-            body: NodeId(428),
-            bound: LoopBound::Cardinality { count: PortId(485) },
-            output: PortId(498),
+            id: NodeId(421),
+            source: PortId(472),
+            init: PortId(472),
+            body: NodeId(420),
+            bound: LoopBound::Cardinality { count: PortId(472) },
+            output: PortId(485),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22576, 22793),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(430),
+            id: NodeId(422),
             name: "drop_additive_zero".to_string(),
-            value: PortId(498),
-            params: vec![PortId(485)],
+            value: PortId(485),
+            params: vec![PortId(472)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 22576, 22793),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(431),
+            id: NodeId(423),
             target: TransformTarget::Callable(DeclarationId(928)),
-            inputs: vec![PortId(499)],
-            output: PortId(500),
+            inputs: vec![PortId(486)],
+            output: PortId(487),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23093, 23108),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(432),
+            id: NodeId(424),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(501),
+            output: PortId(488),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23136, 23137),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(433),
+            id: NodeId(425),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(501)],
-            output: PortId(502),
+            inputs: vec![PortId(488)],
+            output: PortId(489),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23123, 23138),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(434),
+            id: NodeId(426),
             target: TransformTarget::Callable(DeclarationId(1817)),
             inputs: vec![],
-            output: PortId(503),
+            output: PortId(490),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23140, 23147),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(435),
+            id: NodeId(427),
             target: TransformTarget::Callable(DeclarationId(1818)),
-            inputs: vec![PortId(502), PortId(503)],
-            output: PortId(504),
+            inputs: vec![PortId(489), PortId(490)],
+            output: PortId(491),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23118, 23148),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(436),
-            input: PortId(500),
+            id: NodeId(428),
+            input: PortId(487),
             paths: vec![
                 Path {
-                    body: NodeId(435),
-                    output: PortId(504),
+                    body: NodeId(427),
+                    output: PortId(491),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23118, 23148),
@@ -4912,8 +4802,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(436),
-                    output: PortId(499),
+                    body: NodeId(428),
+                    output: PortId(486),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23160, 23165),
@@ -4921,72 +4811,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(505),
+            output: PortId(492),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23090, 23165),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(437),
+            id: NodeId(429),
             name: "collapse_on_multiplicative_zero".to_string(),
-            value: PortId(505),
-            params: vec![PortId(499)],
+            value: PortId(492),
+            params: vec![PortId(486)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 23090, 23165),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(438),
+            id: NodeId(430),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(507),
+            output: PortId(494),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23245, 23250),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(439),
+            id: NodeId(431),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(508)],
-            output: PortId(509),
+            inputs: vec![PortId(495)],
+            output: PortId(496),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23297, 23301),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(440),
+            id: NodeId(432),
             target: TransformTarget::Callable(DeclarationId(930)),
-            inputs: vec![PortId(509)],
-            output: PortId(510),
+            inputs: vec![PortId(496)],
+            output: PortId(497),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23272, 23302),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(441),
+            id: NodeId(433),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(508)],
-            output: PortId(511),
+            inputs: vec![PortId(495)],
+            output: PortId(498),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23323, 23327),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(442),
+            id: NodeId(434),
             target: TransformTarget::Callable(DeclarationId(928)),
-            inputs: vec![PortId(511)],
-            output: PortId(512),
+            inputs: vec![PortId(498)],
+            output: PortId(499),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23306, 23328),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(443),
+            id: NodeId(435),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)),
-            inputs: vec![PortId(510), PortId(512)],
-            output: PortId(513),
+            inputs: vec![PortId(497), PortId(499)],
+            output: PortId(500),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23272, 23328),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(444),
-            input: PortId(506),
+            id: NodeId(436),
+            input: PortId(493),
             paths: vec![
                 Path {
-                    body: NodeId(438),
-                    output: PortId(507),
+                    body: NodeId(430),
+                    output: PortId(494),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23236, 23241),
@@ -4994,118 +4884,118 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(443),
-                    output: PortId(513),
+                    body: NodeId(435),
+                    output: PortId(500),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23255, 23268),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(508),
+                        payload_port: PortId(495),
                     }),
                 },
             ],
-            output: PortId(514),
+            output: PortId(501),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23218, 23332),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
-            id: NodeId(445),
-            source: PortId(506),
-            init: PortId(506),
-            body: NodeId(444),
-            bound: LoopBound::Cardinality { count: PortId(506) },
-            output: PortId(515),
+            id: NodeId(437),
+            source: PortId(493),
+            init: PortId(493),
+            body: NodeId(436),
+            bound: LoopBound::Cardinality { count: PortId(493) },
+            output: PortId(502),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23218, 23332),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(446),
+            id: NodeId(438),
             name: "any_zero".to_string(),
-            value: PortId(515),
-            params: vec![PortId(506)],
+            value: PortId(502),
+            params: vec![PortId(493)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 23218, 23332),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(447),
+            id: NodeId(439),
             target: TransformTarget::Callable(DeclarationId(1819)),
             inputs: vec![],
-            output: PortId(517),
+            output: PortId(504),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23597, 23604),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(448),
+            id: NodeId(440),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(518)],
-            output: PortId(519),
+            inputs: vec![PortId(505)],
+            output: PortId(506),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23659, 23663),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(449),
+            id: NodeId(441),
             target: TransformTarget::Callable(DeclarationId(931)),
-            inputs: vec![PortId(519)],
-            output: PortId(520),
+            inputs: vec![PortId(506)],
+            output: PortId(507),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23635, 23664),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(450),
+            id: NodeId(442),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(518)],
-            output: PortId(521),
+            inputs: vec![PortId(505)],
+            output: PortId(508),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23710, 23714),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(451),
+            id: NodeId(443),
             target: TransformTarget::Callable(DeclarationId(929)),
-            inputs: vec![PortId(521)],
-            output: PortId(522),
+            inputs: vec![PortId(508)],
+            output: PortId(509),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23678, 23715),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(452),
+            id: NodeId(444),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(518)],
-            output: PortId(523),
+            inputs: vec![PortId(505)],
+            output: PortId(510),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23748, 23752),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(453),
+            id: NodeId(445),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(518)],
-            output: PortId(524),
+            inputs: vec![PortId(505)],
+            output: PortId(511),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23786, 23790),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(454),
+            id: NodeId(446),
             target: TransformTarget::Callable(DeclarationId(929)),
-            inputs: vec![PortId(524)],
-            output: PortId(525),
+            inputs: vec![PortId(511)],
+            output: PortId(512),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23754, 23791),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(455),
+            id: NodeId(447),
             target: TransformTarget::Callable(DeclarationId(1820)),
-            inputs: vec![PortId(523), PortId(525)],
-            output: PortId(526),
+            inputs: vec![PortId(510), PortId(512)],
+            output: PortId(513),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23735, 23792),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(456),
-            input: PortId(520),
+            id: NodeId(448),
+            input: PortId(507),
             paths: vec![
                 Path {
-                    body: NodeId(451),
-                    output: PortId(522),
+                    body: NodeId(443),
+                    output: PortId(509),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23678, 23715),
@@ -5113,8 +5003,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(455),
-                    output: PortId(526),
+                    body: NodeId(447),
+                    output: PortId(513),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23735, 23792),
@@ -5122,17 +5012,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(527),
+            output: PortId(514),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23632, 23792),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(457),
-            input: PortId(516),
+            id: NodeId(449),
+            input: PortId(503),
             paths: vec![
                 Path {
-                    body: NodeId(447),
-                    output: PortId(517),
+                    body: NodeId(439),
+                    output: PortId(504),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23588, 23593),
@@ -5140,142 +5030,276 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(456),
-                    output: PortId(527),
+                    body: NodeId(448),
+                    output: PortId(514),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23609, 23622),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(518),
+                        payload_port: PortId(505),
                     }),
                 },
             ],
-            output: PortId(528),
+            output: PortId(515),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23570, 23796),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
-            id: NodeId(458),
-            source: PortId(516),
-            init: PortId(516),
-            body: NodeId(457),
-            bound: LoopBound::Cardinality { count: PortId(516) },
-            output: PortId(529),
+            id: NodeId(450),
+            source: PortId(503),
+            init: PortId(503),
+            body: NodeId(449),
+            bound: LoopBound::Cardinality { count: PortId(503) },
+            output: PortId(516),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23570, 23796),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(459),
+            id: NodeId(451),
             name: "drop_multiplicative_one".to_string(),
-            value: PortId(529),
-            params: vec![PortId(516)],
+            value: PortId(516),
+            params: vec![PortId(503)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 23570, 23796),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(460),
+            id: NodeId(452),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(532),
+            output: PortId(519),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23885, 23886),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(461),
+            id: NodeId(453),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(531), PortId(532)],
-            output: PortId(533),
+            inputs: vec![PortId(518), PortId(519)],
+            output: PortId(520),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23880, 23886),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(462),
+            id: NodeId(454),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(535),
+            output: PortId(522),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23908, 23913),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(463),
+            id: NodeId(455),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(537),
+            output: PortId(524),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23939, 23944),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(464),
+            id: NodeId(456),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(539),
+            output: PortId(526),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23967, 23972),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(465),
+            id: NodeId(457),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(541),
+            output: PortId(528),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23991, 23996),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(466),
+            id: NodeId(458),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(543),
+            output: PortId(530),
             span: SourceSpan::new("src/v3/std/algebra.dag", 24015, 24020),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(467),
+            id: NodeId(459),
             target: TransformTarget::Callable(DeclarationId(519)),
             inputs: vec![],
-            output: PortId(545),
+            output: PortId(532),
             span: SourceSpan::new("src/v3/std/algebra.dag", 24043, 24048),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(468),
-            input: PortId(530),
+            id: NodeId(460),
+            input: PortId(517),
             paths: vec![
                 Path {
-                    body: NodeId(461),
-                    output: PortId(533),
+                    body: NodeId(453),
+                    output: PortId(520),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23861, 23876),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "n".to_string(),
-                        payload_port: PortId(531),
+                        payload_port: PortId(518),
                     }),
                 },
                 Path {
-                    body: NodeId(462),
-                    output: PortId(535),
+                    body: NodeId(454),
+                    output: PortId(522),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23891, 23904),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(534),
+                        payload_port: PortId(521),
                     }),
                 },
                 Path {
-                    body: NodeId(463),
-                    output: PortId(537),
+                    body: NodeId(455),
+                    output: PortId(524),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 23918, 23935),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(536),
+                        payload_port: PortId(523),
+                    }),
+                },
+                Path {
+                    body: NodeId(456),
+                    output: PortId(526),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ProductCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23949, 23963),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(525),
+                    }),
+                },
+                Path {
+                    body: NodeId(457),
+                    output: PortId(528),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "SumCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23977, 23987),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(527),
+                    }),
+                },
+                Path {
+                    body: NodeId(458),
+                    output: PortId(530),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "LogCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24001, 24011),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(529),
+                    }),
+                },
+                Path {
+                    body: NodeId(459),
+                    output: PortId(532),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "UnknownCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24025, 24039),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "_".to_string(),
+                        payload_port: PortId(531),
+                    }),
+                },
+            ],
+            output: PortId(533),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23847, 24052),
+            emit_participation: Some(BranchEmitParticipation::UserMatch),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(461),
+            name: "is_zero_constant".to_string(),
+            value: PortId(533),
+            params: vec![PortId(517)],
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23847, 24052),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(462),
+            data: LiteralBits::Int("1".to_string()),
+            output: PortId(536),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24140, 24141),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(463),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(535), PortId(536)],
+            output: PortId(537),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24135, 24141),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(464),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(539),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24163, 24168),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(465),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(541),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24194, 24199),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(466),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(543),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24222, 24227),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(467),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(545),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24246, 24251),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(468),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(547),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24270, 24275),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(469),
+            target: TransformTarget::Callable(DeclarationId(519)),
+            inputs: vec![],
+            output: PortId(549),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24298, 24303),
+        }));
+        nodes.push(Behavior::Branch(BranchNode {
+            id: NodeId(470),
+            input: PortId(534),
+            paths: vec![
+                Path {
+                    body: NodeId(463),
+                    output: PortId(537),
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "ConstantCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24116, 24131),
+                    },
+                    binding: Some(PayloadBinding {
+                        binding_name: "n".to_string(),
+                        payload_port: PortId(535),
                     }),
                 },
                 Path {
                     body: NodeId(464),
                     output: PortId(539),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23949, 23963),
+                        name: "LinearCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24146, 24159),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -5286,8 +5310,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(465),
                     output: PortId(541),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23977, 23987),
+                        name: "PolynomialCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24173, 24190),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -5298,8 +5322,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(466),
                     output: PortId(543),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24001, 24011),
+                        name: "ProductCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24204, 24218),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -5310,264 +5334,130 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(467),
                     output: PortId(545),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24025, 24039),
+                        name: "SumCost".to_string(),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24232, 24242),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
                         payload_port: PortId(544),
                     }),
                 },
-            ],
-            output: PortId(546),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23847, 24052),
-            emit_participation: Some(BranchEmitParticipation::UserMatch),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(469),
-            name: "is_zero_constant".to_string(),
-            value: PortId(546),
-            params: vec![PortId(530)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23847, 24052),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(470),
-            data: LiteralBits::Int("1".to_string()),
-            output: PortId(549),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24140, 24141),
-            lane2_workflow: None,
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(471),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(548), PortId(549)],
-            output: PortId(550),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24135, 24141),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(472),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(552),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24163, 24168),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(473),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(554),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24194, 24199),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(474),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(556),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24222, 24227),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(475),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(558),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24246, 24251),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(476),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(560),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24270, 24275),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(477),
-            target: TransformTarget::Callable(DeclarationId(519)),
-            inputs: vec![],
-            output: PortId(562),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24298, 24303),
-        }));
-        nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(478),
-            input: PortId(547),
-            paths: vec![
                 Path {
-                    body: NodeId(471),
-                    output: PortId(550),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24116, 24131),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "n".to_string(),
-                        payload_port: PortId(548),
-                    }),
-                },
-                Path {
-                    body: NodeId(472),
-                    output: PortId(552),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24146, 24159),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(551),
-                    }),
-                },
-                Path {
-                    body: NodeId(473),
-                    output: PortId(554),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24173, 24190),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(553),
-                    }),
-                },
-                Path {
-                    body: NodeId(474),
-                    output: PortId(556),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24204, 24218),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(555),
-                    }),
-                },
-                Path {
-                    body: NodeId(475),
-                    output: PortId(558),
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24232, 24242),
-                    },
-                    binding: Some(PayloadBinding {
-                        binding_name: "_".to_string(),
-                        payload_port: PortId(557),
-                    }),
-                },
-                Path {
-                    body: NodeId(476),
-                    output: PortId(560),
+                    body: NodeId(468),
+                    output: PortId(547),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 24256, 24266),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(559),
+                        payload_port: PortId(546),
                     }),
                 },
                 Path {
-                    body: NodeId(477),
-                    output: PortId(562),
+                    body: NodeId(469),
+                    output: PortId(549),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 24280, 24294),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(561),
+                        payload_port: PortId(548),
                     }),
                 },
             ],
-            output: PortId(563),
+            output: PortId(550),
             span: SourceSpan::new("src/v3/std/algebra.dag", 24102, 24307),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(479),
+            id: NodeId(471),
             name: "is_one_constant".to_string(),
-            value: PortId(563),
-            params: vec![PortId(547)],
+            value: PortId(550),
+            params: vec![PortId(534)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 24102, 24307),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(480),
+            id: NodeId(472),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(565),
+            output: PortId(552),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25193, 25194),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(481),
+            id: NodeId(473),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(565)],
-            output: PortId(566),
+            inputs: vec![PortId(552)],
+            output: PortId(553),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25180, 25195),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(482),
+            id: NodeId(474),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(567)],
-            output: PortId(568),
+            inputs: vec![PortId(554)],
+            output: PortId(555),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25237, 25241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(483),
+            id: NodeId(475),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(567)],
-            output: PortId(569),
+            inputs: vec![PortId(554)],
+            output: PortId(556),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25269, 25273),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(484),
+            id: NodeId(476),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(567)],
-            output: PortId(571),
+            inputs: vec![PortId(554)],
+            output: PortId(558),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25330, 25334),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(485),
+            id: NodeId(477),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(567)],
-            output: PortId(572),
+            inputs: vec![PortId(554)],
+            output: PortId(559),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25344, 25348),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(486),
+            id: NodeId(478),
             target: TransformTarget::Callable(DeclarationId(1821)),
-            inputs: vec![PortId(571), PortId(572)],
-            output: PortId(573),
+            inputs: vec![PortId(558), PortId(559)],
+            output: PortId(560),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25317, 25349),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(487),
+            id: NodeId(479),
             target: TransformTarget::Callable(DeclarationId(944)),
-            inputs: vec![PortId(573)],
-            output: PortId(574),
+            inputs: vec![PortId(560)],
+            output: PortId(561),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25302, 25350),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(488),
+            id: NodeId(480),
             target: TransformTarget::Callable(DeclarationId(933)),
-            inputs: vec![PortId(574)],
-            output: PortId(575),
+            inputs: vec![PortId(561)],
+            output: PortId(562),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25293, 25351),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(489),
-            input: PortId(568),
+            id: NodeId(481),
+            input: PortId(555),
             paths: vec![
                 Path {
-                    body: NodeId(483),
-                    output: PortId(569),
+                    body: NodeId(475),
+                    output: PortId(556),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25252, 25257),
@@ -5575,29 +5465,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(488),
-                    output: PortId(575),
+                    body: NodeId(480),
+                    output: PortId(562),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25282, 25289),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(570),
+                        payload_port: PortId(557),
                     }),
                 },
             ],
-            output: PortId(576),
+            output: PortId(563),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25223, 25359),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(490),
-            input: PortId(564),
+            id: NodeId(482),
+            input: PortId(551),
             paths: vec![
                 Path {
-                    body: NodeId(481),
-                    output: PortId(566),
+                    body: NodeId(473),
+                    output: PortId(553),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25171, 25176),
@@ -5605,111 +5495,111 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(489),
-                    output: PortId(576),
+                    body: NodeId(481),
+                    output: PortId(563),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25200, 25213),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(567),
+                        payload_port: PortId(554),
                     }),
                 },
             ],
-            output: PortId(577),
+            output: PortId(564),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25153, 25363),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(491),
+            id: NodeId(483),
             name: "reduce_sum".to_string(),
-            value: PortId(577),
-            params: vec![PortId(564)],
+            value: PortId(564),
+            params: vec![PortId(551)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 25153, 25363),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(492),
+            id: NodeId(484),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(579),
+            output: PortId(566),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25464, 25465),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(493),
+            id: NodeId(485),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(579)],
-            output: PortId(580),
+            inputs: vec![PortId(566)],
+            output: PortId(567),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25451, 25466),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(494),
+            id: NodeId(486),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(581)],
-            output: PortId(582),
+            inputs: vec![PortId(568)],
+            output: PortId(569),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25508, 25512),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(495),
+            id: NodeId(487),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(581)],
-            output: PortId(583),
+            inputs: vec![PortId(568)],
+            output: PortId(570),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25540, 25544),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(496),
+            id: NodeId(488),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(581)],
-            output: PortId(585),
+            inputs: vec![PortId(568)],
+            output: PortId(572),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25596, 25600),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(497),
+            id: NodeId(489),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(584)],
-            output: PortId(586),
+            inputs: vec![PortId(571)],
+            output: PortId(573),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25609, 25613),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(498),
+            id: NodeId(490),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(584)],
-            output: PortId(587),
+            inputs: vec![PortId(571)],
+            output: PortId(574),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25622, 25626),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(499),
+            id: NodeId(491),
             target: TransformTarget::Callable(DeclarationId(909)),
-            inputs: vec![PortId(585), PortId(586), PortId(587)],
-            output: PortId(588),
+            inputs: vec![PortId(572), PortId(573), PortId(574)],
+            output: PortId(575),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25577, 25627),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(500),
+            id: NodeId(492),
             target: TransformTarget::Callable(DeclarationId(1790)),
-            inputs: vec![PortId(588)],
-            output: PortId(589),
+            inputs: vec![PortId(575)],
+            output: PortId(576),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25569, 25628),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(501),
-            input: PortId(582),
+            id: NodeId(493),
+            input: PortId(569),
             paths: vec![
                 Path {
-                    body: NodeId(495),
-                    output: PortId(583),
+                    body: NodeId(487),
+                    output: PortId(570),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25523, 25528),
@@ -5717,29 +5607,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(500),
-                    output: PortId(589),
+                    body: NodeId(492),
+                    output: PortId(576),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25553, 25565),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "second".to_string(),
-                        payload_port: PortId(584),
+                        payload_port: PortId(571),
                     }),
                 },
             ],
-            output: PortId(590),
+            output: PortId(577),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25494, 25636),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(502),
-            input: PortId(578),
+            id: NodeId(494),
+            input: PortId(565),
             paths: vec![
                 Path {
-                    body: NodeId(493),
-                    output: PortId(580),
+                    body: NodeId(485),
+                    output: PortId(567),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25442, 25447),
@@ -5747,145 +5637,145 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(501),
-                    output: PortId(590),
+                    body: NodeId(493),
+                    output: PortId(577),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25471, 25484),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(581),
+                        payload_port: PortId(568),
                     }),
                 },
             ],
-            output: PortId(591),
+            output: PortId(578),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25424, 25640),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(503),
+            id: NodeId(495),
             name: "wrap_sum".to_string(),
-            value: PortId(591),
-            params: vec![PortId(578)],
+            value: PortId(578),
+            params: vec![PortId(565)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 25424, 25640),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(504),
+            id: NodeId(496),
             data: LiteralBits::Int("1".to_string()),
-            output: PortId(593),
+            output: PortId(580),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25930, 25931),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(505),
+            id: NodeId(497),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(593)],
-            output: PortId(594),
+            inputs: vec![PortId(580)],
+            output: PortId(581),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25917, 25932),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(498),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
+            inputs: vec![PortId(582)],
+            output: PortId(583),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25974, 25978),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(499),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
+            inputs: vec![PortId(582)],
+            output: PortId(584),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26006, 26010),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(500),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
+            inputs: vec![PortId(585)],
+            output: PortId(586),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26058, 26062),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(501),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
+            inputs: vec![PortId(582)],
+            output: PortId(587),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26117, 26121),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(502),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
+            inputs: vec![PortId(585)],
+            output: PortId(588),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26130, 26134),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(503),
+            target: TransformTarget::Callable(DeclarationId(935)),
+            inputs: vec![PortId(587), PortId(588)],
+            output: PortId(589),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26086, 26135),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(504),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
+            inputs: vec![PortId(582)],
+            output: PortId(591),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26190, 26194),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(505),
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
+            inputs: vec![PortId(585)],
+            output: PortId(592),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26203, 26207),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(506),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(595)],
-            output: PortId(596),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25974, 25978),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(507),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "head".to_string(),
-            },
-            inputs: vec![PortId(595)],
-            output: PortId(597),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26006, 26010),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(508),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "tail".to_string(),
-            },
-            inputs: vec![PortId(598)],
-            output: PortId(599),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26058, 26062),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(509),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "head".to_string(),
-            },
-            inputs: vec![PortId(595)],
-            output: PortId(600),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26117, 26121),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(510),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "head".to_string(),
-            },
-            inputs: vec![PortId(598)],
-            output: PortId(601),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26130, 26134),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(511),
-            target: TransformTarget::Callable(DeclarationId(935)),
-            inputs: vec![PortId(600), PortId(601)],
-            output: PortId(602),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26086, 26135),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(512),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "head".to_string(),
-            },
-            inputs: vec![PortId(595)],
-            output: PortId(604),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26190, 26194),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(513),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "head".to_string(),
-            },
-            inputs: vec![PortId(598)],
-            output: PortId(605),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26203, 26207),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(514),
-            target: TransformTarget::UnresolvedFieldProject {
-                field_label: "tail".to_string(),
-            },
-            inputs: vec![PortId(598)],
-            output: PortId(606),
+            inputs: vec![PortId(585)],
+            output: PortId(593),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26216, 26220),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(515),
+            id: NodeId(507),
             target: TransformTarget::Callable(DeclarationId(909)),
-            inputs: vec![PortId(604), PortId(605), PortId(606)],
-            output: PortId(607),
+            inputs: vec![PortId(591), PortId(592), PortId(593)],
+            output: PortId(594),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26171, 26221),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(516),
+            id: NodeId(508),
             target: TransformTarget::Callable(DeclarationId(1788)),
-            inputs: vec![PortId(607)],
-            output: PortId(608),
+            inputs: vec![PortId(594)],
+            output: PortId(595),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26159, 26222),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(517),
-            input: PortId(599),
+            id: NodeId(509),
+            input: PortId(586),
             paths: vec![
                 Path {
-                    body: NodeId(511),
-                    output: PortId(602),
+                    body: NodeId(503),
+                    output: PortId(589),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26077, 26082),
@@ -5893,29 +5783,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(516),
-                    output: PortId(608),
+                    body: NodeId(508),
+                    output: PortId(595),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26148, 26155),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(603),
+                        payload_port: PortId(590),
                     }),
                 },
             ],
-            output: PortId(609),
+            output: PortId(596),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26045, 26234),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(518),
-            input: PortId(596),
+            id: NodeId(510),
+            input: PortId(583),
             paths: vec![
                 Path {
-                    body: NodeId(507),
-                    output: PortId(597),
+                    body: NodeId(499),
+                    output: PortId(584),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25989, 25994),
@@ -5923,29 +5813,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(517),
-                    output: PortId(609),
+                    body: NodeId(509),
+                    output: PortId(596),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26019, 26031),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "second".to_string(),
-                        payload_port: PortId(598),
+                        payload_port: PortId(585),
                     }),
                 },
             ],
-            output: PortId(610),
+            output: PortId(597),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25960, 26242),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(519),
-            input: PortId(592),
+            id: NodeId(511),
+            input: PortId(579),
             paths: vec![
                 Path {
-                    body: NodeId(505),
-                    output: PortId(594),
+                    body: NodeId(497),
+                    output: PortId(581),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25908, 25913),
@@ -5953,361 +5843,361 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(518),
-                    output: PortId(610),
+                    body: NodeId(510),
+                    output: PortId(597),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 25937, 25950),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(595),
+                        payload_port: PortId(582),
                     }),
                 },
             ],
-            output: PortId(611),
+            output: PortId(598),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25890, 26246),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(520),
+            id: NodeId(512),
             name: "reduce_product".to_string(),
-            value: PortId(611),
-            params: vec![PortId(592)],
+            value: PortId(598),
+            params: vec![PortId(579)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 25890, 26246),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(521),
+            id: NodeId(513),
             target: TransformTarget::Callable(DeclarationId(936)),
-            inputs: vec![PortId(614), PortId(612), PortId(613)],
-            output: PortId(615),
+            inputs: vec![PortId(601), PortId(599), PortId(600)],
+            output: PortId(602),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26523, 26552),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(522),
+            id: NodeId(514),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(617),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(604),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26576, 26594),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(523),
+            id: NodeId(515),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(619),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(606),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26620, 26638),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(524),
+            id: NodeId(516),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(621),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(608),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26657, 26675),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(525),
+            id: NodeId(517),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(623),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(610),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26694, 26712),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(526),
+            id: NodeId(518),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(625),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(612),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26735, 26753),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(527),
+            id: NodeId(519),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(612), PortId(613)],
-            output: PortId(627),
+            inputs: vec![PortId(599), PortId(600)],
+            output: PortId(614),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26776, 26794),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(528),
-            input: PortId(612),
+            id: NodeId(520),
+            input: PortId(599),
             paths: vec![
                 Path {
-                    body: NodeId(521),
-                    output: PortId(615),
+                    body: NodeId(513),
+                    output: PortId(602),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26505, 26519),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "va".to_string(),
-                        payload_port: PortId(614),
+                        payload_port: PortId(601),
                     }),
                 },
                 Path {
-                    body: NodeId(522),
-                    output: PortId(617),
+                    body: NodeId(514),
+                    output: PortId(604),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26557, 26572),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(616),
+                        payload_port: PortId(603),
                     }),
                 },
                 Path {
-                    body: NodeId(523),
-                    output: PortId(619),
+                    body: NodeId(515),
+                    output: PortId(606),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26599, 26616),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(618),
+                        payload_port: PortId(605),
                     }),
                 },
                 Path {
-                    body: NodeId(524),
-                    output: PortId(621),
+                    body: NodeId(516),
+                    output: PortId(608),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26643, 26653),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(620),
+                        payload_port: PortId(607),
                     }),
                 },
                 Path {
-                    body: NodeId(525),
-                    output: PortId(623),
+                    body: NodeId(517),
+                    output: PortId(610),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26680, 26690),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(622),
+                        payload_port: PortId(609),
                     }),
                 },
                 Path {
-                    body: NodeId(526),
-                    output: PortId(625),
+                    body: NodeId(518),
+                    output: PortId(612),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26717, 26731),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(624),
+                        payload_port: PortId(611),
                     }),
                 },
                 Path {
-                    body: NodeId(527),
-                    output: PortId(627),
+                    body: NodeId(519),
+                    output: PortId(614),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26758, 26772),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(626),
+                        payload_port: PortId(613),
                     }),
                 },
             ],
-            output: PortId(628),
+            output: PortId(615),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26491, 26798),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(529),
+            id: NodeId(521),
             name: "combine_binary_product".to_string(),
-            value: PortId(628),
-            params: vec![PortId(612), PortId(613)],
+            value: PortId(615),
+            params: vec![PortId(599), PortId(600)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 26491, 26798),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(530),
+            id: NodeId(522),
             target: TransformTarget::Callable(DeclarationId(937)),
-            inputs: vec![PortId(629), PortId(632), PortId(630), PortId(631)],
-            output: PortId(633),
+            inputs: vec![PortId(616), PortId(619), PortId(617), PortId(618)],
+            output: PortId(620),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26927, 26963),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(531),
+            id: NodeId(523),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(635),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(622),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26987, 27005),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(532),
+            id: NodeId(524),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(637),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(624),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27031, 27049),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(533),
+            id: NodeId(525),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(639),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(626),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27068, 27086),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(534),
+            id: NodeId(526),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(641),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(628),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27105, 27123),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(535),
+            id: NodeId(527),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(643),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(630),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27146, 27164),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(536),
+            id: NodeId(528),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(630), PortId(631)],
-            output: PortId(645),
+            inputs: vec![PortId(617), PortId(618)],
+            output: PortId(632),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27187, 27205),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(537),
-            input: PortId(631),
+            id: NodeId(529),
+            input: PortId(618),
             paths: vec![
                 Path {
-                    body: NodeId(530),
-                    output: PortId(633),
+                    body: NodeId(522),
+                    output: PortId(620),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26909, 26923),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "vb".to_string(),
-                        payload_port: PortId(632),
+                        payload_port: PortId(619),
                     }),
                 },
                 Path {
-                    body: NodeId(531),
-                    output: PortId(635),
+                    body: NodeId(523),
+                    output: PortId(622),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 26968, 26983),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(634),
+                        payload_port: PortId(621),
                     }),
                 },
                 Path {
-                    body: NodeId(532),
-                    output: PortId(637),
+                    body: NodeId(524),
+                    output: PortId(624),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27010, 27027),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(636),
+                        payload_port: PortId(623),
                     }),
                 },
                 Path {
-                    body: NodeId(533),
-                    output: PortId(639),
+                    body: NodeId(525),
+                    output: PortId(626),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27054, 27064),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(638),
+                        payload_port: PortId(625),
                     }),
                 },
                 Path {
-                    body: NodeId(534),
-                    output: PortId(641),
+                    body: NodeId(526),
+                    output: PortId(628),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27091, 27101),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(640),
+                        payload_port: PortId(627),
                     }),
                 },
                 Path {
-                    body: NodeId(535),
-                    output: PortId(643),
+                    body: NodeId(527),
+                    output: PortId(630),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27128, 27142),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(642),
+                        payload_port: PortId(629),
                     }),
                 },
                 Path {
-                    body: NodeId(536),
-                    output: PortId(645),
+                    body: NodeId(528),
+                    output: PortId(632),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27169, 27183),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(644),
+                        payload_port: PortId(631),
                     }),
                 },
             ],
-            output: PortId(646),
+            output: PortId(633),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26895, 27209),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(538),
+            id: NodeId(530),
             name: "combine_linear_with".to_string(),
-            value: PortId(646),
-            params: vec![PortId(629), PortId(630), PortId(631)],
+            value: PortId(633),
+            params: vec![PortId(616), PortId(617), PortId(618)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 26895, 27209),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(539),
+            id: NodeId(531),
             target: TransformTarget::Callable(DeclarationId(918)),
-            inputs: vec![PortId(647), PortId(648)],
-            output: PortId(651),
+            inputs: vec![PortId(634), PortId(635)],
+            output: PortId(638),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27340, 27366),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(540),
+            id: NodeId(532),
             target: TransformTarget::Callable(DeclarationId(938)),
-            inputs: vec![PortId(647)],
-            output: PortId(652),
+            inputs: vec![PortId(634)],
+            output: PortId(639),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27376, 27397),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(541),
+            id: NodeId(533),
             target: TransformTarget::Callable(DeclarationId(939)),
-            inputs: vec![PortId(649), PortId(650)],
-            output: PortId(653),
+            inputs: vec![PortId(636), PortId(637)],
+            output: PortId(640),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27409, 27427),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(542),
-            input: PortId(651),
+            id: NodeId(534),
+            input: PortId(638),
             paths: vec![
                 Path {
-                    body: NodeId(540),
-                    output: PortId(652),
+                    body: NodeId(532),
+                    output: PortId(639),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27376, 27397),
@@ -6315,8 +6205,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(541),
-                    output: PortId(653),
+                    body: NodeId(533),
+                    output: PortId(640),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27409, 27427),
@@ -6324,195 +6214,195 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(654),
+            output: PortId(641),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27337, 27427),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(543),
+            id: NodeId(535),
             name: "collapse_linear_square".to_string(),
-            value: PortId(654),
-            params: vec![PortId(647), PortId(648), PortId(649), PortId(650)],
+            value: PortId(641),
+            params: vec![PortId(634), PortId(635), PortId(636), PortId(637)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 27337, 27427),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(544),
+            id: NodeId(536),
             target: TransformTarget::Callable(DeclarationId(908)),
-            inputs: vec![PortId(655), PortId(656)],
-            output: PortId(657),
+            inputs: vec![PortId(642), PortId(643)],
+            output: PortId(644),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27617, 27632),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(545),
+            id: NodeId(537),
             target: TransformTarget::Callable(DeclarationId(1788)),
-            inputs: vec![PortId(657)],
-            output: PortId(658),
+            inputs: vec![PortId(644)],
+            output: PortId(645),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27605, 27633),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(546),
+            id: NodeId(538),
             name: "product_pair".to_string(),
-            value: PortId(658),
-            params: vec![PortId(655), PortId(656)],
+            value: PortId(645),
+            params: vec![PortId(642), PortId(643)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 27605, 27633),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(547),
+            id: NodeId(539),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "any".to_string(),
             },
-            inputs: vec![PortId(659)],
-            output: PortId(661),
+            inputs: vec![PortId(646)],
+            output: PortId(648),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27733, 27736),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(548),
+            id: NodeId(540),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "pivot".to_string(),
             },
-            inputs: vec![PortId(659)],
-            output: PortId(662),
+            inputs: vec![PortId(646)],
+            output: PortId(649),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27757, 27762),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(549),
+            id: NodeId(541),
             target: TransformTarget::Callable(DeclarationId(917)),
-            inputs: vec![PortId(660), PortId(662)],
-            output: PortId(663),
+            inputs: vec![PortId(647), PortId(649)],
+            output: PortId(650),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27740, 27763),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(550),
+            id: NodeId(542),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)),
-            inputs: vec![PortId(661), PortId(663)],
-            output: PortId(664),
+            inputs: vec![PortId(648), PortId(650)],
+            output: PortId(651),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27729, 27763),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(551),
+            id: NodeId(543),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "pivot".to_string(),
             },
-            inputs: vec![PortId(659)],
-            output: PortId(665),
+            inputs: vec![PortId(646)],
+            output: PortId(652),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27777, 27782),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(552),
+            id: NodeId(544),
             target: TransformTarget::Callable(DeclarationId(904)),
-            inputs: vec![PortId(664), PortId(665)],
-            output: PortId(666),
+            inputs: vec![PortId(651), PortId(652)],
+            output: PortId(653),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27720, 27784),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(553),
+            id: NodeId(545),
             name: "fold_or_dominate_scan".to_string(),
-            value: PortId(666),
-            params: vec![PortId(659), PortId(660)],
+            value: PortId(653),
+            params: vec![PortId(646), PortId(647)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 27720, 27784),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(554),
+            id: NodeId(546),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "any".to_string(),
             },
-            inputs: vec![PortId(667)],
-            output: PortId(668),
+            inputs: vec![PortId(654)],
+            output: PortId(655),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27838, 27841),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(555),
+            id: NodeId(547),
             name: "scan_hit".to_string(),
-            value: PortId(668),
-            params: vec![PortId(667)],
+            value: PortId(655),
+            params: vec![PortId(654)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 27833, 27841),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(556),
+            id: NodeId(548),
             target: TransformTarget::Callable(DeclarationId(1822)),
             inputs: vec![],
-            output: PortId(671),
+            output: PortId(658),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27988, 27995),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(557),
+            id: NodeId(549),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(672)],
-            output: PortId(673),
+            inputs: vec![PortId(659)],
+            output: PortId(660),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28052, 28056),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(558),
+            id: NodeId(550),
             target: TransformTarget::Callable(DeclarationId(917)),
-            inputs: vec![PortId(670), PortId(673)],
-            output: PortId(674),
+            inputs: vec![PortId(657), PortId(660)],
+            output: PortId(661),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28026, 28057),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(559),
+            id: NodeId(551),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(672)],
-            output: PortId(675),
+            inputs: vec![PortId(659)],
+            output: PortId(662),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28103, 28107),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(560),
+            id: NodeId(552),
             target: TransformTarget::Callable(DeclarationId(942)),
-            inputs: vec![PortId(675), PortId(670)],
-            output: PortId(676),
+            inputs: vec![PortId(662), PortId(657)],
+            output: PortId(663),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28071, 28116),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(561),
+            id: NodeId(553),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(672)],
-            output: PortId(677),
+            inputs: vec![PortId(659)],
+            output: PortId(664),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28149, 28153),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(562),
+            id: NodeId(554),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(672)],
-            output: PortId(678),
+            inputs: vec![PortId(659)],
+            output: PortId(665),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28187, 28191),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(563),
+            id: NodeId(555),
             target: TransformTarget::Callable(DeclarationId(942)),
-            inputs: vec![PortId(678), PortId(670)],
-            output: PortId(679),
+            inputs: vec![PortId(665), PortId(657)],
+            output: PortId(666),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28155, 28200),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(564),
+            id: NodeId(556),
             target: TransformTarget::Callable(DeclarationId(1823)),
-            inputs: vec![PortId(677), PortId(679)],
-            output: PortId(680),
+            inputs: vec![PortId(664), PortId(666)],
+            output: PortId(667),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28136, 28201),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(565),
-            input: PortId(674),
+            id: NodeId(557),
+            input: PortId(661),
             paths: vec![
                 Path {
-                    body: NodeId(560),
-                    output: PortId(676),
+                    body: NodeId(552),
+                    output: PortId(663),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 28071, 28116),
@@ -6520,8 +6410,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(564),
-                    output: PortId(680),
+                    body: NodeId(556),
+                    output: PortId(667),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 28136, 28201),
@@ -6529,17 +6419,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(681),
+            output: PortId(668),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28023, 28201),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(566),
-            input: PortId(669),
+            id: NodeId(558),
+            input: PortId(656),
             paths: vec![
                 Path {
-                    body: NodeId(556),
-                    output: PortId(671),
+                    body: NodeId(548),
+                    output: PortId(658),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 27979, 27984),
@@ -6547,82 +6437,82 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(565),
-                    output: PortId(681),
+                    body: NodeId(557),
+                    output: PortId(668),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 28000, 28013),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(672),
+                        payload_port: PortId(659),
                     }),
                 },
             ],
-            output: PortId(682),
+            output: PortId(669),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27956, 28205),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
-            id: NodeId(567),
-            source: PortId(669),
-            init: PortId(669),
-            body: NodeId(566),
-            bound: LoopBound::Cardinality { count: PortId(669) },
-            output: PortId(683),
+            id: NodeId(559),
+            source: PortId(656),
+            init: PortId(656),
+            body: NodeId(558),
+            bound: LoopBound::Cardinality { count: PortId(656) },
+            output: PortId(670),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27956, 28205),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(568),
+            id: NodeId(560),
             name: "filter_not_dominated_by".to_string(),
-            value: PortId(683),
-            params: vec![PortId(669), PortId(670)],
+            value: PortId(670),
+            params: vec![PortId(656), PortId(657)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 27956, 28205),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(569),
+            id: NodeId(561),
             target: TransformTarget::Callable(DeclarationId(905)),
-            inputs: vec![PortId(685)],
-            output: PortId(686),
+            inputs: vec![PortId(672)],
+            output: PortId(673),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28329, 28353),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(570),
+            id: NodeId(562),
             target: TransformTarget::Callable(DeclarationId(1825)),
-            inputs: vec![PortId(684), PortId(686)],
-            output: PortId(687),
+            inputs: vec![PortId(671), PortId(673)],
+            output: PortId(674),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28319, 28377),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(571),
+            id: NodeId(563),
             target: TransformTarget::Callable(DeclarationId(941)),
-            inputs: vec![PortId(687)],
-            output: PortId(688),
+            inputs: vec![PortId(674)],
+            output: PortId(675),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28310, 28378),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(572),
+            id: NodeId(564),
             target: TransformTarget::Callable(DeclarationId(942)),
-            inputs: vec![PortId(684), PortId(685)],
-            output: PortId(689),
+            inputs: vec![PortId(671), PortId(672)],
+            output: PortId(676),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28414, 28448),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(573),
+            id: NodeId(565),
             target: TransformTarget::Callable(DeclarationId(1826)),
-            inputs: vec![PortId(685), PortId(689)],
-            output: PortId(690),
+            inputs: vec![PortId(672), PortId(676)],
+            output: PortId(677),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28403, 28449),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(574),
-            input: PortId(688),
+            id: NodeId(566),
+            input: PortId(675),
             paths: vec![
                 Path {
-                    body: NodeId(574),
-                    output: PortId(684),
+                    body: NodeId(566),
+                    output: PortId(671),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 28388, 28391),
@@ -6630,8 +6520,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(573),
-                    output: PortId(690),
+                    body: NodeId(565),
+                    output: PortId(677),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/algebra.dag", 28403, 28449),
@@ -6639,164 +6529,164 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(691),
+            output: PortId(678),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28307, 28449),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(575),
+            id: NodeId(567),
             name: "drop_dominated_step".to_string(),
-            value: PortId(691),
-            params: vec![PortId(684), PortId(685)],
+            value: PortId(678),
+            params: vec![PortId(671), PortId(672)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 28307, 28449),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(576),
+            id: NodeId(568),
             target: TransformTarget::Callable(DeclarationId(1827)),
             inputs: vec![],
-            output: PortId(693),
+            output: PortId(680),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28720, 28727),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(577),
+            id: NodeId(569),
             target: TransformTarget::Callable(DeclarationId(1829)),
-            inputs: vec![PortId(692), PortId(693)],
-            output: PortId(694),
+            inputs: vec![PortId(679), PortId(680)],
+            output: PortId(681),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28708, 28749),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(578),
+            id: NodeId(570),
             name: "drop_dominated".to_string(),
-            value: PortId(694),
-            params: vec![PortId(692)],
+            value: PortId(681),
+            params: vec![PortId(679)],
             span: SourceSpan::new("src/v3/std/algebra.dag", 28708, 28749),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(579),
+            id: NodeId(571),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(696),
+            output: PortId(683),
             span: SourceSpan::new("src/v3/std/induction.dag", 29112, 29113),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(580),
+            id: NodeId(572),
             target: TransformTarget::Callable(DeclarationId(1784)),
-            inputs: vec![PortId(696)],
-            output: PortId(697),
+            inputs: vec![PortId(683)],
+            output: PortId(684),
             span: SourceSpan::new("src/v3/std/induction.dag", 29099, 29114),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(581),
+            id: NodeId(573),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "cost".to_string(),
             },
-            inputs: vec![PortId(698)],
-            output: PortId(699),
+            inputs: vec![PortId(685)],
+            output: PortId(686),
             span: SourceSpan::new("src/v3/std/induction.dag", 29133, 29140),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(582),
+            id: NodeId(574),
             target: TransformTarget::Callable(DeclarationId(1168)),
-            inputs: vec![PortId(699)],
-            output: PortId(700),
+            inputs: vec![PortId(686)],
+            output: PortId(687),
             span: SourceSpan::new("src/v3/std/induction.dag", 29146, 29172),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(583),
+            id: NodeId(575),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "factors".to_string(),
             },
-            inputs: vec![PortId(701)],
-            output: PortId(702),
+            inputs: vec![PortId(688)],
+            output: PortId(689),
             span: SourceSpan::new("src/v3/std/induction.dag", 29192, 29203),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(584),
+            id: NodeId(576),
             target: TransformTarget::Callable(DeclarationId(1169)),
-            inputs: vec![PortId(702)],
-            output: PortId(703),
+            inputs: vec![PortId(689)],
+            output: PortId(690),
             span: SourceSpan::new("src/v3/std/induction.dag", 29209, 29238),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(585),
+            id: NodeId(577),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "terms".to_string(),
             },
-            inputs: vec![PortId(704)],
-            output: PortId(705),
+            inputs: vec![PortId(691)],
+            output: PortId(692),
             span: SourceSpan::new("src/v3/std/induction.dag", 29264, 29273),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(586),
+            id: NodeId(578),
             target: TransformTarget::Callable(DeclarationId(1171)),
-            inputs: vec![PortId(705)],
-            output: PortId(706),
+            inputs: vec![PortId(692)],
+            output: PortId(693),
             span: SourceSpan::new("src/v3/std/induction.dag", 29279, 29307),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(587),
+            id: NodeId(579),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "terms".to_string(),
             },
-            inputs: vec![PortId(707)],
-            output: PortId(708),
+            inputs: vec![PortId(694)],
+            output: PortId(695),
             span: SourceSpan::new("src/v3/std/induction.dag", 29323, 29332),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(588),
+            id: NodeId(580),
             data: LiteralBits::String(
                 "CostBound SumBound awaits non-recursive projection lowering".to_string(),
             ),
-            output: PortId(709),
+            output: PortId(696),
             span: SourceSpan::new("src/v3/std/induction.dag", 29350, 29411),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(589),
+            id: NodeId(581),
             target: TransformTarget::Callable(DeclarationId(1792)),
-            inputs: vec![PortId(709)],
-            output: PortId(710),
+            inputs: vec![PortId(696)],
+            output: PortId(697),
             span: SourceSpan::new("src/v3/std/induction.dag", 29338, 29412),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(590),
+            id: NodeId(582),
             data: LiteralBits::String("forever bound".to_string()),
-            output: PortId(711),
+            output: PortId(698),
             span: SourceSpan::new("src/v3/std/induction.dag", 29445, 29460),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(591),
+            id: NodeId(583),
             target: TransformTarget::Callable(DeclarationId(1792)),
-            inputs: vec![PortId(711)],
-            output: PortId(712),
+            inputs: vec![PortId(698)],
+            output: PortId(699),
             span: SourceSpan::new("src/v3/std/induction.dag", 29433, 29461),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(592),
+            id: NodeId(584),
             data: LiteralBits::String("invalid cost bound".to_string()),
-            output: PortId(713),
+            output: PortId(700),
             span: SourceSpan::new("src/v3/std/induction.dag", 29492, 29512),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(593),
+            id: NodeId(585),
             target: TransformTarget::Callable(DeclarationId(1792)),
-            inputs: vec![PortId(713)],
-            output: PortId(714),
+            inputs: vec![PortId(700)],
+            output: PortId(701),
             span: SourceSpan::new("src/v3/std/induction.dag", 29480, 29513),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(594),
-            input: PortId(695),
+            id: NodeId(586),
+            input: PortId(682),
             paths: vec![
                 Path {
-                    body: NodeId(580),
-                    output: PortId(697),
+                    body: NodeId(572),
+                    output: PortId(684),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29082, 29095),
@@ -6804,56 +6694,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(582),
-                    output: PortId(700),
+                    body: NodeId(574),
+                    output: PortId(687),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "AtomicBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29119, 29142),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "c".to_string(),
-                        payload_port: PortId(698),
+                        payload_port: PortId(685),
                     }),
                 },
                 Path {
-                    body: NodeId(584),
-                    output: PortId(703),
+                    body: NodeId(576),
+                    output: PortId(690),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29177, 29205),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "fs".to_string(),
-                        payload_port: PortId(701),
+                        payload_port: PortId(688),
                     }),
                 },
                 Path {
-                    body: NodeId(586),
-                    output: PortId(706),
+                    body: NodeId(578),
+                    output: PortId(693),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumOfProductsBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29243, 29275),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "ts".to_string(),
-                        payload_port: PortId(704),
+                        payload_port: PortId(691),
                     }),
                 },
                 Path {
-                    body: NodeId(589),
-                    output: PortId(710),
+                    body: NodeId(581),
+                    output: PortId(697),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29312, 29334),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "ts".to_string(),
-                        payload_port: PortId(707),
+                        payload_port: PortId(694),
                     }),
                 },
                 Path {
-                    body: NodeId(591),
-                    output: PortId(712),
+                    body: NodeId(583),
+                    output: PortId(699),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ForeverBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29417, 29429),
@@ -6861,8 +6751,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(593),
-                    output: PortId(714),
+                    body: NodeId(585),
+                    output: PortId(701),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ErrorBound".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29466, 29476),
@@ -6870,265 +6760,265 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(715),
+            output: PortId(702),
             span: SourceSpan::new("src/v3/std/induction.dag", 29064, 29517),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(595),
+            id: NodeId(587),
             name: "cost_bound_to_symbolic".to_string(),
-            value: PortId(715),
-            params: vec![PortId(695)],
+            value: PortId(702),
+            params: vec![PortId(682)],
             span: SourceSpan::new("src/v3/std/induction.dag", 29064, 29517),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(596),
+            id: NodeId(588),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "param".to_string(),
             },
-            inputs: vec![PortId(717)],
-            output: PortId(718),
+            inputs: vec![PortId(704)],
+            output: PortId(705),
             span: SourceSpan::new("src/v3/std/induction.dag", 29612, 29620),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(597),
+            id: NodeId(589),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "exponent".to_string(),
             },
-            inputs: vec![PortId(717)],
-            output: PortId(719),
+            inputs: vec![PortId(704)],
+            output: PortId(706),
             span: SourceSpan::new("src/v3/std/induction.dag", 29622, 29633),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(598),
+            id: NodeId(590),
             data: LiteralBits::String(
                 "CostBound named polynomial atom lacks structural SizeVariable port".to_string(),
             ),
-            output: PortId(720),
+            output: PortId(707),
             span: SourceSpan::new("src/v3/std/induction.dag", 29657, 29725),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(599),
+            id: NodeId(591),
             target: TransformTarget::Callable(DeclarationId(1792)),
-            inputs: vec![PortId(720)],
-            output: PortId(721),
+            inputs: vec![PortId(707)],
+            output: PortId(708),
             span: SourceSpan::new("src/v3/std/induction.dag", 29645, 29726),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(600),
+            id: NodeId(592),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "param".to_string(),
             },
-            inputs: vec![PortId(722)],
-            output: PortId(723),
+            inputs: vec![PortId(709)],
+            output: PortId(710),
             span: SourceSpan::new("src/v3/std/induction.dag", 29741, 29749),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(601),
+            id: NodeId(593),
             data: LiteralBits::String(
                 "CostBound named log atom lacks structural SizeVariable port".to_string(),
             ),
-            output: PortId(724),
+            output: PortId(711),
             span: SourceSpan::new("src/v3/std/induction.dag", 29773, 29834),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(602),
+            id: NodeId(594),
             target: TransformTarget::Callable(DeclarationId(1792)),
-            inputs: vec![PortId(724)],
-            output: PortId(725),
+            inputs: vec![PortId(711)],
+            output: PortId(712),
             span: SourceSpan::new("src/v3/std/induction.dag", 29761, 29835),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(603),
-            input: PortId(716),
+            id: NodeId(595),
+            input: PortId(703),
             paths: vec![
                 Path {
-                    body: NodeId(599),
-                    output: PortId(721),
+                    body: NodeId(591),
+                    output: PortId(708),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolyCost".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29601, 29635),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "__payload_29601_29635".to_string(),
-                        payload_port: PortId(717),
+                        payload_port: PortId(704),
                     }),
                 },
                 Path {
-                    body: NodeId(602),
-                    output: PortId(725),
+                    body: NodeId(594),
+                    output: PortId(712),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
                         span: SourceSpan::new("src/v3/std/induction.dag", 29731, 29751),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "p".to_string(),
-                        payload_port: PortId(722),
+                        payload_port: PortId(709),
                     }),
                 },
             ],
-            output: PortId(726),
+            output: PortId(713),
             span: SourceSpan::new("src/v3/std/induction.dag", 29584, 29839),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(604),
+            id: NodeId(596),
             name: "atomic_cost_to_symbolic".to_string(),
-            value: PortId(726),
-            params: vec![PortId(716)],
+            value: PortId(713),
+            params: vec![PortId(703)],
             span: SourceSpan::new("src/v3/std/induction.dag", 29584, 29839),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(605),
+            id: NodeId(597),
             target: TransformTarget::Callable(DeclarationId(1169)),
-            inputs: vec![PortId(727)],
-            output: PortId(728),
+            inputs: vec![PortId(714)],
+            output: PortId(715),
             span: SourceSpan::new("src/v3/std/induction.dag", 30026, 30060),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(606),
+            id: NodeId(598),
             name: "product_term_to_symbolic".to_string(),
-            value: PortId(728),
-            params: vec![PortId(727)],
+            value: PortId(715),
+            params: vec![PortId(714)],
             span: SourceSpan::new("src/v3/std/induction.dag", 30026, 30060),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(607),
+            id: NodeId(599),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "nodes".to_string(),
             },
-            inputs: vec![PortId(729)],
-            output: PortId(730),
+            inputs: vec![PortId(716)],
+            output: PortId(717),
             span: SourceSpan::new("src/v3/std/workflows.dag", 1007, 1012),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(608),
+            id: NodeId(600),
             name: "behavior_spine".to_string(),
-            value: PortId(730),
-            params: vec![PortId(729)],
+            value: PortId(717),
+            params: vec![PortId(716)],
             span: SourceSpan::new("src/v3/std/workflows.dag", 1005, 1012),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(609),
+            id: NodeId(601),
             data: LiteralBits::String("src/v3/std/timing_lens.dag".to_string()),
-            output: PortId(731),
+            output: PortId(718),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 1586, 1614),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(610),
+            id: NodeId(602),
             name: "timing_lens_module_path_witness".to_string(),
-            value: PortId(731),
+            value: PortId(718),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 1586, 1614),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(611),
+            id: NodeId(603),
             target: TransformTarget::Callable(DeclarationId(1216)),
             inputs: vec![
-                PortId(732),
-                PortId(733),
-                PortId(734),
-                PortId(735),
-                PortId(736),
+                PortId(719),
+                PortId(720),
+                PortId(721),
+                PortId(722),
+                PortId(723),
             ],
-            output: PortId(737),
+            output: PortId(724),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7446, 7589),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(612),
+            id: NodeId(604),
             name: "gate_62_file_attachment_demo_record".to_string(),
-            value: PortId(737),
+            value: PortId(724),
             params: vec![
-                PortId(732),
-                PortId(733),
-                PortId(734),
-                PortId(735),
-                PortId(736),
+                PortId(719),
+                PortId(720),
+                PortId(721),
+                PortId(722),
+                PortId(723),
             ],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7446, 7589),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(613),
+            id: NodeId(605),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(738),
+            output: PortId(725),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9640, 9650),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(614),
+            id: NodeId(606),
             name: "timing_measurement_unobserved".to_string(),
-            value: PortId(738),
+            value: PortId(725),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9640, 9650),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(615),
+            id: NodeId(607),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(742),
+            output: PortId(729),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9958, 9968),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(616),
+            id: NodeId(608),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(743),
+            output: PortId(730),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10020, 10030),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(617),
+            id: NodeId(609),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(744),
+            output: PortId(731),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10048, 10053),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(618),
+            id: NodeId(610),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(745),
+            output: PortId(732),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10075, 10080),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(619),
+            id: NodeId(611),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(746)],
-            output: PortId(747),
+            inputs: vec![PortId(733)],
+            output: PortId(734),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10100, 10111),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(620),
+            id: NodeId(612),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(748),
+            output: PortId(735),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10117, 10122),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(621),
-            input: PortId(740),
+            id: NodeId(613),
+            input: PortId(727),
             paths: vec![
                 Path {
-                    body: NodeId(616),
-                    output: PortId(743),
+                    body: NodeId(608),
+                    output: PortId(730),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10006, 10016),
@@ -7136,8 +7026,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(617),
-                    output: PortId(744),
+                    body: NodeId(609),
+                    output: PortId(731),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10039, 10044),
@@ -7145,8 +7035,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(618),
-                    output: PortId(745),
+                    body: NodeId(610),
+                    output: PortId(732),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10062, 10071),
@@ -7154,66 +7044,66 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(620),
-                    output: PortId(748),
+                    body: NodeId(612),
+                    output: PortId(735),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10089, 10113),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(746),
+                        payload_port: PortId(733),
                     }),
                 },
             ],
-            output: PortId(749),
+            output: PortId(736),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9988, 10130),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(622),
+            id: NodeId(614),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(750),
+            output: PortId(737),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10186, 10196),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(623),
+            id: NodeId(615),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(751),
+            output: PortId(738),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10214, 10219),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(624),
+            id: NodeId(616),
             target: TransformTarget::Callable(DeclarationId(2189)),
             inputs: vec![],
-            output: PortId(752),
+            output: PortId(739),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10241, 10250),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(625),
+            id: NodeId(617),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(753)],
-            output: PortId(754),
+            inputs: vec![PortId(740)],
+            output: PortId(741),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10270, 10281),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(626),
+            id: NodeId(618),
             target: TransformTarget::Callable(DeclarationId(2189)),
             inputs: vec![],
-            output: PortId(755),
+            output: PortId(742),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10287, 10296),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(627),
-            input: PortId(740),
+            id: NodeId(619),
+            input: PortId(727),
             paths: vec![
                 Path {
-                    body: NodeId(622),
-                    output: PortId(750),
+                    body: NodeId(614),
+                    output: PortId(737),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10172, 10182),
@@ -7221,8 +7111,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(623),
-                    output: PortId(751),
+                    body: NodeId(615),
+                    output: PortId(738),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10205, 10210),
@@ -7230,8 +7120,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(624),
-                    output: PortId(752),
+                    body: NodeId(616),
+                    output: PortId(739),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10228, 10237),
@@ -7239,132 +7129,132 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(626),
-                    output: PortId(755),
+                    body: NodeId(618),
+                    output: PortId(742),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10259, 10283),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(753),
+                        payload_port: PortId(740),
                     }),
                 },
             ],
-            output: PortId(756),
+            output: PortId(743),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10154, 10304),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(628),
+            id: NodeId(620),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(757)],
-            output: PortId(758),
+            inputs: vec![PortId(744)],
+            output: PortId(745),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10320, 10332),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(629),
+            id: NodeId(621),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(759),
+            output: PortId(746),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10376, 10386),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(630),
+            id: NodeId(622),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(760),
+            output: PortId(747),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10404, 10409),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(631),
+            id: NodeId(623),
             target: TransformTarget::Callable(DeclarationId(2189)),
             inputs: vec![],
-            output: PortId(761),
+            output: PortId(748),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10431, 10440),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(632),
+            id: NodeId(624),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(762)],
-            output: PortId(763),
+            inputs: vec![PortId(749)],
+            output: PortId(750),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10460, 10472),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(633),
+            id: NodeId(625),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(758)],
-            output: PortId(764),
+            inputs: vec![PortId(745)],
+            output: PortId(751),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10552, 10557),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(634),
+            id: NodeId(626),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(763)],
-            output: PortId(765),
+            inputs: vec![PortId(750)],
+            output: PortId(752),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10563, 10568),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(635),
+            id: NodeId(627),
             target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
-            inputs: vec![PortId(764), PortId(765)],
-            output: PortId(766),
+            inputs: vec![PortId(751), PortId(752)],
+            output: PortId(753),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10549, 10568),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(636),
+            id: NodeId(628),
             target: TransformTarget::Callable(DeclarationId(1213)),
-            inputs: vec![PortId(766)],
-            output: PortId(767),
+            inputs: vec![PortId(753)],
+            output: PortId(754),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10540, 10570),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(637),
+            id: NodeId(629),
             target: TransformTarget::Callable(DeclarationId(2187)),
-            inputs: vec![PortId(767)],
-            output: PortId(768),
+            inputs: vec![PortId(754)],
+            output: PortId(755),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10519, 10572),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(638),
+            id: NodeId(630),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(758)],
-            output: PortId(769),
+            inputs: vec![PortId(745)],
+            output: PortId(756),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10641, 10646),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(639),
+            id: NodeId(631),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(763)],
-            output: PortId(770),
+            inputs: vec![PortId(750)],
+            output: PortId(757),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10652, 10657),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(640),
+            id: NodeId(632),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
-            inputs: vec![PortId(769), PortId(770)],
-            output: PortId(771),
+            inputs: vec![PortId(756), PortId(757)],
+            output: PortId(758),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10638, 10657),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(641),
-            input: PortId(771),
+            id: NodeId(633),
+            input: PortId(758),
             paths: vec![
                 Path {
-                    body: NodeId(628),
-                    output: PortId(758),
+                    body: NodeId(620),
+                    output: PortId(745),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10663, 10665),
@@ -7372,8 +7262,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(632),
-                    output: PortId(763),
+                    body: NodeId(624),
+                    output: PortId(750),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10671, 10673),
@@ -7381,24 +7271,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(772),
+            output: PortId(759),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10635, 10673),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(642),
+            id: NodeId(634),
             target: TransformTarget::Callable(DeclarationId(2187)),
-            inputs: vec![PortId(772)],
-            output: PortId(773),
+            inputs: vec![PortId(759)],
+            output: PortId(760),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10600, 10688),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(643),
-            input: PortId(741),
+            id: NodeId(635),
+            input: PortId(728),
             paths: vec![
                 Path {
-                    body: NodeId(637),
-                    output: PortId(768),
+                    body: NodeId(629),
+                    output: PortId(755),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10519, 10572),
@@ -7406,8 +7296,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(642),
-                    output: PortId(773),
+                    body: NodeId(634),
+                    output: PortId(760),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10600, 10688),
@@ -7415,17 +7305,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(774),
+            output: PortId(761),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10488, 10688),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(644),
-            input: PortId(740),
+            id: NodeId(636),
+            input: PortId(727),
             paths: vec![
                 Path {
-                    body: NodeId(629),
-                    output: PortId(759),
+                    body: NodeId(621),
+                    output: PortId(746),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10362, 10372),
@@ -7433,8 +7323,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(630),
-                    output: PortId(760),
+                    body: NodeId(622),
+                    output: PortId(747),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10395, 10400),
@@ -7442,8 +7332,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(631),
-                    output: PortId(761),
+                    body: NodeId(623),
+                    output: PortId(748),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10418, 10427),
@@ -7451,29 +7341,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(643),
-                    output: PortId(774),
+                    body: NodeId(635),
+                    output: PortId(761),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10449, 10474),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "bx".to_string(),
-                        payload_port: PortId(762),
+                        payload_port: PortId(749),
                     }),
                 },
             ],
-            output: PortId(775),
+            output: PortId(762),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10344, 10696),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(645),
-            input: PortId(739),
+            id: NodeId(637),
+            input: PortId(726),
             paths: vec![
                 Path {
-                    body: NodeId(615),
-                    output: PortId(742),
+                    body: NodeId(607),
+                    output: PortId(729),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 9944, 9954),
@@ -7481,8 +7371,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(621),
-                    output: PortId(749),
+                    body: NodeId(613),
+                    output: PortId(736),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 9973, 9978),
@@ -7490,8 +7380,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(627),
-                    output: PortId(756),
+                    body: NodeId(619),
+                    output: PortId(743),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10135, 10144),
@@ -7499,458 +7389,458 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(644),
-                    output: PortId(775),
+                    body: NodeId(636),
+                    output: PortId(762),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 10309, 10334),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "ax".to_string(),
-                        payload_port: PortId(757),
+                        payload_port: PortId(744),
                     }),
                 },
             ],
-            output: PortId(776),
+            output: PortId(763),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9930, 10700),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(646),
+            id: NodeId(638),
             name: "timing_measurement_lens_combine".to_string(),
-            value: PortId(776),
-            params: vec![PortId(739), PortId(740), PortId(741)],
+            value: PortId(763),
+            params: vec![PortId(726), PortId(727), PortId(728)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9930, 10700),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(647),
+            id: NodeId(639),
             data: LiteralBits::Bool(true),
-            output: PortId(779),
+            output: PortId(766),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10906, 10910),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(648),
+            id: NodeId(640),
             target: TransformTarget::Callable(DeclarationId(1224)),
-            inputs: vec![PortId(777), PortId(778), PortId(779)],
-            output: PortId(780),
+            inputs: vec![PortId(764), PortId(765), PortId(766)],
+            output: PortId(767),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10868, 10911),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(649),
+            id: NodeId(641),
             name: "timing_sequential_op".to_string(),
-            value: PortId(780),
-            params: vec![PortId(777), PortId(778)],
+            value: PortId(767),
+            params: vec![PortId(764), PortId(765)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10868, 10911),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(650),
+            id: NodeId(642),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(781),
+            output: PortId(768),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10963, 10964),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(651),
+            id: NodeId(643),
             target: TransformTarget::Callable(DeclarationId(1213)),
-            inputs: vec![PortId(781)],
-            output: PortId(782),
+            inputs: vec![PortId(768)],
+            output: PortId(769),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10954, 10966),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(652),
+            id: NodeId(644),
             name: "nanoseconds_zero".to_string(),
-            value: PortId(782),
+            value: PortId(769),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10954, 10966),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(653),
+            id: NodeId(645),
             target: TransformTarget::Callable(DeclarationId(1226)),
             inputs: vec![],
-            output: PortId(783),
+            output: PortId(770),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11046, 11064),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(654),
+            id: NodeId(646),
             target: TransformTarget::Callable(DeclarationId(2187)),
-            inputs: vec![PortId(783)],
-            output: PortId(784),
+            inputs: vec![PortId(770)],
+            output: PortId(771),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11025, 11066),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(655),
+            id: NodeId(647),
             name: "timing_sequential_identity".to_string(),
-            value: PortId(784),
+            value: PortId(771),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11025, 11066),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(656),
+            id: NodeId(648),
             data: LiteralBits::Bool(false),
-            output: PortId(787),
+            output: PortId(774),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11253, 11258),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(657),
+            id: NodeId(649),
             target: TransformTarget::Callable(DeclarationId(1224)),
-            inputs: vec![PortId(785), PortId(786), PortId(787)],
-            output: PortId(788),
+            inputs: vec![PortId(772), PortId(773), PortId(774)],
+            output: PortId(775),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11215, 11259),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(658),
+            id: NodeId(650),
             name: "timing_branch_op".to_string(),
-            value: PortId(788),
-            params: vec![PortId(785), PortId(786)],
+            value: PortId(775),
+            params: vec![PortId(772), PortId(773)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11215, 11259),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(659),
+            id: NodeId(651),
             data: LiteralBits::String(
                 "R3 Gap 9 row #106 timing-lens diagnostic roundtrip".to_string(),
             ),
-            output: PortId(789),
+            output: PortId(776),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11877, 11929),
             lane2_workflow: None,
         }));
-        nodes.push(Behavior::Value(ValueNode { id: NodeId(660), data: LiteralBits::String("thread timing measurement/budget source spans through gate #58 enforcement and replace this scaffold diagnostic with a generated/data-backed LiveCorrection".to_string()), output: PortId(790), span: SourceSpan::new("src/v3/std/timing_lens.dag", 11950, 12107), lane2_workflow: None }));
+        nodes.push(Behavior::Value(ValueNode { id: NodeId(652), data: LiteralBits::String("thread timing measurement/budget source spans through gate #58 enforcement and replace this scaffold diagnostic with a generated/data-backed LiveCorrection".to_string()), output: PortId(777), span: SourceSpan::new("src/v3/std/timing_lens.dag", 11950, 12107), lane2_workflow: None }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(661),
+            id: NodeId(653),
             target: TransformTarget::Callable(DeclarationId(1034)),
-            inputs: vec![PortId(789), PortId(790)],
-            output: PortId(791),
+            inputs: vec![PortId(776), PortId(777)],
+            output: PortId(778),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11864, 12111),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(662),
+            id: NodeId(654),
             name: "timing_lens_correction_retirement_plan".to_string(),
-            value: PortId(791),
+            value: PortId(778),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 11864, 12111),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
-        nodes.push(Behavior::Value(ValueNode { id: NodeId(663), data: LiteralBits::String("TimingLensScaffoldDiagnostic does not yet compute a source-level live correction witness".to_string()), output: PortId(792), span: SourceSpan::new("src/v3/std/timing_lens.dag", 12192, 12282), lane2_workflow: None }));
+        nodes.push(Behavior::Value(ValueNode { id: NodeId(655), data: LiteralBits::String("TimingLensScaffoldDiagnostic does not yet compute a source-level live correction witness".to_string()), output: PortId(779), span: SourceSpan::new("src/v3/std/timing_lens.dag", 12192, 12282), lane2_workflow: None }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(664),
+            id: NodeId(656),
             target: TransformTarget::Callable(DeclarationId(1229)),
             inputs: vec![],
-            output: PortId(793),
+            output: PortId(780),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12288, 12328),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(665),
+            id: NodeId(657),
             target: TransformTarget::Callable(DeclarationId(1953)),
-            inputs: vec![PortId(792), PortId(793)],
-            output: PortId(794),
+            inputs: vec![PortId(779), PortId(780)],
+            output: PortId(781),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12168, 12332),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(666),
+            id: NodeId(658),
             name: "timing_lens_deferred_correction".to_string(),
-            value: PortId(794),
+            value: PortId(781),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12168, 12332),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(667),
+            id: NodeId(659),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(796)],
-            output: PortId(797),
+            inputs: vec![PortId(783)],
+            output: PortId(784),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12603, 12607),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(668),
+            id: NodeId(660),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(798)],
-            output: PortId(799),
+            inputs: vec![PortId(785)],
+            output: PortId(786),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12630, 12634),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(669),
+            id: NodeId(661),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(800)],
-            output: PortId(801),
+            inputs: vec![PortId(787)],
+            output: PortId(788),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12656, 12660),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(670),
+            id: NodeId(662),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(802)],
-            output: PortId(803),
+            inputs: vec![PortId(789)],
+            output: PortId(790),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12678, 12682),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(671),
+            id: NodeId(663),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(804)],
-            output: PortId(805),
+            inputs: vec![PortId(791)],
+            output: PortId(792),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12706, 12710),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(672),
-            input: PortId(795),
+            id: NodeId(664),
+            input: PortId(782),
             paths: vec![
                 Path {
-                    body: NodeId(667),
-                    output: PortId(797),
+                    body: NodeId(659),
+                    output: PortId(784),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Value".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 12589, 12597),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "v".to_string(),
-                        payload_port: PortId(796),
+                        payload_port: PortId(783),
                     }),
                 },
                 Path {
-                    body: NodeId(668),
-                    output: PortId(799),
+                    body: NodeId(660),
+                    output: PortId(786),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Transform".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 12612, 12624),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "t".to_string(),
-                        payload_port: PortId(798),
+                        payload_port: PortId(785),
                     }),
                 },
                 Path {
-                    body: NodeId(669),
-                    output: PortId(801),
+                    body: NodeId(661),
+                    output: PortId(788),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Branch".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 12639, 12649),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "br".to_string(),
-                        payload_port: PortId(800),
+                        payload_port: PortId(787),
                     }),
                 },
                 Path {
-                    body: NodeId(670),
-                    output: PortId(803),
+                    body: NodeId(662),
+                    output: PortId(790),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Loop".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 12665, 12672),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "l".to_string(),
-                        payload_port: PortId(802),
+                        payload_port: PortId(789),
                     }),
                 },
                 Path {
-                    body: NodeId(671),
-                    output: PortId(805),
+                    body: NodeId(663),
+                    output: PortId(792),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Bind".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 12687, 12697),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "bind".to_string(),
-                        payload_port: PortId(804),
+                        payload_port: PortId(791),
                     }),
                 },
             ],
-            output: PortId(806),
+            output: PortId(793),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12575, 12714),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(673),
+            id: NodeId(665),
             name: "timing_lens_behavior_span".to_string(),
-            value: PortId(806),
-            params: vec![PortId(795)],
+            value: PortId(793),
+            params: vec![PortId(782)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12575, 12714),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(674),
+            id: NodeId(666),
             target: TransformTarget::Callable(DeclarationId(1946)),
             inputs: vec![],
-            output: PortId(809),
+            output: PortId(796),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13082, 13094),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(675),
+            id: NodeId(667),
             target: TransformTarget::Callable(DeclarationId(1954)),
-            inputs: vec![PortId(809)],
-            output: PortId(810),
+            inputs: vec![PortId(796)],
+            output: PortId(797),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13069, 13095),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(676),
+            id: NodeId(668),
             target: TransformTarget::Callable(DeclarationId(1230)),
             inputs: vec![],
-            output: PortId(811),
+            output: PortId(798),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13143, 13176),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(677),
+            id: NodeId(669),
             target: TransformTarget::Callable(DeclarationId(1039)),
-            inputs: vec![PortId(810), PortId(808), PortId(807), PortId(811)],
-            output: PortId(812),
+            inputs: vec![PortId(797), PortId(795), PortId(794), PortId(798)],
+            output: PortId(799),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13057, 13180),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(678),
+            id: NodeId(670),
             name: "timing_lens_scaffold_non_evidence_diagnostic".to_string(),
-            value: PortId(812),
-            params: vec![PortId(807), PortId(808)],
+            value: PortId(799),
+            params: vec![PortId(794), PortId(795)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13057, 13180),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(679),
+            id: NodeId(671),
             target: TransformTarget::Callable(DeclarationId(1212)),
             inputs: vec![],
-            output: PortId(813),
+            output: PortId(800),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13487, 13520),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(680),
+            id: NodeId(672),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(814),
+            output: PortId(801),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13532, 13533),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(681),
+            id: NodeId(673),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(815),
+            output: PortId(802),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13543, 13544),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(682),
+            id: NodeId(674),
             target: TransformTarget::Callable(DeclarationId(159)),
-            inputs: vec![PortId(813), PortId(814), PortId(815)],
-            output: PortId(816),
+            inputs: vec![PortId(800), PortId(801), PortId(802)],
+            output: PortId(803),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13475, 13548),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(683),
+            id: NodeId(675),
             name: "timing_lens_degenerate_empty_dag_span".to_string(),
-            value: PortId(816),
+            value: PortId(803),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 13475, 13548),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(684),
+            id: NodeId(676),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(817)],
-            output: PortId(819),
+            inputs: vec![PortId(804)],
+            output: PortId(806),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14101, 14118),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(685),
+            id: NodeId(677),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "declarations".to_string(),
             },
-            inputs: vec![PortId(817)],
-            output: PortId(820),
+            inputs: vec![PortId(804)],
+            output: PortId(807),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14148, 14160),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(686),
+            id: NodeId(678),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(821)],
-            output: PortId(822),
+            inputs: vec![PortId(808)],
+            output: PortId(809),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14283, 14287),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(687),
+            id: NodeId(679),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "span".to_string(),
             },
-            inputs: vec![PortId(822)],
-            output: PortId(823),
+            inputs: vec![PortId(809)],
+            output: PortId(810),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14288, 14292),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(688),
+            id: NodeId(680),
             target: TransformTarget::Callable(DeclarationId(1232)),
-            inputs: vec![PortId(818), PortId(823)],
-            output: PortId(824),
+            inputs: vec![PortId(805), PortId(810)],
+            output: PortId(811),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14229, 14293),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(689),
+            id: NodeId(681),
             target: TransformTarget::Callable(DeclarationId(1981)),
-            inputs: vec![PortId(824)],
-            output: PortId(825),
+            inputs: vec![PortId(811)],
+            output: PortId(812),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14193, 14305),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(690),
+            id: NodeId(682),
             target: TransformTarget::Callable(DeclarationId(1233)),
             inputs: vec![],
-            output: PortId(826),
+            output: PortId(813),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14449, 14488),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(691),
+            id: NodeId(683),
             target: TransformTarget::Callable(DeclarationId(1232)),
-            inputs: vec![PortId(818), PortId(826)],
-            output: PortId(827),
+            inputs: vec![PortId(805), PortId(813)],
+            output: PortId(814),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14369, 14502),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(692),
+            id: NodeId(684),
             target: TransformTarget::Callable(DeclarationId(1981)),
-            inputs: vec![PortId(827)],
-            output: PortId(828),
+            inputs: vec![PortId(814)],
+            output: PortId(815),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14333, 14514),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(693),
-            input: PortId(820),
+            id: NodeId(685),
+            input: PortId(807),
             paths: vec![
                 Path {
-                    body: NodeId(689),
-                    output: PortId(825),
+                    body: NodeId(681),
+                    output: PortId(812),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 14171, 14179),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "dd".to_string(),
-                        payload_port: PortId(821),
+                        payload_port: PortId(808),
                     }),
                 },
                 Path {
-                    body: NodeId(692),
-                    output: PortId(828),
+                    body: NodeId(684),
+                    output: PortId(815),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 14314, 14319),
@@ -7958,47 +7848,47 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(829),
+            output: PortId(816),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14140, 14522),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(694),
+            id: NodeId(686),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(830)],
-            output: PortId(831),
+            inputs: vec![PortId(817)],
+            output: PortId(818),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14688, 14692),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(695),
+            id: NodeId(687),
             target: TransformTarget::Callable(DeclarationId(1231)),
-            inputs: vec![PortId(831)],
-            output: PortId(832),
+            inputs: vec![PortId(818)],
+            output: PortId(819),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14654, 14693),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(696),
+            id: NodeId(688),
             target: TransformTarget::Callable(DeclarationId(1232)),
-            inputs: vec![PortId(818), PortId(832)],
-            output: PortId(833),
+            inputs: vec![PortId(805), PortId(819)],
+            output: PortId(820),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14582, 14703),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(697),
+            id: NodeId(689),
             target: TransformTarget::Callable(DeclarationId(1981)),
-            inputs: vec![PortId(833)],
-            output: PortId(834),
+            inputs: vec![PortId(820)],
+            output: PortId(821),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14550, 14711),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(698),
-            input: PortId(819),
+            id: NodeId(690),
+            input: PortId(806),
             paths: vec![
                 Path {
-                    body: NodeId(693),
-                    output: PortId(829),
+                    body: NodeId(685),
+                    output: PortId(816),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 14125, 14130),
@@ -8006,127 +7896,127 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(697),
-                    output: PortId(834),
+                    body: NodeId(689),
+                    output: PortId(821),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 14527, 14540),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
-                        payload_port: PortId(830),
+                        payload_port: PortId(817),
                     }),
                 },
             ],
-            output: PortId(835),
+            output: PortId(822),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14095, 14715),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(699),
+            id: NodeId(691),
             name: "timing_lens_validate_non_observed".to_string(),
-            value: PortId(835),
-            params: vec![PortId(817), PortId(818)],
+            value: PortId(822),
+            params: vec![PortId(804), PortId(805)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 14095, 14715),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(700),
+            id: NodeId(692),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(838)],
-            output: PortId(839),
+            inputs: vec![PortId(825)],
+            output: PortId(826),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15166, 15177),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(701),
+            id: NodeId(693),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(841),
+            output: PortId(828),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15229, 15260),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(702),
+            id: NodeId(694),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(843),
+            output: PortId(830),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15283, 15314),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(703),
-            input: PortId(837),
+            id: NodeId(695),
+            input: PortId(824),
             paths: vec![
                 Path {
-                    body: NodeId(701),
-                    output: PortId(841),
+                    body: NodeId(693),
+                    output: PortId(828),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cardinality".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15211, 15225),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(840),
+                        payload_port: PortId(827),
                     }),
                 },
                 Path {
-                    body: NodeId(702),
-                    output: PortId(843),
+                    body: NodeId(694),
+                    output: PortId(830),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Descent".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15269, 15279),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(842),
+                        payload_port: PortId(829),
                     }),
                 },
             ],
-            output: PortId(844),
+            output: PortId(831),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15189, 15322),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(704),
+            id: NodeId(696),
             target: TransformTarget::Callable(DeclarationId(2188)),
             inputs: vec![],
-            output: PortId(845),
+            output: PortId(832),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15341, 15351),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(705),
+            id: NodeId(697),
             target: TransformTarget::Callable(DeclarationId(2189)),
             inputs: vec![],
-            output: PortId(846),
+            output: PortId(833),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15369, 15378),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(706),
+            id: NodeId(698),
             target: TransformTarget::Callable(DeclarationId(2190)),
             inputs: vec![],
-            output: PortId(847),
+            output: PortId(834),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15392, 15397),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(707),
-            input: PortId(836),
+            id: NodeId(699),
+            input: PortId(823),
             paths: vec![
                 Path {
-                    body: NodeId(703),
-                    output: PortId(844),
+                    body: NodeId(695),
+                    output: PortId(831),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15155, 15179),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(838),
+                        payload_port: PortId(825),
                     }),
                 },
                 Path {
-                    body: NodeId(704),
-                    output: PortId(845),
+                    body: NodeId(696),
+                    output: PortId(832),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15327, 15337),
@@ -8134,8 +8024,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(705),
-                    output: PortId(846),
+                    body: NodeId(697),
+                    output: PortId(833),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15356, 15365),
@@ -8143,8 +8033,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(706),
-                    output: PortId(847),
+                    body: NodeId(698),
+                    output: PortId(834),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 15383, 15388),
@@ -8152,68 +8042,68 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(848),
+            output: PortId(835),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15138, 15401),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(708),
+            id: NodeId(700),
             name: "timing_measurement_iterate".to_string(),
-            value: PortId(848),
-            params: vec![PortId(836), PortId(837)],
+            value: PortId(835),
+            params: vec![PortId(823), PortId(824)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 15138, 15401),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(709),
+            id: NodeId(701),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(849)],
-            output: PortId(852),
+            inputs: vec![PortId(836)],
+            output: PortId(839),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16297, 16314),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(710),
+            id: NodeId(702),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(852)],
-            output: PortId(853),
+            inputs: vec![PortId(839)],
+            output: PortId(840),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16288, 16315),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(711),
+            id: NodeId(703),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(854),
+            output: PortId(841),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16330, 16361),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(712),
+            id: NodeId(704),
             target: TransformTarget::Callable(DeclarationId(2197)),
-            inputs: vec![PortId(854)],
-            output: PortId(855),
+            inputs: vec![PortId(841)],
+            output: PortId(842),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16321, 16362),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(713),
+            id: NodeId(705),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(856),
+            output: PortId(843),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16377, 16408),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(714),
+            id: NodeId(706),
             target: TransformTarget::Callable(DeclarationId(2198)),
-            inputs: vec![PortId(856)],
-            output: PortId(857),
+            inputs: vec![PortId(843)],
+            output: PortId(844),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16368, 16409),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(715),
-            input: PortId(853),
+            id: NodeId(707),
+            input: PortId(840),
             paths: vec![
                 Path {
-                    body: NodeId(712),
-                    output: PortId(855),
+                    body: NodeId(704),
+                    output: PortId(842),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16321, 16362),
@@ -8221,8 +8111,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(714),
-                    output: PortId(857),
+                    body: NodeId(706),
+                    output: PortId(844),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16368, 16409),
@@ -8230,59 +8120,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(858),
+            output: PortId(845),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16285, 16409),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(716),
+            id: NodeId(708),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(849)],
-            output: PortId(860),
+            inputs: vec![PortId(836)],
+            output: PortId(847),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16448, 16465),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(717),
+            id: NodeId(709),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(860)],
-            output: PortId(861),
+            inputs: vec![PortId(847)],
+            output: PortId(848),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16439, 16466),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(718),
+            id: NodeId(710),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(862),
+            output: PortId(849),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16481, 16512),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(719),
+            id: NodeId(711),
             target: TransformTarget::Callable(DeclarationId(2199)),
-            inputs: vec![PortId(862)],
-            output: PortId(863),
+            inputs: vec![PortId(849)],
+            output: PortId(850),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16472, 16513),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(720),
+            id: NodeId(712),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(864),
+            output: PortId(851),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16528, 16559),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(721),
+            id: NodeId(713),
             target: TransformTarget::Callable(DeclarationId(2200)),
-            inputs: vec![PortId(864)],
-            output: PortId(865),
+            inputs: vec![PortId(851)],
+            output: PortId(852),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16519, 16560),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(722),
-            input: PortId(861),
+            id: NodeId(714),
+            input: PortId(848),
             paths: vec![
                 Path {
-                    body: NodeId(719),
-                    output: PortId(863),
+                    body: NodeId(711),
+                    output: PortId(850),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16472, 16513),
@@ -8290,8 +8180,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(721),
-                    output: PortId(865),
+                    body: NodeId(713),
+                    output: PortId(852),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16519, 16560),
@@ -8299,59 +8189,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(866),
+            output: PortId(853),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16436, 16560),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(723),
+            id: NodeId(715),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(849)],
-            output: PortId(868),
+            inputs: vec![PortId(836)],
+            output: PortId(855),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16596, 16613),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(724),
+            id: NodeId(716),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(868)],
-            output: PortId(869),
+            inputs: vec![PortId(855)],
+            output: PortId(856),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16587, 16614),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(725),
+            id: NodeId(717),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(870),
+            output: PortId(857),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16629, 16660),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(726),
+            id: NodeId(718),
             target: TransformTarget::Callable(DeclarationId(2201)),
-            inputs: vec![PortId(870)],
-            output: PortId(871),
+            inputs: vec![PortId(857)],
+            output: PortId(858),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16620, 16661),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(727),
+            id: NodeId(719),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(872),
+            output: PortId(859),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16676, 16707),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(728),
+            id: NodeId(720),
             target: TransformTarget::Callable(DeclarationId(2202)),
-            inputs: vec![PortId(872)],
-            output: PortId(873),
+            inputs: vec![PortId(859)],
+            output: PortId(860),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16667, 16708),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(729),
-            input: PortId(869),
+            id: NodeId(721),
+            input: PortId(856),
             paths: vec![
                 Path {
-                    body: NodeId(726),
-                    output: PortId(871),
+                    body: NodeId(718),
+                    output: PortId(858),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16620, 16661),
@@ -8359,8 +8249,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(728),
-                    output: PortId(873),
+                    body: NodeId(720),
+                    output: PortId(860),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16667, 16708),
@@ -8368,59 +8258,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(874),
+            output: PortId(861),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16584, 16708),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(730),
+            id: NodeId(722),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(849)],
-            output: PortId(876),
+            inputs: vec![PortId(836)],
+            output: PortId(863),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16742, 16759),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(731),
+            id: NodeId(723),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(876)],
-            output: PortId(877),
+            inputs: vec![PortId(863)],
+            output: PortId(864),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16733, 16760),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(732),
+            id: NodeId(724),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(878),
+            output: PortId(865),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16775, 16806),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(733),
+            id: NodeId(725),
             target: TransformTarget::Callable(DeclarationId(2203)),
-            inputs: vec![PortId(878)],
-            output: PortId(879),
+            inputs: vec![PortId(865)],
+            output: PortId(866),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16766, 16807),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(734),
+            id: NodeId(726),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(880),
+            output: PortId(867),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16822, 16853),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(735),
+            id: NodeId(727),
             target: TransformTarget::Callable(DeclarationId(2204)),
-            inputs: vec![PortId(880)],
-            output: PortId(881),
+            inputs: vec![PortId(867)],
+            output: PortId(868),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16813, 16854),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(736),
-            input: PortId(877),
+            id: NodeId(728),
+            input: PortId(864),
             paths: vec![
                 Path {
-                    body: NodeId(733),
-                    output: PortId(879),
+                    body: NodeId(725),
+                    output: PortId(866),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16766, 16807),
@@ -8428,8 +8318,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(735),
-                    output: PortId(881),
+                    body: NodeId(727),
+                    output: PortId(868),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16813, 16854),
@@ -8437,59 +8327,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(882),
+            output: PortId(869),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16730, 16854),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(737),
+            id: NodeId(729),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(849)],
-            output: PortId(884),
+            inputs: vec![PortId(836)],
+            output: PortId(871),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16888, 16905),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(738),
+            id: NodeId(730),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(884)],
-            output: PortId(885),
+            inputs: vec![PortId(871)],
+            output: PortId(872),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16879, 16906),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(739),
+            id: NodeId(731),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(886),
+            output: PortId(873),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16921, 16952),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(740),
+            id: NodeId(732),
             target: TransformTarget::Callable(DeclarationId(2205)),
-            inputs: vec![PortId(886)],
-            output: PortId(887),
+            inputs: vec![PortId(873)],
+            output: PortId(874),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16912, 16953),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(741),
+            id: NodeId(733),
             target: TransformTarget::Callable(DeclarationId(1223)),
             inputs: vec![],
-            output: PortId(888),
+            output: PortId(875),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16968, 16999),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(742),
+            id: NodeId(734),
             target: TransformTarget::Callable(DeclarationId(2206)),
-            inputs: vec![PortId(888)],
-            output: PortId(889),
+            inputs: vec![PortId(875)],
+            output: PortId(876),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16959, 17000),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(743),
-            input: PortId(885),
+            id: NodeId(735),
+            input: PortId(872),
             paths: vec![
                 Path {
-                    body: NodeId(740),
-                    output: PortId(887),
+                    body: NodeId(732),
+                    output: PortId(874),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16912, 16953),
@@ -8497,8 +8387,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(742),
-                    output: PortId(889),
+                    body: NodeId(734),
+                    output: PortId(876),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16959, 17000),
@@ -8506,132 +8396,132 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(890),
+            output: PortId(877),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16876, 17000),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(744),
-            input: PortId(850),
+            id: NodeId(736),
+            input: PortId(837),
             paths: vec![
                 Path {
-                    body: NodeId(715),
-                    output: PortId(858),
+                    body: NodeId(707),
+                    output: PortId(845),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Value".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16267, 16275),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(851),
+                        payload_port: PortId(838),
                     }),
                 },
                 Path {
-                    body: NodeId(722),
-                    output: PortId(866),
+                    body: NodeId(714),
+                    output: PortId(853),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Transform".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16414, 16426),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(859),
+                        payload_port: PortId(846),
                     }),
                 },
                 Path {
-                    body: NodeId(729),
-                    output: PortId(874),
+                    body: NodeId(721),
+                    output: PortId(861),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Branch".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16565, 16574),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(867),
+                        payload_port: PortId(854),
                     }),
                 },
                 Path {
-                    body: NodeId(736),
-                    output: PortId(882),
+                    body: NodeId(728),
+                    output: PortId(869),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Loop".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16713, 16720),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(875),
+                        payload_port: PortId(862),
                     }),
                 },
                 Path {
-                    body: NodeId(743),
-                    output: PortId(890),
+                    body: NodeId(735),
+                    output: PortId(877),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Bind".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 16859, 16866),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(883),
+                        payload_port: PortId(870),
                     }),
                 },
             ],
-            output: PortId(891),
+            output: PortId(878),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16253, 17004),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(745),
+            id: NodeId(737),
             name: "timing_lens_read".to_string(),
-            value: PortId(891),
-            params: vec![PortId(849), PortId(850)],
+            value: PortId(878),
+            params: vec![PortId(836), PortId(837)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 16253, 17004),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(746),
+            id: NodeId(738),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(894)],
-            output: PortId(895),
+            inputs: vec![PortId(881)],
+            output: PortId(882),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17125, 17136),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(747),
+            id: NodeId(739),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(892)],
-            output: PortId(896),
+            inputs: vec![PortId(879)],
+            output: PortId(883),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17160, 17177),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(748),
+            id: NodeId(740),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(896)],
-            output: PortId(897),
+            inputs: vec![PortId(883)],
+            output: PortId(884),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17151, 17178),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(749),
+            id: NodeId(741),
             target: TransformTarget::Callable(DeclarationId(1980)),
             inputs: vec![],
-            output: PortId(898),
+            output: PortId(885),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17184, 17196),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(750),
+            id: NodeId(742),
             target: TransformTarget::Callable(DeclarationId(1980)),
             inputs: vec![],
-            output: PortId(899),
+            output: PortId(886),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17202, 17214),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(751),
-            input: PortId(897),
+            id: NodeId(743),
+            input: PortId(884),
             paths: vec![
                 Path {
-                    body: NodeId(749),
-                    output: PortId(898),
+                    body: NodeId(741),
+                    output: PortId(885),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17184, 17196),
@@ -8639,8 +8529,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(750),
-                    output: PortId(899),
+                    body: NodeId(742),
+                    output: PortId(886),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17202, 17214),
@@ -8648,53 +8538,53 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(900),
+            output: PortId(887),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17148, 17214),
             emit_participation: None,
         }));
-        nodes.push(Behavior::Value(ValueNode { id: NodeId(752), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Unobserved is not admissible evidence at this scaffold (missing external timing row).".to_string()), output: PortId(901), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17293, 17420), lane2_workflow: None }));
+        nodes.push(Behavior::Value(ValueNode { id: NodeId(744), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Unobserved is not admissible evidence at this scaffold (missing external timing row).".to_string()), output: PortId(888), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17293, 17420), lane2_workflow: None }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(753),
+            id: NodeId(745),
             target: TransformTarget::Callable(DeclarationId(1234)),
-            inputs: vec![PortId(892), PortId(901)],
-            output: PortId(902),
+            inputs: vec![PortId(879), PortId(888)],
+            output: PortId(889),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17239, 17428),
         }));
-        nodes.push(Behavior::Value(ValueNode { id: NodeId(754), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Ambiguous is not admissible evidence at this scaffold (conflicting timing facts).".to_string()), output: PortId(903), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17506, 17629), lane2_workflow: None }));
+        nodes.push(Behavior::Value(ValueNode { id: NodeId(746), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Ambiguous is not admissible evidence at this scaffold (conflicting timing facts).".to_string()), output: PortId(890), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17506, 17629), lane2_workflow: None }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(755),
+            id: NodeId(747),
             target: TransformTarget::Callable(DeclarationId(1234)),
-            inputs: vec![PortId(892), PortId(903)],
-            output: PortId(904),
+            inputs: vec![PortId(879), PortId(890)],
+            output: PortId(891),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17452, 17637),
         }));
-        nodes.push(Behavior::Value(ValueNode { id: NodeId(756), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment).".to_string()), output: PortId(905), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17711, 17839), lane2_workflow: None }));
+        nodes.push(Behavior::Value(ValueNode { id: NodeId(748), data: LiteralBits::String("timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment).".to_string()), output: PortId(892), span: SourceSpan::new("src/v3/std/timing_lens.dag", 17711, 17839), lane2_workflow: None }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(757),
+            id: NodeId(749),
             target: TransformTarget::Callable(DeclarationId(1234)),
-            inputs: vec![PortId(892), PortId(905)],
-            output: PortId(906),
+            inputs: vec![PortId(879), PortId(892)],
+            output: PortId(893),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17657, 17847),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(758),
-            input: PortId(893),
+            id: NodeId(750),
+            input: PortId(880),
             paths: vec![
                 Path {
-                    body: NodeId(751),
-                    output: PortId(900),
+                    body: NodeId(743),
+                    output: PortId(887),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17114, 17138),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(894),
+                        payload_port: PortId(881),
                     }),
                 },
                 Path {
-                    body: NodeId(753),
-                    output: PortId(902),
+                    body: NodeId(745),
+                    output: PortId(889),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17219, 17229),
@@ -8702,8 +8592,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(755),
-                    output: PortId(904),
+                    body: NodeId(747),
+                    output: PortId(891),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17433, 17442),
@@ -8711,8 +8601,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(757),
-                    output: PortId(906),
+                    body: NodeId(749),
+                    output: PortId(893),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 17642, 17647),
@@ -8720,91 +8610,91 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(907),
+            output: PortId(894),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17093, 17851),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(759),
+            id: NodeId(751),
             name: "timing_lens_validate".to_string(),
-            value: PortId(907),
-            params: vec![PortId(892), PortId(893)],
+            value: PortId(894),
+            params: vec![PortId(879), PortId(880)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 17093, 17851),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(760),
+            id: NodeId(752),
             data: LiteralBits::Int("999999999999999999".to_string()),
-            output: PortId(908),
+            output: PortId(895),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19017, 19035),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(761),
+            id: NodeId(753),
             name: "timing_enforcement_fault_sentinel_count".to_string(),
-            value: PortId(908),
+            value: PortId(895),
             params: vec![],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19017, 19035),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(762),
+            id: NodeId(754),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(910)],
-            output: PortId(911),
+            inputs: vec![PortId(897)],
+            output: PortId(898),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19148, 19159),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(763),
+            id: NodeId(755),
             target: TransformTarget::Callable(DeclarationId(2192)),
-            inputs: vec![PortId(911)],
-            output: PortId(912),
+            inputs: vec![PortId(898)],
+            output: PortId(899),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19165, 19186),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(764),
+            id: NodeId(756),
             target: TransformTarget::Callable(DeclarationId(2193)),
             inputs: vec![],
-            output: PortId(913),
+            output: PortId(900),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19205, 19221),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(765),
+            id: NodeId(757),
             target: TransformTarget::Callable(DeclarationId(2193)),
             inputs: vec![],
-            output: PortId(914),
+            output: PortId(901),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19239, 19255),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(766),
+            id: NodeId(758),
             target: TransformTarget::Callable(DeclarationId(2193)),
             inputs: vec![],
-            output: PortId(915),
+            output: PortId(902),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19269, 19285),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(767),
-            input: PortId(909),
+            id: NodeId(759),
+            input: PortId(896),
             paths: vec![
                 Path {
-                    body: NodeId(763),
-                    output: PortId(912),
+                    body: NodeId(755),
+                    output: PortId(899),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19137, 19161),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "d".to_string(),
-                        payload_port: PortId(910),
+                        payload_port: PortId(897),
                     }),
                 },
                 Path {
-                    body: NodeId(764),
-                    output: PortId(913),
+                    body: NodeId(756),
+                    output: PortId(900),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19191, 19201),
@@ -8812,8 +8702,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(765),
-                    output: PortId(914),
+                    body: NodeId(757),
+                    output: PortId(901),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19226, 19235),
@@ -8821,8 +8711,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(766),
-                    output: PortId(915),
+                    body: NodeId(758),
+                    output: PortId(902),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19260, 19265),
@@ -8830,111 +8720,111 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(916),
+            output: PortId(903),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19123, 19289),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(768),
+            id: NodeId(760),
             name: "timing_enforcement_project".to_string(),
-            value: PortId(916),
-            params: vec![PortId(909)],
+            value: PortId(903),
+            params: vec![PortId(896)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19123, 19289),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(769),
+            id: NodeId(761),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "duration".to_string(),
             },
-            inputs: vec![PortId(919)],
-            output: PortId(920),
+            inputs: vec![PortId(906)],
+            output: PortId(907),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19405, 19416),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(770),
+            id: NodeId(762),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(920)],
-            output: PortId(921),
+            inputs: vec![PortId(907)],
+            output: PortId(908),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19433, 19438),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(771),
+            id: NodeId(763),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "max".to_string(),
             },
-            inputs: vec![PortId(918)],
-            output: PortId(922),
+            inputs: vec![PortId(905)],
+            output: PortId(909),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19450, 19453),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(772),
+            id: NodeId(764),
             target: TransformTarget::ResolvedFieldProject {
                 field_label: "count".to_string(),
             },
-            inputs: vec![PortId(922)],
-            output: PortId(923),
+            inputs: vec![PortId(909)],
+            output: PortId(910),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19454, 19459),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(773),
+            id: NodeId(765),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
-            inputs: vec![PortId(921), PortId(923)],
-            output: PortId(924),
+            inputs: vec![PortId(908), PortId(910)],
+            output: PortId(911),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19431, 19459),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(774),
+            id: NodeId(766),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(925),
+            output: PortId(912),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19465, 19466),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(775),
+            id: NodeId(767),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(926),
+            output: PortId(913),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19470, 19471),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(776),
+            id: NodeId(768),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(925), PortId(926)],
-            output: PortId(927),
+            inputs: vec![PortId(912), PortId(913)],
+            output: PortId(914),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19465, 19471),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(777),
+            id: NodeId(769),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(928),
+            output: PortId(915),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19477, 19478),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(778),
+            id: NodeId(770),
             data: LiteralBits::Int("1".to_string()),
-            output: PortId(929),
+            output: PortId(916),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19482, 19483),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(779),
+            id: NodeId(771),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(928), PortId(929)],
-            output: PortId(930),
+            inputs: vec![PortId(915), PortId(916)],
+            output: PortId(917),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19477, 19483),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(780),
-            input: PortId(924),
+            id: NodeId(772),
+            input: PortId(911),
             paths: vec![
                 Path {
-                    body: NodeId(776),
-                    output: PortId(927),
+                    body: NodeId(768),
+                    output: PortId(914),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19465, 19471),
@@ -8942,8 +8832,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(779),
-                    output: PortId(930),
+                    body: NodeId(771),
+                    output: PortId(917),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19477, 19483),
@@ -8951,92 +8841,92 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(931),
+            output: PortId(918),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19428, 19483),
             emit_participation: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(781),
+            id: NodeId(773),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(932),
+            output: PortId(919),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19502, 19503),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(782),
+            id: NodeId(774),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(933),
+            output: PortId(920),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19507, 19508),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(783),
+            id: NodeId(775),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(932), PortId(933)],
-            output: PortId(934),
+            inputs: vec![PortId(919), PortId(920)],
+            output: PortId(921),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19502, 19508),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(784),
+            id: NodeId(776),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(935),
+            output: PortId(922),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19526, 19527),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(785),
+            id: NodeId(777),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(936),
+            output: PortId(923),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19531, 19532),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(786),
+            id: NodeId(778),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(935), PortId(936)],
-            output: PortId(937),
+            inputs: vec![PortId(922), PortId(923)],
+            output: PortId(924),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19526, 19532),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(787),
+            id: NodeId(779),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(938),
+            output: PortId(925),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19546, 19547),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(788),
+            id: NodeId(780),
             data: LiteralBits::Int("0".to_string()),
-            output: PortId(939),
+            output: PortId(926),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19551, 19552),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(789),
+            id: NodeId(781),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(938), PortId(939)],
-            output: PortId(940),
+            inputs: vec![PortId(925), PortId(926)],
+            output: PortId(927),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19546, 19552),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(790),
-            input: PortId(917),
+            id: NodeId(782),
+            input: PortId(904),
             paths: vec![
                 Path {
-                    body: NodeId(780),
-                    output: PortId(931),
+                    body: NodeId(772),
+                    output: PortId(918),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19394, 19418),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "d".to_string(),
-                        payload_port: PortId(919),
+                        payload_port: PortId(906),
                     }),
                 },
                 Path {
-                    body: NodeId(783),
-                    output: PortId(934),
+                    body: NodeId(775),
+                    output: PortId(921),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Unobserved".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19488, 19498),
@@ -9044,8 +8934,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(786),
-                    output: PortId(937),
+                    body: NodeId(778),
+                    output: PortId(924),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19513, 19522),
@@ -9053,8 +8943,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(789),
-                    output: PortId(940),
+                    body: NodeId(781),
+                    output: PortId(927),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
                         span: SourceSpan::new("src/v3/std/timing_lens.dag", 19537, 19542),
@@ -9062,77 +8952,77 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(941),
+            output: PortId(928),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19380, 19556),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(791),
+            id: NodeId(783),
             name: "timing_enforcement_violates".to_string(),
-            value: PortId(941),
-            params: vec![PortId(917), PortId(918)],
+            value: PortId(928),
+            params: vec![PortId(904), PortId(905)],
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 19380, 19556),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(792),
+            id: NodeId(784),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(945),
+            output: PortId(932),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3308, 3336),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(793),
+            id: NodeId(785),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(942), PortId(945)],
-            output: PortId(946),
+            inputs: vec![PortId(929), PortId(932)],
+            output: PortId(933),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3284, 3337),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(794),
+            id: NodeId(786),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(947),
+            output: PortId(934),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3373, 3401),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(795),
+            id: NodeId(787),
             target: TransformTarget::Callable(DeclarationId(2228)),
-            inputs: vec![PortId(947)],
-            output: PortId(948),
+            inputs: vec![PortId(934)],
+            output: PortId(935),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3364, 3402),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(796),
+            id: NodeId(788),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(949)],
-            output: PortId(950),
+            inputs: vec![PortId(936)],
+            output: PortId(937),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3428, 3436),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(797),
+            id: NodeId(789),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(951),
+            output: PortId(938),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3451, 3479),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(798),
+            id: NodeId(790),
             target: TransformTarget::Callable(DeclarationId(2229)),
-            inputs: vec![PortId(951)],
-            output: PortId(952),
+            inputs: vec![PortId(938)],
+            output: PortId(939),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3442, 3480),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(799),
-            input: PortId(946),
+            id: NodeId(791),
+            input: PortId(933),
             paths: vec![
                 Path {
-                    body: NodeId(795),
-                    output: PortId(948),
+                    body: NodeId(787),
+                    output: PortId(935),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9144,8 +9034,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(798),
-                    output: PortId(952),
+                    body: NodeId(790),
+                    output: PortId(939),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9156,72 +9046,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(949),
+                        payload_port: PortId(936),
                     }),
                 },
             ],
-            output: PortId(953),
+            output: PortId(940),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3278, 3488),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(800),
+            id: NodeId(792),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(955),
+            output: PortId(942),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3545, 3573),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(801),
+            id: NodeId(793),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(942), PortId(955)],
-            output: PortId(956),
+            inputs: vec![PortId(929), PortId(942)],
+            output: PortId(943),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3521, 3574),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(802),
+            id: NodeId(794),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(957),
+            output: PortId(944),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3610, 3638),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(803),
+            id: NodeId(795),
             target: TransformTarget::Callable(DeclarationId(2230)),
-            inputs: vec![PortId(957)],
-            output: PortId(958),
+            inputs: vec![PortId(944)],
+            output: PortId(945),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3601, 3639),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(804),
+            id: NodeId(796),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(959)],
-            output: PortId(960),
+            inputs: vec![PortId(946)],
+            output: PortId(947),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3665, 3673),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(805),
+            id: NodeId(797),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(961),
+            output: PortId(948),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3688, 3716),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(806),
+            id: NodeId(798),
             target: TransformTarget::Callable(DeclarationId(2231)),
-            inputs: vec![PortId(961)],
-            output: PortId(962),
+            inputs: vec![PortId(948)],
+            output: PortId(949),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3679, 3717),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(807),
-            input: PortId(956),
+            id: NodeId(799),
+            input: PortId(943),
             paths: vec![
                 Path {
-                    body: NodeId(803),
-                    output: PortId(958),
+                    body: NodeId(795),
+                    output: PortId(945),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9233,8 +9123,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(806),
-                    output: PortId(962),
+                    body: NodeId(798),
+                    output: PortId(949),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9245,72 +9135,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(959),
+                        payload_port: PortId(946),
                     }),
                 },
             ],
-            output: PortId(963),
+            output: PortId(950),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3515, 3725),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(808),
+            id: NodeId(800),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(965),
+            output: PortId(952),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3779, 3807),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(809),
+            id: NodeId(801),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(942), PortId(965)],
-            output: PortId(966),
+            inputs: vec![PortId(929), PortId(952)],
+            output: PortId(953),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3755, 3808),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(810),
+            id: NodeId(802),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(967),
+            output: PortId(954),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3844, 3872),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(811),
+            id: NodeId(803),
             target: TransformTarget::Callable(DeclarationId(2232)),
-            inputs: vec![PortId(967)],
-            output: PortId(968),
+            inputs: vec![PortId(954)],
+            output: PortId(955),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3835, 3873),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(812),
+            id: NodeId(804),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(969)],
-            output: PortId(970),
+            inputs: vec![PortId(956)],
+            output: PortId(957),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3899, 3907),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(813),
+            id: NodeId(805),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(971),
+            output: PortId(958),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3922, 3950),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(814),
+            id: NodeId(806),
             target: TransformTarget::Callable(DeclarationId(2233)),
-            inputs: vec![PortId(971)],
-            output: PortId(972),
+            inputs: vec![PortId(958)],
+            output: PortId(959),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3913, 3951),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(815),
-            input: PortId(966),
+            id: NodeId(807),
+            input: PortId(953),
             paths: vec![
                 Path {
-                    body: NodeId(811),
-                    output: PortId(968),
+                    body: NodeId(803),
+                    output: PortId(955),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9322,8 +9212,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(814),
-                    output: PortId(972),
+                    body: NodeId(806),
+                    output: PortId(959),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9334,72 +9224,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(969),
+                        payload_port: PortId(956),
                     }),
                 },
             ],
-            output: PortId(973),
+            output: PortId(960),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3749, 3959),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(816),
+            id: NodeId(808),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(975),
+            output: PortId(962),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4011, 4039),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(817),
+            id: NodeId(809),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(942), PortId(975)],
-            output: PortId(976),
+            inputs: vec![PortId(929), PortId(962)],
+            output: PortId(963),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3987, 4040),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(818),
+            id: NodeId(810),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(977),
+            output: PortId(964),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4076, 4104),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(819),
+            id: NodeId(811),
             target: TransformTarget::Callable(DeclarationId(2234)),
-            inputs: vec![PortId(977)],
-            output: PortId(978),
+            inputs: vec![PortId(964)],
+            output: PortId(965),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4067, 4105),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(820),
+            id: NodeId(812),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(979)],
-            output: PortId(980),
+            inputs: vec![PortId(966)],
+            output: PortId(967),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4131, 4139),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(821),
+            id: NodeId(813),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(981),
+            output: PortId(968),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4154, 4182),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(822),
+            id: NodeId(814),
             target: TransformTarget::Callable(DeclarationId(2235)),
-            inputs: vec![PortId(981)],
-            output: PortId(982),
+            inputs: vec![PortId(968)],
+            output: PortId(969),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4145, 4183),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(823),
-            input: PortId(976),
+            id: NodeId(815),
+            input: PortId(963),
             paths: vec![
                 Path {
-                    body: NodeId(819),
-                    output: PortId(978),
+                    body: NodeId(811),
+                    output: PortId(965),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9411,8 +9301,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(822),
-                    output: PortId(982),
+                    body: NodeId(814),
+                    output: PortId(969),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9423,72 +9313,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(979),
+                        payload_port: PortId(966),
                     }),
                 },
             ],
-            output: PortId(983),
+            output: PortId(970),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3981, 4191),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(824),
+            id: NodeId(816),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(985),
+            output: PortId(972),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4243, 4271),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(825),
+            id: NodeId(817),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(942), PortId(985)],
-            output: PortId(986),
+            inputs: vec![PortId(929), PortId(972)],
+            output: PortId(973),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4219, 4272),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(826),
+            id: NodeId(818),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(987),
+            output: PortId(974),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4308, 4336),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(827),
+            id: NodeId(819),
             target: TransformTarget::Callable(DeclarationId(2236)),
-            inputs: vec![PortId(987)],
-            output: PortId(988),
+            inputs: vec![PortId(974)],
+            output: PortId(975),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4299, 4337),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(828),
+            id: NodeId(820),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(989)],
-            output: PortId(990),
+            inputs: vec![PortId(976)],
+            output: PortId(977),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4363, 4371),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(829),
+            id: NodeId(821),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(991),
+            output: PortId(978),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4386, 4414),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(830),
+            id: NodeId(822),
             target: TransformTarget::Callable(DeclarationId(2237)),
-            inputs: vec![PortId(991)],
-            output: PortId(992),
+            inputs: vec![PortId(978)],
+            output: PortId(979),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4377, 4415),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(831),
-            input: PortId(986),
+            id: NodeId(823),
+            input: PortId(973),
             paths: vec![
                 Path {
-                    body: NodeId(827),
-                    output: PortId(988),
+                    body: NodeId(819),
+                    output: PortId(975),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9500,8 +9390,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(830),
-                    output: PortId(992),
+                    body: NodeId(822),
+                    output: PortId(979),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -9512,21 +9402,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(989),
+                        payload_port: PortId(976),
                     }),
                 },
             ],
-            output: PortId(993),
+            output: PortId(980),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4213, 4423),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(832),
-            input: PortId(943),
+            id: NodeId(824),
+            input: PortId(930),
             paths: vec![
                 Path {
-                    body: NodeId(799),
-                    output: PortId(953),
+                    body: NodeId(791),
+                    output: PortId(940),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Value".to_string(),
                         span: SourceSpan::new(
@@ -9537,12 +9427,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(944),
+                        payload_port: PortId(931),
                     }),
                 },
                 Path {
-                    body: NodeId(807),
-                    output: PortId(963),
+                    body: NodeId(799),
+                    output: PortId(950),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Transform".to_string(),
                         span: SourceSpan::new(
@@ -9553,12 +9443,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(954),
+                        payload_port: PortId(941),
                     }),
                 },
                 Path {
-                    body: NodeId(815),
-                    output: PortId(973),
+                    body: NodeId(807),
+                    output: PortId(960),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Branch".to_string(),
                         span: SourceSpan::new(
@@ -9569,12 +9459,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(964),
+                        payload_port: PortId(951),
                     }),
                 },
                 Path {
-                    body: NodeId(823),
-                    output: PortId(983),
+                    body: NodeId(815),
+                    output: PortId(970),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Loop".to_string(),
                         span: SourceSpan::new(
@@ -9585,12 +9475,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(974),
+                        payload_port: PortId(961),
                     }),
                 },
                 Path {
-                    body: NodeId(831),
-                    output: PortId(993),
+                    body: NodeId(823),
+                    output: PortId(980),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Bind".to_string(),
                         span: SourceSpan::new(
@@ -9601,301 +9491,301 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
-                        payload_port: PortId(984),
+                        payload_port: PortId(971),
                     }),
                 },
             ],
-            output: PortId(994),
+            output: PortId(981),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3246, 4427),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(833),
+            id: NodeId(825),
             name: "ci_demo_timing_read".to_string(),
-            value: PortId(994),
-            params: vec![PortId(942), PortId(943)],
+            value: PortId(981),
+            params: vec![PortId(929), PortId(930)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 3246, 4427),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(826),
+            target: TransformTarget::Callable(DeclarationId(1246)),
+            inputs: vec![PortId(982), PortId(983)],
+            output: PortId(984),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4818, 4843),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(827),
+            name: "ci_wad_modeled_workflow_timing_witness".to_string(),
+            value: PortId(984),
+            params: vec![PortId(982), PortId(983)],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4818, 4843),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(828),
+            target: TransformTarget::Callable(DeclarationId(2238)),
+            inputs: vec![],
+            output: PortId(985),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5101, 5106),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(829),
+            name: "_ci_wad_seed_list_declaration_empty".to_string(),
+            value: PortId(985),
+            params: vec![],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5101, 5106),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(830),
+            target: TransformTarget::Callable(DeclarationId(2239)),
+            inputs: vec![],
+            output: PortId(986),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5166, 5171),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(831),
+            name: "_ci_wad_seed_list_behavior_empty".to_string(),
+            value: PortId(986),
+            params: vec![],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5166, 5171),
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(832),
+            target: TransformTarget::Callable(DeclarationId(2240)),
+            inputs: vec![],
+            output: PortId(987),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5229, 5234),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(833),
+            name: "_ci_wad_seed_list_dagport_empty".to_string(),
+            value: PortId(987),
+            params: vec![],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5229, 5234),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(834),
-            target: TransformTarget::Callable(DeclarationId(1246)),
-            inputs: vec![PortId(995), PortId(996)],
-            output: PortId(997),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4818, 4843),
+            target: TransformTarget::Callable(DeclarationId(2241)),
+            inputs: vec![],
+            output: PortId(988),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5292, 5297),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(835),
-            name: "ci_wad_modeled_workflow_timing_witness".to_string(),
-            value: PortId(997),
-            params: vec![PortId(995), PortId(996)],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 4818, 4843),
+            name: "_ci_wad_seed_list_cluster_empty".to_string(),
+            value: PortId(988),
+            params: vec![],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5292, 5297),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(836),
-            target: TransformTarget::Callable(DeclarationId(2238)),
+            target: TransformTarget::Callable(DeclarationId(2242)),
             inputs: vec![],
-            output: PortId(998),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5101, 5106),
+            output: PortId(989),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5356, 5361),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(837),
-            name: "_ci_wad_seed_list_declaration_empty".to_string(),
-            value: PortId(998),
+            name: "_ci_wad_empty_list_diagnostic".to_string(),
+            value: PortId(989),
             params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5101, 5106),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5356, 5361),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(838),
-            target: TransformTarget::Callable(DeclarationId(2239)),
+            target: TransformTarget::Callable(DeclarationId(2243)),
             inputs: vec![],
-            output: PortId(999),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5166, 5171),
+            output: PortId(990),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5436, 5441),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(839),
-            name: "_ci_wad_seed_list_behavior_empty".to_string(),
-            value: PortId(999),
+            name: "_ci_wad_empty_list_witness_tm".to_string(),
+            value: PortId(990),
             params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5166, 5171),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5436, 5441),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(840),
-            target: TransformTarget::Callable(DeclarationId(2240)),
-            inputs: vec![],
-            output: PortId(1000),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5229, 5234),
+            target: TransformTarget::Callable(DeclarationId(2245)),
+            inputs: vec![PortId(991)],
+            output: PortId(992),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5552, 5563),
         }));
-        nodes.push(Behavior::Bind(BindNode {
+        nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(841),
-            name: "_ci_wad_seed_list_dagport_empty".to_string(),
-            value: PortId(1000),
-            params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5229, 5234),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
+            target: TransformTarget::Callable(DeclarationId(1253)),
+            inputs: vec![],
+            output: PortId(993),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5571, 5602),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(842),
-            target: TransformTarget::Callable(DeclarationId(2241)),
-            inputs: vec![],
-            output: PortId(1001),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5292, 5297),
+            target: TransformTarget::Callable(DeclarationId(2244)),
+            inputs: vec![PortId(992), PortId(993)],
+            output: PortId(994),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5539, 5604),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(843),
-            name: "_ci_wad_seed_list_cluster_empty".to_string(),
-            value: PortId(1001),
-            params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5292, 5297),
+            name: "_ci_wad_witnesses_singleton_tm".to_string(),
+            value: PortId(994),
+            params: vec![PortId(991)],
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5539, 5604),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(844),
-            target: TransformTarget::Callable(DeclarationId(2242)),
-            inputs: vec![],
-            output: PortId(1002),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5356, 5361),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(845),
-            name: "_ci_wad_empty_list_diagnostic".to_string(),
-            value: PortId(1002),
-            params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5356, 5361),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(846),
-            target: TransformTarget::Callable(DeclarationId(2243)),
-            inputs: vec![],
-            output: PortId(1003),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5436, 5441),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(847),
-            name: "_ci_wad_empty_list_witness_tm".to_string(),
-            value: PortId(1003),
-            params: vec![],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5436, 5441),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(848),
-            target: TransformTarget::Callable(DeclarationId(2245)),
-            inputs: vec![PortId(1004)],
-            output: PortId(1005),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5552, 5563),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(849),
-            target: TransformTarget::Callable(DeclarationId(1253)),
-            inputs: vec![],
-            output: PortId(1006),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5571, 5602),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(850),
-            target: TransformTarget::Callable(DeclarationId(2244)),
-            inputs: vec![PortId(1005), PortId(1006)],
-            output: PortId(1007),
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5539, 5604),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(851),
-            name: "_ci_wad_witnesses_singleton_tm".to_string(),
-            value: PortId(1007),
-            params: vec![PortId(1004)],
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5539, 5604),
-            lane2_workflow: None,
-            emit_participation: Some(BindEmitParticipation::UserCallable),
-        }));
-        nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(852),
             target: TransformTarget::Callable(DeclarationId(1252)),
             inputs: vec![],
-            output: PortId(1009),
+            output: PortId(996),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5705, 5736),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(853),
+            id: NodeId(845),
             target: TransformTarget::Callable(DeclarationId(2246)),
-            inputs: vec![PortId(1008), PortId(1009)],
-            output: PortId(1010),
+            inputs: vec![PortId(995), PortId(996)],
+            output: PortId(997),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5680, 5738),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(854),
+            id: NodeId(846),
             name: "_ci_wad_violations_singleton".to_string(),
-            value: PortId(1010),
-            params: vec![PortId(1008)],
+            value: PortId(997),
+            params: vec![PortId(995)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5680, 5738),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(855),
+            id: NodeId(847),
             data: LiteralBits::String("ci_modeled_timing".to_string()),
-            output: PortId(1012),
+            output: PortId(999),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5873, 5892),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(856),
+            id: NodeId(848),
             target: TransformTarget::Callable(DeclarationId(1254)),
-            inputs: vec![PortId(1011)],
-            output: PortId(1013),
+            inputs: vec![PortId(998)],
+            output: PortId(1000),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5926, 5959),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(857),
+            id: NodeId(849),
             target: TransformTarget::Callable(DeclarationId(2247)),
-            inputs: vec![PortId(1012), PortId(1011), PortId(1013)],
-            output: PortId(1014),
+            inputs: vec![PortId(999), PortId(998), PortId(1000)],
+            output: PortId(1001),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5839, 5964),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(858),
+            id: NodeId(850),
             name: "_ci_wad_dimension_ok_tm_payload".to_string(),
-            value: PortId(1014),
-            params: vec![PortId(1011)],
+            value: PortId(1001),
+            params: vec![PortId(998)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 5839, 5964),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(859),
+            id: NodeId(851),
             data: LiteralBits::String("ci_modeled_timing".to_string()),
-            output: PortId(1017),
+            output: PortId(1004),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6121, 6140),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(860),
+            id: NodeId(852),
             target: TransformTarget::Callable(DeclarationId(1255)),
-            inputs: vec![PortId(1016)],
-            output: PortId(1018),
+            inputs: vec![PortId(1003)],
+            output: PortId(1005),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6158, 6192),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(861),
+            id: NodeId(853),
             target: TransformTarget::Callable(DeclarationId(1254)),
-            inputs: vec![PortId(1015)],
-            output: PortId(1019),
+            inputs: vec![PortId(1002)],
+            output: PortId(1006),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6209, 6242),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(862),
+            id: NodeId(854),
             target: TransformTarget::Callable(DeclarationId(2248)),
-            inputs: vec![PortId(1017), PortId(1018), PortId(1019)],
-            output: PortId(1020),
+            inputs: vec![PortId(1004), PortId(1005), PortId(1006)],
+            output: PortId(1007),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6085, 6247),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(863),
+            id: NodeId(855),
             name: "_ci_wad_dimension_fail_tm_payload".to_string(),
-            value: PortId(1020),
-            params: vec![PortId(1015), PortId(1016)],
+            value: PortId(1007),
+            params: vec![PortId(1002), PortId(1003)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6085, 6247),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(864),
+            id: NodeId(856),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(1021)],
-            output: PortId(1023),
+            inputs: vec![PortId(1008)],
+            output: PortId(1010),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6610, 6627),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(865),
+            id: NodeId(857),
             target: TransformTarget::Callable(DeclarationId(1256)),
-            inputs: vec![PortId(1022)],
-            output: PortId(1024),
+            inputs: vec![PortId(1009)],
+            output: PortId(1011),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6643, 6677),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(866),
+            id: NodeId(858),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(1025)],
-            output: PortId(1026),
+            inputs: vec![PortId(1012)],
+            output: PortId(1013),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6689, 6697),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(867),
+            id: NodeId(859),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(1025)],
-            output: PortId(1027),
+            inputs: vec![PortId(1012)],
+            output: PortId(1014),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6699, 6707),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(868),
+            id: NodeId(860),
             target: TransformTarget::Callable(DeclarationId(1256)),
-            inputs: vec![PortId(1022)],
-            output: PortId(1028),
+            inputs: vec![PortId(1009)],
+            output: PortId(1015),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6713, 6747),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(869),
-            input: PortId(1023),
+            id: NodeId(861),
+            input: PortId(1010),
             paths: vec![
                 Path {
-                    body: NodeId(865),
-                    output: PortId(1024),
+                    body: NodeId(857),
+                    output: PortId(1011),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new(
@@ -9907,8 +9797,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(868),
-                    output: PortId(1028),
+                    body: NodeId(860),
+                    output: PortId(1015),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new(
@@ -9919,69 +9809,69 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "__payload_6682_6709".to_string(),
-                        payload_port: PortId(1025),
+                        payload_port: PortId(1012),
                     }),
                 },
             ],
-            output: PortId(1029),
+            output: PortId(1016),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6604, 6751),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(870),
+            id: NodeId(862),
             name: "report_dim_ok_tm".to_string(),
-            value: PortId(1029),
-            params: vec![PortId(1021), PortId(1022)],
+            value: PortId(1016),
+            params: vec![PortId(1008), PortId(1009)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6604, 6751),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(871),
+            id: NodeId(863),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(1030)],
-            output: PortId(1033),
+            inputs: vec![PortId(1017)],
+            output: PortId(1020),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6871, 6888),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(872),
+            id: NodeId(864),
             target: TransformTarget::Callable(DeclarationId(1257)),
-            inputs: vec![PortId(1031), PortId(1032)],
-            output: PortId(1034),
+            inputs: vec![PortId(1018), PortId(1019)],
+            output: PortId(1021),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6904, 6946),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(873),
+            id: NodeId(865),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "head".to_string(),
             },
-            inputs: vec![PortId(1035)],
-            output: PortId(1036),
+            inputs: vec![PortId(1022)],
+            output: PortId(1023),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6958, 6966),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(874),
+            id: NodeId(866),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "tail".to_string(),
             },
-            inputs: vec![PortId(1035)],
-            output: PortId(1037),
+            inputs: vec![PortId(1022)],
+            output: PortId(1024),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6968, 6976),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(875),
+            id: NodeId(867),
             target: TransformTarget::Callable(DeclarationId(1257)),
-            inputs: vec![PortId(1031), PortId(1032)],
-            output: PortId(1038),
+            inputs: vec![PortId(1018), PortId(1019)],
+            output: PortId(1025),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6982, 7024),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(876),
-            input: PortId(1033),
+            id: NodeId(868),
+            input: PortId(1020),
             paths: vec![
                 Path {
-                    body: NodeId(872),
-                    output: PortId(1034),
+                    body: NodeId(864),
+                    output: PortId(1021),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
                         span: SourceSpan::new(
@@ -9993,8 +9883,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(875),
-                    output: PortId(1038),
+                    body: NodeId(867),
+                    output: PortId(1025),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
                         span: SourceSpan::new(
@@ -10005,53 +9895,53 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "__payload_6951_6978".to_string(),
-                        payload_port: PortId(1035),
+                        payload_port: PortId(1022),
                     }),
                 },
             ],
-            output: PortId(1039),
+            output: PortId(1026),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6865, 7028),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(877),
+            id: NodeId(869),
             name: "report_dim_fail_tm".to_string(),
-            value: PortId(1039),
-            params: vec![PortId(1030), PortId(1031), PortId(1032)],
+            value: PortId(1026),
+            params: vec![PortId(1017), PortId(1018), PortId(1019)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 6865, 7028),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(878),
+            id: NodeId(870),
             target: TransformTarget::Callable(DeclarationId(1258)),
-            inputs: vec![PortId(1040), PortId(1041)],
-            output: PortId(1043),
+            inputs: vec![PortId(1027), PortId(1028)],
+            output: PortId(1030),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7186, 7208),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(879),
+            id: NodeId(871),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
             },
-            inputs: vec![PortId(1044)],
-            output: PortId(1045),
+            inputs: vec![PortId(1031)],
+            output: PortId(1032),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7230, 7241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(880),
+            id: NodeId(872),
             target: TransformTarget::Callable(DeclarationId(1259)),
-            inputs: vec![PortId(1040), PortId(1041), PortId(1045)],
-            output: PortId(1046),
+            inputs: vec![PortId(1027), PortId(1028), PortId(1032)],
+            output: PortId(1033),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7247, 7277),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(881),
-            input: PortId(1042),
+            id: NodeId(873),
+            input: PortId(1029),
             paths: vec![
                 Path {
-                    body: NodeId(878),
-                    output: PortId(1043),
+                    body: NodeId(870),
+                    output: PortId(1030),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "NoDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -10063,8 +9953,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(880),
-                    output: PortId(1046),
+                    body: NodeId(872),
+                    output: PortId(1033),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SomeDiagnostic".to_string(),
                         span: SourceSpan::new(
@@ -10075,90 +9965,90 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "diag".to_string(),
-                        payload_port: PortId(1044),
+                        payload_port: PortId(1031),
                     }),
                 },
             ],
-            output: PortId(1047),
+            output: PortId(1034),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7155, 7281),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(882),
+            id: NodeId(874),
             name: "report_inhabits_branch_tm".to_string(),
-            value: PortId(1047),
-            params: vec![PortId(1040), PortId(1041), PortId(1042)],
+            value: PortId(1034),
+            params: vec![PortId(1027), PortId(1028), PortId(1029)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7155, 7281),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(883),
+            id: NodeId(875),
             target: TransformTarget::Callable(DeclarationId(1237)),
-            inputs: vec![PortId(1048), PortId(1050)],
-            output: PortId(1051),
+            inputs: vec![PortId(1035), PortId(1037)],
+            output: PortId(1038),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7461, 7487),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(884),
+            id: NodeId(876),
             target: TransformTarget::Callable(DeclarationId(1260)),
-            inputs: vec![PortId(1048), PortId(1050), PortId(1051)],
-            output: PortId(1052),
+            inputs: vec![PortId(1035), PortId(1037), PortId(1038)],
+            output: PortId(1039),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7429, 7488),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(885),
+            id: NodeId(877),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "reason".to_string(),
             },
-            inputs: vec![PortId(1053)],
-            output: PortId(1054),
+            inputs: vec![PortId(1040)],
+            output: PortId(1041),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7504, 7513),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(886),
+            id: NodeId(878),
             target: TransformTarget::UnresolvedFieldProject {
                 field_label: "at".to_string(),
             },
-            inputs: vec![PortId(1053)],
-            output: PortId(1055),
+            inputs: vec![PortId(1040)],
+            output: PortId(1042),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7515, 7522),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(887),
+            id: NodeId(879),
             target: TransformTarget::Callable(DeclarationId(1227)),
             inputs: vec![],
-            output: PortId(1056),
+            output: PortId(1043),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7573, 7601),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(888),
+            id: NodeId(880),
             target: TransformTarget::Callable(DeclarationId(1231)),
-            inputs: vec![PortId(1055)],
-            output: PortId(1057),
+            inputs: vec![PortId(1042)],
+            output: PortId(1044),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7659, 7689),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(889),
+            id: NodeId(881),
             target: TransformTarget::Callable(DeclarationId(1232)),
-            inputs: vec![PortId(1054), PortId(1057)],
-            output: PortId(1058),
+            inputs: vec![PortId(1041), PortId(1044)],
+            output: PortId(1045),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7611, 7690),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(890),
+            id: NodeId(882),
             target: TransformTarget::Callable(DeclarationId(1259)),
-            inputs: vec![PortId(1048), PortId(1056), PortId(1058)],
-            output: PortId(1059),
+            inputs: vec![PortId(1035), PortId(1043), PortId(1045)],
+            output: PortId(1046),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7534, 7698),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(891),
-            input: PortId(1049),
+            id: NodeId(883),
+            input: PortId(1036),
             paths: vec![
                 Path {
-                    body: NodeId(884),
-                    output: PortId(1052),
+                    body: NodeId(876),
+                    output: PortId(1039),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Inhabits".to_string(),
                         span: SourceSpan::new(
@@ -10169,12 +10059,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "c".to_string(),
-                        payload_port: PortId(1050),
+                        payload_port: PortId(1037),
                     }),
                 },
                 Path {
-                    body: NodeId(890),
-                    output: PortId(1059),
+                    body: NodeId(882),
+                    output: PortId(1046),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Violates".to_string(),
                         span: SourceSpan::new(
@@ -10185,72 +10075,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "__payload_7493_7524".to_string(),
-                        payload_port: PortId(1053),
+                        payload_port: PortId(1040),
                     }),
                 },
             ],
-            output: PortId(1060),
+            output: PortId(1047),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7400, 7702),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(892),
+            id: NodeId(884),
             name: "dimension_report_tm_from_witness".to_string(),
-            value: PortId(1060),
-            params: vec![PortId(1048), PortId(1049)],
+            value: PortId(1047),
+            params: vec![PortId(1035), PortId(1036)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 7400, 7702),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(893),
+            id: NodeId(885),
             target: TransformTarget::Callable(DeclarationId(1211)),
-            inputs: vec![PortId(1061)],
-            output: PortId(1063),
+            inputs: vec![PortId(1048)],
+            output: PortId(1050),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8681, 8698),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(894),
+            id: NodeId(886),
             target: TransformTarget::Callable(DeclarationId(711)),
-            inputs: vec![PortId(1063)],
-            output: PortId(1064),
+            inputs: vec![PortId(1050)],
+            output: PortId(1051),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8672, 8699),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(895),
+            id: NodeId(887),
             target: TransformTarget::Callable(DeclarationId(1246)),
-            inputs: vec![PortId(1061), PortId(1062)],
-            output: PortId(1065),
+            inputs: vec![PortId(1048), PortId(1049)],
+            output: PortId(1052),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8745, 8770),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(896),
+            id: NodeId(888),
             target: TransformTarget::Callable(DeclarationId(1261)),
-            inputs: vec![PortId(1061), PortId(1065)],
-            output: PortId(1066),
+            inputs: vec![PortId(1048), PortId(1052)],
+            output: PortId(1053),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8709, 8771),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(897),
+            id: NodeId(889),
             target: TransformTarget::Callable(DeclarationId(1247)),
-            inputs: vec![PortId(1061), PortId(1062)],
-            output: PortId(1067),
+            inputs: vec![PortId(1048), PortId(1049)],
+            output: PortId(1054),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8819, 8863),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(898),
+            id: NodeId(890),
             target: TransformTarget::Callable(DeclarationId(1261)),
-            inputs: vec![PortId(1061), PortId(1067)],
-            output: PortId(1068),
+            inputs: vec![PortId(1048), PortId(1054)],
+            output: PortId(1055),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8783, 8864),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(899),
-            input: PortId(1064),
+            id: NodeId(891),
+            input: PortId(1051),
             paths: vec![
                 Path {
-                    body: NodeId(896),
-                    output: PortId(1066),
+                    body: NodeId(888),
+                    output: PortId(1053),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
                         span: SourceSpan::new(
@@ -10262,8 +10152,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(898),
-                    output: PortId(1068),
+                    body: NodeId(890),
+                    output: PortId(1055),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
                         span: SourceSpan::new(
@@ -10275,110 +10165,110 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1069),
+            output: PortId(1056),
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8669, 8864),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(900),
+            id: NodeId(892),
             name: "demo_ci_modeled_timing_dimension_report".to_string(),
-            value: PortId(1069),
-            params: vec![PortId(1061), PortId(1062)],
+            value: PortId(1056),
+            params: vec![PortId(1048), PortId(1049)],
             span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 8669, 8864),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(901),
+            id: NodeId(893),
             target: TransformTarget::Callable(DeclarationId(1306)),
-            inputs: vec![PortId(1071)],
-            output: PortId(1072),
+            inputs: vec![PortId(1058)],
+            output: PortId(1059),
             span: SourceSpan::new("src/v3/std/verification.dag", 30695, 30718),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(902),
+            id: NodeId(894),
             target: TransformTarget::Callable(DeclarationId(1307)),
-            inputs: vec![PortId(1073)],
-            output: PortId(1074),
+            inputs: vec![PortId(1060)],
+            output: PortId(1061),
             span: SourceSpan::new("src/v3/std/verification.dag", 30740, 30774),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(903),
-            input: PortId(1070),
+            id: NodeId(895),
+            input: PortId(1057),
             paths: vec![
                 Path {
-                    body: NodeId(901),
-                    output: PortId(1072),
+                    body: NodeId(893),
+                    output: PortId(1059),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Enumerated".to_string(),
                         span: SourceSpan::new("src/v3/std/verification.dag", 30678, 30691),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "c".to_string(),
-                        payload_port: PortId(1071),
+                        payload_port: PortId(1058),
                     }),
                 },
                 Path {
-                    body: NodeId(902),
-                    output: PortId(1074),
+                    body: NodeId(894),
+                    output: PortId(1061),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Quantified".to_string(),
                         span: SourceSpan::new("src/v3/std/verification.dag", 30723, 30736),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "q".to_string(),
-                        payload_port: PortId(1073),
+                        payload_port: PortId(1060),
                     }),
                 },
             ],
-            output: PortId(1075),
+            output: PortId(1062),
             span: SourceSpan::new("src/v3/std/verification.dag", 30660, 30778),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(904),
+            id: NodeId(896),
             name: "obligation_for_suite_claim".to_string(),
-            value: PortId(1075),
-            params: vec![PortId(1070)],
+            value: PortId(1062),
+            params: vec![PortId(1057)],
             span: SourceSpan::new("src/v3/std/verification.dag", 30660, 30778),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(905),
+            id: NodeId(897),
             data: LiteralBits::String("+".to_string()),
-            output: PortId(1078),
+            output: PortId(1065),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 886, 889),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(906),
+            id: NodeId(898),
             data: LiteralBits::String("-".to_string()),
-            output: PortId(1079),
+            output: PortId(1066),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 905, 908),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(907),
+            id: NodeId(899),
             data: LiteralBits::String("*".to_string()),
-            output: PortId(1080),
+            output: PortId(1067),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 924, 927),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(908),
+            id: NodeId(900),
             data: LiteralBits::String("/".to_string()),
-            output: PortId(1081),
+            output: PortId(1068),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 943, 946),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(909),
-            input: PortId(1077),
+            id: NodeId(901),
+            input: PortId(1064),
             paths: vec![
                 Path {
-                    body: NodeId(905),
-                    output: PortId(1078),
+                    body: NodeId(897),
+                    output: PortId(1065),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Add".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 879, 882),
@@ -10386,8 +10276,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(906),
-                    output: PortId(1079),
+                    body: NodeId(898),
+                    output: PortId(1066),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Sub".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 898, 901),
@@ -10395,8 +10285,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(907),
-                    output: PortId(1080),
+                    body: NodeId(899),
+                    output: PortId(1067),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Mul".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 917, 920),
@@ -10404,8 +10294,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(908),
-                    output: PortId(1081),
+                    body: NodeId(900),
+                    output: PortId(1068),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Div".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 936, 939),
@@ -10413,59 +10303,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1082),
+            output: PortId(1069),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 857, 954),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(910),
+            id: NodeId(902),
             data: LiteralBits::String("==".to_string()),
-            output: PortId(1084),
+            output: PortId(1071),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1012, 1016),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(911),
+            id: NodeId(903),
             data: LiteralBits::String("!=".to_string()),
-            output: PortId(1085),
+            output: PortId(1072),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1031, 1035),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(912),
+            id: NodeId(904),
             data: LiteralBits::String("<".to_string()),
-            output: PortId(1086),
+            output: PortId(1073),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1050, 1053),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(913),
+            id: NodeId(905),
             data: LiteralBits::String("<=".to_string()),
-            output: PortId(1087),
+            output: PortId(1074),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1068, 1072),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(914),
+            id: NodeId(906),
             data: LiteralBits::String(">".to_string()),
-            output: PortId(1088),
+            output: PortId(1075),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1087, 1090),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(915),
+            id: NodeId(907),
             data: LiteralBits::String(">=".to_string()),
-            output: PortId(1089),
+            output: PortId(1076),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1105, 1109),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(916),
-            input: PortId(1083),
+            id: NodeId(908),
+            input: PortId(1070),
             paths: vec![
                 Path {
-                    body: NodeId(910),
-                    output: PortId(1084),
+                    body: NodeId(902),
+                    output: PortId(1071),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Eq".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1006, 1008),
@@ -10473,8 +10363,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(911),
-                    output: PortId(1085),
+                    body: NodeId(903),
+                    output: PortId(1072),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ne".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1025, 1027),
@@ -10482,8 +10372,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(912),
-                    output: PortId(1086),
+                    body: NodeId(904),
+                    output: PortId(1073),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Lt".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1044, 1046),
@@ -10491,8 +10381,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(913),
-                    output: PortId(1087),
+                    body: NodeId(905),
+                    output: PortId(1074),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Le".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1062, 1064),
@@ -10500,8 +10390,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(914),
-                    output: PortId(1088),
+                    body: NodeId(906),
+                    output: PortId(1075),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Gt".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1081, 1083),
@@ -10509,8 +10399,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(915),
-                    output: PortId(1089),
+                    body: NodeId(907),
+                    output: PortId(1076),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ge".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1099, 1101),
@@ -10518,31 +10408,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1090),
+            output: PortId(1077),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 985, 1117),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(917),
+            id: NodeId(909),
             data: LiteralBits::String("&&".to_string()),
-            output: PortId(1092),
+            output: PortId(1079),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1179, 1183),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(918),
+            id: NodeId(910),
             data: LiteralBits::String("||".to_string()),
-            output: PortId(1093),
+            output: PortId(1080),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1198, 1202),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(919),
-            input: PortId(1091),
+            id: NodeId(911),
+            input: PortId(1078),
             paths: vec![
                 Path {
-                    body: NodeId(917),
-                    output: PortId(1092),
+                    body: NodeId(909),
+                    output: PortId(1079),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "And".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1172, 1175),
@@ -10550,8 +10440,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(918),
-                    output: PortId(1093),
+                    body: NodeId(910),
+                    output: PortId(1080),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Or".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1192, 1194),
@@ -10559,99 +10449,99 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1094),
+            output: PortId(1081),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1148, 1210),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(920),
-            input: PortId(1076),
+            id: NodeId(912),
+            input: PortId(1063),
             paths: vec![
                 Path {
-                    body: NodeId(909),
-                    output: PortId(1082),
+                    body: NodeId(901),
+                    output: PortId(1069),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Arithmetic".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 830, 847),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "arith".to_string(),
-                        payload_port: PortId(1077),
+                        payload_port: PortId(1064),
                     }),
                 },
                 Path {
-                    body: NodeId(916),
-                    output: PortId(1090),
+                    body: NodeId(908),
+                    output: PortId(1077),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Comparison".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 959, 975),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "comp".to_string(),
-                        payload_port: PortId(1083),
+                        payload_port: PortId(1070),
                     }),
                 },
                 Path {
-                    body: NodeId(919),
-                    output: PortId(1094),
+                    body: NodeId(911),
+                    output: PortId(1081),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Logical".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1122, 1138),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "logical".to_string(),
-                        payload_port: PortId(1091),
+                        payload_port: PortId(1078),
                     }),
                 },
             ],
-            output: PortId(1095),
+            output: PortId(1082),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 815, 1214),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(921),
+            id: NodeId(913),
             name: "symbol".to_string(),
-            value: PortId(1095),
-            params: vec![PortId(1076)],
+            value: PortId(1082),
+            params: vec![PortId(1063)],
             span: SourceSpan::new("src/v3/compiler/operators.dag", 815, 1214),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(922),
+            id: NodeId(914),
             data: LiteralBits::String("add".to_string()),
-            output: PortId(1098),
+            output: PortId(1085),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1341, 1346),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(923),
+            id: NodeId(915),
             data: LiteralBits::String("sub".to_string()),
-            output: PortId(1099),
+            output: PortId(1086),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1362, 1367),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(924),
+            id: NodeId(916),
             data: LiteralBits::String("mul".to_string()),
-            output: PortId(1100),
+            output: PortId(1087),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1383, 1388),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(925),
+            id: NodeId(917),
             data: LiteralBits::String("div".to_string()),
-            output: PortId(1101),
+            output: PortId(1088),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1404, 1409),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(926),
-            input: PortId(1097),
+            id: NodeId(918),
+            input: PortId(1084),
             paths: vec![
                 Path {
-                    body: NodeId(922),
-                    output: PortId(1098),
+                    body: NodeId(914),
+                    output: PortId(1085),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Add".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1334, 1337),
@@ -10659,8 +10549,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(923),
-                    output: PortId(1099),
+                    body: NodeId(915),
+                    output: PortId(1086),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Sub".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1355, 1358),
@@ -10668,8 +10558,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(924),
-                    output: PortId(1100),
+                    body: NodeId(916),
+                    output: PortId(1087),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Mul".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1376, 1379),
@@ -10677,8 +10567,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(925),
-                    output: PortId(1101),
+                    body: NodeId(917),
+                    output: PortId(1088),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Div".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1397, 1400),
@@ -10686,59 +10576,59 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1102),
+            output: PortId(1089),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1312, 1417),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(927),
+            id: NodeId(919),
             data: LiteralBits::String("eq".to_string()),
-            output: PortId(1104),
+            output: PortId(1091),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1475, 1479),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(928),
+            id: NodeId(920),
             data: LiteralBits::String("ne".to_string()),
-            output: PortId(1105),
+            output: PortId(1092),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1494, 1498),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(929),
+            id: NodeId(921),
             data: LiteralBits::String("lt".to_string()),
-            output: PortId(1106),
+            output: PortId(1093),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1513, 1517),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(930),
+            id: NodeId(922),
             data: LiteralBits::String("le".to_string()),
-            output: PortId(1107),
+            output: PortId(1094),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1532, 1536),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(931),
+            id: NodeId(923),
             data: LiteralBits::String("gt".to_string()),
-            output: PortId(1108),
+            output: PortId(1095),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1551, 1555),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(932),
+            id: NodeId(924),
             data: LiteralBits::String("ge".to_string()),
-            output: PortId(1109),
+            output: PortId(1096),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1570, 1574),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(933),
-            input: PortId(1103),
+            id: NodeId(925),
+            input: PortId(1090),
             paths: vec![
                 Path {
-                    body: NodeId(927),
-                    output: PortId(1104),
+                    body: NodeId(919),
+                    output: PortId(1091),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Eq".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1469, 1471),
@@ -10746,8 +10636,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(928),
-                    output: PortId(1105),
+                    body: NodeId(920),
+                    output: PortId(1092),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ne".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1488, 1490),
@@ -10755,8 +10645,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(929),
-                    output: PortId(1106),
+                    body: NodeId(921),
+                    output: PortId(1093),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Lt".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1507, 1509),
@@ -10764,8 +10654,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(930),
-                    output: PortId(1107),
+                    body: NodeId(922),
+                    output: PortId(1094),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Le".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1526, 1528),
@@ -10773,8 +10663,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(931),
-                    output: PortId(1108),
+                    body: NodeId(923),
+                    output: PortId(1095),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Gt".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1545, 1547),
@@ -10782,8 +10672,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(932),
-                    output: PortId(1109),
+                    body: NodeId(924),
+                    output: PortId(1096),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ge".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1564, 1566),
@@ -10791,31 +10681,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1110),
+            output: PortId(1097),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1448, 1582),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(934),
+            id: NodeId(926),
             data: LiteralBits::String("meet".to_string()),
-            output: PortId(1112),
+            output: PortId(1099),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1978, 1984),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(935),
+            id: NodeId(927),
             data: LiteralBits::String("join".to_string()),
-            output: PortId(1113),
+            output: PortId(1100),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1999, 2005),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(936),
-            input: PortId(1111),
+            id: NodeId(928),
+            input: PortId(1098),
             paths: vec![
                 Path {
-                    body: NodeId(934),
-                    output: PortId(1112),
+                    body: NodeId(926),
+                    output: PortId(1099),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "And".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1971, 1974),
@@ -10823,8 +10713,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
                 Path {
-                    body: NodeId(935),
-                    output: PortId(1113),
+                    body: NodeId(927),
+                    output: PortId(1100),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Or".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1993, 1995),
@@ -10832,104 +10722,104 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     binding: None,
                 },
             ],
-            output: PortId(1114),
+            output: PortId(1101),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1947, 2013),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
-            id: NodeId(937),
-            input: PortId(1096),
+            id: NodeId(929),
+            input: PortId(1083),
             paths: vec![
                 Path {
-                    body: NodeId(926),
-                    output: PortId(1102),
+                    body: NodeId(918),
+                    output: PortId(1089),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Arithmetic".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1285, 1302),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "arith".to_string(),
-                        payload_port: PortId(1097),
+                        payload_port: PortId(1084),
                     }),
                 },
                 Path {
-                    body: NodeId(933),
-                    output: PortId(1110),
+                    body: NodeId(925),
+                    output: PortId(1097),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Comparison".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1422, 1438),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "comp".to_string(),
-                        payload_port: PortId(1103),
+                        payload_port: PortId(1090),
                     }),
                 },
                 Path {
-                    body: NodeId(936),
-                    output: PortId(1114),
+                    body: NodeId(928),
+                    output: PortId(1101),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Logical".to_string(),
                         span: SourceSpan::new("src/v3/compiler/operators.dag", 1921, 1937),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "logical".to_string(),
-                        payload_port: PortId(1111),
+                        payload_port: PortId(1098),
                     }),
                 },
             ],
-            output: PortId(1115),
+            output: PortId(1102),
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1270, 2017),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(938),
+            id: NodeId(930),
             name: "algebra_field_name".to_string(),
-            value: PortId(1115),
-            params: vec![PortId(1096)],
+            value: PortId(1102),
+            params: vec![PortId(1083)],
             span: SourceSpan::new("src/v3/compiler/operators.dag", 1270, 2017),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(939),
+            id: NodeId(931),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(1116), PortId(1116)],
-            output: PortId(1117),
+            inputs: vec![PortId(1103), PortId(1103)],
+            output: PortId(1104),
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(940),
+            id: NodeId(932),
             data: LiteralBits::String("GitHubActionsWorkflowStemSegment".to_string()),
-            output: PortId(1118),
+            output: PortId(1105),
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(941),
+            id: NodeId(933),
             data: LiteralBits::String("GitHubActionsWorkflowStemSegment".to_string()),
-            output: PortId(1119),
+            output: PortId(1106),
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(942),
+            id: NodeId(934),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
-            inputs: vec![PortId(1118), PortId(1119)],
-            output: PortId(1120),
+            inputs: vec![PortId(1105), PortId(1106)],
+            output: PortId(1107),
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(943),
+            id: NodeId(935),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
-            inputs: vec![PortId(1117), PortId(1120)],
-            output: PortId(1121),
+            inputs: vec![PortId(1104), PortId(1107)],
+            output: PortId(1108),
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(944),
+            id: NodeId(936),
             name: "<registry-refinement:GitHubActionsWorkflowStemSegment>".to_string(),
-            value: PortId(1121),
-            params: vec![PortId(1116)],
+            value: PortId(1108),
+            params: vec![PortId(1103)],
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
             lane2_workflow: None,
             emit_participation: None,
@@ -26379,7 +26269,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(950)],
                 output: DeclarationId(1456),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(221))),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24043, 24234)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26389,7 +26279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 23991, 24232),
+            span: SourceSpan::new("src/v3/std/effects.dag", 23991, 24234),
         });
         declarations.push(Declaration {
             id: DeclarationId(754),
@@ -26397,7 +26287,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(93)],
                 output: DeclarationId(1457),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24286, 24308)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24288, 24310)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26407,7 +26297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24234, 24308),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24236, 24310),
         });
         declarations.push(Declaration {
             id: DeclarationId(755),
@@ -26415,7 +26305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1458)],
                 output: DeclarationId(1460),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24390, 24483)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24392, 24485)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26425,7 +26315,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24310, 24483),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24312, 24485),
         });
         declarations.push(Declaration {
             id: DeclarationId(756),
@@ -26433,7 +26323,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1461)],
                 output: DeclarationId(1463),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24558, 24741)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 24560, 24743)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26443,7 +26333,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24485, 24741),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24487, 24743),
         });
         declarations.push(Declaration {
             id: DeclarationId(757),
@@ -26451,7 +26341,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1464)],
                 output: DeclarationId(744),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25619, 25742)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 25621, 25744)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26461,7 +26351,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25552, 25742),
+            span: SourceSpan::new("src/v3/std/effects.dag", 25554, 25744),
         });
         declarations.push(Declaration {
             id: DeclarationId(758),
@@ -26480,7 +26370,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 26943, 26978),
+            span: SourceSpan::new("src/v3/std/effects.dag", 26945, 26980),
         });
         declarations.push(Declaration {
             id: DeclarationId(759),
@@ -26505,7 +26395,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27063, 27129),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27065, 27131),
         });
         declarations.push(Declaration {
             id: DeclarationId(760),
@@ -26538,7 +26428,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27805, 28027),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27807, 28029),
         });
         declarations.push(Declaration {
             id: DeclarationId(761),
@@ -26567,7 +26457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28386, 28490),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28388, 28492),
         });
         declarations.push(Declaration {
             id: DeclarationId(762),
@@ -26592,7 +26482,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28629, 28767),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28631, 28769),
         });
         declarations.push(Declaration {
             id: DeclarationId(763),
@@ -26600,7 +26490,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(230), DeclarationId(230), DeclarationId(230)],
                 output: DeclarationId(762),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 28909, 29065)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 28911, 29067)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26610,7 +26500,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28769, 29065),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28771, 29067),
         });
         declarations.push(Declaration {
             id: DeclarationId(764),
@@ -26647,7 +26537,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29228, 29384),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29230, 29386),
         });
         declarations.push(Declaration {
             id: DeclarationId(765),
@@ -26676,7 +26566,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29386, 29502),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29388, 29504),
         });
         declarations.push(Declaration {
             id: DeclarationId(766),
@@ -26701,7 +26591,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29666, 29804),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29668, 29806),
         });
         declarations.push(Declaration {
             id: DeclarationId(767),
@@ -26709,7 +26599,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(764), DeclarationId(230)],
                 output: DeclarationId(766),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 29925, 30080)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 29927, 30082)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26719,7 +26609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29806, 30080),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29808, 30082),
         });
         declarations.push(Declaration {
             id: DeclarationId(768),
@@ -26727,7 +26617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(760)],
                 output: DeclarationId(762),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 30318, 31148)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 30320, 31150)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26737,7 +26627,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30232, 31148),
+            span: SourceSpan::new("src/v3/std/effects.dag", 30234, 31150),
         });
         declarations.push(Declaration {
             id: DeclarationId(769),
@@ -26770,7 +26660,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 31905, 32032),
+            span: SourceSpan::new("src/v3/std/effects.dag", 31907, 32034),
         });
         declarations.push(Declaration {
             id: DeclarationId(770),
@@ -26778,7 +26668,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1465)],
                 output: DeclarationId(1466),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 32131, 32425)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/effects.dag", 32133, 32427)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -26788,7 +26678,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32034, 32425),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32036, 32427),
         });
         declarations.push(Declaration {
             id: DeclarationId(771),
@@ -26817,7 +26707,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32742, 32833),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32744, 32835),
         });
         declarations.push(Declaration {
             id: DeclarationId(772),
@@ -27945,7 +27835,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(812)],
                 output: DeclarationId(722),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(225))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(217))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -30876,7 +30766,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(899), DeclarationId(899)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(229))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(221))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -30989,7 +30879,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903)],
                 output: DeclarationId(904),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(232))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(224))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31043,7 +30933,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(1749),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(236))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(228))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31061,7 +30951,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903), DeclarationId(1750)],
                 output: DeclarationId(1751),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(238))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(230))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31079,7 +30969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(243))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(235))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31097,7 +30987,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(902)],
                 output: DeclarationId(93),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(251))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(243))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31115,7 +31005,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(255))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(247))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31133,7 +31023,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(259))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(251))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31151,7 +31041,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(263))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(255))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31169,7 +31059,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(267))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(259))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31187,7 +31077,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1752)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(271))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(263))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31205,7 +31095,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(324))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(316))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31223,7 +31113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(899), DeclarationId(899)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(326))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(318))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31290,7 +31180,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(919), DeclarationId(919)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(396))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(388))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31308,7 +31198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(919), DeclarationId(919)],
                 output: DeclarationId(919),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(399))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(391))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31326,7 +31216,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(919), DeclarationId(919)],
                 output: DeclarationId(919),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(402))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(394))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31362,7 +31252,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(411))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(403))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31380,7 +31270,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1753)],
                 output: DeclarationId(1754),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(417))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(409))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31398,7 +31288,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1755)],
                 output: DeclarationId(1756),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(430))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(422))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31416,7 +31306,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1757)],
                 output: DeclarationId(1758),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(437))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(429))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31434,7 +31324,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1759)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(446))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(438))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31452,7 +31342,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1760)],
                 output: DeclarationId(1761),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(459))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(451))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31470,7 +31360,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(469))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(461))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31488,7 +31378,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(479))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(471))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31506,7 +31396,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1762)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(491))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(483))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31524,7 +31414,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1763)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(503))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(495))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31542,7 +31432,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1764)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(520))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(512))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31560,7 +31450,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(529))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(521))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31578,7 +31468,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(899), DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(538))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(530))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31601,7 +31491,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     DeclarationId(903),
                 ],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(543))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(535))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31637,7 +31527,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(903), DeclarationId(903)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(546))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(538))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31655,7 +31545,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(904), DeclarationId(903)],
                 output: DeclarationId(904),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(553))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(545))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31673,7 +31563,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(904)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(555))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(547))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31691,7 +31581,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1765), DeclarationId(903)],
                 output: DeclarationId(1766),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(568))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(560))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31709,7 +31599,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1767), DeclarationId(903)],
                 output: DeclarationId(1768),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(575))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(567))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -31727,7 +31617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1769)],
                 output: DeclarationId(1770),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(578))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(570))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -40056,7 +39946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1164)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(595))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(587))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -40074,7 +39964,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1163)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(604))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(596))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -40114,7 +40004,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(2063)],
                 output: DeclarationId(903),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(606))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(598))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41371,7 +41261,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822)],
                 output: DeclarationId(2185),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(608))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(600))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41389,7 +41279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(158),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(610))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(602))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41547,7 +41437,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     DeclarationId(1213),
                 ],
                 output: DeclarationId(1216),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(612))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(604))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41673,7 +41563,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(614))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(606))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41691,7 +41581,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(1214), DeclarationId(128)],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(646))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(638))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41709,7 +41599,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(1214)],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(649))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(641))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41727,7 +41617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(1213),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(652))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(644))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41745,7 +41635,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(655))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(647))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41763,7 +41653,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(1214)],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(658))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(650))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41781,7 +41671,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(1034),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(662))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(654))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41799,7 +41689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(1035),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(666))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(658))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41817,7 +41707,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(821)],
                 output: DeclarationId(159),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(673))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(665))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41835,7 +41725,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(230), DeclarationId(159)],
                 output: DeclarationId(1039),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(678))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(670))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41853,7 +41743,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(159),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(683))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(675))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41871,7 +41761,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(230)],
                 output: DeclarationId(1043),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(699))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(691))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41889,7 +41779,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(812)],
                 output: DeclarationId(1214),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(708))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(700))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41907,7 +41797,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(821)],
                 output: DeclarationId(2186),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(745))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(737))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41925,7 +41815,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(1214)],
                 output: DeclarationId(1043),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(759))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(751))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41943,7 +41833,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(76),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(761))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(753))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41961,7 +41851,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214)],
                 output: DeclarationId(1221),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(768))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(760))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -41979,7 +41869,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(1220)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(791))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(783))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42178,7 +42068,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(821)],
                 output: DeclarationId(2207),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(833))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(825))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42196,7 +42086,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(821)],
                 output: DeclarationId(2208),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(835))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(827))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42214,7 +42104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2209),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(837))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(829))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42232,7 +42122,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2210),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(839))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(831))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42250,7 +42140,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2211),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(841))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(833))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42268,7 +42158,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2212),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(843))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(835))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42286,7 +42176,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2213),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(845))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(837))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42304,7 +42194,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(2215),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(847))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(839))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42322,7 +42212,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214)],
                 output: DeclarationId(2217),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(851))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(843))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42340,7 +42230,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1039)],
                 output: DeclarationId(2218),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(854))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(846))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42358,7 +42248,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214)],
                 output: DeclarationId(2219),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(858))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(850))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42376,7 +42266,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1214), DeclarationId(1039)],
                 output: DeclarationId(2220),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(863))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(855))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42394,7 +42284,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(1214)],
                 output: DeclarationId(2221),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(870))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(862))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42412,7 +42302,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(1214), DeclarationId(1039)],
                 output: DeclarationId(2222),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(877))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(869))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42430,7 +42320,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(1214), DeclarationId(1043)],
                 output: DeclarationId(2223),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(882))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(874))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42448,7 +42338,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(2224)],
                 output: DeclarationId(2225),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(892))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(884))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42466,7 +42356,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(822), DeclarationId(821)],
                 output: DeclarationId(2226),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(900))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(892))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -44048,7 +43938,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1302)],
                 output: DeclarationId(1304),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(904))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(896))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -44778,7 +44668,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(800)],
                 output: DeclarationId(230),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(921))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(913))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -44796,7 +44686,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(800)],
                 output: DeclarationId(230),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(938))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(930))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -48075,7 +47965,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24264, 24285),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24266, 24287),
         });
         declarations.push(Declaration {
             id: DeclarationId(1458),
@@ -48095,7 +47985,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24337, 24362),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24339, 24364),
         });
         declarations.push(Declaration {
             id: DeclarationId(1459),
@@ -48115,7 +48005,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24367, 24388),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24369, 24390),
         });
         declarations.push(Declaration {
             id: DeclarationId(1460),
@@ -48134,7 +48024,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24367, 24389),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24369, 24391),
         });
         declarations.push(Declaration {
             id: DeclarationId(1461),
@@ -48154,7 +48044,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24515, 24530),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24517, 24532),
         });
         declarations.push(Declaration {
             id: DeclarationId(1462),
@@ -48174,7 +48064,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24535, 24556),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24558),
         });
         declarations.push(Declaration {
             id: DeclarationId(1463),
@@ -48193,7 +48083,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24535, 24557),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24559),
         });
         declarations.push(Declaration {
             id: DeclarationId(1464),
@@ -48213,7 +48103,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 25580, 25595),
+            span: SourceSpan::new("src/v3/std/effects.dag", 25582, 25597),
         });
         declarations.push(Declaration {
             id: DeclarationId(1465),
@@ -48233,7 +48123,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32078, 32093),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32080, 32095),
         });
         declarations.push(Declaration {
             id: DeclarationId(1466),
@@ -48253,7 +48143,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 32099, 32130),
+            span: SourceSpan::new("src/v3/std/effects.dag", 32101, 32132),
         });
         declarations.push(Declaration {
             id: DeclarationId(1467),
@@ -48737,7 +48627,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27849, 27864),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27851, 27866),
         });
         declarations.push(Declaration {
             id: DeclarationId(1493),
@@ -48756,7 +48646,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27829, 27866),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27831, 27868),
         });
         declarations.push(Declaration {
             id: DeclarationId(1494),
@@ -48776,7 +48666,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27892, 27919),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27894, 27921),
         });
         declarations.push(Declaration {
             id: DeclarationId(1495),
@@ -48795,7 +48685,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27871, 27921),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27873, 27923),
         });
         declarations.push(Declaration {
             id: DeclarationId(1496),
@@ -48814,7 +48704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27926, 27961),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27928, 27963),
         });
         declarations.push(Declaration {
             id: DeclarationId(1497),
@@ -48834,7 +48724,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27993, 28025),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27995, 28027),
         });
         declarations.push(Declaration {
             id: DeclarationId(1498),
@@ -48853,7 +48743,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 27966, 28027),
+            span: SourceSpan::new("src/v3/std/effects.dag", 27968, 28029),
         });
         declarations.push(Declaration {
             id: DeclarationId(1499),
@@ -48872,7 +48762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28664, 28710),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28666, 28712),
         });
         declarations.push(Declaration {
             id: DeclarationId(1500),
@@ -48891,7 +48781,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 28715, 28767),
+            span: SourceSpan::new("src/v3/std/effects.dag", 28717, 28769),
         });
         declarations.push(Declaration {
             id: DeclarationId(1501),
@@ -48905,7 +48795,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29264, 29284),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29266, 29286),
         });
         declarations.push(Declaration {
             id: DeclarationId(1502),
@@ -48919,7 +48809,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29289, 29310),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29291, 29312),
         });
         declarations.push(Declaration {
             id: DeclarationId(1503),
@@ -48933,7 +48823,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29315, 29338),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29317, 29340),
         });
         declarations.push(Declaration {
             id: DeclarationId(1504),
@@ -48947,7 +48837,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29343, 29361),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29345, 29363),
         });
         declarations.push(Declaration {
             id: DeclarationId(1505),
@@ -48961,7 +48851,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29366, 29384),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29368, 29386),
         });
         declarations.push(Declaration {
             id: DeclarationId(1506),
@@ -48980,7 +48870,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29701, 29747),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29703, 29749),
         });
         declarations.push(Declaration {
             id: DeclarationId(1507),
@@ -48999,7 +48889,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 29752, 29804),
+            span: SourceSpan::new("src/v3/std/effects.dag", 29754, 29806),
         });
         declarations.push(Declaration {
             id: DeclarationId(1508),
@@ -67029,7 +66919,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(151)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(944))),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(936))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68450,7 +68340,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24367, 24389),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24369, 24391),
         });
         declarations.push(Declaration {
             id: DeclarationId(2566),
@@ -68464,7 +68354,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24367, 24389),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24369, 24391),
         });
         declarations.push(Declaration {
             id: DeclarationId(2567),
@@ -68489,7 +68379,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24367, 24389),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24369, 24391),
         });
         declarations.push(Declaration {
             id: DeclarationId(2568),
@@ -68508,7 +68398,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24535, 24557),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24559),
         });
         declarations.push(Declaration {
             id: DeclarationId(2569),
@@ -68522,7 +68412,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24535, 24557),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24559),
         });
         declarations.push(Declaration {
             id: DeclarationId(2570),
@@ -68547,7 +68437,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 24535, 24557),
+            span: SourceSpan::new("src/v3/std/effects.dag", 24537, 24559),
         });
         declarations.push(Declaration {
             id: DeclarationId(2571),
@@ -76478,7 +76368,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(214),
             Port {
                 id: PortId(214),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(950))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(812))),
                 produced_by: None,
             },
         );
@@ -76487,7 +76377,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(215),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(214)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76495,7 +76385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(216),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(215)),
+                produced_by: Some(NodeId(214)),
             },
         );
         ports.insert(
@@ -76503,7 +76393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(217),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(216)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76511,30 +76401,30 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(218),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(215)),
             },
         );
         ports.insert(
             PortId(219),
             Port {
                 id: PortId(219),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(217)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
+                produced_by: Some(NodeId(216)),
             },
         );
         ports.insert(
             PortId(220),
             Port {
                 id: PortId(220),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(218)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(221),
             Port {
                 id: PortId(221),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
                 produced_by: None,
             },
         );
@@ -76542,31 +76432,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(222),
             Port {
                 id: PortId(222),
-                state: PortState::Unresolved,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
+                produced_by: Some(NodeId(218)),
             },
         );
         ports.insert(
             PortId(223),
             Port {
                 id: PortId(223),
-                state: PortState::Unresolved,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
+                produced_by: Some(NodeId(219)),
             },
         );
         ports.insert(
             PortId(224),
             Port {
                 id: PortId(224),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(219)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(220)),
             },
         );
         ports.insert(
             PortId(225),
             Port {
                 id: PortId(225),
-                state: PortState::Unresolved,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76574,23 +76464,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(226),
             Port {
                 id: PortId(226),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1456))),
-                produced_by: Some(NodeId(220)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(222)),
             },
         );
         ports.insert(
             PortId(227),
             Port {
                 id: PortId(227),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(812))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
+                produced_by: Some(NodeId(223)),
             },
         );
         ports.insert(
             PortId(228),
             Port {
                 id: PortId(228),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76598,8 +76488,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(229),
             Port {
                 id: PortId(229),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(222)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76607,7 +76497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(230),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(225)),
             },
         );
         ports.insert(
@@ -76615,22 +76505,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(231),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(223)),
+                produced_by: Some(NodeId(226)),
             },
         );
         ports.insert(
             PortId(232),
             Port {
                 id: PortId(232),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
-                produced_by: Some(NodeId(224)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1749))),
+                produced_by: Some(NodeId(227)),
             },
         );
         ports.insert(
             PortId(233),
             Port {
                 id: PortId(233),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76638,7 +76528,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(234),
             Port {
                 id: PortId(234),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76646,32 +76536,32 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(235),
             Port {
                 id: PortId(235),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
-                produced_by: Some(NodeId(226)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1750))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(236),
             Port {
                 id: PortId(236),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(722))),
-                produced_by: Some(NodeId(227)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1751))),
+                produced_by: Some(NodeId(229)),
             },
         );
         ports.insert(
             PortId(237),
             Port {
                 id: PortId(237),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(228)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(238),
             Port {
                 id: PortId(238),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(231)),
             },
         );
         ports.insert(
@@ -76679,39 +76569,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(239),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(230)),
+                produced_by: Some(NodeId(232)),
             },
         );
         ports.insert(
             PortId(240),
             Port {
                 id: PortId(240),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
-                produced_by: Some(NodeId(231)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(241),
             Port {
                 id: PortId(241),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(233)),
             },
         );
         ports.insert(
             PortId(242),
             Port {
                 id: PortId(242),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(234)),
             },
         );
         ports.insert(
             PortId(243),
             Port {
                 id: PortId(243),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(233)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(902))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76719,78 +76609,78 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(244),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(234)),
+                produced_by: Some(NodeId(236)),
             },
         );
         ports.insert(
             PortId(245),
             Port {
                 id: PortId(245),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1749))),
-                produced_by: Some(NodeId(235)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(246),
             Port {
                 id: PortId(246),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(237)),
             },
         );
         ports.insert(
             PortId(247),
             Port {
                 id: PortId(247),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(238)),
             },
         );
         ports.insert(
             PortId(248),
             Port {
                 id: PortId(248),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1750))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(239)),
             },
         );
         ports.insert(
             PortId(249),
             Port {
                 id: PortId(249),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1751))),
-                produced_by: Some(NodeId(237)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(240)),
             },
         );
         ports.insert(
             PortId(250),
             Port {
                 id: PortId(250),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(241)),
             },
         );
         ports.insert(
             PortId(251),
             Port {
                 id: PortId(251),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(239)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: Some(NodeId(242)),
             },
         );
         ports.insert(
             PortId(252),
             Port {
                 id: PortId(252),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(240)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(253),
             Port {
                 id: PortId(253),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76799,38 +76689,38 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(254),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(241)),
+                produced_by: Some(NodeId(244)),
             },
         );
         ports.insert(
             PortId(255),
             Port {
                 id: PortId(255),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(242)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(245)),
             },
         );
         ports.insert(
             PortId(256),
             Port {
                 id: PortId(256),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(902))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(246)),
             },
         );
         ports.insert(
             PortId(257),
             Port {
                 id: PortId(257),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(244)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(258),
             Port {
                 id: PortId(258),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -76839,7 +76729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(259),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(245)),
+                produced_by: Some(NodeId(248)),
             },
         );
         ports.insert(
@@ -76847,47 +76737,47 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(260),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(246)),
+                produced_by: Some(NodeId(249)),
             },
         );
         ports.insert(
             PortId(261),
             Port {
                 id: PortId(261),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(247)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(250)),
             },
         );
         ports.insert(
             PortId(262),
             Port {
                 id: PortId(262),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(248)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(263),
             Port {
                 id: PortId(263),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(249)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(264),
             Port {
                 id: PortId(264),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
-                produced_by: Some(NodeId(250)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(252)),
             },
         );
         ports.insert(
             PortId(265),
             Port {
                 id: PortId(265),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(253)),
             },
         );
         ports.insert(
@@ -76895,39 +76785,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(266),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                produced_by: Some(NodeId(254)),
             },
         );
         ports.insert(
             PortId(267),
             Port {
                 id: PortId(267),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(252)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(268),
             Port {
                 id: PortId(268),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(253)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(269),
             Port {
                 id: PortId(269),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(254)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(256)),
             },
         );
         ports.insert(
             PortId(270),
             Port {
                 id: PortId(270),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(257)),
             },
         );
         ports.insert(
@@ -76935,15 +76825,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(271),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                produced_by: Some(NodeId(258)),
             },
         );
         ports.insert(
             PortId(272),
             Port {
                 id: PortId(272),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(256)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1752))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76951,15 +76841,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(273),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(257)),
+                produced_by: Some(NodeId(260)),
             },
         );
         ports.insert(
             PortId(274),
             Port {
                 id: PortId(274),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(258)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(261)),
             },
         );
         ports.insert(
@@ -76967,7 +76857,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(275),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                produced_by: Some(NodeId(262)),
             },
         );
         ports.insert(
@@ -76982,8 +76872,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(277),
             Port {
                 id: PortId(277),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(260)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -76991,22 +76881,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(278),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(261)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(279),
             Port {
                 id: PortId(279),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(262)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(264)),
             },
         );
         ports.insert(
             PortId(280),
             Port {
                 id: PortId(280),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -77014,7 +76904,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(281),
             Port {
                 id: PortId(281),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -77023,7 +76913,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(282),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(264)),
+                produced_by: Some(NodeId(265)),
             },
         );
         ports.insert(
@@ -77031,14 +76921,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(283),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(265)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(284),
             Port {
                 id: PortId(284),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: Some(NodeId(266)),
             },
         );
@@ -77046,7 +76936,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(285),
             Port {
                 id: PortId(285),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1752))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -77055,7 +76945,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(286),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(268)),
+                produced_by: Some(NodeId(267)),
             },
         );
         ports.insert(
@@ -77063,22 +76953,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(287),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(269)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(288),
             Port {
                 id: PortId(288),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(270)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(268)),
             },
         );
         ports.insert(
             PortId(289),
             Port {
                 id: PortId(289),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -77086,8 +76976,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(290),
             Port {
                 id: PortId(290),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(269)),
             },
         );
         ports.insert(
@@ -77103,7 +76993,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(292),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(272)),
+                produced_by: Some(NodeId(270)),
             },
         );
         ports.insert(
@@ -77119,7 +77009,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(294),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(271)),
             },
         );
         ports.insert(
@@ -77127,7 +77017,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(295),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(273)),
+                produced_by: Some(NodeId(272)),
             },
         );
         ports.insert(
@@ -77143,7 +77033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(297),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(274)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77151,7 +77041,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(298),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(273)),
             },
         );
         ports.insert(
@@ -77159,7 +77049,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(299),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(275)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77167,7 +77057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(300),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(274)),
             },
         );
         ports.insert(
@@ -77175,7 +77065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(301),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(276)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77183,7 +77073,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(302),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(275)),
             },
         );
         ports.insert(
@@ -77191,7 +77081,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(303),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(277)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77199,7 +77089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(304),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(276)),
             },
         );
         ports.insert(
@@ -77207,7 +77097,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(305),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(278)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77215,7 +77105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(306),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(277)),
             },
         );
         ports.insert(
@@ -77223,7 +77113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(307),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(279)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77231,7 +77121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(308),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(280)),
+                produced_by: Some(NodeId(278)),
             },
         );
         ports.insert(
@@ -77247,7 +77137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(310),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(279)),
             },
         );
         ports.insert(
@@ -77255,7 +77145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(311),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(281)),
+                produced_by: Some(NodeId(280)),
             },
         );
         ports.insert(
@@ -77271,7 +77161,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(313),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(282)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77279,7 +77169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(314),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(281)),
             },
         );
         ports.insert(
@@ -77287,7 +77177,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(315),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(283)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77295,7 +77185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(316),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(282)),
             },
         );
         ports.insert(
@@ -77303,7 +77193,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(317),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(284)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77311,7 +77201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(318),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(283)),
             },
         );
         ports.insert(
@@ -77319,7 +77209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(319),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(285)),
+                produced_by: Some(NodeId(284)),
             },
         );
         ports.insert(
@@ -77335,7 +77225,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(321),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(286)),
+                produced_by: Some(NodeId(285)),
             },
         );
         ports.insert(
@@ -77343,7 +77233,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(322),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(286)),
             },
         );
         ports.insert(
@@ -77367,7 +77257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(325),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(289)),
             },
         );
         ports.insert(
@@ -77375,7 +77265,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(326),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(290)),
             },
         );
         ports.insert(
@@ -77383,7 +77273,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(327),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(289)),
+                produced_by: Some(NodeId(291)),
             },
         );
         ports.insert(
@@ -77391,7 +77281,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(328),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(292)),
             },
         );
         ports.insert(
@@ -77399,7 +77289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(329),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(290)),
+                produced_by: Some(NodeId(293)),
             },
         );
         ports.insert(
@@ -77407,7 +77297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(330),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(294)),
             },
         );
         ports.insert(
@@ -77415,7 +77305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(331),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(291)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77423,7 +77313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(332),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(292)),
+                produced_by: Some(NodeId(295)),
             },
         );
         ports.insert(
@@ -77439,7 +77329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(334),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(293)),
+                produced_by: Some(NodeId(296)),
             },
         );
         ports.insert(
@@ -77447,7 +77337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(335),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(294)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77455,7 +77345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(336),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(295)),
+                produced_by: Some(NodeId(297)),
             },
         );
         ports.insert(
@@ -77463,7 +77353,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(337),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(296)),
+                produced_by: Some(NodeId(298)),
             },
         );
         ports.insert(
@@ -77471,7 +77361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(338),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(297)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77479,7 +77369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(339),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(298)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77495,7 +77385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(341),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(300)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77503,7 +77393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(342),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(301)),
+                produced_by: Some(NodeId(300)),
             },
         );
         ports.insert(
@@ -77511,7 +77401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(343),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(302)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77519,7 +77409,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(344),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(301)),
             },
         );
         ports.insert(
@@ -77527,7 +77417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(345),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(303)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77535,7 +77425,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(346),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(302)),
             },
         );
         ports.insert(
@@ -77543,7 +77433,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(347),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(304)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77551,7 +77441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(348),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(303)),
             },
         );
         ports.insert(
@@ -77559,7 +77449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(349),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(305)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77567,7 +77457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(350),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(306)),
+                produced_by: Some(NodeId(304)),
             },
         );
         ports.insert(
@@ -77583,7 +77473,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(352),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(305)),
             },
         );
         ports.insert(
@@ -77591,7 +77481,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(353),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(307)),
+                produced_by: Some(NodeId(306)),
             },
         );
         ports.insert(
@@ -77607,7 +77497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(355),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(308)),
+                produced_by: Some(NodeId(307)),
             },
         );
         ports.insert(
@@ -77615,7 +77505,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(356),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(308)),
             },
         );
         ports.insert(
@@ -77631,7 +77521,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(358),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(310)),
             },
         );
         ports.insert(
@@ -77639,7 +77529,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(359),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(310)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77647,7 +77537,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(360),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(311)),
             },
         );
         ports.insert(
@@ -77655,7 +77545,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(361),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(311)),
+                produced_by: Some(NodeId(312)),
             },
         );
         ports.insert(
@@ -77663,7 +77553,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(362),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(313)),
             },
         );
         ports.insert(
@@ -77671,55 +77561,55 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(363),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(312)),
+                produced_by: Some(NodeId(314)),
             },
         );
         ports.insert(
             PortId(364),
             Port {
                 id: PortId(364),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(315)),
             },
         );
         ports.insert(
             PortId(365),
             Port {
                 id: PortId(365),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(313)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(366),
             Port {
                 id: PortId(366),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(314)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(367),
             Port {
                 id: PortId(367),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(317)),
             },
         );
         ports.insert(
             PortId(368),
             Port {
                 id: PortId(368),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(315)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(369),
             Port {
                 id: PortId(369),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(316)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77727,7 +77617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(370),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(317)),
+                produced_by: Some(NodeId(319)),
             },
         );
         ports.insert(
@@ -77735,7 +77625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(371),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(318)),
+                produced_by: Some(NodeId(320)),
             },
         );
         ports.insert(
@@ -77743,7 +77633,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(372),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(321)),
             },
         );
         ports.insert(
@@ -77751,7 +77641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(373),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(319)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77759,7 +77649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(374),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(320)),
+                produced_by: Some(NodeId(322)),
             },
         );
         ports.insert(
@@ -77767,7 +77657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(375),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(321)),
+                produced_by: Some(NodeId(323)),
             },
         );
         ports.insert(
@@ -77775,46 +77665,46 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(376),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(322)),
+                produced_by: Some(NodeId(324)),
             },
         );
         ports.insert(
             PortId(377),
             Port {
                 id: PortId(377),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(323)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(325)),
             },
         );
         ports.insert(
             PortId(378),
             Port {
                 id: PortId(378),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(326)),
             },
         );
         ports.insert(
             PortId(379),
             Port {
                 id: PortId(379),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(327)),
             },
         );
         ports.insert(
             PortId(380),
             Port {
                 id: PortId(380),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(325)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(328)),
             },
         );
         ports.insert(
             PortId(381),
             Port {
                 id: PortId(381),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -77822,8 +77712,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(382),
             Port {
                 id: PortId(382),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(329)),
             },
         );
         ports.insert(
@@ -77831,7 +77721,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(383),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(327)),
+                produced_by: Some(NodeId(330)),
             },
         );
         ports.insert(
@@ -77839,7 +77729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(384),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(328)),
+                produced_by: Some(NodeId(331)),
             },
         );
         ports.insert(
@@ -77847,7 +77737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(385),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(329)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77855,7 +77745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(386),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(332)),
             },
         );
         ports.insert(
@@ -77863,7 +77753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(387),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(330)),
+                produced_by: Some(NodeId(333)),
             },
         );
         ports.insert(
@@ -77871,7 +77761,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(388),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(331)),
+                produced_by: Some(NodeId(334)),
             },
         );
         ports.insert(
@@ -77879,7 +77769,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(389),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(332)),
+                produced_by: Some(NodeId(335)),
             },
         );
         ports.insert(
@@ -77887,7 +77777,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(390),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(333)),
+                produced_by: Some(NodeId(336)),
             },
         );
         ports.insert(
@@ -77895,7 +77785,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(391),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(334)),
+                produced_by: Some(NodeId(337)),
             },
         );
         ports.insert(
@@ -77903,7 +77793,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(392),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(335)),
+                produced_by: Some(NodeId(338)),
             },
         );
         ports.insert(
@@ -77911,7 +77801,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(393),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(336)),
+                produced_by: Some(NodeId(339)),
             },
         );
         ports.insert(
@@ -77919,7 +77809,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(394),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(340)),
             },
         );
         ports.insert(
@@ -77927,7 +77817,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(395),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(337)),
+                produced_by: Some(NodeId(341)),
             },
         );
         ports.insert(
@@ -77935,7 +77825,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(396),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(338)),
+                produced_by: Some(NodeId(342)),
             },
         );
         ports.insert(
@@ -77943,7 +77833,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(397),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(339)),
+                produced_by: Some(NodeId(343)),
             },
         );
         ports.insert(
@@ -77951,7 +77841,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(398),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(344)),
             },
         );
         ports.insert(
@@ -77959,7 +77849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(399),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(340)),
+                produced_by: Some(NodeId(345)),
             },
         );
         ports.insert(
@@ -77967,7 +77857,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(400),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(341)),
+                produced_by: Some(NodeId(346)),
             },
         );
         ports.insert(
@@ -77975,7 +77865,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(401),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(342)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -77983,7 +77873,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(402),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(343)),
+                produced_by: Some(NodeId(347)),
             },
         );
         ports.insert(
@@ -77991,7 +77881,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(403),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(344)),
+                produced_by: Some(NodeId(348)),
             },
         );
         ports.insert(
@@ -77999,7 +77889,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(404),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(345)),
+                produced_by: Some(NodeId(349)),
             },
         );
         ports.insert(
@@ -78007,7 +77897,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(405),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(346)),
+                produced_by: Some(NodeId(350)),
             },
         );
         ports.insert(
@@ -78015,7 +77905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(406),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(347)),
+                produced_by: Some(NodeId(351)),
             },
         );
         ports.insert(
@@ -78023,7 +77913,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(407),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(348)),
+                produced_by: Some(NodeId(352)),
             },
         );
         ports.insert(
@@ -78031,7 +77921,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(408),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(349)),
+                produced_by: Some(NodeId(353)),
             },
         );
         ports.insert(
@@ -78039,7 +77929,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(409),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(350)),
+                produced_by: Some(NodeId(354)),
             },
         );
         ports.insert(
@@ -78047,7 +77937,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(410),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(351)),
+                produced_by: Some(NodeId(355)),
             },
         );
         ports.insert(
@@ -78055,7 +77945,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(411),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(352)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78063,7 +77953,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(412),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(353)),
+                produced_by: Some(NodeId(356)),
             },
         );
         ports.insert(
@@ -78071,7 +77961,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(413),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(354)),
+                produced_by: Some(NodeId(357)),
             },
         );
         ports.insert(
@@ -78079,7 +77969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(414),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(358)),
             },
         );
         ports.insert(
@@ -78087,7 +77977,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(415),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(355)),
+                produced_by: Some(NodeId(359)),
             },
         );
         ports.insert(
@@ -78095,7 +77985,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(416),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(356)),
+                produced_by: Some(NodeId(360)),
             },
         );
         ports.insert(
@@ -78103,7 +77993,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(417),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(357)),
+                produced_by: Some(NodeId(361)),
             },
         );
         ports.insert(
@@ -78111,7 +78001,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(418),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(358)),
+                produced_by: Some(NodeId(362)),
             },
         );
         ports.insert(
@@ -78119,7 +78009,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(419),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(359)),
+                produced_by: Some(NodeId(363)),
             },
         );
         ports.insert(
@@ -78127,7 +78017,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(420),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(360)),
+                produced_by: Some(NodeId(364)),
             },
         );
         ports.insert(
@@ -78135,7 +78025,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(421),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(361)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78143,7 +78033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(422),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(362)),
+                produced_by: Some(NodeId(365)),
             },
         );
         ports.insert(
@@ -78151,7 +78041,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(423),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(363)),
+                produced_by: Some(NodeId(366)),
             },
         );
         ports.insert(
@@ -78159,7 +78049,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(424),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(367)),
             },
         );
         ports.insert(
@@ -78167,7 +78057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(425),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(364)),
+                produced_by: Some(NodeId(368)),
             },
         );
         ports.insert(
@@ -78175,7 +78065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(426),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(365)),
+                produced_by: Some(NodeId(369)),
             },
         );
         ports.insert(
@@ -78183,7 +78073,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(427),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(366)),
+                produced_by: Some(NodeId(370)),
             },
         );
         ports.insert(
@@ -78191,7 +78081,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(428),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(367)),
+                produced_by: Some(NodeId(371)),
             },
         );
         ports.insert(
@@ -78199,7 +78089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(429),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(368)),
+                produced_by: Some(NodeId(372)),
             },
         );
         ports.insert(
@@ -78207,7 +78097,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(430),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(369)),
+                produced_by: Some(NodeId(373)),
             },
         );
         ports.insert(
@@ -78215,7 +78105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(431),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(370)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78223,7 +78113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(432),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(371)),
+                produced_by: Some(NodeId(374)),
             },
         );
         ports.insert(
@@ -78231,7 +78121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(433),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(372)),
+                produced_by: Some(NodeId(375)),
             },
         );
         ports.insert(
@@ -78239,7 +78129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(434),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(376)),
             },
         );
         ports.insert(
@@ -78247,7 +78137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(435),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(373)),
+                produced_by: Some(NodeId(377)),
             },
         );
         ports.insert(
@@ -78255,7 +78145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(436),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(374)),
+                produced_by: Some(NodeId(378)),
             },
         );
         ports.insert(
@@ -78263,7 +78153,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(437),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(375)),
+                produced_by: Some(NodeId(379)),
             },
         );
         ports.insert(
@@ -78271,7 +78161,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(438),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(376)),
+                produced_by: Some(NodeId(380)),
             },
         );
         ports.insert(
@@ -78279,7 +78169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(439),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(377)),
+                produced_by: Some(NodeId(381)),
             },
         );
         ports.insert(
@@ -78287,7 +78177,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(440),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(378)),
+                produced_by: Some(NodeId(382)),
             },
         );
         ports.insert(
@@ -78295,7 +78185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(441),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(379)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78303,7 +78193,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(442),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(380)),
+                produced_by: Some(NodeId(383)),
             },
         );
         ports.insert(
@@ -78311,7 +78201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(443),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(381)),
+                produced_by: Some(NodeId(384)),
             },
         );
         ports.insert(
@@ -78319,7 +78209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(444),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(385)),
             },
         );
         ports.insert(
@@ -78327,31 +78217,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(445),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(382)),
+                produced_by: Some(NodeId(386)),
             },
         );
         ports.insert(
             PortId(446),
             Port {
                 id: PortId(446),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(383)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(387)),
             },
         );
         ports.insert(
             PortId(447),
             Port {
                 id: PortId(447),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(384)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(448),
             Port {
                 id: PortId(448),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(385)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78359,31 +78249,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(449),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(386)),
+                produced_by: Some(NodeId(389)),
             },
         );
         ports.insert(
             PortId(450),
             Port {
                 id: PortId(450),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(387)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: Some(NodeId(390)),
             },
         );
         ports.insert(
             PortId(451),
             Port {
                 id: PortId(451),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(388)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(452),
             Port {
                 id: PortId(452),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(389)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78391,23 +78281,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(453),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(390)),
+                produced_by: Some(NodeId(392)),
             },
         );
         ports.insert(
             PortId(454),
             Port {
                 id: PortId(454),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                produced_by: Some(NodeId(393)),
             },
         );
         ports.insert(
             PortId(455),
             Port {
                 id: PortId(455),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(391)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78415,7 +78305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(456),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(392)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78423,7 +78313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(457),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(393)),
+                produced_by: Some(NodeId(395)),
             },
         );
         ports.insert(
@@ -78431,22 +78321,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(458),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(394)),
+                produced_by: Some(NodeId(396)),
             },
         );
         ports.insert(
             PortId(459),
             Port {
                 id: PortId(459),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(395)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(397)),
             },
         );
         ports.insert(
             PortId(460),
             Port {
                 id: PortId(460),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -78454,8 +78344,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(461),
             Port {
                 id: PortId(461),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(398)),
             },
         );
         ports.insert(
@@ -78463,47 +78353,47 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(462),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(397)),
+                produced_by: Some(NodeId(399)),
             },
         );
         ports.insert(
             PortId(463),
             Port {
                 id: PortId(463),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: Some(NodeId(398)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(400)),
             },
         );
         ports.insert(
             PortId(464),
             Port {
                 id: PortId(464),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(401)),
             },
         );
         ports.insert(
             PortId(465),
             Port {
                 id: PortId(465),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(402)),
             },
         );
         ports.insert(
             PortId(466),
             Port {
                 id: PortId(466),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(400)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1753))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(467),
             Port {
                 id: PortId(467),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(919))),
-                produced_by: Some(NodeId(401)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(404)),
             },
         );
         ports.insert(
@@ -78511,15 +78401,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(468),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                produced_by: Some(NodeId(405)),
             },
         );
         ports.insert(
             PortId(469),
             Port {
                 id: PortId(469),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1750))),
+                produced_by: Some(NodeId(406)),
             },
         );
         ports.insert(
@@ -78527,23 +78417,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(470),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(403)),
+                produced_by: Some(NodeId(407)),
             },
         );
         ports.insert(
             PortId(471),
             Port {
                 id: PortId(471),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(404)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1754))),
+                produced_by: Some(NodeId(408)),
             },
         );
         ports.insert(
             PortId(472),
             Port {
                 id: PortId(472),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(405)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1755))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78551,7 +78441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(473),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(410)),
             },
         );
         ports.insert(
@@ -78559,7 +78449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(474),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(406)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78567,7 +78457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(475),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(407)),
+                produced_by: Some(NodeId(411)),
             },
         );
         ports.insert(
@@ -78575,7 +78465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(476),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(408)),
+                produced_by: Some(NodeId(412)),
             },
         );
         ports.insert(
@@ -78583,47 +78473,47 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(477),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(409)),
+                produced_by: Some(NodeId(413)),
             },
         );
         ports.insert(
             PortId(478),
             Port {
                 id: PortId(478),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(410)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(414)),
             },
         );
         ports.insert(
             PortId(479),
             Port {
                 id: PortId(479),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1753))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(415)),
             },
         );
         ports.insert(
             PortId(480),
             Port {
                 id: PortId(480),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(412)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(416)),
             },
         );
         ports.insert(
             PortId(481),
             Port {
                 id: PortId(481),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(413)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(417)),
             },
         );
         ports.insert(
             PortId(482),
             Port {
                 id: PortId(482),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1750))),
-                produced_by: Some(NodeId(414)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(418)),
             },
         );
         ports.insert(
@@ -78631,31 +78521,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(483),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(415)),
+                produced_by: Some(NodeId(419)),
             },
         );
         ports.insert(
             PortId(484),
             Port {
                 id: PortId(484),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1754))),
-                produced_by: Some(NodeId(416)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(420)),
             },
         );
         ports.insert(
             PortId(485),
             Port {
                 id: PortId(485),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1755))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1756))),
+                produced_by: Some(NodeId(421)),
             },
         );
         ports.insert(
             PortId(486),
             Port {
                 id: PortId(486),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(418)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1757))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78663,7 +78553,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(487),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(423)),
             },
         );
         ports.insert(
@@ -78671,7 +78561,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(488),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(419)),
+                produced_by: Some(NodeId(424)),
             },
         );
         ports.insert(
@@ -78679,7 +78569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(489),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(420)),
+                produced_by: Some(NodeId(425)),
             },
         );
         ports.insert(
@@ -78687,7 +78577,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(490),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(421)),
+                produced_by: Some(NodeId(426)),
             },
         );
         ports.insert(
@@ -78695,23 +78585,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(491),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(422)),
+                produced_by: Some(NodeId(427)),
             },
         );
         ports.insert(
             PortId(492),
             Port {
                 id: PortId(492),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(423)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1758))),
+                produced_by: Some(NodeId(428)),
             },
         );
         ports.insert(
             PortId(493),
             Port {
                 id: PortId(493),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(424)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1759))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78719,7 +78609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(494),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(425)),
+                produced_by: Some(NodeId(430)),
             },
         );
         ports.insert(
@@ -78727,7 +78617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(495),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(426)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78735,7 +78625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(496),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(427)),
+                produced_by: Some(NodeId(431)),
             },
         );
         ports.insert(
@@ -78743,23 +78633,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(497),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(428)),
+                produced_by: Some(NodeId(432)),
             },
         );
         ports.insert(
             PortId(498),
             Port {
                 id: PortId(498),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1756))),
-                produced_by: Some(NodeId(429)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(433)),
             },
         );
         ports.insert(
             PortId(499),
             Port {
                 id: PortId(499),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1757))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(434)),
             },
         );
         ports.insert(
@@ -78767,7 +78657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(500),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(431)),
+                produced_by: Some(NodeId(435)),
             },
         );
         ports.insert(
@@ -78775,23 +78665,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(501),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(432)),
+                produced_by: Some(NodeId(436)),
             },
         );
         ports.insert(
             PortId(502),
             Port {
                 id: PortId(502),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(433)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(437)),
             },
         );
         ports.insert(
             PortId(503),
             Port {
                 id: PortId(503),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(434)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1760))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78799,23 +78689,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(504),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(435)),
+                produced_by: Some(NodeId(439)),
             },
         );
         ports.insert(
             PortId(505),
             Port {
                 id: PortId(505),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1758))),
-                produced_by: Some(NodeId(436)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(506),
             Port {
                 id: PortId(506),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1759))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(440)),
             },
         );
         ports.insert(
@@ -78823,7 +78713,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(507),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(438)),
+                produced_by: Some(NodeId(441)),
             },
         );
         ports.insert(
@@ -78831,7 +78721,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(508),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(442)),
             },
         );
         ports.insert(
@@ -78839,7 +78729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(509),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(439)),
+                produced_by: Some(NodeId(443)),
             },
         );
         ports.insert(
@@ -78847,7 +78737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(510),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(440)),
+                produced_by: Some(NodeId(444)),
             },
         );
         ports.insert(
@@ -78855,7 +78745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(511),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(441)),
+                produced_by: Some(NodeId(445)),
             },
         );
         ports.insert(
@@ -78863,7 +78753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(512),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(442)),
+                produced_by: Some(NodeId(446)),
             },
         );
         ports.insert(
@@ -78871,7 +78761,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(513),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(443)),
+                produced_by: Some(NodeId(447)),
             },
         );
         ports.insert(
@@ -78879,31 +78769,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(514),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(444)),
+                produced_by: Some(NodeId(448)),
             },
         );
         ports.insert(
             PortId(515),
             Port {
                 id: PortId(515),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(445)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(449)),
             },
         );
         ports.insert(
             PortId(516),
             Port {
                 id: PortId(516),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1760))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1761))),
+                produced_by: Some(NodeId(450)),
             },
         );
         ports.insert(
             PortId(517),
             Port {
                 id: PortId(517),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(447)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78919,7 +78809,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(519),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(448)),
+                produced_by: Some(NodeId(452)),
             },
         );
         ports.insert(
@@ -78927,7 +78817,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(520),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(449)),
+                produced_by: Some(NodeId(453)),
             },
         );
         ports.insert(
@@ -78935,7 +78825,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(521),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(450)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78943,7 +78833,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(522),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(451)),
+                produced_by: Some(NodeId(454)),
             },
         );
         ports.insert(
@@ -78951,7 +78841,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(523),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(452)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78959,7 +78849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(524),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(453)),
+                produced_by: Some(NodeId(455)),
             },
         );
         ports.insert(
@@ -78967,7 +78857,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(525),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(454)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78975,7 +78865,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(526),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(455)),
+                produced_by: Some(NodeId(456)),
             },
         );
         ports.insert(
@@ -78983,7 +78873,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(527),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(456)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -78998,16 +78888,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(529),
             Port {
                 id: PortId(529),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1761))),
-                produced_by: Some(NodeId(458)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(530),
             Port {
                 id: PortId(530),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(458)),
             },
         );
         ports.insert(
@@ -79023,22 +78913,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(532),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(460)),
+                produced_by: Some(NodeId(459)),
             },
         );
         ports.insert(
             PortId(533),
             Port {
                 id: PortId(533),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(461)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(460)),
             },
         );
         ports.insert(
             PortId(534),
             Port {
                 id: PortId(534),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -79047,7 +78937,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(535),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(462)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79055,7 +78945,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(536),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(462)),
             },
         );
         ports.insert(
@@ -79134,16 +79024,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(546),
             Port {
                 id: PortId(546),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(468)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(547),
             Port {
                 id: PortId(547),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(468)),
             },
         );
         ports.insert(
@@ -79159,22 +79049,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(549),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(470)),
+                produced_by: Some(NodeId(469)),
             },
         );
         ports.insert(
             PortId(550),
             Port {
                 id: PortId(550),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(471)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(470)),
             },
         );
         ports.insert(
             PortId(551),
             Port {
                 id: PortId(551),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1762))),
                 produced_by: None,
             },
         );
@@ -79191,7 +79081,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(553),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(473)),
             },
         );
         ports.insert(
@@ -79199,7 +79089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(554),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(473)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79207,7 +79097,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(555),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(474)),
             },
         );
         ports.insert(
@@ -79215,7 +79105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(556),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(474)),
+                produced_by: Some(NodeId(475)),
             },
         );
         ports.insert(
@@ -79231,7 +79121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(558),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(475)),
+                produced_by: Some(NodeId(476)),
             },
         );
         ports.insert(
@@ -79239,7 +79129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(559),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(477)),
             },
         );
         ports.insert(
@@ -79247,7 +79137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(560),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(476)),
+                produced_by: Some(NodeId(478)),
             },
         );
         ports.insert(
@@ -79255,7 +79145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(561),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(479)),
             },
         );
         ports.insert(
@@ -79263,31 +79153,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(562),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(477)),
+                produced_by: Some(NodeId(480)),
             },
         );
         ports.insert(
             PortId(563),
             Port {
                 id: PortId(563),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(478)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(481)),
             },
         );
         ports.insert(
             PortId(564),
             Port {
                 id: PortId(564),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1762))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(482)),
             },
         );
         ports.insert(
             PortId(565),
             Port {
                 id: PortId(565),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(480)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1763))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79295,7 +79185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(566),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(481)),
+                produced_by: Some(NodeId(484)),
             },
         );
         ports.insert(
@@ -79303,7 +79193,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(567),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(485)),
             },
         );
         ports.insert(
@@ -79311,7 +79201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(568),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(482)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79319,7 +79209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(569),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(483)),
+                produced_by: Some(NodeId(486)),
             },
         );
         ports.insert(
@@ -79327,7 +79217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(570),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(487)),
             },
         );
         ports.insert(
@@ -79335,7 +79225,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(571),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(484)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79343,7 +79233,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(572),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(485)),
+                produced_by: Some(NodeId(488)),
             },
         );
         ports.insert(
@@ -79351,7 +79241,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(573),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(486)),
+                produced_by: Some(NodeId(489)),
             },
         );
         ports.insert(
@@ -79359,7 +79249,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(574),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(487)),
+                produced_by: Some(NodeId(490)),
             },
         );
         ports.insert(
@@ -79367,7 +79257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(575),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(488)),
+                produced_by: Some(NodeId(491)),
             },
         );
         ports.insert(
@@ -79375,31 +79265,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(576),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(489)),
+                produced_by: Some(NodeId(492)),
             },
         );
         ports.insert(
             PortId(577),
             Port {
                 id: PortId(577),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(490)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(493)),
             },
         );
         ports.insert(
             PortId(578),
             Port {
                 id: PortId(578),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1763))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(494)),
             },
         );
         ports.insert(
             PortId(579),
             Port {
                 id: PortId(579),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(492)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1764))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79407,7 +79297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(580),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(493)),
+                produced_by: Some(NodeId(496)),
             },
         );
         ports.insert(
@@ -79415,7 +79305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(581),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(497)),
             },
         );
         ports.insert(
@@ -79423,7 +79313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(582),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(494)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79431,7 +79321,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(583),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(495)),
+                produced_by: Some(NodeId(498)),
             },
         );
         ports.insert(
@@ -79439,7 +79329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(584),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(499)),
             },
         );
         ports.insert(
@@ -79447,7 +79337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(585),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(496)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79455,7 +79345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(586),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(497)),
+                produced_by: Some(NodeId(500)),
             },
         );
         ports.insert(
@@ -79463,7 +79353,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(587),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(498)),
+                produced_by: Some(NodeId(501)),
             },
         );
         ports.insert(
@@ -79471,7 +79361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(588),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(499)),
+                produced_by: Some(NodeId(502)),
             },
         );
         ports.insert(
@@ -79479,7 +79369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(589),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(500)),
+                produced_by: Some(NodeId(503)),
             },
         );
         ports.insert(
@@ -79487,23 +79377,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(590),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(501)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(591),
             Port {
                 id: PortId(591),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(502)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(504)),
             },
         );
         ports.insert(
             PortId(592),
             Port {
                 id: PortId(592),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1764))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(505)),
             },
         );
         ports.insert(
@@ -79511,7 +79401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(593),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(504)),
+                produced_by: Some(NodeId(506)),
             },
         );
         ports.insert(
@@ -79519,7 +79409,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(594),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(505)),
+                produced_by: Some(NodeId(507)),
             },
         );
         ports.insert(
@@ -79527,7 +79417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(595),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(508)),
             },
         );
         ports.insert(
@@ -79535,7 +79425,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(596),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(506)),
+                produced_by: Some(NodeId(509)),
             },
         );
         ports.insert(
@@ -79543,31 +79433,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(597),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(507)),
+                produced_by: Some(NodeId(510)),
             },
         );
         ports.insert(
             PortId(598),
             Port {
                 id: PortId(598),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(511)),
             },
         );
         ports.insert(
             PortId(599),
             Port {
                 id: PortId(599),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(508)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(600),
             Port {
                 id: PortId(600),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(509)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79575,7 +79465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(601),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(510)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79583,7 +79473,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(602),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(511)),
+                produced_by: Some(NodeId(513)),
             },
         );
         ports.insert(
@@ -79599,7 +79489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(604),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(512)),
+                produced_by: Some(NodeId(514)),
             },
         );
         ports.insert(
@@ -79607,7 +79497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(605),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(513)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79615,7 +79505,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(606),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(514)),
+                produced_by: Some(NodeId(515)),
             },
         );
         ports.insert(
@@ -79623,7 +79513,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(607),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(515)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79639,7 +79529,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(609),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(517)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79647,30 +79537,30 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(610),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(518)),
+                produced_by: Some(NodeId(517)),
             },
         );
         ports.insert(
             PortId(611),
             Port {
                 id: PortId(611),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(519)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(612),
             Port {
                 id: PortId(612),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(518)),
             },
         );
         ports.insert(
             PortId(613),
             Port {
                 id: PortId(613),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -79679,22 +79569,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(614),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(519)),
             },
         );
         ports.insert(
             PortId(615),
             Port {
                 id: PortId(615),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(521)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(520)),
             },
         );
         ports.insert(
             PortId(616),
             Port {
                 id: PortId(616),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
                 produced_by: None,
             },
         );
@@ -79702,15 +79592,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(617),
             Port {
                 id: PortId(617),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(522)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(618),
             Port {
                 id: PortId(618),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -79719,7 +79609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(619),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(523)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79727,7 +79617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(620),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(522)),
             },
         );
         ports.insert(
@@ -79735,7 +79625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(621),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(524)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79743,7 +79633,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(622),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(523)),
             },
         );
         ports.insert(
@@ -79751,7 +79641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(623),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(525)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79759,7 +79649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(624),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(524)),
             },
         );
         ports.insert(
@@ -79767,7 +79657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(625),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(526)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79775,7 +79665,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(626),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(525)),
             },
         );
         ports.insert(
@@ -79783,22 +79673,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(627),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(527)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(628),
             Port {
                 id: PortId(628),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(528)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(526)),
             },
         );
         ports.insert(
             PortId(629),
             Port {
                 id: PortId(629),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -79806,15 +79696,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(630),
             Port {
                 id: PortId(630),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(527)),
             },
         );
         ports.insert(
             PortId(631),
             Port {
                 id: PortId(631),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -79823,22 +79713,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(632),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(528)),
             },
         );
         ports.insert(
             PortId(633),
             Port {
                 id: PortId(633),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(530)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(529)),
             },
         );
         ports.insert(
             PortId(634),
             Port {
                 id: PortId(634),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
                 produced_by: None,
             },
         );
@@ -79846,15 +79736,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(635),
             Port {
                 id: PortId(635),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(531)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(636),
             Port {
                 id: PortId(636),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -79862,8 +79752,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(637),
             Port {
                 id: PortId(637),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(532)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79871,7 +79761,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(638),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(531)),
             },
         );
         ports.insert(
@@ -79879,7 +79769,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(639),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(533)),
+                produced_by: Some(NodeId(532)),
             },
         );
         ports.insert(
@@ -79887,14 +79777,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(640),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(533)),
             },
         );
         ports.insert(
             PortId(641),
             Port {
                 id: PortId(641),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: Some(NodeId(534)),
             },
         );
@@ -79902,7 +79792,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(642),
             Port {
                 id: PortId(642),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -79910,8 +79800,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(643),
             Port {
                 id: PortId(643),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(535)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -79919,30 +79809,30 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(644),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(536)),
             },
         );
         ports.insert(
             PortId(645),
             Port {
                 id: PortId(645),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(536)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(537)),
             },
         );
         ports.insert(
             PortId(646),
             Port {
                 id: PortId(646),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(537)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(647),
             Port {
                 id: PortId(647),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -79950,8 +79840,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(648),
             Port {
                 id: PortId(648),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(899))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(539)),
             },
         );
         ports.insert(
@@ -79959,15 +79849,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(649),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                produced_by: Some(NodeId(540)),
             },
         );
         ports.insert(
             PortId(650),
             Port {
                 id: PortId(650),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(541)),
             },
         );
         ports.insert(
@@ -79975,46 +79865,46 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(651),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(539)),
+                produced_by: Some(NodeId(542)),
             },
         );
         ports.insert(
             PortId(652),
             Port {
                 id: PortId(652),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(540)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(543)),
             },
         );
         ports.insert(
             PortId(653),
             Port {
                 id: PortId(653),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(541)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
+                produced_by: Some(NodeId(544)),
             },
         );
         ports.insert(
             PortId(654),
             Port {
                 id: PortId(654),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(542)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(655),
             Port {
                 id: PortId(655),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(546)),
             },
         );
         ports.insert(
             PortId(656),
             Port {
                 id: PortId(656),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1765))),
                 produced_by: None,
             },
         );
@@ -80022,23 +79912,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(657),
             Port {
                 id: PortId(657),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(544)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(658),
             Port {
                 id: PortId(658),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(545)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(548)),
             },
         );
         ports.insert(
             PortId(659),
             Port {
                 id: PortId(659),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -80046,24 +79936,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(660),
             Port {
                 id: PortId(660),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(549)),
             },
         );
         ports.insert(
             PortId(661),
             Port {
                 id: PortId(661),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(547)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(550)),
             },
         );
         ports.insert(
             PortId(662),
             Port {
                 id: PortId(662),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(548)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(551)),
             },
         );
         ports.insert(
@@ -80071,7 +79961,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(663),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(549)),
+                produced_by: Some(NodeId(552)),
             },
         );
         ports.insert(
@@ -80079,70 +79969,70 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(664),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(550)),
+                produced_by: Some(NodeId(553)),
             },
         );
         ports.insert(
             PortId(665),
             Port {
                 id: PortId(665),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(551)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(554)),
             },
         );
         ports.insert(
             PortId(666),
             Port {
                 id: PortId(666),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
-                produced_by: Some(NodeId(552)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(555)),
             },
         );
         ports.insert(
             PortId(667),
             Port {
                 id: PortId(667),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(904))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(556)),
             },
         );
         ports.insert(
             PortId(668),
             Port {
                 id: PortId(668),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(554)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(557)),
             },
         );
         ports.insert(
             PortId(669),
             Port {
                 id: PortId(669),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1765))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(558)),
             },
         );
         ports.insert(
             PortId(670),
             Port {
                 id: PortId(670),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1766))),
+                produced_by: Some(NodeId(559)),
             },
         );
         ports.insert(
             PortId(671),
             Port {
                 id: PortId(671),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(556)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1767))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(672),
             Port {
                 id: PortId(672),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
                 produced_by: None,
             },
         );
@@ -80151,7 +80041,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(673),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(557)),
+                produced_by: Some(NodeId(561)),
             },
         );
         ports.insert(
@@ -80159,7 +80049,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(674),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(558)),
+                produced_by: Some(NodeId(562)),
             },
         );
         ports.insert(
@@ -80167,7 +80057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(675),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(559)),
+                produced_by: Some(NodeId(563)),
             },
         );
         ports.insert(
@@ -80175,7 +80065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(676),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(560)),
+                produced_by: Some(NodeId(564)),
             },
         );
         ports.insert(
@@ -80183,23 +80073,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(677),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(561)),
+                produced_by: Some(NodeId(565)),
             },
         );
         ports.insert(
             PortId(678),
             Port {
                 id: PortId(678),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(562)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1768))),
+                produced_by: Some(NodeId(566)),
             },
         );
         ports.insert(
             PortId(679),
             Port {
                 id: PortId(679),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(563)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1769))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80207,46 +80097,46 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(680),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(564)),
+                produced_by: Some(NodeId(568)),
             },
         );
         ports.insert(
             PortId(681),
             Port {
                 id: PortId(681),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(565)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1770))),
+                produced_by: Some(NodeId(569)),
             },
         );
         ports.insert(
             PortId(682),
             Port {
                 id: PortId(682),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(566)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1164))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(683),
             Port {
                 id: PortId(683),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1766))),
-                produced_by: Some(NodeId(567)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(571)),
             },
         );
         ports.insert(
             PortId(684),
             Port {
                 id: PortId(684),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1767))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(572)),
             },
         );
         ports.insert(
             PortId(685),
             Port {
                 id: PortId(685),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -80255,7 +80145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(686),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(569)),
+                produced_by: Some(NodeId(573)),
             },
         );
         ports.insert(
@@ -80263,7 +80153,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(687),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(570)),
+                produced_by: Some(NodeId(574)),
             },
         );
         ports.insert(
@@ -80271,7 +80161,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(688),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(571)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80279,7 +80169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(689),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(572)),
+                produced_by: Some(NodeId(575)),
             },
         );
         ports.insert(
@@ -80287,23 +80177,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(690),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(573)),
+                produced_by: Some(NodeId(576)),
             },
         );
         ports.insert(
             PortId(691),
             Port {
                 id: PortId(691),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1768))),
-                produced_by: Some(NodeId(574)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(692),
             Port {
                 id: PortId(692),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1769))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(577)),
             },
         );
         ports.insert(
@@ -80311,23 +80201,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(693),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(576)),
+                produced_by: Some(NodeId(578)),
             },
         );
         ports.insert(
             PortId(694),
             Port {
                 id: PortId(694),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1770))),
-                produced_by: Some(NodeId(577)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(695),
             Port {
                 id: PortId(695),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1164))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(579)),
             },
         );
         ports.insert(
@@ -80335,7 +80225,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(696),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(579)),
+                produced_by: Some(NodeId(580)),
             },
         );
         ports.insert(
@@ -80343,7 +80233,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(697),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(580)),
+                produced_by: Some(NodeId(581)),
             },
         );
         ports.insert(
@@ -80351,7 +80241,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(698),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(582)),
             },
         );
         ports.insert(
@@ -80359,7 +80249,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(699),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(581)),
+                produced_by: Some(NodeId(583)),
             },
         );
         ports.insert(
@@ -80367,7 +80257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(700),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(582)),
+                produced_by: Some(NodeId(584)),
             },
         );
         ports.insert(
@@ -80375,23 +80265,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(701),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(585)),
             },
         );
         ports.insert(
             PortId(702),
             Port {
                 id: PortId(702),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(583)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(586)),
             },
         );
         ports.insert(
             PortId(703),
             Port {
                 id: PortId(703),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(584)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1163))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80407,7 +80297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(705),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(585)),
+                produced_by: Some(NodeId(588)),
             },
         );
         ports.insert(
@@ -80415,7 +80305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(706),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(586)),
+                produced_by: Some(NodeId(589)),
             },
         );
         ports.insert(
@@ -80423,7 +80313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(707),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(590)),
             },
         );
         ports.insert(
@@ -80431,7 +80321,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(708),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(587)),
+                produced_by: Some(NodeId(591)),
             },
         );
         ports.insert(
@@ -80439,7 +80329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(709),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(588)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80447,7 +80337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(710),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(589)),
+                produced_by: Some(NodeId(592)),
             },
         );
         ports.insert(
@@ -80455,7 +80345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(711),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(590)),
+                produced_by: Some(NodeId(593)),
             },
         );
         ports.insert(
@@ -80463,23 +80353,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(712),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(591)),
+                produced_by: Some(NodeId(594)),
             },
         );
         ports.insert(
             PortId(713),
             Port {
                 id: PortId(713),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(592)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
+                produced_by: Some(NodeId(595)),
             },
         );
         ports.insert(
             PortId(714),
             Port {
                 id: PortId(714),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(593)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2063))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80487,14 +80377,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(715),
                 state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(594)),
+                produced_by: Some(NodeId(597)),
             },
         );
         ports.insert(
             PortId(716),
             Port {
                 id: PortId(716),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1163))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
                 produced_by: None,
             },
         );
@@ -80502,47 +80392,47 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(717),
             Port {
                 id: PortId(717),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2185))),
+                produced_by: Some(NodeId(599)),
             },
         );
         ports.insert(
             PortId(718),
             Port {
                 id: PortId(718),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(596)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(158))),
+                produced_by: Some(NodeId(601)),
             },
         );
         ports.insert(
             PortId(719),
             Port {
                 id: PortId(719),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(597)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(721))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(720),
             Port {
                 id: PortId(720),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(598)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(173))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(721),
             Port {
                 id: PortId(721),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(599)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(174))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(722),
             Port {
                 id: PortId(722),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(177))),
                 produced_by: None,
             },
         );
@@ -80550,39 +80440,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(723),
             Port {
                 id: PortId(723),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(600)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(724),
             Port {
                 id: PortId(724),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(601)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1216))),
+                produced_by: Some(NodeId(603)),
             },
         );
         ports.insert(
             PortId(725),
             Port {
                 id: PortId(725),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(602)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(605)),
             },
         );
         ports.insert(
             PortId(726),
             Port {
                 id: PortId(726),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(603)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(727),
             Port {
                 id: PortId(727),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2063))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
                 produced_by: None,
             },
         );
@@ -80590,31 +80480,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(728),
             Port {
                 id: PortId(728),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(903))),
-                produced_by: Some(NodeId(605)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(729),
             Port {
                 id: PortId(729),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(607)),
             },
         );
         ports.insert(
             PortId(730),
             Port {
                 id: PortId(730),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2185))),
-                produced_by: Some(NodeId(607)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(608)),
             },
         );
         ports.insert(
             PortId(731),
             Port {
                 id: PortId(731),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(158))),
+                state: PortState::Uninferred,
                 produced_by: Some(NodeId(609)),
             },
         );
@@ -80622,15 +80512,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(732),
             Port {
                 id: PortId(732),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(721))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(610)),
             },
         );
         ports.insert(
             PortId(733),
             Port {
                 id: PortId(733),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(173))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -80638,55 +80528,55 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(734),
             Port {
                 id: PortId(734),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(174))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(611)),
             },
         );
         ports.insert(
             PortId(735),
             Port {
                 id: PortId(735),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(177))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(612)),
             },
         );
         ports.insert(
             PortId(736),
             Port {
                 id: PortId(736),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(613)),
             },
         );
         ports.insert(
             PortId(737),
             Port {
                 id: PortId(737),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1216))),
-                produced_by: Some(NodeId(611)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(614)),
             },
         );
         ports.insert(
             PortId(738),
             Port {
                 id: PortId(738),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(613)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(615)),
             },
         );
         ports.insert(
             PortId(739),
             Port {
                 id: PortId(739),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(616)),
             },
         );
         ports.insert(
             PortId(740),
             Port {
                 id: PortId(740),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -80694,8 +80584,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(741),
             Port {
                 id: PortId(741),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(617)),
             },
         );
         ports.insert(
@@ -80703,7 +80593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(742),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(615)),
+                produced_by: Some(NodeId(618)),
             },
         );
         ports.insert(
@@ -80711,7 +80601,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(743),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(616)),
+                produced_by: Some(NodeId(619)),
             },
         );
         ports.insert(
@@ -80719,7 +80609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(744),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(617)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80727,7 +80617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(745),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(618)),
+                produced_by: Some(NodeId(620)),
             },
         );
         ports.insert(
@@ -80735,7 +80625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(746),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(621)),
             },
         );
         ports.insert(
@@ -80743,7 +80633,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(747),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(619)),
+                produced_by: Some(NodeId(622)),
             },
         );
         ports.insert(
@@ -80751,7 +80641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(748),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(620)),
+                produced_by: Some(NodeId(623)),
             },
         );
         ports.insert(
@@ -80759,7 +80649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(749),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(621)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80767,7 +80657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(750),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(622)),
+                produced_by: Some(NodeId(624)),
             },
         );
         ports.insert(
@@ -80775,7 +80665,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(751),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(623)),
+                produced_by: Some(NodeId(625)),
             },
         );
         ports.insert(
@@ -80783,7 +80673,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(752),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(624)),
+                produced_by: Some(NodeId(626)),
             },
         );
         ports.insert(
@@ -80791,7 +80681,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(753),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(627)),
             },
         );
         ports.insert(
@@ -80799,7 +80689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(754),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(625)),
+                produced_by: Some(NodeId(628)),
             },
         );
         ports.insert(
@@ -80807,7 +80697,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(755),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(626)),
+                produced_by: Some(NodeId(629)),
             },
         );
         ports.insert(
@@ -80815,7 +80705,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(756),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(627)),
+                produced_by: Some(NodeId(630)),
             },
         );
         ports.insert(
@@ -80823,7 +80713,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(757),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(631)),
             },
         );
         ports.insert(
@@ -80831,7 +80721,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(758),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(628)),
+                produced_by: Some(NodeId(632)),
             },
         );
         ports.insert(
@@ -80839,7 +80729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(759),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(629)),
+                produced_by: Some(NodeId(633)),
             },
         );
         ports.insert(
@@ -80847,7 +80737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(760),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(630)),
+                produced_by: Some(NodeId(634)),
             },
         );
         ports.insert(
@@ -80855,7 +80745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(761),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(631)),
+                produced_by: Some(NodeId(635)),
             },
         );
         ports.insert(
@@ -80863,31 +80753,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(762),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(636)),
             },
         );
         ports.insert(
             PortId(763),
             Port {
                 id: PortId(763),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(632)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(637)),
             },
         );
         ports.insert(
             PortId(764),
             Port {
                 id: PortId(764),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(633)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(765),
             Port {
                 id: PortId(765),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(634)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80895,15 +80785,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(766),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(635)),
+                produced_by: Some(NodeId(639)),
             },
         );
         ports.insert(
             PortId(767),
             Port {
                 id: PortId(767),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(636)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(640)),
             },
         );
         ports.insert(
@@ -80911,15 +80801,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(768),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(637)),
+                produced_by: Some(NodeId(642)),
             },
         );
         ports.insert(
             PortId(769),
             Port {
                 id: PortId(769),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(638)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
+                produced_by: Some(NodeId(643)),
             },
         );
         ports.insert(
@@ -80927,31 +80817,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(770),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(639)),
+                produced_by: Some(NodeId(645)),
             },
         );
         ports.insert(
             PortId(771),
             Port {
                 id: PortId(771),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(640)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(646)),
             },
         );
         ports.insert(
             PortId(772),
             Port {
                 id: PortId(772),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(641)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(773),
             Port {
                 id: PortId(773),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(642)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -80959,39 +80849,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(774),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(643)),
+                produced_by: Some(NodeId(648)),
             },
         );
         ports.insert(
             PortId(775),
             Port {
                 id: PortId(775),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(644)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(649)),
             },
         );
         ports.insert(
             PortId(776),
             Port {
                 id: PortId(776),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(645)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(651)),
             },
         );
         ports.insert(
             PortId(777),
             Port {
                 id: PortId(777),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(652)),
             },
         );
         ports.insert(
             PortId(778),
             Port {
                 id: PortId(778),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1034))),
+                produced_by: Some(NodeId(653)),
             },
         );
         ports.insert(
@@ -80999,31 +80889,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(779),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(647)),
+                produced_by: Some(NodeId(655)),
             },
         );
         ports.insert(
             PortId(780),
             Port {
                 id: PortId(780),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(648)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(656)),
             },
         );
         ports.insert(
             PortId(781),
             Port {
                 id: PortId(781),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(650)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1035))),
+                produced_by: Some(NodeId(657)),
             },
         );
         ports.insert(
             PortId(782),
             Port {
                 id: PortId(782),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
-                produced_by: Some(NodeId(651)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81031,22 +80921,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(783),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(653)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(784),
             Port {
                 id: PortId(784),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(654)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(659)),
             },
         );
         ports.insert(
             PortId(785),
             Port {
                 id: PortId(785),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -81054,8 +80944,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(786),
             Port {
                 id: PortId(786),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(660)),
             },
         );
         ports.insert(
@@ -81063,15 +80953,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(787),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(656)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(788),
             Port {
                 id: PortId(788),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(657)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(661)),
             },
         );
         ports.insert(
@@ -81079,7 +80969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(789),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(659)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81087,15 +80977,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(790),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(660)),
+                produced_by: Some(NodeId(662)),
             },
         );
         ports.insert(
             PortId(791),
             Port {
                 id: PortId(791),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1034))),
-                produced_by: Some(NodeId(661)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81110,7 +81000,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(793),
             Port {
                 id: PortId(793),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
                 produced_by: Some(NodeId(664)),
             },
         );
@@ -81118,15 +81008,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(794),
             Port {
                 id: PortId(794),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1035))),
-                produced_by: Some(NodeId(665)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(795),
             Port {
                 id: PortId(795),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
                 produced_by: None,
             },
         );
@@ -81135,7 +81025,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(796),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(666)),
             },
         );
         ports.insert(
@@ -81151,15 +81041,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(798),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(668)),
             },
         );
         ports.insert(
             PortId(799),
             Port {
                 id: PortId(799),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(668)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
+                produced_by: Some(NodeId(669)),
             },
         );
         ports.insert(
@@ -81167,7 +81057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(800),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(671)),
             },
         );
         ports.insert(
@@ -81175,7 +81065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(801),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(669)),
+                produced_by: Some(NodeId(672)),
             },
         );
         ports.insert(
@@ -81183,22 +81073,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(802),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(673)),
             },
         );
         ports.insert(
             PortId(803),
             Port {
                 id: PortId(803),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(670)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
+                produced_by: Some(NodeId(674)),
             },
         );
         ports.insert(
             PortId(804),
             Port {
                 id: PortId(804),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
                 produced_by: None,
             },
         );
@@ -81206,31 +81096,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(805),
             Port {
                 id: PortId(805),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(671)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(806),
             Port {
                 id: PortId(806),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
-                produced_by: Some(NodeId(672)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(676)),
             },
         );
         ports.insert(
             PortId(807),
             Port {
                 id: PortId(807),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1622))),
+                produced_by: Some(NodeId(677)),
             },
         );
         ports.insert(
             PortId(808),
             Port {
                 id: PortId(808),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -81239,7 +81129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(809),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(674)),
+                produced_by: Some(NodeId(678)),
             },
         );
         ports.insert(
@@ -81247,7 +81137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(810),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(675)),
+                produced_by: Some(NodeId(679)),
             },
         );
         ports.insert(
@@ -81255,15 +81145,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(811),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(676)),
+                produced_by: Some(NodeId(680)),
             },
         );
         ports.insert(
             PortId(812),
             Port {
                 id: PortId(812),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
-                produced_by: Some(NodeId(677)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(681)),
             },
         );
         ports.insert(
@@ -81271,7 +81161,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(813),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(679)),
+                produced_by: Some(NodeId(682)),
             },
         );
         ports.insert(
@@ -81279,7 +81169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(814),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(680)),
+                produced_by: Some(NodeId(683)),
             },
         );
         ports.insert(
@@ -81287,22 +81177,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(815),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(681)),
+                produced_by: Some(NodeId(684)),
             },
         );
         ports.insert(
             PortId(816),
             Port {
                 id: PortId(816),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(159))),
-                produced_by: Some(NodeId(682)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(685)),
             },
         );
         ports.insert(
             PortId(817),
             Port {
                 id: PortId(817),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -81310,8 +81200,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(818),
             Port {
                 id: PortId(818),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(686)),
             },
         );
         ports.insert(
@@ -81319,15 +81209,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(819),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(684)),
+                produced_by: Some(NodeId(687)),
             },
         );
         ports.insert(
             PortId(820),
             Port {
                 id: PortId(820),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1622))),
-                produced_by: Some(NodeId(685)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(688)),
             },
         );
         ports.insert(
@@ -81335,31 +81225,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(821),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(689)),
             },
         );
         ports.insert(
             PortId(822),
             Port {
                 id: PortId(822),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(686)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
+                produced_by: Some(NodeId(690)),
             },
         );
         ports.insert(
             PortId(823),
             Port {
                 id: PortId(823),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(687)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(824),
             Port {
                 id: PortId(824),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(688)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(812))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81367,7 +81257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(825),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(689)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81375,7 +81265,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(826),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(690)),
+                produced_by: Some(NodeId(692)),
             },
         );
         ports.insert(
@@ -81383,7 +81273,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(827),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(691)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81391,7 +81281,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(828),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(692)),
+                produced_by: Some(NodeId(693)),
             },
         );
         ports.insert(
@@ -81399,7 +81289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(829),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(693)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81407,7 +81297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(830),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(694)),
             },
         );
         ports.insert(
@@ -81415,7 +81305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(831),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(694)),
+                produced_by: Some(NodeId(695)),
             },
         );
         ports.insert(
@@ -81423,7 +81313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(832),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(695)),
+                produced_by: Some(NodeId(696)),
             },
         );
         ports.insert(
@@ -81431,7 +81321,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(833),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(696)),
+                produced_by: Some(NodeId(697)),
             },
         );
         ports.insert(
@@ -81439,22 +81329,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(834),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(697)),
+                produced_by: Some(NodeId(698)),
             },
         );
         ports.insert(
             PortId(835),
             Port {
                 id: PortId(835),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
-                produced_by: Some(NodeId(698)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: Some(NodeId(699)),
             },
         );
         ports.insert(
             PortId(836),
             Port {
                 id: PortId(836),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
                 produced_by: None,
             },
         );
@@ -81462,7 +81352,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(837),
             Port {
                 id: PortId(837),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(812))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
                 produced_by: None,
             },
         );
@@ -81479,7 +81369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(839),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(700)),
+                produced_by: Some(NodeId(701)),
             },
         );
         ports.insert(
@@ -81487,7 +81377,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(840),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(702)),
             },
         );
         ports.insert(
@@ -81495,7 +81385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(841),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(701)),
+                produced_by: Some(NodeId(703)),
             },
         );
         ports.insert(
@@ -81503,7 +81393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(842),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(704)),
             },
         );
         ports.insert(
@@ -81511,7 +81401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(843),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(702)),
+                produced_by: Some(NodeId(705)),
             },
         );
         ports.insert(
@@ -81519,7 +81409,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(844),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(703)),
+                produced_by: Some(NodeId(706)),
             },
         );
         ports.insert(
@@ -81527,7 +81417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(845),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(704)),
+                produced_by: Some(NodeId(707)),
             },
         );
         ports.insert(
@@ -81535,7 +81425,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(846),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(705)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81543,31 +81433,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(847),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(706)),
+                produced_by: Some(NodeId(708)),
             },
         );
         ports.insert(
             PortId(848),
             Port {
                 id: PortId(848),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: Some(NodeId(707)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(709)),
             },
         );
         ports.insert(
             PortId(849),
             Port {
                 id: PortId(849),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(710)),
             },
         );
         ports.insert(
             PortId(850),
             Port {
                 id: PortId(850),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(711)),
             },
         );
         ports.insert(
@@ -81575,7 +81465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(851),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(712)),
             },
         );
         ports.insert(
@@ -81583,7 +81473,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(852),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(709)),
+                produced_by: Some(NodeId(713)),
             },
         );
         ports.insert(
@@ -81591,7 +81481,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(853),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(710)),
+                produced_by: Some(NodeId(714)),
             },
         );
         ports.insert(
@@ -81599,7 +81489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(854),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(711)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81607,7 +81497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(855),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(712)),
+                produced_by: Some(NodeId(715)),
             },
         );
         ports.insert(
@@ -81615,7 +81505,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(856),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(713)),
+                produced_by: Some(NodeId(716)),
             },
         );
         ports.insert(
@@ -81623,7 +81513,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(857),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(714)),
+                produced_by: Some(NodeId(717)),
             },
         );
         ports.insert(
@@ -81631,7 +81521,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(858),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(715)),
+                produced_by: Some(NodeId(718)),
             },
         );
         ports.insert(
@@ -81639,7 +81529,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(859),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(719)),
             },
         );
         ports.insert(
@@ -81647,7 +81537,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(860),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(716)),
+                produced_by: Some(NodeId(720)),
             },
         );
         ports.insert(
@@ -81655,7 +81545,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(861),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(717)),
+                produced_by: Some(NodeId(721)),
             },
         );
         ports.insert(
@@ -81663,7 +81553,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(862),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(718)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81671,7 +81561,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(863),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(719)),
+                produced_by: Some(NodeId(722)),
             },
         );
         ports.insert(
@@ -81679,7 +81569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(864),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(720)),
+                produced_by: Some(NodeId(723)),
             },
         );
         ports.insert(
@@ -81687,7 +81577,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(865),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(721)),
+                produced_by: Some(NodeId(724)),
             },
         );
         ports.insert(
@@ -81695,7 +81585,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(866),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(722)),
+                produced_by: Some(NodeId(725)),
             },
         );
         ports.insert(
@@ -81703,7 +81593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(867),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(726)),
             },
         );
         ports.insert(
@@ -81711,7 +81601,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(868),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(723)),
+                produced_by: Some(NodeId(727)),
             },
         );
         ports.insert(
@@ -81719,7 +81609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(869),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(724)),
+                produced_by: Some(NodeId(728)),
             },
         );
         ports.insert(
@@ -81727,7 +81617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(870),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(725)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81735,7 +81625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(871),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(726)),
+                produced_by: Some(NodeId(729)),
             },
         );
         ports.insert(
@@ -81743,7 +81633,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(872),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(727)),
+                produced_by: Some(NodeId(730)),
             },
         );
         ports.insert(
@@ -81751,7 +81641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(873),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(728)),
+                produced_by: Some(NodeId(731)),
             },
         );
         ports.insert(
@@ -81759,7 +81649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(874),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(729)),
+                produced_by: Some(NodeId(732)),
             },
         );
         ports.insert(
@@ -81767,7 +81657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(875),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(733)),
             },
         );
         ports.insert(
@@ -81775,7 +81665,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(876),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(730)),
+                produced_by: Some(NodeId(734)),
             },
         );
         ports.insert(
@@ -81783,31 +81673,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(877),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(731)),
+                produced_by: Some(NodeId(735)),
             },
         );
         ports.insert(
             PortId(878),
             Port {
                 id: PortId(878),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(732)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2186))),
+                produced_by: Some(NodeId(736)),
             },
         );
         ports.insert(
             PortId(879),
             Port {
                 id: PortId(879),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(733)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(880),
             Port {
                 id: PortId(880),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(734)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81815,7 +81705,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(881),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(735)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81823,7 +81713,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(882),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(736)),
+                produced_by: Some(NodeId(738)),
             },
         );
         ports.insert(
@@ -81831,7 +81721,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(883),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(739)),
             },
         );
         ports.insert(
@@ -81839,7 +81729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(884),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(737)),
+                produced_by: Some(NodeId(740)),
             },
         );
         ports.insert(
@@ -81847,7 +81737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(885),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(738)),
+                produced_by: Some(NodeId(741)),
             },
         );
         ports.insert(
@@ -81855,7 +81745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(886),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(739)),
+                produced_by: Some(NodeId(742)),
             },
         );
         ports.insert(
@@ -81863,7 +81753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(887),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(740)),
+                produced_by: Some(NodeId(743)),
             },
         );
         ports.insert(
@@ -81871,7 +81761,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(888),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(741)),
+                produced_by: Some(NodeId(744)),
             },
         );
         ports.insert(
@@ -81879,7 +81769,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(889),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(742)),
+                produced_by: Some(NodeId(745)),
             },
         );
         ports.insert(
@@ -81887,55 +81777,55 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(890),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(743)),
+                produced_by: Some(NodeId(746)),
             },
         );
         ports.insert(
             PortId(891),
             Port {
                 id: PortId(891),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2186))),
-                produced_by: Some(NodeId(744)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(747)),
             },
         );
         ports.insert(
             PortId(892),
             Port {
                 id: PortId(892),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(748)),
             },
         );
         ports.insert(
             PortId(893),
             Port {
                 id: PortId(893),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(749)),
             },
         );
         ports.insert(
             PortId(894),
             Port {
                 id: PortId(894),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
+                produced_by: Some(NodeId(750)),
             },
         );
         ports.insert(
             PortId(895),
             Port {
                 id: PortId(895),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(746)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(76))),
+                produced_by: Some(NodeId(752)),
             },
         );
         ports.insert(
             PortId(896),
             Port {
                 id: PortId(896),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(747)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81943,7 +81833,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(897),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(748)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -81951,7 +81841,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(898),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(749)),
+                produced_by: Some(NodeId(754)),
             },
         );
         ports.insert(
@@ -81959,7 +81849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(899),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(750)),
+                produced_by: Some(NodeId(755)),
             },
         );
         ports.insert(
@@ -81967,7 +81857,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(900),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(751)),
+                produced_by: Some(NodeId(756)),
             },
         );
         ports.insert(
@@ -81975,7 +81865,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(901),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(752)),
+                produced_by: Some(NodeId(757)),
             },
         );
         ports.insert(
@@ -81983,31 +81873,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(902),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(753)),
+                produced_by: Some(NodeId(758)),
             },
         );
         ports.insert(
             PortId(903),
             Port {
                 id: PortId(903),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(754)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1221))),
+                produced_by: Some(NodeId(759)),
             },
         );
         ports.insert(
             PortId(904),
             Port {
                 id: PortId(904),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(755)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(905),
             Port {
                 id: PortId(905),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(756)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1220))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82015,39 +81905,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(906),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(757)),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(907),
             Port {
                 id: PortId(907),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
-                produced_by: Some(NodeId(758)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(761)),
             },
         );
         ports.insert(
             PortId(908),
             Port {
                 id: PortId(908),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(76))),
-                produced_by: Some(NodeId(760)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(762)),
             },
         );
         ports.insert(
             PortId(909),
             Port {
                 id: PortId(909),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
+                produced_by: Some(NodeId(763)),
             },
         );
         ports.insert(
             PortId(910),
             Port {
                 id: PortId(910),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(76))),
+                produced_by: Some(NodeId(764)),
             },
         );
         ports.insert(
@@ -82055,7 +81945,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(911),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(762)),
+                produced_by: Some(NodeId(765)),
             },
         );
         ports.insert(
@@ -82063,7 +81953,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(912),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(763)),
+                produced_by: Some(NodeId(766)),
             },
         );
         ports.insert(
@@ -82071,7 +81961,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(913),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(764)),
+                produced_by: Some(NodeId(767)),
             },
         );
         ports.insert(
@@ -82079,7 +81969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(914),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(765)),
+                produced_by: Some(NodeId(768)),
             },
         );
         ports.insert(
@@ -82087,31 +81977,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(915),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(766)),
+                produced_by: Some(NodeId(769)),
             },
         );
         ports.insert(
             PortId(916),
             Port {
                 id: PortId(916),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1221))),
-                produced_by: Some(NodeId(767)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(770)),
             },
         );
         ports.insert(
             PortId(917),
             Port {
                 id: PortId(917),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(771)),
             },
         );
         ports.insert(
             PortId(918),
             Port {
                 id: PortId(918),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1220))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(772)),
             },
         );
         ports.insert(
@@ -82119,7 +82009,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(919),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(773)),
             },
         );
         ports.insert(
@@ -82127,7 +82017,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(920),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(769)),
+                produced_by: Some(NodeId(774)),
             },
         );
         ports.insert(
@@ -82135,23 +82025,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(921),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(770)),
+                produced_by: Some(NodeId(775)),
             },
         );
         ports.insert(
             PortId(922),
             Port {
                 id: PortId(922),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1213))),
-                produced_by: Some(NodeId(771)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(776)),
             },
         );
         ports.insert(
             PortId(923),
             Port {
                 id: PortId(923),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(76))),
-                produced_by: Some(NodeId(772)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(777)),
             },
         );
         ports.insert(
@@ -82159,7 +82049,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(924),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(773)),
+                produced_by: Some(NodeId(778)),
             },
         );
         ports.insert(
@@ -82167,7 +82057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(925),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(774)),
+                produced_by: Some(NodeId(779)),
             },
         );
         ports.insert(
@@ -82175,7 +82065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(926),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(775)),
+                produced_by: Some(NodeId(780)),
             },
         );
         ports.insert(
@@ -82183,31 +82073,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(927),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(776)),
+                produced_by: Some(NodeId(781)),
             },
         );
         ports.insert(
             PortId(928),
             Port {
                 id: PortId(928),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(777)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
+                produced_by: Some(NodeId(782)),
             },
         );
         ports.insert(
             PortId(929),
             Port {
                 id: PortId(929),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(778)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(930),
             Port {
                 id: PortId(930),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(779)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82215,7 +82105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(931),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(780)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82223,7 +82113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(932),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(781)),
+                produced_by: Some(NodeId(784)),
             },
         );
         ports.insert(
@@ -82231,7 +82121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(933),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(782)),
+                produced_by: Some(NodeId(785)),
             },
         );
         ports.insert(
@@ -82239,7 +82129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(934),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(783)),
+                produced_by: Some(NodeId(786)),
             },
         );
         ports.insert(
@@ -82247,7 +82137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(935),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(784)),
+                produced_by: Some(NodeId(787)),
             },
         );
         ports.insert(
@@ -82255,7 +82145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(936),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(785)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82263,7 +82153,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(937),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(786)),
+                produced_by: Some(NodeId(788)),
             },
         );
         ports.insert(
@@ -82271,7 +82161,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(938),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(787)),
+                produced_by: Some(NodeId(789)),
             },
         );
         ports.insert(
@@ -82279,7 +82169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(939),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(788)),
+                produced_by: Some(NodeId(790)),
             },
         );
         ports.insert(
@@ -82287,31 +82177,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(940),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(789)),
+                produced_by: Some(NodeId(791)),
             },
         );
         ports.insert(
             PortId(941),
             Port {
                 id: PortId(941),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(128))),
-                produced_by: Some(NodeId(790)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(942),
             Port {
                 id: PortId(942),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(792)),
             },
         );
         ports.insert(
             PortId(943),
             Port {
                 id: PortId(943),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(793)),
             },
         );
         ports.insert(
@@ -82319,7 +82209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(944),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(794)),
             },
         );
         ports.insert(
@@ -82327,7 +82217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(945),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(792)),
+                produced_by: Some(NodeId(795)),
             },
         );
         ports.insert(
@@ -82335,7 +82225,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(946),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(793)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82343,7 +82233,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(947),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(794)),
+                produced_by: Some(NodeId(796)),
             },
         );
         ports.insert(
@@ -82351,7 +82241,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(948),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(795)),
+                produced_by: Some(NodeId(797)),
             },
         );
         ports.insert(
@@ -82359,7 +82249,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(949),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(798)),
             },
         );
         ports.insert(
@@ -82367,7 +82257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(950),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(796)),
+                produced_by: Some(NodeId(799)),
             },
         );
         ports.insert(
@@ -82375,7 +82265,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(951),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(797)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82383,7 +82273,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(952),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(798)),
+                produced_by: Some(NodeId(800)),
             },
         );
         ports.insert(
@@ -82391,7 +82281,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(953),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(799)),
+                produced_by: Some(NodeId(801)),
             },
         );
         ports.insert(
@@ -82399,7 +82289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(954),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(802)),
             },
         );
         ports.insert(
@@ -82407,7 +82297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(955),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(800)),
+                produced_by: Some(NodeId(803)),
             },
         );
         ports.insert(
@@ -82415,7 +82305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(956),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(801)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82423,7 +82313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(957),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(802)),
+                produced_by: Some(NodeId(804)),
             },
         );
         ports.insert(
@@ -82431,7 +82321,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(958),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(803)),
+                produced_by: Some(NodeId(805)),
             },
         );
         ports.insert(
@@ -82439,7 +82329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(959),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(806)),
             },
         );
         ports.insert(
@@ -82447,7 +82337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(960),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(804)),
+                produced_by: Some(NodeId(807)),
             },
         );
         ports.insert(
@@ -82455,7 +82345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(961),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(805)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82463,7 +82353,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(962),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(806)),
+                produced_by: Some(NodeId(808)),
             },
         );
         ports.insert(
@@ -82471,7 +82361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(963),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(807)),
+                produced_by: Some(NodeId(809)),
             },
         );
         ports.insert(
@@ -82479,7 +82369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(964),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(810)),
             },
         );
         ports.insert(
@@ -82487,7 +82377,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(965),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(808)),
+                produced_by: Some(NodeId(811)),
             },
         );
         ports.insert(
@@ -82495,7 +82385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(966),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(809)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82503,7 +82393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(967),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(810)),
+                produced_by: Some(NodeId(812)),
             },
         );
         ports.insert(
@@ -82511,7 +82401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(968),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(811)),
+                produced_by: Some(NodeId(813)),
             },
         );
         ports.insert(
@@ -82519,7 +82409,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(969),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(814)),
             },
         );
         ports.insert(
@@ -82527,7 +82417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(970),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(812)),
+                produced_by: Some(NodeId(815)),
             },
         );
         ports.insert(
@@ -82535,7 +82425,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(971),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(813)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82543,7 +82433,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(972),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(814)),
+                produced_by: Some(NodeId(816)),
             },
         );
         ports.insert(
@@ -82551,7 +82441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(973),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(815)),
+                produced_by: Some(NodeId(817)),
             },
         );
         ports.insert(
@@ -82559,7 +82449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(974),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(818)),
             },
         );
         ports.insert(
@@ -82567,7 +82457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(975),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(816)),
+                produced_by: Some(NodeId(819)),
             },
         );
         ports.insert(
@@ -82575,7 +82465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(976),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(817)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82583,7 +82473,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(977),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(818)),
+                produced_by: Some(NodeId(820)),
             },
         );
         ports.insert(
@@ -82591,7 +82481,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(978),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(819)),
+                produced_by: Some(NodeId(821)),
             },
         );
         ports.insert(
@@ -82599,7 +82489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(979),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(822)),
             },
         );
         ports.insert(
@@ -82607,95 +82497,95 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(980),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(820)),
+                produced_by: Some(NodeId(823)),
             },
         );
         ports.insert(
             PortId(981),
             Port {
                 id: PortId(981),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(821)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2207))),
+                produced_by: Some(NodeId(824)),
             },
         );
         ports.insert(
             PortId(982),
             Port {
                 id: PortId(982),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(822)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(983),
             Port {
                 id: PortId(983),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(823)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(984),
             Port {
                 id: PortId(984),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2208))),
+                produced_by: Some(NodeId(826)),
             },
         );
         ports.insert(
             PortId(985),
             Port {
                 id: PortId(985),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(824)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2209))),
+                produced_by: Some(NodeId(828)),
             },
         );
         ports.insert(
             PortId(986),
             Port {
                 id: PortId(986),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(825)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2210))),
+                produced_by: Some(NodeId(830)),
             },
         );
         ports.insert(
             PortId(987),
             Port {
                 id: PortId(987),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(826)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2211))),
+                produced_by: Some(NodeId(832)),
             },
         );
         ports.insert(
             PortId(988),
             Port {
                 id: PortId(988),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(827)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2212))),
+                produced_by: Some(NodeId(834)),
             },
         );
         ports.insert(
             PortId(989),
             Port {
                 id: PortId(989),
-                state: PortState::Uninferred,
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2213))),
+                produced_by: Some(NodeId(836)),
             },
         );
         ports.insert(
             PortId(990),
             Port {
                 id: PortId(990),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(828)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2215))),
+                produced_by: Some(NodeId(838)),
             },
         );
         ports.insert(
             PortId(991),
             Port {
                 id: PortId(991),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(829)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82703,7 +82593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(992),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(830)),
+                produced_by: Some(NodeId(840)),
             },
         );
         ports.insert(
@@ -82711,22 +82601,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(993),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(831)),
+                produced_by: Some(NodeId(841)),
             },
         );
         ports.insert(
             PortId(994),
             Port {
                 id: PortId(994),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2207))),
-                produced_by: Some(NodeId(832)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2217))),
+                produced_by: Some(NodeId(842)),
             },
         );
         ports.insert(
             PortId(995),
             Port {
                 id: PortId(995),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
                 produced_by: None,
             },
         );
@@ -82734,72 +82624,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(996),
             Port {
                 id: PortId(996),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(844)),
             },
         );
         ports.insert(
             PortId(997),
             Port {
                 id: PortId(997),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2208))),
-                produced_by: Some(NodeId(834)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2218))),
+                produced_by: Some(NodeId(845)),
             },
         );
         ports.insert(
             PortId(998),
             Port {
                 id: PortId(998),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2209))),
-                produced_by: Some(NodeId(836)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(999),
             Port {
                 id: PortId(999),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2210))),
-                produced_by: Some(NodeId(838)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(847)),
             },
         );
         ports.insert(
             PortId(1000),
             Port {
                 id: PortId(1000),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2211))),
-                produced_by: Some(NodeId(840)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(848)),
             },
         );
         ports.insert(
             PortId(1001),
             Port {
                 id: PortId(1001),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2212))),
-                produced_by: Some(NodeId(842)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2219))),
+                produced_by: Some(NodeId(849)),
             },
         );
         ports.insert(
             PortId(1002),
             Port {
                 id: PortId(1002),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2213))),
-                produced_by: Some(NodeId(844)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1003),
             Port {
                 id: PortId(1003),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2215))),
-                produced_by: Some(NodeId(846)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1004),
             Port {
                 id: PortId(1004),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(851)),
             },
         );
         ports.insert(
@@ -82807,7 +82697,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1005),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(848)),
+                produced_by: Some(NodeId(852)),
             },
         );
         ports.insert(
@@ -82815,22 +82705,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1006),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(849)),
+                produced_by: Some(NodeId(853)),
             },
         );
         ports.insert(
             PortId(1007),
             Port {
                 id: PortId(1007),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2217))),
-                produced_by: Some(NodeId(850)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2220))),
+                produced_by: Some(NodeId(854)),
             },
         );
         ports.insert(
             PortId(1008),
             Port {
                 id: PortId(1008),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
                 produced_by: None,
             },
         );
@@ -82838,24 +82728,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1009),
             Port {
                 id: PortId(1009),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(852)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1010),
             Port {
                 id: PortId(1010),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2218))),
-                produced_by: Some(NodeId(853)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(856)),
             },
         );
         ports.insert(
             PortId(1011),
             Port {
                 id: PortId(1011),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(857)),
             },
         );
         ports.insert(
@@ -82863,7 +82753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1012),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(855)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -82871,78 +82761,78 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1013),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(856)),
+                produced_by: Some(NodeId(858)),
             },
         );
         ports.insert(
             PortId(1014),
             Port {
                 id: PortId(1014),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2219))),
-                produced_by: Some(NodeId(857)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(859)),
             },
         );
         ports.insert(
             PortId(1015),
             Port {
                 id: PortId(1015),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(860)),
             },
         );
         ports.insert(
             PortId(1016),
             Port {
                 id: PortId(1016),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2221))),
+                produced_by: Some(NodeId(861)),
             },
         );
         ports.insert(
             PortId(1017),
             Port {
                 id: PortId(1017),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(859)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1018),
             Port {
                 id: PortId(1018),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(860)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1019),
             Port {
                 id: PortId(1019),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(861)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1020),
             Port {
                 id: PortId(1020),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2220))),
-                produced_by: Some(NodeId(862)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(863)),
             },
         );
         ports.insert(
             PortId(1021),
             Port {
                 id: PortId(1021),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(864)),
             },
         );
         ports.insert(
             PortId(1022),
             Port {
                 id: PortId(1022),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -82951,7 +82841,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1023),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(864)),
+                produced_by: Some(NodeId(865)),
             },
         );
         ports.insert(
@@ -82959,7 +82849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1024),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(865)),
+                produced_by: Some(NodeId(866)),
             },
         );
         ports.insert(
@@ -82967,54 +82857,54 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1025),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(867)),
             },
         );
         ports.insert(
             PortId(1026),
             Port {
                 id: PortId(1026),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(866)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2222))),
+                produced_by: Some(NodeId(868)),
             },
         );
         ports.insert(
             PortId(1027),
             Port {
                 id: PortId(1027),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(867)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1028),
             Port {
                 id: PortId(1028),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(868)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1029),
             Port {
                 id: PortId(1029),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2221))),
-                produced_by: Some(NodeId(869)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1030),
             Port {
                 id: PortId(1030),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(870)),
             },
         );
         ports.insert(
             PortId(1031),
             Port {
                 id: PortId(1031),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -83022,8 +82912,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1032),
             Port {
                 id: PortId(1032),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1039))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(871)),
             },
         );
         ports.insert(
@@ -83031,22 +82921,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1033),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(871)),
+                produced_by: Some(NodeId(872)),
             },
         );
         ports.insert(
             PortId(1034),
             Port {
                 id: PortId(1034),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(872)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2223))),
+                produced_by: Some(NodeId(873)),
             },
         );
         ports.insert(
             PortId(1035),
             Port {
                 id: PortId(1035),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
                 produced_by: None,
             },
         );
@@ -83054,8 +82944,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1036),
             Port {
                 id: PortId(1036),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(873)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2224))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83063,7 +82953,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1037),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(874)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83078,7 +82968,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1039),
             Port {
                 id: PortId(1039),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2222))),
+                state: PortState::Uninferred,
                 produced_by: Some(NodeId(876)),
             },
         );
@@ -83086,7 +82976,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1040),
             Port {
                 id: PortId(1040),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -83094,16 +82984,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1041),
             Port {
                 id: PortId(1041),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1214))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(877)),
             },
         );
         ports.insert(
             PortId(1042),
             Port {
                 id: PortId(1042),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1043))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(878)),
             },
         );
         ports.insert(
@@ -83111,7 +83001,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1043),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(878)),
+                produced_by: Some(NodeId(879)),
             },
         );
         ports.insert(
@@ -83119,7 +83009,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1044),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(880)),
             },
         );
         ports.insert(
@@ -83127,7 +83017,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1045),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(879)),
+                produced_by: Some(NodeId(881)),
             },
         );
         ports.insert(
@@ -83135,15 +83025,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1046),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(880)),
+                produced_by: Some(NodeId(882)),
             },
         );
         ports.insert(
             PortId(1047),
             Port {
                 id: PortId(1047),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2223))),
-                produced_by: Some(NodeId(881)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2225))),
+                produced_by: Some(NodeId(883)),
             },
         );
         ports.insert(
@@ -83158,7 +83048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             PortId(1049),
             Port {
                 id: PortId(1049),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2224))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
                 produced_by: None,
             },
         );
@@ -83167,7 +83057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1050),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(885)),
             },
         );
         ports.insert(
@@ -83175,7 +83065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1051),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(883)),
+                produced_by: Some(NodeId(886)),
             },
         );
         ports.insert(
@@ -83183,7 +83073,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1052),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(884)),
+                produced_by: Some(NodeId(887)),
             },
         );
         ports.insert(
@@ -83191,7 +83081,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1053),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(888)),
             },
         );
         ports.insert(
@@ -83199,7 +83089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1054),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(885)),
+                produced_by: Some(NodeId(889)),
             },
         );
         ports.insert(
@@ -83207,23 +83097,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1055),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(886)),
+                produced_by: Some(NodeId(890)),
             },
         );
         ports.insert(
             PortId(1056),
             Port {
                 id: PortId(1056),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(887)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2226))),
+                produced_by: Some(NodeId(891)),
             },
         );
         ports.insert(
             PortId(1057),
             Port {
                 id: PortId(1057),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(888)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1302))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83231,7 +83121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1058),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(889)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83239,39 +83129,39 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1059),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(890)),
+                produced_by: Some(NodeId(893)),
             },
         );
         ports.insert(
             PortId(1060),
             Port {
                 id: PortId(1060),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2225))),
-                produced_by: Some(NodeId(891)),
+                state: PortState::Uninferred,
+                produced_by: None,
             },
         );
         ports.insert(
             PortId(1061),
             Port {
                 id: PortId(1061),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(822))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(894)),
             },
         );
         ports.insert(
             PortId(1062),
             Port {
                 id: PortId(1062),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(821))),
-                produced_by: None,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(1304))),
+                produced_by: Some(NodeId(895)),
             },
         );
         ports.insert(
             PortId(1063),
             Port {
                 id: PortId(1063),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(893)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(800))),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83279,7 +83169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1064),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(894)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83287,7 +83177,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1065),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(895)),
+                produced_by: Some(NodeId(897)),
             },
         );
         ports.insert(
@@ -83295,7 +83185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1066),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(896)),
+                produced_by: Some(NodeId(898)),
             },
         );
         ports.insert(
@@ -83303,7 +83193,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1067),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(897)),
+                produced_by: Some(NodeId(899)),
             },
         );
         ports.insert(
@@ -83311,22 +83201,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1068),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(898)),
+                produced_by: Some(NodeId(900)),
             },
         );
         ports.insert(
             PortId(1069),
             Port {
                 id: PortId(1069),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2226))),
-                produced_by: Some(NodeId(899)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(901)),
             },
         );
         ports.insert(
             PortId(1070),
             Port {
                 id: PortId(1070),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1302))),
+                state: PortState::Uninferred,
                 produced_by: None,
             },
         );
@@ -83335,7 +83225,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1071),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(902)),
             },
         );
         ports.insert(
@@ -83343,7 +83233,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1072),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(901)),
+                produced_by: Some(NodeId(903)),
             },
         );
         ports.insert(
@@ -83351,7 +83241,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1073),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(904)),
             },
         );
         ports.insert(
@@ -83359,23 +83249,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1074),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(902)),
+                produced_by: Some(NodeId(905)),
             },
         );
         ports.insert(
             PortId(1075),
             Port {
                 id: PortId(1075),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(1304))),
-                produced_by: Some(NodeId(903)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(906)),
             },
         );
         ports.insert(
             PortId(1076),
             Port {
                 id: PortId(1076),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(800))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(907)),
             },
         );
         ports.insert(
@@ -83383,7 +83273,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1077),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(908)),
             },
         );
         ports.insert(
@@ -83391,7 +83281,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1078),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(905)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83399,7 +83289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1079),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(906)),
+                produced_by: Some(NodeId(909)),
             },
         );
         ports.insert(
@@ -83407,7 +83297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1080),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(907)),
+                produced_by: Some(NodeId(910)),
             },
         );
         ports.insert(
@@ -83415,22 +83305,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1081),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(908)),
+                produced_by: Some(NodeId(911)),
             },
         );
         ports.insert(
             PortId(1082),
             Port {
                 id: PortId(1082),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(909)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
+                produced_by: Some(NodeId(912)),
             },
         );
         ports.insert(
             PortId(1083),
             Port {
                 id: PortId(1083),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(800))),
                 produced_by: None,
             },
         );
@@ -83439,7 +83329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1084),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(910)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83447,7 +83337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1085),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(911)),
+                produced_by: Some(NodeId(914)),
             },
         );
         ports.insert(
@@ -83455,7 +83345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1086),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(912)),
+                produced_by: Some(NodeId(915)),
             },
         );
         ports.insert(
@@ -83463,7 +83353,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1087),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(913)),
+                produced_by: Some(NodeId(916)),
             },
         );
         ports.insert(
@@ -83471,7 +83361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1088),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(914)),
+                produced_by: Some(NodeId(917)),
             },
         );
         ports.insert(
@@ -83479,7 +83369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1089),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(915)),
+                produced_by: Some(NodeId(918)),
             },
         );
         ports.insert(
@@ -83487,7 +83377,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1090),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(916)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83495,7 +83385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1091),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(919)),
             },
         );
         ports.insert(
@@ -83503,7 +83393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1092),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(917)),
+                produced_by: Some(NodeId(920)),
             },
         );
         ports.insert(
@@ -83511,7 +83401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1093),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(918)),
+                produced_by: Some(NodeId(921)),
             },
         );
         ports.insert(
@@ -83519,23 +83409,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1094),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(919)),
+                produced_by: Some(NodeId(922)),
             },
         );
         ports.insert(
             PortId(1095),
             Port {
                 id: PortId(1095),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
-                produced_by: Some(NodeId(920)),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(923)),
             },
         );
         ports.insert(
             PortId(1096),
             Port {
                 id: PortId(1096),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(800))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(924)),
             },
         );
         ports.insert(
@@ -83543,7 +83433,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1097),
                 state: PortState::Uninferred,
-                produced_by: None,
+                produced_by: Some(NodeId(925)),
             },
         );
         ports.insert(
@@ -83551,7 +83441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1098),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(922)),
+                produced_by: None,
             },
         );
         ports.insert(
@@ -83559,7 +83449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1099),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(923)),
+                produced_by: Some(NodeId(926)),
             },
         );
         ports.insert(
@@ -83567,7 +83457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1100),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(924)),
+                produced_by: Some(NodeId(927)),
             },
         );
         ports.insert(
@@ -83575,22 +83465,22 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1101),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(925)),
+                produced_by: Some(NodeId(928)),
             },
         );
         ports.insert(
             PortId(1102),
             Port {
                 id: PortId(1102),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(926)),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
+                produced_by: Some(NodeId(929)),
             },
         );
         ports.insert(
             PortId(1103),
             Port {
                 id: PortId(1103),
-                state: PortState::Uninferred,
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
                 produced_by: None,
             },
         );
@@ -83599,7 +83489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1104),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(927)),
+                produced_by: Some(NodeId(931)),
             },
         );
         ports.insert(
@@ -83607,7 +83497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1105),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(928)),
+                produced_by: Some(NodeId(932)),
             },
         );
         ports.insert(
@@ -83615,7 +83505,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1106),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(929)),
+                produced_by: Some(NodeId(933)),
             },
         );
         ports.insert(
@@ -83623,7 +83513,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1107),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(930)),
+                produced_by: Some(NodeId(934)),
             },
         );
         ports.insert(
@@ -83631,111 +83521,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
             Port {
                 id: PortId(1108),
                 state: PortState::Uninferred,
-                produced_by: Some(NodeId(931)),
-            },
-        );
-        ports.insert(
-            PortId(1109),
-            Port {
-                id: PortId(1109),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(932)),
-            },
-        );
-        ports.insert(
-            PortId(1110),
-            Port {
-                id: PortId(1110),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(933)),
-            },
-        );
-        ports.insert(
-            PortId(1111),
-            Port {
-                id: PortId(1111),
-                state: PortState::Uninferred,
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(1112),
-            Port {
-                id: PortId(1112),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(934)),
-            },
-        );
-        ports.insert(
-            PortId(1113),
-            Port {
-                id: PortId(1113),
-                state: PortState::Uninferred,
                 produced_by: Some(NodeId(935)),
-            },
-        );
-        ports.insert(
-            PortId(1114),
-            Port {
-                id: PortId(1114),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(936)),
-            },
-        );
-        ports.insert(
-            PortId(1115),
-            Port {
-                id: PortId(1115),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
-                produced_by: Some(NodeId(937)),
-            },
-        );
-        ports.insert(
-            PortId(1116),
-            Port {
-                id: PortId(1116),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(1117),
-            Port {
-                id: PortId(1117),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(939)),
-            },
-        );
-        ports.insert(
-            PortId(1118),
-            Port {
-                id: PortId(1118),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(940)),
-            },
-        );
-        ports.insert(
-            PortId(1119),
-            Port {
-                id: PortId(1119),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(941)),
-            },
-        );
-        ports.insert(
-            PortId(1120),
-            Port {
-                id: PortId(1120),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(942)),
-            },
-        );
-        ports.insert(
-            PortId(1121),
-            Port {
-                id: PortId(1121),
-                state: PortState::Uninferred,
-                produced_by: Some(NodeId(943)),
             },
         );
         ports
@@ -83743,49 +83529,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_ports() -> HashMap<PortId, Por
 }
 
 fn bootstrapped_fixture_without_parse_surface_dag_diagnostics() -> DiagnosticTable {
-    {
-        let mut table = DiagnosticTable::new();
-        table.insert(
-            PortId(222),
-            Diagnostic::ResolveError {
-                name: "Some".to_string(),
-                span: SourceSpan::new("src/v3/std/effects.dag", 24171, 24182),
-                correction: crate::diagnostics::Correction::live(
-                    "replace unresolved call `Some` with a `declaration#1456` value",
-                    SourceSpan::new("src/v3/std/effects.dag", 24171, 24182),
-                    "None",
-                ),
-            },
-            DiagnosticAttribution::Unattributed,
-        );
-        table.insert(
-            PortId(223),
-            Diagnostic::ResolveError {
-                name: "None".to_string(),
-                span: SourceSpan::new("src/v3/std/effects.dag", 24199, 24203),
-                correction: crate::diagnostics::Correction::live(
-                    "replace unresolved name `None` with a `declaration#1456` value",
-                    SourceSpan::new("src/v3/std/effects.dag", 24199, 24203),
-                    "None",
-                ),
-            },
-            DiagnosticAttribution::Unattributed,
-        );
-        table.insert(
-            PortId(225),
-            Diagnostic::ResolveError {
-                name: "None".to_string(),
-                span: SourceSpan::new("src/v3/std/effects.dag", 24224, 24228),
-                correction: crate::diagnostics::Correction::live(
-                    "replace unresolved name `None` with a `declaration#1456` value",
-                    SourceSpan::new("src/v3/std/effects.dag", 24224, 24228),
-                    "None",
-                ),
-            },
-            DiagnosticAttribution::Unattributed,
-        );
-        table
-    }
+    DiagnosticTable::new()
 }
 
 fn bootstrapped_fixture_without_parse_surface_dag_clusters() -> Vec<Cluster> {
