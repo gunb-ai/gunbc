@@ -65,7 +65,7 @@ tight bound is {tight_class}. Applicable transformations: [{transformation_list}
 
 **Compiler-internal code** (`src/v3/*`, `dsl/std/*`): **always-on**. Every compiler-authored function ratchet-checks tightness as part of build. Any tightness violation is a build-break. This is the SELF_HOSTING.md "compiler is canonical example" framing made operational — the compiler's own code is the most-aggressively-checked codebase in the project.
 
-**User programs**: opt-in via `EnforcedTightness<ComplexitySummary>` data declaration (analogous to current `EnforcedApplication`). Backwards-compatible with existing programs; users opt their functions in as they're ready.
+**User programs**: opt-in via `EnforcedTightness<TightnessAnalysis, AsymptoticClass, AsymptoticClass>` data declaration (3-param mirror of `EnforcedApplication<Output, Budget, Projected>` per Director ratification msg_d45523da; see §1.5 for the carrier shape + example use-site at §1.5 instantiation block). Backwards-compatible with existing programs; users opt their functions in as they're ready.
 
 ### §1.5 Substrate carriers
 
@@ -75,6 +75,52 @@ New `.dag` declarations needed (shapes mirror existing `EnforcedApplication` 3-p
 // In src/v3/std/complexity_tightness.dag (or analogous):
 
 // 🟡 SCAFFOLD until Gap 11 LogCost/ProductCost/SumCost composition lands.
+//
+// Coproduct classification per `feedback_coproduct_dissolution` 4-pattern audit
+// (addresses openai-pro BLOCKING PR #3067 2026-05-14 — modeling-discipline
+// requirement that new N≥2 coproducts carry classification + dissolution-attempt
+// record + named SCAFFOLD trigger):
+//
+// **Pattern**: STRUCTURE — variants are different structural shapes of the same
+// role ("semantics-preserving transformations the lens recognizes in the DAG to
+// derive a tighter bound"). Each variant identifies a distinct structural
+// pattern (sequential-loop / loop-invariant-subgraph / dead-subgraph /
+// constant-bound-inner-loop / associative-reduce / chained-collection-ops).
+//
+// **4 dissolution attempts walked-and-rejected before settling on this coproduct**:
+//
+// Attempt 1 — single `Transformation` type with `String` label: REJECTED per
+//   INVARIANTS.md P1 (Modeling Faithfulness). A string label is not structural;
+//   downstream consumers cannot programmatically verify which transformation
+//   applies. Same class as `feedback_opaque_strings_attract_heuristics`.
+//
+// Attempt 2 — Refinement-class hierarchy (`Transformation` refines into named
+//   subtypes): REJECTED — transformations don't have a refinement relation.
+//   LoopFusion is not a refinement of LoopHoisting (they're parallel structural
+//   patterns over disjoint DAG shapes, not subtype-shaped).
+//
+// Attempt 3 — Algebra (sum of primitive operations on DAG): REJECTED —
+//   transformations aren't algebraically composable in a meaningful sense.
+//   LoopFusion + LoopHoisting is not a sum-shaped algebraic operation;
+//   the variants are parallel-applicable choices over distinct structural
+//   patterns, not summands of a primitive-operation algebra.
+//
+// Attempt 4 — Parametric `Refinement<Evidence>`: REJECTED — per-variant
+//   evidence payload differs structurally (LoopFusion needs
+//   IterationSpaceEquivalence with 2 spaces; LoopHoisting needs
+//   LoopInvariance with variable-independence facts; DeadCodeElimination
+//   needs NoConsumer with port-consumption facts; etc.). Cannot be a uniform
+//   parametric refinement; the evidence shape IS the variant discriminator.
+//
+// **Named SCAFFOLD-→-TERMINAL trigger**: Gap 11 LogCost/ProductCost/SumCost
+// composition lands AND per-variant evidence-payload fields finalize against
+// the composition algebra. At that point: revisit + upgrade to 🟢 TERMINAL.
+// If during finalization the structural pattern reveals additional variants
+// (e.g., AssociativeCommutativeFold as a sibling of AggregationRecognition,
+// or LoopSwap as a sibling of LoopFusion), they enter as new arms per the
+// same Structure-pattern discrimination — coproduct stays open to new
+// structural-pattern variants discovered post-Gap-11.
+//
 // Per-variant evidence-payload `proof: TightnessProof` carries the structural
 // witness that the named transformation is APPLICABLE to the affected DAG nodes
 // per INVARIANTS.md P1 (Modeling Faithfulness) + P2 (single authority — evidence
