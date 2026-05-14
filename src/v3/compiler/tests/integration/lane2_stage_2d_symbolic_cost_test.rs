@@ -2,7 +2,7 @@
 #![allow(clippy::needless_borrows_for_generic_args)]
 //
 // Authority: `src/v3/lenses/cost.dag` (projection:
-// `src/v3/compiler/src/lens_cost_symbolic_generated.rs`).
+// `src/v3/compiler/src/cost_symbolic_lens_generated.rs`).
 //
 // These tests pin the per-Behavior lowering contract DB-7 specifies
 // — every Behavior variant produces an honest asymptotic bound, and
@@ -970,11 +970,11 @@ budgeted_test! {
     cost_generated_module_matches_checked_in_snapshot,
     {
         let fresh = emit_lens_module();
-        let checked_in = include_str!("../../src/lens_cost_symbolic_generated.rs");
+        let checked_in = include_str!("../../src/cost_symbolic_lens_generated.rs");
         assert_eq!(
             fresh.trim(),
             checked_in.trim(),
-            "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run -p v3-compiler --bin regen_lens -- --lens cost_symbolic`"
+            "checked-in `cost_symbolic_lens_generated.rs` is stale; run `cargo run -p v3-compiler --bin regen_lens -- --lens cost_symbolic`"
         );
     }
 }
