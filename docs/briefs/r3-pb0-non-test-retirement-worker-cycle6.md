@@ -33,6 +33,21 @@ taxonomy_anchor: "docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-1
 
 **Live census anchor:** `src/v3/compiler/tests/integration/sg0_census_test.rs` — grep for `const EXPECTED_HAND_AUTHORED_NON_TEST`.
 
+### §0.2 Pre-structured STOP anchors (Gap-tier / program; not session-id)
+
+Per Director `msg_f05c2d68` + `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: this batch is **100% taxonomy (b)**. If a path cannot lawfully retire in one PR, **STOP** with the **named blocker below** (and taxonomy §3 row cite) — structured signals are an acceptable work product when substrate is not yet landed.
+
+| Path | Cite on STOP (taxonomy-anchored primary blocker) |
+|------|--------------------------------------------------|
+| `dag/builder.rs` | §1.8 **substrate bundle**; **Tier3 + effects + cardinality** owning program — not an isolated census drop (taxonomy §3). |
+| `dag/cardinality_payload.rs` | Same **DAG / Tier3 / cardinality** program bundle as sibling `dag/*` rows. |
+| `dag/effects.rs` | Same **DAG / Tier3 / effects** program bundle. |
+| `dag/ports.rs` | Same **DAG / Tier3 / ports–effects** program bundle. |
+| `bin/gunbc_ci.rs` | **§1.1** bootstrap/regen **Cluster M** canvas + **P5 atomic migration** (taxonomy §3 + §0 prose). |
+| `bin/r1c_e_emit_gates.rs` | **§1.1 Cluster M** canvas **plus** **R1C-E / R1 close** / `.dag` **TestClaim** migration surface (taxonomy §3; couples to `emit_rust.rs` program row). |
+
+**Gap 13 / emit–coercion** and **Gap 3 / evaluator–lens** deferrals apply elsewhere on the census; they are **not** the default cite for these six rows unless investigation proves a row-specific coupling (then cite **Gap tier + mechanism**, never a session id).
+
 ---
 
 **Dispatch / closure / checklist / STOP / deliverable:** Same geometry as cycle 2 + cycle 4 briefs; **§5.1** per-path **(a)/(b)/(c)** at merge.
@@ -53,7 +68,7 @@ Same as cycle 2 brief + **§5.1** per-path classification.
 
 ## STOP / escalate
 
-Same as cycle 2 brief. If work collapses into **§1.1 bootstrap/regen cluster** atomic migration without Cluster M canvas, **STOP** and return a bound follow-up per taxonomy §3 §1.1 note — do not paper-shrink census.
+Same as cycle 2 brief. If work collapses into **§1.1 bootstrap/regen cluster** atomic migration without Cluster M canvas, **STOP** and return a bound follow-up per taxonomy §3 §1.1 note — do not paper-shrink census. **Every** STOP on a §0.1 path must echo the matching **§0.2** blocker row (Gap-tier / program vocabulary per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`).
 
 ## Deliverable
 

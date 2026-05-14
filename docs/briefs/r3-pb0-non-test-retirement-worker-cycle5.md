@@ -20,6 +20,8 @@ taxonomy_anchor: "docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-1
 
 **Preference:** Path **(b)** codegen-driver shape per PR **#3048** when consolidation exists; path **(c)** when honest fallback is required.
 
+**Director note (`msg_f05c2d68`):** `cementing_dispatch.rs` was the **consolidation target** in swift-bee-15 **PR #3046** (large absorb of former `NON_TEST` surfaces into one hub). Retiring that hub in this cycle is coherent with a **gate #87** cementing-class **closure cascade** once predicate / projection substrate owns the walk — if prereqs are unclear, **STOP-AND-PING** with **gate / Gap-tier / substrate** citation (not session-id).
+
 ### §0.1 Named `EXPECTED_HAND_AUTHORED_NON_TEST` paths + taxonomy class (this worker only)
 
 **Disjoint from** cycle **3 REDO** (eight paths) and **cycle 6** (six paths). Retire **these six** in **this** PR (or strict subset + **(i–iii)** only when P5 demands):
