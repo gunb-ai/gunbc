@@ -112,16 +112,32 @@ type ParseDiagnostic
 
 **Lane dependency**: PR #3077 §12 Q7 ratification (cross-stage); Director-tier per-stage variant authoring.
 
-### §4.3 No separate `ParseResult` sum-variant — diagnostics coupled INTO `SurfaceModule`
+### §4.3 No separate `ParseResult` sum-variant — diagnostics couple via SurfaceModule extension (PROPOSED)
 
-Same pattern as PB-4 lower's PreInferDag + PB-5 infer's InferredDag (per PR #3077 §4.3 + PR #3085 §4.3): output IS the typed-state carrier; diagnostics couple INTO the SurfaceModule via the diagnostic table indexed by source-span (analogous to lower's port-keyed coupling but with span as the natural key for parse-stage failures since pre-substrate positions don't yet have ports).
+**Live substrate state at HEAD** (verified via `grep -n "^type SurfaceModule" src/v3/std/parse_surface.dag`): `type SurfaceModule { items: List<SurfaceItem> }` — single field, NO existing diagnostic-table or diagnostic-stream field. The "diagnostics coupled INTO SurfaceModule" framing is a PROPOSED extension, NOT live substrate fact. Per codex INLINE BLOCKING #3126: this needs explicit "proposed-not-live" marking + parallel-substrate-extension authoring scope.
+
+**Proposed extension** (NEW substrate authoring, parallel to PR #3077 §12 Q7 Decision 2.B extension path):
+
+Same pattern as PB-4 lower's PreInferDag + PB-5 infer's InferredDag (per PR #3077 §4.3 + PR #3085 §4.3) — output IS the typed-state carrier with diagnostics coupled structurally. For SurfaceModule, the extension is:
+
+```
+// Proposed extension to src/v3/std/parse_surface.dag SurfaceModule:
+type SurfaceModule {
+  items: List<SurfaceItem>         // existing
+  diagnostics: List<ParseDiagnostic>  // PROPOSED extension per this L2.5
+}
+```
+
+Where the diagnostic-list is indexed by source-span (the natural key for parse-stage failures since pre-substrate positions don't yet have ports).
+
+**Step 2 worker brief must include** the parse_surface.dag SurfaceModule extension as part of the pipeline-slot PR scope — not separately deferrable. Without this, Step 2 has the carrier-mismatch problem codex flagged.
 
 **Cross-stage consistency**:
-- PB-3 parse + PB-4 lower + PB-5 infer: output IS typed-state carrier with diagnostics coupled structurally
+- PB-3 parse + PB-4 lower + PB-5 infer: output IS typed-state carrier with diagnostics coupled structurally (each requires its own carrier extension if not already live; SurfaceModule extension is PB-3-specific)
 - PB-6 emit: uses EmissionResult sum because emit produces target-language bytes (different output domain)
 - Discriminator: when output is a STRUCTURAL value (Dag-shape or Surface-tree), partial-failure couples structurally; when output is FINAL ARTIFACT (target source bytes), partial-failure couples via Result sum.
 
-Signature: `fn parse(tokens: List<Token>, grammar: GrammarSpec) -> SurfaceModule` (NOT ParseResult). Diagnostics coupled via the SurfaceModule's diagnostic-table field.
+Signature: `fn parse(tokens: List<Token>, grammar: GrammarSpec) -> SurfaceModule` (NOT ParseResult). Diagnostics coupled via the PROPOSED `diagnostics: List<ParseDiagnostic>` field added to SurfaceModule per Step 2 PR scope.
 
 ---
 
@@ -256,7 +272,7 @@ Decision 3.B operator-overrode my rec to (b) compile-time parser tables. Existin
 
 ### Q3: ParseDiagnostic variant exhaustiveness
 
-`parse_generated.rs` body emits multiple Diagnostic variants today. Step 2 worker brief must enumerate the full set to inform PR #3077 §12 Q7 ratification (which extension path).
+**Live state correction** (per codex INLINE BLOCKING #3126): `parse_generated.rs` body emits a SINGLE `Diagnostic::ParseError` variant today (verified via `grep "Diagnostic::" src/v3/compiler/src/parse_generated.rs` — only ParseError construction sites; ~30+ sites all using the same single variant with different message/span content). The proposed `ParseDiagnostic` taxonomy in §4.2 is a SUBSTRATE EXTENSION — Step 2 worker brief extends the live single-variant into the proposed structured sum, NOT "enumerates existing multiple variants" (which was a misframing).
 
 **Director-recommend**: Step 2 worker grep-enumerates all `Diagnostic::*` construction sites in `parse_generated.rs`; reports the full variant set as input to Q7 ratification. The lane-local-sum-mapping option (b) per Q7 lets PB-3 author the per-stage variant set cleanly.
 
