@@ -391,13 +391,15 @@ fn method_is_upsert(method: HttpMethodScalar) -> bool {
 }
 
 fn operation_resource_key(effect: &Operation) -> Option<String> {
-    last_path_param(&effect.endpoint.path)
+    last_path_param(effect)
 }
 
-fn last_path_param(path: &PathTemplate) -> Option<String> {
-    path.tokens.iter().rev().find_map(|token| match token {
-        UrlPathToken::ParamToken { name } => Some(name.clone()),
-        UrlPathToken::LiteralToken { .. } => None,
+fn last_path_param(effect: &Operation) -> Option<String> {
+    effect.endpoint.path.tokens.iter().rev().find_map(|token| {
+        let UrlPathToken::ParamToken { name } = token else {
+            return None;
+        };
+        effect.inputs.contains_key(name).then(|| name.clone())
     })
 }
 

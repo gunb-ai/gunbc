@@ -67,9 +67,16 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
             "Operation endpoints cannot rederive InputField key source `{field}` at Stage 2 scope"
         ),
     };
+    let inputs = tokens
+        .iter()
+        .filter_map(|token| match token {
+            UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
+            UrlPathToken::LiteralToken { .. } => None,
+        })
+        .collect::<BTreeMap<String, InputField>>();
     Operation {
         callable: CallableRef { decl: callable },
-        inputs: BTreeMap::<String, InputField>::new(),
+        inputs,
         endpoint: RestEndpointBinding {
             method,
             path: PathTemplate { tokens },
@@ -200,6 +207,35 @@ fn keyless_upsert_fails_closed_as_breaking() {
     assert!(matches!(
         r,
         WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy { .. })
+    ));
+}
+
+#[test]
+fn undeclared_path_param_fails_closed_as_breaking() {
+    let dag = compile_to_dag("let _ = 1", "lane2_undeclared_path_param.v3").expect("compile");
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let undeclared_param_upsert = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate {
+                tokens: vec![UrlPathToken::ParamToken {
+                    name: "id".to_string(),
+                }],
+            },
+        },
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &undeclared_param_upsert),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        })
     ));
 }
 

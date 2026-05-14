@@ -91,9 +91,16 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
             "Operation endpoints cannot rederive InputField key source `{field}` at Stage 2 scope"
         ),
     };
+    let inputs = tokens
+        .iter()
+        .filter_map(|token| match token {
+            UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
+            UrlPathToken::LiteralToken { .. } => None,
+        })
+        .collect::<BTreeMap<String, InputField>>();
     Operation {
         callable: CallableRef { decl: callable },
-        inputs: BTreeMap::<String, InputField>::new(),
+        inputs,
         endpoint: RestEndpointBinding {
             method,
             path: PathTemplate { tokens },

@@ -46,9 +46,16 @@ fn lane2_witness_operation(
         .declaration_by_name(name)
         .expect("bootstrap should provide requested method declaration")
         .id;
+    let inputs = tokens
+        .iter()
+        .filter_map(|token| match token {
+            UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
+            UrlPathToken::LiteralToken { .. } => None,
+        })
+        .collect::<BTreeMap<String, InputField>>();
     Operation {
         callable: CallableRef { decl: callable },
-        inputs: BTreeMap::<String, InputField>::new(),
+        inputs,
         endpoint: RestEndpointBinding {
             method,
             path: PathTemplate { tokens },
