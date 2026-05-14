@@ -163,6 +163,29 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
 }
 
 #[test]
+fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
+    let dag =
+        compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
+    let bind = dag
+        .nodes()
+        .iter()
+        .find_map(|n| match n {
+            Behavior::Bind(b) if b.name == "lit" => Some(b),
+            _ => None,
+        })
+        .expect("lit bind");
+    let report = analyze_parallelism(&dag, bind.id);
+    assert!(
+        matches!(
+            &report,
+            WorkflowParallelismReport::ParallelismUnsupported(detail)
+                if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+        ),
+        "unstaged literal should classify as NoWorkflowProjection, got {report:?}"
+    );
+}
+
+#[test]
 fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
     let dag =
         compile_to_dag("let lit: Int = 7", "r3_gate_87_provenance_receipt.v3").expect("compile");
