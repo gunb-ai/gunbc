@@ -299,11 +299,7 @@ fn r3_gate_83_lens_capability_register_scope_is_explicit() {
 // Gap 4 (post-all-four-BEHAVIORALLY-COMPLETE). The test below is only the markdown
 // PROXY/STUB slice; `r3_gate_83_current_register_blockers_are_explicit` was removed as
 // a duplicate of the same predicate — keep Gap 4 + this assert message in sync when
-<<<<<<< HEAD
-// `parallelism.dag` moves PARTIAL → COMPLETE.
-=======
-// `effect_enumeration.dag` moves PARTIAL → COMPLETE.
->>>>>>> origin/main
+// any T-LBP register row moves PARTIAL → COMPLETE.
 #[test]
 fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
     let rows = capability_table_rows();
