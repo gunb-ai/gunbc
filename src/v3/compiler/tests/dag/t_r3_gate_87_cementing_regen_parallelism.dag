@@ -1,8 +1,13 @@
 // R3 gate #87 — `LensRegistryEntry` `parallelism` (PARTIAL / v3-native per `verification.dag`).
+// **INVARIANTS §P5(b) / `docs/r3-program-plan.md` §1.8 row #87** (`lens_cementing_test_discipline_complete`,
+// T-Tests-As-Data-Completeness): this harness + `r3_gate_87_cementing_regen_runner_suites.rs` +
+// `test_runner::eval_gate_87_cementing_projection` + `r3_gate_87_lens_cementing_regen_receipts_test`
+// are the single merge-visible receipt bundle for the new registry row (no parallel hand list).
 // Narrow Int projection: a literal bind without Lane-2 workflow staging yields
 // `ParallelismUnsupportedKind::NoWorkflowProjection` from `analyze_parallelism` (runner seam:
 // `eval_gate_87_cementing_projection`). Dissolution: widen to a full `WorkflowParallelismReport`
-// `LensOutputEquals` once report literals are authorable as `.dag` data.
+// `LensOutputEquals` once report literals are authorable as `.dag` data (T-PB-B tests-as-data
+// carrier lane; full behavioral completion remains `parallelism_lens_behaviorally_complete` / row #81).
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
 
