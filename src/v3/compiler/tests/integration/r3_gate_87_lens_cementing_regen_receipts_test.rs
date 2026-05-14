@@ -165,7 +165,6 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn r3_gate_87_effect_enumeration_reports_no_effect_shape() {
     let dag = Dag::new();
     let report = enumerate_effects(&dag);
@@ -217,7 +216,10 @@ fn r3_gate_87_effect_enumeration_reports_non_arrow_coverage_gap() {
             .contains("transform target is not an arrow declaration")),
         "effect enumeration should surface non-arrow callable coverage gaps explicitly, got {:?}",
         report.coverage_gaps
-=======
+    );
+}
+
+#[test]
 fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
     let dag =
         compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3").expect("compile");
@@ -237,7 +239,6 @@ fn r3_gate_87_parallelism_rust_receipt_literal_no_workflow_projection() {
                 if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
         ),
         "unstaged literal should classify as NoWorkflowProjection, got {report:?}"
->>>>>>> origin/main
     );
 }
 
