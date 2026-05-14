@@ -300,6 +300,14 @@ fn loop_iteration_parallel_emission_indicator(d: Dag, workflow_root: NodeId) -> 
 // `parallelism_lens.read` carries a scaffold `Sequential` inhabitant for generic folds; host
 // `check_enforced_lens_applications` evaluates **NodeScope** subjects via
 // `loop_iteration_parallel_emission_indicator` directly (timing-lens scaffold pattern).
+//
+// PRACTICE 4 (docs/modeling-discipline.md §4 Coproduct dissolution): **🟢 TERMINAL (GREEN)** at the
+// T-LAS iteration-parallelism **budget carrier** scope (`docs/design-lens-application-surface.md`
+// §2 / §4.4). `OptInIndependent` vs `Sequential` are the closed LAS labels referenced by
+// `parallelism_enforceable` / `EnforcedApplication`; workflow physics stays single-authority in
+// Lane‑2 `WorkflowEffect` (`lane2_workflow`), not parallel semantics duplicated here.
+// **Dissolution:** migrate only when LAS redesign replaces this sum with one substrate carrier for
+// the same §4.4 contract without a second route for violation/budget naming (gate **#95** program row).
 
 type ParallelismMode
   = OptInIndependent
