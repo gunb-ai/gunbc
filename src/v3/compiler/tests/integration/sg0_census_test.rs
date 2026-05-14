@@ -788,6 +788,12 @@ enum TestsAsDataMigrationClass {
     PropertyBased,
 }
 
+// R1C-D `pb_test_file_generated_from_dag`: `GeneratedFromDag` manifest vs
+// `GENERATED_FILES` set-equality (both `PendingFact` and `ResolvedFact` arms)
+// is enforced in `test_runner::eval_generated_from_dag_shape` when the `.dag`
+// suite runs (`t_pb_b_1_dag_runner_test::r1c_d_pb_census_gates_suite_evaluates_through_runner`).
+// Do not duplicate that obligation with a string-scrape test here (P5 + sum-shape drift).
+
 // Transitional gate #84 audit only. As each class migrates to `.dag`
 // `TestClaim` data, remove that class's path matcher branch with the
 // retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
