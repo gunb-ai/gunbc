@@ -19,7 +19,7 @@ use std::collections::HashSet;
 
 use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
 use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_symbolic::{lookup_symbolic_cost, SymbolicCostLookup};
 
 fn behavior_result_port(b: &Behavior) -> PortId {
     match b {
@@ -160,6 +160,7 @@ pub fn analyze_symbolic_cost_dimension(
     workflow_root: NodeId,
 ) -> DimensionReport<SymbolicCost> {
     const DIMENSION_NAME: &str = "symbolic_cost";
+    let cost_table = crate::lens_cost_symbolic::compute_symbolic_costs(d);
     let scope = workflow_reachable_behavior_ids(d, workflow_root);
     let mut witnesses = Vec::new();
     for behavior in d.nodes() {
@@ -167,7 +168,7 @@ pub fn analyze_symbolic_cost_dimension(
             continue;
         }
         let port = behavior_result_port(behavior);
-        match symbolic_cost_of(d, &port) {
+        match lookup_symbolic_cost(&cost_table, &port) {
             SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
                 reason: "missing symbolic cost for behavior result port".into(),
                 at: behavior.clone(),
@@ -177,7 +178,7 @@ pub fn analyze_symbolic_cost_dimension(
     }
 
     let root = d.node(workflow_root);
-    let root_lookup = symbolic_cost_of(d, &behavior_result_port(root));
+    let root_lookup = lookup_symbolic_cost(&cost_table, &behavior_result_port(root));
 
     let witness_failure = witnesses
         .iter()
@@ -237,9 +238,11 @@ pub fn analyze_symbolic_cost_dimension(
 /// **Single authority.** Thin wrapper that delegates to
 /// [`analyze_symbolic_cost_dimension`] — the lens-spine path that walks
 /// reachable behaviors from `workflow_root` via
-/// `workflow_reachable_behavior_ids` and consumes
-/// [`crate::lens_cost_symbolic::symbolic_cost_of`] for each behavior's
-/// result port. The wrapper exists so the E7 public surface is named
+/// `workflow_reachable_behavior_ids` and looks up each in-scope behavior's
+/// result port in one [`crate::lens_cost_symbolic::compute_symbolic_costs`]
+/// table via [`crate::lens_cost_symbolic::lookup_symbolic_cost`] (same facts
+/// as [`crate::lens_cost_symbolic::symbolic_cost_of`], without rebuilding the
+/// table per port). The wrapper exists so the E7 public surface is named
 /// the way the dispatch brief locks it (`analyze_complexity` /
 /// `analyze_tenant_flow` / `analyze_ifc`) without introducing a
 /// parallel analyzer.

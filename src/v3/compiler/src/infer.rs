@@ -2618,12 +2618,33 @@ fn bind_expected_decl_to_actual_context(
             )
         }
         _ => {
+            // Gate #60 Slice Z: `MachineWidth<N>` uses anonymous `LiteralBits::Int`
+            // phantom declarations. Alias sites vs inference sites can allocate distinct
+            // declaration ids for the same decimal; `walk_to_type_shape` returns `None` for
+            // anonymous literals, so fall back to literal equality before shape identity.
+            let resolved_expected =
+                resolve_binding_decl(dag, expected, &SubstStack::new(), depth + 1)
+                    .unwrap_or(expected);
+            let resolved_actual = resolve_binding_decl(dag, actual.decl, &actual.subst, depth + 1)
+                .unwrap_or(actual.decl);
+            if let (
+                TypeConnective::Atom(AtomPayload::Literal(e_bits)),
+                TypeConnective::Atom(AtomPayload::Literal(a_bits)),
+            ) = (
+                &dag.declaration(resolved_expected).connective,
+                &dag.declaration(resolved_actual).connective,
+            ) {
+                if e_bits == a_bits {
+                    return true;
+                }
+            }
             let Some(expected_ty) =
-                walk_to_type_shape(dag, expected, &SubstStack::new(), depth + 1)
+                walk_to_type_shape(dag, resolved_expected, &SubstStack::new(), depth + 1)
             else {
                 return false;
             };
-            let Some(actual_ty) = walk_to_type_shape(dag, actual.decl, &actual.subst, depth + 1)
+            let Some(actual_ty) =
+                walk_to_type_shape(dag, resolved_actual, &actual.subst, depth + 1)
             else {
                 return false;
             };
