@@ -3796,7 +3796,7 @@ pub mod lens_effect_enumeration {
         use crate::diagnostics::*;
 
         fn operation_effect_shape(op: &Operation) -> EffectShape {
-            crate::dag::operation_effect_shape(&Dag::new(), op).unwrap_or_else(|| {
+            crate::dag::operation_effect_shape(&Dag::new(), op).unwrap_or({
                 EffectShape::IsBreaking(BreakingShape::CreateEffect {
                     cause: CreateCause::KeylessFallback {
                         method: op.endpoint.method,
