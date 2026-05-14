@@ -67,6 +67,8 @@ mod ctrl_pr_digests_dag_smoke_test;
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
+mod e_p_per_call_descent_lens_consumer_cementing;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
@@ -163,6 +165,8 @@ mod method_registry_test;
 mod method_template_contract_test;
 #[path = "integration/method_template_projection_emit_shim_coherence_test.rs"]
 mod method_template_projection_emit_shim_coherence_test;
+#[path = "integration/no_coercion_cost_dimension_ratchet_test.rs"]
+mod no_coercion_cost_dimension_ratchet_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]

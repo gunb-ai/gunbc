@@ -404,6 +404,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
     // `cost_symbolic` COMPLETE receipt.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+    // R3 gate #76 (`e_p_per_call_descent_evidence_full_coverage`) Phase-3 lens-consumer
+    // cementing ratchets (#[ignore]'d) pinning the consumer-path expectation for
+    // match-payload + multi-arg per-arg vectors against `complexity_of` + `symbolic_cost_of`.
+    // Lane E-P per ROADMAP.md "Lane E-P — per-call descent-evidence provenance (M)" — see
+    // INVARIANTS.md §P5 row for dissolution trigger (lens-consumer match-arm walker extension).
+    "src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
@@ -530,6 +536,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
+    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
+    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
+    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
