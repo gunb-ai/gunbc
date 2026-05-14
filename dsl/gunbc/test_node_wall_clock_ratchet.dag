@@ -97,6 +97,7 @@ data wall_clock_warn_libtest_tokens: List<WallClockWarnLibtestToken> = [
   { test: "m1_5_verification_test::symbolic_cost_expr_equals_smoke_suite_passes" },
   { test: "r3_free_consequences_second_batch_test::cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness" },
   { test: "r3_free_consequences_second_batch_test::cross_target_optimization_cost_structurally_derived_receipt" },
+  { test: "r3_free_consequences_second_batch_test::coercion_cost_equals_complexity_by_construction" },
   { test: "r3_free_consequences_second_batch_test::r3_free_consequences_second_batch_reaches_expected_consumer_shapes" },
   { test: "t_las_crdt_cost_basis_demo_test::crdt_cost_basis_builder_fails_closed_when_merge_step_has_no_log_cost_witness" },
   { test: "t_las_crdt_cost_basis_demo_test::crdt_cost_basis_demonstrated_basis_cost_hits_symbolic_cost_lens_table" },
