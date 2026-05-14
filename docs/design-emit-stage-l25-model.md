@@ -1,0 +1,349 @@
+% Emit Pipeline Stage — L2.5 Domain Model (PB-6)
+
+**Status:** DRAFT — Director-tier authoring per operator ratification 2026-05-14 ("can we author L2.5 models up front / agree on them"). Surfaces for operator review before PB-6 lane execution authority dispatches.
+
+**Authoring date:** 2026-05-14.
+**Authoring tier:** Director (zesty-bear-812).
+**Lane:** PB-6 (emit) per `docs/design-pure-bootstrap-zero.md:104` + `src/v3/SELF_HOSTING.md` §2 4-step migration discipline.
+**Migration order rank:** 1st (per `docs/substrate-reflection-design.md` §12.6 — emit→lower→infer→parse bottom-up).
+**Routing authority chain:** operator-ratification → PM amends close plan + §1.8 PB-6 gate row → Director authors per-step worker briefs → R3 Substrate Mgr dispatches workers against Director-authored briefs.
+
+---
+
+## §1 Purpose + scope
+
+This document is the **Step 1 model review** per `src/v3/SELF_HOSTING.md` §2.2 4-step discipline applied to PB-6 emit-stage migration. It declares the emit stage's input/output types in `.dag` substrate, the structural projection that composes them, the substrate prereqs the stage requires from sibling lanes, and the open design questions requiring operator ratification before Step 2 (pipeline-slot declaration) dispatches.
+
+**This doc does NOT**:
+- Author the `.dag` implementation (Step 3 work)
+- Author the pipeline-slot declaration (Step 2 work)
+- Design the parity test corpus (Step 4 work)
+- Touch bootstrap-runtime-loop or PB-Substrate / PB-Bootstrap-Process / PB-Runtime concerns (separate lanes)
+
+**Authority chain**: Director-tier ratification grounds the model; subsequent worker briefs (Steps 2–4) cite this doc as the substrate; §1.8 PB-6 gate row close-criterion predicate cites this doc as the L2.5 model authority.
+
+---
+
+## §2 What emit IS structurally
+
+Per `docs/design-emission-model.md` ("Design — Emission Model (no separate coercion engine)") + `THESIS.md` §"Tier 1" ("Coercion = emission: the compiler reads a target spec and translates. No separate coercion engine"):
+
+**Emit is a structural projection from (Dag, LanguageSpec) → (TargetSource ⊕ EmissionDiagnostic), composed via fold over per-target inhabitance facts. NOT a decision engine.**
+
+Per `feedback_lenses_not_passes`: emit is a lens over substrate, not a decision process. Anything emit has to "decide" is a substrate fact the LanguageSpec should declare. The fold is small and mechanical because all the real work is in the substrate facts.
+
+Per `docs/design-emission-model.md:44-48` (verbatim):
+> "The fold is small and mechanical because all the *real work* is in the substrate facts. Anything the fold has to 'decide' is a fact the substrate should have declared."
+
+**Failure shape**: fail-closed (per `feedback_fail_closed_discipline` + INVARIANTS C-8). When projection cannot resolve to a unique target primitive, emit returns a typed `EmissionDiagnostic`, never a fabricated default or fallback.
+
+---
+
+## §3 Input types (declared in `.dag` substrate)
+
+Three input types feed emit:
+
+### §3.1 `Dag` (post-infer)
+
+The fully-resolved `.dag` program after parse → lower → infer. All `Port.state` are `Inferred(TypeShape)` or `Unresolved(Diagnostic)` per `src/v3/compiler/src/infer.rs:1-30` framing. emit consumes this as substrate input.
+
+**Substrate authority**: `src/v3/std/substrate.dag` (defines `Dag`, `Declaration`, `Port`, `TypeShape`).
+**Lane dependency**: PB-Substrate (generates dag.rs from substrate.dag).
+
+### §3.2 `LanguageSpec` (per-target spec authority)
+
+Per-target structural facts: primitive set with refinement bounds, algebra inhabitance, structural axes distinguishing candidates, diagnostic enumeration order, construction patterns, operator dispatch, external-realization shape (per `docs/design-emission-model.md:193-209`).
+
+**Substrate authority**: each target has its own `LanguageSpec` instance — `dsl/extdeps/languages/rust/spec.dag` / `dsl/extdeps/languages/python/spec.dag` / `dsl/extdeps/languages/go/spec.dag` (Shape A targets per `THESIS.md` §1505).
+**Lane dependency**: T-Ground-LanguageSpec (R3 Grounding Mgr lane / Gap 13) — schema authoring; T-Ground-CrossTarget-Meta (R3 Grounding Mgr lane / Gap 13) — portability requirements.
+
+### §3.3 `EmissionConfig` (target selection + shape disambiguation)
+
+Selects which target to emit to (Rust / Python / Go for R3) + Shape A vs Shape B disambiguation (Shape A = compiler targets emitting Rust/Python/Go; Shape B = user-space artifacts deferred post-R3 per `r3-structure.md`).
+
+**Substrate authority**: `src/v3/std/emit_config.dag` (proposed; may already exist as part of emit_model.dag — needs grep verification at Step 2 authoring).
+
+---
+
+## §4 Output types (declared in `.dag` substrate)
+
+Two output types from emit; their disjoint sum is the emit return value:
+
+### §4.1 `TargetSource` (the emitted code)
+
+Structured per target: typically a typed string-tree composed via `std/string.dag` operations OR a typed AST representation of the target language. Per `docs/design-clean-emission-contract.md`, target source must satisfy every CleanEmissionContract rule **by construction** — violations are emission bugs, not warnings.
+
+**Substrate authority**: `src/v3/std/target_source.dag` (proposed) OR refinement of existing `EmissionResult` carriers in `src/v3/std/emit_model.dag`.
+
+### §4.2 `EmissionDiagnostic` (closed-axis sum-variant)
+
+Fail-closed surface (per `docs/design-emission-model.md:166-190`):
+
+```
+type EmissionDiagnostic =
+  | UnderRefined { program_intent: ProgramIntent, candidates: List<Candidate>, unspecified_axis: Axis, resolution_hints: List<Hint> }
+  | NoInhabitant { program_intent: ProgramIntent, target: TargetRef, blocker: BlockerCause }
+  | (additional variants surfaced during Step 2 authoring)
+```
+
+**Substrate authority**: T-Ground-Diagnostic (R3 Grounding Mgr lane / Gap 13) authors `EmissionDiagnostic` carrier; emit consumes it.
+**Lane dependency**: T-Ground-Diagnostic.
+
+### §4.3 `EmissionResult` (disjoint sum)
+
+```
+type EmissionResult = Either<TargetSource, EmissionDiagnostic>
+```
+
+Per `feedback_fail_closed_discipline` C-8 + `feedback_state_space_vs_behavioral_invariants`: the sum variant makes illegal states (e.g., partial-emit-with-no-diagnostic) unrepresentable. emit returns EmissionResult, never raw text without typed-state context.
+
+---
+
+## §5 Structural projection (the core)
+
+emit composes from these substrate facts via fold:
+
+### §5.1 Per-Behavior projection rule
+
+For each `Behavior` variant in `Dag` (per `feedback_compiler_is_dag_processor`: compiler knows ONLY Node/Conj/Disj/Cardinality/Bit — 5 primitives via the substrate), emit declares **one structural rule per behavior**, NOT decision logic. Per `feedback_lenses_not_passes`: each behavior has exactly one structural projection to the target language; if projection requires "deciding" between multiple targets, that's a missing LanguageSpec fact (axis distinguishing candidates).
+
+### §5.2 Per-target inhabitance lookup
+
+For each (Behavior, target) pair, `LanguageSpec` declares which primitive realizes the behavior in that target. emit reads the lookup; no decision-logic between candidates.
+
+If multiple candidates satisfy a Behavior at a target, `LanguageSpec` must declare a **structural axis distinguishing them** (per `docs/design-emission-model.md:217-223` T-Ground-CrossTarget-Meta). Without the axis, emit fail-closes with `UnderRefined` diagnostic.
+
+### §5.3 Mechanical walker dispatch via CleanEmissionContract
+
+Per `docs/design-clean-emission-contract.md` (DB-4):
+
+CleanEmissionContract declares 8 typed rule enums per target covering constructive rendering concerns:
+1. Variable binding rule (e.g., `_ = ` on unused in Go; `_` underscore in Rust/Python)
+2. Wrap-only-in-operand-position rule
+3. EmitUnderscoreWhenUnused rule
+4. IncludeOnlyReferenced rule
+5. NoWrappingOnTerminalExpression rule
+6. (3 additional rules per design-clean-emission-contract.md — Step 2 authoring should enumerate exactly)
+
+Walker dispatch is **mechanical**: match on rule variant, emit accordingly. **No `#[allow(...)]` / `# noqa` / pragma escape hatches** — violation = emission bug per `feedback_no_textual_enforcement_bridges`.
+
+### §5.4 PostEmitVerifier discipline
+
+Per `docs/design-clean-emission-contract.md:160-182`: emit output gates through PostEmitVerifier (command + args + syntax_only + expected_exit_code + output_policy). For Rust: `rustc --edition=2021 -D warnings`. CI enforces no-suppression; verifier failure = emit failure (`PostEmitVerifier` substrate authority).
+
+**Substrate authority**: `src/v3/std/post_emit_verifier.dag` (Step 3 lane PB-Runtime authors).
+
+---
+
+## §6 Substrate prereqs (per-Gap-tier anchored)
+
+Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prereqs on Gap-tier identifiers, not session IDs.
+
+| Prereq | Substrate authority | Gap-tier lane | Status at HEAD (2026-05-14) |
+|---|---|---|---|
+| PB-Substrate | `src/v3/std/substrate.dag` → dag.rs/ports.rs/effects.rs | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | In-flight (PR #3040 sum-variant landed; broader PB-Substrate work continues) |
+| T-Ground-LanguageSpec | per-target `spec.dag` instances | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; needs schema authoring |
+| T-Ground-Coercion-Fold | mechanical fold implementation | Gap 13 R3 Grounding Mgr lane | In-flight (PR #1980 ScratchIntExamples retirement; broader work continues) |
+| T-Ground-Diagnostic | `EmissionDiagnostic` carrier | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; brief authored at PR #1216 |
+| T-Ground-Lifetime-Analyzer | structural intent derivation | Gap 13 R3 Grounding Mgr lane | In-flight (R2-scope a/b/c impl landed at PR #1206) |
+| T-Ground-CrossTarget-Meta | portability requirements meta | Gap 13 R3 Grounding Mgr lane | In-flight (PR #2103 L6 EmissionPathProjection CLOSED) |
+| `target_source.dag` (if new) | TargetSource carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification |
+| `emit_config.dag` (if new) | EmissionConfig carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification OR refinement of existing emit_model.dag |
+
+**Critical observation**: 5 of 7 prereqs route through **R3 Grounding Mgr lane (Gap 13)** which is currently between-sessions (per still-dove-462 archive pattern). PB-6 emit Step 3 implementation cannot proceed substantively until R3 Grounding Mgr lane re-spawns AND closes the 3 key sub-lanes (LanguageSpec / Coercion-Fold / Diagnostic).
+
+This is the **structural blocker** for PB-6 emit dispatch — substrate prereqs are upstream of pipeline-stage migration. Step 2 (pipeline-slot ExternalRealization) can proceed in parallel with Grounding Mgr work; Step 3 (implementation) must wait.
+
+---
+
+## §7 Cross-stage coordination
+
+### §7.1 Upstream dependencies
+
+emit depends on `Dag` with all PortState resolved → output of infer stage (PB-5). Per `src/v3/SELF_HOSTING.md` §2 migration order, emit migrates FIRST despite consuming infer's output, because the bottom-up principle is about which substrate authority needs to exist; emit substrate authority + LanguageSpec spec authorities are smaller surface than infer's.
+
+emit does NOT depend on parse (PB-3) or lower (PB-4) directly — those produce `Dag` which infer (PB-5) refines. emit consumes the refined `Dag` only.
+
+### §7.2 Downstream consumers
+
+PB-Runtime (test_runner.rs / lens_apply.rs / post_emit_verifier.rs) consumes emit output for verification + lens execution. Parity test (Step 4) requires PostEmitVerifier substrate at HEAD.
+
+R3 Verification Mgr's L4 emit/eval match gates + L5 cross-target consistency gates consume emit output for byte-equality assertions.
+
+### §7.3 Sibling-stage coordination
+
+When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations must produce `Dag` structures consistent with emit's input expectations. This is enforced by the type-checked pipeline composition (`fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` typed signature; mis-shaped `Dag` from lower/infer fails type-check at compose time).
+
+---
+
+## §8 Two shapes of omni-emission
+
+Per `THESIS.md` §1505 + `r3-structure.md` framing:
+
+### §8.1 Shape A — compiler targets (R3 scope)
+
+Rust, Python, Go (primary for R3); Swift, Kotlin (post-R3). Each target grounds to a `LanguageSpec` declaring algebra inhabitance + structural axes + realization costs. **All Shape A targets emit from the same `Dag` value** — compositional layering ensures coherence by construction (same Node tree; no separate per-target compilation).
+
+### §8.2 Shape B — user-space artifacts (DEFERRED post-R3)
+
+SPICE netlists, English documentation, YAML configs, Verilog, Terraform — outputs of `.dag` programs written by users. NOT compiler targets. Shape B composition with omni-emission is deferred post-R3 per `r3-structure.md`. **Out of scope for PB-6 emit migration.**
+
+---
+
+## §9 SELF_HOSTING.md §2.2 4-step applied to PB-6 emit
+
+| Step | Deliverable | Owner | Substrate |
+|---|---|---|---|
+| **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-emit-stage-l25-model.md (this doc) |
+| **Step 2: Pipeline slot** | `fn emit(inferred: Dag, spec: LanguageSpec) -> EmissionResult` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current emit.rs) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 3: Implementation** | `src/v3/std/emit.dag` (the .dag implementation of emit; fill the function body) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/emit.dag (NEW substrate authority) |
+| **Step 4: Parity test + simultaneous Rust deletion** | Byte-identical output vs emit.rs across full test matrix + `emit.rs` + sibling `*_target.rs` files DELETED in same PR | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | tests/parity_emit_dag_vs_rust_test.rs (NEW) + EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries |
+
+**Critical: parity test is against EMIT.RS OUTPUT, not against emit.dag-template-of-emit.rs** (the discriminator that fails for cycle-4 PR #3048 / cycle-5 PR #3057 template-relocation paper-shrink class).
+
+---
+
+## §10 D-1 determinism invariant preservation
+
+Per `src/v3/compiler/src/emit.rs:1-8` (current emit.rs top comment): D-1 invariant requires byte-identical output for fixed `(dag, target)` across successive calls. emit.dag implementation must preserve this; no Map iteration without sorted-key discipline; no HashMap (use sorted keys per `feedback_no_textual_enforcement_bridges` adjacent: structural enforcement of determinism).
+
+Per Step 3 brief authoring: the `.dag` implementation must explicitly use structural iteration (sorted-key fold; no non-deterministic ordering primitives).
+
+---
+
+## §11 Cost lens cross-cutting consistency
+
+Per `docs/design-emission-model.md:224-249` ("Worked example A" / "Worked example B" / "Worked example C"):
+
+"Coercion cost = complexity" thesis claim must hold by construction:
+- Cost lens reads LanguageSpec realization-cost declarations (per-primitive realization cost)
+- Combined with per-op algebra cost (from substrate.dag) via structural fold
+- No parallel per-target cost table (would violate P2 single-authority)
+
+PB-6 emit migration must preserve this discipline: emit output cost = sum of per-op realization cost reads, NOT a separate cost calculation embedded in emit logic.
+
+---
+
+## §12 Open design questions (operator ratification)
+
+These surface to operator before Step 2 (pipeline-slot) dispatch:
+
+### Q1: LanguageSpec authoring authority
+
+Current `dsl/std/coercion.dag` (schema) + `dsl/extdeps/languages/{rust,python,go}/types.dag` (tables) is bootstrap scaffolding to dissolve per `docs/design-emission-model.md:193-209`. **New LanguageSpec schema** authored under `src/v3/std/` OR refinement of existing dsl/std/coercion.dag → carry-forward?
+
+Director-recommend: **refinement carry-forward** — preserves existing receipt evidence (#1183 / #1192 etc.); follows `feedback_construction_over_ratchets` (model first, dissolve existing scaffold incrementally rather than starting fresh).
+
+### Q2: emit.rs current `*_target.rs` siblings
+
+emit.rs is single dispatch surface; each `emit_*_target.rs` sibling has one target-monolithic implementation body (per emit.rs:10-15). Do these get separate sub-models (per-target L2.5) OR fold into single `emit.dag` authority with per-target `LanguageSpec` driving projection?
+
+Director-recommend: **single `emit.dag` authority with LanguageSpec-driven projection** — this is the structural-projection framing per §5; per-target siblings collapse into "one structural rule per behavior, target-distinguished via LanguageSpec inhabitance lookup". The current target-monolithic implementation is the artifact of pre-LanguageSpec architecture.
+
+### Q3: Self-hosting bootstrap meta-circular constraint
+
+emit.dag reads realization specs (which are themselves data in `src/v3/spec/*.dag` per `design-pure-bootstrap-zero.md:62-79`). At first compile, stage0 Rust emit reads the new emit.dag authority. **Meta-circular**: once emit.dag lands, hand-Rust emit must read it; before it lands, stage0 is sole authority.
+
+How does Step 4 parity-and-delete handle this? **Director-recommend resolution**: Step 4 parity test uses stage0 Rust emit (final pre-deletion form) to emit code from emit.dag; compare byte-equality against current emit.rs output on canonical corpus. After parity passes, emit.rs deletes + bootstrap rebuild uses emit.dag (which stage0 Rust loaded from disk + executed via Evaluator). Bootstrap consistency preserved.
+
+This depends on R3 Evaluator Mgr lane sub-lanes (body_evaluator + witness_construction) being GREEN at HEAD (per jolly-ram-652 PR #3053 audit: 3 GREEN + 2 in-flight) — both currently GREEN per jolly-ram-652 audit. **Evaluator ready for emit.dag execution.**
+
+### Q4: Shape B omni-emission deferral boundary
+
+emit.dag scope = Shape A only (Rust/Python/Go for R3). Shape B (SPICE/English/YAML/Verilog/Terraform) deferred post-R3. **Where in emit.dag does the Shape A vs Shape B boundary live structurally?**
+
+Director-recommend: `EmissionConfig` carries `target_kind: ShapeAVariant | ShapeBVariant` (closed-axis sum). emit.dag dispatches on Shape A variant; Shape B variants fail-closed with `EmissionDiagnostic::ShapeBDeferred` until post-R3 emit.dag extension.
+
+### Q5: CleanEmissionContract 8 rules — enumeration completeness
+
+`docs/design-clean-emission-contract.md` enumerates 5 named rule categories explicitly; the "8 rules" framing suggests 3 more not enumerated in current authoring. **Step 2 brief should grep design-clean-emission-contract.md for full enumeration + author missing rules into the model.**
+
+Director-recommend: defer enumeration to Step 2 worker brief authoring; Step 2 worker substantiates the 8-rule list against current Rust/Python/Go verifier outputs.
+
+### Q6: PB-Runtime PostEmitVerifier substrate dependency
+
+PostEmitVerifier substrate (currently hand-Rust in post_emit_verifier.rs per cycle-5 PR #3057 paper-shrink revert pending) is the gate that ensures emit output passes verifier discipline. PB-6 Step 4 parity test depends on PostEmitVerifier being substrate-true (.dag) authority, not hand-Rust.
+
+**Director-recommend**: surface PB-6 emit migration as DEPENDENT ON PB-Runtime post_emit_verifier.dag migration completing first. PB-Runtime is on R3 Evaluator Mgr lane scope per msg_e66f4326 (β) option OR warm-wolf-698 R3 Substrate Mgr scope per (α) option. Decision is operator-pending.
+
+---
+
+## §13 Non-goals (out of scope for this L2.5)
+
+- **`.dag` implementation of emit projection** — Step 3 work, separate brief
+- **Per-pass tactical decisions** — Step 3 work
+- **Test corpus design + parity-test harness implementation** — Step 4 work
+- **Bootstrap-runtime-loop concerns** — PB-Substrate / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build separate lanes
+- **emit.dag self-application demonstration** — T-Lens-Self-Application separate scope (Gap 8)
+- **Shape B omni-emission migration** — post-R3 scope per `r3-structure.md`
+
+---
+
+## §14 Acceptance criteria for this L2.5 model
+
+This doc lands on main when:
+
+1. ✅ All input types declared structurally with `.dag` substrate paths (§3)
+2. ✅ All output types declared structurally with closed-axis sum-variant discipline (§4)
+3. ✅ Structural projection composed without decision logic (§5 — per `feedback_lenses_not_passes`)
+4. ✅ All substrate prereqs named with Gap-tier / Mgr-lane anchors (§6)
+5. ✅ Cross-stage dependencies explicit (§7)
+6. ✅ Two-Shape framing scope-limited to R3 (§8)
+7. ✅ SELF_HOSTING.md §2.2 4-step concretely applied (§9)
+8. ✅ D-1 determinism preservation discipline (§10)
+9. ✅ Cost lens cross-cutting consistency (§11)
+10. ✅ Open design questions enumerated for operator ratification (§12)
+11. ⏳ Operator ratification on Q1–Q6 (this doc surfaces them; ratification lands as Director-tier follow-on or inline updates)
+
+Post-ratification: this doc becomes the substrate authority for Step 2 worker brief authoring (pipeline-slot ExternalRealization PR) + §1.8 PB-6 gate row close-criterion predicate.
+
+---
+
+## §15 Authoring sequence post-ratification
+
+1. **Operator ratifies §12 Q1–Q6** (or surfaces revisions)
+2. **PM amends close plan Gap 1** to route through PB-X lanes + cite this doc as PB-6 L2.5 substrate
+3. **PM amends §1.8** with PB-6 gate row citing this doc as close-criterion authority
+4. **Director authors PB-6 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope) — for R3 Substrate Mgr (warm-wolf-698)
+5. **R3 Substrate Mgr (warm-wolf-698)** dispatches Step 2 worker against Director-authored brief
+6. **Director ratifies Step 2 PR substance + admin-merges** when CI clears
+7. **Director authors PB-6 Step 3 worker brief** (`.dag` implementation scope) — conditional on T-Ground substrate prereqs (Gap 13 R3 Grounding Mgr lane) being green at HEAD
+8. **R3 Substrate Mgr** dispatches Step 3 worker; iterate substantive review per §5.1 PR-template enforcement (5th axis: authority-direction)
+9. **Director ratifies Step 3 PR**, admin-merges
+10. **Director authors PB-6 Step 4 worker brief** (parity test + simultaneous Rust deletion scope)
+11. **R3 Substrate Mgr** dispatches Step 4 worker; parity must be against `emit.rs` OUTPUT (not against template)
+12. **Director ratifies Step 4 PR**, admin-merges → emit.rs DELETED → PB-6 gate row CLOSES per §1.8
+
+Subsequent L2.5 models (PB-4 lower / PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Director-tier authoring → operator ratification → worker brief dispatch sequence per migration order.
+
+---
+
+## §16 Cross-references
+
+**Primary authority**:
+- `src/v3/SELF_HOSTING.md` §2.2 (4-step migration discipline)
+- `docs/design-pure-bootstrap-zero.md` (PB-X lane framing)
+- `docs/substrate-reflection-design.md` §12.6 (migration order)
+- `docs/design-emission-model.md` (engine-reframe; no-separate-coercion-engine)
+- `docs/design-clean-emission-contract.md` (DB-4 CleanEmissionContract)
+
+**Secondary authority / context**:
+- `THESIS.md` §"Tier 1" (coercion = emission claim)
+- `THESIS.md` §1505 (Two-shape omni-emission framing)
+- `src/v3/compiler/src/emit.rs:1-30` (current emit.rs structure + D-1 invariant)
+- `docs/r3-structure.md` (R3 scope; Shape A/B deferral)
+- `docs/r3-actual-close-plan.md` Gap 1 (PB-0 close plan; pending Phase 2 amendment per msg_b9f9c36b)
+
+**Memory disciplines applied**:
+- `feedback_lenses_not_passes` (emit = projection, not decision engine)
+- `feedback_fail_closed_discipline` C-8 (EmissionResult sum-variant)
+- `feedback_state_space_vs_behavioral_invariants` (typed state, illegal states unrepresentable)
+- `feedback_no_textual_enforcement_bridges` (no #[allow], structural enforcement)
+- `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id` (Gap-tier anchors)
+- `feedback_construction_over_ratchets` (model first, refinement of existing where possible)
+- `feedback_substrate_principle_audit` (4-axis grep + invariant-conformance)
+
+**Surfaces awaiting**:
+- Operator ratification on §12 Q1–Q6
+- PM Phase 2 close plan + §1.8 amendments citing this doc
+- R3 Grounding Mgr lane re-spawn (post-deployment-trigger) for substrate-prereq closure cascade
