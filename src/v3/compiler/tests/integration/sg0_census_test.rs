@@ -41,6 +41,7 @@ use v3_compiler::generated_files::GENERATED_FILES;
 const CENSUS_ROOT: &str = "src/v3/compiler";
 const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
 const RETIRED_LENS_APPLY_RS: &str = "src/v3/compiler/src/lens_apply.rs";
+const RETIRED_REGEN_LENS_BIN_RS: &str = "src/v3/compiler/src/bin/regen_lens.rs";
 
 #[test]
 fn r3_gate_5_lens_apply_rs_stays_retired() {
@@ -65,6 +66,19 @@ fn r3_gate_6_lens_testgen_rs_stays_retired() {
          `{RETIRED_LENS_TESTGEN_RS}` to stay retired. Keep the stable \
          `v3_compiler::lens_testgen` API routed through `lens_declaration_apply.rs` \
          until PB-Runtime owns testgen end-to-end."
+    );
+}
+
+#[test]
+fn r3_gate_7_regen_lens_bin_rs_stays_retired() {
+    let retired_path = workspace_root().join(RETIRED_REGEN_LENS_BIN_RS);
+
+    assert!(
+        !retired_path.exists(),
+        "R3 gate #7 (`regen_lens_dot_rs_retired`) requires \
+         `{RETIRED_REGEN_LENS_BIN_RS}` to stay retired. The `regen_lens` \
+         Cargo bin delegates through `src/regen_lens_entry.rs` into \
+         `regen_lens_driver.rs` until PB-1 emits the shim from `.dag`."
     );
 }
 
@@ -114,9 +128,12 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
 // `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`)
 // and SG-4 prep's `regen_infer_helpers.rs` all folded into a single
-// `regen_lens.rs` shim driven by `src/v3/compiler/regen.dag`'s
+// unified `regen_lens` driver driven by `src/v3/compiler/regen.dag`'s
 // `LensRegistryEntry` records. Five retirements; one net-new entry
-// (`regen_lens.rs`). The new `sg6_hand_authored_census_test.rs`
+// at the time (`src/bin/regen_lens.rs`). **R3 gate #7** (`regen_lens_dot_rs_retired`,
+// 2026-05-14): that program-sized bin path retired; logic lives in
+// `regen_lens_driver.rs` with a thin `regen_lens_entry.rs` `[[bin]]` shell.
+// The new `sg6_hand_authored_census_test.rs`
 // pins the reduced bin census + full `(name, lens_file,
 // generated_file)` registry tuples + `--lens` singleton resolve +
 // end-to-end CLI smoke; it is hand-authored test infrastructure and
@@ -262,7 +279,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
-    "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_parse_tables.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
@@ -333,6 +349,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
     "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
+    "src/v3/compiler/src/regen_lens_driver.rs",
+    "src/v3/compiler/src/regen_lens_entry.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
@@ -709,6 +727,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
+    // T-CostLens-Composition): mechanical ratchet pinning the executable
+    // dispatch arm + evaluator wiring in `test_runner.rs`, so accidental
+    // retirement back to the `NotYetImplemented` shell trips here. Wider
+    // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
+    "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
