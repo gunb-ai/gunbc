@@ -295,9 +295,33 @@ fn joined_rust_string_literals(text: &str) -> String {
             }
             continue;
         }
+        if let Some((ch, end)) = char_literal_value(bytes, idx) {
+            joined.push(ch);
+            idx = end;
+            continue;
+        }
         idx += 1;
     }
     joined
+}
+
+fn char_literal_value(bytes: &[u8], start: usize) -> Option<(char, usize)> {
+    if bytes.get(start) != Some(&b'\'') || apostrophe_starts_lifetime_or_label(bytes, start) {
+        return None;
+    }
+    let content = start + 1;
+    match bytes.get(content).copied()? {
+        b'\\' => {
+            let escaped = bytes.get(content + 1).copied()?;
+            if bytes.get(content + 2) == Some(&b'\'') {
+                Some((escaped as char, content + 3))
+            } else {
+                None
+            }
+        }
+        byte if bytes.get(content + 1) == Some(&b'\'') => Some((byte as char, content + 2)),
+        _ => None,
+    }
 }
 
 fn raw_string_literal_bounds(bytes: &[u8], start: usize) -> Option<(usize, usize, usize)> {
@@ -379,16 +403,18 @@ const ALSO_BAD: &str = include_str /* trivia */ ! (concat!("../../", "pipeline",
 const BRACKET_BAD: &str = include_str![concat!("../../", "pipeline", ".dag")];
 const BRACE_BAD: &str = include_str!{{concat!("../../", "pipeline", ".dag")}};
 const RAW_BAD: &str = include_str!(concat!(r#"../../pipeline"#, r#".dag"#));
+const CHAR_BAD: &str = include_str!(concat!("../../pipe", 'l', "ine.dag"));
 "##,
         "_str!", "_str!"
     );
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
-    assert_eq!(offenders.len(), 5);
+    assert_eq!(offenders.len(), 6);
     assert!(offenders[0].contains("synthetic.rs:3:"));
     assert!(offenders[1].contains("synthetic.rs:4:"));
     assert!(offenders[2].contains("synthetic.rs:5:"));
     assert!(offenders[3].contains("synthetic.rs:6:"));
     assert!(offenders[4].contains("synthetic.rs:7:"));
+    assert!(offenders[5].contains("synthetic.rs:8:"));
 }
 
 #[test]
