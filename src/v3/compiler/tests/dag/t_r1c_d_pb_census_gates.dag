@@ -38,6 +38,7 @@ import std.verification {
   CensusSubsetCount,
   FixedPointConverges,
   GeneratedFromDag,
+  PendingFact,
   RatchetZero,
   TestClaim,
   TestSuite,
@@ -110,21 +111,29 @@ data pb_compiler_std_ratchet_zero_gate: TestClaim = {
   requires: []
 }
 
-// `generated_paths` enumerates a representative subset of the SG-0
+// `manifest_entries` enumerates a representative subset of the SG-0
 // generated-file manifest (`src/v3/compiler/src/lib.rs::generated_files`,
-// emitted by `build.rs::REGEN_OUTPUTS`). The runner validates each entry
-// is in `GENERATED_FILES`; the gate's load-bearing check is that the
-// `EXPECTED_HAND_AUTHORED_TEST` census is empty.
+// emitted by `build.rs::REGEN_OUTPUTS`). The runner validates each entry's
+// `output_path` is in `GENERATED_FILES`; the gate's load-bearing check is
+// that the `EXPECTED_HAND_AUTHORED_TEST` census is empty.
+//
+// R3 Cluster M substrate-shape-only migration (brief
+// r3-cluster-m-generator-manifest-substrate-refinement-worker.md RE-AMENDED
+// 2026-05-13 msg_3b99a90f): manifest entries are typed sum-variants —
+// `PendingFact { output_path }` IS the typed "unknown" carrier (P3 / C-9:
+// no fabricated `dag_source` / `source_hash` values). The follow-up
+// Evaluator-Mgr-owned runtime PR materialises `ResolvedFact` instances as
+// hash-derivation produces real values.
 data pb_test_file_generated_from_dag_gate: TestClaim = {
   name: "pb_test_file_generated_from_dag",
   source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
   file_name: "r1_pb_test_file_generated_from_dag.v3",
   predicate: GeneratedFromDag {
     authority: sg0_census_test_authority,
-    generated_paths: [
-      "src/v3/compiler/src/parse_generated.rs",
-      "src/v3/compiler/src/tokenize_generated.rs",
-      "src/v3/compiler/src/types_generated.rs"
+    manifest_entries: [
+      PendingFact { output_path: "src/v3/compiler/src/parse_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/tokenize_generated.rs" },
+      PendingFact { output_path: "src/v3/compiler/src/types_generated.rs" }
     ]
   },
   requires: []
