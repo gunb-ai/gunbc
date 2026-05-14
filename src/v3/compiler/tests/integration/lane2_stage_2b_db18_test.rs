@@ -58,6 +58,9 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::ClassifierAnchorResolutionFailed,
+        }) => panic!("anchor-resolution failure is not synthesizable as a normal Operation"),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::InputField { field },
         })
@@ -207,6 +210,34 @@ fn keyless_upsert_fails_closed_as_breaking() {
     assert!(matches!(
         r,
         WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy { .. })
+    ));
+}
+
+#[test]
+fn ambiguous_std_method_anchor_fails_closed_as_classifier_diagnostic() {
+    let dag = compile_to_dag(
+        "type append_method {}\nlet _ = 1",
+        "lane2_ambiguous_std_method_anchor.v3",
+    )
+    .expect("compile");
+    let callable = dag
+        .declaration_by_name("map_insert_method")
+        .expect("bootstrap should provide map_insert_method")
+        .id;
+    let operation = Operation {
+        callable: CallableRef { decl: callable },
+        inputs: BTreeMap::<String, InputField>::new(),
+        endpoint: RestEndpointBinding {
+            method: HttpMethodScalar::Put,
+            path: PathTemplate { tokens: vec![] },
+        },
+    };
+
+    assert!(matches!(
+        operation_effect_shape(&dag, &operation),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::ClassifierAnchorResolutionFailed
+        })
     ));
 }
 

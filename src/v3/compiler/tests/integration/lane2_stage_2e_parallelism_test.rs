@@ -82,6 +82,9 @@ fn op(dag: &Dag, shape: EffectShape) -> Operation {
         EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::KeylessFallback { method },
         }) => (method, vec![]),
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::ClassifierAnchorResolutionFailed,
+        }) => panic!("anchor-resolution failure is not synthesizable as a normal Operation"),
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
             key_source: KeySource::InputField { field },
         })
