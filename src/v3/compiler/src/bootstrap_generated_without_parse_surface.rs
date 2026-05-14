@@ -44946,7 +44946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "generated_file".to_string(),
                         FieldValue::Literal(LiteralBits::String(
-                            "src/v3/compiler/src/lens_cost_symbolic_generated.rs".to_string(),
+                            "src/v3/compiler/src/cost_symbolic_lens_generated.rs".to_string(),
                         )),
                     ),
                 ],
