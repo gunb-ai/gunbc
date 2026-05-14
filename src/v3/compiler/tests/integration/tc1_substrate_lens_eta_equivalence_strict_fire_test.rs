@@ -12,11 +12,9 @@
 //! `TestClaim.source`, **not** native `DimensionReport<Tc1EtaLensObservation>` equality (that path is
 //! gunbc#1972). Typed `.dag` refs stay `DimensionReport<Tc1EtaLensObservation>` for Pattern-A shape only.
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
-use v3_compiler::CompileError;
 
-use crate::common::run_on_larger_stack;
+use crate::common::{cached_compile_to_dag, run_on_larger_stack};
 
 const FIXTURE_SOURCE: &str =
     include_str!("../fixtures/tc1_substrate_lens_eta_equivalence_strict_fire.dag");
@@ -25,7 +23,6 @@ const FIXTURE_PATH: &str =
 const SUITE_NAME: &str = "tc1_substrate_lens_eta_equivalence_strict_fire_suite";
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape() {
     run_on_larger_stack(|| {
         tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_inner()
@@ -33,21 +30,12 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
 }
 
 fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_inner() {
-    let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
-        Ok(dag) => {
-            assert!(
-                dag.diagnostics().is_empty(),
-                "{FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-            dag
-        }
-        Err(CompileError::Semantic(dag)) => panic!(
-            "{FIXTURE_PATH} should lower without module diagnostics. Got `Err(Semantic)`: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(other) => panic!("unexpected compile error for {FIXTURE_PATH}: {other:?}"),
-    };
+    let dag = cached_compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH);
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
 
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), 1, "strict-fire suite has exactly one claim");
