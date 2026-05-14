@@ -79,22 +79,17 @@ Lane-1-only comparison helper.
 
 ## L7 State
 
-The scaffold notes are partially stale for L7. `AlgebraicLawKind` still declares
+The scaffold notes are historical for L7. `AlgebraicLawKind` declares
 `Associativity`, `Commutativity`, and `Identity`; `Distributivity` is still not
-an inhabitant. The runner now wires both `Associativity` and `Commutativity`
-through bounded operational witness tables in `test_runner.rs`, while
-`Identity` remains `NotYetImplemented` because no lens identity-element edge is
-exposed on the algebra inhabitance.
+an inhabitant. The runner now wires `Associativity`, `Commutativity`, and
+`Identity` through bounded operational witness tables / identity-candidate
+search in `test_runner.rs`.
 
 Dispatch implication:
 
-- A seed L7 fixture may now cover `Associativity` plus `Commutativity` for the
-  same lens-composition witness surface, if the worker brief wants a stronger
-  early receipt.
-- That seed still does **not** close `l7_algebraic_laws_witnessed`; closure
-  requires every algebra in `dsl/std/algebra.dag` to have runtime-constructed
-  witnesses for each applicable law.
-- `Identity` waits on the identity-element edge.
+- The L7 matrix fixture covers the current executable `AlgebraicLawKind`
+  surface for honest additive/multiplicative `Int` witnesses and is a gate #10
+  consumer receipt, not the full exhaustive coverage closure.
 - `Distributivity` remains a substrate-fact-introduction candidate under
   `INVARIANTS.md` P1; do not encode it through another `AlgebraicLawKind` or a
   fixture-local oracle.
