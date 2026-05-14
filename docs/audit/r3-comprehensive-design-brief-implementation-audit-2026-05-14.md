@@ -20,10 +20,11 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 | Layer | Count | Notes |
 |---|---|---|
-| Closure gates (§1.8) | 106 | 105 R3-load-bearing (1 canvas-deferred #11) |
-| Gates PASSING at HEAD | 53 | Evidence in §1.8 ledger |
-| Gates CONSUMER_LANDED | 50 | Working toward PASSING |
-| Gates DECLARED | 32 | Awaiting implementation dispatch |
+| Closure gates (§1.8) | 106 total | 105 R3-load-bearing (1 canvas-deferred #11) |
+| Status distribution (approximate; NON-EXCLUSIVE categories from ledger scan) | sum > 106 by design | The 3 status labels below are progression-cumulative — a PASSING gate has historically been CONSUMER_LANDED and DECLARED before reaching PASSING; the §1.8 ledger records the gate's *furthest-progressed* status. Counts below indicate how many gates have at-least-reached that status, NOT an exclusive partition. For mutually-exclusive partition, inspect §1.8 directly. |
+| Gates with PASSING evidence at HEAD | ~53 | Evidence in §1.8 ledger; furthest-progressed status |
+| Gates with CONSUMER_LANDED evidence (including PASSING gates that also have consumer landings) | ~50 | Working toward PASSING for the subset not already PASSING |
+| Gates at DECLARED (no consumer landed yet) | ~32 | Awaiting implementation dispatch |
 | Close-plan Gaps | 13 | Gaps 1-11 active; 12-13 reserved |
 | Operator-ratified Gaps (§4 items) | 5 of 5 | Items 1-4 IN-R3 2026-05-13; Item 5 (R2-Evaluator) RATIFIED 2026-05-14 via α option (warm-wolf-698 expanded scope) |
 | Design docs authored for R3 | 48 | `design-*.md` + `r3-*.md` |
@@ -227,10 +228,11 @@ This is honest + substantive + addresses the systemic concern operator surfaced 
 
 ## §7. Dispatch sequencing
 
-Per Director sequencing recommendation:
-1. **First** (this PR): audit doc landing
-2. **Second**: Phase 2.1 (close plan Gap 1 + §5.1 5th axis)
-3. **Third**: Phase 2.4 (Gap 3 R2-Evaluator)
+Per Director sequencing recommendation (updated to reflect §5.1 work landed in this PR):
+
+1. **First** (this PR — Phase 2.0): audit doc landing + **§5.1 5th axis + three-tier enforcement chain ALREADY LANDED HERE** (`docs/r3-actual-close-plan.md:761` class-C tightening with P5 receipt + L2.5 domain-model-set precondition; `:767-779` worker-tier substrate audit + PR-template-grep + Director-tier sanction chain). Phase 2.1 reduced accordingly.
+2. **Second** (Phase 2.1 — reduced scope): close plan Gap 1 amendment routing through PB-X lanes + SELF_HOSTING.md §2 4-step discipline citation. **§5.1 5th axis no longer in scope (landed in Phase 2.0)**.
+3. **Third**: Phase 2.4 (Gap 3 R2-Evaluator close-plan amendment + §1.8 single-reference to r2-closure-ledger)
 4. **Fourth**: Phase 2.2 (§1.8 PB-X gate rows)
 5. **Fifth**: Phase 2.5 (Gap 9 canvas authoring)
 6. **Sixth**: Phase 2.3 (Track A reclassification)
