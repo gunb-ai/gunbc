@@ -37,8 +37,9 @@ struct Entry {
 
 /// Entry surface for PB-1 bin-shim staging (`ProcessExit` carrier).
 ///
-/// The bootstrap `dag` must be the same `Dag::new()` authority used for
-/// `LensRegistryEntry` enumeration (callers pass `&Dag::new()` today).
+/// `dag` must be the bootstrap `Dag` from `Dag::new()` — the same authority used for
+/// `LensRegistryEntry` enumeration. Call sites store that `Dag` in a local and pass `&dag`
+/// (`let dag = Dag::new(); regen_lens_main(&dag)` in the `regen_lens` bin), not `&Dag::new()`.
 pub fn regen_lens_main(dag: &Dag) -> ProcessExit {
     match run(dag) {
         Ok(()) => ProcessExit::ExitSuccess,
