@@ -18,7 +18,7 @@ This document is the **Step 1 model review** per `src/v3/SELF_HOSTING.md` §2.2 
 - Author the `.dag` implementation (Step 3 work)
 - Author the pipeline-slot declaration (Step 2 work)
 - Design the parity test corpus (Step 4 work)
-- Touch bootstrap-runtime-loop or PB-Substrate / PB-Bootstrap-Process / PB-Runtime concerns (separate lanes)
+- Own implementation of bootstrap-runtime-loop or PB-Substrate / PB-Bootstrap-Process / PB-Runtime (those are separate lanes; this doc references them as dependencies / coordination points only)
 
 **Authority chain**: Director-tier ratification grounds the model; subsequent worker briefs (Steps 2–4) cite this doc as the substrate; §1.8 PB-6 gate row close-criterion predicate cites this doc as the L2.5 model authority.
 
@@ -149,7 +149,9 @@ Per `docs/design-clean-emission-contract.md:160-182` + live carrier at `src/v3/s
 
 Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prereqs on Gap-tier identifiers, not session IDs.
 
-| Prereq | Substrate authority | Gap-tier lane | Status at HEAD (2026-05-14) |
+**Note on PR citations in "Status at HEAD" column**: PR numbers below freeze a snapshot AS OF AUTHORING DATE 2026-05-14 and will rot as work lands. Operators reviewing this doc post-2026-05-14 should treat PR numbers as historical anchors and verify current state via the Gap-tier lane column (close-ledger row references are stable across PR churn).
+
+| Prereq | Substrate authority | Gap-tier lane | Status at HEAD (as of 2026-05-14) |
 |---|---|---|---|
 | PB-Substrate | `src/v3/std/substrate.dag` → dag.rs/ports.rs/effects.rs | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | In-flight (PR #3040 sum-variant landed; broader PB-Substrate work continues) |
 | T-Ground-LanguageSpec | LIVE v3 authority: `LanguageSpec` carrier at `src/v3/std/emit_model.dag:430` + per-target instances at `src/v3/spec/{rust,python,go}.dag` (4 Realization meta-types each) + L1 markers at `src/v3/spec/v3_l1.dag`. Legacy bootstrap (NOT to consume as PB-6 authority): `dsl/std/languages.dag:438` + `dsl/extdeps/languages/<target>/*.dag` decomposition — separate dissolution lane | Gap 13 R3 Grounding Mgr lane | **§12 Q1 raises operator ratification BEFORE PB-6 Step 2 dispatch**: confirm v3 live authority canonical |
@@ -205,7 +207,7 @@ SPICE netlists, English documentation, YAML configs, Verilog, Terraform — outp
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-emit-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn emit(d: InferredDag, spec: LanguageSpec) -> EmissionResult` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current emit.rs). **Exact `InferredDag` carrier shape gated on §12 Q7 operator ratification** — newtype / refined-`Dag`-via-where-clause / sum-variant `Dag = PreInferDag \| InferredDag`. Whichever shape lands, the signature accepts only post-infer typed-state by construction (Modeling Practice 6 API-level enforcement). Step 2 worker brief authoring routes through Director once Q7 ratified. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn emit(d: <InferredDagCarrier>, spec: LanguageSpec) -> EmissionResult` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current emit.rs). **`<InferredDagCarrier>` placeholder resolves to one of: (a) `InferredDag` newtype / (b) refined `Dag where all_ports_inferred(d)` / (c) sum-variant `InferredDag` arm of `Dag = PreInferDag \| InferredDag`** — gated on §12 Q7 operator ratification. Whichever shape lands, the signature accepts only post-infer typed-state by construction (Modeling Practice 6 API-level enforcement + Practice 4 Coproduct dissolution for option c). Step 2 worker brief authoring routes through Director once Q7 ratified. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
 | **Step 3: Implementation** | `src/v3/std/emit.dag` (the .dag implementation of emit; fill the function body) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/emit.dag (NEW substrate authority) |
 | **Step 4: Parity test + simultaneous Rust deletion** | Byte-identical output vs emit.rs across full test matrix + `emit.rs` + sibling `*_target.rs` files DELETED in same PR | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | Parity verification authored as `.dag` TestClaim — generated test fixture set + `.dag` TestClaim asserting `emit_via_rust(dag, spec) == emit_via_dag(dag, spec)` byte-equality across canonical corpus. **P5 dissolution receipt**: this TestClaim is transient-by-construction; it dissolves when emit.rs deletes in the same PR (Step 4 = parity + simultaneous deletion). Any hand-Rust scaffolding required for invocation routing between stage0 emit (reading new emit.dag via Evaluator) and emit.rs (current hand-Rust) bears P5 receipt: `parity_emit_dag_vs_rust_scaffolding — transient; dissolves with emit.rs deletion in same PR per Step 4 atomic discipline`. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries at PR-merge. |
 
