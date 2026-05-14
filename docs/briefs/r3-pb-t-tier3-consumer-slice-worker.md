@@ -113,7 +113,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = Conj {
 }
 ```
 
-**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio at predicate-evaluation time. The `.dag` predicate declares `comparator: Le`; runtime applies the budget multiplier per axis. Suite gate is `Conj` of 4 per-mirror claims; per-mirror claims are `Conj` of 1-or-2 per-bench `PerfWithinBaseline` predicates per the §3 budgeted bench-name set. **No group-level numeric aggregation** at any layer (per capture-procedure §3 fail-closed semantics).
+**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio at predicate-evaluation time. The `.dag` predicate declares `comparator: Le`; runtime applies the budget multiplier per axis. Suite gate is `Conj` over the active per-mirror claims; per-mirror claims are `Conj` of 1-or-2 per-bench `PerfWithinBaseline` predicates per the §3 budgeted bench-name set. **No group-level numeric aggregation** at any layer (per capture-procedure §3 fail-closed semantics).
 
 **§3 bench-set drift gate**: a CI assertion verifies the set of `tier3_bench_*_baseline` declaration names equals exactly the §3 budgeted bench-name set; any drift (missing or extra bench) fails CI. Receipts exist in capture-procedure §3 for intentional allowlist exclusions; default is exact-equality.
 
