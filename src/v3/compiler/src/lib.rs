@@ -4506,7 +4506,7 @@ pub mod lens_cost {
 
 /// Symbolic-cost lens (Lane 2 Stage 2d / DB-7). Authority lives in
 /// `src/v3/lenses/cost.dag`; the Rust projection is auto-emitted
-/// into `src/v3/compiler/src/lens_cost_symbolic_generated.rs` and
+/// into `src/v3/compiler/src/cost_symbolic_lens_generated.rs` and
 /// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
 ///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
@@ -4524,13 +4524,18 @@ pub mod lens_cost_symbolic {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
-        clippy::deref_addrof
+        clippy::deref_addrof,
+        clippy::eq_op
     )]
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::{
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
+        };
+        use crate::Witness;
 
-        include!("lens_cost_symbolic_generated.rs");
+        include!("cost_symbolic_lens_generated.rs");
     }
 
     pub use generated::{
@@ -5219,6 +5224,7 @@ pub mod lens_parallelism {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
 }
+
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
