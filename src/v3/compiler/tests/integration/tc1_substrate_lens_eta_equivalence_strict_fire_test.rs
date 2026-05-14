@@ -11,6 +11,8 @@
 //! `SymbolicCost`** from [`analyze_symbolic_cost_dimension`] on the two η-pair entry binds in
 //! `TestClaim.source`, **not** native `DimensionReport<Tc1EtaLensObservation>` equality (that path is
 //! gunbc#1972). Typed `.dag` refs stay `DimensionReport<Tc1EtaLensObservation>` for Pattern-A shape only.
+//! **Ledger authority:** §1.8 **Status** stays **DECLARED** for carrier-aligned closure; this test is a
+//! **slice receipt** only (`docs/r3-program-plan.md` §1.8 row #11 Notes vs Status — INVARIANTS P5).
 
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 
