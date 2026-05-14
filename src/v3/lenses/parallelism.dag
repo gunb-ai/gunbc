@@ -14,9 +14,9 @@
 // The breaker witness deliberately uses branch-order flattening, matching the
 // retired Rust bridge and `WorkflowEffect::operation_at`.
 //
-// Behavioral completion trigger: add typed pairwise-noncommute evidence to
-// `WorkflowParallelismReport` / `ParallelismUnsupportedDetail`, then route the
-// computed left/right `Operation` witnesses through that public payload.
+// Pairwise non-commute reports route typed left/right `Operation` witnesses
+// through the `ParallelismUnsupportedKind::PairwiseNonCommute` payload so
+// non-pair unsupported kinds cannot carry unrelated pair evidence.
 
 module lenses.parallelism
 
@@ -58,15 +58,18 @@ type LinearBranchesLookup
   | NonLinearBranchFound
 
 type NonCommutingPairLookup
-  // 🟡 SCAFFOLD helper coproduct. The operation pair is internal search
-  // evidence used only to decide the closed `PairwiseNonCommute` class; the
-  // exported report contract remains `ParallelismUnsupportedDetail { kind,
-  // downstream_stage, reason }` from `std.effects`. Dissolution trigger:
-  // when `WorkflowParallelismReport` grows typed non-commute evidence, remove
-  // this private carrier and carry the left/right operations through that
-  // public report payload instead of overloading the free-text reason.
+  // 🟢 TERMINAL private search carrier. The public report now exposes the found
+  // pair as `PairwiseNonCommute { left, right }`; this local coproduct remains the total
+  // traversal control-flow result for "found first pair" vs "all pairs commute".
   = NonCommutingPairFound { left: Operation, right: Operation }
   | AllPairsCommute
+
+fn report_pairwise_non_commute(left: Operation, right: Operation) -> WorkflowParallelismReport =
+  ParallelismUnsupported({
+    kind: PairwiseNonCommute { left: left, right: right },
+    downstream_stage: "lane2_stage2e_parallelism_lens",
+    reason: "parallel branch operations do not commute under parallel scheduling"
+  })
 
 fn nsl_to_workflow_list(nsl: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =
   cons(nsl.first, cons(nsl.second, nsl.rest))
@@ -218,15 +221,7 @@ fn parallelism_report_for_workflow(wf: WorkflowEffect) -> WorkflowParallelismRep
               match pairwise_cross_branch_commutes(branch_ops) {
                 AllPairsCommute => ParallelCompositionVerdict(IdempotentComposition)
                 NonCommutingPairFound { left: left_op, right: right_op } =>
-                  // The pair witnesses stay bound here to prove the search found
-                  // concrete non-commuting operations, but Stage 2e's exported
-                  // report contract is deliberately the closed kind plus a
-                  // stable reason string. Tests lock that contract instead of
-                  // formatting operation names into `reason`.
-                  report_parallelism_unsupported(
-                    PairwiseNonCommute,
-                    "parallel branch operations do not commute under parallel scheduling"
-                  )
+                  report_pairwise_non_commute(left_op, right_op)
               }
           }
       }
