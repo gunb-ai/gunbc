@@ -33,8 +33,10 @@
 //! `parallelism_enforceable` (`lenses.parallelism`) with a [`SectionRef::NodeScope`] section, infer
 //! checks **cross-iteration parallel emission** eligibility via
 //! [`crate::loop_iteration_parallel_emission_indicator`] on the scope's `NodeId` — the same host
-//! contract as the R3 free-consequences auto-loop receipts. User `OptInIndependent` budgets fail
-//! closed when the indicator reports sequential-only scheduling (`Sequential` observed mode).
+//! contract as the R3 free-consequences auto-loop receipts. Budget violations are decided only by
+//! evaluating authored `parallelism_enforcement_violates` from `parallelism.dag` through
+//! [`crate::lens_declaration_apply::apply_lens_declaration`] (single substrate authority); Rust maps
+//! the indicator into `ParallelismMode` solely as the Lane‑2 observation bridge.
 
 use std::collections::HashMap;
 
@@ -47,6 +49,7 @@ use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
     complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
 };
+use crate::lens_declaration_apply::{apply_lens_declaration, LensApplyError};
 
 fn diagnostic_severity_substrate_disj(dag: &Dag) -> Option<DeclarationId> {
     dag.declarations()
@@ -308,24 +311,69 @@ fn observed_parallelism_budget_from_iteration_indicator(
     }
 }
 
-fn parallelism_iteration_budget_violates(
-    observed: ParallelismIterationBudget,
-    budget: ParallelismIterationBudget,
-) -> bool {
-    matches!(
-        (budget, observed),
-        (
-            ParallelismIterationBudget::OptInIndependent,
-            ParallelismIterationBudget::Sequential
-        )
-    )
-}
-
 fn parallelism_mode_disj_decl_id(dag: &Dag) -> Option<DeclarationId> {
     dag.declarations()
         .iter()
-        .find(|d| d.name.as_deref() == Some("ParallelismMode"))
+        .find(|d| {
+            d.name.as_deref() == Some("ParallelismMode") && d.span.file.ends_with("parallelism.dag")
+        })
         .map(|d| d.id)
+}
+
+fn parallelism_enforcement_violates_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("parallelism_enforcement_violates")
+                && d.span.file.ends_with("parallelism.dag")
+        })
+        .map(|d| d.id)
+}
+
+fn parallelism_iteration_budget_as_variant_field_value(
+    dag: &Dag,
+    pm_disj: DeclarationId,
+    budget: ParallelismIterationBudget,
+) -> Option<FieldValue> {
+    let TypeConnective::Disj { variants } = &dag.declaration(pm_disj).connective else {
+        return None;
+    };
+    let label = match budget {
+        ParallelismIterationBudget::OptInIndependent => "OptInIndependent",
+        ParallelismIterationBudget::Sequential => "Sequential",
+    };
+    let ctor = variants.iter().find(|v| v.label == label)?.ty;
+    Some(FieldValue::Variant {
+        constructor: ctor,
+        payload: Vec::new(),
+    })
+}
+
+fn parallelism_enforcement_violates_via_substrate(
+    dag: &Dag,
+    pm_disj: DeclarationId,
+    observed: ParallelismIterationBudget,
+    declared: ParallelismIterationBudget,
+) -> Result<bool, LensApplyError> {
+    let lens_id = parallelism_enforcement_violates_decl_id(dag).ok_or(
+        LensApplyError::SubstrateReflect("parallelism_enforcement_violates declaration"),
+    )?;
+    let observed_fv =
+        parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, observed).ok_or(
+            LensApplyError::SubstrateReflect("ParallelismMode observed variant"),
+        )?;
+    let declared_fv =
+        parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, declared).ok_or(
+            LensApplyError::SubstrateReflect("ParallelismMode declared variant"),
+        )?;
+    let out =
+        apply_lens_declaration(dag, None, lens_id, &[observed_fv, declared_fv])?;
+    match out {
+        FieldValue::Literal(LiteralBits::Bool(b)) => Ok(b),
+        _ => Err(LensApplyError::TypeMismatch(
+            "parallelism_enforcement_violates Bool output",
+        )),
+    }
 }
 
 fn section_ref_node_scope_constructor_id(
@@ -413,9 +461,22 @@ fn resolve_node_scope_section(
 ///
 /// **Gate #95 interim surface** (see `docs/design-lens-application-surface.md` §4.4): pairs with
 /// [`check_enforced_lens_applications`] for full `EnforcedApplication`/`NodeScope` routing.
-pub fn parallelism_iteration_opt_in_enforcement_violates(indicator: i64) -> bool {
+///
+/// Requires `dag` to carry lowered `parallelism.dag` (`parallelism_enforcement_violates`); the
+/// predicate delegates violation semantics to that substrate declaration via
+/// [`apply_lens_declaration`].
+pub fn parallelism_iteration_opt_in_enforcement_violates(dag: &Dag, indicator: i64) -> bool {
+    let Some(pm_disj) = parallelism_mode_disj_decl_id(dag) else {
+        panic!("parallelism_iteration_opt_in_enforcement_violates: missing ParallelismMode disj");
+    };
     let observed = observed_parallelism_budget_from_iteration_indicator(indicator);
-    parallelism_iteration_budget_violates(observed, ParallelismIterationBudget::OptInIndependent)
+    parallelism_enforcement_violates_via_substrate(
+        dag,
+        pm_disj,
+        observed,
+        ParallelismIterationBudget::OptInIndependent,
+    )
+    .expect("parallelism_iteration_opt_in_enforcement_violates: substrate eval")
 }
 
 /// Fail-closed check for landed complexity, timing, and iteration-opt-in parallelism enforcement
@@ -493,7 +554,10 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     let parallelism_enforceable_id = dag
         .declarations()
         .iter()
-        .find(|d| d.name.as_deref() == Some("parallelism_enforceable"))
+        .find(|d| {
+            d.name.as_deref() == Some("parallelism_enforceable")
+                && d.span.file.ends_with("parallelism.dag")
+        })
         .map(|d| d.id);
     let parallelism_mode_disj = parallelism_mode_disj_decl_id(dag);
     let Some(diagnostic_severity_disj) = diagnostic_severity_substrate_disj(dag) else {
@@ -904,7 +968,29 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 let indicator =
                     crate::loop_iteration_parallel_emission_indicator(dag, subject_node);
                 let observed_host = observed_parallelism_budget_from_iteration_indicator(indicator);
-                if !parallelism_iteration_budget_violates(observed_host, budget_host) {
+                let violates = match parallelism_enforcement_violates_via_substrate(
+                    dag,
+                    pm_disj,
+                    observed_host,
+                    budget_host,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        violations.push(Diagnostic::ParseError {
+                            message: format!(
+                                "lens enforcement: could not evaluate `parallelism_enforcement_violates` \
+                                 from `parallelism.dag` (fail-closed): {e:?}"
+                            ),
+                            span: decl.span.clone(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "EnforcedLensApplicationDiagnostic",
+                                ),
+                        });
+                        continue;
+                    }
+                };
+                if !violates {
                     continue;
                 }
 
@@ -1640,13 +1726,19 @@ mod gate_95_parallelism_iteration_enforcement_tests {
         let pm_disj = dag
             .declarations()
             .iter()
-            .find(|d| d.name.as_deref() == Some("ParallelismMode"))
+            .find(|d| {
+                d.name.as_deref() == Some("ParallelismMode")
+                    && d.span.file.ends_with("parallelism.dag")
+            })
             .expect("ParallelismMode")
             .id;
         let parallelism_enforceable = dag
             .declarations()
             .iter()
-            .find(|d| d.name.as_deref() == Some("parallelism_enforceable"))
+            .find(|d| {
+                d.name.as_deref() == Some("parallelism_enforceable")
+                    && d.span.file.ends_with("parallelism.dag")
+            })
             .expect("parallelism_enforceable")
             .id;
         let section_ref_disj = dag
@@ -1790,9 +1882,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 1);
-        assert!(!parallelism_iteration_opt_in_enforcement_violates(
-            indicator
-        ));
+        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, indicator));
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
@@ -1824,7 +1914,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 0);
-        assert!(parallelism_iteration_opt_in_enforcement_violates(indicator));
+        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, indicator));
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,

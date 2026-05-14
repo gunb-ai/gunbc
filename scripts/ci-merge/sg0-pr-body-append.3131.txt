@@ -1,2 +1,3 @@
 SG-0 hand-path delta: +1
 SG-0 pairing: (c) R3 gate #95 iteration-opt-in parallelism LAS (`t_las_parallelism_iteration_gate95_demo_test`) dispatch tracked gunbc#3131
+P5 Mechanism (b) co-receipt (gate #95): expanded `src/v3/compiler/src/enforced_lens_application.rs` parallelism LAS consumer evaluates authored `parallelism_enforcement_violates` (`parallelism.dag`) via `apply_lens_declaration` — single substrate authority for violation semantics (indicator→mode bridge only). Matching non-test receipt row amended in INVARIANTS.md (`EXPECTED_HAND_AUTHORED_NON_TEST` / `enforced_lens_application.rs`) same PR as this prepend + census line.
