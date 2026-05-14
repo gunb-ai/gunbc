@@ -175,7 +175,7 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ParallelismMode {
+pub(crate) enum ParallelismMode {
     OptInIndependent,
     Sequential,
 }

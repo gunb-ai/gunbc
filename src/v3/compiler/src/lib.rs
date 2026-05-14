@@ -5226,6 +5226,8 @@ pub mod lens_parallelism {
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::OptionalDiagnostic;
+        use crate::Witness;
 
         include!("lens_parallelism_generated.rs");
     }
@@ -5239,7 +5241,14 @@ pub mod lens_parallelism {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
 
-    pub(crate) use generated::{parallelism_iteration_observed_mode, ParallelismMode};
+    pub(crate) fn parallelism_iteration_observed_mode(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> ParallelismMode {
+        generated::parallelism_iteration_observed_mode(dag, workflow_root)
+    }
+
+    pub(crate) use generated::ParallelismMode;
 }
 
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
