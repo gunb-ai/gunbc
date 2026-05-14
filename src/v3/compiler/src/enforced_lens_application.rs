@@ -68,6 +68,14 @@ fn attach_missing_diagnostic_severity_substrate_diagnostic(
     });
 }
 
+fn timing_lens_gate_58_retirement_correction() -> crate::diagnostics::Correction {
+    crate::diagnostics::Correction::deferred(
+        "Gate #58 timing enforcement does not yet retain a source span for a safe timing witness rewrite",
+        "R3 Gap 9 row #106 timing-lens diagnostic roundtrip",
+        "thread timing measurement/budget source spans through gate #58 enforcement and replace this scaffold diagnostic with a generated/data-backed LiveCorrection",
+    )
+}
+
 /// Reads `timing_enforcement_fault_sentinel_count` from the lowered `timing_lens.dag` declaration
 /// body (nullary `fn` → bind → [`ValueNode`]), matching substrate authority instead of duplicating
 /// the decimal literal in Rust.
@@ -852,9 +860,7 @@ fn enforced_violation_diagnostic(
     Diagnostic::ParseError {
         message: violation_message,
         span,
-        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
-            "EnforcedLensApplicationDiagnostic",
-        ),
+        correction: timing_lens_gate_58_retirement_correction(),
     }
 }
 

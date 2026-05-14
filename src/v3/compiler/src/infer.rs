@@ -512,6 +512,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
         output_port: PortId,
         span: SourceSpan,
         expected: Vec<(String, DeclarationId)>,
+        arm_outputs: Vec<PortId>,
         // Parallel vec of (resolved_decl_id, arm_name_for_diagnostic)
         // collected in path order. Paths whose resolution failed are
         // not included — their error already fires, so coverage is
@@ -588,6 +589,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             output_port: b.output,
             span: b.span.clone(),
             expected: disj_variants,
+            arm_outputs: b.paths.iter().map(|path| path.output).collect(),
             resolved_arms,
         });
     }
@@ -656,24 +658,13 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             } else {
                 ", "
             };
-            let correction = match dag.port(check.output_port).state() {
-                PortState::Resolved(output_ty) => {
-                    example_source_for_decl(dag, output_ty.declaration).map(|body| {
-                        let insert_at = check.span.byte_end.saturating_sub(1);
-                        let arms = missing
-                            .iter()
-                            .map(|variant| format!("{variant} => {body}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        Correction::live(
-                            format!("add missing arm(s) for `{missing_list}`"),
-                            SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
-                            format!("{arm_prefix}{arms}"),
-                        )
-                    })
-                }
-                _ => None,
-            };
+            let body = branch_output_example_source(dag, check.output_port, &check.arm_outputs);
+            let insert_at = check.span.byte_end.saturating_sub(1);
+            let arms = missing
+                .iter()
+                .map(|variant| format!("{variant} => {body}"))
+                .collect::<Vec<_>>()
+                .join(", ");
             dag.mark_unresolved(
                 check.output_port,
                 Diagnostic::ResolveError {
@@ -681,13 +672,27 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
                     ),
                     span: check.span,
-                    correction: correction.unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic")),
+                    correction: Correction::live(
+                        format!("add missing arm(s) for `{missing_list}`"),
+                        SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
+                        format!("{arm_prefix}{arms}"),
+                    ),
                 },
             );
             changed = true;
         }
     }
     changed
+}
+
+fn branch_output_example_source(dag: &Dag, output_port: PortId, arm_outputs: &[PortId]) -> String {
+    std::iter::once(output_port)
+        .chain(arm_outputs.iter().copied())
+        .find_map(|port| match dag.port(port).state() {
+            PortState::Resolved(output_ty) => example_source_for_decl(dag, output_ty.declaration),
+            PortState::Uninferred | PortState::Unresolved => None,
+        })
+        .unwrap_or_else(|| "()".to_string())
 }
 
 fn branch_payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {

@@ -88,21 +88,14 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     else {
         panic!("expected ParseError diagnostic, got {d:?}");
     };
-    assert!(
-        matches!(
-            correction,
-            v3_compiler::diagnostics::Correction::DeferredCorrection { .. }
-        ),
-        "legacy timing budget violation must carry an explicit row-#106 deferral until source-span evidence is threaded; got {correction:?}"
-    );
     let v3_compiler::diagnostics::Correction::DeferredCorrection {
         retirement_plan, ..
     } = correction
     else {
-        unreachable!("checked above")
+        panic!("legacy gate #58 timing scaffold should expose its row-#106 retirement plan until source-span evidence is threaded; got {correction:?}")
     };
     assert_eq!(
-        retirement_plan.owner, "R3 Gap 9 row #106 diagnostic roundtrip coverage",
+        retirement_plan.owner, "R3 Gap 9 row #106 timing-lens diagnostic roundtrip",
         "timing scaffold deferral must stay tied to row #106 retirement"
     );
     assert!(
