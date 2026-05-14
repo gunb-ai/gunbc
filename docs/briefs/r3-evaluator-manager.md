@@ -1,6 +1,6 @@
 # R3 Evaluator Manager Brief
 
-**Status:** active R3 manager lane, re-spawned 2026-05-14 after operator §4 sub-item 5 ratification and the `dashboard-ops --shape` flag landing in PR #3041. This brief is the R3 manager-facing program surface; the R2 lineage remains in [`r2-evaluator-manager.md`](r2-evaluator-manager.md).
+**Status:** active R3 manager lane, re-spawned 2026-05-14 UTC after operator §4 sub-item 5 ratification and the `dashboard-ops --shape` flag landing in PR #3041. This brief is the R3 manager-facing program surface; the R2 lineage remains in [`r2-evaluator-manager.md`](r2-evaluator-manager.md).
 
 ## Authority
 

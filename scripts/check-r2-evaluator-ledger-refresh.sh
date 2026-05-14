@@ -21,13 +21,13 @@ require_row_status() {
     exit 1
   fi
 
-  if [[ "$row" != *"HEAD refresh 2026-05-14"* ]]; then
+  if [[ "$row" != *"HEAD refresh 2026-05-14 UTC"* ]]; then
     echo "R2 Evaluator ledger row for ${gate} lacks HEAD refresh marker" >&2
     exit 1
   fi
 }
 
-# Pinned matrix for the 2026-05-14 R3 Evaluator refresh. Any ratified
+# Pinned matrix for the 2026-05-14 UTC R3 Evaluator refresh. Any ratified
 # intermediate or all-green transition must update these expectations in
 # the same change that updates the ledger evidence.
 require_row_status "runtime_value_model_structural" "green"
