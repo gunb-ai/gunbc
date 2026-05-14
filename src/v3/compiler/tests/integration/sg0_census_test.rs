@@ -711,6 +711,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
+    // T-CostLens-Composition): mechanical ratchet pinning the executable
+    // dispatch arm + evaluator wiring in `test_runner.rs`, so accidental
+    // retirement back to the `NotYetImplemented` shell trips here. Wider
+    // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
+    "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
