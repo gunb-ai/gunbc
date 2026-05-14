@@ -518,19 +518,28 @@ pub mod r3_gate_87_cementing_regen_runner_suites {
 }
 
 pub mod gunbc_ci {
-    //! `gunbc.ci` workflow gate selection — affected-set dispatch substrate.
+    //! `gunbc.ci` workflow gate selection — **Layer 1** affected-set dispatch substrate.
     //!
     //! **Authority** (Phase B): `docs/briefs/r3-wave1-s6-slice7-affected-set-impl-worker.md`;
-    //! fail-closed + obligation closure: `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §3–§4;
+    //! fail-closed behavior aligned with
+    //! `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §3 (superset
+    //! table) applied to **gate-id** touch seeds (see §4 for how end-state runners join
+    //! `NodeRef` / dimension receipts to obligations — **not implemented in this module**);
     //! carrier shape: `dsl/gunbc/ci.dag` (`CIWorkflowDag`, `CIGateEdge`: `from` is a prerequisite of `to`).
+    //!
+    //! **Layer 1 vs canvas §7 / ROADMAP gate #103:** program row `ci_uses_affected_set_selection`
+    //! eventually requires the Slice-5 **BinaryShim** runner to wire PR #2713 affected-set
+    //! receipts through `CIWorkflowDag` / `TestClaim` metadata (canvas §§1.1–1.3, §4, §7).
+    //! This crate surface **does not** close that hand-off: there is no typed PR #2713
+    //! receipt type here and no runner entry mapping `Set<NodeRef>` into these APIs.
+    //! What lands here is the **pure graph planner** — [`select_affected_gates`] — plus a
+    //! thin [`CiBinaryShimAffectedSetReceipt`] adapter for **gate-id seeds only** (tests +
+    //! future runner glue once upstream produces `CIGate.id` touches).
     //!
     //! This module is intentionally **pure**: every decision is a function of
     //! [`CiWorkflowDagInput`] + [`CiWorkflowDiff`] only. Git diffs, path-regex, env,
-    //! and PR #2713 lens receipts are upstream responsibilities; they must be
-    //! mapped into [`CiWorkflowDiff`] (or a superset-equivalent touch set) before
-    //! calling [`select_affected_gates`]. **BinaryShim / gate #103:** the adapter
-    //! boundary [`CiBinaryShimAffectedSetReceipt`] + [`select_affected_gates_for_binary_shim`]
-    //! consumes PR #2713 lens output after upstream lowers affected nodes into gate ids.
+    //! and PR #2713 lens output must be **mapped upstream** into [`CiWorkflowDiff`] (or a
+    //! superset-equivalent touch set) before calling [`select_affected_gates`].
     //!
     //! **Verifier ratchet witness (Phase C scaffolding)** — `docs/design-ci-workflow-substrate-shape-2026-05-12.md`
     //! S5 + prequeue §5.2: monotone **inclusion** under enlarging the touched-id
