@@ -1,4 +1,4 @@
-% Emit Pipeline Stage — L2.5 Domain Model (PB-6)
+# Emit Pipeline Stage — L2.5 Domain Model (PB-6)
 
 **Status:** DRAFT — Director-tier authoring per operator ratification 2026-05-14 ("can we author L2.5 models up front / agree on them"). Surfaces for operator review before PB-6 lane execution authority dispatches.
 
@@ -156,7 +156,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | `target_source.dag` (if new) | TargetSource carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification |
 | `emit_config.dag` (if new) | EmissionConfig carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification OR refinement of existing emit_model.dag |
 
-**Critical observation**: 5 of 7 prereqs route through **R3 Grounding Mgr lane (Gap 13)** which is currently between-sessions (per still-dove-462 archive pattern). PB-6 emit Step 3 implementation cannot proceed substantively until R3 Grounding Mgr lane re-spawns AND closes the 3 key sub-lanes (LanguageSpec / Coercion-Fold / Diagnostic).
+**Critical observation**: 6 of 8 prereq rows above route through **R3 Grounding Mgr lane (Gap 13)** — PB-Substrate (Gap 13 + Substrate Mgr co-ownership) + T-Ground-LanguageSpec + T-Ground-Coercion-Fold + T-Ground-Diagnostic + T-Ground-Lifetime-Analyzer + T-Ground-CrossTarget-Meta. The remaining 2 (`target_source.dag` + `emit_config.dag`) are Director-tier substrate-fact-introduction scope. Gap 13 R3 Grounding Mgr lane is currently between-sessions (per still-dove-462 archive pattern). PB-6 emit Step 3 implementation cannot proceed substantively until R3 Grounding Mgr lane re-spawns AND closes the 3 key sub-lanes (LanguageSpec / Coercion-Fold / Diagnostic).
 
 This is the **structural blocker** for PB-6 emit dispatch — substrate prereqs are upstream of pipeline-stage migration. Step 2 (pipeline-slot ExternalRealization) can proceed in parallel with Grounding Mgr work; Step 3 (implementation) must wait.
 
