@@ -95,19 +95,19 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 ### Q5 — Per-row policy attachment shape (where does it live?)
 
-**E1.** Add `corpus_policy: Maybe<L5CorpusRowPolicy>` field directly on `TestClaim` (universal — every claim can carry it, only L5 rows populate it).
-**E2.** New sibling carrier `L5CorpusRow { claim: TestClaim, policy: L5CorpusRowPolicy }` carrying a **typed edge to the `TestClaim`** (not a `String` name key — string-keyed join would defer P2 boundary discipline to a runner check rather than making invalid policy rows unrepresentable); lives in a separate `std.r3_l5_corpus` module.
-**E3.** New `TestPredicate` variant `ForAllTargetsWithPolicy { …existing ForAllTargets fields…, policy: L5CorpusRowPolicy }` — disqualified by **upstream worker brief** §"Explicitly out of scope": *"New `TestPredicate` variants — `ForAllTargets` already on substrate; INVARIANTS §P1 only for genuinely new facts."*
+**E1.** Add `corpus_policy: Maybe<L5CorpusRow>` field directly on `TestClaim` (universal — every claim can carry it, only L5 rows populate it).
+**E2.** New sibling carrier `L5CorpusRow` in a dedicated `std.r3_l5_corpus` module, carrying a **typed `claim: TestClaim` edge** + the policy fields inline (not a `{claim, policy}` two-record wrapper — flat carrier keeps single authority and matches the §5 substrate delta below). String name keys are disqualified: a string-keyed join would defer P2 boundary discipline to a runner check rather than making invalid policy rows unrepresentable.
+**E3.** New `TestPredicate` variant `ForAllTargetsWithPolicy { …existing ForAllTargets fields…, policy: L5CorpusRow }` — disqualified by **upstream worker brief** §"Explicitly out of scope": *"New `TestPredicate` variants — `ForAllTargets` already on substrate; INVARIANTS §P1 only for genuinely new facts."*
 
 **Disqualifiers:**
 - **E3** ruled out by [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md) §"Explicitly out of scope".
 - **E1** introduces a universal field for a single-consumer fact — most `TestClaim` rows have no L5 semantics; `Maybe<>` slot is parallel-representation drift unless ratified explicitly.
 
-**Canvas recommendation:** **E2**. Keeps `TestClaim` shape stable; co-locates L5 policy facts in their own module under the existing `r3_verification_l5_corpus` fixture authority. The typed `claim: TestClaim` edge means a policy row pointing at a non-existent claim is **unrepresentable at the type level** (INVARIANTS §P2 boundary discipline cashed at the carrier, not at a runner string-equality check). Boundary consumer (`l5_cross_target_consistency.rs`) only enforces the remaining cardinality fact: every L5 corpus claim appears in exactly one `L5CorpusRow`. Mirrors the **`SuiteClaim`** pattern (`src/v3/std/verification.dag:619`) — closed coproduct over `TestClaim` / `QuantifiedTestClaim`, typed edges throughout.
+**Canvas recommendation:** **E2** — single flat `L5CorpusRow` carrier in `std.r3_l5_corpus`. Keeps `TestClaim` shape stable; co-locates L5 policy facts in their own module under the existing `r3_verification_l5_corpus` fixture authority. The typed `claim: TestClaim` edge means a policy row pointing at a non-existent claim is **unrepresentable at the type level** (INVARIANTS §P2 boundary discipline cashed at the carrier, not at a runner string-equality check). Boundary consumer (`l5_cross_target_consistency.rs`) only enforces the remaining cardinality fact: every L5 corpus claim appears in exactly one `L5CorpusRow`. Mirrors the **`SuiteClaim`** pattern (`src/v3/std/verification.dag:619`) — closed carrier over `TestClaim`, typed edges throughout.
 
 ## 5. Substrate carrier shape (preliminary, conditional on Q1–Q5 ratification)
 
-Assuming canvas recommendations land (**A1 + B1 + C3 + D2 + E2**), the substrate delta at `src/v3/std/verification.dag` is:
+Assuming canvas recommendations land (**A1 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement; no edit to `src/v3/std/verification.dag` other than the `import` line in the L5 fixture):
 
 ```
 type OracleAuthority
@@ -133,23 +133,23 @@ type CoverageReason
   | TargetRealizationEdge(TargetEdgeRef)    // typed edge to the per-target realization fact
   | L4CorpusLift(DeclarationRef)            // typed edge to the originating L4 TestClaim
 
-type L5CorpusRowPolicy {
+type L5CorpusRow {
   claim: TestClaim
   observation: ExpectedObservation
-  effect: EffectShape
+  effect: EffectShape           // reuses `EffectShape` from `src/v3/std/effects.dag` (Q1-A1)
   numeric: NumericPolicy
   coverage: CoverageReason
 }
 ```
 
-**Boundary consumer ratchet (implementation PR — NOT this PR):** `l5_cross_target_consistency.rs` extends the existing N>0 corpus check to require that every L5 `TestClaim` row has exactly one `L5CorpusRowPolicy` companion, and that `EffectShape` for every row is in the design-doc-allowed set (`Pure` or `ControlledStdout`; `TypedFailure` only when claim text says so; `DeferredEffectful` is fail-closed per design doc §"Side-effect Policy").
+**Boundary consumer ratchet (implementation PR — NOT this PR):** `l5_cross_target_consistency.rs` extends the existing N>0 corpus check to require that every L5 `TestClaim` row has exactly one `L5CorpusRow` companion, and that `EffectShape` for every row is in the design-doc-allowed set (`Pure` or `ControlledStdout`; `TypedFailure` only when claim text says so; `DeferredEffectful` is fail-closed per design doc §"Side-effect Policy").
 
 ## 6. Dispatch sequence (if Director ratifies)
 
 1. **PR-1 (this PR):** canvas land as research-only `.md`. **No substrate edit.**
 2. **PR-2 (follow-up worker):** substrate land in `src/v3/std/verification.dag` per ratified shape. Sample one of the 4 existing rows; rest blocked.
-3. **PR-3 (follow-up worker):** all 4 existing rows back-fill `L5CorpusRowPolicy` companions; boundary consumer enforces 1:1 fail-closed.
-4. **PR-4 (Verification Mgr):** flip §1.8 row #15 Status `CONSUMER_LANDED` → **PASSING** with §1.8 Notes citing the four landed `L5CorpusRowPolicy` rows.
+3. **PR-3 (follow-up worker):** all 4 existing rows back-fill `L5CorpusRow` companions; boundary consumer enforces 1:1 fail-closed.
+4. **PR-4 (Verification Mgr):** flip §1.8 row #15 Status `CONSUMER_LANDED` → **PASSING** with §1.8 Notes citing the four landed `L5CorpusRow` rows.
 
 `feedback_post_merge_ledger_receipt_sync.md`: PR-4 lands the §1.8 row flip in the same PR that wires the last back-fill; no deferred ledger sync.
 
