@@ -656,9 +656,13 @@ data suite: TestSuite = {
         "pb_compiler_std_ratchet_zero",
         "compiler_std_positive_set_ratchet",
     );
-    assert_fail_contains(
-        "pb_test_file_generated_from_dag",
-        "not in the generated-file authority",
+    assert!(
+        matches!(result_for("pb_test_file_generated_from_dag"), ClaimResult::Fail(reason)
+            if reason.contains("duplicate")
+                || reason.contains("only-in-manifest")
+                || reason.contains("missing-from-manifest")),
+        "expected `pb_test_file_generated_from_dag` to fail on manifest vs `GENERATED_FILES` authority mismatch, got {:?}",
+        result_for("pb_test_file_generated_from_dag")
     );
 }
 
