@@ -41,8 +41,7 @@ fn dag_line_without_trailing_line_comment(line: &str) -> &str {
 }
 
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries =
-        fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
+    let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
     for ent in entries {
         let ent = ent.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", dir.display()));
         let p = ent.path();
@@ -81,9 +80,7 @@ fn no_coercion_cost_dimension_substrate_dag_has_no_coercion_cost_carrier_token()
             if code.contains(NEEDLE) {
                 hits.push(format!(
                     "{}:{}: {}",
-                    path.strip_prefix(&root)
-                        .unwrap_or(&path)
-                        .display(),
+                    path.strip_prefix(&root).unwrap_or(&path).display(),
                     line_no + 1,
                     line.trim_end()
                 ));
