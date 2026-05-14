@@ -270,18 +270,25 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
+    // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
+    // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
+    // predicate substrate owns the walk without host FS coupling).
+    "src/v3/compiler/src/cementing_dispatch.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     // Closed Cardinality payload + idempotent target shim (API closure).
     "src/v3/compiler/src/dag/cardinality_payload.rs",
     "src/v3/compiler/src/dag/effects.rs",
     "src/v3/compiler/src/dag/ports.rs",
+    "src/v3/compiler/src/diagnostics.rs",
+    "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
+    "src/v3/compiler/src/infer.rs",
     // PB-0 cycle-2 (msg_84abadad Track A): `gunbc_ci`, `integration_rs_wiring_scan`,
     // `r3_gate_87_cementing_regen_runner_suites`, and `lens_t_las_carrier` are nested `pub mod`
     // surfaces under `cementing_dispatch.rs` / `lens_declaration_apply` (same APIs via `lib.rs`
@@ -297,6 +304,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
     // `.dag` program owns the OpenAPI artifact projection end-to-end.
     "src/v3/compiler/src/omni_shape_b_openapi.rs",
+    "src/v3/compiler/src/pipeline_authority.rs",
+    "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
     "src/v3/compiler/src/process_exit.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
