@@ -5238,6 +5238,8 @@ pub mod lens_parallelism {
     ) -> i64 {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
+
+    pub(crate) use generated::{parallelism_iteration_observed_mode, ParallelismMode};
 }
 
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):

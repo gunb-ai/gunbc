@@ -31,12 +31,12 @@
 //! Gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`): when a program
 //! authors `EnforcedApplication<ParallelismMode, ParallelismMode, ParallelismMode>` referencing
 //! `parallelism_enforceable` (`lenses.parallelism`) with a [`SectionRef::NodeScope`] section, infer
-//! checks **cross-iteration parallel emission** eligibility via
-//! [`crate::loop_iteration_parallel_emission_indicator`] on the scope's `NodeId` — the same host
-//! contract as the R3 free-consequences auto-loop receipts. Budget violations are decided only by
-//! evaluating authored `parallelism_enforcement_violates` from `parallelism.dag` through
-//! [`crate::lens_declaration_apply::apply_lens_declaration`] (single substrate authority); Rust maps
-//! the indicator into `ParallelismMode` solely as the Lane‑2 observation bridge.
+//! observes **cross-iteration parallel emission** eligibility via authored
+//! [`crate::lens_parallelism::parallelism_iteration_observed_mode`] (`parallelism.dag`) on the scope's
+//! `NodeId` — identical to lens `parallelism_lens.read`'s substrate surface and the staged
+//! `loop_iteration_parallel_emission_indicator`. Budget violations delegate to authored
+//! `parallelism_enforcement_violates` via [`crate::lens_declaration_apply::apply_lens_declaration`];
+//! host code does not remap raw indicator integers independently.
 
 use std::collections::HashMap;
 
@@ -295,26 +295,24 @@ fn is_timing_enforceable_lens_value(
     lens_ref == Some(lens_id) && enforcement_ref == Some(enforcement_id)
 }
 
-/// Lane‑2 observation bridge for authored `parallelism.dag` `ParallelismMode` carriers: maps
-/// `loop_iteration_parallel_emission_indicator` (`1` vs non-`1`) into the same labels as substrate
-/// `ParallelismMode` (`OptInIndependent` \| `Sequential`).
+/// Local bookkeeping parallel to authored [`crate::lens_parallelism::ParallelismMode`] for
+/// substrate `apply_lens_declaration` witnesses (DSL sum ↔ [`FieldValue::Variant`]).
 ///
-/// **Coproduct checkpoint (docs/modeling-discipline.md §4): 🟢 GREEN (terminal)** — variants trace
-/// only to the numeric Lane‑2 indicator contract; violates semantics stay single-authority in
-/// `parallelism_enforcement_violates` via `apply_lens_declaration`.
+/// Observations must come only from [`crate::lens_parallelism::parallelism_iteration_observed_mode`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ParallelismIterationBudget {
     OptInIndependent,
     Sequential,
 }
 
-fn observed_parallelism_budget_from_iteration_indicator(
-    indicator: i64,
+fn parallelism_iteration_budget_from_substrate(
+    observed: crate::lens_parallelism::ParallelismMode,
 ) -> ParallelismIterationBudget {
-    if indicator == 1 {
-        ParallelismIterationBudget::OptInIndependent
-    } else {
-        ParallelismIterationBudget::Sequential
+    match observed {
+        crate::lens_parallelism::ParallelismMode::OptInIndependent => {
+            ParallelismIterationBudget::OptInIndependent
+        }
+        crate::lens_parallelism::ParallelismMode::Sequential => ParallelismIterationBudget::Sequential,
     }
 }
 
@@ -468,20 +466,22 @@ fn resolve_node_scope_section(
 /// **Gate #95 interim surface** (see `docs/design-lens-application-surface.md` §4.4): pairs with
 /// [`check_enforced_lens_applications`] for full `EnforcedApplication`/`NodeScope` routing.
 ///
-/// Requires `dag` to carry lowered `parallelism.dag` (`parallelism_enforcement_violates`); the
-/// predicate delegates violation semantics to that substrate declaration via
-/// [`apply_lens_declaration`].
+/// Requires `dag` to carry lowered `parallelism.dag` (`parallelism_enforcement_violates`);
+/// observes via [`crate::lens_parallelism::parallelism_iteration_observed_mode`]. Delegates violation
+/// semantics to that substrate via [`apply_lens_declaration`].
 ///
 /// Returns [`Err`] when `parallelism.dag` is absent from this [`Dag`] or substrate evaluation fails
 /// ([`LensApplyError`]) — no panics on arbitrary caller-supplied graphs (CODING.md § Hidden panic surface).
 pub fn parallelism_iteration_opt_in_enforcement_violates(
     dag: &Dag,
-    indicator: i64,
+    workflow_root: NodeId,
 ) -> Result<bool, LensApplyError> {
     let pm_disj = parallelism_mode_disj_decl_id(dag).ok_or(LensApplyError::SubstrateReflect(
         "ParallelismMode from parallelism.dag",
     ))?;
-    let observed = observed_parallelism_budget_from_iteration_indicator(indicator);
+    let observed = parallelism_iteration_budget_from_substrate(
+        crate::lens_parallelism::parallelism_iteration_observed_mode(dag, workflow_root),
+    );
     parallelism_enforcement_violates_via_substrate(
         dag,
         pm_disj,
@@ -978,7 +978,9 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 };
                 let indicator =
                     crate::loop_iteration_parallel_emission_indicator(dag, subject_node);
-                let observed_host = observed_parallelism_budget_from_iteration_indicator(indicator);
+                let observed_host = parallelism_iteration_budget_from_substrate(
+                    crate::lens_parallelism::parallelism_iteration_observed_mode(dag, subject_node),
+                );
                 let violates = match parallelism_enforcement_violates_via_substrate(
                     dag,
                     pm_disj,
@@ -1893,7 +1895,9 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 1);
-        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, indicator).unwrap());
+        assert!(
+            !parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap()
+        );
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
@@ -1925,7 +1929,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 0);
-        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, indicator).unwrap());
+        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap());
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
