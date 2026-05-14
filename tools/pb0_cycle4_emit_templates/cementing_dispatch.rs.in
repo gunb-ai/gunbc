@@ -1,8 +1,9 @@
 //! Band-C cementing dispatch — [`crate::test_runner::TestPredicate::CementingDispatchMatchesProjection`].
 //!
-//! SG-0 / INVARIANTS P5: hand-authored `src/v3/compiler/src/` module — register the path in
-//! `EXPECTED_HAND_AUTHORED_NON_TEST` inside `tests/integration/sg0_census_test.rs` when this
-//! file ships or changes materially.
+//! SG-0 / INVARIANTS P5: PB-0 generated compiler module. The authoritative body lives in
+//! `tools/pb0_cycle4_emit_templates/cementing_dispatch.rs.in`; `build.rs`
+//! emits `src/v3/compiler/src/cementing_dispatch.rs` and registers it in
+//! `REGEN_OUTPUTS` / `GENERATED_FILES`.
 //!
 //! Projects `LensRegistryEntry` rows from the bootstrapped `regen.dag` authority against
 //! `std.verification` `lens_capability_register_rows` (closed coproduct status axes per
@@ -23,9 +24,10 @@
 pub mod integration_rs_wiring_scan {
     //! `tests/integration.rs` wiring scanner (Band-C cementing dispatch).
     //!
-    //! SG-0 / INVARIANTS P5: hand-authored Rust under `src/v3/compiler/src/` — keep
-    //! `EXPECTED_HAND_AUTHORED_NON_TEST` in `tests/integration/sg0_census_test.rs` in lockstep
-    //! when adding or retiring paths here.
+    //! SG-0 / INVARIANTS P5: this scanner is hosted by the PB-0 generated
+    //! `cementing_dispatch.rs` output. Edit the template under
+    //! `tools/pb0_cycle4_emit_templates/`; `build.rs` refreshes the emitted
+    //! compiler module.
     //!
     //! **ROADMAP / dissolution:** same **v3 lens capability honesty pass** row as
     //! `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` in `INVARIANTS.md` § SG-0 —
@@ -518,17 +520,28 @@ pub mod r3_gate_87_cementing_regen_runner_suites {
 }
 
 pub mod gunbc_ci {
-    //! `gunbc.ci` workflow gate selection — affected-set dispatch substrate.
+    //! `gunbc.ci` workflow gate selection — **Layer 1** affected-set dispatch substrate.
     //!
     //! **Authority** (Phase B): `docs/briefs/r3-wave1-s6-slice7-affected-set-impl-worker.md`;
-    //! fail-closed + obligation closure: `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §3–§4;
+    //! fail-closed behavior aligned with
+    //! `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §3 (superset
+    //! table) applied to **gate-id** touch seeds (see §4 for how end-state runners join
+    //! `NodeRef` / dimension receipts to obligations — **not implemented in this module**);
     //! carrier shape: `dsl/gunbc/ci.dag` (`CIWorkflowDag`, `CIGateEdge`: `from` is a prerequisite of `to`).
+    //!
+    //! **Layer 1 vs canvas §7 / ROADMAP gate #103:** program row `ci_uses_affected_set_selection`
+    //! eventually requires the Slice-5 **BinaryShim** runner to wire PR #2713 affected-set
+    //! receipts through `CIWorkflowDag` / `TestClaim` metadata (canvas §§1.1–1.3, §4, §7).
+    //! This crate surface **does not** close that hand-off: there is no typed PR #2713
+    //! receipt type here and no runner entry mapping `Set<NodeRef>` into these APIs.
+    //! What lands here is the **pure graph planner** — [`select_affected_gates`] — plus a
+    //! thin [`CiBinaryShimAffectedSetReceipt`] adapter for **gate-id seeds only** (tests +
+    //! future runner glue once upstream produces `CIGate.id` touches).
     //!
     //! This module is intentionally **pure**: every decision is a function of
     //! [`CiWorkflowDagInput`] + [`CiWorkflowDiff`] only. Git diffs, path-regex, env,
-    //! and PR #2713 lens receipts are upstream responsibilities; they must be
-    //! mapped into [`CiWorkflowDiff`] (or a superset-equivalent touch set) before
-    //! calling [`select_affected_gates`].
+    //! and PR #2713 lens output must be **mapped upstream** into [`CiWorkflowDiff`] (or a
+    //! superset-equivalent touch set) before calling [`select_affected_gates`].
     //!
     //! **Verifier ratchet witness (Phase C scaffolding)** — `docs/design-ci-workflow-substrate-shape-2026-05-12.md`
     //! S5 + prequeue §5.2: monotone **inclusion** under enlarging the touched-id
@@ -553,7 +566,7 @@ pub mod gunbc_ci {
     /// Structural mirror of `CIGate` in `dsl/gunbc/ci.dag`.
     ///
     /// [`select_affected_gates`] consults only [`CiGateMeta::id`]. [`CiGateMeta::blocking`] is carried
-    /// for **carrier parity** with the DSL record so BinaryShim / dispatch wiring can map rows without
+    /// for **carrier parity** with the DSL record so runner-side dispatch can map rows without
     /// a forked struct; merge-blocking vs advisory semantics stay **outside** this selection substrate
     /// until a consumer reads the field.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -577,8 +590,8 @@ pub mod gunbc_ci {
     // 🟢 GREEN — terminal upstream-policy boundary for gate-id touch semantics before
     // `select_affected_gates`: `TouchAll` is the conservative in-DAG superset seed;
     // `TouchedGates` is the explicit finite set upstream mapped from lens/git facts.
-    // Ledger: no third authority here — path-regex, env, and PR #2713 receipts stay
-    // outside this module (Slice 7 brief + affected-set selection canvas §1).
+    // Ledger: no third authority here — path-regex, env, and PR #2713 lens receipts stay
+    // outside this module (Slice 7 brief + canvas §§1.1–4 end-state runner; Layer 1 only here).
     /// Diff-against-base input projected to **gate ids** (single authority at this boundary).
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum CiWorkflowDiff {
@@ -719,6 +732,38 @@ pub mod gunbc_ci {
             }
             _ => false,
         }
+    }
+
+    /// **Layer 1** gate-id touch seed for [`select_affected_gates_for_binary_shim`].
+    ///
+    /// Canvas `design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §1.1
+    /// steps 3–5 and §4 require the **runner** to consume PR #2713 structured output, join
+    /// it with `CIWorkflowDag` / `TestClaim` metadata, and **then** emit executable work.
+    /// This struct is **not** that receipt: it only carries `CIGate.id` strings (and a
+    /// narrowing flag) **after** any `NodeRef` → gate-id mapping has happened elsewhere.
+    ///
+    /// When `narrowing_available` is `false`, selection fails closed to the full gate
+    /// roster ([`CiWorkflowDiff::TouchAll`]; canvas §3: unknown dimension / missing
+    /// receipt / unbuildable DAG pair).
+    #[derive(Debug, Clone, PartialEq, Eq, Default)]
+    pub struct CiBinaryShimAffectedSetReceipt {
+        /// `false` forces [`CiWorkflowDiff::TouchAll`] regardless of `proven_direct_gate_touches`.
+        pub narrowing_available: bool,
+        /// Gate ids proven directly touched **after** upstream mapping (seed before symmetric expansion).
+        pub proven_direct_gate_touches: BTreeSet<CiGateId>,
+    }
+
+    /// Layer 1 entry: map a **gate-id-only** [`CiBinaryShimAffectedSetReceipt`] into [`select_affected_gates`].
+    pub fn select_affected_gates_for_binary_shim(
+        dag: &CiWorkflowDagInput,
+        receipt: &CiBinaryShimAffectedSetReceipt,
+    ) -> Result<Vec<CiGateId>, CiAffectedGatesError> {
+        let diff = if receipt.narrowing_available {
+            CiWorkflowDiff::TouchedGates(receipt.proven_direct_gate_touches.clone())
+        } else {
+            CiWorkflowDiff::TouchAll
+        };
+        select_affected_gates(dag, &diff)
     }
 
     fn topo_sort_subset(
@@ -996,6 +1041,47 @@ pub mod gunbc_ci {
             let empty = CiWorkflowDiff::TouchedGates(BTreeSet::new());
             let wide = CiWorkflowDiff::TouchedGates(BTreeSet::from(["tests".into()]));
             assert!(selection_subset_under_touch_set_growth(&dag, &empty, &wide));
+        }
+
+        #[test]
+        fn binary_shim_receipt_unknown_narrowing_matches_touch_all() {
+            let dag = demo_ci_dag();
+            let receipt = CiBinaryShimAffectedSetReceipt {
+                narrowing_available: false,
+                proven_direct_gate_touches: BTreeSet::from(["lint".into()]),
+            };
+            let got = select_affected_gates_for_binary_shim(&dag, &receipt).expect("valid dag");
+            let expect = select_affected_gates(&dag, &CiWorkflowDiff::TouchAll).expect("valid dag");
+            assert_eq!(got, expect);
+        }
+
+        #[test]
+        fn binary_shim_receipt_narrow_lint_matches_touched_gates_lint() {
+            let dag = demo_ci_dag();
+            let receipt = CiBinaryShimAffectedSetReceipt {
+                narrowing_available: true,
+                proven_direct_gate_touches: BTreeSet::from(["lint".into()]),
+            };
+            let got = select_affected_gates_for_binary_shim(&dag, &receipt).expect("valid dag");
+            let expect = select_affected_gates(
+                &dag,
+                &CiWorkflowDiff::TouchedGates(BTreeSet::from(["lint".into()])),
+            )
+            .expect("valid dag");
+            assert_eq!(got, expect);
+        }
+
+        #[test]
+        fn binary_shim_receipt_empty_narrow_seed_yields_empty_plan() {
+            let dag = demo_ci_dag();
+            let receipt = CiBinaryShimAffectedSetReceipt {
+                narrowing_available: true,
+                proven_direct_gate_touches: BTreeSet::new(),
+            };
+            assert_eq!(
+                select_affected_gates_for_binary_shim(&dag, &receipt),
+                Ok(Vec::new())
+            );
         }
     }
 }

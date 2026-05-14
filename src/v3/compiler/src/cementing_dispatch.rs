@@ -6,9 +6,10 @@
 
 //! Band-C cementing dispatch — [`crate::test_runner::TestPredicate::CementingDispatchMatchesProjection`].
 //!
-//! SG-0 / INVARIANTS P5: hand-authored `src/v3/compiler/src/` module — register the path in
-//! `EXPECTED_HAND_AUTHORED_NON_TEST` inside `tests/integration/sg0_census_test.rs` when this
-//! file ships or changes materially.
+//! SG-0 / INVARIANTS P5: PB-0 generated compiler module. The authoritative body lives in
+//! `tools/pb0_cycle4_emit_templates/cementing_dispatch.rs.in`; `build.rs`
+//! emits `src/v3/compiler/src/cementing_dispatch.rs` and registers it in
+//! `REGEN_OUTPUTS` / `GENERATED_FILES`.
 //!
 //! Projects `LensRegistryEntry` rows from the bootstrapped `regen.dag` authority against
 //! `std.verification` `lens_capability_register_rows` (closed coproduct status axes per
@@ -29,9 +30,10 @@
 pub mod integration_rs_wiring_scan {
     //! `tests/integration.rs` wiring scanner (Band-C cementing dispatch).
     //!
-    //! SG-0 / INVARIANTS P5: hand-authored Rust under `src/v3/compiler/src/` — keep
-    //! `EXPECTED_HAND_AUTHORED_NON_TEST` in `tests/integration/sg0_census_test.rs` in lockstep
-    //! when adding or retiring paths here.
+    //! SG-0 / INVARIANTS P5: this scanner is hosted by the PB-0 generated
+    //! `cementing_dispatch.rs` output. Edit the template under
+    //! `tools/pb0_cycle4_emit_templates/`; `build.rs` refreshes the emitted
+    //! compiler module.
     //!
     //! **ROADMAP / dissolution:** same **v3 lens capability honesty pass** row as
     //! `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` in `INVARIANTS.md` § SG-0 —
