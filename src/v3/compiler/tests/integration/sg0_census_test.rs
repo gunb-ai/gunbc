@@ -258,7 +258,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // (substitute visibility for dependency tree; not enforcement — see INVARIANTS). Inline
 // `// blocked: …` comments on individual census lines are deferred until taxonomy stabilizes
 // across sibling merges.
-const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
+pub(crate) const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
     // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
@@ -845,7 +845,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
 // itself `foo.txt` would silently escape the ratchet otherwise.
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
-const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
+pub(crate) const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
     "src/v3/compiler/parse_parser_body.txt",
     "src/v3/compiler/src/lens_testgen_body.txt",
 ];

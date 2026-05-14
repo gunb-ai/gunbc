@@ -12,6 +12,10 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::sg0_census_test::{
+    EXPECTED_HAND_AUTHORED_FRAGMENTS, EXPECTED_HAND_AUTHORED_NON_TEST,
+};
+
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_sg0_non_test_zero.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_sg0_non_test_zero.dag";
 const SUITE_NAME: &str = "r3_sg0_non_test_zero_suite";
@@ -38,18 +42,25 @@ fn r3_gate_8_sg0_non_test_zero_claims_execute_against_live_census() {
 
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
 
-    assert_live_census_failure(&results, NON_TEST_CLAIM, "expected_hand_authored_non_test");
-    assert_live_census_failure(
+    assert_live_census_result(
+        &results,
+        NON_TEST_CLAIM,
+        "expected_hand_authored_non_test",
+        EXPECTED_HAND_AUTHORED_NON_TEST.len(),
+    );
+    assert_live_census_result(
         &results,
         FRAGMENTS_CLAIM,
         "expected_hand_authored_fragments",
+        EXPECTED_HAND_AUTHORED_FRAGMENTS.len(),
     );
 }
 
-fn assert_live_census_failure(
+fn assert_live_census_result(
     results: &[v3_compiler::test_runner::ClaimEvaluation],
     claim_name: &str,
     list_constant: &str,
+    expected_count: usize,
 ) {
     let result = results
         .iter()
@@ -57,12 +68,21 @@ fn assert_live_census_failure(
         .unwrap_or_else(|| panic!("missing `{claim_name}` in `{SUITE_NAME}` results: {results:?}"));
 
     match &result.result {
-        ClaimResult::Pass => {}
+        ClaimResult::Pass => assert_eq!(
+            expected_count, 0,
+            "`{claim_name}` unexpectedly passed while `{list_constant}` still has \
+             {expected_count} live SG-0 entries"
+        ),
         ClaimResult::Fail(reason) => {
+            let expected_reason =
+                format!("CensusBoundCheck `{list_constant}` observed {expected_count}, bound 0");
             assert!(
-                reason.starts_with(&format!("CensusBoundCheck `{list_constant}` observed "))
-                    && reason.ends_with(", bound 0"),
-                "`{claim_name}` should execute CensusBoundCheck against `{list_constant}`; got {reason:?}"
+                expected_count > 0,
+                "`{claim_name}` failed even though `{list_constant}` is empty: {reason:?}"
+            );
+            assert_eq!(
+                reason, &expected_reason,
+                "`{claim_name}` should execute CensusBoundCheck against live `{list_constant}`"
             );
         }
         ClaimResult::NotYetImplemented(reason) => {
