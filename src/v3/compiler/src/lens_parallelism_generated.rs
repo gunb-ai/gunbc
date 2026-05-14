@@ -11,7 +11,6 @@ fn parallel_unsupported(
         kind,
         downstream_stage: DOWNSTREAM.to_string(),
         reason: reason.into(),
-        non_commute_evidence: ParallelNonCommuteEvidence::NoParallelNonCommuteEvidence,
     })
 }
 
@@ -21,10 +20,9 @@ fn pairwise_non_commute(
     reason: impl Into<String>,
 ) -> ParallelismUnsupportedDetail {
     ParallelismUnsupportedDetail {
-        kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+        kind: ParallelismUnsupportedKind::PairwiseNonCommute { left, right },
         downstream_stage: DOWNSTREAM.to_string(),
         reason: reason.into(),
-        non_commute_evidence: ParallelNonCommuteEvidence::NonCommutingOperations { left, right },
     }
 }
 
@@ -99,12 +97,10 @@ fn pairwise_cross_branch_commutes(
                         }
                         Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
                             return Err(ParallelismUnsupportedDetail {
-                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                kind: ParallelismUnsupportedKind::EffectClassificationUnavailable,
                                 downstream_stage: DOWNSTREAM.to_string(),
                                 reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
                                     .to_string(),
-                                non_commute_evidence:
-                                    ParallelNonCommuteEvidence::NoParallelNonCommuteEvidence,
                             });
                         }
                     }
@@ -143,7 +139,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(CompositionVerdict::IdempotentComposition) => {}
         Err(_) => {
             return parallel_unsupported(
-                ParallelismUnsupportedKind::PairwiseNonCommute,
+                ParallelismUnsupportedKind::EffectClassificationUnavailable,
                 "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism",
             );
         }

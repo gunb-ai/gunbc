@@ -8,7 +8,7 @@
 // `eval_gate_87_cementing_projection`). Dissolution: widen to a full `WorkflowParallelismReport`
 // `LensOutputEquals` once report literals are authorable as `.dag` data (T-PB-B tests-as-data
 // carrier lane; behavioral completion for row #81 is pinned by typed
-// `ParallelNonCommuteEvidence` on `WorkflowParallelismReport`.
+// `PairwiseNonCommute { left, right }` evidence on `WorkflowParallelismReport`.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
 

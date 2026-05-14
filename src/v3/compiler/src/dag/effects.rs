@@ -231,21 +231,14 @@ pub enum WorkflowIdempotencyReport {
 /// 🟢 **TERMINAL.** Stage 2e parallel-lens unsupported classes — mirrors
 /// `ParallelismUnsupportedKind` in `effects.dag` (distinct from Stage 2b
 /// `IdempotencyUnsupportedDetail.variant_name`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParallelismUnsupportedKind {
     NoWorkflowProjection,
     NotParallelEffectRoot,
     NonLinearParallelBranch,
-    PairwiseNonCommute,
+    PairwiseNonCommute { left: Operation, right: Operation },
+    EffectClassificationUnavailable,
     LensSurfacePending,
-}
-
-/// 🟢 **TERMINAL.** Typed evidence for the first cross-branch operation pair
-/// that the parallelism lens cannot prove commutative.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParallelNonCommuteEvidence {
-    NoParallelNonCommuteEvidence,
-    NonCommutingOperations { left: Operation, right: Operation },
 }
 
 /// 🟢 **TERMINAL.** Parallelism lens explicit unsupported payload — mirrors
@@ -255,7 +248,6 @@ pub struct ParallelismUnsupportedDetail {
     pub kind: ParallelismUnsupportedKind,
     pub downstream_stage: String,
     pub reason: String,
-    pub non_commute_evidence: ParallelNonCommuteEvidence,
 }
 
 /// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors

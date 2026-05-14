@@ -15,7 +15,8 @@
 // retired Rust bridge and `WorkflowEffect::operation_at`.
 //
 // Pairwise non-commute reports route typed left/right `Operation` witnesses
-// through `ParallelismUnsupportedDetail.non_commute_evidence`.
+// through the `ParallelismUnsupportedKind::PairwiseNonCommute` payload so
+// non-pair unsupported kinds cannot carry unrelated pair evidence.
 
 module lenses.parallelism
 
@@ -29,7 +30,6 @@ import std.effects {
   WorkflowEffect,
   WorkflowParallelismReport,
   CompositionVerdict,
-  ParallelNonCommuteEvidence,
   ParallelismUnsupportedKind,
   compose_effects,
   operation_effect_shape,
@@ -49,17 +49,16 @@ type LinearBranchesLookup
 
 type NonCommutingPairLookup
   // 🟢 TERMINAL private search carrier. The public report now exposes the found
-  // pair as `ParallelNonCommuteEvidence`; this local coproduct remains the total
+  // pair as `PairwiseNonCommute { left, right }`; this local coproduct remains the total
   // traversal control-flow result for "found first pair" vs "all pairs commute".
   = NonCommutingPairFound { left: Operation, right: Operation }
   | AllPairsCommute
 
 fn report_pairwise_non_commute(left: Operation, right: Operation) -> WorkflowParallelismReport =
   ParallelismUnsupported({
-    kind: PairwiseNonCommute,
+    kind: PairwiseNonCommute { left: left, right: right },
     downstream_stage: "lane2_stage2e_parallelism_lens",
-    reason: "parallel branch operations do not commute under parallel scheduling",
-    non_commute_evidence: NonCommutingOperations { left: left, right: right }
+    reason: "parallel branch operations do not commute under parallel scheduling"
   })
 
 fn nsl_to_workflow_list(nsl: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =

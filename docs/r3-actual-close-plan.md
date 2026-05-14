@@ -179,7 +179,7 @@ The closure-ledger was refreshed against HEAD on 2026-05-14 UTC. Close still req
 
 **What's missing**:
 - Complexity: `ComplexitySummary` TestClaim literals (bridge-Rust to native-.dag migration)
-- Parallelism: closed by typed `ParallelNonCommuteEvidence` on `WorkflowParallelismReport`
+- Parallelism: closed by typed `PairwiseNonCommute { left, right }` evidence on `WorkflowParallelismReport`
 - Effect: Cluster F sub-phase F-β.1 (canvas) + F-β.2 (atomic-migration impl)
 - Register: **PARTIAL → COMPLETE** for effect_enum via **#82**, then **F-γ.2** register sweep for full **#83** closure (PROXY/STUB-zero sub-check above already green)
 
