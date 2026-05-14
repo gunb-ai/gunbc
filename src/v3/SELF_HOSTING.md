@@ -1825,22 +1825,23 @@ diagnostic is not "error on line 42." It is: what's wrong (the
 broken causal link), why it's wrong (the structural
 contradiction), and how to fix it (the literal corrected code).
 
-**Current state.** The v3 `Diagnostic` type carries a span and
-variant-specific payload (type shapes, names). It has no
-correction field. The deferred dissolution target (diagnostics.rs
-lines 22-29) names `category`, `subject`, `detail` but not
-`correction`. This is the gap.
+**Current state.** R3 Gap 9 row #106 has moved the v3
+`Diagnostic` surface to a mandatory `correction: Correction`
+carrier in `src/v3/std/diagnostics.dag`. The remaining gap is not
+field presence; it is retiring every `DeferredCorrection` by adding
+class-by-class live witnesses and roundtrip coverage.
 
 **Target shape.** Every diagnostic carries a `Correction`:
 
 ```dag
 type Correction
-  = Exact { source: String }       // one valid fix
-  | Choice { options: List<Fix> }  // finite set of valid fixes
+  = LiveCorrection { witness: CorrectionWitness }
+  | DeferredCorrection { reason: String, retirement_plan: RetirementPlan }
 
-type Fix {
-  label: String           // e.g. "add missing arm"
-  corrected_source: String // the literal fixed code
+type CorrectionWitness {
+  description: String
+  span: SourceSpan
+  new_source: String
 }
 ```
 
@@ -1849,13 +1850,13 @@ structural knowledge of what's valid:
 
 | Diagnostic | Correction shape | Why computable |
 |---|---|---|
-| NonExhaustiveMatch | Exact: add missing arms with `todo()` | Compiler knows the Disj's full variant set |
-| TypeMismatch | Choice: change the branch / change the return / widen the type | Compiler knows both types and the valid coercions |
-| FieldNotFound | Exact: suggest closest field by edit distance, or show available fields | Compiler knows the Conj's field set |
-| ArityMismatch | Exact: add/remove arguments to match signature | Compiler knows the Arrow's parameter count |
-| UnboundedRecursion | Exact: show the descent argument needed | Compiler knows the input type's sub-structure |
-| ComplexityUnknown | Exact: show which argument should be the sub-value | Compiler knows the cost algebra |
-| LayerOpacityViolation | Exact: replace string literal with DeclarationId lookup | Lens knows the typed alternative |
+| NonExhaustiveMatch | LiveCorrection: add all missing arms in one edit | Compiler knows the Disj's full variant set |
+| TypeMismatch | LiveCorrection when one source-level rewrite is known; otherwise DeferredCorrection | Compiler knows both types and the valid coercions, but not every semantic choice has one canonical edit yet |
+| FieldNotFound | LiveCorrection when one field repair is canonical; otherwise DeferredCorrection | Compiler knows the Conj's field set |
+| ArityMismatch | LiveCorrection when arity repair is canonical; otherwise DeferredCorrection | Compiler knows the Arrow's parameter count |
+| UnboundedRecursion | LiveCorrection when descent evidence is derivable; otherwise DeferredCorrection | Compiler knows the input type's sub-structure |
+| ComplexityUnknown | LiveCorrection when the sub-value argument is derivable; otherwise DeferredCorrection | Compiler knows the cost algebra |
+| LayerOpacityViolation | LiveCorrection when the typed replacement is known; otherwise DeferredCorrection | Lens knows the typed alternative |
 
 **The test pattern (three assertions per diagnostic):**
 
@@ -1888,6 +1889,15 @@ one — not as a polish step after the lens works, but as part of
 the lens's acceptance criteria. The test pattern above is a
 gating requirement for every new diagnostic and every new lens.
 
+The gate #58 timing-lens enforcement scaffold is the only legacy
+pre-L1.5 exception in this section. It predates the mandatory
+`Correction` carrier and currently emits `DeferredCorrection` with a
+row-#106 retirement plan because the host-side enforcement diagnostic
+does not yet retain a source span for the offending timing
+measurement/budget literal. That test must ratchet the explicit
+retirement plan, not treat deferral as acceptable steady state; closing
+row #106 requires replacing it with a `LiveCorrection` roundtrip.
+
 **Why ASAP matters.** If corrections are deferred until M4:
 1. Every lens ships without fix suggestions, and adding them
    later means re-understanding each lens's error semantics
@@ -1903,7 +1913,7 @@ If corrections ship at L1.5:
 
 **Acceptance criteria:**
 
-- [ ] Diagnostic type carries `correction: Option<Correction>`
+- [x] Diagnostic type carries mandatory `correction: Correction`
 - [ ] All five current variants (TokenizerError, ParseError,
       TypeMismatch, ArityMismatch, ResolveError) compute a
       correction where structurally possible

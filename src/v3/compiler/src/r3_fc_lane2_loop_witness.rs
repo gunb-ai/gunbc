@@ -29,7 +29,7 @@
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
 use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect};
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
 
@@ -114,7 +114,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
             dag.attach_diagnostic(Diagnostic::ParseError {
                 message,
                 span,
-                fixes: vec![],
+                correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
             });
         }
         WitnessScan::Ok {
@@ -151,7 +151,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 dag.attach_diagnostic(Diagnostic::ParseError {
                     message: "`lane2_loop_witness` directive requires a workflow shell `Bind` to attach `lane2_workflow`; this program has no `Bind`".to_string(),
                     span: directive_span,
-                    fixes: vec![],
+                    correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
                 });
                 return;
             };
@@ -159,7 +159,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 dag.attach_diagnostic(Diagnostic::ParseError {
                     message: "`lane2_loop_witness`: cannot attach `lane2_workflow` (substrate supports Value/Bind nodes only)".to_string(),
                     span: directive_span,
-                    fixes: vec![],
+                    correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
                 });
             }
         }
