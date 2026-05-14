@@ -25,7 +25,7 @@
 //     category: DiagnosticCategory,  // Type | Cardinality | ...
 //     subject: DiagnosticSubject,    // typed ref to thing flagged
 //     detail: DiagnosticDetail,      // category-specific payload
-//     correction: Option<Correction>,// the literal fixed code
+//     correction: Correction,        // live fixed code or explicit deferral
 //     producing_node: Option<NodeId>,
 //   }
 //
@@ -66,6 +66,76 @@ use crate::types::TypeShape;
 // adopts the shared std diagnostic record directly.
 include!("diagnostics_generated.rs");
 
+impl Correction {
+    pub fn live(
+        description: impl Into<String>,
+        span: SourceSpan,
+        new_source: impl Into<String>,
+    ) -> Self {
+        Self::LiveCorrection {
+            witness: CorrectionWitness {
+                description: description.into(),
+                span,
+                new_source: new_source.into(),
+            },
+        }
+    }
+
+    pub fn deferred(
+        reason: impl Into<String>,
+        owner: impl Into<String>,
+        exit_condition: impl Into<String>,
+    ) -> Self {
+        Self::DeferredCorrection {
+            reason: reason.into(),
+            retirement_plan: RetirementPlan {
+                owner: owner.into(),
+                exit_condition: exit_condition.into(),
+            },
+        }
+    }
+
+    pub fn deferred_for_diagnostic_class(class: &'static str) -> Self {
+        Self::deferred(
+            format!("{class} does not yet compute a source-level live correction witness"),
+            "R3 Gap 9 row #106 diagnostic roundtrip coverage",
+            format!(
+                "replace this deferral with a generated/data-backed LiveCorrection for {class}"
+            ),
+        )
+    }
+
+    pub fn live_witness(&self) -> Result<&CorrectionWitness, CorrectionApplyError> {
+        match self {
+            Correction::LiveCorrection { witness } => Ok(witness),
+            Correction::DeferredCorrection { reason, .. } => Err(CorrectionApplyError::Deferred {
+                reason: reason.clone(),
+            }),
+        }
+    }
+
+    pub fn description(&self) -> &str {
+        match self {
+            Correction::LiveCorrection { witness } => &witness.description,
+            Correction::DeferredCorrection { reason, .. } => reason,
+        }
+    }
+
+    pub fn span(&self) -> Option<&SourceSpan> {
+        match self {
+            Correction::LiveCorrection { witness } => Some(&witness.span),
+            Correction::DeferredCorrection { .. } => None,
+        }
+    }
+
+    pub fn new_source(&self) -> Option<&str> {
+        match self {
+            Correction::LiveCorrection { witness } => Some(&witness.new_source),
+            Correction::DeferredCorrection { .. } => None,
+        }
+    }
+}
+
 /// Stable `ResolveError.name` for a negative `PositiveIntervalWidth.UnitCount.units` payload when
 /// lowering bypasses the normal `Nat` literal gate (e.g. tests calling `enforce_non_negative_unit_count_payload` directly).
 ///
@@ -89,6 +159,9 @@ pub enum CorrectionApplyError {
     NonCharBoundary {
         offset: u32,
     },
+    Deferred {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -102,29 +175,30 @@ pub fn apply_correction(
     source: &str,
     correction: &Correction,
 ) -> Result<String, CorrectionApplyError> {
-    let start = correction.span.byte_start as usize;
-    let end = correction.span.byte_end as usize;
+    let witness = correction.live_witness()?;
+    let start = witness.span.byte_start as usize;
+    let end = witness.span.byte_end as usize;
     if start > end || end > source.len() {
         return Err(CorrectionApplyError::InvalidSpan {
-            start: correction.span.byte_start,
-            end: correction.span.byte_end,
+            start: witness.span.byte_start,
+            end: witness.span.byte_end,
             source_len: source.len(),
         });
     }
     if !source.is_char_boundary(start) {
         return Err(CorrectionApplyError::NonCharBoundary {
-            offset: correction.span.byte_start,
+            offset: witness.span.byte_start,
         });
     }
     if !source.is_char_boundary(end) {
         return Err(CorrectionApplyError::NonCharBoundary {
-            offset: correction.span.byte_end,
+            offset: witness.span.byte_end,
         });
     }
 
-    let mut updated = String::with_capacity(source.len() + correction.new_source.len());
+    let mut updated = String::with_capacity(source.len() + witness.new_source.len());
     updated.push_str(&source[..start]);
-    updated.push_str(&correction.new_source);
+    updated.push_str(&witness.new_source);
     updated.push_str(&source[end..]);
     Ok(updated)
 }
@@ -146,30 +220,30 @@ pub enum Diagnostic {
     TokenizerError {
         message: String,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     ParseError {
         message: String,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     TypeMismatch {
         expected: TypeShape,
         actual: TypeShape,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     ArityMismatch {
         function: String,
         expected: usize,
         actual: usize,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     ResolveError {
         name: String,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     UnitMismatch {
         operator: String,
@@ -177,13 +251,13 @@ pub enum Diagnostic {
         expected: TypeShape,
         actual: TypeShape,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     BranchConditionNotBool {
         port: PortId,
         actual_type: Option<TypeShape>,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     MagnitudeOutOfRange {
         literal: String,
@@ -192,18 +266,18 @@ pub enum Diagnostic {
         range_max_inclusive: String,
         expected: TypeShape,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     MalformedIntegerRangeFact {
         message: String,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
     NominalOpacityViolation {
         declaration: DeclarationId,
         accessor: Option<DeclarationId>,
         span: SourceSpan,
-        fixes: Vec<Correction>,
+        correction: Correction,
     },
 }
 
@@ -276,18 +350,18 @@ impl Diagnostic {
         }
     }
 
-    pub fn fixes(&self) -> &[Correction] {
+    pub fn correction(&self) -> &Correction {
         match self {
-            Diagnostic::TokenizerError { fixes, .. }
-            | Diagnostic::ParseError { fixes, .. }
-            | Diagnostic::TypeMismatch { fixes, .. }
-            | Diagnostic::ArityMismatch { fixes, .. }
-            | Diagnostic::ResolveError { fixes, .. }
-            | Diagnostic::UnitMismatch { fixes, .. }
-            | Diagnostic::BranchConditionNotBool { fixes, .. }
-            | Diagnostic::MagnitudeOutOfRange { fixes, .. }
-            | Diagnostic::MalformedIntegerRangeFact { fixes, .. }
-            | Diagnostic::NominalOpacityViolation { fixes, .. } => fixes,
+            Diagnostic::TokenizerError { correction, .. }
+            | Diagnostic::ParseError { correction, .. }
+            | Diagnostic::TypeMismatch { correction, .. }
+            | Diagnostic::ArityMismatch { correction, .. }
+            | Diagnostic::ResolveError { correction, .. }
+            | Diagnostic::UnitMismatch { correction, .. }
+            | Diagnostic::BranchConditionNotBool { correction, .. }
+            | Diagnostic::MagnitudeOutOfRange { correction, .. }
+            | Diagnostic::MalformedIntegerRangeFact { correction, .. }
+            | Diagnostic::NominalOpacityViolation { correction, .. } => correction,
         }
     }
 
@@ -467,16 +541,24 @@ fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyle
         diagnostic.span().byte_end,
         diagnostic.message()
     )];
-    for (index, fix) in diagnostic.fixes().iter().enumerate() {
-        lines.push(format!("FIX (option {}): {}", index + 1, fix.description));
-        lines.push(render_correction_source(fix, style));
+    if let Correction::LiveCorrection { .. } = diagnostic.correction() {
+        lines.push(format!("FIX: {}", diagnostic.correction().description()));
+        lines.push(render_correction_source(diagnostic.correction(), style));
+    } else {
+        lines.push(format!(
+            "DEFERRED CORRECTION: {}",
+            diagnostic.correction().description()
+        ));
     }
     lines.join(&style.line_ending)
 }
 
 fn render_correction_source(fix: &Correction, style: &CorrectionStyleBinding) -> String {
+    let Ok(witness) = fix.live_witness() else {
+        return String::new();
+    };
     let suffix = if style.trailing_semicolon { ";" } else { "" };
-    let normalized = fix.new_source.replace("\r\n", "\n").replace('\r', "\n");
+    let normalized = witness.new_source.replace("\r\n", "\n").replace('\r', "\n");
     if !normalized.contains('\n') {
         return format!(
             "{}{}{}{}{}",
@@ -700,11 +782,11 @@ pub(crate) fn witness_correction_for_decl(
     if dag.declaration(declaration).refinement.is_some() {
         return None;
     }
-    Some(Correction {
-        description: description.into(),
+    Some(Correction::live(
+        description,
         span,
-        new_source: example_source_for_decl(dag, declaration)?,
-    })
+        example_source_for_decl(dag, declaration)?,
+    ))
 }
 
 /// Opaque, validated witness to a path in the substrate
@@ -881,36 +963,35 @@ mod tests {
 
     fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
         let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
-        let fixes = Vec::new();
         let ty = TypeShape::new(DeclarationId::test_raw(0));
         vec![
             Diagnostic::TokenizerError {
                 message: String::new(),
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("TokenizerError"),
             },
             Diagnostic::ParseError {
                 message: String::new(),
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("ParseError"),
             },
             Diagnostic::TypeMismatch {
                 expected: ty,
                 actual: ty,
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("TypeMismatch"),
             },
             Diagnostic::ArityMismatch {
                 function: String::new(),
                 expected: 0,
                 actual: 0,
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("ArityMismatch"),
             },
             Diagnostic::ResolveError {
                 name: String::new(),
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
             },
             Diagnostic::UnitMismatch {
                 operator: String::new(),
@@ -918,13 +999,13 @@ mod tests {
                 expected: ty,
                 actual: ty,
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("UnitMismatch"),
             },
             Diagnostic::BranchConditionNotBool {
                 port: PortId::test_raw(0),
                 actual_type: None,
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("BranchConditionNotBool"),
             },
             Diagnostic::MagnitudeOutOfRange {
                 literal: String::new(),
@@ -933,18 +1014,18 @@ mod tests {
                 range_max_inclusive: String::new(),
                 expected: ty,
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("MagnitudeOutOfRange"),
             },
             Diagnostic::MalformedIntegerRangeFact {
                 message: String::new(),
                 span: span.clone(),
-                fixes: fixes.clone(),
+                correction: Correction::deferred_for_diagnostic_class("MalformedIntegerRangeFact"),
             },
             Diagnostic::NominalOpacityViolation {
                 declaration: DeclarationId::test_raw(0),
                 accessor: None,
                 span,
-                fixes,
+                correction: Correction::deferred_for_diagnostic_class("NominalOpacityViolation"),
             },
         ]
     }
@@ -974,11 +1055,11 @@ mod tests {
     fn apply_correction_replaces_the_requested_span() {
         let updated = apply_correction(
             "let x: Int = 1\n",
-            &Correction {
-                description: "replace the literal".to_string(),
-                span: SourceSpan::new("apply_fix.v3", 13, 14),
-                new_source: "2".to_string(),
-            },
+            &Correction::live(
+                "replace the literal",
+                SourceSpan::new("apply_fix.v3", 13, 14),
+                "2",
+            ),
         )
         .expect("correction should apply");
         assert_eq!(updated, "let x: Int = 2\n");
@@ -988,11 +1069,11 @@ mod tests {
     fn apply_correction_uses_span_offsets_not_file_participation() {
         let updated = apply_correction(
             "let x: Int = 1\n",
-            &Correction {
-                description: "replace the literal".to_string(),
-                span: SourceSpan::new("expected.v3", 13, 14),
-                new_source: "2".to_string(),
-            },
+            &Correction::live(
+                "replace the literal",
+                SourceSpan::new("expected.v3", 13, 14),
+                "2",
+            ),
         )
         .expect("correction application is offset-bounded, not gated by a separate file string");
         assert_eq!(updated, "let x: Int = 2\n");
@@ -1004,11 +1085,11 @@ mod tests {
         let accent = source.find('é').expect("fixture contains accent") as u32;
         let error = apply_correction(
             source,
-            &Correction {
-                description: "split the accent".to_string(),
-                span: SourceSpan::new("utf8_fix.v3", accent, accent + 1),
-                new_source: "e".to_string(),
-            },
+            &Correction::live(
+                "split the accent",
+                SourceSpan::new("utf8_fix.v3", accent, accent + 1),
+                "e",
+            ),
         )
         .expect_err("mid-codepoint correction must fail closed");
         assert_eq!(
@@ -1022,11 +1103,11 @@ mod tests {
         let error = apply_correction_and_reparse(
             "let x: Int = 1\n",
             "broken_fix.v3",
-            &Correction {
-                description: "make the expression malformed".to_string(),
-                span: SourceSpan::new("broken_fix.v3", 13, 14),
-                new_source: ")".to_string(),
-            },
+            &Correction::live(
+                "make the expression malformed",
+                SourceSpan::new("broken_fix.v3", 13, 14),
+                ")",
+            ),
         )
         .expect_err("malformed correction should fail closed");
         assert!(
@@ -1355,16 +1436,40 @@ mod tests {
             &Diagnostic::ResolveError {
                 name: "field `c` does not exist on `Point`".to_string(),
                 span: SourceSpan::new("field.v3", 12, 19),
-                fixes: vec![Correction {
-                    description: "did you mean `point.a`?".to_string(),
-                    span: SourceSpan::new("field.v3", 12, 19),
-                    new_source: "point.a".to_string(),
-                }],
+                correction: Correction::live(
+                    "did you mean `point.a`?",
+                    SourceSpan::new("field.v3", 12, 19),
+                    "point.a",
+                ),
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n    \"point.a\";"));
+    }
+
+    #[test]
+    fn render_deferred_correction_does_not_emit_fix_header() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ParseError {
+                message: "not yet live-correctable".to_string(),
+                span: SourceSpan::new("deferred.v3", 0, 1),
+                correction: Correction::deferred_for_diagnostic_class("ParseError"),
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("ERROR at deferred.v3:0-1"));
+        assert!(
+            !rendered.contains("FIX (option"),
+            "deferred corrections are explicit residual carriers, not user-facing fixes: {rendered}"
+        );
+        assert!(
+            rendered.contains("DEFERRED CORRECTION: ParseError does not yet compute"),
+            "deferred corrections should remain visible without rendering as applyable fixes: {rendered}"
+        );
     }
 
     #[test]
@@ -1376,15 +1481,15 @@ mod tests {
             &Diagnostic::ResolveError {
                 name: "field `c` does not exist on `Point`".to_string(),
                 span: SourceSpan::new("field.v3", 12, 19),
-                fixes: vec![Correction {
-                    description: "did you mean `point.a`?".to_string(),
-                    span: SourceSpan::new("field.v3", 12, 19),
-                    new_source: "point.a".to_string(),
-                }],
+                correction: Correction::live(
+                    "did you mean `point.a`?",
+                    SourceSpan::new("field.v3", 12, 19),
+                    "point.a",
+                ),
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n\t\"point.a\""));
         assert!(!rendered.contains("\n\t\"point.a\";"));
     }
@@ -1398,15 +1503,15 @@ mod tests {
             &Diagnostic::ResolveError {
                 name: "field `c` does not exist on `Point`".to_string(),
                 span: SourceSpan::new("field.v3", 12, 19),
-                fixes: vec![Correction {
-                    description: "did you mean `point.a`?".to_string(),
-                    span: SourceSpan::new("field.v3", 12, 19),
-                    new_source: "point.a".to_string(),
-                }],
+                correction: Correction::live(
+                    "did you mean `point.a`?",
+                    SourceSpan::new("field.v3", 12, 19),
+                    "point.a",
+                ),
             },
         )
         .expect("render");
-        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("FIX: did you mean `point.a`?"));
         assert!(rendered.contains("\n    \"point.a\""));
         assert!(!rendered.contains("\n    \"point.a\";"));
     }
@@ -1420,11 +1525,11 @@ mod tests {
             &Diagnostic::ResolveError {
                 name: "field `path` does not exist on `Config`".to_string(),
                 span: SourceSpan::new("field.v3", 12, 19),
-                fixes: vec![Correction {
-                    description: "did you mean `config.path`?".to_string(),
-                    span: SourceSpan::new("field.v3", 12, 19),
-                    new_source: "config[\"path\\\\name\"]".to_string(),
-                }],
+                correction: Correction::live(
+                    "did you mean `config.path`?",
+                    SourceSpan::new("field.v3", 12, 19),
+                    "config[\"path\\\\name\"]",
+                ),
             },
         )
         .expect("render");
@@ -1440,11 +1545,11 @@ mod tests {
             &Diagnostic::ResolveError {
                 name: "field `path` does not exist on `Config`".to_string(),
                 span: SourceSpan::new("field.v3", 12, 19),
-                fixes: vec![Correction {
-                    description: "did you mean `config.path`?".to_string(),
-                    span: SourceSpan::new("field.v3", 12, 19),
-                    new_source: "config[\n\"path\\\\name\"\n]".to_string(),
-                }],
+                correction: Correction::live(
+                    "did you mean `config.path`?",
+                    SourceSpan::new("field.v3", 12, 19),
+                    "config[\n\"path\\\\name\"\n]",
+                ),
             },
         )
         .expect("render");
@@ -1487,14 +1592,14 @@ mod tests {
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "user".to_string(),
             span: span.clone(),
-            fixes: Vec::new(),
+            correction: Correction::deferred_for_diagnostic_class("ResolveError"),
         });
         dag.attach_bootstrap_diagnostic(
             key.clone(),
             Diagnostic::ResolveError {
                 name: "bootstrap".to_string(),
                 span,
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
             },
         );
 

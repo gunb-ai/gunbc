@@ -25,7 +25,7 @@ import std.types {
   WorkflowRunId
 }
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
-import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
+import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction, RetirementPlan }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
 import v3.std.lens_application { LensEnforcement, EnforceableLens }
@@ -233,8 +233,25 @@ fn timing_sequential_identity() -> TimingMeasurement =
 fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   timing_measurement_lens_combine(a, b, false)
 
-fn timing_lens_empty_corrections() -> List<Correction> =
-  Empty
+// 🟡 TRANSITIONAL pre-L1.5 scaffold reconciliation for SELF_HOSTING.md
+// §14.6. Gate #58 timing enforcement predates the row #106 mandatory
+// correction carrier and does not yet preserve the source span needed
+// to rewrite the modeled timing witness safely. This is not a waiver
+// for post-L1.5 lenses: the retirement plan below is the explicit
+// obligation to replace this deferral with a LiveCorrection once the
+// timing enforcement diagnostic threads source-span evidence for the
+// offending timing measurement/budget row.
+fn timing_lens_correction_retirement_plan() -> RetirementPlan =
+  {
+    owner: "R3 Gap 9 row #106 timing-lens diagnostic roundtrip"
+    exit_condition: "thread timing measurement/budget source spans through gate #58 enforcement and replace this scaffold diagnostic with a generated/data-backed LiveCorrection"
+  }
+
+fn timing_lens_deferred_correction() -> Correction =
+  DeferredCorrection(
+    "TimingLensScaffoldDiagnostic does not yet compute a source-level live correction witness",
+    timing_lens_correction_retirement_plan()
+  )
 
 // Reads the reflected `span` on a `Behavior` (same partition as
 // `v3.lenses.infer_helpers.behavior_span`; kept here so `v3.std.timing_lens`
@@ -256,7 +273,7 @@ fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) ->
     kind: CompilerKind(ResolveError)
     span: at
     message: text
-    fixes: timing_lens_empty_corrections()
+    correction: timing_lens_deferred_correction()
   }
 
 // Degenerate DAG case: no declarations (cannot borrow a declaration `span`).

@@ -83,14 +83,25 @@ fn apply_lens_self_application_demonstrated_bootstrap_receipt() {
     let Diagnostic::ParseError {
         message,
         span,
-        fixes,
+        correction,
     } = d
     else {
         panic!("expected ParseError diagnostic, got {d:?}");
     };
+    let v3_compiler::diagnostics::Correction::DeferredCorrection {
+        retirement_plan, ..
+    } = correction
+    else {
+        panic!("legacy gate #58 timing scaffold should expose its row-#106 retirement plan until source-span evidence is threaded; got {correction:?}")
+    };
+    assert_eq!(
+        retirement_plan.owner, "R3 Gap 9 row #106 timing-lens diagnostic roundtrip",
+        "timing scaffold deferral must stay tied to row #106 retirement"
+    );
     assert!(
-        fixes.is_empty(),
-        "timing budget violation must not attach auto-fixes; got {fixes:?}"
+        retirement_plan.exit_condition.contains("LiveCorrection"),
+        "timing scaffold deferral must name the live-correction exit condition; got {:?}",
+        retirement_plan.exit_condition
     );
     assert!(
         span.file.ends_with("t_ci_workflow_as_data_demo.dag"),
@@ -133,7 +144,13 @@ fn apply_lens_self_application_timing_enforcement_executable_budget_violation() 
             let diags: Vec<&Diagnostic> = dag.diagnostics().iter().map(|(_, d)| d).collect();
             let ok = diags.iter().any(|d| {
                 d.layer1_kind_label() == "ParseError"
-                    && matches!(d, Diagnostic::ParseError { fixes, .. } if fixes.is_empty())
+                    && matches!(
+                        d,
+                        Diagnostic::ParseError {
+                            correction: v3_compiler::diagnostics::Correction::DeferredCorrection { .. },
+                            ..
+                        }
+                    )
                     && match d {
                         Diagnostic::ParseError { message, .. } => {
                             gate_58_test_parse_timing_budget_violation_max_ns_pair(message)
