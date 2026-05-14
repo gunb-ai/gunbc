@@ -85,7 +85,7 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 ### §2.2 R2-Evaluator lane absent — Gap 3 self-host fixed point unowned
 
-**Design authority**: `docs/briefs/r2-evaluator-manager.md` + 4 sub-briefs (`runtime_value_model_structural` / `body_evaluator_structural` / `lens_application_complete_reflection` / `witness_construction_structural` / `cross_target_equivalence_harness_structural`) + Director audit `audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md`.
+**Design authority**: `docs/briefs/r2-evaluator-manager.md` + 5 sub-briefs (`runtime_value_model_structural` / `body_evaluator_structural` / `lens_application_complete_reflection` / `witness_construction_structural` / `cross_target_equivalence_harness_structural`) + Director audit `audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md`.
 
 **Historical brief dispatch breakdown**: merry-gull-128 unified Mgr lane NEVER FORMED at HEAD pre-2026-05-13. Sub-briefs authored at R2-close 2026-04-29 but no R3 Mgr session re-spawned for them. Authority dispersed across 3 R3 Mgrs (warm-wolf-698 / zesty-boar-261 / still-moth-538) organically without single owner. PRs #1813/#1857/#2152/#2190/#2257/#2658/#2812/#2681/#2825/#2826/#2827/#2941 merged with PARTIAL coverage but did NOT discharge the 5 sub-lane closure-ledger; rows STALE @ #1191-#1231 era at the time of dispersal.
 
