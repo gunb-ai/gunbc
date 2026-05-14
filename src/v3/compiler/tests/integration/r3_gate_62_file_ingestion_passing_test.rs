@@ -15,6 +15,14 @@
 //! the predicate is over the file tree's authoritative substrate body,
 //! not over comments or briefs that mention the string.
 //!
+//! Per codex REQUEST_CHANGES on PR #3111 (2026-05-14 review #11981): the
+//! check operates over **program body** text, not raw bytes — line
+//! comments (`// …`), block comments (`/* … */`), and string literals
+//! (`"…"` / `` `…` ``) are stripped before the substring search so a
+//! comment or doc-block discussing the bridge name does not trip the
+//! ratchet. The gate-fact is "no `.dag` program body invokes
+//! `include_str!`", not "no `.dag` file's bytes contain the substring".
+//!
 //! STOP-AND-PING trigger (per parent Mgr brief msg_210620aa): ANY match
 //! at HEAD is a substrate-gap regression, not a paper-over — investigate
 //! and route through the workflow-substrate carrier (`FileAttachment`)
@@ -73,7 +81,8 @@ fn r3_gate_62_no_include_str_in_dsl() {
     for path in &files {
         let body =
             fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        if body.contains(NEEDLE) {
+        let program_body = strip_comments_and_string_literals(&body);
+        if program_body.contains(NEEDLE) {
             let rel = path.strip_prefix(&ws).unwrap_or(path).display().to_string();
             hits.push(rel);
         }
@@ -88,4 +97,81 @@ fn r3_gate_62_no_include_str_in_dsl() {
          PR #2823 land). Offending files:\n  {}",
         hits.join("\n  ")
     );
+}
+
+/// Strip `//` line comments, `/* … */` block comments, and `"…"` / `` `…` ``
+/// string literals from `src` so the gate-#62 substring check operates over
+/// program-body tokens rather than raw bytes. Conservative single-pass scan
+/// with `\` escape handling inside string literals; unterminated literals or
+/// block comments are dropped to end-of-input fail-closed (any surviving
+/// `include_str!` outside a literal still trips the ratchet).
+fn strip_comments_and_string_literals(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        // `//` line comment: drop through end-of-line, keep the newline.
+        if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        // `/* … */` block comment: drop through closing `*/`.
+        if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
+        // `"…"` or `` `…` `` string literal: drop through matching unescaped quote.
+        if b == b'"' || b == b'`' {
+            let quote = b;
+            i += 1;
+            while i < bytes.len() && bytes[i] != quote {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            i = (i + 1).min(bytes.len());
+            continue;
+        }
+        out.push(b as char);
+        i += 1;
+    }
+    out
+}
+
+#[cfg(test)]
+mod strip_tests {
+    use super::{strip_comments_and_string_literals, NEEDLE};
+
+    #[test]
+    fn line_comment_mentioning_needle_is_stripped() {
+        let src = "// retired: include_str! side-channel\nfn ok() = 0\n";
+        assert!(!strip_comments_and_string_literals(src).contains(NEEDLE));
+    }
+
+    #[test]
+    fn block_comment_mentioning_needle_is_stripped() {
+        let src = "/* note: include_str! once lived here */\nfn ok() = 0\n";
+        assert!(!strip_comments_and_string_literals(src).contains(NEEDLE));
+    }
+
+    #[test]
+    fn string_literal_mentioning_needle_is_stripped() {
+        let src = "fn label() = \"name: include_str!\"\n";
+        assert!(!strip_comments_and_string_literals(src).contains(NEEDLE));
+    }
+
+    #[test]
+    fn body_invocation_survives_stripping() {
+        let src = "fn bad() = include_str!(\"path\")\n";
+        assert!(strip_comments_and_string_literals(src).contains(NEEDLE));
+    }
 }
