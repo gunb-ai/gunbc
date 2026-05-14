@@ -27,7 +27,7 @@
 //! the same PR removes its row from `sg0_census_test::EXPECTED_HAND_AUTHORED_TEST` — no
 //! parallel cementing inventory is allowed to track the Rust→`.dag` migration separately.
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
-//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
+//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in the **current PR
 //! description**; module comments must not assert deletes for paths that never existed on
 //! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
@@ -161,7 +161,7 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
 }
 
 #[test]
-fn r3_gate_87_effect_enumeration_reports_structural_effect_shapes() {
+fn r3_gate_87_effect_enumeration_reports_no_effect_shape() {
     let dag = Dag::new();
     let report = enumerate_effects(&dag);
     assert!(
@@ -172,6 +172,12 @@ fn r3_gate_87_effect_enumeration_reports_structural_effect_shapes() {
         "effect enumeration should prove NoEffect facts for source/value nodes, got {:?}",
         report.facts
     );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_read_shape() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
     assert!(
         report
             .facts
@@ -180,6 +186,12 @@ fn r3_gate_87_effect_enumeration_reports_structural_effect_shapes() {
         "effect enumeration should derive ReadShaped facts from callable arrow bodies, got {:?}",
         report.facts
     );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_write_shape() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
     assert!(
         report
             .facts
@@ -188,6 +200,12 @@ fn r3_gate_87_effect_enumeration_reports_structural_effect_shapes() {
         "effect enumeration should derive WriteShaped facts from returned-resource arrow signatures, got {:?}",
         report.facts
     );
+}
+
+#[test]
+fn r3_gate_87_effect_enumeration_reports_non_arrow_coverage_gap() {
+    let dag = Dag::new();
+    let report = enumerate_effects(&dag);
     assert!(
         report.coverage_gaps.iter().any(|gap| gap
             .reason
