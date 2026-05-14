@@ -201,7 +201,7 @@ PB-Runtime test_runner / lens_apply consume InferredDag for lens execution. The 
 
 Cross-stage discipline: parse → SurfaceModule → lower → PreInferDag → infer → InferredDag → emit → EmissionResult. The chain is enforced by Decision 3.A sum-variant typed-state at each boundary.
 
-Per Decision 2.B discriminated-union diagnostics: each stage emits diagnostics tagged with DiagnosticSource; downstream stages can READ prior-stage diagnostics for context but don't reprocess.
+Per Decision 2.B discriminated-union diagnostics: each stage's diagnostics are discriminable by source (Parse / Lower / Infer / Emit) via whichever substrate-extension path PR #3077 §12 Q7 ratifies — (a) carrier-field OR (b) lane-local sum mapping into CompilerKind. Whichever path lands, downstream stages can discriminate by source but don't reprocess prior-stage diagnostics. **PR #3077 §12 Q7 must ratify before any Step 2 worker brief authoring** (cross-stage authority for Decision 2.B extension path).
 
 ---
 
