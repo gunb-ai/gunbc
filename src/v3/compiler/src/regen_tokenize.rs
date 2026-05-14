@@ -937,7 +937,7 @@ fn emit_tokenize_fn(
         int_pre, int_suf
     ));
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("                fixes: Vec::new(),\n");
+    s.push_str("                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
     s.push_str("            })?;\n");
     s.push_str("            const MAX_SIGNED_ABS: u128 = 1u128 << 127;\n");
     s.push_str("            if magnitude > MAX_SIGNED_ABS {\n");
@@ -946,7 +946,7 @@ fn emit_tokenize_fn(
         "                    message: format!(\"integer literal out of range for signed decimal literal: `-{}` (|m| > 2^127)\", literal),\n",
     );
     s.push_str("                    span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("                    fixes: Vec::new(),\n");
+    s.push_str("                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
     s.push_str("                });\n");
     s.push_str("            }\n");
     s.push_str("            let value = if magnitude == 0 {\n");
@@ -984,7 +984,7 @@ fn emit_tokenize_fn(
                 int_pre, int_suf
             ));
             s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-            s.push_str("                fixes: Vec::new(),\n");
+            s.push_str("                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
             s.push_str("            })?;\n");
             s.push_str("            let value = magnitude.to_string();\n");
             s.push_str("            tokens.push(Token {\n");
@@ -1085,7 +1085,7 @@ fn emit_tokenize_fn(
         diag_esc
     ));
     s.push_str("                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),\n");
-    s.push_str("                                fixes: Vec::new(),\n");
+    s.push_str("                                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
     s.push_str("                            });\n");
     s.push_str("                        };\n");
     s.push_str("                        match escaped {\n");
@@ -1110,7 +1110,7 @@ fn emit_tokenize_fn(
         rust_string_literal_for_rust_source(diag_unterm_lit)
     ));
     s.push_str("                    span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("                    fixes: Vec::new(),\n");
+    s.push_str("                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
     s.push_str("                });\n");
     s.push_str("            }\n");
     s.push_str("            tokens.push(Token {\n");
@@ -1123,7 +1123,7 @@ fn emit_tokenize_fn(
     s.push_str("        return Err(Diagnostic::TokenizerError {\n");
     s.push_str("            message: format!(\"unexpected byte `{}`\", byte as char),\n");
     s.push_str("            span: SourceSpan::new(file, start as u32, (start + 1) as u32),\n");
-    s.push_str("            fixes: Vec::new(),\n");
+    s.push_str("            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(\"TokenizerError\"),\n");
     s.push_str("        });\n");
     s.push_str("    }\n\n");
     s.push_str("    tokens.push(Token {\n");
