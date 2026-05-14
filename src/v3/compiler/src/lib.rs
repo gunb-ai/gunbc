@@ -53,8 +53,875 @@ pub mod generated_files {
 pub mod emit;
 pub mod emit_rust;
 pub mod emit_rust_bin_shim;
-pub mod omni_shape_b_openapi;
-pub mod process_exit;
+pub mod omni_shape_b_openapi {
+    //! Shape B OpenAPI and documentation demonstration helpers.
+    //!
+    //! OpenAPI and Markdown are deliberately not compiler emit targets: Shape B
+    //! artifacts are user-program outputs derived from a compiled DAG, while
+    //! `emit.rs` remains scoped to Shape A programming-language targets. This
+    //! module provides the narrow Rust-side receipt used by the R3 demo until the
+    //! equivalent `.dag` programs can own the artifact projections.
+    //!
+    //! P5 bridge bound: `project_openapi_yaml`, `project_markdown_documentation`,
+    //! `project_sql_ddl_schema`, and `project_rust_backend_service` are one fixture-scoped R3
+    //! T-Omni-Shape-B receipt over `RestEndpointBinding` rows. They are not new
+    //! compiler targets and must not grow into a general backend framework.
+    //! Dissolution trigger: queued brief
+    //! `docs/briefs/r3-omni-openapi-backend-bridge-dissolution.md`.
+
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::fmt::Write as _;
+
+    use crate::dag::{
+        Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
+    };
+    use crate::Dag;
+
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct RestRoute {
+        pub method: String,
+        pub path: String,
+        pub path_parameters: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ProjectOpenApiError {
+        MalformedOperation { declaration: String, detail: String },
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct RestRouteSchema {
+        http_method: DeclarationId,
+        url_path_token: DeclarationId,
+    }
+
+    pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpenApiError> {
+        let rest_endpoint_binding = canonical_rest_endpoint_binding(dag);
+        let mut routes = BTreeSet::new();
+        for decl in dag.declarations() {
+            let Some(ValueBody::List(rows)) = &decl.value_body else {
+                continue;
+            };
+            let Some(schema) = rest_route_schema(dag, decl, rest_endpoint_binding)? else {
+                continue;
+            };
+            for row in rows {
+                let fields = record_fields(row).ok_or_else(|| {
+                    malformed(
+                        decl.name.as_deref(),
+                        "service operation rows must be records",
+                    )
+                })?;
+                let endpoint = record_field(fields, "endpoint").ok_or_else(|| {
+                    malformed(
+                        decl.name.as_deref(),
+                        "service operation row missing `endpoint` field",
+                    )
+                })?;
+                let endpoint_fields = require_record(
+                    decl.name.as_deref().unwrap_or("<anonymous>"),
+                    "endpoint",
+                    endpoint,
+                )?;
+                let method = parse_http_method(
+                    dag,
+                    schema,
+                    decl.name.as_deref().unwrap_or("<anonymous>"),
+                    record_field(endpoint_fields, "method").ok_or_else(|| {
+                        malformed(decl.name.as_deref(), "endpoint missing `method` field")
+                    })?,
+                )?;
+                let path = parse_path_template(
+                    dag,
+                    schema,
+                    decl.name.as_deref().unwrap_or("<anonymous>"),
+                    record_field(endpoint_fields, "path").ok_or_else(|| {
+                        malformed(decl.name.as_deref(), "endpoint missing `path` field")
+                    })?,
+                )?;
+                routes.insert(RestRoute {
+                    method,
+                    path: path.path,
+                    path_parameters: path.parameters,
+                });
+            }
+        }
+        Ok(routes)
+    }
+
+    fn rest_route_schema(
+        dag: &Dag,
+        decl: &Declaration,
+        rest_endpoint_binding: Option<DeclarationId>,
+    ) -> Result<Option<RestRouteSchema>, ProjectOpenApiError> {
+        let Some(element) = list_element_type(dag, decl) else {
+            return Ok(None);
+        };
+        let TypeConnective::Conj { children } = &dag.declaration(element).connective else {
+            return Ok(None);
+        };
+        let Some(endpoint_field) = children.iter().find(|field| field.label == "endpoint") else {
+            return Ok(None);
+        };
+        if Some(endpoint_field.ty) != rest_endpoint_binding {
+            return Ok(None);
+        }
+        let TypeConnective::Conj { children } = &dag.declaration(endpoint_field.ty).connective
+        else {
+            return Ok(None);
+        };
+        let Some(method_ty) = field_type(children, "method") else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "RestEndpointBinding missing `method` field",
+            ));
+        };
+        let Some(path_ty) = field_type(children, "path") else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "RestEndpointBinding missing `path` field",
+            ));
+        };
+
+        let TypeConnective::Conj { children } = &dag.declaration(path_ty).connective else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "endpoint.path type must be a PathTemplate record",
+            ));
+        };
+        let Some(tokens_ty) = field_type(children, "tokens") else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "PathTemplate missing `tokens` field",
+            ));
+        };
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(tokens_ty).connective
+        else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "PathTemplate.tokens must be a List",
+            ));
+        };
+        if Some(*template) != dag.list_template() {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "PathTemplate.tokens must use the canonical List template",
+            ));
+        }
+        let Some(url_path_token_ty) = arguments.first().map(|arg| arg.value) else {
+            return Err(malformed(
+                decl.name.as_deref(),
+                "PathTemplate.tokens missing element type",
+            ));
+        };
+
+        Ok(Some(RestRouteSchema {
+            http_method: method_ty,
+            url_path_token: url_path_token_ty,
+        }))
+    }
+
+    fn canonical_rest_endpoint_binding(dag: &Dag) -> Option<DeclarationId> {
+        let mut matches = dag.declarations().iter().filter(|decl| {
+            decl.name.as_deref() == Some("RestEndpointBinding")
+                && decl.span.file == "src/v3/std/services.dag"
+        });
+        let id = matches.next()?.id;
+        if matches.next().is_some() {
+            None
+        } else {
+            Some(id)
+        }
+    }
+
+    fn list_element_type(dag: &Dag, decl: &Declaration) -> Option<DeclarationId> {
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if Some(*template) == dag.list_template() => arguments.first().map(|arg| arg.value),
+            _ => None,
+        }
+    }
+
+    pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+        let routes = extract_rest_routes(dag)?;
+        let mut out = String::from(
+            "openapi: 3.1.0\ninfo:\n  title: GunBC generated service\n  version: 0.1.0\npaths:\n",
+        );
+        if routes.is_empty() {
+            out.push_str("  {}\n");
+            return Ok(out);
+        }
+
+        let mut routes_by_path: BTreeMap<&str, Vec<&RestRoute>> = BTreeMap::new();
+        for route in &routes {
+            routes_by_path
+                .entry(route.path.as_str())
+                .or_default()
+                .push(route);
+        }
+
+        for (path, path_routes) in routes_by_path {
+            out.push_str("  ");
+            out.push_str(&yaml_quoted(path));
+            out.push_str(":\n");
+            for route in path_routes {
+                out.push_str("    ");
+                out.push_str(&route.method.to_ascii_lowercase());
+                out.push_str(":\n      operationId: ");
+                out.push_str(&yaml_plain_operation_id(&route.method, &route.path));
+                if !route.path_parameters.is_empty() {
+                    out.push_str("\n      parameters:\n");
+                    for parameter in &route.path_parameters {
+                        append_path_parameter_yaml(&mut out, parameter);
+                    }
+                }
+                out.push_str("\n      responses:\n        '200':\n          description: OK\n");
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+        let routes = extract_rest_routes(dag)?;
+        let mut out = String::from(
+            "# GunBC generated service\n\n| Method | Path | Path parameters |\n| --- | --- | --- |\n",
+        );
+        if routes.is_empty() {
+            out.push_str("| _none_ | _none_ | _none_ |\n");
+            return Ok(out);
+        }
+        for route in routes {
+            out.push_str("| ");
+            out.push_str(&markdown_table_cell(&route.method));
+            out.push_str(" | ");
+            out.push_str(&markdown_code_span_table_cell(&route.path));
+            out.push_str(" | ");
+            if route.path_parameters.is_empty() {
+                out.push_str("_none_");
+            } else {
+                for (index, parameter) in route.path_parameters.iter().enumerate() {
+                    if index > 0 {
+                        out.push_str(", ");
+                    }
+                    out.push_str(&markdown_code_span_table_cell(parameter));
+                }
+            }
+            out.push_str(" |\n");
+        }
+        Ok(out)
+    }
+
+    pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+        let routes = extract_rest_routes(dag)?;
+        let mut methods = BTreeSet::new();
+        for route in &routes {
+            methods.insert(route.method.as_str());
+        }
+
+        let mut out = String::from(
+            "-- GunBC generated service route schema.\n\
+             -- Shape B SQL DDL projection; not a compiler target.\n\
+             CREATE TABLE omni_service_routes (\n\
+               method TEXT NOT NULL,\n\
+               path_template TEXT NOT NULL,\n",
+        );
+        if !methods.is_empty() {
+            out.push_str("  CHECK (method IN (");
+            for (index, method) in methods.iter().enumerate() {
+                if index > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&sql_string_literal(method));
+            }
+            out.push_str(")),\n");
+        }
+        out.push_str(
+            "  PRIMARY KEY (method, path_template)\n\
+             );\n",
+        );
+        if routes.is_empty() {
+            out.push_str("\n-- no routes declared\n");
+            return Ok(out);
+        }
+        out.push_str("\nINSERT INTO omni_service_routes (method, path_template) VALUES\n");
+        for (index, route) in routes.iter().enumerate() {
+            out.push_str("  (");
+            out.push_str(&sql_string_literal(&route.method));
+            out.push_str(", ");
+            out.push_str(&sql_string_literal(&route.path));
+            out.push(')');
+            if index + 1 == routes.len() {
+                out.push_str(";\n");
+            } else {
+                out.push_str(",\n");
+            }
+        }
+        Ok(out)
+    }
+
+    /// Emits the narrow runnable-backend side of the R3 omni OpenAPI demo.
+    ///
+    /// This is deliberately fixture-scoped bridge code. It consumes the same
+    /// canonical `RestRoute` projection as OpenAPI/Markdown to prove the full-stack
+    /// same-DAG property now, then dissolves via
+    /// `docs/briefs/r3-omni-openapi-backend-bridge-dissolution.md`.
+    pub fn project_rust_backend_service(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+        let routes = extract_rest_routes(dag)?;
+        let mut out = String::from(
+            r#"use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    #[derive(Clone, Copy)]
+    struct Route {
+        method: &'static str,
+        path: &'static str,
+    }
+
+    const ROUTES: &[Route] = &[
+    "#,
+        );
+        for route in &routes {
+            out.push_str("    Route { method: ");
+            out.push_str(&rust_string_literal(&route.method));
+            out.push_str(", path: ");
+            out.push_str(&rust_string_literal(&route.path));
+            out.push_str(" },\n");
+        }
+        out.push_str(
+            r#"];
+
+    fn route_status(method: &str, path: &str) -> u16 {
+        if ROUTES
+            .iter()
+            .any(|route| route.method == method && path_matches(route.path, path))
+        {
+            200
+        } else {
+            404
+        }
+    }
+
+    fn path_matches(template: &str, path: &str) -> bool {
+        let template = strip_leading_slash(template);
+        let path = strip_leading_slash(path);
+        let template_parts: Vec<_> = template.split('/').collect();
+        let path_parts: Vec<_> = path.split('/').collect();
+        if template_parts.len() != path_parts.len() {
+            return false;
+        }
+        template_parts
+            .iter()
+            .zip(path_parts.iter())
+            .all(|(template_part, path_part)| segment_matches(template_part, path_part))
+    }
+
+    fn strip_leading_slash(value: &str) -> &str {
+        value.strip_prefix('/').unwrap_or(value)
+    }
+
+    fn segment_matches(template: &str, path: &str) -> bool {
+        let mut remainder = path;
+        let mut rest = template;
+        while let Some(start) = rest.find('{') {
+            let literal = &rest[..start];
+            if !remainder.starts_with(literal) {
+                return false;
+            }
+            remainder = &remainder[literal.len()..];
+            let after_open = &rest[start + 1..];
+            let Some(end) = after_open.find('}') else {
+                return false;
+            };
+            let after_param = &after_open[end + 1..];
+            if let Some(next_literal_start) = after_param.find('{') {
+                let next_literal = &after_param[..next_literal_start];
+                if next_literal.is_empty() {
+                    return false;
+                }
+                let Some(boundary) = remainder.find(next_literal) else {
+                    return false;
+                };
+                let param_value = &remainder[..boundary];
+                if !slash_free_non_empty(param_value) {
+                    return false;
+                }
+                remainder = &remainder[boundary..];
+                rest = after_param;
+            } else {
+                if after_param.is_empty() {
+                    return slash_free_non_empty(remainder);
+                }
+                let Some(value) = remainder.strip_suffix(after_param) else {
+                    return false;
+                };
+                return slash_free_non_empty(value);
+            }
+        }
+        remainder == rest
+    }
+
+    fn slash_free_non_empty(value: &str) -> bool {
+        !value.is_empty() && !value.contains('/')
+    }
+
+    fn respond(request: &str) -> String {
+        let request_line = request.lines().next().unwrap_or("");
+        let mut parts = request_line.split_whitespace();
+        let method = parts.next().unwrap_or("");
+        let path = parts.next().unwrap_or("");
+        let status = route_status(method, path);
+        let reason = if status == 200 { "OK" } else { "Not Found" };
+        format!("HTTP/1.1 {status} {reason}\r\ncontent-length: 0\r\n\r\n")
+    }
+
+    fn serve(addr: &str) -> std::io::Result<()> {
+        let listener = TcpListener::bind(addr)?;
+        for stream in listener.incoming() {
+            let mut stream = stream?;
+            let mut request = [0_u8; 2048];
+            let bytes = stream.read(&mut request)?;
+            let response = respond(&String::from_utf8_lossy(&request[..bytes]));
+            stream.write_all(response.as_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn main() {
+        let args: Vec<String> = std::env::args().collect();
+        match args.as_slice() {
+            [_, flag, method, path] if flag == "--probe" => {
+                println!("{}", route_status(method, path));
+            }
+            [_, flag, addr] if flag == "--serve" => {
+                serve(addr).expect("serve backend");
+            }
+            _ => {
+                for route in ROUTES {
+                    println!("{} {}", route.method, route.path);
+                }
+            }
+        }
+    }
+    "#,
+        );
+        Ok(out)
+    }
+
+    fn append_path_parameter_yaml(out: &mut String, parameter: &str) {
+        out.push_str("        - name: ");
+        out.push_str(&yaml_double_quoted(parameter));
+        out.push_str(
+            "\n          in: path\n          required: true\n          schema:\n            type: string\n",
+        );
+    }
+
+    fn malformed(declaration: Option<&str>, detail: impl Into<String>) -> ProjectOpenApiError {
+        ProjectOpenApiError::MalformedOperation {
+            declaration: declaration.unwrap_or("<anonymous>").to_string(),
+            detail: detail.into(),
+        }
+    }
+
+    fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
+        match value {
+            FieldValue::Record(fields) => Some(fields.as_slice()),
+            _ => None,
+        }
+    }
+
+    fn require_record<'a>(
+        declaration: &str,
+        field: &str,
+        value: &'a FieldValue,
+    ) -> Result<&'a [(String, FieldValue)], ProjectOpenApiError> {
+        record_fields(value).ok_or_else(|| ProjectOpenApiError::MalformedOperation {
+            declaration: declaration.to_string(),
+            detail: format!("`{field}` must be a record"),
+        })
+    }
+
+    fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
+        fields.iter().find(|(l, _)| l == label).map(|(_, v)| v)
+    }
+
+    fn field_type(fields: &[crate::dag::Field], label: &str) -> Option<DeclarationId> {
+        fields
+            .iter()
+            .find(|field| field.label == label)
+            .map(|field| field.ty)
+    }
+
+    fn parse_http_method(
+        dag: &Dag,
+        schema: RestRouteSchema,
+        declaration: &str,
+        value: &FieldValue,
+    ) -> Result<String, ProjectOpenApiError> {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            return Err(ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "`endpoint.method` must be an HttpMethod variant".to_string(),
+            });
+        };
+        if !payload.is_empty() {
+            return Err(ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "HttpMethod variants must not carry payload".to_string(),
+            });
+        }
+        variant_label_in_parent(dag, schema.http_method, *constructor).ok_or_else(|| {
+            ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "HttpMethod constructor is not a variant of HttpMethod".to_string(),
+            }
+        })
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ParsedPathTemplate {
+        path: String,
+        parameters: Vec<String>,
+    }
+
+    fn parse_path_template(
+        dag: &Dag,
+        schema: RestRouteSchema,
+        declaration: &str,
+        value: &FieldValue,
+    ) -> Result<ParsedPathTemplate, ProjectOpenApiError> {
+        let fields = require_record(declaration, "endpoint.path", value)?;
+        let tokens = record_field(fields, "tokens").ok_or_else(|| {
+            ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "PathTemplate missing `tokens` field".to_string(),
+            }
+        })?;
+        let FieldValue::List(tokens) = tokens else {
+            return Err(ProjectOpenApiError::MalformedOperation {
+                declaration: declaration.to_string(),
+                detail: "PathTemplate.tokens must be a list".to_string(),
+            });
+        };
+        let mut pieces = Vec::with_capacity(tokens.len());
+        let mut parameters = Vec::new();
+        for token in tokens {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = token
+            else {
+                return Err(ProjectOpenApiError::MalformedOperation {
+                    declaration: declaration.to_string(),
+                    detail: "PathTemplate token must be a UrlPathToken variant".to_string(),
+                });
+            };
+            let label = variant_label_in_parent(dag, schema.url_path_token, *constructor)
+                .ok_or_else(|| ProjectOpenApiError::MalformedOperation {
+                    declaration: declaration.to_string(),
+                    detail: "token constructor is not a variant of UrlPathToken".to_string(),
+                })?;
+            let text = single_string_payload(payload).ok_or_else(|| {
+                ProjectOpenApiError::MalformedOperation {
+                    declaration: declaration.to_string(),
+                    detail: format!("{label} token payload must contain one string"),
+                }
+            })?;
+            match label.as_str() {
+                "LiteralToken" => pieces.push(text),
+                "ParamToken" => {
+                    pieces.push(format!("{{{text}}}"));
+                    parameters.push(text);
+                }
+                other => {
+                    return Err(ProjectOpenApiError::MalformedOperation {
+                        declaration: declaration.to_string(),
+                        detail: format!("unsupported UrlPathToken variant `{other}`"),
+                    })
+                }
+            }
+        }
+        let path = pieces.concat();
+        Ok(ParsedPathTemplate {
+            path: if path.starts_with('/') {
+                path
+            } else {
+                format!("/{path}")
+            },
+            parameters,
+        })
+    }
+
+    fn variant_label_in_parent(
+        dag: &Dag,
+        parent: DeclarationId,
+        constructor: DeclarationId,
+    ) -> Option<String> {
+        let TypeConnective::Disj { variants } = &dag.declaration(parent).connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == constructor)
+            .map(|variant| variant.label.clone())
+    }
+
+    fn single_string_payload(payload: &[FieldValue]) -> Option<String> {
+        let [value] = payload else {
+            return None;
+        };
+        match value {
+            FieldValue::Literal(LiteralBits::String(value)) => Some(value.clone()),
+            FieldValue::Record(fields) => fields.iter().find_map(|(label, value)| {
+                if label == "text" || label == "name" {
+                    match value {
+                        FieldValue::Literal(LiteralBits::String(value)) => Some(value.clone()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        }
+    }
+
+    fn yaml_quoted(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
+    fn sql_string_literal(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
+    fn rust_string_literal(value: &str) -> String {
+        let mut literal = String::from("\"");
+        for ch in value.chars() {
+            match ch {
+                '\\' => literal.push_str("\\\\"),
+                '"' => literal.push_str("\\\""),
+                '\n' => literal.push_str("\\n"),
+                '\r' => literal.push_str("\\r"),
+                '\t' => literal.push_str("\\t"),
+                other if other.is_control() => {
+                    write!(&mut literal, "\\u{{{:X}}}", other as u32).expect("write to String");
+                }
+                other => literal.push(other),
+            }
+        }
+        literal.push('"');
+        literal
+    }
+
+    fn yaml_double_quoted(value: &str) -> String {
+        let mut quoted = String::from("\"");
+        for ch in value.chars() {
+            match ch {
+                '\\' => quoted.push_str("\\\\"),
+                '"' => quoted.push_str("\\\""),
+                '\n' => quoted.push_str("\\n"),
+                '\r' => quoted.push_str("\\r"),
+                '\t' => quoted.push_str("\\t"),
+                other if other.is_control() => {
+                    write!(&mut quoted, "\\u{:04X}", other as u32).expect("write to String");
+                }
+                other => quoted.push(other),
+            }
+        }
+        quoted.push('"');
+        quoted
+    }
+
+    fn yaml_plain_operation_id(method: &str, path: &str) -> String {
+        let mut suffix = String::new();
+        for ch in path.trim_matches('/').chars() {
+            if ch.is_ascii_alphanumeric() {
+                suffix.push(ch);
+            } else {
+                write!(&mut suffix, "_x{:X}_", ch as u32).expect("write to String");
+            }
+        }
+        format!("{}_{}", method.to_ascii_lowercase(), suffix)
+    }
+
+    fn markdown_table_cell(value: &str) -> String {
+        value.replace('\\', "\\\\").replace('|', "\\|")
+    }
+
+    fn markdown_code_span(value: &str) -> String {
+        let delimiter = "`".repeat(max_backtick_run(value) + 1);
+        if value.starts_with('`') || value.ends_with('`') {
+            format!("{delimiter} {value} {delimiter}")
+        } else {
+            format!("{delimiter}{value}{delimiter}")
+        }
+    }
+
+    fn markdown_code_span_table_cell(value: &str) -> String {
+        markdown_code_span(value).replace('|', "\\|")
+    }
+
+    fn max_backtick_run(value: &str) -> usize {
+        let mut max = 0;
+        let mut current = 0;
+        for ch in value.chars() {
+            if ch == '`' {
+                current += 1;
+                max = max.max(current);
+            } else {
+                current = 0;
+            }
+        }
+        max
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::compile_to_dag;
+
+        const SERVICE_FIXTURE: &str = r#"
+    module t.openapi_malformed_projection
+
+    import std.types { GET }
+    import std.effects { LiteralToken }
+    import v3.std.services { RestEndpointBinding }
+
+    type DemoOperation {
+      endpoint: RestEndpointBinding
+    }
+
+    data service_operations: List<DemoOperation> = [
+      {
+        endpoint: {
+          method: GET,
+          path: { tokens: [LiteralToken { text: "users" }] }
+        }
+      }
+    ]
+    "#;
+
+        fn compiled_service_fixture() -> Dag {
+            std::thread::Builder::new()
+                .name("openapi_malformed_projection_compile".to_string())
+                .stack_size(32 * 1024 * 1024)
+                .spawn(|| {
+                    compile_to_dag(SERVICE_FIXTURE, "openapi_malformed_projection_fixture.dag")
+                        .expect("service fixture compiles")
+                })
+                .expect("spawn larger-stack compile thread")
+                .join()
+                .expect("larger-stack compile thread completes")
+        }
+
+        fn service_operations_id(dag: &Dag) -> DeclarationId {
+            dag.declarations()
+                .iter()
+                .find(|decl| decl.name.as_deref() == Some("service_operations"))
+                .expect("service_operations declaration exists")
+                .id
+        }
+
+        fn replace_first_service_row(dag: &mut Dag, replacement: FieldValue) {
+            let service_operations = service_operations_id(dag);
+            let ValueBody::List(rows) = dag
+                .declaration_mut(service_operations)
+                .value_body
+                .as_mut()
+                .expect("service_operations has value body")
+            else {
+                panic!("service_operations is a list");
+            };
+            rows[0] = replacement;
+        }
+
+        #[test]
+        fn extract_rest_routes_rejects_non_record_service_rows() {
+            let mut dag = compiled_service_fixture();
+            replace_first_service_row(
+                &mut dag,
+                FieldValue::Literal(LiteralBits::String("not a record".to_string())),
+            );
+
+            assert_eq!(
+                extract_rest_routes(&dag),
+                Err(ProjectOpenApiError::MalformedOperation {
+                    declaration: "service_operations".to_string(),
+                    detail: "service operation rows must be records".to_string(),
+                })
+            );
+        }
+
+        #[test]
+        fn extract_rest_routes_rejects_service_rows_missing_endpoint() {
+            let mut dag = compiled_service_fixture();
+            replace_first_service_row(&mut dag, FieldValue::Record(vec![]));
+
+            assert_eq!(
+                extract_rest_routes(&dag),
+                Err(ProjectOpenApiError::MalformedOperation {
+                    declaration: "service_operations".to_string(),
+                    detail: "service operation row missing `endpoint` field".to_string(),
+                })
+            );
+        }
+
+        #[test]
+        fn path_parameter_names_are_quoted_for_yaml_structure() {
+            let mut yaml = String::new();
+
+            append_path_parameter_yaml(&mut yaml, "id:\nrequired: false");
+
+            assert_eq!(
+                yaml,
+                "        - name: \"id:\\nrequired: false\"\n          in: path\n          required: true\n          schema:\n            type: string\n"
+            );
+        }
+
+        #[test]
+        fn markdown_code_cells_choose_safe_delimiters_and_escape_table_delimiters() {
+            assert_eq!(markdown_code_span_table_cell("a|b`c\\d"), "``a\\|b`c\\d``");
+            assert_eq!(
+                markdown_code_span_table_cell("a``b```c"),
+                "````a``b```c````"
+            );
+            assert_eq!(markdown_code_span_table_cell("\\path"), "`\\path`");
+            assert_eq!(markdown_code_span_table_cell("`x"), "`` `x ``");
+            assert_eq!(markdown_code_span_table_cell("x`"), "`` x` ``");
+        }
+    }
+}
+
+pub mod process_exit {
+    //! Host-side mirror of `dsl/std/process.dag` `ProcessExit`.
+    //!
+    //! **SG-0 / bounded-seed receipt:** hand-authored path is enumerated in
+    //! `EXPECTED_HAND_AUTHORED_NON_TEST` in `sg0_census_test.rs` (not
+    //! `GENERATED_FILES` / `build.rs` output).
+    //!
+    //! Used by PB-1 emitted bin-shim `main.rs` shells (`emit_rust_bin_shim`) so
+    //! generated sources can `match` on the same structural shape the `.dag`
+    //! substrate declares, without inventing a parallel exit carrier.
+
+    // Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §P1): 🟢 GREEN —
+    // terminal host mirror of `dsl/std/process.dag` `ProcessExit`; no extra variants
+    // or semantics beyond that substrate coproduct. `ExitFailure.code` uses `i64`
+    // — the same host width as `LiteralBits::Int` / substrate `Int` in `dag.rs`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ProcessExit {
+        ExitSuccess,
+        ExitFailure { code: i64, reason: String },
+    }
+}
+
 pub mod realization_cost {
     //! Rust-side realization-cost table for T-CostLens-Composition's epsilon path.
     //!
@@ -435,7 +1302,126 @@ pub mod realization_cost {
         }
     }
 }
-pub mod self_host_receipt_p0;
+pub mod self_host_receipt_p0 {
+    //! P0 prerequisite pin: stable top-level JSON keys in `target/self_host/receipt.json`.
+    //!
+    //! Authority (workspace-root paths as code — not file-relative rustdoc URLs):
+    //! `docs/briefs/r3-pb-t-fixedpoint-worker.md` §P0 readiness checklist (DB-8 mechanical ratchet);
+    //! `docs/db-history/db-8.md`; `docs/design-fixed-point-ratchet.md`.
+    //! `self_host_fixed_point` consumes these identifiers so renames are deliberate (trend readers / DB-8).
+
+    /// Pipeline snapshot fixed-point on [`crate::default_fixed_point_source`] (always `ok` when the binary runs past that stage).
+    pub const K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE: &str = "pipeline_fixed_point_default_source";
+
+    /// `dsl/gunbc/compiler.dag` parse outcome under v3 (`ok` or encoded error string).
+    pub const K_COMPILER_DAG_V3_PARSE: &str = "compiler_dag_v3_parse";
+
+    /// Overall receipt status (`completed` or `failed_self_host_slice` today).
+    pub const K_STATUS: &str = "status";
+
+    /// Keys emitted on every path (parse failure still includes pipeline + parse + status).
+    pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
+        K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE,
+        K_COMPILER_DAG_V3_PARSE,
+        K_STATUS,
+    ];
+
+    /// Serialized top-level property opener emitted by `self_host_fixed_point` today
+    /// (`src/v3/compiler/src/bin/self_host_fixed_point.rs`, `run`): two ASCII spaces, `"`, key, `":`
+    /// — same shape as `format!("  \"{}\":"` / `format!("  \"{}\": {},\n", …` using
+    /// `K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE`, `K_COMPILER_DAG_V3_PARSE`, and `K_STATUS` (and the
+    /// parse-error branch). If the emitter changes indentation or switches to `serde_json` pretty-print
+    /// with different spacing, update this needle in the same change.
+    ///
+    /// **Emitter anchors in `run` (search for `receipt_p0::K_` on `receipt`):**
+    /// 1. **Pipeline** — first field after `{`: `format!(..., K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE)` with
+    ///    a string literal value (`"ok"`).
+    /// 2. **`compiler_dag_v3_parse`** — `match` `Ok`: `format!(..., K_COMPILER_DAG_V3_PARSE)` + `"ok"`; `Err`:
+    ///    `format!(..., K_COMPILER_DAG_V3_PARSE, json_string(&msg))`.
+    /// 3. **`status`** — last field before closing `}`: `format!(..., K_STATUS, json_string(exit_status))`.
+    ///
+    /// **False positives:** a `contains` needle could match inside a quoted JSON value; the fixed
+    /// snake_case P0 key names and the receipt's flat object shape keep that risk negligible for this
+    /// bounded DB-8 trend surface.
+    fn top_level_property_needle(key: &str) -> String {
+        let mut needle = String::with_capacity(key.len() + 8);
+        needle.push_str("  \"");
+        needle.push_str(key);
+        needle.push_str("\":");
+        needle
+    }
+
+    fn missing_always_emitted_key_properties(json_body: &str) -> Vec<&'static str> {
+        ALWAYS_EMITTED_TOP_LEVEL_KEYS
+            .iter()
+            .copied()
+            .filter(|key| !json_body.contains(&top_level_property_needle(key)))
+            .collect()
+    }
+
+    /// Every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry must appear as a top-level JSON property using
+    /// [`top_level_property_needle`]'s shape so the serialized receipt cannot drift from the P0 pin
+    /// without failing closed before `write_receipt`. Sole public entry point for this contract check.
+    pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
+        let missing = missing_always_emitted_key_properties(json_body);
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "receipt.json missing always-emitted P0 keys: {}",
+                missing.join(", ")
+            ))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::HashSet;
+
+        #[test]
+        fn always_emitted_keys_are_unique_nonempty() {
+            let mut seen = HashSet::new();
+            for key in super::ALWAYS_EMITTED_TOP_LEVEL_KEYS {
+                assert!(!key.is_empty(), "empty key");
+                assert!(seen.insert(*key), "duplicate key {key}");
+            }
+        }
+
+        #[test]
+        fn validate_accepts_minimal_receipt_shape() {
+            let body = r#"{
+      "pipeline_fixed_point_default_source": "ok",
+      "compiler_dag_v3_parse": "ok",
+      "status": "completed"
+    }
+    "#;
+            super::validate_receipt_json_always_emitted_keys(body).unwrap();
+        }
+
+        #[test]
+        fn validate_rejects_missing_pipeline_key() {
+            let body = r#"{
+      "compiler_dag_v3_parse": "ok",
+      "status": "completed"
+    }
+    "#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("pipeline_fixed_point_default_source"), "{err}");
+        }
+
+        #[test]
+        fn validate_rejects_missing_status_key() {
+            let body = r#"{
+      "pipeline_fixed_point_default_source": "ok",
+      "compiler_dag_v3_parse": "x",
+    }
+    "#;
+            let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+            assert!(err.contains("status"), "{err}");
+        }
+    }
+}
+
 pub mod evaluator {
     //! E2 evaluator frame helpers.
     //!
@@ -4038,12 +5024,810 @@ pub mod lens_unused_parameters {
 }
 
 /// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
-pub mod emit_rust_roundtrip_fixtures;
+pub mod emit_rust_roundtrip_fixtures {
+    //! Emit Rust / omni round-trip fixture tables shared by the host `#[test]`
+    //! harnesses (`m1_3_*`, `m1_5_*`) and R1C-E `r1c_e_gates::check_*` (the
+    //! `r1c_e_emit_gates` `ExecuteCommand` bin). **Single source of truth** for
+    //! `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` (was `tests/.../determinism_fixtures`
+    //! + `m1_3` locals).
+
+    /// Self-contained program sources (compile as full programs).
+    pub struct ProgramFixture {
+        pub name: &'static str,
+        pub source: &'static str,
+        /// Expected stdout from the compiled binary (exact string equality).
+        pub expected_stdout: &'static str,
+    }
+
+    pub const PROGRAM_FIXTURES: &[ProgramFixture] = &[
+        ProgramFixture {
+            name: "list_fold_six",
+            source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
+            expected_stdout: "6",
+        },
+        ProgramFixture {
+            name: "generic_list_fold_one",
+            source: "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+            expected_stdout: "1",
+        },
+        ProgramFixture {
+            name: "list_map_then_fold_twelve",
+            source: "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
+            expected_stdout: "12",
+        },
+        ProgramFixture {
+            name: "list_filter_then_fold_seven",
+            source: "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
+            expected_stdout: "7",
+        },
+        ProgramFixture {
+            name: "nested_list_builtins_inside_lambda_six",
+            source: "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
+            expected_stdout: "6",
+        },
+        ProgramFixture {
+            name: "user_function_call_three",
+            source: "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
+            expected_stdout: "3",
+        },
+        ProgramFixture {
+            name: "recursive_function_call_six",
+            source: "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
+            expected_stdout: "6",
+        },
+        ProgramFixture {
+            name: "record_literal_through_function_one",
+            source: "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
+            expected_stdout: "1",
+        },
+        ProgramFixture {
+            name: "user_sum_match_zero",
+            source: "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
+            expected_stdout: "0",
+        },
+    ];
+
+    /// Module-shaped sources for `emit_module` determinism (reflected harness matrix).
+    pub struct ModuleFixture {
+        pub name: &'static str,
+        /// Surface module body (lowers to a module fragment; consumed by `emit_rust_module`).
+        pub source: &'static str,
+    }
+
+    // --- DB-8 module surface: one `const` per row so `REFLECTED_FIXTURES` can borrow it. ---
+
+    const MODULE_NODE_COUNT: ModuleFixture = ModuleFixture {
+        name: "node_count",
+        source: "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
+    };
+
+    const MODULE_BIND_COUNT: ModuleFixture = ModuleFixture {
+        name: "bind_count",
+        source: "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
+    };
+
+    const MODULE_SINGLETON_SPAN: ModuleFixture = ModuleFixture {
+        name: "singleton_span",
+        source: "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
+    };
+
+    const MODULE_RESULT_PORT_IS_PARAM: ModuleFixture = ModuleFixture {
+        name: "result_port_is_param",
+        source:
+            "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
+    };
+
+    const MODULE_BIND_NAMES: ModuleFixture = ModuleFixture {
+        name: "bind_names",
+        source: "type FoundBind { name: String }\n\
+             fn bind_names(d: Dag) -> List<FoundBind> = \
+               fold(d.nodes, empty(), |acc, behavior| \
+                 match behavior { \
+                   Value(v) => acc, \
+                   Transform(t) => acc, \
+                   Branch(b) => acc, \
+                   Loop(l) => acc, \
+                   Bind(bind) => cons({ name: bind.name }, acc) \
+                 })",
+    };
+
+    pub const MODULE_FIXTURES: &[ModuleFixture] = &[
+        MODULE_NODE_COUNT,
+        MODULE_BIND_COUNT,
+        MODULE_SINGLETON_SPAN,
+        MODULE_RESULT_PORT_IS_PARAM,
+        MODULE_BIND_NAMES,
+    ];
+
+    /// On-disk four-fixture pressure suite (Lane 6 / dependency design).
+    pub const FOUR_FIXTURE_FILES: &[&str] = &["id.v3", "drop.v3", "wrap.v3", "is_empty.v3"];
+
+    /// `PROGRAM_FIXTURES` entries excluded from per-target 5× determinism.
+    /// Empty: Go `Behavior::Loop` emission landed in PR #692.
+    pub const GO_EMIT_EXCLUDE: &[&str] = &[];
+
+    /// Program fixtures excluded from Python 5× determinism.
+    /// Empty: Python `Behavior::Loop` emission landed in PR #692.
+    pub const PYTHON_EMIT_EXCLUDE: &[&str] = &[];
+
+    // ── Reflected batched-harness matrix (m1_3 + R1C-E) ─────────────────────────
+
+    /// Expected output shape for a reflected-module roundtrip fixture.
+    pub enum ReflectedExpected {
+        /// Exact stdout string (trimmed).
+        Exact(&'static str),
+        /// Any positive integer (used for `node_count`, whose exact value is not pinned).
+        PositiveInt,
+    }
+
+    /// One reflected-module `rustc` roundtrip: the module surface is **only** in
+    /// [`ModuleFixture::source`]; this row adds the wrapper that imports `v3_compiler`
+    /// at runtime and the expected stdout. Points at the same `const` as
+    /// [`MODULE_FIXTURES`] (no duplicate `source` text).
+    pub struct ReflectedFixture {
+        pub module: &'static ModuleFixture,
+        pub wrapper_body: &'static str,
+        pub expected_stdout: ReflectedExpected,
+    }
+
+    pub const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
+        ReflectedFixture {
+            module: &MODULE_NODE_COUNT,
+            wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
+            expected_stdout: ReflectedExpected::PositiveInt,
+        },
+        ReflectedFixture {
+            module: &MODULE_BIND_COUNT,
+            // Subtract the bootstrap baseline so the test still pins the
+            // user-program bind count after Lane 2 Stage 2d std-module binds.
+            wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); bind_count(&dag) - bind_count(&baseline)",
+            expected_stdout: ReflectedExpected::Exact("2"),
+        },
+        ReflectedFixture {
+            module: &MODULE_SINGLETON_SPAN,
+            wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
+            expected_stdout: ReflectedExpected::Exact("1"),
+        },
+        ReflectedFixture {
+            module: &MODULE_RESULT_PORT_IS_PARAM,
+            wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if bind.name == \"id\" && bind.emit_participation() == Some(v3_compiler::dag::BindEmitParticipation::UserCallable) => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
+            expected_stdout: ReflectedExpected::Exact("1"),
+        },
+        ReflectedFixture {
+            module: &MODULE_BIND_NAMES,
+            // Same baseline subtraction as `bind_count`.
+            wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); (bind_names(&dag).len() as i64) - (bind_names(&baseline).len() as i64)",
+            expected_stdout: ReflectedExpected::Exact("2"),
+        },
+    ];
+}
+
 pub mod gunbc_ci;
 pub mod post_emit_verifier;
-pub mod r1c_e_gates;
+pub mod r1c_e_gates {
+    //! R1C-E — emit-gate check functions shared by the host `#[test]` harness and
+    //! the `r1c_e_emit_gates` `bin` (the `ExecuteCommand` logical child for the
+    //! T-Emit `.dag` `TestClaim` wrappers; the `.dag` source is spliced into a
+    //! `Dag` at integration-test compile time via `env!("CARGO_BIN_EXE_…")` —
+    //! see the integration-test driver for the on-disk path of the template).
+    //!
+    //! Each `check_*` returns `Ok(())` when the gate holds, or `Err(String)` with a
+    //! human-readable failure detail. The `bin` maps `Ok` → exit 0 / `Err` → exit 1
+    //! (no stdout/stderr capture by `ExecuteCommand` — exit code is the receipt).
+    //! `#[test]` callers panic with the detail to preserve the original failure
+    //! message.
+    //!
+    //! **Single source of truth.** The `#[test]` harness and the `bin` both call
+    //! these functions; do not duplicate the assertion bodies into either caller.
+    //!
+    //! **Public surface (R1 close scaffold).** The module is `pub` only so the
+    //! single bin in this crate can call it (Cargo bins compile against the public
+    //! lib API). Downstream crates must not depend on `r1c_e_gates::*`; this is a
+    //! scaffold that dissolves at R1 close together with the wrappers themselves.
+
+    use std::io::Write;
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::OnceLock;
+
+    use crate::compile_to_dag;
+    use crate::emit::emit;
+    use crate::emit::EmitTarget;
+    use crate::emit_rust::{emit_rust, emit_rust_module};
+    use crate::emit_rust_roundtrip_fixtures::{
+        ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
+        REFLECTED_FIXTURES,
+    };
+
+    /// `emit_generic_bounds_survive` (host receipt: `m1_3_emit_rust_test::emit_generic_bounds_survive`,
+    /// PR #650 post-mortem).
+    ///
+    /// Pins the **Rust type line** for callable parameters: `impl Fn(...) -> ... + Clone`,
+    /// not `&impl Fn`. Body avoids higher-order `f(...)` calls — those are a separate
+    /// emit seam; this receipt only pins the parameter type spelling.
+    pub fn check_generic_bounds_survive() -> Result<(), String> {
+        let src = "fn twice(f: fn(Int) -> Int) -> Int = 0\n";
+        let dag = compile_to_dag(src, "r1c_e_generic_bounds.v3")
+            .map_err(|e| format!("compile failed: {e:?}"))?;
+        let out = emit_rust_module(&dag).map_err(|e| format!("emit failed: {e:?}"))?;
+
+        let sig = "fn twice(p0: impl Fn(i64) -> i64 + Clone) -> i64";
+        if !out.contains(sig) {
+            return Err(format!(
+                "callable param should carry synthesized + Clone (downstream rustc / stage0 contract); got:\n{out}"
+            ));
+        }
+        if out.contains("&impl Fn") {
+            return Err(format!(
+                "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
+            ));
+        }
+        Ok(())
+    }
+
+    // === emit_rust_fixtures_rustc_green (batched rustc program + reflected harness) ===
+
+    /// Directory containing `libv3_compiler-*.rlib` for the current build. Test
+    /// executables sit in `…/target/debug/deps/`; the `r1c_e_emit_gates` bin is in
+    /// `…/target/debug/` and links against the same `dependency=…/deps` layout.
+    fn rustc_deps_dir() -> PathBuf {
+        let exe = std::env::current_exe().expect("current exe");
+        let parent = exe.parent().expect("parent of current exe");
+        if parent.file_name() == Some(std::ffi::OsStr::new("deps")) {
+            parent.to_path_buf()
+        } else {
+            parent.join("deps")
+        }
+    }
+
+    /// Resolves `lib{crate}-*.rlib` in the deps directory for the running executable.
+    ///
+    /// Picks the file with the newest `modified()` time; on equal mtimes, uses
+    /// [`Path`] order so the choice is deterministic (avoids flake from `read_dir`
+    /// order). **Assumes** a single Cargo build is writing this `target` tree —
+    /// concurrent `cargo` invocations racing the same `deps/` dir are unsupported
+    /// and may select the wrong artifact.
+    fn find_current_rlib(crate_name: &str) -> PathBuf {
+        let prefix = format!("lib{crate_name}-");
+        let deps = rustc_deps_dir();
+        let mut matches: Vec<PathBuf> = std::fs::read_dir(&deps)
+            .unwrap_or_else(|e| panic!("read {}: {e}", deps.display()))
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                let file_name = path.file_name()?.to_str()?;
+                if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        fn mtime(path: &Path) -> Option<std::time::SystemTime> {
+            std::fs::metadata(path).and_then(|m| m.modified()).ok()
+        }
+        matches.sort_by(|a, b| {
+            mtime(a)
+                .cmp(&mtime(b))
+                .then_with(|| a.as_os_str().cmp(b.as_os_str()))
+        });
+        matches.pop().unwrap_or_else(|| {
+            panic!(
+                "no `{prefix}*.rlib` in {} (build `v3-compiler` for this target first)",
+                deps.display()
+            )
+        })
+    }
+
+    /// How the rustc harness should link: standalone programs vs `v3_compiler` rlib
+    /// (reflected fixtures import `v3_compiler::dag` at runtime).
+    enum HarnessLinkMode {
+        Standalone,
+        WithV3Compiler,
+    }
+
+    struct R1cERustcHarness {
+        scratch_dir: PathBuf,
+        child_index: AtomicUsize,
+    }
+
+    impl R1cERustcHarness {
+        fn new(scope: &str) -> Self {
+            let pid = std::process::id();
+            let scratch_dir = std::env::temp_dir().join(format!("r1c_e_{scope}_{pid}"));
+            Self {
+                scratch_dir,
+                child_index: AtomicUsize::new(0),
+            }
+        }
+
+        fn next_child_dir(&self) -> PathBuf {
+            let id = self.child_index.fetch_add(1, Ordering::Relaxed);
+            let path = self.scratch_dir.join(format!("c{id}"));
+            std::fs::create_dir_all(&path).expect("create harness child dir");
+            path
+        }
+
+        fn compile(&self, rust_source: &str, bin_name: &str, mode: HarnessLinkMode) -> PathBuf {
+            let tmp_dir = self.next_child_dir();
+            let src_path = tmp_dir.join("main.rs");
+            let bin_path = tmp_dir.join(bin_name);
+            std::fs::File::create(&src_path)
+                .and_then(|mut f| f.write_all(rust_source.as_bytes()))
+                .expect("write harness source");
+
+            let mut cmd = Command::new("rustc");
+            cmd.env_remove("RUSTC_BOOTSTRAP")
+                .arg("--edition=2021")
+                .arg(&src_path)
+                .arg("-o")
+                .arg(&bin_path);
+
+            if let HarnessLinkMode::WithV3Compiler = mode {
+                let deps = rustc_deps_dir();
+                let rlib = find_current_rlib("v3_compiler");
+                cmd.arg("-L")
+                    .arg(format!("dependency={}", deps.display()))
+                    .arg("--extern")
+                    .arg(format!("v3_compiler={}", rlib.display()));
+            }
+
+            let status = cmd
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()
+                .expect("invoke rustc — install a rust toolchain to run this gate");
+            assert!(status.success(), "rustc failed on harness source");
+            bin_path
+        }
+
+        fn run(bin: &Path, args: &[&str]) -> String {
+            let output = Command::new(bin)
+                .args(args)
+                .output()
+                .expect("run compiled harness");
+            if !output.status.success() {
+                panic!(
+                    "compiled harness failed for args {args:?}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+    }
+
+    static EMIT_RUST_HARNESS: OnceLock<R1cERustcHarness> = OnceLock::new();
+    static PROGRAM_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
+    static REFLECTED_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
+
+    fn emit_rust_harness() -> &'static R1cERustcHarness {
+        EMIT_RUST_HARNESS.get_or_init(|| R1cERustcHarness::new("emit_rust_r1c_e"))
+    }
+
+    fn build_program_harness() -> PathBuf {
+        let mut body = String::new();
+        for fixture in PROGRAM_FIXTURES {
+            let emitted = emit_rust(
+                &compile_to_dag(fixture.source, "program_fixture.v3").expect("compiles to dag"),
+            )
+            .expect("emit_rust");
+            let emitted_pub_main = emitted.replace("fn main()", "pub fn main()");
+            body.push_str(&format!(
+                "#[allow(warnings, clippy::all)] pub mod {name} {{ {emitted} }}\n",
+                name = fixture.name,
+                emitted = emitted_pub_main,
+            ));
+        }
+        body.push_str(
+            "fn main() { \
+               let name = std::env::args().nth(1).expect(\"program fixture name\"); \
+               match name.as_str() { \
+            ",
+        );
+        for fixture in PROGRAM_FIXTURES {
+            body.push_str(&format!("\"{0}\" => {0}::main(), ", fixture.name));
+        }
+        body.push_str(
+            "other => panic!(\"unknown program fixture: {other}\"), \
+             } \
+             }\n",
+        );
+        emit_rust_harness().compile(&body, "main_bin", HarnessLinkMode::Standalone)
+    }
+
+    fn program_harness_bin() -> &'static Path {
+        PROGRAM_HARNESS_BIN
+            .get_or_init(build_program_harness)
+            .as_path()
+    }
+
+    /// Run the batched program fixture harness (same binary as `m1_3_emit_rust_test` host path).
+    pub fn run_rust_program_fixture(name: &str) -> String {
+        R1cERustcHarness::run(program_harness_bin(), &[name])
+    }
+
+    fn build_reflected_harness() -> PathBuf {
+        let mut body = String::new();
+        for fixture in REFLECTED_FIXTURES {
+            let module = emit_rust_module(
+                &compile_to_dag(fixture.module.source, "reflected_fixture.v3").expect("compiles"),
+            )
+            .expect("emits");
+            body.push_str(&format!(
+                "#[allow(warnings, clippy::all)] \
+                 pub mod {name} {{ \
+                   use v3_compiler::dag::*; \
+                   use v3_compiler::diagnostics::*; \
+                   {module} \
+                   pub fn run() -> i64 {{ {wrapper} }} \
+                 }}\n",
+                name = fixture.module.name,
+                wrapper = fixture.wrapper_body,
+            ));
+        }
+        body.push_str(
+            "fn main() { \
+               let name = std::env::args().nth(1).expect(\"test name arg\"); \
+               let value: i64 = match name.as_str() { \
+            ",
+        );
+        for fixture in REFLECTED_FIXTURES {
+            body.push_str(&format!("\"{0}\" => {0}::run(), ", fixture.module.name));
+        }
+        body.push_str(
+            "other => panic!(\"unknown reflected harness test: {other}\"), \
+             }; \
+             println!(\"{value}\"); \
+             }\n",
+        );
+        emit_rust_harness().compile(&body, "reflected_bin", HarnessLinkMode::WithV3Compiler)
+    }
+
+    fn reflected_harness_bin() -> &'static Path {
+        REFLECTED_HARNESS_BIN
+            .get_or_init(build_reflected_harness)
+            .as_path()
+    }
+
+    /// Run the batched reflected-module fixture harness.
+    pub fn run_rust_reflected_fixture(name: &str) -> String {
+        R1cERustcHarness::run(reflected_harness_bin(), &[name])
+    }
+
+    /// `emit_rust_fixtures_rustc_green` — full matrix: all program + reflected
+    /// roundtrip expectations.
+    pub fn check_emit_rust_fixtures_rustc_green() -> Result<(), String> {
+        let mut failures: Vec<String> = Vec::new();
+        for fixture in PROGRAM_FIXTURES {
+            let stdout = run_rust_program_fixture(fixture.name);
+            if stdout != fixture.expected_stdout {
+                failures.push(format!(
+                    "program {:?}: expected {:?}, got {stdout:?}",
+                    fixture.name, fixture.expected_stdout,
+                ));
+            }
+        }
+        for fixture in REFLECTED_FIXTURES {
+            let stdout = run_rust_reflected_fixture(fixture.module.name);
+            let (ok, label) = match &fixture.expected_stdout {
+                ReflectedExpected::Exact(expected) => {
+                    (stdout == *expected, format!("{expected:?}"))
+                }
+                ReflectedExpected::PositiveInt => (
+                    stdout.parse::<i64>().is_ok_and(|n| n > 0),
+                    "positive integer".to_owned(),
+                ),
+            };
+            if !ok {
+                failures.push(format!(
+                    "reflected {:?}: expected {label}, got {stdout:?}",
+                    fixture.module.name,
+                ));
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} fixture(s) failed:\n{}",
+                failures.len(),
+                failures.join("\n")
+            ))
+        }
+    }
+
+    // === emit_omni_demo_fixtures_green (multi-target) ===
+
+    struct OmniTmpDir(PathBuf);
+
+    impl OmniTmpDir {
+        fn new(tag: u64) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("v3_r1c_e_omni_{tag}_{}", std::process::id()));
+            std::fs::create_dir_all(&path).expect("omni tmp dir");
+            Self(path)
+        }
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for OmniTmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Monotonic tag for each `OmniTmpDir` (`v3_r1c_e_omni_{tag}_{pid}`). Rust, Go, and
+    /// Python paths each `fetch_add` so concurrent scratch dirs never share one `tag`.
+    static OMNI_TMP_TAG: AtomicUsize = AtomicUsize::new(0);
+
+    fn omni_fixtures() -> Vec<&'static ProgramFixture> {
+        PROGRAM_FIXTURES
+            .iter()
+            .filter(|f| !GO_EMIT_EXCLUDE.contains(&f.name))
+            .filter(|f| !PYTHON_EMIT_EXCLUDE.contains(&f.name))
+            .collect()
+    }
+
+    fn omni_rust_stdout(source: &str) -> Result<String, String> {
+        let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
+        let dag = compile_to_dag(source, "omni_parity_r1c_e.v3")
+            .map_err(|e| format!("compile: {e:?}"))?;
+        let rendered = emit_rust(&dag).map_err(|e| format!("Rust emit: {e:?}"))?;
+        let tmp = OmniTmpDir::new(id);
+        let src_path = tmp.path().join("main.rs");
+        let bin_path = tmp.path().join("main_bin");
+        std::fs::File::create(&src_path)
+            .and_then(|mut f| f.write_all(rendered.as_bytes()))
+            .map_err(|e| format!("write rust: {e}"))?;
+        let compile = Command::new("rustc")
+            .env_remove("RUSTC_BOOTSTRAP")
+            .arg(&src_path)
+            .arg("-o")
+            .arg(&bin_path)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .map_err(|e| format!("invoke rustc: {e}"))?;
+        if !compile.success() {
+            return Err(format!("rustc failed on emitted source:\n{rendered}"));
+        }
+        let run = Command::new(&bin_path)
+            .output()
+            .map_err(|e| format!("run binary: {e}"))?;
+        if !run.status.success() {
+            return Err("compiled rust binary exited non-zero".to_string());
+        }
+        Ok(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    }
+
+    fn omni_go_stdout(fixture_name: &str, source: &str) -> Result<String, String> {
+        let dag = compile_to_dag(source, "omni_parity_r1c_e.v3")
+            .map_err(|e| format!("compile `{fixture_name}`: {e:?}"))?;
+        let rendered = emit(&dag, EmitTarget::Go)
+            .map_err(|e| format!("Go emit `{fixture_name}`: {e:?}"))?
+            .text;
+        let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
+        let tmp = OmniTmpDir::new(id);
+        let src_path = tmp.path().join("main.go");
+        std::fs::File::create(&src_path)
+            .and_then(|mut f| f.write_all(rendered.as_bytes()))
+            .map_err(|e| format!("write go: {e}"))?;
+        let run = Command::new("go")
+            .arg("run")
+            .arg(&src_path)
+            .current_dir(tmp.path())
+            .output()
+            .map_err(|e| format!("go run `{fixture_name}`: {e}"))?;
+        if !run.status.success() {
+            return Err(format!(
+                "go run failed for `{fixture_name}`:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&run.stdout),
+                String::from_utf8_lossy(&run.stderr)
+            ));
+        }
+        Ok(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    }
+
+    fn omni_python_stdout(fixture_name: &str, source: &str) -> Result<String, String> {
+        let dag = compile_to_dag(source, "omni_parity_r1c_e.v3")
+            .map_err(|e| format!("compile `{fixture_name}`: {e:?}"))?;
+        let rendered = emit(&dag, EmitTarget::Python)
+            .map_err(|e| format!("Python emit `{fixture_name}`: {e:?}"))?
+            .text;
+        let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
+        let tmp = OmniTmpDir::new(id);
+        let src_path = tmp.path().join("main.py");
+        std::fs::File::create(&src_path)
+            .and_then(|mut f| f.write_all(rendered.as_bytes()))
+            .map_err(|e| format!("write py: {e}"))?;
+        let run = Command::new("python3")
+            .arg(&src_path)
+            .output()
+            .map_err(|e| format!("python3 `{fixture_name}`: {e}"))?;
+        if !run.status.success() {
+            return Err(format!(
+                "python3 failed for `{fixture_name}`:\nstderr:\n{}",
+                String::from_utf8_lossy(&run.stderr)
+            ));
+        }
+        Ok(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    }
+
+    fn omni_toolchain_available(cmd: &str, probe_arg: &str) -> bool {
+        Command::new(cmd)
+            .arg(probe_arg)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .ok()
+            .is_some_and(|s| s.success())
+    }
+
+    /// `emit_omni_demo_fixtures_green` — all omni targets agree with Rust baselines
+    /// (host: `m1_5_emit_omni_demo_test::emit_omni_demo_fixtures_green`).
+    pub fn check_omni_demo_fixtures_green() -> Result<(), String> {
+        if !omni_toolchain_available("go", "version") {
+            return Err("go toolchain not found — this gate requires go on PATH".to_string());
+        }
+        if !omni_toolchain_available("python3", "--version") {
+            return Err(
+                "python3 toolchain not found — this gate requires python3 on PATH".to_string(),
+            );
+        }
+        let fixtures = omni_fixtures();
+        if fixtures.is_empty() {
+            return Err("omni fixture set is empty after excludes".to_string());
+        }
+        for fixture in fixtures {
+            let rust = omni_rust_stdout(fixture.source)
+                .map_err(|e| format!("omni rust `{}`: {e}", fixture.name))?;
+            let go = omni_go_stdout(fixture.name, fixture.source)?;
+            if go != rust {
+                return Err(format!(
+                    "Go output diverged from Rust for `{}` (go={go:?} rust={rust:?})",
+                    fixture.name
+                ));
+            }
+            let py = omni_python_stdout(fixture.name, fixture.source)?;
+            if py != rust {
+                return Err(format!(
+                    "Python output diverged from Rust for `{}` (py={py:?} rust={rust:?})",
+                    fixture.name
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 pub mod test_runner;
-pub mod wall_clock_ratchet_manifest;
+pub mod wall_clock_ratchet_manifest {
+    //! Interim per-test wall-clock **warn-token** projection for CI (`slow_test_exemptions`
+    //! paydown path) — reads modeled rows in `dsl/gunbc/test_node_wall_clock_ratchet.dag`
+    //! instead of a checked-in JSONL side file. **Not** R3 gate **#102** closure: #102’s
+    //! pass target is ratchet policy from `TestNodeCostDimension` / modeled timing facts,
+    //! not a maintained warn-name list.
+
+    use crate::dag::{FieldValue, LiteralBits, ValueBody};
+    use crate::Dag;
+
+    /// Repo-relative path to the modeled warn-token table (single edit surface).
+    pub const RATCHET_DAG_REL_PATH: &str = "dsl/gunbc/test_node_wall_clock_ratchet.dag";
+
+    /// One JSON object per line: `{"test":"<libtest token>","policy":"warn"}` — the
+    /// shape `scripts/check-test-timeout.sh` / `jq` already consume.
+    pub fn emit_warn_policy_jsonl_lines(dag: &Dag) -> Result<Vec<String>, String> {
+        let decl = dag
+            .declaration_by_name("wall_clock_warn_libtest_tokens")
+            .ok_or_else(|| {
+                "missing `wall_clock_warn_libtest_tokens` data row in ratchet .dag".to_string()
+            })?;
+        let body = decl
+            .value_body
+            .as_ref()
+            .ok_or_else(|| "wall_clock_warn_libtest_tokens: no value_body".to_string())?;
+        let ValueBody::List(rows) = body else {
+            return Err(format!(
+                "wall_clock_warn_libtest_tokens: expected ValueBody::List, got {body:?}"
+            ));
+        };
+        let mut out = Vec::with_capacity(rows.len());
+        for (idx, row) in rows.iter().enumerate() {
+            let fields = match row {
+                FieldValue::Record(f) => f.as_slice(),
+                other => {
+                    return Err(format!(
+                        "row {idx}: expected record `WallClockWarnLibtestToken`, got {other:?}"
+                    ));
+                }
+            };
+            let test_val = fields
+                .iter()
+                .find(|(l, _)| l == "test")
+                .map(|(_, v)| v)
+                .ok_or_else(|| format!("row {idx}: missing `test` field"))?;
+            let test = match test_val {
+                FieldValue::Literal(LiteralBits::String(s)) => s.as_str(),
+                other => {
+                    return Err(format!(
+                        "row {idx}: `test` must be a String literal, got {other:?}"
+                    ));
+                }
+            };
+            out.push(format!(
+                "{{\"test\":{},\"policy\":\"warn\"}}",
+                json_escape_string(test)
+            ));
+        }
+        Ok(out)
+    }
+
+    fn json_escape_string(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 2);
+        out.push('"');
+        for ch in s.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c if c.is_control() => {
+                    use std::fmt::Write;
+                    let _ = write!(&mut out, "\\u{:04x}", c as u32);
+                }
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::compile_to_dag;
+        use serde_json::Value;
+        use std::path::PathBuf;
+
+        fn load_ratchet_dag() -> Dag {
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let path = manifest_dir.join("../../../dsl/gunbc/test_node_wall_clock_ratchet.dag");
+            let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("read {}: {e}", path.display());
+            });
+            compile_to_dag(&source, path.to_string_lossy().as_ref()).unwrap_or_else(|err| {
+                panic!("compile {}: {err:?}", path.display());
+            })
+        }
+
+        #[test]
+        fn ratchet_dag_warn_manifest_lines_are_parseable_warn_policy_objects() {
+            let dag = load_ratchet_dag();
+            let lines = emit_warn_policy_jsonl_lines(&dag).expect("emit");
+            for (idx, line) in lines.iter().enumerate() {
+                let v: Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("line {idx} must be JSON: {e}; got {line:?}"));
+                let obj = v.as_object().unwrap_or_else(|| {
+                    panic!("line {idx} must be a JSON object; got {v:?}");
+                });
+                assert!(
+                    obj.get("test").and_then(Value::as_str).is_some(),
+                    "line {idx} must have string `test`"
+                );
+                assert_eq!(
+                    obj.get("policy").and_then(Value::as_str),
+                    Some("warn"),
+                    "line {idx} must have policy=warn"
+                );
+            }
+        }
+    }
+}
+
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
     use crate::diagnostics::Diagnostic;
@@ -4579,7 +6363,140 @@ pub mod lens_cost_symbolic {
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
-pub mod memory_peak_cost;
+pub mod memory_peak_cost {
+    //! Memory-peak composition for the symbolic cost lens (gate #94 — `memory_peak_cost_basis_demonstrated`).
+    //!
+    //! Work-style costs compose with `sequential` / `iterate` (time adds, loops multiply). Memory
+    //! **peak** over alternative control-flow paths uses **max**, not sum — see
+    //! `docs/design-lens-application-surface.md` §4.3 and
+    //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md` (worked example 2).
+    //!
+    //! This module is the interim **cost-lens-owned** Rust authority until class-5 bodies can name
+    //! memory-dimension folds in `v3.std.algebra` and until the `EnforcedApplication` fold consumes
+    //! `apply_lens(cost, …)` sites end-to-end (`docs/r3-program-plan.md` gate #91 consumer).
+
+    use crate::dag::{dominates, max_path, SymbolicCost};
+
+    /// Peak memory across **alternative** control-flow possibilities (typically **branch arms**):
+    /// asymptotic **`max`/dominance** of the modeled arm peaks—the same **`dominant` → `max_path`**
+    /// basis used for branch sibling arms in `src/v3/lenses/cost.dag`.
+    ///
+    /// This is **not** work-style sequencing (`sequential` / sum along a single path). Separate
+    /// composition rules apply when allocations **overlap** in time (live-range overlap)—not modeled
+    /// here; callers encode overlap facts in the composed `SymbolicCost` before invoking this helper.
+    #[must_use]
+    pub fn compose_branch_memory_peak(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+        max_path(&[a, b])
+    }
+
+    /// Enforce-mode lens check: observed peak **exceeds** the user-declared budget.
+    ///
+    /// Aligns with `LensEnforcement.violates(declared_budget, projected)` (`src/v3/std/lens_application.dag`):
+    /// per substrate comment, **`violates` is true iff observed EXCEEDS the budget** — **reflexive**
+    /// dominance must **not** count as violation (equality is compliant).
+    ///
+    /// Under the **`SymbolicCost` partial order** ([`dominates`]), **`declared_budget` dominates
+    /// `observed_peak`** means the budget asymptotically **covers** the peak (budget is looser /
+    /// tying on the declared bound). **`!dominates(budget, peak)`** therefore means the contract is
+    /// not certified: **strict exceed** where comparable, and **fail-closed** wherever the order is
+    /// **incomparable** (distinct size variables without a dominance edge).
+    #[must_use]
+    pub fn memory_peak_enforcement_violates(
+        declared_budget: &SymbolicCost,
+        observed_peak: &SymbolicCost,
+    ) -> bool {
+        !dominates(declared_budget, observed_peak)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::dag::{max_path, DegreeAtLeastTwo, PortId, SizeVariable};
+
+        fn var(p: PortId) -> SizeVariable {
+            // Mirrors `unnamed_size_variable` / absent `display_name`; substrate lists BOTH fields at
+            // `src/v3/std/algebra.dag` (`type SizeVariable { source_port display_name?: String }`).
+            SizeVariable {
+                source_port: p,
+                display_name: None,
+            }
+        }
+
+        #[test]
+        fn compose_branch_memory_peak_delegates_to_max_path() {
+            // Pin the authoritative composition operator: branch / peak merges must not drift.
+            let p0 = PortId::test_raw(110);
+            let p1 = PortId::test_raw(111);
+            let a = SymbolicCost::LinearCost { _0: var(p0) };
+            let b = SymbolicCost::LogCost { _0: var(p1) };
+            assert_eq!(
+                compose_branch_memory_peak(a.clone(), b.clone()),
+                max_path(&[a, b])
+            );
+        }
+
+        #[test]
+        fn enforcement_violates_when_peak_exceeds_budget() {
+            let p = PortId::test_raw(200);
+            let n = var(p);
+            let budget = SymbolicCost::LogCost { _0: n.clone() };
+            let peak = SymbolicCost::LinearCost { _0: n };
+            assert!(memory_peak_enforcement_violates(&budget, &peak));
+        }
+
+        #[test]
+        fn enforcement_clean_when_budget_covers_peak() {
+            let p = PortId::test_raw(201);
+            let n = var(p);
+            let budget = SymbolicCost::LinearCost { _0: n.clone() };
+            let peak = SymbolicCost::LogCost { _0: n };
+            assert!(!memory_peak_enforcement_violates(&budget, &peak));
+        }
+
+        #[test]
+        fn enforcement_clean_when_budget_ties_observed_peak_under_dominance() {
+            let p = PortId::test_raw(202);
+            let n = var(p);
+            let cost = SymbolicCost::LinearCost { _0: n.clone() };
+            assert!(
+                !memory_peak_enforcement_violates(&cost, &SymbolicCost::LinearCost { _0: n }),
+                "reflexive asymptotic pairs must not violate (EXCEEDS is strict over = in the contract)"
+            );
+        }
+
+        #[test]
+        fn enforcement_violates_on_incomparable_size_variables_fail_closed() {
+            let a = SymbolicCost::LinearCost {
+                _0: var(PortId::test_raw(203)),
+            };
+            let b = SymbolicCost::LinearCost {
+                _0: var(PortId::test_raw(204)),
+            };
+            assert!(
+                memory_peak_enforcement_violates(&a, &b),
+                "incomparable `LinearCost` keys must not pass Enforce silently"
+            );
+        }
+
+        #[test]
+        fn branch_style_peak_over_two_quadratic_arms_normalizes_budget_sharpness_check() {
+            let p = PortId::test_raw(300);
+            let n = var(p);
+            let q = SymbolicCost::PolynomialCost {
+                var: n.clone(),
+                degree: DegreeAtLeastTwo::TWO,
+            };
+            let peak_branch = compose_branch_memory_peak(q.clone(), q);
+            assert!(
+                memory_peak_enforcement_violates(
+                    &SymbolicCost::LinearCost { _0: n.clone() },
+                    &peak_branch
+                ),
+                "O(n²) peak should exceed O(n) declared budget",
+            );
+        }
+    }
+}
 
 /// `cost_target_realization.dag` `.dag`-tier consumer of the
 /// `declaration_by_name` substrate accessor (T-CostLens-Composition
@@ -5398,7 +7315,290 @@ pub(crate) mod variant_payload {
         }
     }
 }
-mod r3_fc_lane2_loop_witness;
+mod r3_fc_lane2_loop_witness {
+    //! R3 T-Free-Consequences: optional `lane2_workflow` on the workflow root from an **authored
+    //! comment** in the claim `source` string.
+    //!
+    //! **Modeling tension (explicit):** `docs/design-db18-workflow-effect-carrier.md` targets workflow /
+    //! loop shape as **lowering-only** substrate facts. This module is a **harness side channel**: it
+    //! fabricates `WorkflowEffect::LoopEffect` from a magic comment after parse/lower, so downstream
+    //! lenses can read the same carrier lowering will eventually own. That is intentional **Pattern A
+    //! author-now debt**, not the end-state authority model.
+    //!
+    //! **Program budget (P5 receipt):** `ROADMAP.md` §"Reflective integration patterns" — bullet
+    //! **"R3 second-batch auto-loop scaffold (T-Free-Consequences gates #46–#48)"** authorizes this path
+    //! and names the single dissolution trigger. SG-0 net-add PRs must pair with Director-budget class
+    //! **(b)** citing that ROADMAP URL, not research-only briefs as sole authority. Shape discussion (not
+    //! authorization) remains in `docs/briefs/r3-v-auto-loop-parallelism-cross-target-witness-shapes.md`.
+    //!
+    //! **Paired scaffold:** [`crate::lens_declaration_apply::apply_lens_declaration`] special-cases lens
+    //! `auto_loop_parallelism_pending_lens` when `program_under_test` is `Some`; dissolve **together**
+    //! with this scanner when lowering installs `lane2_workflow` from surface syntax.
+    //!
+    //! **Scope — global `compile_to_dag`, not `cfg(test)`:** [`crate::compile_to_dag`] and
+    //! `compile_onto_parse_surface_free_bootstrap` always call into this module after `infer`. Any
+    //! `.v3` source that includes the magic directive therefore stages `lane2_workflow` on the workflow
+    //! **Bind shell** ([`Dag::workflow_lane2_subject`]) in that compile. This is deliberate: claim programs and ordinary programs share one
+    //! pipeline, and activation is **opt-in** via the `gunbc::r3_free_consequences::…` namespaced prefix
+    //! (not a test-only hook). Reading that staged fact through `auto_loop_parallelism_pending_lens`
+    //! still requires the test-runner / lens path to pass `program_under_test: Some(_)`.
+    //!
+    //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
+    //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
+
+    use crate::dag::{
+        Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect,
+    };
+    use crate::diagnostics::{Diagnostic, SourceSpan};
+
+    const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum WitnessKind {
+        ReadOnlyLoop,
+        UpsertLoop,
+        /// Present in source: do not register `lane2_workflow` (unproven / sequential default).
+        Unproven,
+    }
+
+    enum WitnessScan {
+        Absent,
+        Ok {
+            kind: WitnessKind,
+            directive_span: SourceSpan,
+        },
+        Malformed {
+            span: SourceSpan,
+            message: String,
+        },
+    }
+
+    fn scan_witness(source: &str, file: &str) -> WitnessScan {
+        let mut i = 0usize;
+        while i < source.len() {
+            let line_end = source[i..]
+                .find('\n')
+                .map(|p| i + p)
+                .unwrap_or(source.len());
+            let line_no_nl = &source[i..line_end];
+            let ws_leading = line_no_nl.len() - line_no_nl.trim_start().len();
+            let trimmed = line_no_nl.trim();
+            let trimmed_start = i + ws_leading;
+            let trimmed_end = trimmed_start + trimmed.len();
+
+            if let Some(rest) = trimmed.strip_prefix(DIRECTIVE_PREFIX) {
+                let token = rest.trim();
+                if token.is_empty() {
+                    return WitnessScan::Malformed {
+                        span: SourceSpan::new(file, trimmed_start as u32, trimmed_end as u32),
+                        message: "`lane2_loop_witness` directive requires a token: read_only, upsert_dependent, or unproven".to_string(),
+                    };
+                }
+                let kind = match token {
+                    "read_only" => WitnessKind::ReadOnlyLoop,
+                    "upsert_dependent" => WitnessKind::UpsertLoop,
+                    "unproven" => WitnessKind::Unproven,
+                    _ => {
+                        return WitnessScan::Malformed {
+                            span: SourceSpan::new(file, trimmed_start as u32, trimmed_end as u32),
+                            message: format!(
+                                "unknown `lane2_loop_witness` directive token `{token}`; expected read_only | upsert_dependent | unproven"
+                            ),
+                        };
+                    }
+                };
+                return WitnessScan::Ok {
+                    kind,
+                    directive_span: SourceSpan::new(file, trimmed_start as u32, trimmed_end as u32),
+                };
+            }
+
+            i = if line_end < source.len() {
+                line_end + 1
+            } else {
+                line_end
+            };
+        }
+        WitnessScan::Absent
+    }
+
+    /// If `source` carries a `lane2_loop_witness` directive, register the matching
+    /// [`WorkflowEffect::LoopEffect`] on [`Dag::workflow_lane2_subject`] (last `Bind` shell).
+    ///
+    /// Fail-closed: a `read_only` / `upsert_dependent` directive **must** stage `lane2_workflow` or emit
+    /// a diagnostic (no silent collapse into the same sequential scalar as a missing carrier).
+    pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str) {
+        match scan_witness(source, file) {
+            WitnessScan::Absent => {}
+            WitnessScan::Malformed { span, message } => {
+                dag.attach_diagnostic(Diagnostic::ParseError {
+                    message,
+                    span,
+                    fixes: vec![],
+                });
+            }
+            WitnessScan::Ok {
+                kind,
+                directive_span,
+            } => {
+                if matches!(kind, WitnessKind::Unproven) {
+                    return;
+                }
+                let wf = match kind {
+                    WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
+                        body: Box::new(WorkflowEffect::LinearEffect {
+                            ops: vec![OperationEffect {
+                                operation_name: "r3_fc_read".to_string(),
+                                shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                            }],
+                        }),
+                    },
+                    WitnessKind::UpsertLoop => WorkflowEffect::LoopEffect {
+                        body: Box::new(WorkflowEffect::LinearEffect {
+                            ops: vec![OperationEffect {
+                                operation_name: "r3_fc_upsert".to_string(),
+                                shape: EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                                    key_source: KeySource::PathParam {
+                                        param: "id".to_string(),
+                                    },
+                                }),
+                            }],
+                        }),
+                    },
+                    WitnessKind::Unproven => unreachable!("filtered above"),
+                };
+                let Some(subject) = dag.workflow_lane2_subject() else {
+                    dag.attach_diagnostic(Diagnostic::ParseError {
+                        message: "`lane2_loop_witness` directive requires a workflow shell `Bind` to attach `lane2_workflow`; this program has no `Bind`".to_string(),
+                        span: directive_span,
+                        fixes: vec![],
+                    });
+                    return;
+                };
+                if !dag.try_register_lane2_workflow_effect(subject, wf) {
+                    dag.attach_diagnostic(Diagnostic::ParseError {
+                        message: "`lane2_loop_witness`: cannot attach `lane2_workflow` (substrate supports Value/Bind nodes only)".to_string(),
+                        span: directive_span,
+                        fixes: vec![],
+                    });
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::compile_to_dag;
+        use crate::dag::{EffectShape, IdempotentShape, WorkflowEffect};
+        use crate::diagnostics::Diagnostic;
+        use crate::CompileError;
+
+        #[test]
+        fn directive_on_a_later_line_is_found_after_non_matching_comments() {
+            let src = "// unrelated preamble comment\n// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
+            let dag = compile_to_dag(src, "witness_after_preamble.v3").expect("compile");
+            let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+            assert_eq!(
+                crate::loop_iteration_parallel_emission_indicator(&dag, subject),
+                1
+            );
+        }
+
+        #[test]
+        fn read_only_directive_registers_loop_workflow() {
+            let src =
+                "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
+            let dag = compile_to_dag(src, "witness_read.v3").expect("compile");
+            let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+            let wf = dag
+                .lane2_workflow_effect_at(&subject)
+                .expect("lane2_workflow staged");
+            assert!(matches!(
+                wf,
+                WorkflowEffect::LoopEffect { body }
+                    if matches!(
+                        body.as_ref(),
+                        WorkflowEffect::LinearEffect { ops }
+                            if ops.len() == 1
+                                && matches!(
+                                    ops[0].shape,
+                                    EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+                                )
+                    )
+            ));
+            assert_eq!(
+                crate::loop_iteration_parallel_emission_indicator(&dag, subject),
+                1
+            );
+        }
+
+        #[test]
+        fn upsert_directive_registers_sequential_body() {
+            let src =
+                "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\nlet _: Int = 0\n";
+            let dag = compile_to_dag(src, "witness_upsert.v3").expect("compile");
+            let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+            let wf = dag
+                .lane2_workflow_effect_at(&subject)
+                .expect("lane2_workflow staged");
+            assert!(matches!(
+                wf,
+                WorkflowEffect::LoopEffect { body }
+                    if matches!(
+                        body.as_ref(),
+                        WorkflowEffect::LinearEffect { ops }
+                            if ops.len() == 1
+                                && matches!(
+                                    ops[0].shape,
+                                    EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+                                )
+                    )
+            ));
+            assert_eq!(
+                crate::loop_iteration_parallel_emission_indicator(&dag, subject),
+                0
+            );
+        }
+
+        #[test]
+        fn unproven_directive_leaves_lane2_absent() {
+            let src =
+                "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\nlet _: Int = 0\n";
+            let dag = compile_to_dag(src, "witness_none.v3").expect("compile");
+            let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+            assert!(dag.lane2_workflow_effect_at(&subject).is_none());
+            assert_eq!(
+                crate::loop_iteration_parallel_emission_indicator(&dag, subject),
+                0
+            );
+        }
+
+        #[test]
+        fn unknown_directive_token_is_parse_error() {
+            let file = "witness_typo.v3";
+            let src = "// gunbc::r3_free_consequences::lane2_loop_witness: typo\nlet _: Int = 0\n";
+            let err = compile_to_dag(src, file).expect_err("diagnostic");
+            let CompileError::Semantic(dag) = err else {
+                panic!("expected semantic failure");
+            };
+            // Contract: malformed witness token surfaces as `Diagnostic::ParseError` on the claim file.
+            // Avoid substring-matching diagnostic prose (TESTING.md / INVARIANTS P3); span + variant only.
+            let mut parse_error_spans = 0u32;
+            for (_, d) in dag.diagnostics().iter() {
+                if let Diagnostic::ParseError { span, .. } = d {
+                    assert_eq!(span.file, file);
+                    parse_error_spans += 1;
+                }
+            }
+            assert_eq!(
+                parse_error_spans,
+                1,
+                "expected exactly one ParseError for malformed witness token, diagnostics={:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+    }
+}
 
 pub use cost_basis_declaration::{
     try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
