@@ -3396,19 +3396,28 @@ fn map_body_duplicate_keys_fail_closed() {
 
 #[test]
 fn record_body_duplicate_fields_fail_closed() {
-    let dag = semantic_dag_for(
-        "type Pair { a: Int, b: Int }\n\
-         data duplicate_fields: Pair = { a: 1, a: 2, b: 3 }\n",
-        "record_duplicate_fields.v3",
-    );
+    let src = "type Pair { a: Int, b: Int }\n\
+         data duplicate_fields: Pair = { a: 1, a: 2, b: 3 }\n";
+    let dag = semantic_dag_for(src, "record_duplicate_fields.v3");
     let decl = dag
         .declaration_by_name("duplicate_fields")
         .expect("duplicate_fields declaration should be allocated before lowering fails");
+    let duplicate_span = u32::try_from(src.find("a: 2").expect("fixture includes repeated field"))
+        .expect("fixture span fits in SourceSpan");
 
     assert!(
-        has_resolve_error(&dag),
-        "expected duplicate-field lowering to report a ResolveError, got {:?}",
-        dag.diagnostics()
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, span, .. }
+                    if name == "data `duplicate_fields` record body repeats field `a`"
+                        && span.file == "record_duplicate_fields.v3"
+                        && span.byte_start <= duplicate_span
+                        && duplicate_span < span.byte_end
+            )
+        }),
+        "expected duplicate-field lowering diagnostic anchored to second `a`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
     assert!(
         !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
