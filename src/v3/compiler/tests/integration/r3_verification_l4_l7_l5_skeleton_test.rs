@@ -33,6 +33,7 @@ const L4_CLAIM: &str = "l4_emit_eval_match";
 const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 const L4_NESTED_CLAIM: &str = "r3_verification_l4_emit_eval_nested_branch";
 const L4_ADD_THEN_BRANCH_CLAIM: &str = "r3_verification_l4_emit_eval_add_then_branch";
+const L4_ARITHMETIC_CHAIN_CLAIM: &str = "r3_verification_l4_emit_eval_arithmetic_chain";
 
 const L4_MIXED_FIXTURE: &str =
     include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
@@ -151,23 +152,35 @@ fn r3_verification_l4_emit_eval_add_then_branch_passes_w1_emit_vs_eval() {
     );
 }
 
-/// Suite-wide shape: exactly four named W1 claims, each passing (complements per-claim
+#[test]
+fn r3_verification_l4_emit_eval_arithmetic_chain_passes_w1_emit_vs_eval() {
+    let evaluation = l4_run_named_claim(L4_ARITHMETIC_CHAIN_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_ARITHMETIC_CHAIN_CLAIM);
+    assert!(
+        matches!(evaluation.result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (call + repeated Int arithmetic + branch Int 10); got {:?}",
+        evaluation.result
+    );
+}
+
+/// Suite-wide shape: exactly five named W1 claims, each passing (complements per-claim
 /// `run_claim` tests without pinning suite result order).
 #[test]
-fn r3_verification_l4_l7_direct_suite_lists_four_l4_certification_seed_claims() {
+fn r3_verification_l4_l7_direct_suite_lists_five_l4_certification_seed_claims() {
     run_on_larger_stack(|| {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
         let results = TestRunner::new(dag).run_suite(L4_SUITE);
         assert_eq!(
             results.len(),
-            4,
-            "`{L4_SUITE}` should wire exactly four W1 row claims"
+            5,
+            "`{L4_SUITE}` should wire exactly five W1 row claims"
         );
         for name in [
             L4_CLAIM,
             L4_FALSE_CLAIM,
             L4_NESTED_CLAIM,
             L4_ADD_THEN_BRANCH_CLAIM,
+            L4_ARITHMETIC_CHAIN_CLAIM,
         ] {
             assert!(
                 results.iter().any(|r| r.claim_name == name),
