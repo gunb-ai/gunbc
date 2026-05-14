@@ -69,7 +69,7 @@ tight bound is {tight_class}. Applicable transformations: [{transformation_list}
 
 ### §1.5 Substrate carriers
 
-New `.dag` declarations needed (shapes mirror existing `EnforcedApplication` 3-param pattern at `src/v3/std/lens_application.dag:176-182` per Director ratification 4-axis audit msg_d45523da):
+New `.dag` declarations needed (grounded against existing lens-application substrate at `src/v3/std/lens_application.dag:176-182`; `EnforcedTightness` is intentionally a structurally distinct 1-param self-comparison carrier, not a mirror of `EnforcedApplication`'s 3-param user-budget shape):
 
 ```
 // In src/v3/std/complexity_tightness.dag (or analogous):
