@@ -240,6 +240,14 @@ pub enum ParallelismUnsupportedKind {
     LensSurfacePending,
 }
 
+/// 🟢 **TERMINAL.** Typed evidence for the first cross-branch operation pair
+/// that the parallelism lens cannot prove commutative.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParallelNonCommuteEvidence {
+    pub left: Operation,
+    pub right: Operation,
+}
+
 /// 🟢 **TERMINAL.** Parallelism lens explicit unsupported payload — mirrors
 /// `ParallelismUnsupportedDetail` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -247,6 +255,7 @@ pub struct ParallelismUnsupportedDetail {
     pub kind: ParallelismUnsupportedKind,
     pub downstream_stage: String,
     pub reason: String,
+    pub non_commute_evidence: Option<ParallelNonCommuteEvidence>,
 }
 
 /// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors

@@ -347,9 +347,9 @@ pub use effects::{
     analyze_workflow, lane2_workflow_idempotency_report, operation_effect_shape,
     report_unsupported_workflow_variant, BranchArm, BreakingShape, CallableRef, CompositionVerdict,
     CreateCause, EffectShape, HttpMethodScalar, IdempotencyUnsupportedDetail, IdempotentShape,
-    InputField, KeySource, Operation, ParallelismUnsupportedDetail, ParallelismUnsupportedKind,
-    PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowIdempotencyReport,
-    WorkflowParallelismReport,
+    InputField, KeySource, Operation, ParallelNonCommuteEvidence, ParallelismUnsupportedDetail,
+    ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding, UrlPathToken, WorkflowEffect,
+    WorkflowIdempotencyReport, WorkflowParallelismReport,
 };
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
