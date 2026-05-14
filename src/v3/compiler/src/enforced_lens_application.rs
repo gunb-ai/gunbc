@@ -1459,6 +1459,48 @@ mod diagnostic_severity_fail_closed_tests {
         );
         assert_parse_error_at(diag, &expected_span);
     }
+
+    #[test]
+    fn enforce_violation_routing_landed_routes_error_severity_to_parse_error() {
+        let dag = Dag::new();
+        let Some(ds_disj) = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("DiagnosticSeverity")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+        else {
+            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
+        };
+        let TypeConnective::Disj { variants } = &dag.declaration(ds_disj).connective else {
+            panic!("bootstrap DiagnosticSeverity should be a sum type");
+        };
+        let error_ctor = variants
+            .iter()
+            .find(|v| v.label == "Error")
+            .map(|v| v.ty)
+            .expect("bootstrap DiagnosticSeverity should have Error variant");
+        let expected_span = SourceSpan::new("gate_91.dag", 10, 20);
+        let diag = enforced_violation_diagnostic(
+            &dag,
+            ds_disj,
+            &FieldValue::Variant {
+                constructor: error_ctor,
+                payload: Vec::new(),
+            },
+            "lens enforcement violation: gate #91".to_string(),
+            expected_span.clone(),
+        );
+        match diag {
+            Diagnostic::ParseError { message, span, .. } => {
+                assert_eq!(span, expected_span);
+                assert_eq!(message, "lens enforcement violation: gate #91");
+            }
+            other => panic!("expected ParseError, got {other:?}"),
+        }
+    }
 }
 
 #[cfg(test)]
