@@ -95,13 +95,27 @@ type TokenizeDiagnostic
 
 **Lane dependency**: PR #3077 §12 Q7 ratification; Director-tier per-stage variant authoring.
 
-### §4.3 No separate `TokenizeResult` sum-variant — diagnostics coupled INTO output
+### §4.3 No separate `TokenizeResult` sum-variant — proposed carrier extension for diagnostic coupling
 
-Same pattern as PB-3 parse + PB-4 lower + PB-5 infer: output IS the typed-state carrier; diagnostics couple structurally (here: List<Token> output paired with diagnostic stream indexed by source-span).
+**Live state**: bare `List<Token>` has no natural diagnostic field. Per codex INLINE BLOCKING #3126 (analogous finding propagated): claiming "diagnostics coupled INTO List<Token>" without naming the substrate-extension shape would overstate live state. Tokenize output today returns `Result<Vec<Token>, Diagnostic>` (sum) per `tokenize_generated.rs:96`.
 
-Cross-stage consistency: tokenize / parse / lower / infer use structural diagnostic coupling; emit uses Result sum (final-artifact output domain).
+**Proposed substrate extension** (parallel to PR #3126 §4.3 SurfaceModule extension):
 
-Signature: `fn tokenize(source: String) -> List<Token>` with diagnostics coupled via output context (NOT TokenizeResult sum-variant).
+```
+// Proposed wrapper carrier for tokenize output (PROPOSED extension):
+type TokenizedSource {
+  tokens: List<Token>
+  diagnostics: List<TokenizeDiagnostic>
+}
+```
+
+Where `TokenizedSource` is the typed-state output carrier with diagnostics coupled structurally. Step 2 worker brief includes this carrier authoring as part of pipeline-slot PR scope.
+
+Same pattern as PB-3 parse + PB-4 lower + PB-5 infer: output IS the typed-state carrier; diagnostics couple structurally — each requires its own carrier extension if not already live.
+
+Cross-stage consistency: tokenize / parse / lower / infer use structural diagnostic coupling (PROPOSED per-stage carrier extensions); emit uses Result sum (final-artifact output domain).
+
+Signature: `fn tokenize(source: String) -> TokenizedSource` (NOT bare List<Token>; NOT TokenizeResult sum-variant). Decision between `TokenizedSource` shape (proposed wrapper) vs alternative shapes (extend Token to carry per-token diagnostic / etc.) is operator/PM ratification at §12 Q-new added below.
 
 ---
 
