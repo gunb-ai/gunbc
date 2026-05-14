@@ -97,13 +97,13 @@ plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumerat
 **What's missing**: the 4 joint preconditions all need to land before R3-strong-form self-host can be claimed. **R2-Evaluator joint precondition itself decomposes into 5 sub-lane closures** per the Director audit; the closure-ledger needs refresh + sub-lane ratchet-to-PASSING via §1.8 gate ratifications.
 
 **Plan to cash**:
-- **Owner**: Director-tier coordination (cross-Mgr); PM tracks. **R2-Evaluator joint precondition owner resolved 2026-05-14 UTC** via §4 sub-item 5 re-spawn of the R3 Evaluator Mgr lane.
+- **Owner** (revised Phase 2.4 per operator §4 Item 5 α-ratification 2026-05-14 — bundles R2-Evaluator residuals into warm-wolf-698 expanded scope alongside 8 PB-X lanes per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`): **warm-wolf-698** (R3 Substrate Mgr; expanded scope absorbs R2-Evaluator residuals as sub-programs). PM tracks; Director coordinates substantive cross-Mgr issues. Note: R3 Evaluator Mgr lane (jolly-ram-652) went through one full re-spawn cycle and archived post-PR-#3053-merge per leaf-shape Mgr lifecycle (`feedback_leaf_shape_mgr_one_pr_then_archive`); 5-sub-lane substantive ledger refresh landed via that cycle. Remaining work executes under warm-wolf-698 expanded scope post-deployment-trigger of PR #3041 --shape flag (composite-shape work-node enables persistent Mgr execution).
 - **Sub-program**: each precondition has its own program; this gap is meta-blocked
-  - R2-Evaluator: 5 sub-lanes per Director audit (runtime_value_model + body_evaluator + lens_application_complete_reflection + witness_construction + cross_target_equivalence_harness); brief surface comprehensive per Director (c) (r2-evaluator-manager.md + 4 sub-briefs + 10+ PR-A-E + R3-tier per-slice briefs). Q-EVAL ratifications landed 2026-05-06/07 (G0d-Dispatch / Descent-Termination-Contract / Lens-Fold-First-Slice). **Owner resolved 2026-05-14 UTC:** R3 Evaluator Mgr lane re-spawned; ledger refresh currently leaves lens_application + witness_construction in-flight.
-  - R2-Grounding-Rust+Python: gate #18 + extdeps work
-  - T-LP/SG-0: same as Gap 1
-  - Row-B materialization: T-LBP work
-- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure remains a dominant tail, but the 2026-05-14 UTC ledger refresh narrows the Evaluator portion to 2 in-flight sub-lanes.
+  - **R2-Evaluator**: 5 sub-lanes per Director audit msg_82b9c4bb (`runtime_value_model_structural` + `body_evaluator_structural` + `lens_application_complete_reflection` + `witness_construction_structural` + `cross_target_equivalence_harness_structural`); brief surface comprehensive per Director (c) (r2-evaluator-manager.md + 4 sub-briefs + 10+ PR-A-E + R3-tier per-slice briefs). Q-EVAL ratifications landed 2026-05-06/07. **Closure-ledger refresh via jolly-ram-652 PR #3053 merged 2026-05-14 UTC** — 3-of-5 sub-lanes GREEN at HEAD post-PR-#3040 + PR-#3050 cascade; 2-of-5 IN-FLIGHT (`lens_application_complete_reflection` + `witness_construction_structural`). Remaining 2 sub-lane closures route through warm-wolf-698 expanded scope.
+  - **R2-Grounding-Rust+Python**: gate #18 + extdeps work. Per Gap 13 expanded framing: 11 T-Ground sub-lanes per `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground".
+  - **T-LP/SG-0**: same as Gap 1 (routes through PB-X lanes per Phase 2.1 PB-X discipline)
+  - **Row-B materialization**: T-LBP work
+- **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure narrows from 5 → 2 in-flight sub-lanes per 2026-05-14 UTC ledger refresh; remaining 2 closures execute under warm-wolf-698 expanded scope per α-ratification.
 
 **Close criterion** (substrate-debt-shaped only — Director note msg_f0a54769 2026-05-13 Note 2 enforcement: staffing/dispatch shape is a PRECONDITION for execution, not a close criterion for the substrate-debt itself; moved to "Dispatch staffing prereq" below):
 ```bash
@@ -111,7 +111,7 @@ plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumerat
 self_host_fixed_point && diff -q <stage0_binary> <emitted_binary>
 # returns: byte-identical
 ```
-All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close** (Director note msg_f0a54769 Note 1 enforcement: predicate authority is the R2-closure-ledger, NOT §1.8 — sub-lane names live at `docs/r2-closure-ledger.md:250-263`, do NOT map 1:1 to §1.8 row IDs; PM-recommended path (α): use sub-lane names as predicate authority rather than introduce 5 new §1.8 rows for already-named ledger content per `feedback_parallel_representation_debt`): all 5 R2-closure-ledger Evaluator sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md:250-263` —
+All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close** (Director note msg_f0a54769 Note 1 enforcement: predicate authority is the R2-closure-ledger, NOT §1.8 — sub-lane names live at `docs/r2-closure-ledger.md` §"Evaluator Manager — T-Evaluator", do NOT map 1:1 to §1.8 row IDs; PM-recommended path (α): use sub-lane names as predicate authority rather than introduce 5 new §1.8 rows for already-named ledger content per `feedback_parallel_representation_debt`): all 5 R2-closure-ledger Evaluator sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md` §"Evaluator Manager — T-Evaluator" —
 - `runtime_value_model_structural` = green
 - `body_evaluator_structural` = green
 - `lens_application_complete_reflection` = green
@@ -120,7 +120,7 @@ All 4 precondition gates PASSING + actual self-host invocation producing bit-ide
 
 The closure-ledger was refreshed against HEAD on 2026-05-14 UTC. Close still requires the remaining two R2-Evaluator cells to turn green and stay grep-verifiable in `docs/r2-closure-ledger.md`.
 
-**Dispatch staffing prereq** (NOT a close criterion; Director note msg_f0a54769 Note 2 enforcement; Director note msg_f0a54769 Note 3 sequencing enforcement): execution of the 5 sub-lane closures required owner identification. **Resolved 2026-05-14 UTC:** operator §4 sub-item 5 ratified re-spawn and this R3 Evaluator Mgr lane is active. Remaining work is substrate-debt closure for the two in-flight cells, not staffing.
+**Dispatch staffing prereq** (NOT a close criterion; Director note msg_f0a54769 Note 2 enforcement; Director note msg_f0a54769 Note 3 sequencing enforcement): execution of the 5 sub-lane closures required owner identification. **Resolved 2026-05-14 UTC** via operator §4 Item 5 **α-ratification** (warm-wolf-698 expanded scope absorbs R2-Evaluator residuals alongside 8 PB-X lanes; jolly-ram-652 R3 Evaluator Mgr lane archived post-PR-#3053-merge per leaf-shape Mgr lifecycle — single-cycle substantive ledger refresh cashed). Remaining work is substrate-debt closure for the two in-flight cells (`lens_application_complete_reflection` + `witness_construction_structural`) under warm-wolf-698 expanded scope post-deployment-trigger of PR #3041 --shape flag. NOT staffing.
 
 **Alternative disposition — FORECLOSED by operator §4 ratification 2026-05-13** (codex BLOCKING #11284 PR #3013 class enforcement — same semantic-dilution pattern as Gap 2; retained as audit-trail of foreclosed path): operator §4 Item 3 ratified **IN-R3 (4-joint-precondition cascade)** 2026-05-13; R4-defer / R1-horizon-narrow paths NOT available. **R2-Evaluator-tier per-sub-lane R4-carve** also FORECLOSED — operator §4 Item 3 IN-R3 ratification cashes the joint precondition rule, including the 5 R2-Evaluator sub-lane closures (substrate-debt-shaped close criterion per Director note msg_f0a54769 Note 2). Any future re-opening requires explicit operator override of the §4 ratification at gunbc#828.
 
@@ -508,7 +508,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **HEAD evidence** (operator adversarial probe 2026-05-13 follow-on; revised per Director audit msg_8ae92369 2026-05-13 — **PM originally cited 5 T-Ground sub-lanes; actual ledger count is 11** per `docs/r2-closure-ledger.md:108` + `docs/briefs/r2-grounding-manager.md:168` "now 11 lanes; engine-reframe locked 2026-04-28"; close criterion + dispatch shape recalibrated against the correct surface):
 
-- **`docs/design-emission-model.md`** explicitly retracts the v2 coercion-engine framing and ratifies the no-engine discipline. The R2-T-Ground sub-lane structure (per `docs/r2-closure-ledger.md:108-122` ratified 2026-04-28 engine-reframe) is **11 sub-lanes**, not the 5 PM originally enumerated:
+- **`docs/design-emission-model.md`** explicitly retracts the v2 coercion-engine framing and ratifies the no-engine discipline. The R2-T-Ground sub-lane structure (per `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground" ratified 2026-04-28 engine-reframe) is **11 sub-lanes**, not the 5 PM originally enumerated:
 
   **GREEN at HEAD (1 of 11)** per Director audit:
   - `T-Ground-Pilot` → `pilot_inhabitance_routing_stability_landed` (PR #765 merged 2026-04-25)
@@ -565,7 +565,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Close criterion** (substrate-debt-shaped only — per Director audit msg_8ae92369 Note 2 enforcement (carried forward from msg_f0a54769): staffing/dispatch shape is a PRECONDITION for execution, not a close criterion for the substrate-debt itself; moved to "Dispatch staffing prereq" below):
 
-- (a) All 11 R2-T-Ground sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md:108-122` (refreshed from #1168-#1241 era to HEAD per Note 1 α-path) —
+- (a) All 11 R2-T-Ground sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground" (refreshed from #1168-#1241 era to HEAD per Note 1 α-path) —
   - `pilot_inhabitance_routing_stability_landed` = green
   - `rust_target_primitives_structural` = green
   - `python_target_primitives_structural` = green
