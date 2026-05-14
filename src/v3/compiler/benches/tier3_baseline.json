@@ -23,16 +23,6 @@
         }
       ]
     },
-    "induction": {
-      "claim": "tier3_induction_mirror_perf_within_budget",
-      "benches": [
-        {
-          "name": "tier3_induction_type_iteration_dimension_miss",
-          "median_ns": 8955,
-          "p99_ns": 12367
-        }
-      ]
-    },
     "effect_carrier": {
       "claim": "tier3_effect_carrier_mirror_perf_within_budget",
       "benches": [
