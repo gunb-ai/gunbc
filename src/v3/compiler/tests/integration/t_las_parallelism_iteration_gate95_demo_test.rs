@@ -2,7 +2,8 @@
 //!
 //! R3 §1.8 gate **#95** (`opt_in_iteration_parallelism_via_lens_application_demonstrated`):
 //! opt-in iteration parallelism surfaced through `parallelism_enforceable` /
-//! `v3_compiler::parallelism_iteration_opt_in_enforcement_violates(&dag, indicator)` together with Lane-2
+//! `v3_compiler::parallelism_iteration_opt_in_enforcement_violates(&dag, indicator)` (`Result`, unwrap in harness)
+//! together with Lane-2
 //! `v3_compiler::loop_iteration_parallel_emission_indicator` (same contract as second-batch
 //! auto-loop receipts).
 //!
@@ -55,7 +56,9 @@ fn gate_95_opt_in_iteration_parallelism_via_lens_application_demonstrated_indica
         let observed = loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(observed, indicator);
         assert_eq!(
-            parallelism_iteration_opt_in_enforcement_violates(&dag, observed),
+            parallelism_iteration_opt_in_enforcement_violates(&dag, observed).expect(
+                "gate #95 indicator bridge expects parallelism.dag + evaluable parallelism_enforcement_violates"
+            ),
             expect_violation
         );
     };

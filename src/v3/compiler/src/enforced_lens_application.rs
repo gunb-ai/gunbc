@@ -295,6 +295,13 @@ fn is_timing_enforceable_lens_value(
     lens_ref == Some(lens_id) && enforcement_ref == Some(enforcement_id)
 }
 
+/// Lane‑2 observation bridge for authored `parallelism.dag` `ParallelismMode` carriers: maps
+/// `loop_iteration_parallel_emission_indicator` (`1` vs non-`1`) into the same labels as substrate
+/// `ParallelismMode` (`OptInIndependent` \| `Sequential`).
+///
+/// **Coproduct checkpoint (docs/modeling-discipline.md §4): 🟢 GREEN (terminal)** — variants trace
+/// only to the numeric Lane‑2 indicator contract; violates semantics stay single-authority in
+/// `parallelism_enforcement_violates` via `apply_lens_declaration`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ParallelismIterationBudget {
     OptInIndependent,
@@ -464,10 +471,16 @@ fn resolve_node_scope_section(
 /// Requires `dag` to carry lowered `parallelism.dag` (`parallelism_enforcement_violates`); the
 /// predicate delegates violation semantics to that substrate declaration via
 /// [`apply_lens_declaration`].
-pub fn parallelism_iteration_opt_in_enforcement_violates(dag: &Dag, indicator: i64) -> bool {
-    let Some(pm_disj) = parallelism_mode_disj_decl_id(dag) else {
-        panic!("parallelism_iteration_opt_in_enforcement_violates: missing ParallelismMode disj");
-    };
+///
+/// Returns [`Err`] when `parallelism.dag` is absent from this [`Dag`] or substrate evaluation fails
+/// ([`LensApplyError`]) — no panics on arbitrary caller-supplied graphs (CODING.md § Hidden panic surface).
+pub fn parallelism_iteration_opt_in_enforcement_violates(
+    dag: &Dag,
+    indicator: i64,
+) -> Result<bool, LensApplyError> {
+    let pm_disj = parallelism_mode_disj_decl_id(dag).ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode from parallelism.dag",
+    ))?;
     let observed = observed_parallelism_budget_from_iteration_indicator(indicator);
     parallelism_enforcement_violates_via_substrate(
         dag,
@@ -475,7 +488,6 @@ pub fn parallelism_iteration_opt_in_enforcement_violates(dag: &Dag, indicator: i
         observed,
         ParallelismIterationBudget::OptInIndependent,
     )
-    .expect("parallelism_iteration_opt_in_enforcement_violates: substrate eval")
 }
 
 /// Fail-closed check for landed complexity, timing, and iteration-opt-in parallelism enforcement
@@ -1881,9 +1893,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 1);
-        assert!(!parallelism_iteration_opt_in_enforcement_violates(
-            &dag, indicator
-        ));
+        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, indicator).unwrap());
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
@@ -1915,9 +1925,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 0);
-        assert!(parallelism_iteration_opt_in_enforcement_violates(
-            &dag, indicator
-        ));
+        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, indicator).unwrap());
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
