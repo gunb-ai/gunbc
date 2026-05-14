@@ -3,6 +3,13 @@
 // Template: `tools/pb0_cycle6_emit_templates/<stem>.rs.in` (workspace root).
 // Dissolution receipt: PB-0 cycle-6 NON_TEST partition — `REGEN_OUTPUTS` producer.
 //
+// P5 Dispatch (b) pairing: same PR as `sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_NON_TEST` net shrink + PR body §5.1 (b)/(c) per-path receipts (INVARIANTS.md#p5).
+// ROADMAP anchor: `ROADMAP.md` **T-PB-A** (non-test SG-0 census → 0 per `docs/design-pure-bootstrap-zero.md`); bounded PB-0 program `docs/briefs/r3-pb0-non-test-retirement-worker.md` + class rows in
+// `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` (templates stay outside `src/v3/compiler/` SG-0 `.rs` walk — not misread as hand-authored).
+// Checkable dissolution triggers (not eternal scaffold): **dag/** templates → PB-Substrate / T-LP-Retirement when owning `.dag` emits these Rust projections (see `docs/design-pure-bootstrap-zero-audit.md` dag/* rows;
+// `MODELING.md` M9). **bin_gunbc_ci** → T-WAD BinaryShim + `dsl/gunbc/ci_emission.dag` owns CI dispatch without this host child. **bin_r1c_e_emit_gates** → T-Emit / R1 close when `.dag` runner
+// eliminates `ExecuteCommand` host child for these gates (`r1c_e_gates` module docs / ROADMAP T-Emit lane). Full `.dag` emit is the separate T-LP track; this hook is the census-partition receipt only.
+//
 
 use super::*;
 use crate::operators::OperatorKind;
