@@ -349,7 +349,7 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
     None
 }
 
-fn ensure_optional_match_disj(
+pub(crate) fn ensure_optional_match_disj(
     dag: &mut Dag,
     cardinality_decl_id: DeclarationId,
 ) -> Option<DeclarationId> {
