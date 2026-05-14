@@ -103,9 +103,14 @@ fn r3_gate_62_no_include_str_in_dsl() {
 /// Strip `//` line comments, `/* … */` block comments, and `"…"` / `` `…` ``
 /// string literals from `src` so the gate-#62 substring check operates over
 /// program-body tokens rather than raw bytes. Conservative single-pass scan
-/// with `\` escape handling inside string literals; unterminated literals or
-/// block comments are dropped to end-of-input fail-closed (any surviving
-/// `include_str!` outside a literal still trips the ratchet).
+/// with `\` escape handling inside string literals. If an opening `"`,
+/// `` ` ``, or `/*` has no closing delimiter, the scanner consumes through
+/// end-of-input — anything after the unbalanced opener is dropped, not
+/// searched. Realistic `.dag` / `.v3` trees would fail parse elsewhere if
+/// they contained unbalanced delimiters; the negative-bridge audit therefore
+/// relies on lex-level well-formedness of the substrate it walks. A
+/// well-formed `include_str!` token outside any literal remains visible to
+/// the needle search.
 fn strip_comments_and_string_literals(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
