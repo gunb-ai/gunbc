@@ -70,7 +70,7 @@ Per `TESTING.md` unit-vs-integration discipline, this is a narrow crate-internal
 - No new `bin/` Rust CLI is added — procedure §2 specifies the capture command as bare `cargo bench --bench tier3_mirror_perf -p v3-compiler`; duplicating that with new tooling would create a parallel capture authority. Phase-2 `bench_function` additions to the bench file are permitted (single-authority for measurement targets per §6); a new CLI duplicating the capture path is not.
 - **SG-0 census receipt**: capture before/after `EXPECTED_HAND_AUTHORED_NON_TEST` count in the slice PR description; the count is **expected to ratchet UP** by the line count of the new hand-Rust additions (Phase-2 bench functions + helper module). The Python extraction helper is non-Rust and does not affect the hand-Rust census; track its line count separately if relevant. Ratchet is acknowledged-and-tracked, not silenced.
 - **Per-surface scaffold-vs-steady-state classification**:
-  - **Phase-1 hand-Rust mirror bench functions** in `tier3_mirror_perf.rs` (`bench_computation_mirror`, `bench_induction_mirror`, `bench_effect_carrier_mirror`; `bench_termination_mirror` retired with `tier3_termination_mirror_dissolved`) — *scaffold*. Retire when the per-mirror retirement workers land — the hand-Rust mirror functions cease to exist, breaking the bench compile. Trigger: "delete each Phase-1 `bench_function` registration as its corresponding mirror retirement PR lands; remove the Phase-1 criterion group when the last mirror retires."
+  - **Phase-1 hand-Rust mirror bench functions** in `tier3_mirror_perf.rs` (`bench_computation_mirror`, `bench_effect_carrier_mirror`; `bench_termination_mirror` retired with `tier3_termination_mirror_dissolved`, `bench_induction_mirror` retired with `tier3_induction_mirror_dissolved`) — *scaffold*. Retire when the per-mirror retirement workers land — the hand-Rust mirror functions cease to exist, breaking the bench compile. Trigger: "delete each Phase-1 `bench_function` registration as its corresponding mirror retirement PR lands; remove the Phase-1 criterion group when the last mirror retires."
   - **Phase-2 bench functions** (sibling registrations covering the dissolved-mirror `.dag`-Evaluator path) — *steady-state regression guard*. Persist post-T-Tier3-close as the gate's runtime measurement source. No dissolution trigger; this is owned consumer-side regression coverage.
   - **Python extraction helper** (path-(a) per procedure §2.1) — *steady-state* until the capture procedure itself dissolves. Owned by the capture procedure's authority; this slice contributes the file but doesn't gate its retirement.
   - **`PerfMeasurement` + `PerfMeasurementResolveError` helper module** adjacent to `test_runner.rs` — *steady-state*. Lives as long as `eval_perf_within_baseline` lives; the predicate persists post-T-Tier3-close. No dissolution trigger.
@@ -84,20 +84,19 @@ Per `TESTING.md` unit-vs-integration discipline, this is a narrow crate-internal
 
 The capture-procedure §3 mandates **per-bench conjunction**, NOT per-mirror aggregation: each contributing bench keeps its own `median_ns` / `p99_ns` row, and the gate checks each bench independently. The computation mirror specifically has **two bench rows** (`tier3_computation_positive_descent_count` + `tier3_computation_lower_same_argument_call`); collapsing them to a single budget authority would let a small-budget bench regress arbitrarily within the larger bench's headroom — fail-closed-violation.
 
-Per §3 the budgeted bench-name set at HEAD is exactly 4 after `tier3_termination_mirror_dissolved`: `tier3_computation_positive_descent_count`, `tier3_computation_lower_same_argument_call`, `tier3_induction_type_iteration_dimension_miss`, `tier3_effects_lane2_linear_read_chain`. The `.dag` data + claim shape mirrors that exactly:
+Per §3 the budgeted bench-name set at HEAD is exactly 3 after `tier3_termination_mirror_dissolved` and `tier3_induction_mirror_dissolved`: `tier3_computation_positive_descent_count`, `tier3_computation_lower_same_argument_call`, `tier3_effects_lane2_linear_read_chain`. The `.dag` data + claim shape mirrors that exactly:
 
 ```dag
-// Phase-1 baselines — one PerfBaselineMeasurement per budgeted bench (4 total)
+// Phase-1 baselines — one PerfBaselineMeasurement per budgeted bench (3 total)
 data tier3_bench_computation_positive_descent_count_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
 data tier3_bench_computation_lower_same_argument_call_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
-data tier3_bench_induction_type_iteration_dimension_miss_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
 data tier3_bench_effects_lane2_linear_read_chain_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
 
-// Phase-2 measurements — one row per budgeted bench (4 total)
-// ... four rows, one per budgeted bench
+// Phase-2 measurements — one row per budgeted bench (3 total)
+// ... one row per active budgeted bench
 
-// Per-mirror claims — conjunction over the mirror's contributing benches.
-// Induction / effect-carrier each cover ONE bench → trivial 1-element conj.
+// Per-mirror claims — conjunction over each active mirror's contributing benches.
+// Effect-carrier covers ONE bench → trivial 1-element conj.
 // Computation covers TWO benches → 2-element conj enforcing per-bench fail-closed.
 data tier3_computation_mirror_perf_within_budget: TestClaim = TestClaim {
   predicate: Conj {  // both per-bench checks must pass
@@ -105,17 +104,16 @@ data tier3_computation_mirror_perf_within_budget: TestClaim = TestClaim {
     PerfWithinBaseline { subject: ..._lower_same_argument_call_phase2, comparator: Le, baseline_ref: ..._lower_same_argument_call_baseline },
   },
 }
-// ... induction + effect_carrier each 1-element conj over their single bench
+// ... effect_carrier is a 1-element conj over its single bench
 
 // Suite-level: conjunction of the active per-mirror claims
 data tier3_mirror_dissolution_perf_within_budget: TestClaim = Conj {
   tier3_computation_mirror_perf_within_budget,
-  tier3_induction_mirror_perf_within_budget,
   tier3_effect_carrier_mirror_perf_within_budget,
 }
 ```
 
-**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio at predicate-evaluation time. The `.dag` predicate declares `comparator: Le`; runtime applies the budget multiplier per axis. Suite gate is `Conj` of 4 per-mirror claims; per-mirror claims are `Conj` of 1-or-2 per-bench `PerfWithinBaseline` predicates per the §3 budgeted bench-name set. **No group-level numeric aggregation** at any layer (per capture-procedure §3 fail-closed semantics).
+**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio at predicate-evaluation time. The `.dag` predicate declares `comparator: Le`; runtime applies the budget multiplier per axis. Suite gate is `Conj` over the active per-mirror claims; per-mirror claims are `Conj` of 1-or-2 per-bench `PerfWithinBaseline` predicates per the §3 budgeted bench-name set. **No group-level numeric aggregation** at any layer (per capture-procedure §3 fail-closed semantics).
 
 **§3 bench-set drift gate**: a CI assertion verifies the set of `tier3_bench_*_baseline` declaration names equals exactly the §3 budgeted bench-name set; any drift (missing or extra bench) fails CI. Receipts exist in capture-procedure §3 for intentional allowlist exclusions; default is exact-equality.
 
@@ -124,7 +122,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = Conj {
 ### 4. Cementing receipt: end-to-end T-Tier3 R-4 gate clearing
 
 **Shape:**
-- After mirror-dissolution PRs land (the 4 per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all 4 mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
+- After mirror-dissolution PRs land (the per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all active mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
 - Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — **audit metadata only**: lists `.dag data` declaration names + corresponding `tier3_baseline.json` rows by bench-name + the commit SHA at which each was captured + the gate-clearing pass/fail status per mirror. **Does not duplicate numeric values** — the reader follows the cited SHA to read values from `.dag` source and JSON. (The JSON ↔ `.dag` parallel representation is procedure-forced per §2 above; the receipt does not introduce a third copy.) Carries explicit "execute when per-mirror dispatch completes" note tying the measurement run to retirement-chain landing.
 - §1.8 ledger row update: `tier3_mirror_dissolution_perf_within_budget` flips DECLARED → PASSING with PR-link evidence.
 
