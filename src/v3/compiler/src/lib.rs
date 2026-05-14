@@ -19,9 +19,11 @@ pub mod cementing_dispatch;
 pub use cementing_dispatch::gunbc_ci;
 pub use cementing_dispatch::integration_rs_wiring_scan;
 pub use cementing_dispatch::r3_gate_87_cementing_regen_runner_suites;
+#[path = "complexity_lattice_generated.rs"]
 pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
+#[path = "enforced_lens_application_generated.rs"]
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
@@ -33,6 +35,7 @@ pub use enforced_lens_application::check_enforced_lens_applications;
 pub use enforced_lens_application::gate_58_test_parse_timing_budget_violation_max_ns_pair;
 #[doc(hidden)]
 pub use enforced_lens_application::gate_58_test_raise_modeled_ci_timing_measurement_duration_ns;
+#[path = "pb_method_template_projection_generated.rs"]
 pub mod pb_method_template_projection;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
@@ -52,6 +55,7 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
+#[path = "emit_rust_bin_shim_generated.rs"]
 pub mod emit_rust_bin_shim;
 pub mod omni_shape_b_openapi {
     //! Shape B OpenAPI and documentation demonstration helpers.
@@ -4749,6 +4753,7 @@ pub mod evaluator {
         }
     }
 }
+#[path = "int_literal_ranges_generated.rs"]
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
 /// (R3 gate #5: `lens_apply.rs` retired; body in `lens_declaration_apply_body.txt`, included here
@@ -6901,6 +6906,7 @@ pub use bootstrap_regen_fresh::{
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
 };
 
+#[path = "cost_basis_declaration_generated.rs"]
 mod cost_basis_declaration;
 mod dimension;
 mod infer;
