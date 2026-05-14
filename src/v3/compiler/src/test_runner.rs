@@ -2536,6 +2536,10 @@ impl<'a> TestRunner<'a> {
                         result: ClaimResult::Pass,
                     };
                 }
+                // Tri-state fold (codex/api-review): decisive Fail short-circuits; accumulate first
+                // NotYetImplemented and continue — refute ∃ decisive counterexample before surfacing
+                // deferred predicate scaffolding (design-tests-as-data-completeness §8.1).
+                let mut pending_nyi: Option<(usize, String, String)> = None;
                 for (idx, (source, file_name)) in shapes.iter().enumerate() {
                     let claim = TestClaimValue {
                         claim_name: claim_name.clone(),
@@ -2558,16 +2562,21 @@ impl<'a> TestRunner<'a> {
                             };
                         }
                         ClaimResult::NotYetImplemented(msg) => {
-                            return ClaimEvaluation {
-                                claim_name: claim_name.clone(),
-                                result: ClaimResult::NotYetImplemented(format!(
-                                    "QuantifiedTestClaim `{claim_name}` ForAll predicate NotYetImplemented at sample {} of {} (`{file_name}`): {msg}",
-                                    idx + 1,
-                                    shapes.len(),
-                                )),
-                            };
+                            if pending_nyi.is_none() {
+                                pending_nyi = Some((idx + 1, file_name.clone(), msg));
+                            }
                         }
                     }
+                }
+                if let Some((sample_idx, file_name, msg)) = pending_nyi {
+                    let cn = claim_name.clone();
+                    return ClaimEvaluation {
+                        claim_name,
+                        result: ClaimResult::NotYetImplemented(format!(
+                            "QuantifiedTestClaim `{cn}` ForAll predicate NotYetImplemented at sample {sample_idx} of {} (`{file_name}`): {msg}; quantifier fold: no decisive Fail among other samples — cannot certify universal quantification until deferred predicate(s) land",
+                            shapes.len(),
+                        )),
+                    };
                 }
                 ClaimEvaluation {
                     claim_name,
@@ -2583,6 +2592,9 @@ impl<'a> TestRunner<'a> {
                         )),
                     };
                 }
+                // Tri-state fold: seek a decisive Pass; skip Fail; defer first NYI but keep scanning —
+                // order must not suppress a later witness (§8.1 symmetry vs ForAll fail-fast).
+                let mut pending_nyi: Option<(usize, String, String)> = None;
                 for (idx, (source, file_name)) in shapes.iter().enumerate() {
                     let claim = TestClaimValue {
                         claim_name: claim_name.clone(),
@@ -2595,22 +2607,27 @@ impl<'a> TestRunner<'a> {
                     match self.run_claim(&claim).result {
                         ClaimResult::Pass => {
                             return ClaimEvaluation {
-                                claim_name: claim_name.clone(),
+                                claim_name,
                                 result: ClaimResult::Pass,
                             };
                         }
                         ClaimResult::Fail(_) => {}
                         ClaimResult::NotYetImplemented(msg) => {
-                            return ClaimEvaluation {
-                                claim_name: claim_name.clone(),
-                                result: ClaimResult::NotYetImplemented(format!(
-                                    "QuantifiedTestClaim `{claim_name}` Exists predicate NotYetImplemented at sample {} of {} (`{file_name}`): {msg}",
-                                    idx + 1,
-                                    shapes.len(),
-                                )),
-                            };
+                            if pending_nyi.is_none() {
+                                pending_nyi = Some((idx + 1, file_name.clone(), msg));
+                            }
                         }
                     }
+                }
+                if let Some((sample_idx, file_name, msg)) = pending_nyi {
+                    let cn = claim_name.clone();
+                    return ClaimEvaluation {
+                        claim_name,
+                        result: ClaimResult::NotYetImplemented(format!(
+                            "QuantifiedTestClaim `{cn}` Exists predicate NotYetImplemented at sample {sample_idx} of {} (`{file_name}`): {msg}; quantifier fold: no decisive Pass among samples — cannot certify existential witness until deferred predicate(s) land",
+                            shapes.len(),
+                        )),
+                    };
                 }
                 let msg = format!(
                     "QuantifiedTestClaim `{}` Exists found no witness among {} programs",
@@ -5850,10 +5867,9 @@ fn resolve_quantified_generator_shapes(
                     })?;
                     resolve_generator_binding_to_list_elems(dag, inner)?
                 }
-                Some(ValueBody::List(elems)) => elems.as_slice(),
                 other => {
                     return Err(format!(
-                        "QuantifiedTestClaim.generator reference `{}` must name ProgramGenerator record or List<ProgramShape>, got {other:?}",
+                        "QuantifiedTestClaim.generator reference `{}` must name a ProgramGenerator carrier (`{{ generator: DeclarationRef }}` resolving to List<ProgramShape>); accepting a bare List<ProgramShape> declaration bypasses the substrate boundary (INVARIANTS P2/P3). Got value_body={other:?}",
                         decl.name.as_deref().unwrap_or("#anonymous"),
                     ));
                 }

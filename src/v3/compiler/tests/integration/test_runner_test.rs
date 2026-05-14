@@ -1434,6 +1434,43 @@ data suite_q: TestSuite = {
 }
 
 #[test]
+fn test_runner_quantified_generator_field_rejects_raw_list_declaration_ref() {
+    // Substrate authority: `QuantifiedTestClaim.generator` inhabits `ProgramGenerator`, not
+    // `List<ProgramShape>`. Typed `.dag` rejects assigning a list declaration ref directly.
+    let source = r#"
+data shapes: List<ProgramShape> = []
+
+data bad_claim: QuantifiedTestClaim = {
+  name: "bad",
+  generator: shapes,
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_bad: TestSuite = {
+  name: "suite_quantified_bad_generator",
+  claims: [Quantified(bad_claim)]
+}
+"#;
+    match compile_to_dag(source, "quantified_generator_list_ref_typefail.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            let found_type_mismatch = dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diag)| matches!(diag, Diagnostic::TypeMismatch { .. }));
+            assert!(
+                found_type_mismatch,
+                "`generator` must be ProgramGenerator-carrier-shaped; raw List ref should yield TypeMismatch, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+        Ok(_) => panic!("QuantifiedTestClaim.generator: shapes should not type-check"),
+        Err(err) => panic!("unexpected compile error: {err:?}"),
+    }
+}
+
+#[test]
 fn test_runner_quantified_suite_entry_fails_closed_on_wrong_shape() {
     // Gate #85 fail-closed regression: a `Quantified(...)` payload pointing at
     // a non-`QuantifiedTestClaim` declaration is rejected at the type-checker
