@@ -47,6 +47,8 @@ Three input types feed emit:
 
 The fully-resolved `.dag` program after parse → lower → infer. After infer completes, every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with `state != Uninferred` invariant per the infer.rs header comment: `state == Unresolved iff diagnostics.contains(port_id)` — the diagnostic payload lives in the diagnostic table indexed by port_id, NOT in the `PortState` payload). The `Uninferred` variant is a pre-completion transient that infer guarantees is absent in the post-infer `Dag` emit consumes.
 
+**Important — the post-infer readiness invariant is a RUNTIME fail-closed gate, NOT a compile-time type carrier**: the plain `Dag` type does NOT carry an inferred-Dag witness in its type. Two valid resolution paths surface in §12 Q7 for operator ratification: (a) introduce an `InferredDag` newtype carrying the witness (compile-time guarantee), or (b) keep plain `Dag` and have emit fail-closed at runtime with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port is encountered at emit-time. The type-checked pipeline-composition signature `fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` does NOT enforce post-infer completion on its own.
+
 **Substrate authority**: `src/v3/std/substrate.dag` (defines `Dag`, `Declaration`, `Port`, `TypeShape`).
 **Lane dependency**: PB-Substrate (generates dag.rs from substrate.dag).
 
@@ -54,12 +56,12 @@ The fully-resolved `.dag` program after parse → lower → infer. After infer c
 
 Per-target structural facts: primitive set with refinement bounds, algebra inhabitance, structural axes distinguishing candidates, diagnostic enumeration order, construction patterns, operator dispatch, external-realization shape (per `docs/design-emission-model.md:193-209`).
 
-**Substrate authority**: each target has its own `LanguageSpec` instance — `dsl/extdeps/languages/rust/spec.dag` / `dsl/extdeps/languages/python/spec.dag` / `dsl/extdeps/languages/go/spec.dag` (Shape A targets per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission").
+**Substrate authority — DUAL DECLARATION TO RESOLVE BEFORE DISPATCH**: `LanguageSpec` is already declared as a type carrier at TWO existing locations — `dsl/std/languages.dag:438` (full schema: language identity + syntax + runtime + value semantics + serialization + scaffold + service calls) AND `src/v3/std/emit_model.dag:430` (smaller schema: DeclarationRef-shaped statements/expressions/control_flow/literals/modules/functions/type_applications/type_definitions/record_derive_templates/patterns/collection_ops/values). These two carrier declarations are NOT byte-equivalent and represent different abstraction layers. **§12 Q1 raises this for operator ratification BEFORE PB-6 Step 2 dispatch: which carrier is canonical, or how does one consume the other.** Per-target instance authority is NOT a single `spec.dag` per target but is decomposed across `dsl/extdeps/languages/<target>/{syntax,runtime,errors,primitives,async,emit,imports,naming,lint,types}.dag` (multi-file decomposition). Shape A targets per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission".
 **Lane dependency**: T-Ground-LanguageSpec (R3 Grounding Mgr lane / Gap 13) — schema authoring; T-Ground-CrossTarget-Meta (R3 Grounding Mgr lane / Gap 13) — portability requirements.
 
 ### §3.3 `EmissionConfig` (target selection + shape disambiguation)
 
-Selects which target to emit to (Rust / Python / Go for R3) + Shape A vs Shape B disambiguation (Shape A = compiler targets emitting Rust/Python/Go; Shape B = user-space artifacts deferred post-R3 per `r3-structure.md`).
+Selects which Shape A target to emit to (Rust / Python / Go for R3). **EmissionConfig is Shape-A-only by construction** — Shape B is user-space artifact emission (SPICE / English / YAML / Verilog / Terraform), authored by users as standalone `.dag` programs walking typed values via `concat`/`fold`/`match`. Shape B is NOT a compiler-emit dispatch axis and does NOT belong in PB-6 EmissionConfig surface (per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission" + `r3-structure.md` framing). PB-6 emit substrate is compiler-emit only.
 
 **Substrate authority**: `src/v3/std/emit_config.dag` (proposed; may already exist as part of emit_model.dag — needs grep verification at Step 2 authoring).
 
@@ -142,7 +144,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | Prereq | Substrate authority | Gap-tier lane | Status at HEAD (2026-05-14) |
 |---|---|---|---|
 | PB-Substrate | `src/v3/std/substrate.dag` → dag.rs/ports.rs/effects.rs | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | In-flight (PR #3040 sum-variant landed; broader PB-Substrate work continues) |
-| T-Ground-LanguageSpec | per-target `spec.dag` instances | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; needs schema authoring |
+| T-Ground-LanguageSpec | `LanguageSpec` carrier currently DUAL-DECLARED at `dsl/std/languages.dag:438` + `src/v3/std/emit_model.dag:430`; per-target instance authority is multi-file decomposition across `dsl/extdeps/languages/<target>/*.dag` (NOT a single `spec.dag`) | Gap 13 R3 Grounding Mgr lane | **§12 Q1 raises operator ratification BEFORE schema authoring**: which carrier is canonical |
 | T-Ground-Coercion-Fold | mechanical fold implementation | Gap 13 R3 Grounding Mgr lane | In-flight (PR #1980 ScratchIntExamples retirement; broader work continues) |
 | T-Ground-Diagnostic | `EmissionDiagnostic` carrier | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; brief authored at PR #1216 |
 | T-Ground-Lifetime-Analyzer | structural intent derivation | Gap 13 R3 Grounding Mgr lane | In-flight (R2-scope a/b/c impl landed at PR #1206) |
@@ -160,7 +162,7 @@ This is the **structural blocker** for PB-6 emit dispatch — substrate prereqs 
 
 ### §7.1 Upstream dependencies
 
-emit depends on `Dag` with all PortState resolved → output of infer stage (PB-5). Per `src/v3/SELF_HOSTING.md` §2 migration order, emit migrates FIRST despite consuming infer's output, because the bottom-up principle is about which substrate authority needs to exist; emit substrate authority + LanguageSpec spec authorities are smaller surface than infer's.
+emit depends on `Dag` whose `PortState` is post-infer-resolved → output of infer stage (PB-5). Per §3.1 the post-infer readiness is a **runtime fail-closed gate** (emit fail-closes with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port encountered), NOT a compile-time type guarantee. Per `src/v3/SELF_HOSTING.md` §2 migration order, emit migrates FIRST despite consuming infer's output, because the bottom-up principle is about which substrate authority needs to exist; emit substrate authority + LanguageSpec spec authorities are smaller surface than infer's.
 
 emit does NOT depend on parse (PB-3) or lower (PB-4) directly — those produce `Dag` which infer (PB-5) refines. emit consumes the refined `Dag` only.
 
@@ -168,11 +170,11 @@ emit does NOT depend on parse (PB-3) or lower (PB-4) directly — those produce 
 
 PB-Runtime (test_runner.rs / lens_apply.rs / post_emit_verifier.rs) consumes emit output for verification + lens execution. Parity test (Step 4) requires PostEmitVerifier substrate at HEAD.
 
-R3 Verification Mgr's L4 emit/eval match gates + L5 cross-target consistency gates consume emit output for byte-equality assertions.
+R3 Verification Mgr's L4 emit/eval match gates + L5 cross-target consistency gates consume emit output for **typed semantic verification** (compile the emitted code, evaluate against canonical inputs, compare evaluation results) — NOT byte-equality of source text. Cross-target source bytes differ by construction (Rust vs Python vs Go syntax); the verification is at the semantic/behavioral layer. Byte equality is reserved for PB-6 Step 4 parity verification only — see §9 Step 4: emit.rs hand-Rust output vs emit.dag substrate output for the SAME target. Same-target byte identity is the discriminator that fails for paper-shrink class.
 
 ### §7.3 Sibling-stage coordination
 
-When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations must produce `Dag` structures consistent with emit's input expectations. This is enforced by the type-checked pipeline composition (`fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` typed signature; mis-shaped `Dag` from lower/infer fails type-check at compose time).
+When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations must produce `Dag` structures consistent with emit's input expectations. This is enforced as the §3.1 / §7.1 **runtime fail-closed gate** (emit triggers `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port is encountered), NOT a compile-time guarantee — the typed signature `fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` does not carry a post-infer-completion witness. The cross-stage discipline is upstream: infer's responsibility to fully resolve every port before emit consumes; emit's runtime gate is the safety net. §12 Q7 surfaces whether to upgrade to a carrier-typed witness (InferredDag newtype) before PB-4/PB-5 migrate.
 
 ---
 
@@ -197,7 +199,7 @@ SPICE netlists, English documentation, YAML configs, Verilog, Terraform — outp
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-emit-stage-l25-model.md (this doc) |
 | **Step 2: Pipeline slot** | `fn emit(inferred: Dag, spec: LanguageSpec) -> EmissionResult` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current emit.rs) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
 | **Step 3: Implementation** | `src/v3/std/emit.dag` (the .dag implementation of emit; fill the function body) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/emit.dag (NEW substrate authority) |
-| **Step 4: Parity test + simultaneous Rust deletion** | Byte-identical output vs emit.rs across full test matrix + `emit.rs` + sibling `*_target.rs` files DELETED in same PR | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | tests/parity_emit_dag_vs_rust_test.rs (NEW) + EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries |
+| **Step 4: Parity test + simultaneous Rust deletion** | Byte-identical output vs emit.rs across full test matrix + `emit.rs` + sibling `*_target.rs` files DELETED in same PR | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | Parity verification authored as `.dag` TestClaim — generated test fixture set + `.dag` TestClaim asserting `emit_via_rust(dag, spec) == emit_via_dag(dag, spec)` byte-equality across canonical corpus. **P5 dissolution receipt**: this TestClaim is transient-by-construction; it dissolves when emit.rs deletes in the same PR (Step 4 = parity + simultaneous deletion). Any hand-Rust scaffolding required for invocation routing between stage0 emit (reading new emit.dag via Evaluator) and emit.rs (current hand-Rust) bears P5 receipt: `parity_emit_dag_vs_rust_scaffolding — transient; dissolves with emit.rs deletion in same PR per Step 4 atomic discipline`. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries at PR-merge. |
 
 **Critical: parity test is against EMIT.RS OUTPUT, not against emit.dag-template-of-emit.rs** (the discriminator that fails for cycle-4 PR #3048 / cycle-5 PR #3057 template-relocation paper-shrink class).
 
@@ -248,11 +250,13 @@ How does Step 4 parity-and-delete handle this? **Director-recommend resolution**
 
 This depends on R3 Evaluator Mgr lane sub-lanes (body_evaluator + witness_construction) being GREEN at HEAD (per jolly-ram-652 PR #3053 audit: 3 GREEN + 2 in-flight) — both currently GREEN per jolly-ram-652 audit. **Evaluator ready for emit.dag execution.**
 
-### Q4: Shape B omni-emission deferral boundary
+### Q4: Shape B omni-emission deferral boundary (RESOLVED — removed from PB-6 substrate)
 
-emit.dag scope = Shape A only (Rust/Python/Go for R3). Shape B (SPICE/English/YAML/Verilog/Terraform) deferred post-R3. **Where in emit.dag does the Shape A vs Shape B boundary live structurally?**
+emit.dag scope = Shape A only (Rust / Python / Go for R3). **Shape B does NOT belong in PB-6 EmissionConfig surface** — Shape B (SPICE / English / YAML / Verilog / Terraform) is user-space artifact emission authored as standalone `.dag` programs that walk typed values via `concat`/`fold`/`match`; it is NOT a compiler-emit substrate dispatch axis. PB-6 compiler-emit substrate has no Shape A/B disambiguation flag — `EmissionConfig` is Shape-A-only by construction (per §3.3 update + §13 Non-goals).
 
-Director-recommend: `EmissionConfig` carries `target_kind: ShapeAVariant | ShapeBVariant` (closed-axis sum). emit.dag dispatches on Shape A variant; Shape B variants fail-closed with `EmissionDiagnostic::ShapeBDeferred` until post-R3 emit.dag extension.
+The earlier draft proposed `EmissionConfig.target_kind: ShapeAVariant | ShapeBVariant` (closed-axis sum) — that was a substrate-modeling error: putting Shape B inside compiler-emit substrate conflates user-program-artifact-emission with compiler-target-emission. Shape B emission is its own lane (post-R3 user-emission work), separate from PB-6.
+
+This question is RETIRED from open-ratification status; resolution captured here for traceability.
 
 ### Q5: CleanEmissionContract 8 rules — enumeration completeness
 
@@ -265,6 +269,18 @@ Director-recommend: defer enumeration to Step 2 worker brief authoring; Step 2 w
 PostEmitVerifier substrate (currently hand-Rust in post_emit_verifier.rs per cycle-5 PR #3057 paper-shrink revert pending) is the gate that ensures emit output passes verifier discipline. PB-6 Step 4 parity test depends on PostEmitVerifier being substrate-true (.dag) authority, not hand-Rust.
 
 **Director-recommend**: surface PB-6 emit migration as DEPENDENT ON PB-Runtime post_emit_verifier.dag migration completing first. PB-Runtime is on R3 Evaluator Mgr lane scope per msg_e66f4326 (β) option OR warm-wolf-698 R3 Substrate Mgr scope per (α) option. Decision is operator-pending.
+
+### Q7: Post-infer readiness — carrier-typed witness vs runtime fail-closed gate (NEW — codex BLOCKING #3066)
+
+Per §3.1 update, the post-infer `Dag` does NOT carry a compile-time witness that `state != Uninferred for all ports`. Two paths surface for operator ratification:
+
+**Option (a) — `InferredDag` newtype carrier**: introduce a wrapper type carrying the witness. Compile-time guarantee — emit cannot be invoked on non-post-infer Dag. Cost: extra substrate carrier just for the witness; couples emit signature to infer's completion fact via type rather than runtime check.
+
+**Option (b) — runtime fail-closed gate**: keep plain `Dag`; emit fail-closes with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port encountered. Cost: weaker compile-time guarantee; relies on runtime trip + diagnostic.
+
+**Director-recommend (b)**: the runtime gate is cheap (per-port scan during fold), and the carrier-newtype adds a substrate-tier carrier purely for a witness — violating `feedback_no_metadata_markers` adjacent (named state should be observable structurally, not via marker types). Honest acknowledgment of the runtime gate is preferable to a substrate-carrier-only-for-witness pattern.
+
+Operator ratification needed before Step 2 dispatch (Step 2 worker brief authoring depends on whether emit signature uses `Dag` or `InferredDag`).
 
 ---
 
@@ -293,7 +309,7 @@ This doc lands on main when:
 8. ✅ D-1 determinism preservation discipline (§10)
 9. ✅ Cost lens cross-cutting consistency (§11)
 10. ✅ Open design questions enumerated for operator ratification (§12)
-11. ⏳ Operator ratification on Q1–Q6 (this doc surfaces them; ratification lands as Director-tier follow-on or inline updates)
+11. ⏳ Operator ratification on §12 Q1, Q2, Q3, Q5, Q6, Q7 (Q4 RESOLVED inline per codex BLOCKING #3066 — Shape B removed from PB-6 substrate; ratification of remaining 6 questions lands as Director-tier follow-on or inline updates)
 
 Post-ratification: this doc becomes the substrate authority for Step 2 worker brief authoring (pipeline-slot ExternalRealization PR) + §1.8 PB-6 gate row close-criterion predicate.
 
@@ -301,7 +317,7 @@ Post-ratification: this doc becomes the substrate authority for Step 2 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator ratifies §12 Q1–Q6** (or surfaces revisions)
+1. **Operator ratifies §12 Q1, Q2, Q3, Q5, Q6, Q7** (or surfaces revisions; Q4 RESOLVED inline per codex BLOCKING #3066)
 2. **PM amends close plan Gap 1** to route through PB-X lanes + cite this doc as PB-6 L2.5 substrate
 3. **PM amends §1.8** with PB-6 gate row citing this doc as close-criterion authority
 4. **Director authors PB-6 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope) — for R3 Substrate Mgr (warm-wolf-698)
