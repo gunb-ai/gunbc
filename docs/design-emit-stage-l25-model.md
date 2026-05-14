@@ -56,7 +56,11 @@ The fully-resolved `.dag` program after parse → lower → infer. After infer c
 
 Per-target structural facts: primitive set with refinement bounds, algebra inhabitance, structural axes distinguishing candidates, diagnostic enumeration order, construction patterns, operator dispatch, external-realization shape (per `docs/design-emission-model.md:193-209`).
 
-**Substrate authority — DUAL DECLARATION TO RESOLVE BEFORE DISPATCH**: `LanguageSpec` is already declared as a type carrier at TWO existing locations — `dsl/std/languages.dag:438` (full schema: language identity + syntax + runtime + value semantics + serialization + scaffold + service calls) AND `src/v3/std/emit_model.dag:430` (smaller schema: DeclarationRef-shaped statements/expressions/control_flow/literals/modules/functions/type_applications/type_definitions/record_derive_templates/patterns/collection_ops/values). These two carrier declarations are NOT byte-equivalent and represent different abstraction layers. **§12 Q1 raises this for operator ratification BEFORE PB-6 Step 2 dispatch: which carrier is canonical, or how does one consume the other.** Per-target instance authority is NOT a single `spec.dag` per target but is decomposed across `dsl/extdeps/languages/<target>/{syntax,runtime,errors,primitives,async,emit,imports,naming,lint,types}.dag` (multi-file decomposition). Shape A targets per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission".
+**Substrate authority — LIVE V3 AUTHORITY** (verified via `grep -rn "type LanguageSpec" src/v3/`): `LanguageSpec` carrier declared at `src/v3/std/emit_model.dag:430` (DeclarationRef-shaped: statements/expressions/control_flow/literals/modules/functions/type_applications/type_definitions/record_derive_templates/patterns/collection_ops/values; also documented at `src/v3/SELF_HOSTING.md:592`). Per-target instance authority is the live v3 spec family at `src/v3/spec/rust.dag` / `src/v3/spec/python.dag` / `src/v3/spec/go.dag` (each carries 4 Realization meta-types: type realizations + operator realizations + behavior template realizations + per-target dispatch tables) + cross-target L1 substrate markers at `src/v3/spec/v3_l1.dag`. Shape A targets per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission".
+
+**Legacy bootstrap layer to dissolve (NOT consumed as PB-6 authority)**: a DIFFERENT `LanguageSpec` schema is declared at `dsl/std/languages.dag:438` (older full-schema: language identity + syntax + runtime + value semantics + serialization + scaffold + service calls) consumed by the legacy decomposed per-target authority at `dsl/extdeps/languages/<target>/{syntax,runtime,errors,primitives,async,emit,imports,naming,lint,types}.dag` (multi-file decomposition). This is bootstrap scaffolding that PB-6 emission migration should **NOT** depend on; carrying it forward would constitute a P2 parallel-authority path (per codex BLOCKING #3066). Legacy-layer dissolution lives in a separate Director-tier lane (not PB-6 scope).
+
+**§12 Q1 raises operator ratification BEFORE PB-6 Step 2 dispatch**: confirm v3 live authority (`src/v3/std/emit_model.dag` + `src/v3/spec/<target>.dag`) is the canonical PB-6 substrate; legacy layer treated as separate dissolution lane.
 **Lane dependency**: T-Ground-LanguageSpec (R3 Grounding Mgr lane / Gap 13) — schema authoring; T-Ground-CrossTarget-Meta (R3 Grounding Mgr lane / Gap 13) — portability requirements.
 
 ### §3.3 `EmissionConfig` (target selection + shape disambiguation)
@@ -144,7 +148,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | Prereq | Substrate authority | Gap-tier lane | Status at HEAD (2026-05-14) |
 |---|---|---|---|
 | PB-Substrate | `src/v3/std/substrate.dag` → dag.rs/ports.rs/effects.rs | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | In-flight (PR #3040 sum-variant landed; broader PB-Substrate work continues) |
-| T-Ground-LanguageSpec | `LanguageSpec` carrier currently DUAL-DECLARED at `dsl/std/languages.dag:438` + `src/v3/std/emit_model.dag:430`; per-target instance authority is multi-file decomposition across `dsl/extdeps/languages/<target>/*.dag` (NOT a single `spec.dag`) | Gap 13 R3 Grounding Mgr lane | **§12 Q1 raises operator ratification BEFORE schema authoring**: which carrier is canonical |
+| T-Ground-LanguageSpec | LIVE v3 authority: `LanguageSpec` carrier at `src/v3/std/emit_model.dag:430` + per-target instances at `src/v3/spec/{rust,python,go}.dag` (4 Realization meta-types each) + L1 markers at `src/v3/spec/v3_l1.dag`. Legacy bootstrap (NOT to consume as PB-6 authority): `dsl/std/languages.dag:438` + `dsl/extdeps/languages/<target>/*.dag` decomposition — separate dissolution lane | Gap 13 R3 Grounding Mgr lane | **§12 Q1 raises operator ratification BEFORE PB-6 Step 2 dispatch**: confirm v3 live authority canonical |
 | T-Ground-Coercion-Fold | mechanical fold implementation | Gap 13 R3 Grounding Mgr lane | In-flight (PR #1980 ScratchIntExamples retirement; broader work continues) |
 | T-Ground-Diagnostic | `EmissionDiagnostic` carrier | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; brief authored at PR #1216 |
 | T-Ground-Lifetime-Analyzer | structural intent derivation | Gap 13 R3 Grounding Mgr lane | In-flight (R2-scope a/b/c impl landed at PR #1206) |
@@ -230,11 +234,15 @@ PB-6 emit migration must preserve this discipline: emit output cost = sum of per
 
 These surface to operator before Step 2 (pipeline-slot) dispatch:
 
-### Q1: LanguageSpec authoring authority
+### Q1: LanguageSpec canonical-authority confirmation (REFRAMED per codex BLOCKING #3066)
 
-Current `dsl/std/coercion.dag` (schema) + `dsl/extdeps/languages/{rust,python,go}/types.dag` (tables) is bootstrap scaffolding to dissolve per `docs/design-emission-model.md:193-209`. **New LanguageSpec schema** authored under `src/v3/std/` OR refinement of existing dsl/std/coercion.dag → carry-forward?
+**v3 live authority** (verified via grep): `LanguageSpec` carrier at `src/v3/std/emit_model.dag:430` (DeclarationRef-shaped) + per-target instances at `src/v3/spec/{rust,python,go}.dag` (each carrying 4 Realization meta-types: type realizations + operator realizations + behavior template realizations + dispatch tables) + cross-target L1 markers at `src/v3/spec/v3_l1.dag`.
 
-Director-recommend: **refinement carry-forward** — preserves existing receipt evidence (#1183 / #1192 etc.); follows `feedback_construction_over_ratchets` (model first, dissolve existing scaffold incrementally rather than starting fresh).
+**Legacy bootstrap layer** (verified via grep): different `LanguageSpec` schema at `dsl/std/languages.dag:438` consumed by older decomposed per-target authority at `dsl/extdeps/languages/<target>/{syntax,runtime,errors,primitives,async,emit,imports,naming,lint,types}.dag` (multi-file decomposition).
+
+**Operator ratification question**: confirm v3 live authority (`src/v3/std/emit_model.dag` + `src/v3/spec/<target>.dag`) is the canonical PB-6 substrate; legacy `dsl/std/languages.dag` + `dsl/extdeps/languages/` decomposition gets a separate dissolution lane (NOT carried forward into PB-6 substrate). Carrying both forward would constitute a P2 parallel-authority path that codex BLOCKING #3066 explicitly flagged.
+
+Director-recommend: **v3 live authority canonical**; legacy layer treated as separate dissolution lane (post-PB-6 scope); PB-6 Step 2 worker brief cites `src/v3/std/emit_model.dag` LanguageSpec carrier + `src/v3/spec/<target>.dag` per-target instances exclusively. This is consistent with `feedback_lenses_not_passes` (single substrate authority) + INVARIANTS P2 (no parallel-authority paths).
 
 ### Q2: emit.rs current `*_target.rs` siblings
 
