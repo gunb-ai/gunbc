@@ -249,7 +249,7 @@ pub fn analyze_symbolic_cost_dimension(
 ///
 /// **Lens-spine, not body-evaluator-driven.** This entrypoint does
 /// **not** depend on `eval_node` / `evaluate_body` at all — the
-/// symbolic-cost lens (`lens_cost_symbolic_generated.rs`) walks the
+/// symbolic-cost lens (`cost_symbolic_lens_generated.rs`) walks the
 /// program DAG structurally and produces `SymbolicCostLookup::Hit(cost)`
 /// for every reachable behavior including `Loop`. Even now that
 /// `eval_node` dispatches `Behavior::Loop` (E5 landed), this wrapper

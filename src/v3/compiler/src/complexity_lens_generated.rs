@@ -207,7 +207,7 @@ pub fn recursive_transform_summary(
     match p3 {
         [] => miss_complexity_summary_lookup(),
         [__list_head, __list_tail @ ..] => combine_iterate(
-            &(summary_from_iter_bound(pattern_to_iter_bound(p1, p2))),
+            &(summary_from_iter_bound(&(pattern_to_iter_bound(p1, p2)))),
             &(combine_sequential(
                 &(lookup_summary(p0, p2)),
                 &(compose_many_inputs_excluding_descent_operand(p0, p3, p2)),
@@ -215,109 +215,116 @@ pub fn recursive_transform_summary(
         ),
     }
 }
-pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> SymbolicCost {
+pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCost> {
     match p0 {
         CallPattern::ArithmeticSubtractCall {
             steps: _,
             ring_param: _,
-        } => SymbolicCost::LinearCost {
+        } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
+        }),
         CallPattern::ArithmeticDivideCall {
             divisor: _,
             ring_param: _,
-        } => SymbolicCost::LogCost {
+        } => Lookup::Hit(SymbolicCost::LogCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
-        CallPattern::ChildAccessorCall { accessor: _ } => SymbolicCost::LinearCost {
+        }),
+        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
+        }),
         CallPattern::CollectionShrinkCall {
             amount: _,
             collection: _,
-        } => SymbolicCost::LinearCost {
+        } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
+        }),
         CallPattern::FoldBodyCall {
             outer_collection: _,
-        } => SymbolicCost::LinearCost {
+        } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
-        CallPattern::ParserAdvanceCall { witness: _ } => SymbolicCost::LinearCost {
+        }),
+        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
-        CallPattern::WorklistDrainCall { element: _ } => SymbolicCost::LinearCost {
+        }),
+        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(SymbolicCost::LinearCost {
             _0: SizeVariable {
                 source_port: *p1,
                 display_name: None,
             },
-        },
-        CallPattern::SameArgumentCall => SymbolicCost::UnknownCost {
-            _0: String::from("same-argument recursive call has no descent"),
-        },
+        }),
+        CallPattern::SameArgumentCall => Lookup::Miss,
     }
 }
-pub fn summary_from_iter_bound(p0: SymbolicCost) -> Lookup<ComplexitySummary> {
-    match &p0 {
-        SymbolicCost::UnknownCost { _0: reason } => {
-            hit_complexity_summary_lookup(conservative_unknown_summary((reason).clone()))
-        }
-        SymbolicCost::ConstantCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
-            (p0).clone(),
-            (p0).clone(),
-            Certainty::Proven,
-            Certainty::Proven,
-        )),
-        SymbolicCost::LinearCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
-            (p0).clone(),
-            (p0).clone(),
-            Certainty::Proven,
-            Certainty::Proven,
-        )),
-        SymbolicCost::PolynomialCost { var: _, degree: _ } => {
-            hit_complexity_summary_lookup(summary_from_costs(
-                (p0).clone(),
-                (p0).clone(),
+pub fn summary_from_iter_bound(p0: &Lookup<SymbolicCost>) -> Lookup<ComplexitySummary> {
+    match p0 {
+        Lookup::Miss => miss_complexity_summary_lookup(),
+        Lookup::Hit(cost) => match cost {
+            SymbolicCost::UnknownCost { _0: reason } => {
+                hit_complexity_summary_lookup(conservative_unknown_summary((reason).clone()))
+            }
+            SymbolicCost::ConstantCost { _0: _ } => {
+                hit_complexity_summary_lookup(summary_from_costs(
+                    (cost).clone(),
+                    (cost).clone(),
+                    Certainty::Proven,
+                    Certainty::Proven,
+                ))
+            }
+            SymbolicCost::LinearCost { _0: _ } => {
+                hit_complexity_summary_lookup(summary_from_costs(
+                    (cost).clone(),
+                    (cost).clone(),
+                    Certainty::Proven,
+                    Certainty::Proven,
+                ))
+            }
+            SymbolicCost::PolynomialCost { var: _, degree: _ } => {
+                hit_complexity_summary_lookup(summary_from_costs(
+                    (cost).clone(),
+                    (cost).clone(),
+                    Certainty::Proven,
+                    Certainty::Proven,
+                ))
+            }
+            SymbolicCost::ProductCost { _0: _ } => {
+                hit_complexity_summary_lookup(summary_from_costs(
+                    (cost).clone(),
+                    (cost).clone(),
+                    Certainty::Proven,
+                    Certainty::Proven,
+                ))
+            }
+            SymbolicCost::SumCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
+                (cost).clone(),
+                (cost).clone(),
                 Certainty::Proven,
                 Certainty::Proven,
-            ))
-        }
-        SymbolicCost::ProductCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
-            (p0).clone(),
-            (p0).clone(),
-            Certainty::Proven,
-            Certainty::Proven,
-        )),
-        SymbolicCost::SumCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
-            (p0).clone(),
-            (p0).clone(),
-            Certainty::Proven,
-            Certainty::Proven,
-        )),
-        SymbolicCost::LogCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
-            (p0).clone(),
-            (p0).clone(),
-            Certainty::Proven,
-            Certainty::Proven,
-        )),
+            )),
+            SymbolicCost::LogCost { _0: _ } => hit_complexity_summary_lookup(summary_from_costs(
+                (cost).clone(),
+                (cost).clone(),
+                Certainty::Proven,
+                Certainty::Proven,
+            )),
+        },
     }
 }
 pub fn loop_summary(p0: &Dag, p1: &[ComplexityEntry], p2: &LoopNode) -> Lookup<ComplexitySummary> {
