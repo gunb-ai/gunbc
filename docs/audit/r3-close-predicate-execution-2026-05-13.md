@@ -25,11 +25,11 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Verdict (Phase 2 index population)
 
-**OVERALL: PENDING** — 49 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 57 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
+**OVERALL: PENDING** — 51 of 106 gates have HARNESS_NAMED at this ledger snapshot; the remaining 55 gates are not at PASSING status and therefore have no predicate-execution obligation under §8 yet. **No execution receipt is asserted by this PR**; the §10 24h close-ceremony workspace re-sweep produces the receipts.
 
 ## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
-This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 (PR #3060 — `DECLARED` → `CONSUMER_LANDED`), row #22 (PR #3080 — `DECLARED` → `CONSUMER_LANDED + PASSING`), and row #33 (PR #3116 — `CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, full §Acceptance receipt at HEAD via the four-category `canonical_lens_bridge_ratchet_test`, `bridge_retirement_demonstration` DeclarationRef-routed lens-output-equals, and `src/v3/std/bridge_ledger.dag` row `bridge_canonical_lens_name_patching_residual` `Retired`). If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
+This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The current table re-derives affected rows present in the merged ledger snapshot, including row #15 (PR #3060 — `DECLARED` → `CONSUMER_LANDED`), row #22 (PR #3080 — `DECLARED` → `CONSUMER_LANDED + PASSING`), and row #33 (PR #3116 — `CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, full §Acceptance receipt at HEAD via the four-category `canonical_lens_bridge_ratchet_test`, `bridge_retirement_demonstration` DeclarationRef-routed lens-output-equals, and `src/v3/std/bridge_ledger.dag` row `bridge_canonical_lens_name_patching_residual` `Retired`). If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
 
 ## Row-count parity (ledger source of truth)
 
@@ -41,15 +41,15 @@ grep -cE '^\| [0-9]+ \| `' docs/r3-program-plan.md
 
 At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleton row count of 105 + row #106 `show_correct_code_diagnostic_coverage` added by merged PR #3020 per Gap 9 of `docs/r3-actual-close-plan.md`). The table below contains 106 rows mirroring that ledger one-for-one.
 
-## Status-bucket distribution after row #15 + row #22 + row #33 re-derivation
+## Status-bucket distribution after current re-derivation
 
-Derived from the `c055495c8` §1.8 status snapshot plus the 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED`, PR #3060), row #22 delta (`DECLARED` → `CONSUMER_LANDED + PASSING`, PR #3080), and row #33 delta (`CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, PR #3116) recorded in this follow-up:
+Derived from the one-row-per-gate table below after applying the current merged §1.8 deltas, including row #15 (`DECLARED` → `CONSUMER_LANDED`, PR #3060), row #22 (`DECLARED` → `CONSUMER_LANDED + PASSING`, PR #3080), and row #33 (`CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`, PR #3116):
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
-| `PASSING` | 46 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
+| `PASSING` | 48 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
 | `SATISFIED-BY-CONSTRUCTION` | 3 | HARNESS_NAMED → §10 close-ceremony sweep produces EXECUTED receipt |
-| `CONSUMER_LANDED` | 20 | not yet — not at PASSING |
+| `CONSUMER_LANDED` | 18 | not yet — not at PASSING |
 | `DECLARED` | 29 | not yet — not at PASSING |
 | `R3-LOAD-BEARING` (declaration-stage) | 3 | not yet — not at PASSING |
 | `INTEGRATION_RECEIPT` | 3 | not yet — not at PASSING |
