@@ -15,7 +15,6 @@
 //! target-private carriers stay inside their target module and no
 //! cross-target code should read them.
 
-#[path = "emit/collection_ops_method_contract_generated.rs"]
 pub(crate) mod collection_ops_method_contract;
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
