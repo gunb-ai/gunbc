@@ -31,18 +31,26 @@ fn peel_declaration_alias_head(dag: &Dag, mut id: DeclarationId) -> DeclarationI
 }
 
 fn section_ref_decl(dag: &Dag) -> DeclarationId {
-    dag.declarations()
+    // Name matches import stubs elsewhere (e.g. `lenses.cost`); the substrate
+    // authority for this receipt is the declaration that lowers as the
+    // disjoint sum itself—not `ResolvedByName` forwarding atoms.
+    let mut substrates: Vec<DeclarationId> = dag
+        .declarations()
         .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("SectionRef") && d.span.file.ends_with("lens_application.dag")
-        })
-        .unwrap_or_else(|| {
-            panic!(
-                "bootstrap must declare `SectionRef` in src/v3/std/lens_application.dag \
-                 (gate #89 section_ref_substrate_landed)"
-            )
-        })
-        .id
+        .filter(|d| d.name.as_deref() == Some("SectionRef"))
+        .filter(|d| matches!(&d.connective, TypeConnective::Disj { .. }))
+        .map(|d| d.id)
+        .collect();
+    substrates.sort_by_key(|id| id.raw());
+    match substrates.as_slice() {
+        [only] => *only,
+        [] => panic!(
+            "bootstrap must define `SectionRef` as a disjoint sum (gate #89 section_ref_substrate_landed)"
+        ),
+        ambiguous => panic!(
+            "multiple `SectionRef` disjoint-sum authorities in bootstrap ({ambiguous:?}); expected exactly one substrate definition"
+        ),
+    }
 }
 
 fn disj_variant_conj(dag: &Dag, disj: DeclarationId, label: &str) -> DeclarationId {
