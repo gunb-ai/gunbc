@@ -27,6 +27,9 @@ require_row_status() {
   fi
 }
 
+# Pinned matrix for the 2026-05-14 R3 Evaluator refresh. Any ratified
+# intermediate or all-green transition must update these expectations in
+# the same change that updates the ledger evidence.
 require_row_status "runtime_value_model_structural" "green"
 require_row_status "body_evaluator_structural" "green"
 require_row_status "lens_application_complete_reflection" "in-flight"

@@ -65,7 +65,7 @@ Signal Director when:
 
 - `lens_application_complete_reflection` has R2 Release Manager acknowledgement to turn green in `docs/r2-closure-ledger.md`;
 - `witness_construction_structural` has R2 Release Manager acknowledgement to turn green in `docs/r2-closure-ledger.md`;
-- `scripts/check-r2-evaluator-ledger-refresh.sh` passes with all five rows green or with an explicitly ratified intermediate matrix;
+- `scripts/check-r2-evaluator-ledger-refresh.sh` is updated with the ratified matrix and passes;
 - no dashboard REQUEST_CHANGES remain on the manager PR or acknowledged Release Manager signal that refreshes the ledger evidence.
 
 Until then, Gap 3 remains sequencing-held and PB must not dispatch or claim `pb_self_compile_fixed_point_strong`.
