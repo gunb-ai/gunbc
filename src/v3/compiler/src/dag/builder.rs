@@ -1222,7 +1222,7 @@ mod tests {
 
         let output = dag.push_transform(
             TransformTarget::ResolvedFieldProject {
-                field_label: "x".to_string(),
+                field_label: "y".to_string(),
             },
             vec![parent],
             span(),
@@ -1230,7 +1230,7 @@ mod tests {
 
         assert_eq!(
             dag.port(output).state(),
-            &PortState::Resolved(TypeShape::new(int_ty))
+            &PortState::Resolved(TypeShape::new(bool_ty))
         );
     }
 
