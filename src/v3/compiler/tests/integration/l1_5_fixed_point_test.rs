@@ -107,13 +107,31 @@ fn code_position_mask(text: &str) -> Vec<bool> {
                 idx = mask_quoted_literal(bytes, &mut mask, idx, idx);
             }
             b'\'' => {
-                idx = mask_quoted_literal(bytes, &mut mask, idx, idx);
+                if apostrophe_starts_lifetime_or_label(bytes, idx) {
+                    idx += 1;
+                } else {
+                    idx = mask_quoted_literal(bytes, &mut mask, idx, idx);
+                }
             }
             _ => idx += 1,
         }
     }
 
     mask
+}
+
+fn apostrophe_starts_lifetime_or_label(bytes: &[u8], quote: usize) -> bool {
+    let Some(next) = bytes.get(quote + 1).copied() else {
+        return false;
+    };
+    if !(next == b'_' || next.is_ascii_alphabetic()) {
+        return false;
+    }
+    let mut idx = quote + 2;
+    while bytes.get(idx).is_some_and(|byte| is_rust_ident_byte(*byte)) {
+        idx += 1;
+    }
+    bytes.get(idx) != Some(&b'\'')
 }
 
 fn raw_string_end(bytes: &[u8], mut idx: usize) -> Option<usize> {
@@ -311,6 +329,24 @@ let _actual = include{}(concat!("../../", "pipeline", ".dag"));
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
     assert_eq!(offenders.len(), 1);
     assert!(offenders[0].contains("inert.rs:8:"));
+}
+
+#[test]
+fn include_str_pipeline_dag_ratchet_handles_lifetimes_before_offenders() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("tests/integration/lifetime.rs");
+    let synthetic = format!(
+        r#"
+fn lifetime_marker<'a>(input: &'a str) -> &'a str {{
+    input
+}}
+const BAD: &str = include{}(concat!("../../", "pipeline", ".dag"));
+"#,
+        "_str!"
+    );
+    let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
+    assert_eq!(offenders.len(), 1);
+    assert!(offenders[0].contains("lifetime.rs:5:"));
 }
 
 #[test]
