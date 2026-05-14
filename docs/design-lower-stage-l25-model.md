@@ -309,6 +309,20 @@ PB-4 lower's input is `SurfaceModule` from parse (PB-3). PB-3 parse migration is
 
 **Director-recommend: NO — PB-4 lower migrates independently of PB-3 parse status**. lower consumes `SurfaceModule` which is already LIVE substrate at `src/v3/std/parse_surface.dag`; the carrier shape is stable regardless of whether parse-emitter is hand-Rust or `.dag`. Per the SELF_HOSTING.md bottom-up principle, lower migrates when its substrate (input + output + elaboration rules) is ratified; parse migration is independent.
 
+### Q7: Decision 2.B `DiagnosticSource` substrate-extension path (NEW per codex BLOCKING #3077)
+
+Per codex INLINE BLOCKING audit at line 74 (commit pre-fix): live `Diagnostic` carrier at `src/v3/std/diagnostics.dag:150` already exists with `kind: AnyDiagnosticKind` (CompilerKind|LensInstanceKind discrimination per Q6.5 anti-bridge). Decision 2.B operator-ratified per-stage `source` axis (Parse|Lower|Infer|Emit) is ORTHOGONAL to the existing kind-axis and requires substrate extension.
+
+Two extension paths:
+
+**Option (a) — Carrier field extension**: add `source: DiagnosticSource` field to existing `Diagnostic` carrier. Affects every existing Diagnostic construction site (parse/lower/infer/emit-emitters need updating). Single-axis discrimination at the carrier level.
+
+**Option (b) — Lane-local sum + mapping**: PB-4 authors lane-local `LowerDiagnostic` sum (variants per §4.2); maps into `AnyDiagnosticKind::CompilerKind(CompilerDiagnosticKind)` per the existing anti-bridge pattern (line 163-168). No change to existing `Diagnostic` carrier shape; per-stage discrimination lives at the lane-local level + maps through CompilerDiagnosticKind.
+
+**Director-recommend: (b) lane-local sum + mapping** per `feedback_grep_carrier_semantic_before_ratification` + Q6.5 anti-bridge preservation. (a) carrier-field-extension forces refactor of every Diagnostic construction site across all stages simultaneously; (b) localizes the per-stage shape to the migrating lane without breaking existing Diagnostic consumers.
+
+Operator/PM ratification needed before Step 2 dispatch.
+
 ---
 
 ## §13 Non-goals (out of scope for this L2.5)
@@ -338,7 +352,7 @@ This doc lands on main when:
 8. ✅ Determinism preservation discipline (§10)
 9. ✅ Construction-time invariants identified (§11)
 10. ✅ Open design questions enumerated for operator/PM-delegate ratification (§12)
-11. ⏳ Operator/PM ratification on §12 Q1-Q6
+11. ⏳ Operator/PM ratification on §12 Q1-Q7
 
 Post-ratification: this doc becomes the substrate authority for Step 2 worker brief authoring + §1.8 PB-4 gate row close-criterion predicate.
 
@@ -346,7 +360,7 @@ Post-ratification: this doc becomes the substrate authority for Step 2 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator / PM-delegate ratifies §12 Q1–Q6** (per operator 2026-05-14 directive "have pm sign off on everything")
+1. **Operator / PM-delegate ratifies §12 Q1–Q7** (per operator 2026-05-14 directive "have pm sign off on everything")
 2. **PM amends close plan** to route through PB-X lanes + cite this doc as PB-4 L2.5 substrate
 3. **PM amends §1.8** with PB-4 gate row citing this doc as close-criterion authority
 4. **PB-Substrate Decision 3.A landing first** — `Dag = PreInferDag | InferredDag` carrier extension lands via warm-wolf-698 dispatch (cross-stage dependency)
@@ -393,7 +407,7 @@ Subsequent L2.5 models (PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Dir
 - `feedback_discipline_change_audit_all_contract_mentions` (signature consistency across §2 / §3 / §7 / §9)
 
 **Surfaces awaiting**:
-- Operator/PM ratification on §12 Q1–Q6 (per operator 2026-05-14 directive)
+- Operator/PM ratification on §12 Q1–Q7 (per operator 2026-05-14 directive)
 - Decision 3.A operator-ratified shape lands via PB-Substrate first (sum-variant Dag extension)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - R3 Grounding Mgr respawn (per Decision 5.A) if any substrate prereqs route through that lane
