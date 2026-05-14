@@ -358,16 +358,15 @@ fn parallelism_enforcement_violates_via_substrate(
     let lens_id = parallelism_enforcement_violates_decl_id(dag).ok_or(
         LensApplyError::SubstrateReflect("parallelism_enforcement_violates declaration"),
     )?;
-    let observed_fv =
-        parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, observed).ok_or(
-            LensApplyError::SubstrateReflect("ParallelismMode observed variant"),
-        )?;
-    let declared_fv =
-        parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, declared).ok_or(
-            LensApplyError::SubstrateReflect("ParallelismMode declared variant"),
-        )?;
-    let out =
-        apply_lens_declaration(dag, None, lens_id, &[observed_fv, declared_fv])?;
+    let observed_fv = parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, observed)
+        .ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode observed variant",
+    ))?;
+    let declared_fv = parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, declared)
+        .ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode declared variant",
+    ))?;
+    let out = apply_lens_declaration(dag, None, lens_id, &[observed_fv, declared_fv])?;
     match out {
         FieldValue::Literal(LiteralBits::Bool(b)) => Ok(b),
         _ => Err(LensApplyError::TypeMismatch(
@@ -1882,7 +1881,9 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 1);
-        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, indicator));
+        assert!(!parallelism_iteration_opt_in_enforcement_violates(
+            &dag, indicator
+        ));
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
@@ -1914,7 +1915,9 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 0);
-        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, indicator));
+        assert!(parallelism_iteration_opt_in_enforcement_violates(
+            &dag, indicator
+        ));
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
