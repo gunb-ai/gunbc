@@ -365,6 +365,14 @@ impl NodeId {
     pub(crate) fn raw(self) -> u32 {
         self.0
     }
+
+    /// Constructs a [`NodeId`] from the dense node-table index (substrate `NodeId` encoding).
+    ///
+    /// Only for compiler-internal consumers that already validated the index against `Dag::nodes`
+    /// (e.g. lens-application `NodeScope` lowering); arbitrary values are not guaranteed valid.
+    pub(crate) fn from_table_index(raw: u32) -> Self {
+        Self(raw)
+    }
 }
 
 /// Typed witness that a `NodeId` identifies a [`BindNode`].

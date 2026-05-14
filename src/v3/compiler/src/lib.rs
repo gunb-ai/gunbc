@@ -21,6 +21,7 @@ pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
+pub use enforced_lens_application::parallelism_iteration_opt_in_enforcement_violates;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
 // need the helpers below as **`pub`**: the consolidated integration test binary is a separate
 // crate that links this library and cannot call `pub(crate)` items on `v3_compiler`.
