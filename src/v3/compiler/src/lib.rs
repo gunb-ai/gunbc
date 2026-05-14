@@ -554,7 +554,7 @@ pub mod evaluator {
 
     /// Stable [`EvalError::BadTransformOperands::reason`] when a `Transform` callable target is
     /// not an Arrow-shaped declaration at evaluation time (single string authority for pins/tests).
-    pub const BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON: &'static str =
+    pub const BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON: &str =
         "Callable target declaration is not an Arrow type";
 
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
