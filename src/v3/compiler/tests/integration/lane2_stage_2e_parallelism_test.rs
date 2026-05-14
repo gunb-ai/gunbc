@@ -160,6 +160,7 @@ fn parallel_upsert_cross_branch_fail_closed_same_operation() {
             key_source: key.clone(),
         }),
     );
+    let expected_upsert = upsert.clone();
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
@@ -174,7 +175,11 @@ fn parallel_upsert_cross_branch_fail_closed_same_operation() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported — Upsert×Upsert has no merge witness in v1");
     };
-    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
+    let ParallelismUnsupportedKind::PairwiseNonCommute { left, right } = d.kind else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
+    assert_eq!(left, expected_upsert);
+    assert_eq!(right, expected_upsert);
 }
 
 #[test]
@@ -206,7 +211,10 @@ fn parallel_upsert_cross_branch_fail_closed_reconstructed_operation() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported");
     };
-    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
+    assert!(matches!(
+        d.kind,
+        ParallelismUnsupportedKind::PairwiseNonCommute { .. }
+    ));
 }
 
 #[test]
@@ -239,11 +247,29 @@ fn parallel_different_path_param_names_not_proven_commute() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported — distinct PathParam names are not a disjointness proof");
     };
-    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert_eq!(
         d.reason,
         "parallel branch operations do not commute under parallel scheduling"
     );
+    let ParallelismUnsupportedKind::PairwiseNonCommute {
+        left: evidence_left,
+        right: evidence_right,
+    } = d.kind
+    else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &evidence_left),
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
+    ));
+    assert!(matches!(
+        operation_effect_shape(&dag, &evidence_right),
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
+    ));
 }
 
 #[test]
@@ -270,12 +296,28 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported");
     };
-    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert_eq!(d.downstream_stage, "lane2_stage2e_parallelism_lens");
     assert_eq!(
         d.reason,
         "parallel branch operations do not commute under parallel scheduling"
     );
+    let ParallelismUnsupportedKind::PairwiseNonCommute {
+        left: evidence_left,
+        right: evidence_right,
+    } = d.kind
+    else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
+    assert!(matches!(
+        operation_effect_shape(&dag, &evidence_left),
+        Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
+    ));
+    assert!(matches!(
+        operation_effect_shape(&dag, &evidence_right),
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
+    ));
 }
 
 #[test]
