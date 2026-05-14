@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
-    AtomPayload, Behavior, BindNode, Dag, DeclarationId, Field, PortState, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
+    AtomPayload, Behavior, BindNode, Dag, DeclarationId, Field, LiteralBits, PortState,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 
 pub fn find_named(dag: &Dag, name: &str) -> DeclarationId {
@@ -272,17 +272,24 @@ pub fn assert_bootstrap_real_is_approximate_field_of_fractions_int(dag: &Dag) {
     }
 }
 
+/// Second slot of `Compose<Algebra, MachineWidth<…>>` after R3 gate #60 Slice Z:
+/// literal-Nat phantom width (`MachineWidth<64>`) or the nominal `Byte` carrier
+/// for 8-bit rows (`MachineWidth<Byte>`).
+pub enum MachineWidthSlotWitness {
+    NamedCarrier(&'static str),
+    LiteralNatBits(&'static str),
+}
+
 fn assert_compose_with_machine_width(
     dag: &Dag,
     alias_name: &str,
     algebra_name: &str,
-    width_name: &str,
+    width: MachineWidthSlotWitness,
 ) {
     let alias_id = peel_zero_arg_alias(dag, find_named(dag, alias_name));
     let compose_id = find_named(dag, "Compose");
     let algebra_id = find_named(dag, algebra_name);
     let machine_width_id = find_named(dag, "MachineWidth");
-    let width_id = find_named(dag, width_name);
 
     let connective = &dag.declaration(alias_id).connective;
     let TypeConnective::Instantiation {
@@ -311,10 +318,21 @@ fn assert_compose_with_machine_width(
             arguments: mw_args,
         } = &dag.declaration(arg.value).connective
         {
-            if *mw_template == machine_width_id
-                && mw_args.len() == 1
-                && mw_args[0].value == width_id
-            {
+            if *mw_template != machine_width_id || mw_args.len() != 1 {
+                continue;
+            }
+            let inner = &dag.declaration(mw_args[0].value).connective;
+            let matches = match width {
+                MachineWidthSlotWitness::NamedCarrier(name) => mw_args[0].value == find_named(dag, name),
+                MachineWidthSlotWitness::LiteralNatBits(decimal) => {
+                    matches!(
+                        inner,
+                        TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(s)))
+                            if s == decimal
+                    )
+                }
+            };
+            if matches {
                 saw_machine_width = true;
             }
         }
@@ -323,48 +341,65 @@ fn assert_compose_with_machine_width(
         saw_algebra,
         "{alias_name} Compose must instantiate {algebra_name}"
     );
+    let width_label = match width {
+        MachineWidthSlotWitness::NamedCarrier(n) => n.to_string(),
+        MachineWidthSlotWitness::LiteralNatBits(d) => format!("literal {d}"),
+    };
     assert!(
         saw_machine_width,
-        "{alias_name} Compose must include MachineWidth<{width_name}>"
+        "{alias_name} Compose must include MachineWidth<{width_label}>"
     );
 }
 
-/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
+/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<64>>` (R3 gate #19 + #60),
 /// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
 /// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with
 /// the machine-width axis.
 pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
-    assert_compose_with_machine_width(dag, "Int64", "Int", "Word64");
+    assert_compose_with_machine_width(
+        dag,
+        "Int64",
+        "Int",
+        MachineWidthSlotWitness::LiteralNatBits("64"),
+    );
 }
 
-/// Receipt: `Int32` is a width refinement `Compose<Int, MachineWidth<Word32>>`.
+/// Receipt: `Int32` is a width refinement `Compose<Int, MachineWidth<32>>`.
 pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
-    assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
+    assert_compose_with_machine_width(
+        dag,
+        "Int32",
+        "Int",
+        MachineWidthSlotWitness::LiteralNatBits("32"),
+    );
 }
 
 /// Receipt: all fixed-width signed/unsigned aliases are width refinements of
 /// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
 pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
-        ("Int8", "Int", "Byte"),
-        ("Int16", "Int", "Word16"),
-        ("Int32", "Int", "Word32"),
-        ("Int64", "Int", "Word64"),
-        ("Int128", "Int", "Word128"),
-        ("UInt8", "UInt", "Byte"),
-        ("UInt16", "UInt", "Word16"),
-        ("UInt32", "UInt", "Word32"),
-        ("UInt64", "UInt", "Word64"),
-        ("UInt128", "UInt", "Word128"),
+        ("Int8", "Int", MachineWidthSlotWitness::NamedCarrier("Byte")),
+        ("Int16", "Int", MachineWidthSlotWitness::LiteralNatBits("16")),
+        ("Int32", "Int", MachineWidthSlotWitness::LiteralNatBits("32")),
+        ("Int64", "Int", MachineWidthSlotWitness::LiteralNatBits("64")),
+        ("Int128", "Int", MachineWidthSlotWitness::LiteralNatBits("128")),
+        ("UInt8", "UInt", MachineWidthSlotWitness::NamedCarrier("Byte")),
+        ("UInt16", "UInt", MachineWidthSlotWitness::LiteralNatBits("16")),
+        ("UInt32", "UInt", MachineWidthSlotWitness::LiteralNatBits("32")),
+        ("UInt64", "UInt", MachineWidthSlotWitness::LiteralNatBits("64")),
+        ("UInt128", "UInt", MachineWidthSlotWitness::LiteralNatBits("128")),
     ] {
         assert_compose_with_machine_width(dag, alias, algebra, width);
     }
 }
 
-/// Receipt: fixed-width reals refine abstract `Real` with `MachineWidth<Word*>`
-/// (R3 gate #18), not parallel float carrier substrate.
+/// Receipt: fixed-width reals refine abstract `Real` with literal-Nat `MachineWidth<N>`
+/// (R3 gate #18 + #60), not parallel float carrier substrate.
 pub fn assert_bootstrap_real_aliases_align_to_refinements(dag: &Dag) {
-    for (alias, width) in [("Real32", "Word32"), ("Real64", "Word64")] {
+    for (alias, width) in [
+        ("Real32", MachineWidthSlotWitness::LiteralNatBits("32")),
+        ("Real64", MachineWidthSlotWitness::LiteralNatBits("64")),
+    ] {
         assert_compose_with_machine_width(dag, alias, "Real", width);
     }
 }

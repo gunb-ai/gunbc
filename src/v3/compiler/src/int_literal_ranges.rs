@@ -129,7 +129,7 @@ pub(crate) enum IntegerRangeLookup {
 /// Structural witness for routing integer literals: `IntegerAlgebra` and
 /// `TargetCarrier` variant **payload type** ids (the `constructor` field on
 /// `FieldValue::Variant`), derived from std `OrderedRing<C>` / `Semiring<C>`
-/// **or** `Compose<Int|UInt, MachineWidth<Word*>>` (R3 gate #19 refinement form)
+/// **or** `Compose<Int|UInt, MachineWidth<N>>` with literal-Nat `N` (R3 gate #19 + #60)
 /// by resolving to the same pilot `(OrderedRing|Semiring, Word*)` routing key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct IntegerRoutingWitness {
@@ -332,9 +332,10 @@ fn machine_width_inner_to_std_width_carrier_decl(
     }
 }
 
-/// Fixed-width integers after gate #19: `Compose<Int, MachineWidth<Word*>>` (signed) or
-/// `Compose<UInt, MachineWidth<Word*>>` (unsigned). Maps to the same `(OrderedRing|Semiring, Word*)`
-/// pilot routing key as the legacy `OrderedRing<Word*>` / `Semiring<Word*>` instantiations.
+/// Fixed-width integers after gate #19 + #60: `Compose<Int, MachineWidth<N>>` (signed) or
+/// `Compose<UInt, MachineWidth<N>>` (unsigned) with literal-Nat `N` (or `MachineWidth<Byte>` for 8-bit).
+/// Maps to the same `(OrderedRing|Semiring, Word*)` pilot routing key as the legacy
+/// `OrderedRing<Word*>` / `Semiring<Word*>` instantiations.
 fn compose_integer_routing_witness(
     dag: &Dag,
     arguments: &[TemplateArgument],
