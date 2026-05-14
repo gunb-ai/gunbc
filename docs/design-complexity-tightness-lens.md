@@ -50,16 +50,20 @@ The four illegal states `actual == tight ∧ transformations non-empty`, `actual
 
 `TightnessTransformation` enumerates the patterns the lens RECOGNIZES (without mutating code — purely deriving a "would-be-tighter-if-applied" judgment):
 
-| Transformation | Pattern recognized | Tightening |
-|---|---|---|
-| `LoopFusion` | Sequential loops with compatible iteration spaces over same data | O(n+m) → O(max(n,m)) when iteration spaces identical |
-| `LoopHoisting` | Computation inside loop independent of loop variable | strips inner-cost factor from outer-loop product |
-| `DeadCodeElimination` | Subgraph with no consumer (compute result never read) | removes the subgraph's cost contribution entirely |
-| `ConstantBoundPropagation` | Inner-loop bound provably independent of outer-loop variable | O(n*m) → O(n) when m proved constant |
-| `AggregationRecognition` | Explicit accumulator with associative-reduce shape | substrate-folded to declarative `sum`/`fold` op |
-| `MapFilterFoldFusion` | Chained collection ops sharing iteration space | O(n)+O(n)+O(n) → O(n) single-pass |
+Per-transformation tier classification (class-tier vs symbolic-tier-only) — class-tier transformations can produce an `AsymptoticStrictDominance` improvement at the lattice level; symbolic-tier-only transformations tighten the symbolic cost expression but keep the same class:
 
-**Class-level dominance caveat** (openai-pro exploratory observation PR #3067 #11790 2026-05-14): some entries above tighten the SYMBOLIC cost expression but do not produce an AsymptoticClass-level strict dominance for all inputs. For instance, `LoopFusion`'s `O(n+m) → O(max(n,m))` is symbolic-cost tighter but `n+m` and `max(n,m)` are both `ClassLinear` in the BoundedLattice<AsymptoticClass> at `src/v3/std/algebra.dag:418`; the lens-level result for that case is `AlreadyTight` at the class level. A future sibling lens at the symbolic-cost-tightness tier (NOT this lens) would carry the symbolic-only-tighter result. This lens (class-level) emits `Loose` only when `AsymptoticStrictDominance.dominator ≠ dominated` holds in the lattice — same-class symbolic tightening remains AlreadyTight here by construction.
+| Transformation | Pattern recognized | Tightening | Tier |
+|---|---|---|---|
+| `LoopHoisting` | Computation inside loop independent of loop variable | O(n*m) → O(n+m) when inner cost is non-constant | **class-tier** (e.g., n,m both ClassLinear: ClassPolynomial(2) → ClassLinear) |
+| `DeadCodeElimination` | Subgraph with no consumer (compute result never read) | removes the subgraph's cost contribution entirely | **class-tier** (when dead subgraph dominates the class) |
+| `ConstantBoundPropagation` | Inner-loop bound provably independent of outer-loop variable | O(n*m) → O(n) when m proved constant | **class-tier** (ClassPolynomial(2) → ClassLinear) |
+| `LoopFusion` | Sequential loops with compatible iteration spaces over same data | O(n+m) → O(max(n,m)) when iteration spaces identical | **symbolic-tier only** (`n+m` and `max(n,m)` are same class; ClassLinear → ClassLinear in BoundedLattice<AsymptoticClass>) |
+| `AggregationRecognition` | Explicit accumulator with associative-reduce shape | substrate-folded to declarative `sum`/`fold` op | **symbolic-tier only** (pattern recognition; folding to declarative form does not change the lattice class) |
+| `MapFilterFoldFusion` | Chained collection ops sharing iteration space | O(n)+O(n)+O(n) → O(n) single-pass | **symbolic-tier only** (all chain elements + fused result are same class; ClassLinear → ClassLinear in BoundedLattice<AsymptoticClass>) |
+
+The vocabulary is shared across the lens family. This lens (class-level `lens_complexity_tight` producing `TightnessAnalysis` per §1.5) emits `Loose` only when an `AsymptoticStrictDominance` improvement is derivable — restricting to the 3 class-tier transformations above. The 3 symbolic-tier-only transformations are deferred to a future symbolic-cost-tightness sibling lens (per §2 out-of-scope carve), which produces `Loose` for same-class symbolic tightening that the class-level lens correctly reports as `AlreadyTight`.
+
+**Per openai-pro BLOCKING PR #3067 #11790 2026-05-14**: original 6-row table without tier classification admitted the design tension where `Loose.first_transformation` could carry a symbolic-tier-only variant — structurally an invalid pairing for class-level Loose. The tier annotation makes the substrate-consumer contract explicit: class-level Loose's `first_transformation` field is constrained to the class-tier subset by the lens implementation's construction discipline (Practice 6 API enforcement). Future hardening (post-Gap-11): split `TightnessTransformation` into `ClassTierTightnessTransformation | SymbolicTierTightnessTransformation` to make tier-pairing structurally enforced.
 
 ### §1.3 Diagnostic
 
@@ -403,6 +407,8 @@ Cross-algorithm optimality (algorithm synthesis — e.g., bubble sort → merge 
 
 Tightness lens is **same-algorithm-only**: it reasons about the program AS WRITTEN and applies semantics-preserving transformations to derive the tight bound. It doesn't propose alternate algorithms.
 
+**Symbolic-tier-only tightening is also out of scope for THIS lens** (deferred to a future sibling lens at the symbolic-cost-tightness tier): the 3 symbolic-tier-only transformations per §1.2 tier classification — `LoopFusion`, `AggregationRecognition`, `MapFilterFoldFusion` — tighten the symbolic cost expression but stay in the same AsymptoticClass arm of the BoundedLattice<AsymptoticClass> at `src/v3/std/algebra.dag:418`. The class-level lens correctly reports `AlreadyTight` for those cases by construction. A symbolic-cost-tightness sibling lens (separate `data` instance + separate `TightnessAnalysis`-like carrier parameterized over SymbolicCost rather than AsymptoticClass) will carry those cases; pre-Gap-11 substrate scope is intentional.
+
 ## §3. Prerequisites
 
 1. **§1.8 gate #79 `complexity_lens_behaviorally_complete`** — currently SATISFIED-BY-CONSTRUCTION via temporary Rust cementing receipt; full behavioral completion requires `ComplexitySummary` TestClaim literals + ProductCost/SumCost composition (Gap 11).
@@ -415,13 +421,41 @@ Tightness lens is **same-algorithm-only**: it reasons about the program AS WRITT
 Per `feedback_no_textual_enforcement_bridges` — close criterion is a substrate-fact-at-HEAD predicate, not narrative:
 
 ```
-# Predicate at gate close:
+# Predicate at gate close — one fixture per class-tier TightnessTransformation
+# arm per §1.2 (LoopHoisting, DeadCodeElimination, ConstantBoundPropagation;
+# symbolic-tier-only arms LoopFusion/AggregationRecognition/MapFilterFoldFusion
+# are carved to a future sibling lens and have no class-level fixture):
 cargo test --release -p v3-compiler --test integration complexity_tightness_compile_error_demonstrated
-# returns: PASS with at least 1 fixture demonstrating:
+# returns: PASS with at least one fixture for EACH class-tier transformation,
+# each fixture demonstrating:
 #   - lens produces TightnessAnalysis::Loose variant (per §1.1 discriminated shape)
-#   - Loose.improvement = AsymptoticStrictDominance { dominator: ClassQuadratic, dominated: ClassLinear, ... }
-#   - Loose.first_transformation = ConstantBoundPropagation { ... }
-#   - Error/TightnessViolation diagnostic produced at fixture span citing improvement.dominator/dominated + transformations
+#   - Loose.improvement = AsymptoticStrictDominance { dominator: <looser_class>, dominated: <tight_class>, ... }
+#   - Loose.first_transformation = <the-specific-class-tier-arm> { ... }
+#   - Error/TightnessViolation diagnostic produced at fixture span citing
+#     improvement.dominator/dominated + transformations
+#
+# Required fixture set:
+#   - fixture demonstrating LoopHoisting: e.g., O(n*m) loop with m-cost subgraph
+#     proven loop-invariant; lens reports Loose { improvement: { dominator:
+#     ClassPolynomial(2), dominated: ClassLinear }, first_transformation:
+#     LoopHoisting { ... } }
+#   - fixture demonstrating DeadCodeElimination: e.g., quadratic subgraph
+#     producing a Port no downstream node reads; lens reports Loose {
+#     improvement: { dominator: ClassPolynomial(2), dominated: ClassLinear },
+#     first_transformation: DeadCodeElimination { ... } }
+#   - fixture demonstrating ConstantBoundPropagation: e.g., nested loop with
+#     inner bound provably constant; lens reports Loose { improvement: {
+#     dominator: ClassPolynomial(2), dominated: ClassLinear },
+#     first_transformation: ConstantBoundPropagation { ... } }
+#
+# Carved out from class-level fixture requirement (deferred to future
+# symbolic-cost-tightness sibling lens per §2):
+#   - LoopFusion: no class-level Loose constructible — both operands
+#     same-class by lattice (algebra.dag:418)
+#   - AggregationRecognition: no class-level dominance from pattern
+#     recognition alone (no lattice arm change)
+#   - MapFilterFoldFusion: no class-level Loose constructible — chained ops
+#     and fused single-pass are same-class
 ```
 
 Plus compiler-internal-code build invariant:
