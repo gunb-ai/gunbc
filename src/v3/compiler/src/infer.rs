@@ -660,6 +660,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             };
             let body = branch_output_example_source(dag, check.output_port, &check.arm_outputs);
             let insert_at = check.span.byte_end.saturating_sub(1);
+            let correction_span = SourceSpan::new(check.span.file.clone(), insert_at, insert_at);
             let arms = missing
                 .iter()
                 .map(|variant| format!("{variant} => {body}"))
@@ -674,7 +675,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                     span: check.span,
                     correction: Correction::live(
                         format!("add missing arm(s) for `{missing_list}`"),
-                        SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
+                        correction_span,
                         format!("{arm_prefix}{arms}"),
                     ),
                 },
