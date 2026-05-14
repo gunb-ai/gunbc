@@ -62,7 +62,7 @@ graph TD
   end
 
   subgraph "Phase 2.8 — Cluster M per-test design (Mgr-tier)"
-    P28[2.8 Per-test inventory pre-dispatch<br/>122 TEST entries]
+    P28[2.8 Per-test design pre-dispatch<br/>HOLD pending T-α/β/γ/δ framework<br/>scope: T-γ-class only ~2-4 docs]
   end
 
   subgraph "Phase 2.7 — Root-cause systemic fix"
@@ -144,7 +144,7 @@ This is the discipline §5.2 will codify. By applying it to Phase 2 itself, we v
 5. **Fifth (Phase 2.5)**: Gap 9 canvas authoring (parallel-eligible)
 6. **Sixth (Phase 2.3)**: Track A reclassification (after 2.1 + 2.2)
 7. **Seventh (Phase 2.6)**: Cluster F Phase 2 coord (parallel-eligible)
-8. **Eighth (Phase 2.8)**: Cluster M Phase 3 per-test design enumeration (parallel-eligible; blocks Cluster M Phase 3 worker dispatch downstream)
+8. **Eighth (Phase 2.8)**: Cluster M Phase 3 per-test design enumeration — **HOLD pending operator-ratified test-deletion framework T-α/T-β/T-γ/T-δ** per Director msg_92b03a78; post-framework scope is per-T-γ-class enumeration only (~2-4 docs); blocks Cluster M Phase 3 worker dispatch on T-γ classes downstream
 9. **Ninth (Phase 2.7)**: §5.2 process discipline (synthesis; last; consumes evidence from 2.1-2.8)
 
 Director-tier ratify + admin-merge per operator broad-authorization on each PR open.
@@ -385,9 +385,9 @@ This section audits whether every file currently in `EXPECTED_HAND_AUTHORED_NON_
 | **Class-level design only** (per-test inventory deferred to "mid-flight") | 122 | All 122 TEST entries route through Cluster M Phase 3 Coordinator framework with 6 class stubs: cementing-test (~20-25) / reflected-Dag (~25-30) / generic-DimReport (~20-25) / boundary (~10) / R1C-D-E (~3) / L4-L7-L5 (~5). Each class has a worker brief (some STUB, some DIRECTOR-SCAFFOLD); **per-test inventory + pilot/bulk split is filled in at Phase 3 dispatch time, NOT pre-dispatch.** ⚠ |
 | Per-test design citation | 0 | Per the Coordinator brief §2: *"Each class is a parallel-dispatchable worker batch. Coordinator finalizes the class stubs as Phase 3 begins"* — by design, per-test mapping is mid-flight, not pre-flight. |
 
-**Gap**: 122 TEST entries have CLASS-level design but no per-test design at dispatch-readiness. Per operator discipline ("no worker starts without design ready"), the Cluster M Coordinator's "finalize-at-dispatch" pattern is NOT compliant — needs pre-dispatch per-test inventory authoring.
+**Gap**: 122 TEST entries have CLASS-level design but no per-test design at dispatch-readiness. Per operator discipline ("no worker starts without design ready"), the Cluster M Coordinator's "finalize-at-dispatch" pattern is NOT compliant — needs pre-dispatch per-test design authoring per the ratified subset.
 
-**Recommended remediation**: new phase (Phase 2.8 — Cluster M Phase 3 per-test design enumeration) before Cluster M Phase 3 worker dispatch begins. Coordinator authors per-test inventory + pilot/bulk split as static pre-dispatch artifact, NOT mid-flight finalization.
+**Recommended remediation** (revised per Director msg_92b03a78 framework-coordination directive 2026-05-14): Phase 2.8 was originally scoped to "static per-test inventory for all 122 entries" but is now **HOLD pending operator-ratified test-deletion framework T-α/T-β/T-γ/T-δ**. Director's testgen-subsumption framing reduces per-test L2.5 scope from ~13 docs → ~2-4 docs (only T-γ classes that aren't testgen-subsumable). Per §1 Phase 2.8 row at line 36: post-framework-ratification, Phase 2.8 deliverable is **per-T-γ-class enumeration only** (NOT all 6 classes; testgen-subsumable classes don't need per-test L2.5), scope ~2-4 docs aligned with the test-deletion framework's substrate-prereq mapping. PM premature-dispatch corrected via msg_77355877 (tidy-ram-467 not blocked on the original 122-entry inventory).
 
 ### §9.3 Per-stage L2.5 domain-model authoring status
 
@@ -415,7 +415,7 @@ This section audits whether every file currently in `EXPECTED_HAND_AUTHORED_NON_
 | Gap | Files affected | Remediation | In Phase 2? |
 |---|---|---|---|
 | **NON_TEST (b)-class generic §1.1 prereq** instead of specific PB-X lane | ~25-30 NON_TEST entries (bootstrap/regen cluster) | **Phase 2.3** (Track A reclassification) | ✓ COVERED |
-| **TEST entries with class-level design only** (per-test inventory mid-flight) | 122 TEST entries | **NEW: Phase 2.8** — Cluster M Phase 3 per-test design enumeration pre-dispatch | ✗ GAP — need new Phase |
+| **TEST entries with class-level design only** (per-test inventory mid-flight) | 122 TEST entries (subset: T-γ-class only post-framework) | **Phase 2.8** — Cluster M Phase 3 per-test design enumeration **HOLD pending operator-ratified test-deletion framework T-α/T-β/T-γ/T-δ** (Director msg_92b03a78 testgen-subsumption framing reduces scope to per-T-γ-class enumeration ~2-4 docs) | ✓ COVERED via Phase 2.8 (scope-corrected) |
 | **L2.5 per-stage models NOT authored** for 7 of 9 PB-X lanes | All pipeline-stage + adjacent retirement work | **Per-lane L2.5 authoring stream** — Director (PB-6 in flight) + warm-wolf-698 expanded scope (PB-Substrate / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build) | ✗ GAP — parallel workstream, NOT in Phase 2 sweep |
 
 ### §9.5 Pre-dispatch authority-gate (recommended Phase 2.7 §5.2 codification)

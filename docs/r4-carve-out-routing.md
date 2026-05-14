@@ -92,6 +92,63 @@ consumer beyond `EpochMs` surfaces concrete demand for Aspect axis
 landing). Substrate Mgr authors Aspect-axis carrier brief; emission
 consumers (Grounding) wire downstream.
 
+### C7 — Cross-algorithm complexity optimality (algorithm synthesis)
+
+**R3 status**: **Same-algorithm CLASS-LEVEL tightness lens is SCOPED IN R3** (operator-ratified 2026-05-14, design substrate at PR #3067 + `docs/design-complexity-tightness-lens.md`; **substrate NOT YET LANDED in `src/v3/std/`** — design ratification is PM-tier per the design frontmatter, with Director ratification + worker dispatch pending Gap 11). The class-level lens (per the planned `.dag` substrate at design doc §1.5) reasons about a program AS WRITTEN and applies the **3 class-tier** semantics-preserving structural transformations (`LoopHoisting` / `DeadCodeElimination` / `ConstantBoundPropagation` — see `docs/design-complexity-tightness-lens.md` §1.2 tier classification) to derive an `AsymptoticStrictDominance` improvement witness in `BoundedLattice<AsymptoticClass>` at the existing live substrate `src/v3/std/algebra.dag:418`. The lens emits `Loose` (and TightnessViolation diagnostic) when the class lattice arm shifts. Compiler-internal code will be always-on; user programs opt-in via `EnforcedTightness` (concrete non-generic self-comparison carrier with `lens: Lens<TightnessAnalysis>` type-locked per `docs/design-complexity-tightness-lens.md` §1.5; structurally distinct from `EnforcedApplication`'s 3-param user-budget shape).
+
+**3 symbolic-tier-only transformations** (`LoopFusion` /
+`AggregationRecognition` / `MapFilterFoldFusion`) are explicitly **NOT**
+handled by this R3 lens — they tighten symbolic-cost expressions but stay in
+the same `AsymptoticClass` arm (e.g., `O(n+m) → O(max(n,m))` are both
+`ClassLinear`). Per `docs/design-complexity-tightness-lens.md` §2 carve-out,
+those cases are deferred to a future **symbolic-cost-tightness sibling lens**
+(separate `data` instance + separate carrier parameterized over `SymbolicCost`
+rather than `AsymptoticClass`). The **planned substrate** (design §1.5 — not yet
+landed in `src/v3/std/`) enforces this structurally: §1.5 splits the
+transformation coproduct into `ClassTierTightnessTransformation` (3 arms) +
+`SymbolicTierTightnessTransformation` (3 arms), and class-level
+`Loose.first_transformation` will be typed `ClassTierTightnessTransformation`
+(symbolic-tier variants non-instantiable at the type level per codex BLOCKING
+PR #3067 #11795 2026-05-14).
+
+**Carved to R4**: **cross-algorithm optimality** — compiler proves a
+DIFFERENT algorithm with equivalent semantics achieves better
+complexity (e.g., bubble sort → merge sort, naive matmul → Strassen).
+Explicitly out of scope in the tightness lens design (§2): *"requires
+algorithm synthesis or pattern-recognition + semantic-equivalence-tier
+transformation library; major research-tier feature beyond lens-tier
+scope."*
+
+The discrimination is structural: same-algorithm tightness reasons
+about ONE program structure and proves it can be transformed to a
+tighter form via semantics-preserving rewrites (loop fusion, hoisting,
+etc.). Cross-algorithm optimality reasons about TWO DIFFERENT program
+structures that compute the same input→output relation and proves
+algorithm B has better complexity than algorithm A.
+
+**R4 dispatch trigger**: substantive use-case surfaces concrete demand
+for cross-algorithm reasoning (e.g., a programmer writes O(n²) sort
+expecting compiler to suggest merge sort). Requires research-tier
+groundwork — semantic equivalence reasoning, algorithm transformation
+library, pattern-recognition rules tied to abstract specifications
+(input/output relations) rather than program syntax. Not feasible at
+lens-tier; needs a new compiler analysis layer (perhaps a "synthesis
+lens" or "optimization-recommendation lens"). Per
+`feedback_fail_closed_discipline` + INVARIANTS.md C-8 — lens
+enforcement is Error or it isn't enforcement (no warning steady
+state). Advisory suggestions about alternate algorithm choices route
+through a separate introspection/report carrier (NOT
+`DiagnosticSeverity`; the R4 C7 design ratification specifies the
+carrier shape). Algorithm choice is design-tier — the report
+surface gives the programmer information without imposing a hard
+fail-closed constraint; the actual error/non-error discrimination
+of the synthesis lens is a Director-tier R4 design decision.
+
+**Authority**: operator wishlist routing 2026-05-14 via PM
+(deep-wolf-155); operator-recommended R4 dispatch when same-algorithm
+tightness lens has settled and concrete cross-algorithm use-cases
+surface.
+
 ## Cascade messages (cross-Mgr consumption)
 
 ### To Verification Mgr (#1740) — T-LAS / T-LSA cross-program impact
@@ -145,6 +202,7 @@ When the R4 program plan is authored, the items above are inputs:
 4. C4 — additional MachineConstraint axes per consumer demand
 5. C5 — rounding-mode product-shape extension per consumer demand
 6. C6 — Aspect-axis (PointKind) follow-on for `EpochMs` and future instant/rate-shaped refinements (2-axis Measure carrier already in R3)
+7. C7 — Cross-algorithm complexity optimality (algorithm synthesis): pattern-recognition + semantic-equivalence-tier transformation library for proving alternate algorithms achieve better complexity than user-written; downstream of same-algorithm tightness lens landing in R3 + concrete cross-algorithm use-case surfacing
 
 ## Provenance
 
