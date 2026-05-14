@@ -3296,14 +3296,12 @@ enum ArrowRustEmitPolicy {
     StorageRcDynFn,
 }
 
-/// Canonical Rust primitive for anonymous `Compose<Algebra, MachineWidth<N>>` from gate-#60
-/// surface sugar (`Int<32>`, `Real<64>`, …), aligned with `rust.dag` `TypeRealization` carriers.
-/// `Compose` slot order matches lowering today; width vs algebra slots are detected independently
-/// (same spirit as `structural_compose_real_machine_width`).
-fn rust_carrier_for_compose_algebra_machine_width(
+/// Parses gate-#60 `Compose<Algebra, MachineWidth<N>>` after alias peeling; returns the algebra
+/// concept id (`Int` / `UInt` / `Real`) and width in bits when both slots are recognized.
+fn gate60_anonymous_compose_algebra_bits(
     dag: &Dag,
     declaration: DeclarationId,
-) -> Option<&'static str> {
+) -> Option<(DeclarationId, u32)> {
     let compose = dag.declaration_by_name("Compose")?.id;
     let peeled =
         crate::int_literal_ranges::peel_decl_head_for_integral_float_seed(dag, declaration);
@@ -3335,32 +3333,44 @@ fn rust_carrier_for_compose_algebra_machine_width(
         }
         return None;
     }
-    let algebra = algebra?;
-    let bits = bits?;
+    Some((algebra?, bits?))
+}
+
+/// Maps `(Int|UInt|Real, width)` to the **substrate** fixed-width alias name declared in
+/// `dsl/std/{integer,float}.dag` (`Int32`, `Real64`, …). Rust spellings (`i32`, `f64`) come
+/// **only** from `TypeRealization.carrier` in `rust.dag` via `RealizationIndexes::types`.
+fn std_fixed_width_alias_name_for_algebra_bits(
+    dag: &Dag,
+    algebra: DeclarationId,
+    bits: u32,
+) -> Option<&'static str> {
+    let int_id = dag.declaration_by_name("Int")?.id;
+    let uint_id = dag.declaration_by_name("UInt")?.id;
+    let real_id = dag.declaration_by_name("Real")?.id;
     if algebra == int_id {
         return match bits {
-            8 => Some("i8"),
-            16 => Some("i16"),
-            32 => Some("i32"),
-            64 => Some("i64"),
-            128 => Some("i128"),
+            8 => Some("Int8"),
+            16 => Some("Int16"),
+            32 => Some("Int32"),
+            64 => Some("Int64"),
+            128 => Some("Int128"),
             _ => None,
         };
     }
     if algebra == uint_id {
         return match bits {
-            8 => Some("u8"),
-            16 => Some("u16"),
-            32 => Some("u32"),
-            64 => Some("u64"),
-            128 => Some("u128"),
+            8 => Some("UInt8"),
+            16 => Some("UInt16"),
+            32 => Some("UInt32"),
+            64 => Some("UInt64"),
+            128 => Some("UInt128"),
             _ => None,
         };
     }
     if algebra == real_id {
         return match bits {
-            32 => Some("f32"),
-            64 => Some("f64"),
+            32 => Some("Real32"),
+            64 => Some("Real64"),
             _ => None,
         };
     }
@@ -5670,9 +5680,22 @@ impl<'a> Ctx<'a> {
         if let Some(binding) = self.indexes.types.get(&declaration) {
             return Ok(binding.carrier.clone());
         }
-        if let Some(carrier) = rust_carrier_for_compose_algebra_machine_width(self.dag, declaration)
+        if let Some((algebra, bits)) = gate60_anonymous_compose_algebra_bits(self.dag, declaration)
         {
-            return Ok(carrier.to_string());
+            if let Some(alias) =
+                std_fixed_width_alias_name_for_algebra_bits(self.dag, algebra, bits)
+            {
+                let Some(named) = self.dag.declaration_by_name(alias) else {
+                    return Err(EmitError::MissingTypeRealization {
+                        target: declaration,
+                    });
+                };
+                let named_id = named.id;
+                if let Some(binding) = self.indexes.types.get(&named_id) {
+                    return Ok(binding.carrier.clone());
+                }
+                return Err(EmitError::MissingTypeRealization { target: named_id });
+            }
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
