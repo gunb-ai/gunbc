@@ -5930,7 +5930,13 @@ fn lower_structural_field_value(
     }
 
     let mut disj_subst = subst.clone();
-    if let Some(disj_id) = walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst) {
+    let optional_card =
+        optional_at_most_one_cardinality_decl_with_subst(dag, expected_type, subst, 0);
+    let optional_disj =
+        optional_card.and_then(|card| crate::infer::ensure_optional_match_disj(dag, card));
+    let disj_id = optional_disj
+        .or_else(|| walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst));
+    if let Some(disj_id) = disj_id {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -5938,6 +5944,72 @@ fn lower_structural_field_value(
                 .collect(),
             _ => unreachable!("walk_to_disj_decl returned non-Disj"),
         };
+
+        if optional_disj.is_some() && surface_expr_is_authored_optional_none(expr) {
+            let Some((_, none_variant_payload_decl)) =
+                variants.iter().find(|(label, _)| label == "None")
+            else {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}`: optional match disj missing `None` arm"
+                        ),
+                        span: span.clone(),
+                        correction: Correction::deferred_for_diagnostic_class("ResolveError"),
+                    },
+                );
+                return None;
+            };
+            return Some(crate::dag::FieldValue::Variant {
+                constructor: *none_variant_payload_decl,
+                payload: vec![],
+            });
+        }
+
+        if optional_disj.is_some()
+            && !surface_expr_is_authored_optional_none(expr)
+            && !optional_some_none_surface_form(expr)
+        {
+            if let Some(inner_ty) = optional_element_type_with_subst(dag, expected_type, subst, 0) {
+                match lower_structural_field_value(
+                    data_name,
+                    field_label,
+                    expr,
+                    inner_ty,
+                    subst,
+                    symbols,
+                    dag,
+                    None,
+                    span,
+                    pending_refined_function_refs,
+                ) {
+                    Some(inner_fv) => {
+                        let Some((_, some_payload_conj)) =
+                            variants.iter().find(|(label, _)| label == "Some")
+                        else {
+                            report_declaration_error(
+                                dag,
+                                Diagnostic::ResolveError {
+                                    name: format!(
+                                        "data `{data_name}` field `{field_label}`: optional match disj missing `Some` arm"
+                                    ),
+                                    span: span.clone(),
+                                    correction: Correction::deferred_for_diagnostic_class("ResolveError"),
+                                },
+                            );
+                            return None;
+                        };
+                        return Some(crate::dag::FieldValue::Variant {
+                            constructor: *some_payload_conj,
+                            payload: vec![inner_fv],
+                        });
+                    }
+                    None => return None,
+                }
+            }
+        }
+
         let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) =
             match expr {
                 SurfaceExpr::Call { target, args, span } => {
@@ -5991,6 +6063,51 @@ fn lower_structural_field_value(
                         Some(fields.as_slice()),
                         span,
                     )
+                }
+                SurfaceExpr::Record { fields, span } => {
+                    let authored: HashSet<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                    let mut matched: Option<(&str, DeclarationId)> = None;
+                    for (label, variant_decl_id) in &variants {
+                        let Some(payload_fields) = variant_payload_fields_for_lowering_with_subst(
+                            dag,
+                            *variant_decl_id,
+                            &disj_subst,
+                        ) else {
+                            continue;
+                        };
+                        let payload: HashSet<&str> =
+                            payload_fields.iter().map(|(l, _)| l.as_str()).collect();
+                        if authored == payload {
+                            if let Some((prev_label, _)) = matched {
+                                report_declaration_error(
+                                    dag,
+                                    Diagnostic::ResolveError {
+                                        name: format!(
+                                            "data `{data_name}` field `{field_label}` record literal is ambiguous: same field set matches sum variants `{prev_label}` and `{label}`"
+                                        ),
+                                        span: span.clone(),
+                                        correction: Correction::deferred_for_diagnostic_class("ResolveError"),
+                                    },
+                                );
+                                return None;
+                            }
+                            matched = Some((label.as_str(), *variant_decl_id));
+                        }
+                    }
+                    let Some((label, variant_decl_id)) = matched else {
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "data `{data_name}` field `{field_label}` record literal field set does not match any variant of the declared sum type"
+                                ),
+                                span: span.clone(),
+                                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
+                            },
+                        );
+                        return None;
+                    };
+                    (label, variant_decl_id, None, Some(fields.as_slice()), span)
                 }
                 SurfaceExpr::Var { name, span } => {
                     let Some((_, variant_decl_id)) =
@@ -6091,7 +6208,9 @@ fn lower_structural_field_value(
                 return None;
             }
             for field in fields {
-                if !payload_fields.iter().any(|(label, _)| label == &field.name) {
+                if !payload_fields.iter().any(|(label, _)| {
+                    surface_record_field_matches_variant_payload_label(&field.name, label)
+                }) {
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -6107,9 +6226,8 @@ fn lower_structural_field_value(
                 }
             }
             for (payload_field_label, payload_field_ty) in &payload_fields {
-                let Some(field) = fields
-                    .iter()
-                    .find(|field| field.name == *payload_field_label)
+                let Some(field) =
+                    surface_record_field_for_variant_payload(fields, payload_field_label)
                 else {
                     report_declaration_error(
                         dag,
@@ -6312,6 +6430,114 @@ fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Decl
         } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
+}
+
+/// If `expected_type` is (after alias / type-param peel) `Cardinality(_, AtMostOne)`,
+/// returns that cardinality declaration id. Used so structural `data` lowering can
+/// mint the `Some`/`None` optional-match disj before `infer::infer` runs.
+fn optional_at_most_one_cardinality_decl_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            optional_at_most_one_cardinality_decl_with_subst(
+                dag,
+                subst.lookup(expected_type)?,
+                subst,
+                depth + 1,
+            )
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_at_most_one_cardinality_decl_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            Some(expected_type)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            optional_at_most_one_cardinality_decl_with_subst(dag, *template, subst, depth + 1)
+        }
+        _ => None,
+    }
+}
+
+fn optional_element_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            optional_element_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_element_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => optional_element_type(dag, expected_type).map(|element| {
+            resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)
+        }),
+    }
+}
+
+fn surface_expr_is_authored_optional_none(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Path { segments, .. } => segments.len() == 1 && segments[0] == "none",
+        SurfaceExpr::Var { name, .. } => name == "none",
+        _ => false,
+    }
+}
+
+// Recognize already-authored optional disj syntax (`Some` / `None`) so lowering does not
+// double-wrap. Spelling matches the language's optional constructors (see `docs/v3-spec.md`
+// Scenario 6), not an arbitrary callable: a hypothetical user-defined `Some`/`None` at an
+// `Optional<T>` site would skip implicit `Some` wrapping here by design.
+fn optional_some_none_surface_form(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::VariantRecord { target, .. } => target == "Some" || target == "None",
+        SurfaceExpr::Call { target, .. } => target == "Some" || target == "None",
+        _ => false,
+    }
+}
+
+// Optional/sum payload surface vs lowered field names: `docs/v3-spec.md` Scenario 6 shows
+// `Some { value: v }` style patterns; lowering may use synthetic `_0` for the inner payload field.
+// Single pairing authority for this lowering seam (P2: avoid scattering `"value"`/`"_0"` literals).
+const SURFACE_SUM_PAYLOAD_FIELD: &str = "value";
+const LOWERED_SUM_PAYLOAD_FIELD: &str = "_0";
+
+fn surface_record_field_for_variant_payload<'a>(
+    fields: &'a [crate::parse::SurfaceRecordField],
+    payload_label: &str,
+) -> Option<&'a crate::parse::SurfaceRecordField> {
+    fields.iter().find(|f| f.name == payload_label).or_else(|| {
+        (payload_label == LOWERED_SUM_PAYLOAD_FIELD)
+            .then(|| fields.iter().find(|f| f.name == SURFACE_SUM_PAYLOAD_FIELD))
+            .flatten()
+    })
+}
+
+fn surface_record_field_matches_variant_payload_label(
+    authored_field: &str,
+    payload_label: &str,
+) -> bool {
+    if authored_field == payload_label {
+        return true;
+    }
+    authored_field == SURFACE_SUM_PAYLOAD_FIELD && payload_label == LOWERED_SUM_PAYLOAD_FIELD
 }
 
 fn list_element_type_with_subst(
