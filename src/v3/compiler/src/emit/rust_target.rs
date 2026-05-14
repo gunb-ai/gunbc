@@ -3296,12 +3296,17 @@ enum ArrowRustEmitPolicy {
     StorageRcDynFn,
 }
 
-/// Parses gate-#60 `Compose<Algebra, MachineWidth<N>>` after alias peeling; returns the algebra
-/// concept id (`Int` / `UInt` / `Real`) and width in bits when both slots are recognized.
-fn gate60_anonymous_compose_algebra_bits(
+/// Named substrate alias (`type Int32 = Compose<…>` / `Real64`, …) that **instantiates `Compose`
+/// with the same template-argument spine** as `declaration` after gate-#60 peeling, and owns a
+/// `TypeRealization` row in `rust.dag`.
+///
+/// This bridges anonymous `Compose` ids to [`RealizationIndexes::types`] without an emitter-local
+/// algebra×width mirror (INVARIANTS P2/P5 — carrier authority is the DAG + realization rows).
+fn gate60_realized_named_compose_peer(
     dag: &Dag,
+    types: &HashMap<DeclarationId, TypeRealizationBinding>,
     declaration: DeclarationId,
-) -> Option<(DeclarationId, u32)> {
+) -> Option<DeclarationId> {
     let compose = dag.declaration_by_name("Compose")?.id;
     let peeled =
         crate::int_literal_ranges::peel_decl_head_for_integral_float_seed(dag, declaration);
@@ -3316,65 +3321,40 @@ fn gate60_anonymous_compose_algebra_bits(
     if *template != compose || arguments.len() != 2 {
         return None;
     }
-    let int_id = dag.declaration_by_name("Int")?.id;
-    let uint_id = dag.declaration_by_name("UInt")?.id;
-    let real_id = dag.declaration_by_name("Real")?.id;
-
-    let mut algebra: Option<DeclarationId> = None;
-    let mut bits: Option<u32> = None;
-    for arg in arguments {
-        if let Some(b) = crate::int_literal_ranges::gate60_machine_width_bits(dag, arg.value) {
-            bits = Some(b);
+    let mut matches: Vec<DeclarationId> = Vec::new();
+    for decl in dag.declarations() {
+        if decl.id == peeled {
             continue;
         }
-        if arg.value == int_id || arg.value == uint_id || arg.value == real_id {
-            algebra = Some(arg.value);
+        if decl.name.is_none() {
             continue;
         }
-        return None;
-    }
-    Some((algebra?, bits?))
-}
-
-/// Maps `(Int|UInt|Real, width)` to the **substrate** fixed-width alias name declared in
-/// `dsl/std/{integer,float}.dag` (`Int32`, `Real64`, …). Rust spellings (`i32`, `f64`) come
-/// **only** from `TypeRealization.carrier` in `rust.dag` via `RealizationIndexes::types`.
-fn std_fixed_width_alias_name_for_algebra_bits(
-    dag: &Dag,
-    algebra: DeclarationId,
-    bits: u32,
-) -> Option<&'static str> {
-    let int_id = dag.declaration_by_name("Int")?.id;
-    let uint_id = dag.declaration_by_name("UInt")?.id;
-    let real_id = dag.declaration_by_name("Real")?.id;
-    if algebra == int_id {
-        return match bits {
-            8 => Some("Int8"),
-            16 => Some("Int16"),
-            32 => Some("Int32"),
-            64 => Some("Int64"),
-            128 => Some("Int128"),
-            _ => None,
+        if !types.contains_key(&decl.id) {
+            continue;
+        }
+        let TypeConnective::Instantiation {
+            template: other_template,
+            arguments: other_args,
+        } = &decl.connective
+        else {
+            continue;
         };
+        if *other_template != compose || other_args.len() != arguments.len() {
+            continue;
+        }
+        if !other_args
+            .iter()
+            .zip(arguments.iter())
+            .all(|(l, r)| l.parameter == r.parameter && l.value == r.value)
+        {
+            continue;
+        }
+        matches.push(decl.id);
     }
-    if algebra == uint_id {
-        return match bits {
-            8 => Some("UInt8"),
-            16 => Some("UInt16"),
-            32 => Some("UInt32"),
-            64 => Some("UInt64"),
-            128 => Some("UInt128"),
-            _ => None,
-        };
+    match matches.as_slice() {
+        [one] => Some(*one),
+        _ => None,
     }
-    if algebra == real_id {
-        return match bits {
-            32 => Some("Real32"),
-            64 => Some("Real64"),
-            _ => None,
-        };
-    }
-    None
 }
 
 #[allow(dead_code)]
@@ -5680,22 +5660,13 @@ impl<'a> Ctx<'a> {
         if let Some(binding) = self.indexes.types.get(&declaration) {
             return Ok(binding.carrier.clone());
         }
-        if let Some((algebra, bits)) = gate60_anonymous_compose_algebra_bits(self.dag, declaration)
+        if let Some(named_peer) =
+            gate60_realized_named_compose_peer(self.dag, &self.indexes.types, declaration)
         {
-            if let Some(alias) =
-                std_fixed_width_alias_name_for_algebra_bits(self.dag, algebra, bits)
-            {
-                let Some(named) = self.dag.declaration_by_name(alias) else {
-                    return Err(EmitError::MissingTypeRealization {
-                        target: declaration,
-                    });
-                };
-                let named_id = named.id;
-                if let Some(binding) = self.indexes.types.get(&named_id) {
-                    return Ok(binding.carrier.clone());
-                }
-                return Err(EmitError::MissingTypeRealization { target: named_id });
+            if let Some(binding) = self.indexes.types.get(&named_peer) {
+                return Ok(binding.carrier.clone());
             }
+            return Err(EmitError::MissingTypeRealization { target: named_peer });
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
