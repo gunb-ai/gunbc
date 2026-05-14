@@ -5029,18 +5029,24 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        // R3 Cluster M substrate-shape-only migration (brief
-        // r3-cluster-m-generator-manifest-substrate-refinement-worker.md
-        // §2.1 + msg_3b99a90f sum-variant re-amendment): payload carries
-        // `manifest_entries: List<GeneratedManifestEntry>` where each entry
-        // is one of the typed-state sum variants `PendingFact { output_path }`
-        // or `ResolvedFact { output_path, dag_source, source_hash }`. This PR
-        // reads only `output_path` (always present on either arm) for the
-        // existing one-direction set-membership + outside-paths hand-count
-        // semantics. The 3-way byte-equality assertion that consumes
-        // `dag_source` + `source_hash` from `ResolvedFact` arms lands in the
-        // follow-up Evaluator-Mgr-owned runtime PR; this PR accepts both arms
-        // structurally without firing on the resolution data.
+        // R3 Cluster M generator-manifest integration (Gap 5 / Cluster M lane).
+        // **This predicate implements the Gate #84 slice:** exact `manifest_entries`
+        // `output_path` set vs `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS`, plus the
+        // empty `expected_hand_authored_test` census (failure copy cites **#84** only).
+        // **Gate #85** (`Quantified` / quantifier substrate) is a sibling obligation:
+        // shape validation + `NotYetImplemented` posture lives on the `Quantified`
+        // suite arm (~`run_suite` / `validate_quantified_claim_shape`, ~2503–2518),
+        // not inside `GeneratedFromDag`.
+        // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
+        // (`PendingFact { output_path }` | `ResolvedFact { output_path,
+        // dag_source, source_hash }`). Runner-side today: extract `output_path`
+        // from each arm; require the manifest `output_path` set to equal
+        // `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS` exactly (set equality
+        // implies membership; no dupes / omissions — every REGEN survivor is
+        // attached); then require the SG-0 `expected_hand_authored_test` census is empty.
+        // The 3-way byte-equality assertion on `ResolvedFact` lands in the
+        // follow-up Evaluator-Mgr-owned runtime PR; both arms are accepted
+        // structurally here without consuming resolution data.
         let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
                 "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
@@ -5095,12 +5101,22 @@ impl<'a> TestRunner<'a> {
                 }
             }
         }
-        if let Some(path) = named_paths
-            .iter()
-            .find(|path| !generated.contains(path.as_str()))
-        {
+        let manifest_set: BTreeSet<&str> = named_paths.iter().map(|path| path.as_str()).collect();
+        if manifest_set.len() != named_paths.len() {
+            return ClaimResult::Fail(
+                "GeneratedFromDag manifest_entries contains duplicate `output_path` values; each \
+                 `build.rs::REGEN_OUTPUTS` path must appear exactly once"
+                    .to_string(),
+            );
+        }
+        if manifest_set != generated {
+            let only_manifest: Vec<&str> = manifest_set.difference(&generated).copied().collect();
+            let only_authority: Vec<&str> = generated.difference(&manifest_set).copied().collect();
             return ClaimResult::Fail(format!(
-                "GeneratedFromDag manifest_entries output_path `{path}` is not in the generated-file authority"
+                "GeneratedFromDag manifest_entries must enumerate exactly the `build.rs::REGEN_OUTPUTS` \
+                 / `GENERATED_FILES` authority ({} path(s)); only-in-manifest={only_manifest:?}; \
+                 missing-from-manifest={only_authority:?}",
+                generated.len(),
             ));
         }
         let test_count = match sg0_census_list_count("expected_hand_authored_test") {
@@ -5111,7 +5127,10 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside manifest_entries output_paths"
+                "GeneratedFromDag: `expected_hand_authored_test` census is non-empty ({test_count} path(s)); \
+                 Gate #84 negative authority requires an empty hand-authored integration-test ratchet \
+                 at R3 close (positive authority: manifest lists {} REGEN output path(s))",
+                manifest_set.len(),
             ))
         }
     }
