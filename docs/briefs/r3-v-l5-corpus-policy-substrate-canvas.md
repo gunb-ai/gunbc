@@ -19,8 +19,8 @@
 |---|---|---|
 | Single source `.dag` program + stable entry-point identity | ✅ | `TestClaim.source` + `TestClaim.file_name` (single authority — L562) |
 | Required target set | ✅ | `TestClaim.requires: List<ResourceReference>` (L567); L5 rows attach `L5RustcToolchain` / `L5Python3Toolchain` / `L5GoToolchain` |
-| Declared input sample or finite input family | ⚠️ partial | `BehavioralObservation.input_sample: DeclarationRef` exists (L307); `ForAllTargets` carries no input slot (L339). L5 programs today are nullary at the entry point. **Question Q5 below.** |
-| Expected semantic observation / oracle authority | ❌ | No carrier. Today `ForAllTargets` carries only `(command, args, expect_exit_code, ProgramOutputBind)` — the bind names *where* to look, not the *expected normalized value* or oracle. |
+| Declared input sample or finite input family | ⚠️ partial | `BehavioralObservation.input_sample: DeclarationRef` exists (L307); `ForAllTargets` declares `input_ref: DeclarationRef` (L343), but the HEAD L5 fixture uses that slot to point at a `ProgramOutputBind` declaration rather than a typed input family — the input-vs-output role is currently overloaded, not absent. L5 programs are nullary at the entry point today. **Question Q5 below.** |
+| Expected semantic observation / oracle authority | ❌ | No carrier as a declared field on `ForAllTargets` (fields at L339–L344 are `command: String, args: List<String>, expect_exit_code: Int, input_ref: DeclarationRef`). The `ProgramOutputBind` cited in the L331–L334 doc-comment is observed by the runner conceptually but is not a typed field on this variant; the bind names *where* to look, not the *expected normalized value* or oracle. |
 | Effect class | ❌ for L5 rows | `std.effects` already declares `EffectShape` (`src/v3/std/effects.dag:338`) but no row on `TestClaim` / `ForAllTargets` declares it. Reuse-vs-introduce is **Q1 below**. |
 | Numeric policy | ❌ | No carrier; design doc §"Float Policy" + extension-spec §1.1 (`Int` overflow gate) both require it. **Q2 below.** |
 | Coverage reason | ❌ | No carrier. Free-form prose vs structured enum is **Q3 below**. |
