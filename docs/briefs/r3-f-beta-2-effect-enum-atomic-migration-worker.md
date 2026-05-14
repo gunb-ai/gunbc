@@ -16,10 +16,17 @@ the R3 F-beta canvas:
 
 ## P5 Receipt
 
-**Receipt type:** explicit deferral to the existing R3 lane row.
+**Receipt type:** explicit deferral to the existing R3 lane row and the
+ROADMAP-adjacent carve-routing row that moved that lane into R3.
 
-**Lane / row:** `docs/r3-program-plan.md` §1.8 gate #82,
-`effect_enumeration_lens_behaviorally_complete`.
+**Lane / rows:**
+
+- `docs/r3-program-plan.md` §1.8 gate #82,
+  `effect_enumeration_lens_behaviorally_complete`.
+- `docs/r4-carve-out-routing.md` §"C2 —
+  `effect_enumeration_lens_behaviorally_complete`" (dissolved
+  carve-promotion-IN-R3 row), which names Cluster F sub-phases F-beta.1 /
+  F-beta.2 and the locked `services.dag::Operation` carrier target.
 
 **Why this satisfies `INVARIANTS.md` P5 mechanism (b):** the PR expands
 hand-written Rust under `src/v3/` only as a co-located bootstrap bridge for an

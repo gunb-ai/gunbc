@@ -271,31 +271,46 @@ pub enum WorkflowParallelismReport {
 // evaluator-backed dissolution.
 
 pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
-    match callable_method_name(dag, effect.callable.decl) {
-        Some("append_method") if effect.endpoint.method == HttpMethodScalar::Post => {
-            EffectShape::IsBreaking(BreakingShape::AppendEffect)
-        }
-        Some("concat_method") if effect.endpoint.method == HttpMethodScalar::Post => {
-            EffectShape::IsBreaking(BreakingShape::CreateEffect {
-                cause: CreateCause::PostAlways,
-            })
-        }
-        Some(
-            "get_method" | "lookup_method" | "map_get_method" | "has_method" | "map_has_method"
-            | "count_method" | "length_method",
-        ) if method_is_read(effect.endpoint.method) => {
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-        }
-        Some("map_insert_method" | "replace_method" | "with_method")
-            if method_is_upsert(effect.endpoint.method) =>
-        {
-            keyed_upsert_or_keyless_break(effect)
-        }
-        Some("diff_method") if effect.endpoint.method == HttpMethodScalar::Delete => {
-            keyed_delete_or_keyless_break(effect)
-        }
-        _ => transport_effect_shape(effect),
+    let callable = effect.callable.decl;
+    if callable_is(dag, callable, "append_method")
+        && effect.endpoint.method == HttpMethodScalar::Post
+    {
+        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+    } else if callable_is(dag, callable, "concat_method")
+        && effect.endpoint.method == HttpMethodScalar::Post
+    {
+        EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
+        })
+    } else if (callable_is(dag, callable, "get_method")
+        || callable_is(dag, callable, "lookup_method")
+        || callable_is(dag, callable, "map_get_method")
+        || callable_is(dag, callable, "has_method")
+        || callable_is(dag, callable, "map_has_method")
+        || callable_is(dag, callable, "count_method")
+        || callable_is(dag, callable, "length_method"))
+        && method_is_read(effect.endpoint.method)
+    {
+        EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+    } else if (callable_is(dag, callable, "map_insert_method")
+        || callable_is(dag, callable, "replace_method")
+        || callable_is(dag, callable, "with_method"))
+        && method_is_upsert(effect.endpoint.method)
+    {
+        keyed_upsert_or_keyless_break(effect)
+    } else if callable_is(dag, callable, "diff_method")
+        && effect.endpoint.method == HttpMethodScalar::Delete
+    {
+        keyed_delete_or_keyless_break(effect)
+    } else {
+        transport_effect_shape(effect)
     }
+}
+
+fn callable_is(dag: &Dag, callable: DeclarationId, imported_method_name: &str) -> bool {
+    dag.declaration_by_name(imported_method_name)
+        .map(|decl| decl.id == callable)
+        .unwrap_or(false)
 }
 
 fn transport_effect_shape(effect: &Operation) -> EffectShape {
@@ -346,11 +361,6 @@ fn method_is_read(method: HttpMethodScalar) -> bool {
 
 fn method_is_upsert(method: HttpMethodScalar) -> bool {
     matches!(method, HttpMethodScalar::Put | HttpMethodScalar::Patch)
-}
-
-fn callable_method_name(dag: &Dag, callable: DeclarationId) -> Option<&str> {
-    dag.declaration_opt(&callable)
-        .and_then(|decl| decl.name.as_deref())
 }
 
 fn operation_resource_key(effect: &Operation) -> Option<String> {
