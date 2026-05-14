@@ -151,12 +151,29 @@ Operator/PM ratification needed on extension shape at §12 Q-new (added per code
 
 Earlier draft proposed `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>` (disjoint sum). Codex INLINE BLOCKING #3077 line:78 correctly flagged this contradicts §4.1 + §5.3: `PreInferDag` ITSELF carries partial-failure (Unresolved ports with diagnostics in the diagnostic table; the Unresolved state propagates structurally per §5.3). The `Either` framing would make the Unresolved+ResolveError graph either unreturnable (if Left was forced to be fully-Resolved) or untyped at the infer boundary.
 
-**Correct framing: lower returns `PreInferDag` directly**; diagnostics are coupled INTO PreInferDag via the same biconditional pattern as PB-5 infer's InferredDag (per PR #3085 §4.3):
-- `Port.state == Unresolved iff diagnostics.contains(port_id)` (biconditional invariant)
-- LowerDiagnostic variants live in the PreInferDag's diagnostic table indexed by port_id
-- Port-state-Unresolved + diagnostic-table coupling IS the typed-state-with-partial-failure shape
+**Correct framing: lower returns `PreInferDag` directly**; diagnostics couple INTO PreInferDag via **anchor-typed** diagnostic-table NOT port-only biconditional. Per openai-pro REQUEST_CHANGES PR #3077 /api/reviews/12103: earlier draft (`Port.state == Unresolved iff diagnostics.contains(port_id)` for ALL LowerDiagnostic variants) over-constrained the diagnostic substrate to port-keyed — but several LowerDiagnostic variants (`DuplicateDeclaration`, `DuplicateRecordFieldLabel`, `UnsupportedSurfaceForm`) are NOT port facts. Forcing them through port-indexed table either fabricates port anchor or makes them unrepresentable.
 
-Per `feedback_state_space_vs_behavioral_invariants`: the structural coupling makes the diagnostic-port relationship a TYPE INVARIANT at the carrier, not a sum-variant wrapping it. PreInferDag is well-formed even with partial-failure; downstream infer handles `Unresolved` ports per its own fail-closed discipline.
+**Corrected diagnostic-anchor model** (typed at the same level as diagnostic variants):
+
+```
+// Typed diagnostic anchor — closed-axis sum over anchor kinds:
+type DiagnosticAnchor
+  = PortAnchor { port_id: PortId }
+  | DeclarationAnchor { declaration_id: DeclarationId }
+  | RecordFieldAnchor { declaration_id: DeclarationId, field: NonEmptyStr }
+  | SurfaceFormAnchor { form: SurfaceFormRef, span: SourceSpan }
+
+// PreInferDag's diagnostic table is anchored, not port-only:
+//   diagnostics: List<{ anchor: DiagnosticAnchor, diagnostic: LowerDiagnostic }>
+
+// The biconditional applies ONLY to port-anchored diagnostics:
+//   Port.state == Unresolved iff diagnostics.contains(anchor: PortAnchor { port_id })
+// Non-port-anchored diagnostics (DuplicateDeclaration / DuplicateRecordFieldLabel /
+// UnsupportedSurfaceForm) live in the table without port-state coupling — they
+// reference Declaration or RecordField or SurfaceForm directly.
+```
+
+Per `feedback_state_space_vs_behavioral_invariants`: the typed DiagnosticAnchor makes the diagnostic-anchoring relationship a typed structural fact at the carrier, not collapsed-to-port-only. PreInferDag is well-formed with partial-failure across multiple anchor kinds; downstream infer handles `Unresolved` PORTS per its own fail-closed discipline; other anchor kinds remain in the diagnostic table for emit + verification consumers.
 
 **Cross-stage consistency**: same pattern as PB-5 infer's `InferredDag` per PR #3085 §4.3 — output IS the typed-state carrier with partial-failure coupled in; NO separate `Result` sum-variant wrapping. PB-6 emit's `EmissionResult = Either<TargetSource, EmissionDiagnostic>` is DIFFERENT because emit produces target-language source bytes (a different output domain) where partial-source-with-error is not a valid intermediate.
 
@@ -245,7 +262,7 @@ lower is structural-only; it produces target-agnostic `PreInferDag`. Shape A vs 
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-lower-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn lower(surface: SurfaceModule, elaboration: ElaborationSpec) -> PreInferDag` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current `lower.rs`). The signature uses `PreInferDag` directly (NOT a Result sum-variant); diagnostics are coupled INTO PreInferDag via `state == Unresolved iff diagnostics.contains(port_id)` biconditional per §4.3 (same pattern as PB-5 infer's InferredDag per PR #3085 §4.3). Modeling Practice 6 API-level enforcement at the PreInferDag carrier constructor. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn lower(surface: SurfaceModule, elaboration: ElaborationSpec) -> PreInferDag` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current `lower.rs`). The signature uses `PreInferDag` directly (NOT a Result sum-variant); diagnostics couple INTO PreInferDag via **anchor-typed** diagnostic table per §4.3 (NOT port-only biconditional — anchors include PortAnchor / DeclarationAnchor / RecordFieldAnchor / SurfaceFormAnchor; biconditional applies only to PortAnchor). Modeling Practice 6 API-level enforcement at the PreInferDag carrier constructor. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
 | **Step 3: Implementation** | `src/v3/std/lower.dag` (the .dag implementation of lower; fill the function body using ElaborationSpec rules) + `src/v3/std/elaboration_spec.dag` (NEW substrate carrier for the rules) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/lower.dag + src/v3/std/elaboration_spec.dag (NEW substrate authorities) |
 | **Step 4: Parity test + simultaneous Rust deletion** | Parity verification authored as `.dag` TestClaim — generated test fixture set + `.dag` TestClaim asserting `lower_via_rust(surface) == lower_via_dag(surface, elaboration_spec)` structural-equality across canonical corpus (Dag comparison up to NodeId renaming). **P5 dissolution receipt**: this TestClaim is transient-by-construction; dissolves when lower.rs deletes in same PR. Any hand-Rust scaffolding for stage0 lower invocation routing bears P5 receipt `parity_lower_dag_vs_rust_scaffolding — transient; dissolves with lower.rs deletion in same PR per Step 4 atomic discipline`. `lower.rs` + (any per-pass sibling files like `lower_pass1.rs` if extant) DELETED in same PR. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries at PR-merge. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | tests/parity_lower_dag_vs_rust (TestClaim shape, not hand-Rust .rs file) + `lower.rs` deletion |
 
