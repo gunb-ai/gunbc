@@ -111,7 +111,7 @@ plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumerat
 self_host_fixed_point && diff -q <stage0_binary> <emitted_binary>
 # returns: byte-identical
 ```
-All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close** (Director note msg_f0a54769 Note 1 enforcement: predicate authority is the R2-closure-ledger, NOT §1.8 — sub-lane names live at `docs/r2-closure-ledger.md:250-263`, do NOT map 1:1 to §1.8 row IDs; PM-recommended path (α): use sub-lane names as predicate authority rather than introduce 5 new §1.8 rows for already-named ledger content per `feedback_parallel_representation_debt`): all 5 R2-closure-ledger Evaluator sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md:250-263` —
+All 4 precondition gates PASSING + actual self-host invocation producing bit-identical output. **R2-Evaluator joint precondition close** (Director note msg_f0a54769 Note 1 enforcement: predicate authority is the R2-closure-ledger, NOT §1.8 — sub-lane names live at `docs/r2-closure-ledger.md` §"Evaluator Manager — T-Evaluator", do NOT map 1:1 to §1.8 row IDs; PM-recommended path (α): use sub-lane names as predicate authority rather than introduce 5 new §1.8 rows for already-named ledger content per `feedback_parallel_representation_debt`): all 5 R2-closure-ledger Evaluator sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md` §"Evaluator Manager — T-Evaluator" —
 - `runtime_value_model_structural` = green
 - `body_evaluator_structural` = green
 - `lens_application_complete_reflection` = green
