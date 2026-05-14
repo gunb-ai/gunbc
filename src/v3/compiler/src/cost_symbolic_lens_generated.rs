@@ -355,3 +355,69 @@ pub fn lookup_cost(p0: &[SymbolicCostEntry], p1: &PortId) -> Lookup<SymbolicCost
         }
     }
 }
+pub fn witness_from_symbolic_cost_lookup(
+    p0: &Lookup<SymbolicCost>,
+    p1: Behavior,
+) -> Witness<SymbolicCost> {
+    match p0 {
+        Lookup::Hit(c) => Witness::Inhabits((c).clone()),
+        Lookup::Miss => Witness::Violates {
+            reason: String::from("symbolic_cost_of: missing SymbolicCost for behavior result port"),
+            at: (p1).clone(),
+        },
+    }
+}
+pub fn cost_lens_read(p0: &Dag, p1: Behavior) -> Witness<SymbolicCost> {
+    witness_from_symbolic_cost_lookup(
+        &(symbolic_cost_of(p0, &(behavior_result_port(&p1)))),
+        (p1).clone(),
+    )
+}
+pub fn cost_lens_sequential_op(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
+    sequential((p0).clone(), (p1).clone())
+}
+pub fn cost_lens_branch_op(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
+    dominant((p0).clone(), (p1).clone())
+}
+pub fn cost_lens_iterate_op(p0: SymbolicCost, p1: &LoopBound) -> SymbolicCost {
+    match p1 {
+        LoopBound::Cardinality { count: payload } => iterate(
+            SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: *payload,
+                    display_name: None,
+                },
+            },
+            (p0).clone(),
+        ),
+        LoopBound::Descent {
+            cluster: __payload_cluster,
+            measure: __payload_measure,
+        } => iterate(
+            SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: *__payload_measure,
+                    display_name: None,
+                },
+            },
+            (p0).clone(),
+        ),
+    }
+}
+pub fn cost_lens_validate(p0: &Dag, p1: &SymbolicCost) -> OptionalDiagnostic {
+    OptionalDiagnostic::NoDiagnostic
+}
+pub fn cost_enforcement_project(p0: SymbolicCost) -> SymbolicCost {
+    p0
+}
+pub fn cost_enforcement_violates(p0: SymbolicCost, p1: SymbolicCost) -> bool {
+    if dominates(&p0, (p1).clone()) {
+        if dominates(&p1, (p0).clone()) {
+            (0 == 1)
+        } else {
+            (0 == 0)
+        }
+    } else {
+        (0 == 1)
+    }
+}

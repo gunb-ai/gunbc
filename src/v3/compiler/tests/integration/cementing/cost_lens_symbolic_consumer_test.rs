@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! Band-C cementing for the generated `symbolic_cost_of` consumer in
-//! `src/v3/lenses/cost.dag` (`regen_lens` → `lens_cost_symbolic_generated.rs`).
+//! `src/v3/lenses/cost.dag` (`regen_lens` → `cost_symbolic_lens_generated.rs`).
 //!
 //! Residual gate #78 Rust receipt for the generated symbolic-cost consumer.
 //! Gate #80 Band-C cementing for `cost_symbolic` now lives in
