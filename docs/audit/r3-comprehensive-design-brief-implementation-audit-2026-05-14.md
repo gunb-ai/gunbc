@@ -71,7 +71,7 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 **Brief dispatch breakdown**: `docs/briefs/r3-pb0-non-test-retirement-worker.md` + cycle-1/cycle-2/cycle-3/cycle-3-REDO/cycle-4/cycle-5/cycle-6 all routed "5-10 distinct census paths per merged PR" with retirement-source-priority by leverage. ZERO citation of SELF_HOSTING.md §2 4-step or PB-X lanes.
 
-**Implementation impact**: 5 PRs (#3046, #3047, #3048, #3057, #3056, #3058) — cycles 2/3/4/5/6 — routed via wrong framework. Director cross-check 2026-05-14 03:50Z revealed cycle-4 PR #3048 + cycle-5 PR #3057 used template-relocation paper-shrink: `tools/pb0_cycle4_emit_templates/infer.rs.in` content-identical to `src/v3/compiler/src/infer.rs` minus 5-line AUTO-GENERATED header. All 4 §2.2 steps violated.
+**Implementation impact**: 6 PRs (#3046, #3047, #3048, #3057, #3056, #3058) — cycles 2/3/3-REDO/4/5/6 — routed via wrong framework. Director cross-check 2026-05-14 03:50Z revealed cycle-4 PR #3048 + cycle-5 PR #3057 used template-relocation paper-shrink: `tools/pb0_cycle4_emit_templates/infer.rs.in` content-identical to `src/v3/compiler/src/infer.rs` minus 5-line AUTO-GENERATED header. All 4 §2.2 steps violated.
 
 **Cumulative real cashed at HEAD**: ~0 (NOT -10 as prior PM synthesis claimed). Revert restoration of PRs #3046/#3048/#3057 in flight via zesty-boar-261.
 
@@ -87,13 +87,11 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 **Design authority**: `docs/briefs/r2-evaluator-manager.md` + 4 sub-briefs (`runtime_value_model_structural` / `body_evaluator_structural` / `lens_application_complete_reflection` / `witness_construction_structural` / `cross_target_equivalence_harness_structural`) + Director audit `audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md`.
 
-**Brief dispatch breakdown**: merry-gull-128 unified Mgr lane NEVER FORMED at HEAD. Sub-briefs authored at R2-close 2026-04-29 but no R3 Mgr session re-spawned for them. Authority dispersed across 3 R3 Mgrs (warm-wolf-698 / zesty-boar-261 / still-moth-538) organically without single owner.
+**Historical brief dispatch breakdown**: merry-gull-128 unified Mgr lane NEVER FORMED at HEAD pre-2026-05-13. Sub-briefs authored at R2-close 2026-04-29 but no R3 Mgr session re-spawned for them. Authority dispersed across 3 R3 Mgrs (warm-wolf-698 / zesty-boar-261 / still-moth-538) organically without single owner. PRs #1813/#1857/#2152/#2190/#2257/#2658/#2812/#2681/#2825/#2826/#2827/#2941 merged with PARTIAL coverage but did NOT discharge the 5 sub-lane closure-ledger; rows STALE @ #1191-#1231 era at the time of dispersal.
 
-**Implementation impact**: PRs #1813/#1857/#2152/#2190/#2257/#2658/#2812/#2681/#2825/#2826/#2827/#2941 merged with PARTIAL coverage but did NOT discharge the 5 sub-lane closure-ledger. Closure-ledger rows STALE @ #1191-#1231 era (not refreshed against HEAD which is #3013+).
+**Status at HEAD (post-2026-05-13 cascade)**: jolly-ram-652 R3 Evaluator Mgr re-spawn cycle landed substantive ledger refresh via PR #3053 — 3-of-5 GREEN at HEAD post-PR #3040 + PR #3050 cascade (`runtime_value_model_structural` + `body_evaluator_structural` + `cross_target_equivalence_harness_structural`); 2-of-5 IN-FLIGHT (`lens_application_complete_reflection` + `witness_construction_structural`). jolly-ram-652 archived post-PR-#3053-merge per leaf-shape Mgr lifecycle.
 
-**Status at HEAD**: per Director audit msg_82b9c4bb 2026-05-13 + jolly-ram-652 PR #3053 ledger refresh — 3-of-5 GREEN at HEAD post-PR #3040 + PR #3050 cascade (`runtime_value_model_structural` + `body_evaluator_structural` + `cross_target_equivalence_harness_structural`); 2-of-5 IN-FLIGHT (`lens_application_complete_reflection` + `witness_construction_structural`).
-
-**Operator §4 Item 5 staffing decision**: pending; blocks Gap 3 close.
+**Operator §4 Item 5 staffing decision — RATIFIED 2026-05-14**: α option chosen (expanded R3 Substrate Mgr scope; warm-wolf-698 absorbs all 8 PB-X lanes + R2-Evaluator residuals as sub-programs). R2-Evaluator authority RESOLVED — staffing is no longer pending. Remaining 2 sub-lane closures execute under warm-wolf-698 expanded scope post-deployment-trigger (PR #3041 backend redeploy of `--shape` flag enables persistent composite-shape Mgr work-node operations).
 
 ### §2.3 Gap 9 substrate-shape canvas unratified
 
@@ -166,10 +164,12 @@ Land this doc as substrate for the corrective sweep. Operator-visibility-priorit
 
 Reclassify (b)-class pipeline-stage entries (emit.rs / lower.rs / infer.rs / dag.rs / bootstrap.rs / parse-tables) with explicit PB-X lane prereq + L2.5 substrate authority citation (NOT generic "§1.1 bootstrap/regen cluster"). §1.1 bootstrap/regen cluster ALSO gets cleaned per PB-X mapping.
 
-### §4.5 Phase 2.4 — R2-Evaluator authority alignment (#2)
+### §4.5 Phase 2.4 — R2-Evaluator execution under ratified owner (#2)
 
-- Close plan Gap 3 amendment: re-anchor on jolly-ram-652 PR #3053 ledger refresh as authority (3-of-5 GREEN at HEAD); remaining 2 sub-lanes (`lens_application_complete_reflection` + `witness_construction_structural`) routed through warm-wolf-698 expanded scope post deployment-trigger.
-- §1.8 sub-lane gate row insertions (5 R2-Evaluator sub-lane rows per `docs/r2-closure-ledger.md` cell-level authority — per `feedback_parallel_representation_debt` discipline, gates reference closure-ledger sub-lane names, NOT introduce parallel substrate).
+Per operator §4 Item 5 α-ratification 2026-05-14 (R2-Evaluator authority RESOLVED via expanded warm-wolf-698 scope), this phase is execution-focused, NOT authority-alignment:
+
+- **Close plan Gap 3 amendment**: update §1 Gap 3 narration to reflect ratified ownership (warm-wolf-698 expanded scope; remaining 2 sub-lanes `lens_application_complete_reflection` + `witness_construction_structural`). Replace stale "pending §4 Item 5 staffing" language with "ratified α 2026-05-14."
+- **§1.8 reference (NOT row duplication)**: per `feedback_parallel_representation_debt` discipline + codex BLOCKING 2026-05-14 on this audit doc, `docs/r2-closure-ledger.md:250-263` IS the predicate authority for the 5 R2-Evaluator sub-lanes. §1.8 should REFERENCE the ledger-cell authority (single cross-reference clause on the existing R2-Evaluator close gate row, e.g., gate #16 self-host fixed-point R2-Evaluator joint precondition), NOT introduce 5 new parallel gate rows. Predicate authority stays single-source at the closure-ledger cell content.
 
 ### §4.6 Phase 2.5 — Gap 9 canvas ratification path (#3)
 
