@@ -64,9 +64,10 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     `bridge_lower_helpers_patch_zero_residual_test.rs`.
 //   - `bridge_exact_string_semantic_patching_residual` — Open. Row-4
 //     semantic exact-string patching outside the retired lower-helper
-//     slice (historical bootstrap `Bool` inhabits **post-parse** patch class
-//     now retires at `lower_type_sum` time; remaining classes include BR-06
-//     sentinel splice, infer-helper-driven rewrite classes per
+//     slice (kernel `Bool` → `BooleanAlgebra<Bool>` no longer uses a
+//     post-parse bootstrap patch — see `lower.rs::wire_kernel_bool_boolean_algebra_inhabits`;
+//     other Row-4 classes remain, e.g. BR-06 sentinel splice,
+//     infer-helper-driven rewrite classes per
 //     `docs/briefs/r3-v-bridge-row-4-exact-string-deeper-detail-receipt.md`).
 
 // 🟢 TERMINAL. Closed retirement-state coproduct for ledger rows. Two

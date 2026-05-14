@@ -74,7 +74,7 @@
 // `bootstrap_regen_fresh.rs` (feature `bootstrap-regen-fresh`); do not duplicate
 // pipeline materialization there without relocating or rewriting these unit tests.
 
-use crate::dag::{ArrowBody, Dag, Declaration, TypeConnective};
+use crate::dag::{ArrowBody, Dag, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::pipeline_authority::ordered_pipeline_stages;
 
