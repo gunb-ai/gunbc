@@ -32,7 +32,8 @@ This file operationalizes the §5.2 brief-dispatch authority-gate discipline (co
 | **2.4** | Gap 3 R2-Evaluator amendment + §1.8 single-reference to r2-closure-ledger | Operator §4 Item 5 α-ratification 2026-05-14 (warm-wolf-698 expanded scope) + `docs/r2-closure-ledger.md:250-263` (5 sub-lane single-source authority) + `feedback_parallel_representation_debt` | PM (deep-wolf-155) | 2.0 (audit substrate) | 2.2 (establishes pattern for §1.8 references) | Gap 3 framing updated to ratified state (warm-wolf-698 expanded scope, NOT "pending §4 Item 5 staffing"); §1.8 references `docs/r2-closure-ledger.md:250-263` via single cross-reference on existing gate #16 row (NOT 5 parallel gate rows) | **QUEUED** |
 | **2.5** | Gap 9 substrate-shape canvas authoring | Close plan Gap 9 §4 (line 301-346) + operator §4 Item 4 IN-R3 ratification 2026-05-13 (100% absolute LiveCorrection variant) | PM (deep-wolf-155) canvas authoring; Director (zesty-bear-812) + warm-wolf-698 (Substrate Mgr) ratification | 2.0 (audit substrate) | show-correct-code worker brief dispatch (currently stalled awaiting canvas; routes through still-moth-538/tidy-ram-467 Verification Mgr post-ratification) | Sum-variant `Correction { LiveCorrection \| DeferredCorrection }` substrate carrier canvas authored + ratified by Director + Substrate Mgr; show-correct-code worker brief dispatch unblocked | **QUEUED** |
 | **2.6** | Cluster F Phase 2 canvas coordination with warm-wolf-698 | `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` (Task 12 amendment via PR #2364) + `docs/design-f-beta-1-effect-enum-migration-shape-canvas-2026-05-12.md` (F-β.1 canvas) | warm-wolf-698 (R3 Substrate Mgr; owns Cluster F lane); PM (deep-wolf-155) coordination | 2.0 (audit substrate) | F-α walker port worker dispatch; F-β.2 atomic migration worker (quiet-seal-699 PR #3016 already in flight) | F-β.1 canvas Substrate-Mgr-ratified; F-α walker port worker dispatch ready; F-β.2 (quiet-seal-699 PR #3016) coordinated with F-β.1 canvas authority | **QUEUED** (partial overlap with active quiet-seal-699 work) |
-| **2.7** | §5.2 brief-dispatch authority-gate discipline — ROOT-CAUSE FIX | `src/v3/SELF_HOSTING.md` §2 + `INVARIANTS.md` P5 + audit doc §3 systemic pattern findings (4 sub-patterns: brief citations / Mgr lane sync / canvas-first sequencing / audit reactivity) | PM (deep-wolf-155) | 2.0 (audit doc establishes systemic pattern) + 2.1-2.6 (evidence-base for the discipline) | ALL future dispatches gated by §5.2 (permanent close-plan addition + PR-template enforcement) | §5.2 added to close plan with mandatory pre-dispatch: (a) design-doc authority citation; (b) Mgr lane ownership confirmation; (c) canvas-ratification status. Reviewer-grep enforcement at PR-template tier. Cross-references this dispatch-plan doc as exemplar | **QUEUED** |
+| **2.7** | §5.2 brief-dispatch authority-gate discipline — ROOT-CAUSE FIX | `src/v3/SELF_HOSTING.md` §2 + `INVARIANTS.md` P5 + audit doc §3 systemic pattern findings (4 sub-patterns: brief citations / Mgr lane sync / canvas-first sequencing / audit reactivity) | PM (deep-wolf-155) | 2.0 (audit doc establishes systemic pattern) + 2.1-2.8 (evidence-base for the discipline) | ALL future dispatches gated by §5.2 (permanent close-plan addition + PR-template enforcement) | §5.2 added to close plan with mandatory pre-dispatch: (a) design-doc authority citation; (b) Mgr lane ownership confirmation; (c) canvas-ratification status. Reviewer-grep enforcement at PR-template tier. Cross-references this dispatch-plan doc as exemplar | **QUEUED** |
+| **2.8** | Cluster M Phase 3 per-test design enumeration (pre-dispatch) | `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` + `docs/briefs/r3-v-cluster-m-84-bulkport-coordinator.md` §2 (extends pre-dispatch enumeration shape vs "mid-flight" finalization) + `docs/design-tests-as-data-completeness.md` §3 + §6 + operator discipline 2026-05-14 ("no worker starts without design ready") | tidy-ram-467 (current R3 Verification Mgr; successor of clever-tern-670 Cluster M Coordinator role per Director ratification gunbc#846 #issuecomment-4412309986) | 2.0 (audit substrate; gap surfaced in §9.2) | Cluster M Phase 3 worker dispatch (currently BLOCKED on this landing per §9 gap audit) | All 122 `EXPECTED_HAND_AUTHORED_TEST` entries have per-test inventory + pilot/bulk split + class-mapping authored as static pre-dispatch artifact (NOT mid-flight finalization); 6 class worker briefs (cementing-test / reflected-Dag / generic-DimReport / boundary / R1C-D-E / L4-L7-L5) updated to consume the per-test inventory pre-dispatch | **QUEUED** (gap surfaced in §9.2; new phase per operator discipline 2026-05-14) |
 
 ## §2. Dependency graph (Mermaid)
 
@@ -60,6 +61,10 @@ graph TD
     P26[2.6 F-β.1 canvas ratify coord]
   end
 
+  subgraph "Phase 2.8 — Cluster M per-test design (Mgr-tier)"
+    P28[2.8 Per-test inventory pre-dispatch<br/>122 TEST entries]
+  end
+
   subgraph "Phase 2.7 — Root-cause systemic fix"
     P27[2.7 §5.2 brief-dispatch authority-gate]
   end
@@ -70,6 +75,7 @@ graph TD
   P20 --> P25
   P20 --> P26
   P20 --> P27
+  P20 --> P28
 
   %% Internal Phase chain
   P21 --> P22
@@ -77,19 +83,20 @@ graph TD
   P22 --> P23
   P24 --> P22
 
-  %% 2.7 depends on evidence base from 2.1-2.6
+  %% 2.7 depends on evidence base from 2.1-2.6 + 2.8
   P21 -.evidence.-> P27
   P22 -.evidence.-> P27
   P23 -.evidence.-> P27
   P24 -.evidence.-> P27
   P25 -.evidence.-> P27
   P26 -.evidence.-> P27
+  P28 -.evidence.-> P27
 
   %% Status coloring
   classDef active fill:#fff3cd,stroke:#856404
   classDef queued fill:#d1ecf1,stroke:#0c5460
   class P20 active
-  class P21,P22,P23,P24,P25,P26,P27 queued
+  class P21,P22,P23,P24,P25,P26,P27,P28 queued
 ```
 
 ## §3. Critical-path notes
@@ -137,7 +144,8 @@ This is the discipline §5.2 will codify. By applying it to Phase 2 itself, we v
 5. **Fifth (Phase 2.5)**: Gap 9 canvas authoring (parallel-eligible)
 6. **Sixth (Phase 2.3)**: Track A reclassification (after 2.1 + 2.2)
 7. **Seventh (Phase 2.6)**: Cluster F Phase 2 coord (parallel-eligible)
-8. **Eighth (Phase 2.7)**: §5.2 process discipline (synthesis; last)
+8. **Eighth (Phase 2.8)**: Cluster M Phase 3 per-test design enumeration (parallel-eligible; blocks Cluster M Phase 3 worker dispatch downstream)
+9. **Ninth (Phase 2.7)**: §5.2 process discipline (synthesis; last; consumes evidence from 2.1-2.8)
 
 Director-tier ratify + admin-merge per operator broad-authorization on each PR open.
 
@@ -280,6 +288,18 @@ dashboard-message send --to warm-wolf-698 --body "Phase 2.6 per dispatch plan §
 dashboard-message send --to zesty-bear-812 --body "Phase 2.6 Cluster F coord routed to warm-wolf-698; no PM-authored PR for this phase — Substrate Mgr canvas-ratification action."
 ```
 
+### Phase 2.8 — Cluster M Phase 3 per-test design enumeration [QUEUED, Mgr-tier]
+
+NOT PM-direct PR authoring — this is a Mgr-tier deliverable. PM routes via dashboard-message to current R3 Verification Mgr (tidy-ram-467 or successor) who owns the Cluster M Coordinator role.
+
+```bash
+# Surface to tidy-ram-467 (R3 Verification Mgr; Cluster M Phase 3 Coordinator scope):
+dashboard-message send --to tidy-ram-467 --body "Phase 2.8 per dispatch plan §1: Cluster M Phase 3 per-test design enumeration. Operator discipline 2026-05-14 ('no worker starts without design ready') makes the existing Coordinator framework's 'mid-flight finalization' pattern non-compliant. Need static pre-dispatch per-test inventory + pilot/bulk split for all 122 EXPECTED_HAND_AUTHORED_TEST entries before Phase 3 worker dispatch fires. Update r3-v-cluster-m-84-bulkport-coordinator.md §2 to land per-test inventory pre-dispatch, NOT mid-flight. 6 class worker briefs (cementing-test / reflected-Dag / generic-DimReport / boundary / R1C-D-E / L4-L7-L5) updated to consume the static inventory."
+
+# Surface to Director for visibility + ratification of Phase 2.8 scope-expansion:
+dashboard-message send --to zesty-bear-812 --body "Phase 2.8 added to dispatch plan per operator discipline 2026-05-14 gap audit (§9.2). Routed to tidy-ram-467 as Cluster M Coordinator. Director-tier ratification of scope-expansion when convenient."
+```
+
 ### Phase 2.7 — §5.2 brief-dispatch authority-gate discipline (root-cause systemic fix) [QUEUED, synthesis-last]
 
 PM-direct authoring; depends on 2.1-2.6 evidence base.
@@ -330,6 +350,7 @@ Each `P2X` node in §2 Mermaid graph maps to the corresponding "Phase 2.X" comma
 - **P25** ↔ Phase 2.5 commands
 - **P26** ↔ Phase 2.6 commands (Mgr-coord only; NO PR)
 - **P27** ↔ Phase 2.7 commands
+- **P28** ↔ Phase 2.8 commands (Mgr-tier dispatch via dashboard-message + work-item routing)
 
 ## §9. Design-coverage gap audit — per-entry readiness for dispatch
 
