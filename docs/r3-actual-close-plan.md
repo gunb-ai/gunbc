@@ -100,7 +100,7 @@ plus §1.8 row #15 status flips CONSUMER_LANDED → PASSING with corpus enumerat
 - **Owner** (revised Phase 2.4 per operator §4 Item 5 α-ratification 2026-05-14 — bundles R2-Evaluator residuals into warm-wolf-698 expanded scope alongside 8 PB-X lanes per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`): **warm-wolf-698** (R3 Substrate Mgr; expanded scope absorbs R2-Evaluator residuals as sub-programs). PM tracks; Director coordinates substantive cross-Mgr issues. Note: R3 Evaluator Mgr lane (jolly-ram-652) went through one full re-spawn cycle and archived post-PR-#3053-merge per leaf-shape Mgr lifecycle (`feedback_leaf_shape_mgr_one_pr_then_archive`); 5-sub-lane substantive ledger refresh landed via that cycle. Remaining work executes under warm-wolf-698 expanded scope post-deployment-trigger of PR #3041 --shape flag (composite-shape work-node enables persistent Mgr execution).
 - **Sub-program**: each precondition has its own program; this gap is meta-blocked
   - **R2-Evaluator**: 5 sub-lanes per Director audit msg_82b9c4bb (`runtime_value_model_structural` + `body_evaluator_structural` + `lens_application_complete_reflection` + `witness_construction_structural` + `cross_target_equivalence_harness_structural`); brief surface comprehensive per Director (c) (r2-evaluator-manager.md + 4 sub-briefs + 10+ PR-A-E + R3-tier per-slice briefs). Q-EVAL ratifications landed 2026-05-06/07. **Closure-ledger refresh via jolly-ram-652 PR #3053 merged 2026-05-14 UTC** — 3-of-5 sub-lanes GREEN at HEAD post-PR-#3040 + PR-#3050 cascade; 2-of-5 IN-FLIGHT (`lens_application_complete_reflection` + `witness_construction_structural`). Remaining 2 sub-lane closures route through warm-wolf-698 expanded scope.
-  - **R2-Grounding-Rust+Python**: gate #18 + extdeps work. Per Gap 13 expanded framing: 11 T-Ground sub-lanes per `docs/r2-closure-ledger.md:108-122`.
+  - **R2-Grounding-Rust+Python**: gate #18 + extdeps work. Per Gap 13 expanded framing: 11 T-Ground sub-lanes per `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground".
   - **T-LP/SG-0**: same as Gap 1 (routes through PB-X lanes per Phase 2.1 PB-X discipline)
   - **Row-B materialization**: T-LBP work
 - **Effort estimate**: 2-4 months (joint precondition; bounded by the longest of 4). R2-Evaluator residual closure narrows from 5 → 2 in-flight sub-lanes per 2026-05-14 UTC ledger refresh; remaining 2 closures execute under warm-wolf-698 expanded scope per α-ratification.
@@ -508,7 +508,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **HEAD evidence** (operator adversarial probe 2026-05-13 follow-on; revised per Director audit msg_8ae92369 2026-05-13 — **PM originally cited 5 T-Ground sub-lanes; actual ledger count is 11** per `docs/r2-closure-ledger.md:108` + `docs/briefs/r2-grounding-manager.md:168` "now 11 lanes; engine-reframe locked 2026-04-28"; close criterion + dispatch shape recalibrated against the correct surface):
 
-- **`docs/design-emission-model.md`** explicitly retracts the v2 coercion-engine framing and ratifies the no-engine discipline. The R2-T-Ground sub-lane structure (per `docs/r2-closure-ledger.md:108-122` ratified 2026-04-28 engine-reframe) is **11 sub-lanes**, not the 5 PM originally enumerated:
+- **`docs/design-emission-model.md`** explicitly retracts the v2 coercion-engine framing and ratifies the no-engine discipline. The R2-T-Ground sub-lane structure (per `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground" ratified 2026-04-28 engine-reframe) is **11 sub-lanes**, not the 5 PM originally enumerated:
 
   **GREEN at HEAD (1 of 11)** per Director audit:
   - `T-Ground-Pilot` → `pilot_inhabitance_routing_stability_landed` (PR #765 merged 2026-04-25)
@@ -565,7 +565,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Close criterion** (substrate-debt-shaped only — per Director audit msg_8ae92369 Note 2 enforcement (carried forward from msg_f0a54769): staffing/dispatch shape is a PRECONDITION for execution, not a close criterion for the substrate-debt itself; moved to "Dispatch staffing prereq" below):
 
-- (a) All 11 R2-T-Ground sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md:108-122` (refreshed from #1168-#1241 era to HEAD per Note 1 α-path) —
+- (a) All 11 R2-T-Ground sub-lanes status=green at HEAD per cell-level check of `docs/r2-closure-ledger.md` §"Grounding Manager — T-Ground" (refreshed from #1168-#1241 era to HEAD per Note 1 α-path) —
   - `pilot_inhabitance_routing_stability_landed` = green
   - `rust_target_primitives_structural` = green
   - `python_target_primitives_structural` = green
