@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+SG-0 pairing: (b) P5 checkable receipt for gate #82 Band-C cementing: this PR adds one temporary hand-authored Rust receipt (`src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs`) while the gate #82 carrier assertions are not yet expressible as `.dag` `TestClaim` data. The dissolution/budget trail is documented in PR #3120 and the updated §1.8 row #82. Director-budget URL:
+https://github.com/gunb-ai/gunbc/pull/3120
