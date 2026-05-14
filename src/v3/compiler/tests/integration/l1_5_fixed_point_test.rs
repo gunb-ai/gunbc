@@ -11,6 +11,7 @@ use v3_compiler::{
 
 /// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
 const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
+// Split these sentinel strings so the ratchet does not match its own source.
 const FORBIDDEN_PIPELINE_DAG_MACRO: &str = concat!("include", "_str!");
 const FORBIDDEN_PIPELINE_DAG_PATH: &str = concat!("pipeline", ".dag");
 
