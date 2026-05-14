@@ -36,7 +36,8 @@ use crate::dag::{
     TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
-    declaration_display_name, witness_correction_for_decl, Correction, Diagnostic, SourceSpan,
+    declaration_display_name, witness_correction_for_decl, BootstrapAuthorityKey, Correction,
+    Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
@@ -3436,6 +3437,78 @@ fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str)
     );
 }
 
+/// Lane 1e-2b Path A — wire kernel `Bool` to `BooleanAlgebra<Bool>`.
+///
+/// `dsl/std/types.dag` stays on plain `type Bool = True | False` for the v2
+/// fixture parse path; this helper mirrors what an explicit `inhabits` field
+/// on [`SurfaceItem::TypeSum`] would lower to (see [`lower_type_sum`]'s
+/// `inhabits:` arm). Invoked only for the authoritative kernel sum in
+/// [`BootstrapAuthorityKey::for_kernel_bool`].
+pub(crate) fn wire_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag, bool_id: DeclarationId) {
+    let bool_authority = BootstrapAuthorityKey::for_kernel_bool();
+    let bool_decl = dag.declaration(bool_id);
+    let span_for_inst = bool_decl.span.clone();
+    if bool_decl.inhabits.is_some() {
+        return;
+    }
+    let (ba_template, param_id) = {
+        let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
+            dag.attach_bootstrap_diagnostic(
+                bool_authority,
+                Diagnostic::ResolveError {
+                    name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
+                           bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
+                        .to_string(),
+                    span: span_for_inst.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "BootstrapDiagnostic",
+                    ),
+                },
+            );
+            return;
+        };
+        let Some(&param_id) = ba.type_params.first() else {
+            dag.attach_bootstrap_diagnostic(
+                bool_authority,
+                Diagnostic::ResolveError {
+                    name:
+                        "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
+                           cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
+                            .to_string(),
+                    span: span_for_inst.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "BootstrapDiagnostic",
+                    ),
+                },
+            );
+            return;
+        };
+        (ba.id, param_id)
+    };
+    let inst_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: inst_id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: ba_template,
+            arguments: vec![TemplateArgument {
+                parameter: param_id,
+                value: bool_id,
+            }],
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span_for_inst,
+    });
+    dag.declaration_mut(bool_id).inhabits = Some(inst_id);
+}
+
 fn lower_type_sum(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -3512,6 +3585,15 @@ fn lower_type_sum(
     if let Some(inh_ty) = inhabits {
         let inh_id = type_to_declaration_id(inh_ty, symbols, &local, dag);
         dag.declaration_mut(decl_id).inhabits = Some(inh_id);
+    } else if name == "Bool"
+        && variants.len() == 2
+        && variants.iter().any(|v| v.name == "True")
+        && variants.iter().any(|v| v.name == "False")
+        && dag.declaration(decl_id).span.file == BootstrapAuthorityKey::for_kernel_bool().path()
+    {
+        // v2 `dsl/std/types.dag` parse path has no `inhabits` token sequence for kernel
+        // `Bool`; wire at lower time instead of a post-parse patch sweep.
+        wire_kernel_bool_boolean_algebra_inhabits(dag, decl_id);
     }
 }
 
