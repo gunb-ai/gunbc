@@ -2,14 +2,14 @@
 
 **Authority:** R3 Debt-Paydown Mgr (`zesty-boar-261`) — Director dispatch **msg_84abadad-35fd-4c92-8db3-0e7737adfa4f** (operator-ratified); **scope correction** **msg_dda96d21-b937-448c-a72d-f7c8a44b691c** (PM awk-range verification **msg_bda6867a**).
 **Procedure:** `docs/audit/r3-sg0-trajectory-tracker.md` §2 (`awk` window on `sg0_census_test.rs`).
-**Snapshot:** `gunbc` @ `2b7241362` (`2b7241362a7f`).
+**Snapshot:** post–**PR #3046** (`main` @ merge **2026-05-14**); counts from per-const `awk` windows on `sg0_census_test.rs` at this branch tip.
 
 ## §0. Count discipline vs close-plan narrative
 
-- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **55** (this table has one row per path) — **Gap 1 / Debt-Paydown lane** scope per Director **msg_dda96d21** (awk-range extraction; PM **msg_bda6867a**).
+- **Live `EXPECTED_HAND_AUTHORED_NON_TEST` paths:** **50** (this table has one row per path) — **Gap 1 / Debt-Paydown lane** scope per Director **msg_dda96d21** (awk-range extraction; PM **msg_bda6867a**).
 - **Live `EXPECTED_HAND_AUTHORED_TEST` paths:** **122** — **Gap 5 / Verification lane** (`bright-bee-903` / `still-moth-538`); **not** classified here.
-- **Combined `NON_TEST` + `TEST`:** **177** (`55 + 122`) — matches close-plan Σ narrative **excluding** fragments.
-- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **179** (`55 + 122 + 2`).
+- **Combined `NON_TEST` + `TEST`:** **172** (`50 + 122`) — matches close-plan Σ narrative **excluding** fragments.
+- **Live Σ (`NON_TEST` + `TEST` + `FRAGMENTS`):** **175** (`50 + 122 + 3`).
 - **Earlier relay inflation:** loose `grep -c` over the whole `sg0_census_test.rs` file inflated a **non-test-only** headline count; **authoritative** counts are always the **per-const `awk` windows** (tracker §2).
 
 ## §1. Classification legend
@@ -41,16 +41,9 @@ Several §3 rows share the same **substrate class**: `build.rs`, `src/.../bin/re
 
 In §3, rows that reference **§1.1** inherit this anchor set instead of repeating a generic “Cluster M + `regen_*` briefs” sentence per line.
 
-## §2. Track A — Cycle-2 named scope (immediate dispatch)
+## §2. Track A — Cycle-2 named scope (**landed** PR #3046)
 
-Per Director Track A, the first cycle-2 worker batch **names** these **6** paths (also marked **(a)** in §3):
-
-- `src/v3/compiler/src/cementing_dispatch.rs`
-- `src/v3/compiler/src/gunbc_ci.rs`
-- `src/v3/compiler/src/integration_rs_wiring_scan.rs`
-- `src/v3/compiler/src/lens_declaration_apply.rs`
-- `src/v3/compiler/src/lens_t_las_carrier.rs`
-- `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`
+Director **msg_84abadad** Track A named **six** surfaces; **PR #3046** (swift-bee-15) **merged 2026-05-14**. **Five** former `NON_TEST` `.rs` census lines (`gunbc_ci.rs`, `integration_rs_wiring_scan.rs`, `lens_declaration_apply.rs`, `lens_t_las_carrier.rs`, `r3_gate_87_cementing_regen_runner_suites.rs`) **retired from** `EXPECTED_HAND_AUTHORED_NON_TEST` **with same-PR receipts** — nested `pub mod` / API surfaces folded under `cementing_dispatch.rs`, bounded lens application body recorded under `EXPECTED_HAND_AUTHORED_FRAGMENTS` as `lens_declaration_apply_body.txt` (see census comments on `main`). **`cementing_dispatch.rs`** remains a **single** `NON_TEST` hub row until gate **#87** / substrate dissolution completes.
 
 ## §3. Per-path taxonomy (all `NON_TEST` rows)
 
@@ -69,7 +62,7 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | `src/v3/compiler/src/bin/self_host_fixed_point.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/bootstrap.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/bootstrap_regen_fresh.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
-| `src/v3/compiler/src/cementing_dispatch.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
+| `src/v3/compiler/src/cementing_dispatch.rs` | **(a)** | Post–PR #3046 **hub**: gate **#87** `CementingDispatchMatchesProjection` host + nested former cycle-2 surfaces (census comment block); retire when predicate substrate owns the walk / T-WAD + PB-Runtime arcs close — not an orphan drop. |
 | `src/v3/compiler/src/complexity_lattice.rs` | **(b)** | Cost/complexity lattice host; couples to cementing + cost lenses — retire with owning `.dag` lens programs. |
 | `src/v3/compiler/src/cost_basis_declaration.rs` | **(b)** | Cost basis declaration host; couples to cost-lens / cementing migration. |
 | `src/v3/compiler/src/dag.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
@@ -87,12 +80,8 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | `src/v3/compiler/src/emit_rust_bin_shim.rs` | **(b)** | R1C-E / emit-rust host harness; shared with `r1c_e_emit_gates` bin — dissolve with R1 close / `.dag` TestClaim migration per census notes. |
 | `src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs` | **(b)** | R1C-E / emit-rust host harness; shared with `r1c_e_emit_gates` bin — dissolve with R1 close / `.dag` TestClaim migration per census notes. |
 | `src/v3/compiler/src/enforced_lens_application.rs` | **(b)** | T-Lens-Self-Application enforcement host; ties gate #58 / timing lens program — not isolated drop. |
-| `src/v3/compiler/src/gunbc_ci.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
 | `src/v3/compiler/src/infer.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/int_literal_ranges.rs` | **(b)** | Numeric / literal-range host; T-Numeric-Construction adjacent — retire with numeric program. |
-| `src/v3/compiler/src/integration_rs_wiring_scan.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
-| `src/v3/compiler/src/lens_declaration_apply.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
-| `src/v3/compiler/src/lens_t_las_carrier.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
 | `src/v3/compiler/src/lib.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/lower.rs` | **(b)** | Core compiler host; dissolution bundles multiple §1.8 / substrate gates — needs sequenced program, not opportunistic census drop. |
 | `src/v3/compiler/src/memory_peak_cost.rs` | **(b)** | Gate #94 cost-lens memory-peak authority; dissolve with cost-lens substrate program. |
@@ -103,7 +92,6 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 | `src/v3/compiler/src/process_exit.rs` | **(b)** | PB-1 Item 5 host mirror of `dsl/std/process.dag` — dissolve with PB-1 bin-shim program. |
 | `src/v3/compiler/src/r1c_e_gates.rs` | **(b)** | R1C-E shared check API; scaffold until R1 close per census comment. |
 | `src/v3/compiler/src/r3_fc_lane2_loop_witness.rs` | **(a)** | Narrow T-Free-Consequences staging witness; candidate for cycle-3+ scoped dissolution once lowering owns lane2 text (Mgr provisional (a)). |
-| `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` | **(a)** | Cycle-2 worker dispatch (Director msg_84abadad Track A); retire per `docs/briefs/r3-pb0-non-test-retirement-worker-cycle2.md` + gate #87 / T-WAD adjacent receipts. |
 | `src/v3/compiler/src/regen_bootstrap_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/regen_parse_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
 | `src/v3/compiler/src/regen_parse_tables_emit.rs` | **(b)** | §**1.1** bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas (anchors in §1.1). |
@@ -114,14 +102,15 @@ Per Director Track A, the first cycle-2 worker batch **names** these **6** paths
 
 ## §4. `EXPECTED_HAND_AUTHORED_FRAGMENTS` (T-PB-A / §1.8 gate **#8** companion)
 
-Same **(a)/(b)/(c)** lens as §3; **2** rows at this snapshot (`awk` window on `EXPECTED_HAND_AUTHORED_FRAGMENTS`). These are **non-`.rs` scaffolds** counted in Σ alongside `NON_TEST` for pure-bootstrap inventory (`project_r3_close_load_bearing_non_test_inventory` framing) — **not** the **122** `EXPECTED_HAND_AUTHORED_TEST` slice.
+Same **(a)/(b)/(c)** lens as §3; **3** rows at this snapshot (`awk` window on `EXPECTED_HAND_AUTHORED_FRAGMENTS`). These are **non-`.rs` scaffolds** counted in Σ alongside `NON_TEST` for pure-bootstrap inventory (`project_r3_close_load_bearing_non_test_inventory` framing) — **not** the **122** `EXPECTED_HAND_AUTHORED_TEST` slice.
 
 | Path | Class | Blocker / rationale |
 |------|-------|---------------------|
+| `src/v3/compiler/lens_declaration_apply_body.txt` | **(b)** | **PB-0 cycle-2** (PR #3046): bounded lens application body split out of retired `lens_declaration_apply.rs`; dissolves with substrate-owned CI + cementing receipts / PB-Runtime lens surface (see adjacent `NON_TEST` comment on `cementing_dispatch.rs` on `main`). |
 | `src/v3/compiler/parse_parser_body.txt` | **(b)** | **SG-2b / SG-3f** parser-body reflection follow-on; census header ties dissolution to the same trigger as this scaffold’s own header (`parse_parser_body.txt` — not an opportunistic delete without SG program). |
 | `src/v3/compiler/src/lens_testgen_body.txt` | **(b)** | **Lens testgen** producer-body scaffold; dissolves when producer-owned/generated path owns the same surface (see census commentary on `lens_testgen` / gate **#6** retirement arc — not isolated fragment-only work). |
 
-**Director read (msg_5b04ea2c):** both rows classify under **(b) named prereq**-shaped blockers (SG / lens-testgen programs), **same debt grammar** as the bulk of the 55-row `NON_TEST` table — they **fold into Gap 1 / gate #8** ratchet work rather than minting a **third** parallel “fragment-only” close program. No separate Director sub-program request from this pass.
+**Director read (msg_5b04ea2c):** all three rows classify under **(b) named prereq**-shaped blockers (SG / lens-testgen / cementing programs), **same debt grammar** as the bulk of the 50-row `NON_TEST` table — they **fold into Gap 1 / gate #8** ratchet work rather than minting a **third** parallel “fragment-only” close program. No separate Director sub-program request from this pass.
 
 ## §5. Changelog
 
@@ -129,3 +118,4 @@ Same **(a)/(b)/(c)** lens as §3; **2** rows at this snapshot (`awk` window on `
 |------|--------|
 | 2026-05-13 | Initial taxonomy + Track A six-path dispatch list (Director msg_84abadad). |
 | 2026-05-13 | §4: `EXPECTED_HAND_AUTHORED_FRAGMENTS` (2) classified (Director msg_5b04ea2c). |
+| 2026-05-14 | Reconcile §0/§2/§3/§4 with **PR #3046** landed on `main`: **50** `NON_TEST`, **3** `FRAGMENTS`; remove retired `.rs` rows; refresh `cementing_dispatch` + fragment rows. |
