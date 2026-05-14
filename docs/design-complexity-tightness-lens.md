@@ -131,38 +131,72 @@ New `.dag` declarations needed (grounded against existing lens-application subst
 //   - `SymbolicCost` per `src/v3/std/algebra.dag:190` (NOT `SymbolicCostExpr` — non-live)
 //   - `NodeId` per `src/v3/std/substrate.dag:5` (NOT `NodeRef` — non-live)
 //   - `SizeVariable` per existing T-CostLens substrate (cited in close-plan §1.8 row #80)
+// Per openai-pro BLOCKING PR #3067 2026-05-14: bare `List<NodeId>` for
+// role-specific node-pairs was too loose (admitted wrong-arity/role
+// instantiations); proof obligations stated in comments were not type-enforced.
+// Fix: role-specific named NodeId fields (NOT bare List<NodeId>) + typed
+// proof-witness carriers (one per variant, NOT a parallel coproduct).
 type TightnessTransformation
   = LoopFusion {
-      affected_nodes: List<NodeId>            // outer_loop + inner_loop NodeId pair
+      outer_loop_node: NodeId                 // role: outer (enclosing) sequential loop
+      inner_loop_node: NodeId                 // role: inner (fused) sequential loop
       space_a: SymbolicCost                   // outer-loop iteration-space cost expression
       space_b: SymbolicCost                   // inner-loop iteration-space cost expression
-      // Lens proves space_a + space_b are equivalent before constructing this variant
+      equivalence_witness: IterationSpaceEquivalenceWitness  // structural witness: space_a ≡ space_b derivable; shape TBD post-Gap-11
     }
   | LoopHoisting {
-      affected_nodes: List<NodeId>            // enclosing-loop + invariant-subgraph NodeId pair
+      enclosing_loop_node: NodeId             // role: outer loop containing the invariant subgraph
+      invariant_subgraph_node: NodeId         // role: subgraph proved loop-invariant
       independent_size_variables: List<SizeVariable>  // size-vars proved independent of loop var
+      invariance_witness: LoopInvarianceWitness  // structural witness: subgraph reads no loop-var; shape TBD post-Gap-11
     }
   | DeadCodeElimination {
-      affected_nodes: List<NodeId>            // unconsumed-subgraph NodeIds
-      // Lens proves zero downstream Port reads subgraph output (port_consumption walk)
+      dead_subgraph_node: NodeId              // role: subgraph with no downstream Port consumer
+      no_consumer_witness: NoConsumerWitness  // structural witness: Port consumption walk confirms zero consumers; shape TBD post-Gap-11
     }
   | ConstantBoundPropagation {
-      affected_nodes: List<NodeId>            // outer_loop + inner_loop NodeId pair
+      outer_loop_node: NodeId                 // role: outer loop over variable size
+      inner_loop_node: NodeId                 // role: inner loop with constant-bound
       inner_bound: SymbolicCost               // proved variable-independent of outer-loop SizeVariable
+      bound_independence_witness: ConstantBoundWitness  // structural witness: inner_bound has no SizeVariable dependency on outer; shape TBD post-Gap-11
     }
   | AggregationRecognition {
-      affected_nodes: List<NodeId>            // accumulator-pattern NodeIds
-      associative_op_node: NodeId             // +/min/max operation node at reduce-point
+      accumulator_subgraph_node: NodeId       // role: subgraph implementing the accumulator pattern
+      associative_op_node: NodeId             // role: +/min/max operation node at reduce-point
+      associativity_witness: AssociativeReduceWitness  // structural witness: op is associative per algebra.dag laws; shape TBD post-Gap-11
     }
   | MapFilterFoldFusion {
-      affected_nodes: List<NodeId>            // chain pipeline NodeIds (≥2)
+      pipeline_chain_nodes: List<NodeId>      // role: ordered chain of map/filter/fold nodes (≥2)
       shared_iteration_cost: SymbolicCost     // common iteration-space cost across chain elements
+      shared_space_witness: SharedIterationSpaceWitness  // structural witness: chain elements share iteration space; shape TBD post-Gap-11
     }
 
-// Type-enforced pairing: each variant arm carries the EXACT evidence shape
-// applicable to that transformation. LoopFusion cannot pair with NoConsumer
-// evidence; ConstantBoundPropagation cannot pair with AssociativeReduce evidence.
-// No parallel TransformationEvidence coproduct needed.
+// 🟡 SCAFFOLD per-variant proof-witness types — concrete shapes finalize
+// post-Gap-11 SymbolicCost / ProductCost / SumCost composition + lens-tier
+// implementation surface. Each witness type encodes ONE specific structural
+// proof obligation; NOT a generic Proof<Evidence> coproduct (avoids the
+// parallel-evidence-admits-invalid-pairings class codex BLOCKING #11751
+// flagged). Witness construction is lens-side; consumers receive the witness
+// as a structurally-valid proof receipt, not a "compiler-said-so" promise.
+//
+// Concrete shapes ratified per Substrate Mgr canvas during PB-X-tightness-lens
+// implementation worker dispatch (post-Gap-11). Current SCAFFOLD shape:
+//
+//   type IterationSpaceEquivalenceWitness { /* TBD per Gap-11 SymbolicCost equivalence-decidability algorithm */ }
+//   type LoopInvarianceWitness            { /* TBD per Port read-set analysis output */ }
+//   type NoConsumerWitness                { /* TBD per Port consumption-walk algorithm output */ }
+//   type ConstantBoundWitness             { /* TBD per SymbolicCost variable-independence analysis */ }
+//   type AssociativeReduceWitness         { /* TBD per algebra.dag associativity-decidability surface */ }
+//   type SharedIterationSpaceWitness      { /* TBD per chain-fusion algorithm output */ }
+//
+// All 6 carriers are 🟡 SCAFFOLD; SCAFFOLD-→-TERMINAL trigger = Gap 11 lands +
+// lens-implementation worker dispatches resolve concrete witness fields.
+
+// Type-enforced pairing: each variant arm carries the EXACT role-named fields
+// + per-variant proof-witness type applicable to that transformation.
+// LoopFusion cannot pair with NoConsumer evidence; ConstantBoundPropagation
+// cannot pair with AssociativeReduce evidence. No parallel TransformationEvidence
+// coproduct + no bare List<NodeId> admitting wrong arities.
 
 // 🟢 TERMINAL at the tightness-analysis scope. Bundles lens output (actual + tight
 // asymptotic classes), the bridging transformation list with evidence proofs,
