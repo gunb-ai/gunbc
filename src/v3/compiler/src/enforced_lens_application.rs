@@ -312,7 +312,9 @@ fn parallelism_iteration_budget_from_substrate(
         crate::lens_parallelism::ParallelismMode::OptInIndependent => {
             ParallelismIterationBudget::OptInIndependent
         }
-        crate::lens_parallelism::ParallelismMode::Sequential => ParallelismIterationBudget::Sequential,
+        crate::lens_parallelism::ParallelismMode::Sequential => {
+            ParallelismIterationBudget::Sequential
+        }
     }
 }
 
@@ -1895,9 +1897,7 @@ mod gate_95_parallelism_iteration_enforcement_tests {
             .id;
         let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
         assert_eq!(indicator, 1);
-        assert!(
-            !parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap()
-        );
+        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap());
 
         push_parallelism_iteration_enforced_declaration(
             &mut dag,
