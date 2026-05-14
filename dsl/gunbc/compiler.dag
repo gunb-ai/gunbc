@@ -74,6 +74,7 @@ data stage0: GeneratedCrate = {
   source_dir: "src/v3/compiler/src",
   hand_maintained_src: [
     "bootstrap.rs",
+    "cost_basis_declaration.rs",
     "dag.rs",
     "diagnostics.rs",
     "dimension.rs",
@@ -81,6 +82,8 @@ data stage0: GeneratedCrate = {
     "emit_go.rs",
     "emit_python.rs",
     "emit_rust.rs",
+    // PB-1 Item 5: hand-authored `main.rs` shell formatter (not emitted into src/).
+    "emit_rust_bin_shim.rs",
     "python_target.rs",
     "rust_target.rs",
     "infer.rs",
