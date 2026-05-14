@@ -2502,23 +2502,8 @@ impl<'a> TestRunner<'a> {
                     result: ClaimResult::Fail(reason),
                 },
             },
-            "Quantified" => match validate_quantified_claim_shape(decl) {
-                Ok(quantified_name) => ClaimEvaluation {
-                    // Single-authority claim identity (P2): use the
-                    // modeled `QuantifiedTestClaim.name`, matching
-                    // `obligation_for_quantified_claim`'s projection so
-                    // obligation-walk and runner reporting agree.
-                    claim_name: quantified_name,
-                    result: ClaimResult::NotYetImplemented(
-                        "QuantifiedTestClaim runner evaluation NotYetImplemented \
-                         (gate #85 substrate-only landing; quantifier evaluation deferred to \
-                         Cluster M Phase 2/3 per `docs/r3-structure.md` \
-                         §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline \
-                         + gate #84 bulk-port lanes; tracking row at \
-                         `docs/r3-program-plan.md` §1.8 row #85)"
-                            .to_string(),
-                    ),
-                },
+            "Quantified" => match parse_quantified_test_claim_for_evaluation(self.dag, decl) {
+                Ok(parsed) => self.evaluate_quantified_test_claim(parsed),
                 Err(reason) => ClaimEvaluation {
                     claim_name: decl_label,
                     result: ClaimResult::Fail(reason),
@@ -2530,6 +2515,115 @@ impl<'a> TestRunner<'a> {
                     "TestSuite `{suite_name}` unknown SuiteClaim variant `{other}`"
                 )),
             },
+        }
+    }
+
+    fn evaluate_quantified_test_claim(&self, q: ParsedQuantifiedTestClaim) -> ClaimEvaluation {
+        let ParsedQuantifiedTestClaim {
+            name: claim_name,
+            declaration_file,
+            shapes,
+            quantifier,
+            predicate,
+            requires,
+        } = q;
+
+        match quantifier {
+            QuantifierKind::ForAll => {
+                if shapes.is_empty() {
+                    return ClaimEvaluation {
+                        claim_name,
+                        result: ClaimResult::Pass,
+                    };
+                }
+                for (idx, (source, file_name)) in shapes.iter().enumerate() {
+                    let claim = TestClaimValue {
+                        claim_name: claim_name.clone(),
+                        declaration_file: declaration_file.clone(),
+                        source: source.clone(),
+                        file_name: file_name.clone(),
+                        predicate: predicate.clone(),
+                        requires: requires.clone(),
+                    };
+                    match self.run_claim(&claim).result {
+                        ClaimResult::Pass => {}
+                        ClaimResult::Fail(msg) => {
+                            return ClaimEvaluation {
+                                claim_name: claim_name.clone(),
+                                result: ClaimResult::Fail(format!(
+                                    "QuantifiedTestClaim `{claim_name}` ForAll failed at sample {} of {} (`{file_name}`): {msg}",
+                                    idx + 1,
+                                    shapes.len(),
+                                )),
+                            };
+                        }
+                        ClaimResult::NotYetImplemented(msg) => {
+                            return ClaimEvaluation {
+                                claim_name: claim_name.clone(),
+                                result: ClaimResult::NotYetImplemented(format!(
+                                    "QuantifiedTestClaim `{claim_name}` ForAll predicate NotYetImplemented at sample {} of {} (`{file_name}`): {msg}",
+                                    idx + 1,
+                                    shapes.len(),
+                                )),
+                            };
+                        }
+                    }
+                }
+                ClaimEvaluation {
+                    claim_name,
+                    result: ClaimResult::Pass,
+                }
+            }
+            QuantifierKind::Exists => {
+                if shapes.is_empty() {
+                    return ClaimEvaluation {
+                        claim_name: claim_name.clone(),
+                        result: ClaimResult::Fail(format!(
+                            "QuantifiedTestClaim `{claim_name}` Exists found no witness among 0 programs"
+                        )),
+                    };
+                }
+                let mut failures = 0usize;
+                for (idx, (source, file_name)) in shapes.iter().enumerate() {
+                    let claim = TestClaimValue {
+                        claim_name: claim_name.clone(),
+                        declaration_file: declaration_file.clone(),
+                        source: source.clone(),
+                        file_name: file_name.clone(),
+                        predicate: predicate.clone(),
+                        requires: requires.clone(),
+                    };
+                    match self.run_claim(&claim).result {
+                        ClaimResult::Pass => {
+                            return ClaimEvaluation {
+                                claim_name: claim_name.clone(),
+                                result: ClaimResult::Pass,
+                            };
+                        }
+                        ClaimResult::Fail(_) => {
+                            failures += 1;
+                        }
+                        ClaimResult::NotYetImplemented(msg) => {
+                            return ClaimEvaluation {
+                                claim_name: claim_name.clone(),
+                                result: ClaimResult::NotYetImplemented(format!(
+                                    "QuantifiedTestClaim `{claim_name}` Exists predicate NotYetImplemented at sample {} of {} (`{file_name}`): {msg}",
+                                    idx + 1,
+                                    shapes.len(),
+                                )),
+                            };
+                        }
+                    }
+                }
+                let msg = format!(
+                    "QuantifiedTestClaim `{}` Exists found no witness among {failures} programs",
+                    claim_name
+                );
+                ClaimEvaluation {
+                    claim_name,
+                    result: ClaimResult::Fail(msg),
+                }
+            }
         }
     }
 
@@ -5035,9 +5129,8 @@ impl<'a> TestRunner<'a> {
         // `output_path` set vs `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS`, plus the
         // empty `expected_hand_authored_test` census (failure copy cites **#84** only).
         // **Gate #85** (`Quantified` / quantifier substrate) is a sibling obligation:
-        // shape validation + `NotYetImplemented` posture lives on the `Quantified`
-        // suite arm (~`run_suite` / `validate_quantified_claim_shape`, ~2503–2518),
-        // not inside `GeneratedFromDag`.
+        // `Quantified` suite-arm evaluation walks `ProgramGenerator` families (`run_suite`
+        // → `evaluate_quantified_test_claim`), not inside `GeneratedFromDag`.
         // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
         // (`PendingFact { output_path }` | `ResolvedFact { output_path,
         // dag_source, source_hash }`). The runner consumes the shared
@@ -5625,32 +5718,195 @@ impl TestClaimValue {
     }
 }
 
-// Structural boundary validator for `QuantifiedTestClaim` declarations
-// referenced by `Quantified(...)` suite entries. Evaluation is deferred per
-// gate #85 but the declaration shape must still fail-closed at the boundary
-// (INVARIANTS P3 / fail-closed): only declarations matching the substrate
-// shape (`name`/`generator`/`quantifier`/`predicate`/`requires`) are accepted
-// as deferred quantified claims. Returns the modeled `name` field on success.
-fn validate_quantified_claim_shape(decl: &Declaration) -> Result<String, String> {
+#[derive(Debug, Clone, Copy)]
+enum QuantifierKind {
+    ForAll,
+    Exists,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedQuantifiedTestClaim {
+    name: String,
+    declaration_file: String,
+    shapes: Vec<(String, String)>,
+    quantifier: QuantifierKind,
+    predicate: FieldValue,
+    requires: Vec<FieldValue>,
+}
+
+fn parse_quantifier_kind(dag: &Dag, value: &FieldValue) -> Result<QuantifierKind, String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(format!(
+            "QuantifiedTestClaim.quantifier must be a variant, got {value:?}"
+        ));
+    };
+    let label = variant_label(dag, *constructor).ok_or_else(|| {
+        format!(
+            "QuantifiedTestClaim.quantifier variant constructor {:?} did not resolve",
+            constructor
+        )
+    })?;
+    match label.as_str() {
+        "ForAll" => {
+            if !payload.is_empty() {
+                return Err(format!(
+                    "Quantifier ForAll expects empty payload, got {payload:?}"
+                ));
+            }
+            Ok(QuantifierKind::ForAll)
+        }
+        "Exists" => {
+            if !payload.is_empty() {
+                return Err(format!(
+                    "Quantifier Exists expects empty payload, got {payload:?}"
+                ));
+            }
+            Ok(QuantifierKind::Exists)
+        }
+        other => Err(format!(
+            "unsupported Quantifier variant `{other}` (bootstrap expects ForAll | Exists)"
+        )),
+    }
+}
+
+fn literal_program_fields_from_shape(
+    dag: &Dag,
+    shape_value: &FieldValue,
+) -> Result<(String, String), String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = shape_value
+    else {
+        return Err(format!(
+            "ProgramShape list element must be a variant, got {shape_value:?}"
+        ));
+    };
+    let label = variant_label(dag, *constructor).ok_or_else(|| {
+        format!(
+            "ProgramShape variant constructor {:?} did not resolve",
+            constructor
+        )
+    })?;
+    if label != "LiteralProgram" {
+        return Err(format!(
+            "unsupported ProgramShape variant `{label}` (bootstrap supports LiteralProgram only)"
+        ));
+    }
+    match payload.as_slice() {
+        [FieldValue::Record(fields)] => Ok((string_field(fields, "source")?, string_field(fields, "file_name")?)),
+        [FieldValue::Literal(LiteralBits::String(source)), FieldValue::Literal(LiteralBits::String(file_name))] => {
+            Ok((source.clone(), file_name.clone()))
+        }
+        _ => Err(format!(
+            "LiteralProgram expects record {{source,file_name}} or two string literals in payload, got {payload:?}"
+        )),
+    }
+}
+
+fn resolve_generator_binding_to_list_elems<'b>(
+    dag: &'b Dag,
+    binding: &'b FieldValue,
+) -> Result<&'b [FieldValue], String> {
+    match binding {
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            match &decl.value_body {
+                Some(ValueBody::List(elems)) => Ok(elems.as_slice()),
+                other => Err(format!(
+                    "ProgramGenerator.generator target `{}` must have List value body, got {other:?}",
+                    decl.name.as_deref().unwrap_or("#anonymous"),
+                )),
+            }
+        }
+        other => Err(format!(
+            "ProgramGenerator.generator must be DeclarationRef, got {other:?}"
+        )),
+    }
+}
+
+fn resolve_quantified_generator_shapes(
+    dag: &Dag,
+    generator_value: &FieldValue,
+) -> Result<Vec<(String, String)>, String> {
+    let list_elems: &[FieldValue] = match generator_value {
+        FieldValue::Record(rec_fields) => {
+            let inner = field(rec_fields, "generator").ok_or_else(|| {
+                "ProgramGenerator structural literal missing `generator` field".to_string()
+            })?;
+            resolve_generator_binding_to_list_elems(dag, inner)?
+        }
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            match &decl.value_body {
+                Some(ValueBody::Structural { fields }) => {
+                    let inner = field(fields, "generator").ok_or_else(|| {
+                        format!(
+                            "ProgramGenerator declaration `{}` missing `generator` field",
+                            decl.name.as_deref().unwrap_or("#anonymous")
+                        )
+                    })?;
+                    resolve_generator_binding_to_list_elems(dag, inner)?
+                }
+                Some(ValueBody::List(elems)) => elems.as_slice(),
+                other => {
+                    return Err(format!(
+                        "QuantifiedTestClaim.generator reference `{}` must name ProgramGenerator record or List<ProgramShape>, got {other:?}",
+                        decl.name.as_deref().unwrap_or("#anonymous"),
+                    ));
+                }
+            }
+        }
+        other => {
+            return Err(format!(
+                "QuantifiedTestClaim.generator must be ProgramGenerator record or declaration ref, got {other:?}"
+            ));
+        }
+    };
+    let mut out = Vec::with_capacity(list_elems.len());
+    for elem in list_elems {
+        out.push(literal_program_fields_from_shape(dag, elem)?);
+    }
+    Ok(out)
+}
+
+fn parse_quantified_test_claim_for_evaluation(
+    dag: &Dag,
+    decl: &Declaration,
+) -> Result<ParsedQuantifiedTestClaim, String> {
     let fields = structural_fields(decl)
         .ok_or_else(|| "QuantifiedTestClaim declaration is not structural".to_string())?;
     let name = string_field(fields, "name")?;
-    field(fields, "generator")
+    let generator_value = field(fields, "generator")
         .ok_or_else(|| "QuantifiedTestClaim is missing `generator`".to_string())?;
-    field(fields, "quantifier")
+    let quantifier_value = field(fields, "quantifier")
         .ok_or_else(|| "QuantifiedTestClaim is missing `quantifier`".to_string())?;
-    field(fields, "predicate")
-        .ok_or_else(|| "QuantifiedTestClaim is missing `predicate`".to_string())?;
-    match field(fields, "requires") {
-        Some(FieldValue::List(_)) => {}
+    let predicate = field(fields, "predicate")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `predicate`".to_string())?
+        .clone();
+    let requires = match field(fields, "requires") {
+        Some(FieldValue::List(values)) => values.clone(),
         Some(other) => {
             return Err(format!(
                 "QuantifiedTestClaim `requires` is not a list: {other:?}"
             ));
         }
         None => return Err("QuantifiedTestClaim is missing `requires`".to_string()),
-    }
-    Ok(name)
+    };
+    let shapes = resolve_quantified_generator_shapes(dag, generator_value)?;
+    let quantifier = parse_quantifier_kind(dag, quantifier_value)?;
+    Ok(ParsedQuantifiedTestClaim {
+        name,
+        declaration_file: decl.span.file.clone(),
+        shapes,
+        quantifier,
+        predicate,
+        requires,
+    })
 }
 
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
