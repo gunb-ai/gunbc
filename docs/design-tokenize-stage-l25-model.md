@@ -115,7 +115,7 @@ Same pattern as PB-3 parse + PB-4 lower + PB-5 infer: output IS the typed-state 
 
 Cross-stage consistency: tokenize / parse / lower / infer use structural diagnostic coupling (PROPOSED per-stage carrier extensions); emit uses Result sum (final-artifact output domain).
 
-Signature: `fn tokenize(source: String) -> TokenizedSource` (NOT bare List<Token>; NOT TokenizeResult sum-variant). Decision between `TokenizedSource` shape (proposed wrapper) vs alternative shapes (extend Token to carry per-token diagnostic / etc.) is operator/PM ratification at §12 Q-new added below.
+Signature: `fn tokenize(source: String) -> TokenizedSource` (NOT bare List<Token>; NOT TokenizeResult sum-variant). Decision between `TokenizedSource` shape (proposed wrapper) vs alternative shapes (extend Token to carry per-token diagnostic / etc.) is operator/PM ratification at §12 Q6 (added per cursor BLOCKING PR #3127).
 
 ---
 
@@ -195,7 +195,7 @@ Tokenize is target-agnostic byte-scanning; Shape A/B disambiguation lives at emi
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-tokenize-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> List<Token>` declared in compiler.dag with `ExternalRealization` body. Note: since `tokenize.dag` already exists as substrate implementation, Step 2's "ExternalRealization" is actually pointing at the `.dag` substrate (not at hand-Rust); the residual hand-Rust is the codegen artifact `tokenize_generated.rs`, not the implementation. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> TokenizedSource` declared in compiler.dag with `ExternalRealization` body. Output is the `TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }` wrapper carrier per §4.3 (proposed substrate extension; resolved per §12 Q6). Note: since `tokenize.dag` already exists as substrate implementation, Step 2's "ExternalRealization" is actually pointing at the `.dag` substrate (not at hand-Rust); the residual hand-Rust is the codegen artifact `tokenize_generated.rs`, not the implementation. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
 | **Step 3: Verify substrate completeness** | Audit `src/v3/compiler/tokenize.dag` vs `tokenize_generated.rs` — confirm `.dag` is the complete authority (no hand-Rust logic in `tokenize_generated.rs` beyond mechanical codegen artifacts); identify any residual hand-Rust scaffolding that needs retirement. Per `feedback_paper_shrink_variants` discipline: verify tokenize.dag is NOT V1 template-relocation (hand-Rust scanner logic relocated to `.dag` text without substrate-substance growth). | R3 Substrate Mgr — worker dispatched against Director-authored Step 3 brief | tokenize.dag audit |
 | **Step 4: Retire residual hand-Rust + codegen-driver decoupling** | If Step 3 reveals residual hand-Rust scaffolding: retire it. If `regen_tokenize` codegen-driver retirement is needed in PB-2 scope (vs PB-Bootstrap-Process): coordinate the cross-lane handoff. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by whatever residual lands. | R3 Substrate Mgr + coordination with PB-Bootstrap-Process lane | residual hand-Rust deletion |
 
@@ -265,6 +265,18 @@ PB-3 parse's input is List<Token> from tokenize. **Does PB-2 tokenize migration 
 
 **Director-recommend: NO bidirectional blocking** — Token carrier shape is stable across both migrations. Same independence pattern as PB-4 lower vs PB-3 parse per PR #3077 §12 Q6 + PB-5 infer vs PB-4 lower per PR #3085 §12 Q6.
 
+### Q6: TokenizedSource carrier shape (NEW per cursor BLOCKING PR #3127)
+
+Per §4.3 + Step 2 row: tokenize output is the PROPOSED `TokenizedSource` wrapper carrier (extends current `Result<Vec<Token>, Diagnostic>` to typed-state structural coupling). Per cursor BLOCKING #3127: the carrier shape needs explicit operator/PM ratification.
+
+Two options:
+
+**Option (a) — Wrapper record carrier**: `type TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }`. Simple structural coupling; mirrors PB-3 parse's proposed SurfaceModule extension shape (per PR #3126 §4.3).
+
+**Option (b) — Per-Token diagnostic coupling**: extend Token itself with optional `error: Option<TokenizeDiagnostic>` field. Diagnostics attach to specific tokens rather than a separate list. Cons: every Token now has Option field; downstream consumers must handle.
+
+**Director-recommend: (a) wrapper record** for parallelism with PB-3 SurfaceModule extension + simpler downstream consumer shape. Operator/PM ratification.
+
 ---
 
 ## §13 Non-goals
@@ -292,7 +304,7 @@ This doc lands on main when:
 8. ✅ Determinism preservation discipline (§10)
 9. ✅ Tokenization invariants explicit (§11)
 10. ✅ Open design questions enumerated for operator/PM ratification (§12)
-11. ⏳ Operator/PM ratification on §12 Q1-Q5
+11. ⏳ Operator/PM ratification on §12 Q1-Q6
 
 Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker brief authoring + §1.8 PB-2 gate row close-criterion predicate.
 
@@ -300,7 +312,7 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator / PM-delegate ratifies §12 Q1–Q5** (per 2026-05-14 directive)
+1. **Operator / PM-delegate ratifies §12 Q1–Q6** (per 2026-05-14 directive)
 2. **PM amends close plan + §1.8** to route through PB-X lanes + cite this doc as PB-2 L2.5 substrate
 3. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path; affects TokenizeDiagnostic shape)
 4. **Director authors PB-2 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope; trivial since substrate already lives in tokenize.dag)
@@ -343,7 +355,7 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 - `feedback_grep_carrier_semantic_before_ratification` (4-axis grep applied at authoring time)
 
 **Surfaces awaiting**:
-- Operator/PM ratification on §12 Q1–Q5
+- Operator/PM ratification on §12 Q1–Q6
 - PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - Coordination with PB-Bootstrap-Process lane for codegen-driver retirement per Q1
