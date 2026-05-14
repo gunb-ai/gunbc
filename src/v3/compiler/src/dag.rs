@@ -3376,6 +3376,7 @@ impl Dag {
             assert_bootstrap_fixture_paths_match_regen_keys(self);
         }
         self.populate_primitive_cache();
+        crate::bootstrap::ensure_kernel_bool_lane1e2b_bootstrap_witness(self);
         if matches!(
             kind,
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
