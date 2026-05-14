@@ -42,7 +42,9 @@ import std.algebra {
   ProductCost,
   SumCost,
   LogCost,
-  UnknownCost
+  UnknownCost,
+  miss_symbolic_cost_lookup,
+  hit_symbolic_cost_lookup
 }
 import std.computation {
   CallPattern,
@@ -252,42 +254,51 @@ fn recursive_transform_summary(
       )
   }
 
-fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
+// Mirror `cost.dag` `pattern_to_iter_bound`: `SameArgumentCall` is a no-descent
+// self-call and has no well-founded recurrence dimension here — return Miss,
+// not a successful `UnknownCost` shell (P3 / INVARIANTS.md). Cementing
+// alignment with `cost.dag::pattern_to_iter_bound` keeps the sibling lenses
+// fail-closed on the same `CallPattern` shape (gpt-5-5-pro Finding 1 fix-b).
+fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
-      LogCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
     ChildAccessorCall { accessor: accessor } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     FoldBodyCall { outer_collection: outer_collection } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     ParserAdvanceCall { witness: witness } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     WorklistDrainCall { element: element } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     SameArgumentCall =>
-      UnknownCost("same-argument recursive call has no descent")
+      miss_symbolic_cost_lookup()
   }
 
-fn summary_from_iter_bound(bound: SymbolicCost) -> Lookup<ComplexitySummary> =
+fn summary_from_iter_bound(bound: Lookup<SymbolicCost>) -> Lookup<ComplexitySummary> =
   match bound {
-    UnknownCost(reason) =>
-      hit_complexity_summary_lookup(conservative_unknown_summary(reason))
-    ConstantCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
-    LinearCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
-    PolynomialCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
-    ProductCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
-    SumCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
-    LogCost(_) =>
-      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    Miss => miss_complexity_summary_lookup()
+    Hit(cost) =>
+      match cost {
+        UnknownCost(reason) =>
+          hit_complexity_summary_lookup(conservative_unknown_summary(reason))
+        ConstantCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        LinearCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        PolynomialCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        ProductCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        SumCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        LogCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+      }
   }
 
 fn loop_summary(
