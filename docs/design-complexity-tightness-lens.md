@@ -29,15 +29,15 @@ For any program scope (function body / region / module), the tightness lens prod
 data TightnessAnalysis
   = AlreadyTight {
       actual: AsymptoticClass,        // = tight by construction; no derivation needed
-      section: SectionRef,
     }
   | Loose {
       improvement: AsymptoticStrictDominance,   // named improvement witness: dominator strictly dominates dominated (see §1.5)
       first_transformation: ClassTierTightnessTransformation,        // ≥1 enforced structurally (no empty/disconnected derivation); class-tier-only by type
       additional_transformations: List<ClassTierTightnessTransformation>,  // optional ordered tail; class-tier-only by type
-      section: SectionRef,            // function/region the analysis applies to (matches EnforcedApplication.section per src/v3/std/lens_application.dag:178 — SectionRef is the type; DeclarationScope is a variant)
     }
 ```
+
+**Section context is application-level, not lens-output level** (per briansrls INLINE BLOCKING PR #3067 2026-05-14 at line 384): previous shape carried `section: SectionRef` inside each variant, which forced the `Monoid<TightnessAnalysis>` identity to invent a synthetic `<empty-section-ref>` — `SectionRef` has only `DeclarationScope { declaration: ... }` and `NodeScope { declaration: ..., node: ... }` variants at `src/v3/std/lens_application.dag:66-68`, no empty value. Fix: section moves to the application wrapper (`EnforcedTightness.section` at §1.5 — already present), matching the live `EnforcedApplication { ..., section: SectionRef }` and `IntrospectApplication { ..., section: SectionRef }` pattern at `src/v3/std/lens_application.dag:176-203`. The lens output (`TightnessAnalysis`) carries only the tightness conclusion; the section context comes from the EnforcedTightness/future-IntrospectTightness wrapper.
 
 The discrimination + improvement witness encodes the Loose-vs-AlreadyTight precondition into the type:
 - `AlreadyTight` cannot carry a transformation (no field exists) — no spurious derivation.
@@ -301,16 +301,26 @@ type AsymptoticStrictDominance {
 // Fix: replace adjacent class fields with named AsymptoticStrictDominance
 // improvement witness above. Plus prior fix (openai-pro #11789): discriminate
 // the result + structural ≥1 transformation enforcement.
+// Per briansrls INLINE BLOCKING PR #3067 2026-05-14 at design-complexity-
+// tightness-lens.md:384: previous shape carried `section: SectionRef` inside
+// both variants, but SectionRef at src/v3/std/lens_application.dag:66-68 has
+// only `DeclarationScope { declaration: ... }` and `NodeScope { declaration:
+// ..., node: ... }` variants — no empty/identity value. The Monoid<
+// TightnessAnalysis> identity element needed a synthetic <empty-section-ref>
+// placeholder which is ungrounded substrate (INVARIANTS P1).
+// Fix: section context moves OUT of TightnessAnalysis into the application
+// wrapper (EnforcedTightness.section below). Matches the live
+// EnforcedApplication/IntrospectApplication pattern at lens_application.dag:
+// 176-203 — lens output is per-tightness-conclusion; section is per-
+// application context wrapping the lens application.
 type TightnessAnalysis
   = AlreadyTight {
       actual: AsymptoticClass             // = tight by construction; no separate tight field
-      section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178 — matches EnforcedApplication.section
     }
   | Loose {
       improvement: AsymptoticStrictDominance  // named witness: dominator strictly dominates dominated (see above)
       first_transformation: ClassTierTightnessTransformation         // ≥1 enforced — no empty derivation possible; class-tier-only by type (codex BLOCKING #11795)
       additional_transformations: List<ClassTierTightnessTransformation>  // ordered tail; empty for single-transformation derivations; class-tier-only by type
-      section: SectionRef                 // per src/v3/std/lens_application.dag:66-68 + 178
     }
 
 // Self-comparison carrier — STRUCTURALLY DISTINCT from EnforcedApplication
@@ -379,10 +389,9 @@ data tightness_lens_sequential: Monoid<TightnessAnalysis> = {
                                         //   via BoundedLattice<AsymptoticClass> ≥; concatenating
                                         //   transformation lists in order; reuses join_asymptotic_class
                                         //   at src/v3/std/algebra.dag:514).
-  identity: AlreadyTight {              // identity for monoid; empty subgraph is tight at the smallest class
-    actual: ClassConstant
-    section: <empty-section-ref>        // TBD per substrate definition
-  }
+  identity: AlreadyTight {              // identity for monoid: empty subgraph is tight at the smallest class.
+    actual: ClassConstant               // Per the TightnessAnalysis carrier above — no section field
+  }                                     // (section context lives on EnforcedTightness wrapper, not lens output).
 }
 
 // Inhabits the live 6-field Lens<C> substrate at src/v3/std/lens.dag:70.
