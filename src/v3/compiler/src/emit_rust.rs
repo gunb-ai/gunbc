@@ -207,14 +207,14 @@ pub mod r1c_e_gates {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::OnceLock;
 
-    use crate::compile_to_dag;
-    use crate::emit::emit;
-    use crate::emit::EmitTarget;
-    use super::{emit_rust, emit_rust_module};
     use super::emit_rust_roundtrip_fixtures::{
         ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
         REFLECTED_FIXTURES,
     };
+    use super::{emit_rust, emit_rust_module};
+    use crate::compile_to_dag;
+    use crate::emit::emit;
+    use crate::emit::EmitTarget;
 
     /// `emit_generic_bounds_survive` (host receipt: `m1_3_emit_rust_test::emit_generic_bounds_survive`,
     /// PR #650 post-mortem).
@@ -486,7 +486,9 @@ pub mod r1c_e_gates {
         for fixture in REFLECTED_FIXTURES {
             let stdout = run_rust_reflected_fixture(fixture.module.name);
             let (ok, label) = match &fixture.expected_stdout {
-                ReflectedExpected::Exact(expected) => (stdout == *expected, format!("{expected:?}")),
+                ReflectedExpected::Exact(expected) => {
+                    (stdout == *expected, format!("{expected:?}"))
+                }
                 ReflectedExpected::PositiveInt => (
                     stdout.parse::<i64>().is_ok_and(|n| n > 0),
                     "positive integer".to_owned(),
@@ -516,7 +518,8 @@ pub mod r1c_e_gates {
 
     impl OmniTmpDir {
         fn new(tag: u64) -> Self {
-            let path = std::env::temp_dir().join(format!("v3_r1c_e_omni_{tag}_{}", std::process::id()));
+            let path =
+                std::env::temp_dir().join(format!("v3_r1c_e_omni_{tag}_{}", std::process::id()));
             std::fs::create_dir_all(&path).expect("omni tmp dir");
             Self(path)
         }
@@ -545,8 +548,8 @@ pub mod r1c_e_gates {
 
     fn omni_rust_stdout(source: &str) -> Result<String, String> {
         let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
-        let dag =
-            compile_to_dag(source, "omni_parity_r1c_e.v3").map_err(|e| format!("compile: {e:?}"))?;
+        let dag = compile_to_dag(source, "omni_parity_r1c_e.v3")
+            .map_err(|e| format!("compile: {e:?}"))?;
         let rendered = emit_rust(&dag).map_err(|e| format!("Rust emit: {e:?}"))?;
         let tmp = OmniTmpDir::new(id);
         let src_path = tmp.path().join("main.rs");
@@ -645,7 +648,9 @@ pub mod r1c_e_gates {
             return Err("go toolchain not found — this gate requires go on PATH".to_string());
         }
         if !omni_toolchain_available("python3", "--version") {
-            return Err("python3 toolchain not found — this gate requires python3 on PATH".to_string());
+            return Err(
+                "python3 toolchain not found — this gate requires python3 on PATH".to_string(),
+            );
         }
         let fixtures = omni_fixtures();
         if fixtures.is_empty() {

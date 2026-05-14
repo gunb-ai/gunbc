@@ -11925,7 +11925,9 @@ pub(crate) mod r3_fc_lane2_loop_witness {
     //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
     //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-    use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect};
+    use crate::dag::{
+        Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect,
+    };
     use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
 
     const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
@@ -12011,7 +12013,9 @@ pub(crate) mod r3_fc_lane2_loop_witness {
                 dag.attach_diagnostic(Diagnostic::ParseError {
                     message,
                     span,
-                    correction: Correction::deferred_for_diagnostic_class("Lane2LoopWitnessDiagnostic"),
+                    correction: Correction::deferred_for_diagnostic_class(
+                        "Lane2LoopWitnessDiagnostic",
+                    ),
                 });
             }
             WitnessScan::Ok {
@@ -12083,7 +12087,8 @@ pub(crate) mod r3_fc_lane2_loop_witness {
 
         #[test]
         fn read_only_directive_registers_loop_workflow() {
-            let src = "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
+            let src =
+                "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
             let dag = compile_to_dag(src, "witness_read.v3").expect("compile");
             let subject = dag.workflow_lane2_subject().expect("lane2 subject");
             let wf = dag
@@ -12138,7 +12143,8 @@ pub(crate) mod r3_fc_lane2_loop_witness {
 
         #[test]
         fn unproven_directive_leaves_lane2_absent() {
-            let src = "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\nlet _: Int = 0\n";
+            let src =
+                "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\nlet _: Int = 0\n";
             let dag = compile_to_dag(src, "witness_none.v3").expect("compile");
             let subject = dag.workflow_lane2_subject().expect("lane2 subject");
             assert!(dag.lane2_workflow_effect_at(&subject).is_none());

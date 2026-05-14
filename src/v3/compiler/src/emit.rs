@@ -4036,7 +4036,9 @@ pub mod omni_shape_b_openapi {
     use std::collections::{BTreeMap, BTreeSet};
     use std::fmt::Write as _;
 
-    use crate::dag::{Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
+    use crate::dag::{
+        Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
+    };
     use crate::Dag;
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -4128,7 +4130,8 @@ pub mod omni_shape_b_openapi {
         if Some(endpoint_field.ty) != rest_endpoint_binding {
             return Ok(None);
         }
-        let TypeConnective::Conj { children } = &dag.declaration(endpoint_field.ty).connective else {
+        let TypeConnective::Conj { children } = &dag.declaration(endpoint_field.ty).connective
+        else {
             return Ok(None);
         };
         let Some(method_ty) = field_type(children, "method") else {
@@ -4560,11 +4563,12 @@ pub mod omni_shape_b_openapi {
         value: &FieldValue,
     ) -> Result<ParsedPathTemplate, ProjectOpenApiError> {
         let fields = require_record(declaration, "endpoint.path", value)?;
-        let tokens =
-            record_field(fields, "tokens").ok_or_else(|| ProjectOpenApiError::MalformedOperation {
+        let tokens = record_field(fields, "tokens").ok_or_else(|| {
+            ProjectOpenApiError::MalformedOperation {
                 declaration: declaration.to_string(),
                 detail: "PathTemplate missing `tokens` field".to_string(),
-            })?;
+            }
+        })?;
         let FieldValue::List(tokens) = tokens else {
             return Err(ProjectOpenApiError::MalformedOperation {
                 declaration: declaration.to_string(),
@@ -4584,12 +4588,10 @@ pub mod omni_shape_b_openapi {
                     detail: "PathTemplate token must be a UrlPathToken variant".to_string(),
                 });
             };
-            let label =
-                variant_label_in_parent(dag, schema.url_path_token, *constructor).ok_or_else(|| {
-                    ProjectOpenApiError::MalformedOperation {
-                        declaration: declaration.to_string(),
-                        detail: "token constructor is not a variant of UrlPathToken".to_string(),
-                    }
+            let label = variant_label_in_parent(dag, schema.url_path_token, *constructor)
+                .ok_or_else(|| ProjectOpenApiError::MalformedOperation {
+                    declaration: declaration.to_string(),
+                    detail: "token constructor is not a variant of UrlPathToken".to_string(),
                 })?;
             let text = single_string_payload(payload).ok_or_else(|| {
                 ProjectOpenApiError::MalformedOperation {

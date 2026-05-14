@@ -4977,9 +4977,9 @@ pub mod lens_structural_resolution {
 
 mod bootstrap;
 
-pub use bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
 pub use bootstrap::self_host_receipt_p0;
 pub use bootstrap::wall_clock_ratchet_manifest;
+pub use bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
 
 #[cfg(feature = "bootstrap-regen-fresh")]
 mod bootstrap_regen_fresh;
