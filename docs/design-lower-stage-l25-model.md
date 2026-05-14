@@ -224,7 +224,7 @@ PB-5 infer consumes `PreInferDag` output from lower; infer's signature is `fn in
 
 The cross-stage chain is: parse → SurfaceModule → lower → PreInferDag → infer → InferredDag → emit → EmissionResult.
 
-Per Decision 2.B discriminated-union diagnostics, each stage emits diagnostics tagged with its `DiagnosticSource`; downstream stages can read prior-stage diagnostics for context but do not need to re-process them.
+Per Decision 2.B discriminated-union diagnostics, each stage's diagnostics are discriminable by source (Parse / Lower / Infer / Emit) via whichever substrate-extension path §12 Q7 ratifies — (a) carrier-field `source: DiagnosticSource` on `Diagnostic` OR (b) lane-local sum mapping into `AnyDiagnosticKind::CompilerKind`. Whichever path lands, downstream stages can discriminate by stage source for context but do not need to re-process prior-stage diagnostics. **§12 Q7 must ratify before Step 2 worker brief authoring** — the worker brief authors against a SINGLE authoritative discrimination shape, not both paths.
 
 ### §7.3 Sibling-stage coordination
 
