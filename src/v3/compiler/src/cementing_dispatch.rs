@@ -564,7 +564,7 @@ pub mod gunbc_ci {
     /// Structural mirror of `CIGate` in `dsl/gunbc/ci.dag`.
     ///
     /// [`select_affected_gates`] consults only [`CiGateMeta::id`]. [`CiGateMeta::blocking`] is carried
-    /// for **carrier parity** with the DSL record so BinaryShim / dispatch wiring can map rows without
+    /// for **carrier parity** with the DSL record so runner-side dispatch can map rows without
     /// a forked struct; merge-blocking vs advisory semantics stay **outside** this selection substrate
     /// until a consumer reads the field.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -588,8 +588,8 @@ pub mod gunbc_ci {
     // 🟢 GREEN — terminal upstream-policy boundary for gate-id touch semantics before
     // `select_affected_gates`: `TouchAll` is the conservative in-DAG superset seed;
     // `TouchedGates` is the explicit finite set upstream mapped from lens/git facts.
-    // Ledger: no third authority here — path-regex, env, and PR #2713 receipts stay
-    // outside this module (Slice 7 brief + affected-set selection canvas §1).
+    // Ledger: no third authority here — path-regex, env, and PR #2713 lens receipts stay
+    // outside this module (Slice 7 brief + canvas §§1.1–4 end-state runner; Layer 1 only here).
     /// Diff-against-base input projected to **gate ids** (single authority at this boundary).
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum CiWorkflowDiff {
@@ -732,10 +732,13 @@ pub mod gunbc_ci {
         }
     }
 
-    /// Receipt boundary for **BinaryShim** gate dispatch after the PR #2713 affected-set
-    /// stack (and any obligation metadata) has been lowered into **`CIGate.id` strings**
-    /// from `dsl/gunbc/ci.dag` — not raw `NodeRef` keys (those are mapped upstream per
-    /// `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §1.4).
+    /// **Layer 1** gate-id touch seed for [`select_affected_gates_for_binary_shim`].
+    ///
+    /// Canvas `design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §1.1
+    /// steps 3–5 and §4 require the **runner** to consume PR #2713 structured output, join
+    /// it with `CIWorkflowDag` / `TestClaim` metadata, and **then** emit executable work.
+    /// This struct is **not** that receipt: it only carries `CIGate.id` strings (and a
+    /// narrowing flag) **after** any `NodeRef` → gate-id mapping has happened elsewhere.
     ///
     /// When `narrowing_available` is `false`, selection fails closed to the full gate
     /// roster ([`CiWorkflowDiff::TouchAll`]; canvas §3: unknown dimension / missing
@@ -744,11 +747,11 @@ pub mod gunbc_ci {
     pub struct CiBinaryShimAffectedSetReceipt {
         /// `false` forces [`CiWorkflowDiff::TouchAll`] regardless of `proven_direct_gate_touches`.
         pub narrowing_available: bool,
-        /// Gate ids the lens stack proved directly touched (seed before symmetric expansion).
+        /// Gate ids proven directly touched **after** upstream mapping (seed before symmetric expansion).
         pub proven_direct_gate_touches: BTreeSet<CiGateId>,
     }
 
-    /// `BinaryShim` entry: map a post-lens receipt into [`select_affected_gates`].
+    /// Layer 1 entry: map a **gate-id-only** [`CiBinaryShimAffectedSetReceipt`] into [`select_affected_gates`].
     pub fn select_affected_gates_for_binary_shim(
         dag: &CiWorkflowDagInput,
         receipt: &CiBinaryShimAffectedSetReceipt,

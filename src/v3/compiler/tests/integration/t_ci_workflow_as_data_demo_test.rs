@@ -961,7 +961,8 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
     );
 }
 
-// --- R3 gate #103 (`ci_uses_affected_set_selection`): BinaryShim consumes lens-shaped receipts.
+// --- R3 gate #103 (`ci_uses_affected_set_selection`), Layer 1: gate-id receipt → `select_affected_gates`.
+// Canvas §7 / Slice-5 runner wiring of PR #2713 `NodeRef` receipts is explicitly out of scope here.
 
 #[test]
 fn ci_uses_affected_set_selection_binary_shim_narrow_on_gunbc_ci_topology() {
