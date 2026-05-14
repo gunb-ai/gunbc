@@ -7,7 +7,7 @@
 //!   single-fn recursive + descent-provable arm (`LoopBound::Cardinality`), both reached from
 //!   [`v3_compiler::lower::lower_bodies_phase`].
 //! - **Test-only:** [`v3_compiler::dag::Dag::push_loop`] delegates to a single `push_node` site
-//!   for synthetic DAGs (`dag/builder.rs`).
+//!   for synthetic DAGs (`dag/builder_generated.rs`).
 //! - **Bootstrap:** `bootstrap_generated*.rs` embed serialized `Behavior::Loop` literals produced
 //!   when regen ran the same lowering pipeline — not a parallel lowering algorithm.
 
@@ -19,7 +19,10 @@ use crate::common::cached_compile_to_dag;
 // `CARGO_MANIFEST_DIR` is the `v3-compiler` crate root (`src/v3/compiler/`).
 const LOWER_RS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lower.rs"));
 
-const BUILDER_RS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/dag/builder.rs"));
+const BUILDER_RS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/dag/builder_generated.rs"
+));
 
 /// Construction-closure holds only if production lowering continues to materialize
 /// `Behavior::Loop` at exactly these two call sites (single recursive fn + mutual cluster).
@@ -37,7 +40,7 @@ fn lower_rs_defines_exactly_two_behavior_loop_push_sites() {
     let builder_count = BUILDER_RS.matches(builder_needle).count();
     assert_eq!(
         builder_count, 1,
-        "expected exactly one `{builder_needle}` in dag/builder.rs (test `push_loop` wrapper); found {builder_count}"
+        "expected exactly one `{builder_needle}` in dag/builder_generated.rs (test `push_loop` wrapper); found {builder_count}"
     );
 }
 

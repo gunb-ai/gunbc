@@ -822,6 +822,114 @@ pub mod gunbc_ci {
         Ok(out)
     }
 
+    /// `gunbc-ci` `[[bin]]` entry: emitted `gunbc_ci_generated.rs` calls this; host logic is
+    /// lib-owned (PB-0 cycle-6 `EXPECTED_HAND_AUTHORED_NON_TEST` retirement).
+    pub fn run_host_binary() -> std::process::ExitCode {
+        use std::io::Write as _;
+        use std::path::PathBuf;
+        use std::process::ExitCode;
+
+        use crate::compile_to_dag;
+        use crate::wall_clock_ratchet_manifest::{
+            emit_warn_policy_jsonl_lines, RATCHET_DAG_REL_PATH,
+        };
+
+        fn usage_stderr() -> ! {
+            let _ = writeln!(
+                std::io::stderr(),
+                "usage:\n  gunbc-ci wall-clock-warn-manifest\n  gunbc-ci --workflow <name> --event <github_event.json>"
+            );
+            std::process::exit(2);
+        }
+
+        fn repo_root() -> PathBuf {
+            if let Ok(p) = std::env::var("GITHUB_WORKSPACE") {
+                return PathBuf::from(p);
+            }
+            std::env::current_dir().unwrap_or_else(|e| {
+                let _ = writeln!(std::io::stderr(), "cwd: {e}");
+                std::process::exit(2);
+            })
+        }
+
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.is_empty() {
+            usage_stderr();
+        }
+
+        if args[0] == "wall-clock-warn-manifest" {
+            if args.len() != 1 {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "wall-clock-warn-manifest: unexpected arguments"
+                );
+                return ExitCode::from(2);
+            }
+            let root = repo_root();
+            let path = root.join(RATCHET_DAG_REL_PATH);
+            let source = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = writeln!(std::io::stderr(), "read {}: {e}", path.display());
+                    return ExitCode::FAILURE;
+                }
+            };
+            let dag = match compile_to_dag(&source, path.to_string_lossy().as_ref()) {
+                Ok(d) => d,
+                Err(err) => {
+                    let _ = writeln!(std::io::stderr(), "compile: {err:?}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            return match emit_warn_policy_jsonl_lines(&dag) {
+                Ok(lines) => {
+                    for line in lines {
+                        println!("{line}");
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(msg) => {
+                    let _ = writeln!(std::io::stderr(), "{msg}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+
+        if args.len() == 4 && args[0] == "--workflow" && args[2] == "--event" {
+            let wf = args[1].as_str();
+            let event_path = args[3].as_str();
+            if wf != "ci" {
+                let _ = writeln!(std::io::stderr(), "unsupported workflow: {wf}");
+                return ExitCode::from(2);
+            }
+            if !std::path::Path::new(event_path).is_file() {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "--event path is not a readable file: {event_path}"
+                );
+                return ExitCode::from(2);
+            }
+            let _ = writeln!(
+                std::io::stderr(),
+                "gunbc-ci: BinaryShim dispatch stub (workflow={wf}); gate matrix execution not wired yet."
+            );
+            let allow_stub = std::env::var("GUNBC_CI_ALLOW_DISPATCH_STUB")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if allow_stub {
+                return ExitCode::SUCCESS;
+            }
+            let _ = writeln!(
+                std::io::stderr(),
+                "gunbc-ci: refusing success for unimplemented dispatch (exit 2). \
+                 Set GUNBC_CI_ALLOW_DISPATCH_STUB=1 to smoke this stub until dispatch lands."
+            );
+            return ExitCode::from(2);
+        }
+
+        usage_stderr();
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;

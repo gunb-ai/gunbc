@@ -169,7 +169,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // non-test census line retired.
 //
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
-// helper file, `src/dag/builder.rs`, to keep the test-facing graph
+// helper module (`dag::builder`, emitted `dag/builder_generated.rs`) to keep the test-facing graph
 // constructors scoped away from the main `dag.rs` body while the
 // direct-Dag migration replaces `compile_to_dag(source)` fixtures.
 // Dissolution trigger: once the migration wave settles, fold the
@@ -208,8 +208,8 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 //
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
-// two leaf clusters into sibling submodules (`dag/ports.rs`,
-// `dag/effects.rs`) that the module root re-exports
+// two leaf clusters into sibling submodules (`dag/ports_generated.rs`,
+// `dag/effects_generated.rs`) that the module root re-exports
 // verbatim. No behavior change; file count goes up but per-file
 // coupling goes down. These are pure re-organization of already
 // hand-authored substrate, not new handwritten logic. Dissolution path:
@@ -235,12 +235,17 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // not generated output. Dissolution: fold into a `.dag` or generated authority when one
 // owns receipt schema; until then this module + census line are the bounded ratchet receipt.
 //
-// PB-0 / Director **msg_84abadad** + scope correction **msg_dda96d21** (2026-05-13): **43-entry**
+// PB-0 / Director **msg_84abadad** + scope correction **msg_dda96d21** (2026-05-13): **31-entry**
 // `NON_TEST` + **3** `FRAGMENTS` taxonomy (§3 + §4) in
 // `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md`
 // (substitute visibility for dependency tree; not enforcement — see INVARIANTS). Inline
 // `// blocked: …` comments on individual census lines are deferred until taxonomy stabilizes
 // across sibling merges.
+//
+// PB-0 cycle-6: `dag/{builder,cardinality_payload,effects,ports}` + `bin/{gunbc_ci,r1c_e_emit_gates}`
+// are emitted `*_generated.rs` from `tools/pb0_cycle6_emit_templates/` (`REGEN_OUTPUTS`); host
+// entrypoints are `cementing_dispatch::gunbc_ci::run_host_binary` and
+// `r1c_e_gates::run_emit_gates_host_binary`.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
@@ -251,7 +256,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `lower_call_pattern`, `type_iteration_dimension`,
     // `lane2_workflow_idempotency_report`). R3 gate #4 **parallel module**
     // `workflow_idempotency.rs` retired; native projection co-located in
-    // `dag/effects.rs` (full evaluator/emitted-authority slice still open while
+    // `dag::effects` (`effects_generated.rs`) (full evaluator/emitted-authority slice still open while
     // the std arrow is `Unparsed` in bootstrap). These benches still
     // target hot Rust call paths (Criterion). Broader Tier3 bench retirement
     // deletes this harness per parent brief §"Phase 1 deliverables" once the
@@ -259,8 +264,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
-    "src/v3/compiler/src/bin/gunbc_ci.rs",
-    "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
@@ -271,11 +274,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/dag.rs",
-    "src/v3/compiler/src/dag/builder.rs",
-    // Closed Cardinality payload + idempotent target shim (API closure).
-    "src/v3/compiler/src/dag/cardinality_payload.rs",
-    "src/v3/compiler/src/dag/effects.rs",
-    "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/emit.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",

@@ -80,6 +80,7 @@ mod bootstrap_generated_without_parse_surface {
     include!("bootstrap_generated_without_parse_surface.rs");
 }
 
+#[path = "dag/builder_generated.rs"]
 mod builder;
 mod computation {
     //! Host lowering projection for Lane E-C (`std.computation`).
@@ -330,7 +331,9 @@ mod computation {
             .and_then(algebra_profile_to_dimension)
     }
 }
+#[path = "dag/effects_generated.rs"]
 mod effects;
+#[path = "dag/ports_generated.rs"]
 mod ports;
 
 pub use computation::{
@@ -821,6 +824,7 @@ impl CardinalityBound {
     }
 }
 
+#[path = "dag/cardinality_payload_generated.rs"]
 mod cardinality_payload;
 pub use cardinality_payload::CardinalityPayload;
 

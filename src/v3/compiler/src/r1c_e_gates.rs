@@ -489,3 +489,40 @@ pub fn check_omni_demo_fixtures_green() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// R1C-E `[[bin]]` entry: emitted `r1c_e_emit_gates_generated.rs` calls this (PB-0 cycle-6
+/// `EXPECTED_HAND_AUTHORED_NON_TEST` retirement).
+pub fn run_emit_gates_host_binary() -> std::process::ExitCode {
+    use std::io::Write as _;
+    use std::process::ExitCode;
+
+    fn usage_stderr() -> ! {
+        let _ = writeln!(
+            std::io::stderr(),
+            "usage: r1c_e_emit_gates <subcommand>\n\
+             subcommands: generic-bounds | rust-fixtures | omni-demo"
+        );
+        std::process::exit(2);
+    }
+
+    let mut args = std::env::args().skip(1);
+    let sub = args.next().unwrap_or_else(|| usage_stderr());
+    if args.next().is_some() {
+        usage_stderr();
+    }
+
+    let result = match sub.as_str() {
+        "generic-bounds" => check_generic_bounds_survive(),
+        "rust-fixtures" => check_emit_rust_fixtures_rustc_green(),
+        "omni-demo" => check_omni_demo_fixtures_green(),
+        _ => usage_stderr(),
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            let _ = writeln!(std::io::stderr(), "r1c_e_emit_gates {sub}: {detail}");
+            ExitCode::FAILURE
+        }
+    }
+}

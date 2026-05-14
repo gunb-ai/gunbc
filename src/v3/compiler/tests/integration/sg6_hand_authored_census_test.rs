@@ -155,19 +155,12 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
-        // R1C-E (T-Emit `.dag` `TestClaim` wrappers): irreducible host-shim
-        // for the `ExecuteCommand` logical child that the `.dag` claim
-        // invokes. Calls into `v3_compiler::r1c_e_gates::check_*` (single
-        // source of truth) and exits 0/1 — the bounded host-spawn boundary
-        // PR #792 / `TestPredicate::ExecuteCommand` is built around. Cannot
-        // be expressed via the `regen.dag` registry shape (the registry's
-        // job is `Dag → emitted file`; this bin's job is `process exit
-        // code` for a `.dag` predicate). Dissolution trigger: when R1
-        // closes and the `.dag` runner can express in-process compilation
-        // checks without a host child, the wrappers + bin retire together
-        // (R1 Closure dispatch on issue #973). Documented in ROADMAP T-Emit
-        // / R1C-E lane row.
-        "r1c_e_emit_gates.rs",
+        // R1C-E (T-Emit `.dag` `TestClaim` wrappers): thin `[[bin]]` shim emitted as
+        // `r1c_e_emit_gates_generated.rs` (PB-0 cycle-6); calls `r1c_e_gates::run_emit_gates_host_binary`.
+        "r1c_e_emit_gates_generated.rs",
+        // `gunbc-ci` binary shim emitted as `gunbc_ci_generated.rs` (PB-0 cycle-6); calls
+        // `cementing_dispatch::gunbc_ci::run_host_binary`.
+        "gunbc_ci_generated.rs",
         "regen_bootstrap.rs",
         "regen_lens.rs",
         "regen_parse.rs",

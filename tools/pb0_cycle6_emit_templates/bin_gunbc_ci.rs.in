@@ -1,0 +1,7 @@
+// Binary entrypoint may use `eprintln!` for operator-facing diagnostics (disallowed
+// in library code per clippy config).
+#![allow(clippy::disallowed_macros)]
+
+fn main() -> std::process::ExitCode {
+    v3_compiler::gunbc_ci::run_host_binary()
+}
