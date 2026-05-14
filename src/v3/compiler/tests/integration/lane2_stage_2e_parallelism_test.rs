@@ -22,8 +22,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     operation_effect_shape, Behavior, BreakingShape, CallableRef, CompositionVerdict, CreateCause,
     EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource, NonSingletonList,
-    Operation, ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding, UrlPathToken,
-    ParallelNonCommuteEvidence, WorkflowEffect, WorkflowParallelismReport,
+    Operation, ParallelNonCommuteEvidence, ParallelismUnsupportedKind, PathTemplate,
+    RestEndpointBinding, UrlPathToken, WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
@@ -176,8 +176,7 @@ fn parallel_upsert_cross_branch_fail_closed_same_operation() {
         panic!("expected ParallelismUnsupported — Upsert×Upsert has no merge witness in v1");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
-    let ParallelNonCommuteEvidence::NonCommutingOperations { left, right } =
-        d.non_commute_evidence
+    let ParallelNonCommuteEvidence::NonCommutingOperations { left, right } = d.non_commute_evidence
     else {
         panic!("pairwise non-commute should expose typed operation evidence");
     };
@@ -265,11 +264,15 @@ fn parallel_different_path_param_names_not_proven_commute() {
     };
     assert!(matches!(
         operation_effect_shape(&dag, &evidence_left),
-        Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
     ));
     assert!(matches!(
         operation_effect_shape(&dag, &evidence_right),
-        Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
     ));
 }
 
@@ -316,7 +319,9 @@ fn parallel_read_vs_upsert_does_not_commute() {
     ));
     assert!(matches!(
         operation_effect_shape(&dag, &evidence_right),
-        Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
     ));
 }
 
