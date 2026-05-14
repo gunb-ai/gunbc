@@ -276,9 +276,9 @@ fn joined_rust_string_literals(text: &str) -> String {
             while idx < bytes.len() {
                 match bytes[idx] {
                     b'\\' => {
-                        if let Some(escaped) = bytes.get(idx + 1) {
-                            joined.push(*escaped as char);
-                            idx += 2;
+                        if let Some((escaped, end)) = rust_escape_value(bytes, idx) {
+                            joined.push(escaped);
+                            idx = end;
                         } else {
                             idx += 1;
                         }
@@ -312,15 +312,48 @@ fn char_literal_value(bytes: &[u8], start: usize) -> Option<(char, usize)> {
     let content = start + 1;
     match bytes.get(content).copied()? {
         b'\\' => {
-            let escaped = bytes.get(content + 1).copied()?;
-            if bytes.get(content + 2) == Some(&b'\'') {
-                Some((escaped as char, content + 3))
+            let (escaped, end) = rust_escape_value(bytes, content)?;
+            if bytes.get(end) == Some(&b'\'') {
+                Some((escaped, end + 1))
             } else {
                 None
             }
         }
         byte if bytes.get(content + 1) == Some(&b'\'') => Some((byte as char, content + 2)),
         _ => None,
+    }
+}
+
+fn rust_escape_value(bytes: &[u8], backslash: usize) -> Option<(char, usize)> {
+    if bytes.get(backslash) != Some(&b'\\') {
+        return None;
+    }
+    match bytes.get(backslash + 1).copied()? {
+        b'n' => Some(('\n', backslash + 2)),
+        b'r' => Some(('\r', backslash + 2)),
+        b't' => Some(('\t', backslash + 2)),
+        b'\\' => Some(('\\', backslash + 2)),
+        b'0' => Some(('\0', backslash + 2)),
+        b'\'' => Some(('\'', backslash + 2)),
+        b'"' => Some(('"', backslash + 2)),
+        b'x' => {
+            let hex = std::str::from_utf8(bytes.get(backslash + 2..backslash + 4)?).ok()?;
+            let value = u8::from_str_radix(hex, 16).ok()?;
+            Some((value as char, backslash + 4))
+        }
+        b'u' if bytes.get(backslash + 2) == Some(&b'{') => {
+            let mut end = backslash + 3;
+            while end < bytes.len() && bytes[end] != b'}' {
+                end += 1;
+            }
+            if bytes.get(end) != Some(&b'}') {
+                return None;
+            }
+            let hex = std::str::from_utf8(&bytes[backslash + 3..end]).ok()?;
+            let value = u32::from_str_radix(hex, 16).ok()?;
+            Some((char::from_u32(value)?, end + 1))
+        }
+        escaped => Some((escaped as char, backslash + 2)),
     }
 }
 
@@ -404,17 +437,19 @@ const BRACKET_BAD: &str = include_str![concat!("../../", "pipeline", ".dag")];
 const BRACE_BAD: &str = include_str!{{concat!("../../", "pipeline", ".dag")}};
 const RAW_BAD: &str = include_str!(concat!(r#"../../pipeline"#, r#".dag"#));
 const CHAR_BAD: &str = include_str!(concat!("../../pipe", 'l', "ine.dag"));
+const ESCAPE_BAD: &str = include_str!(concat!("../../pipe\u{{6c}}ine", ".dag"));
 "##,
         "_str!", "_str!"
     );
     let offenders = include_str_pipeline_dag_offenders(manifest_dir, &path, &synthetic);
-    assert_eq!(offenders.len(), 6);
+    assert_eq!(offenders.len(), 7);
     assert!(offenders[0].contains("synthetic.rs:3:"));
     assert!(offenders[1].contains("synthetic.rs:4:"));
     assert!(offenders[2].contains("synthetic.rs:5:"));
     assert!(offenders[3].contains("synthetic.rs:6:"));
     assert!(offenders[4].contains("synthetic.rs:7:"));
     assert!(offenders[5].contains("synthetic.rs:8:"));
+    assert!(offenders[6].contains("synthetic.rs:9:"));
 }
 
 #[test]
