@@ -201,6 +201,38 @@ pub fn selection_subset_under_touch_set_growth(
     }
 }
 
+/// **Layer 1** gate-id touch seed for [`select_affected_gates_for_binary_shim`].
+///
+/// Canvas `design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §1.1
+/// steps 3–5 and §4 require the **runner** to consume PR #2713 structured output, join
+/// it with `CIWorkflowDag` / `TestClaim` metadata, and **then** emit executable work.
+/// This struct is **not** that receipt: it only carries `CIGate.id` strings (and a
+/// narrowing flag) **after** any `NodeRef` → gate-id mapping has happened elsewhere.
+///
+/// When `narrowing_available` is `false`, selection fails closed to the full gate
+/// roster ([`CiWorkflowDiff::TouchAll`]; canvas §3: unknown dimension / missing
+/// receipt / unbuildable DAG pair).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CiBinaryShimAffectedSetReceipt {
+    /// `false` forces [`CiWorkflowDiff::TouchAll`] regardless of `proven_direct_gate_touches`.
+    pub narrowing_available: bool,
+    /// Gate ids proven directly touched **after** upstream mapping (seed before symmetric expansion).
+    pub proven_direct_gate_touches: BTreeSet<CiGateId>,
+}
+
+/// Layer 1 entry: map a **gate-id-only** [`CiBinaryShimAffectedSetReceipt`] into [`select_affected_gates`].
+pub fn select_affected_gates_for_binary_shim(
+    dag: &CiWorkflowDagInput,
+    receipt: &CiBinaryShimAffectedSetReceipt,
+) -> Result<Vec<CiGateId>, CiAffectedGatesError> {
+    let diff = if receipt.narrowing_available {
+        CiWorkflowDiff::TouchedGates(receipt.proven_direct_gate_touches.clone())
+    } else {
+        CiWorkflowDiff::TouchAll
+    };
+    select_affected_gates(dag, &diff)
+}
+
 fn topo_sort_subset(
     dag: &CiWorkflowDagInput,
     subset: &HashSet<&str>,
@@ -475,5 +507,46 @@ mod tests {
         let empty = CiWorkflowDiff::TouchedGates(BTreeSet::new());
         let wide = CiWorkflowDiff::TouchedGates(BTreeSet::from(["tests".into()]));
         assert!(selection_subset_under_touch_set_growth(&dag, &empty, &wide));
+    }
+
+    #[test]
+    fn binary_shim_receipt_unknown_narrowing_matches_touch_all() {
+        let dag = demo_ci_dag();
+        let receipt = CiBinaryShimAffectedSetReceipt {
+            narrowing_available: false,
+            proven_direct_gate_touches: BTreeSet::from(["lint".into()]),
+        };
+        let got = select_affected_gates_for_binary_shim(&dag, &receipt).expect("valid dag");
+        let expect = select_affected_gates(&dag, &CiWorkflowDiff::TouchAll).expect("valid dag");
+        assert_eq!(got, expect);
+    }
+
+    #[test]
+    fn binary_shim_receipt_narrow_lint_matches_touched_gates_lint() {
+        let dag = demo_ci_dag();
+        let receipt = CiBinaryShimAffectedSetReceipt {
+            narrowing_available: true,
+            proven_direct_gate_touches: BTreeSet::from(["lint".into()]),
+        };
+        let got = select_affected_gates_for_binary_shim(&dag, &receipt).expect("valid dag");
+        let expect = select_affected_gates(
+            &dag,
+            &CiWorkflowDiff::TouchedGates(BTreeSet::from(["lint".into()])),
+        )
+        .expect("valid dag");
+        assert_eq!(got, expect);
+    }
+
+    #[test]
+    fn binary_shim_receipt_empty_narrow_seed_yields_empty_plan() {
+        let dag = demo_ci_dag();
+        let receipt = CiBinaryShimAffectedSetReceipt {
+            narrowing_available: true,
+            proven_direct_gate_touches: BTreeSet::new(),
+        };
+        assert_eq!(
+            select_affected_gates_for_binary_shim(&dag, &receipt),
+            Ok(Vec::new())
+        );
     }
 }
