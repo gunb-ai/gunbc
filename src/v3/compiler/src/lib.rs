@@ -16,6 +16,9 @@
 //   payload.
 
 pub mod cementing_dispatch;
+pub use cementing_dispatch::gunbc_ci;
+pub use cementing_dispatch::integration_rs_wiring_scan;
+pub use cementing_dispatch::r3_gate_87_cementing_regen_runner_suites;
 pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
@@ -30,10 +33,7 @@ pub use enforced_lens_application::check_enforced_lens_applications;
 pub use enforced_lens_application::gate_58_test_parse_timing_budget_violation_max_ns_pair;
 #[doc(hidden)]
 pub use enforced_lens_application::gate_58_test_raise_modeled_ci_timing_measurement_duration_ns;
-pub mod integration_rs_wiring_scan;
-pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
-pub mod r3_gate_87_cementing_regen_runner_suites;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
 
@@ -4751,8 +4751,15 @@ pub mod evaluator {
 }
 mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
-/// (see module docs in `lens_declaration_apply.rs`).
-pub mod lens_declaration_apply;
+/// (R3 gate #5: `lens_apply.rs` retired; body in `lens_declaration_apply_body.txt`, included here
+/// for SG-0 census path retirement until PB-Runtime / Row-4).
+pub mod lens_declaration_apply {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/lens_declaration_apply_body.txt"
+    ));
+}
+pub use lens_declaration_apply::lens_t_las_carrier;
 pub use lens_declaration_apply::lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
@@ -5201,8 +5208,6 @@ pub mod emit_rust_roundtrip_fixtures {
         },
     ];
 }
-
-pub mod gunbc_ci;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates {
     //! R1C-E — emit-gate check functions shared by the host `#[test]` harness and
