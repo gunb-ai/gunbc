@@ -10,7 +10,7 @@ Gate #16 remains **not dispatch-eligible** for the R3 strong suite. The P0 pins 
 
 | Precondition | Current read at HEAD | Source-of-truth pointer | Coordination action |
 |---|---|---|---|
-| R2-Evaluator landed and stable | **Blocked.** The R2 closure ledger still lists all five Evaluator sub-lanes as `in-flight` or `not-started`; later R3 evaluator PR sweeps show partial progress but do not replace the ledger. | `docs/r2-closure-ledger.md` lines 250-263; `docs/r3-actual-close-plan.md` Gap 3 | Director/PM needs an Evaluator lane disposition before any ledger update: respawn a dedicated R3 Evaluator Mgr, fold explicit sub-lanes into existing managers, or run Director-direct ad hoc dispatch. After that, refresh the five ledger cells from HEAD evidence. |
+| R2-Evaluator landed and stable | **Blocked.** The 2026-05-14 refresh turns 3/5 Evaluator sub-lanes green (`runtime_value_model_structural`, `body_evaluator_structural`, `cross_target_equivalence_harness_structural`), but `lens_application_complete_reflection` and `witness_construction_structural` remain in-flight. | `docs/r2-closure-ledger.md` Evaluator Manager table; `docs/r3-actual-close-plan.md` Gap 3 | Continue the re-spawned Evaluator lane through the two remaining cells; do not let gate #16 consume the Evaluator precondition until all five rows are green. |
 | R2-Grounding Rust + Python closed | **Blocked / unproven.** LanguageSpec remains in-flight in the R2 closure ledger, and Shape-A / Python+Go readiness is still cited as a blocker by L5/Evaluator readiness docs. | `docs/r2-closure-ledger.md` row `T-Ground-LanguageSpec`; `docs/briefs/r2-evaluator-closure-residuals.md`; `docs/r3-program-plan.md` rows #15/#16 | Grounding owner should produce a Rust+Python closure receipt that is ledger-consumable by T-FixedPoint. Do not let T-FixedPoint infer target coverage from scattered target-specific PRs. |
 | T-LP / SG-0 closed | **Blocked.** T-LensProducer-Retirement remains not-started in the R2 ledger. Live SG-0 expected-list snapshot is nonzero: non-test 53, test 121, fragments 2. | `docs/r2-closure-ledger.md` PB continuation row; `src/v3/compiler/tests/integration/sg0_census_test.rs`; `docs/r3-program-plan.md` rows #5-#8 | PB/Debt-Paydown sequencing remains upstream of fixed point. Gate #16 must not author `pb_self_compile_fixed_point_strong` while #5-#8 are open. |
 | Row-B materialization landed | **Blocked.** The rule is designed, but no dispatch-time frozen Row-B target set exists because the ledger read cannot yet happen. The current `FixedPointConverges` runner path still only supports `default_fixed_point_source` / `pipeline_stage_snapshots`, so non-Rust Row-B verification also needs the named extension from the fixed-point brief. | `docs/briefs/r3-pb-t-fixedpoint-worker.md` §§Acceptance / Single grounding gate; `src/v3/compiler/src/test_runner.rs` `FixedPointConverges` payload checks | Once the first three preconditions are green, PB should freeze Row-B rows from the single ledger read and extend `self_host_fixed_point` or a sibling step for per-target emission byte-stability before claiming the suite is executable. |
@@ -21,19 +21,19 @@ Gap 3's dominant hidden blocker is the Evaluator precondition. The close predica
 
 | R2 closure-ledger sub-lane | Current ledger status | Required close state for Gap 3 |
 |---|---|---|
-| `runtime_value_model_structural` | `in-flight` | `green` with HEAD evidence |
-| `body_evaluator_structural` | `not-started` | `green` with executable body-evaluator evidence |
-| `lens_application_complete_reflection` | `in-flight` | `green` with complete reflection + lens fold evidence |
-| `witness_construction_structural` | `not-started` | `green` with runtime witness materialization evidence |
-| `cross_target_equivalence_harness_structural` | `not-started` | `green` with harness primitive evidence; L5 corpus remains its own R3 consumer |
+| `runtime_value_model_structural` | `green` | Closed by HEAD runtime `Value` carrier + evaluator execution evidence; monitor only |
+| `body_evaluator_structural` | `green` | Closed by executable `evaluate_body` / `eval_node` coverage over all five `Behavior` variants |
+| `lens_application_complete_reflection` | `in-flight` | Still needs complete reflection + real lens-over-`Dag` / generic fold evidence |
+| `witness_construction_structural` | `in-flight` | Still needs complete read-channel / reflected-program witness materialization |
+| `cross_target_equivalence_harness_structural` | `green` | Closed by L5 primitive harness; L5 corpus breadth remains its own R3 §1.8 gate |
 
 Partial R3-era work should be mapped into these exact cells, not into parallel status labels. The current branch has audit trails (`docs/audit/r3-evaluator-pr-1275-1500-debt-sweep.md`, `docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md`, `docs/audit/r3-evaluator-pr-1804-onward-debt-sweep.md`) that help populate evidence, but they are not themselves the closure ledger.
 
 ## Sequencing rule for gate #16
 
 1. Keep `src/v3/std/verification.dag` in P0-only state; no `pb_self_compile_fixed_point_strong` suite until the single dispatch ledger read is green.
-2. Resolve Evaluator ownership first, because it gates T-LP, Row-B execution, and most downstream verification consumers.
-3. Refresh the R2 closure ledger's Evaluator cells from HEAD before T-FixedPoint consumes them.
+2. Keep Evaluator ownership on the re-spawned R3 Evaluator Mgr lane until the two remaining cells close.
+3. Keep the R2 closure ledger's Evaluator cells refreshed from HEAD before T-FixedPoint consumes them.
 4. Obtain a Grounding Rust+Python closure receipt from the Grounding owner; do not substitute L5 or Shape-A planning prose.
 5. Let PB/Debt-Paydown close T-LP/SG-0 (#5-#8) before PB starts the P3 fixed-point worker.
 6. At P3 dispatch, freeze Row-B targets from the same ledger read that gates dispatch, then materialize Row A + Row B + Row C in the strong suite and extend the fixed-point verifier for non-Rust Row-B byte-stability.
