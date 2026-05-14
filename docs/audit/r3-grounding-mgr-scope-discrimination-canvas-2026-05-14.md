@@ -51,6 +51,6 @@ Cross-Mgr coordination is **Gap-tier and lane-named** (R3 Substrate Mgr, R3 Debt
 
 ## Next actions (post canvas)
 
-1. **Hold-pattern (now):** Author `docs/briefs/r3-grounding-manager.md` + closure-ledger refresh in same PR; Director/admin-merge per operator authorization.  
+1. **Hold-pattern (landed with PR #3054):** `docs/briefs/r3-grounding-manager.md` + T-Ground closure-ledger `Last signal` / `Notes` refresh — Director/admin-merge when CI cleans.  
 2. **Post dashboard `--shape` on `work-items create`:** Dispatch workers only after ledger Notes reflect this canvas (avoid respawn-2 colliding with Substrate flight).  
 3. **Do not** run `dashboard-ops replan` on this role-node (Director: auto-archive risk).
