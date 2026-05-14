@@ -3,8 +3,9 @@
 //
 // Status: STRUCTURALLY TERMINAL (fns); LENS-INSTANCE FIXTURE-BOUND;
 // BEHAVIORALLY DEFERRED.
-// (Same staging shape as `lenses.cost` STRUCTURALLY TERMINAL /
-// BEHAVIORALLY PROXY and `lenses.dag_shape` producer-only.)
+// (Same *structural lens first, behavioral wiring later* staging discipline
+// as historical `lenses.cost` work — `lenses.cost` is now BEHAVIORALLY COMPLETE
+// for its abstract scope — and `lenses.dag_shape` producer-only patterns.)
 //
 // **What lives here vs. the test fixture:** this file authors the five
 // structural fns the `Lens<C>` framework requires (`read_provenance`,
@@ -30,7 +31,8 @@
 // for each emitted line — instrumentation hooks in
 // `src/v3/compiler/src/emit/rust_target.rs`'s `render_named_template`
 // call sites. That code-side work is a separate downstream slice
-// (precedent: `lenses.cost` BEHAVIORALLY PROXY). This file authors
+// (precedent: `lenses.cost` staged structural APIs before behavioral
+// completion). This file authors
 // the structural lens shape so the carrier + lens declaration are
 // landed and consumable; the `read` body is a fail-closed `Empty`
 // stub until producer wiring lands.
@@ -58,7 +60,7 @@ fn _seed_list_provenance_empty() -> List<EmissionProvenance> = Empty
 
 // Per-Behavior provenance read.
 //
-// 🟡 STUB. Returns `Inhabits(Empty)` — every Behavior contributes an
+// 🟡 Placeholder read. Returns `Inhabits(Empty)` — every Behavior contributes an
 // empty provenance list. Producer wiring (instrumenting
 // `render_named_template` call sites in `rust_target.rs` to record
 // rule-fired-at-line per Behavior) is a separate downstream slice.
