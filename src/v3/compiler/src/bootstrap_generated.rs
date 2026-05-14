@@ -39416,7 +39416,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(825), DeclarationId(721), DeclarationId(2485)],
                 output: DeclarationId(1128),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/runtime.dag", 11265, 11284)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/runtime.dag", 11260, 11279)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -39426,7 +39426,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/runtime.dag", 11196, 11284),
+            span: SourceSpan::new("src/v3/std/runtime.dag", 11191, 11279),
         });
         declarations.push(Declaration { id: DeclarationId(1138), name: Some("rust_filter_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(1012), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(1012)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(263)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2302), payload: vec![FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.filter({arg}).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2300), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 3555, 4208) });
         declarations.push(Declaration { id: DeclarationId(1139), name: Some("rust_any_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(1012), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(1012)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(249)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2302), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.any({arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2300), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 4210, 4705) });
@@ -81034,7 +81034,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/runtime.dag", 11243, 11254),
+            span: SourceSpan::new("src/v3/std/runtime.dag", 11238, 11249),
         });
         declarations.push(Declaration {
             id: DeclarationId(2486),
