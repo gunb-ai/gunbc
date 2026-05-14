@@ -866,6 +866,26 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                     });
                     continue;
                 };
+                if !crate::dag::node_scope_subject_within_arrow_declaration(
+                    dag,
+                    fn_decl,
+                    subject_node,
+                ) {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: parallelism `SectionRef::NodeScope.node` must name a \
+                                   substrate node in the authored `declaration` body's lowered graph \
+                                   (declaring function bind or descendant reachable from its result \
+                                   subgraph); malformed `(declaration, node)` pairs fail closed instead \
+                                   of reading `loop_iteration_parallel_emission_indicator` out-of-scope"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                }
                 let Some(budget_host) =
                     field_value_parallelism_iteration_budget(dag, pm_disj, budget_val)
                 else {
@@ -1826,6 +1846,78 @@ mod gate_95_parallelism_iteration_enforcement_tests {
         assert!(
             message.contains("loop_iteration_parallel_emission_indicator=0"),
             "message must name the sequential observation; got {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_out_of_range_node_scope_subject() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_oob_node_idx.v3",
+        )
+        .expect("compile");
+        let fn_decl = dag
+            .declaration_by_name("gate95_demo_fn")
+            .expect("fn decl")
+            .id;
+        let bogus_subject = NodeId::from_table_index(dag.nodes().len() as u32);
+        assert!(
+            dag.node_opt(&bogus_subject).is_none(),
+            "fixture must use one-past-last node index as nonexistent NodeId witness"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_oob_witness",
+            fn_decl,
+            bogus_subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected ParseError coupling failure; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("fail closed") && message.contains("NodeScope"),
+            "unexpected message: {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_node_scope_foreign_to_declaration() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_early() -> Int = 0\n\
+             fn gate95_last() -> Int = 1\n",
+            "gate95_foreign_subject.v3",
+        )
+        .expect("compile");
+        let fn_early = dag.declaration_by_name("gate95_early").expect("early").id;
+        let alien_subject = dag.workflow_lane2_subject().expect("last fn bind shell");
+        assert!(
+            !crate::dag::node_scope_subject_within_arrow_declaration(&dag, fn_early, alien_subject),
+            "fixture ordering invariant: alien subject must be outside gate95_early's lowered body \
+             (workflow shell must not alias the early Arrow root)"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_foreign_subject_witness",
+            fn_early,
+            alien_subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected boundary ParseError for decoupled subject; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("lowered graph")
+                && message.contains("loop_iteration_parallel_emission_indicator"),
+            "unexpected coupling message: {message:?}"
         );
     }
 }
