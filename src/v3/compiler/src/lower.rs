@@ -5956,7 +5956,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}`: optional match disj missing `None` arm"
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: Correction::deferred_for_diagnostic_class("ResolveError"),
                     },
                 );
                 return None;
@@ -5995,7 +5995,7 @@ fn lower_structural_field_value(
                                         "data `{data_name}` field `{field_label}`: optional match disj missing `Some` arm"
                                     ),
                                     span: span.clone(),
-                                    fixes: Vec::new(),
+                                    correction: Correction::deferred_for_diagnostic_class("ResolveError"),
                                 },
                             );
                             return None;
@@ -6086,7 +6086,7 @@ fn lower_structural_field_value(
                                             "data `{data_name}` field `{field_label}` record literal is ambiguous: same field set matches sum variants `{prev_label}` and `{label}`"
                                         ),
                                         span: span.clone(),
-                                        fixes: Vec::new(),
+                                        correction: Correction::deferred_for_diagnostic_class("ResolveError"),
                                     },
                                 );
                                 return None;
@@ -6102,7 +6102,7 @@ fn lower_structural_field_value(
                                     "data `{data_name}` field `{field_label}` record literal field set does not match any variant of the declared sum type"
                                 ),
                                 span: span.clone(),
-                                fixes: Vec::new(),
+                                correction: Correction::deferred_for_diagnostic_class("ResolveError"),
                             },
                         );
                         return None;
