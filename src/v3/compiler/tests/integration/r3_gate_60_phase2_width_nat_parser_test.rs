@@ -1,7 +1,9 @@
 //! R3 gate #60 Phase 2.1 — parser + lower receipt for `Algebra<N>` surface sugar
 //! (`Int<64>` → `Compose<Int, MachineWidth<64>>` with literal-Nat phantom slot).
 //!
-//! Full gate #60 closure still requires follow-on slices Z/D/E/F per `docs/audit/r3-gate-60-decomposition.md`.
+//! Slice Z (`MachineWidth<Word*>` → literal-Nat slot-2 in `dsl/std/{integer,float}.dag`) lands with
+//! this workstream; §1.4 conjuncts D (class-bridge census) and F (v2 parity) remain per
+//! `docs/audit/r3-gate-60-decomposition.md`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AtomPayload, Dag, LiteralBits, TypeConnective};
@@ -184,6 +186,17 @@ let probe: Int<64> = 0
 ";
     let dag = compile_to_dag(source, FILE).expect("compile");
     assert_compose_algebra_machine_width_literal(&dag, "probe", "Int", "64");
+}
+
+#[test]
+fn gate_60_phase2_real_64_lowers_to_compose_real_machine_width_literal() {
+    let source = "\
+import std.float { Real }
+
+let probe: Real<64> = 0
+";
+    let dag = compile_to_dag(source, FILE).expect("compile");
+    assert_compose_algebra_machine_width_literal(&dag, "probe", "Real", "64");
 }
 
 #[test]
