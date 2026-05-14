@@ -55,7 +55,7 @@ Per-transformation tier classification (class-tier vs symbolic-tier-only) — cl
 | Transformation | Pattern recognized | Tightening | Tier |
 |---|---|---|---|
 | `LoopHoisting` | Computation inside loop independent of loop variable | O(n*m) → O(n+m) when inner cost is non-constant | **class-tier** (e.g., n,m both ClassLinear: ClassPolynomial(2) → ClassLinear) |
-| `DeadCodeElimination` | Subgraph with no consumer (compute result never read) | removes the subgraph's cost contribution entirely | **class-tier** (when dead subgraph dominates the class) |
+| `DeadCodeElimination` | Subgraph with **no semantic consumer** (no value, effect, drain, or returned-modified-resource downstream — see `SemanticDeadnessWitness` in §1.5) | removes the subgraph's cost contribution entirely | **class-tier** (when dead subgraph dominates the class) |
 | `ConstantBoundPropagation` | Inner-loop bound provably independent of outer-loop variable | O(n*m) → O(n) when m proved constant | **class-tier** (ClassPolynomial(2) → ClassLinear) |
 | `LoopFusion` | Sequential loops with compatible iteration spaces over same data | O(n+m) → O(max(n,m)) when iteration spaces identical | **symbolic-tier only** (`n+m` and `max(n,m)` are same class; ClassLinear → ClassLinear in BoundedLattice<AsymptoticClass>) |
 | `AggregationRecognition` | Explicit accumulator with associative-reduce shape | substrate-folded to declarative `sum`/`fold` op | **symbolic-tier only** (pattern recognition; folding to declarative form does not change the lattice class) |
@@ -179,17 +179,34 @@ type ClassTierTightnessTransformation       // produces AsymptoticStrictDominanc
       enclosing_loop_node: NodeId             // role: outer loop containing the invariant subgraph
       invariant_subgraph_node: NodeId         // role: subgraph proved loop-invariant
       independent_size_variables: List<SizeVariable>  // size-vars proved independent of loop var
-      invariance_witness: LoopInvarianceWitness  // structural witness: subgraph reads no loop-var; shape TBD post-Gap-11
+      // Strengthened witness obligation per openai-pro BLOCKING PR #3067 2026-05-14:
+      // hoisting must preserve semantics across value-flow AND effect-flow AND
+      // drain-flow. A subgraph that reads no loop variable can still carry a
+      // WorkflowEffect (src/v3/std/effects.dag) whose multiplicity changes if
+      // hoisted out of the loop (runs once vs N times — different program semantics).
+      semantic_invariance_witness: LoopSemanticInvarianceWitness  // structural witness: subgraph has (a) no loop-var value dependency AND (b) no effect/drain whose multiplicity matters AND (c) no returned-modified-resource dependency on iteration; shape TBD post-Gap-11
     }
   | DeadCodeElimination {
-      dead_subgraph_node: NodeId              // role: subgraph with no downstream Port consumer
-      no_consumer_witness: NoConsumerWitness  // structural witness: Port consumption walk confirms zero consumers; shape TBD post-Gap-11
+      dead_subgraph_node: NodeId              // role: subgraph with no downstream value/effect/drain consumer
+      // Strengthened witness obligation per openai-pro BLOCKING PR #3067 2026-05-14:
+      // "no value consumer" alone admits illegal removal. A Port with no downstream
+      // VALUE consumer can still carry a WorkflowEffect (src/v3/std/effects.dag) or
+      // a drain obligation that is semantically required. Witness must prove
+      // semantic deadness (no value AND no effect/drain AND no returned-modified-
+      // resource consumer) — not just value-flow deadness. Renamed from
+      // NoConsumerWitness → SemanticDeadnessWitness.
+      semantic_deadness_witness: SemanticDeadnessWitness  // structural witness: subgraph has zero value consumers AND zero effect-output consumers AND zero drain obligations AND zero returned-modified-resource threading; shape TBD post-Gap-11
     }
   | ConstantBoundPropagation {
       outer_loop_node: NodeId                 // role: outer loop over variable size
       inner_loop_node: NodeId                 // role: inner loop with constant-bound
       inner_bound: SymbolicCost               // proved variable-independent of outer-loop SizeVariable
-      bound_independence_witness: ConstantBoundWitness  // structural witness: inner_bound has no SizeVariable dependency on outer; shape TBD post-Gap-11
+      // Strengthened witness obligation per openai-pro BLOCKING PR #3067 2026-05-14:
+      // bound-independence must cover both SymbolicCost (value-axis) AND the
+      // inner-loop's effect/drain multiplicity (a constant-bounded loop runs a
+      // constant number of times — semantics are preserved as long as the inner
+      // loop's effect/drain doesn't depend on the outer iteration).
+      bound_independence_witness: ConstantBoundSemanticWitness  // structural witness: inner_bound has no SymbolicCost dependency on outer SizeVariable AND inner-loop effect/drain has no causality on outer iteration index; shape TBD post-Gap-11
     }
 
 type SymbolicTierTightnessTransformation    // produces same-class symbolic-cost tightening; future symbolic-cost-tightness sibling lens carrier
@@ -230,22 +247,57 @@ type SymbolicTierTightnessTransformation    // produces same-class symbolic-cost
 // flagged). Witness construction is lens-side; consumers receive the witness
 // as a structurally-valid proof receipt, not a "compiler-said-so" promise.
 //
-// Concrete shapes ratified per Substrate Mgr canvas during PB-X-tightness-lens
-// implementation worker dispatch (post-Gap-11). Current SCAFFOLD shape:
+// Per openai-pro BLOCKING PR #3067 2026-05-14: witness names + obligations
+// now explicitly cover SEMANTIC PRESERVATION across value-flow AND effect-flow
+// AND drain-flow. Previous narrower names (LoopInvarianceWitness covering only
+// value-flow; NoConsumerWitness covering only value-consumer Ports) admitted
+// transformations that change semantics by changing effect/drain multiplicity.
+// Effect/drain substrate: src/v3/std/effects.dag (WorkflowEffect, EffectShape).
 //
-//   type IterationSpaceEquivalenceWitness { /* TBD per Gap-11 SymbolicCost equivalence-decidability algorithm */ }
-//   type LoopInvarianceWitness            { /* TBD per Port read-set analysis output */ }
-//   type NoConsumerWitness                { /* TBD per Port consumption-walk algorithm output */ }
-//   type ConstantBoundWitness             { /* TBD per SymbolicCost variable-independence analysis */ }
+// Concrete shapes ratified per Substrate Mgr canvas during PB-X-tightness-lens
+// implementation worker dispatch (post-Gap-11). Current SCAFFOLD shapes — each
+// witness names its full semantic obligation in the comment, not just the
+// "value-flow" subset:
+//
+//   type IterationSpaceEquivalenceWitness {
+//     /* TBD per Gap-11 SymbolicCost equivalence-decidability algorithm.
+//        Obligation: space_a ≡ space_b (symbolic cost) AND sequential-not-nested
+//        AND no inter-loop value/effect/drain dependency-order blocker. */
+//   }
+//   type LoopSemanticInvarianceWitness {
+//     /* TBD post-Gap-11 + EffectShape composition surface.
+//        Obligation: invariant_subgraph has (a) no value-flow dependency on
+//        loop variable (Port read-set analysis); (b) no effect whose
+//        multiplicity changes when run once vs N times (WorkflowEffect
+//        analysis per std/effects.dag); (c) no drain obligation that depends
+//        on iteration count; (d) no returned-modified-resource threading
+//        that requires per-iteration repetition. */
+//   }
+//   type SemanticDeadnessWitness {
+//     /* TBD per Port consumption-walk + Effect-output walk + Drain-obligation
+//        analysis algorithms.
+//        Obligation: dead_subgraph has zero downstream consumers across ALL of:
+//        (a) value-flow Ports; (b) effect outputs (WorkflowEffect surfaces per
+//        std/effects.dag); (c) drain obligations (resource-end nodes); (d)
+//        returned-modified-resource threads. */
+//   }
+//   type ConstantBoundSemanticWitness {
+//     /* TBD per SymbolicCost variable-independence analysis + effect/drain
+//        causality analysis.
+//        Obligation: inner_bound has (a) no SymbolicCost dependency on outer
+//        SizeVariable; (b) inner-loop effect/drain has no causality edge from
+//        outer iteration index. */
+//   }
 //   type AssociativeReduceWitness         { /* TBD per algebra.dag associativity-decidability surface */ }
 //   type SharedIterationSpaceWitness      { /* TBD per chain-fusion algorithm output */ }
 //
 // All 6 carriers are 🟡 SCAFFOLD; SCAFFOLD-→-TERMINAL trigger = Gap 11 lands +
-// lens-implementation worker dispatches resolve concrete witness fields.
+// lens-implementation worker dispatches resolve concrete witness fields + the
+// effect-flow/drain-flow analysis surfaces ratify per Substrate Mgr canvas.
 
 // Type-enforced pairing: each variant arm carries the EXACT role-named fields
 // + per-variant proof-witness type applicable to that transformation.
-// LoopFusion cannot pair with NoConsumer evidence; ConstantBoundPropagation
+// LoopFusion cannot pair with SemanticDeadness evidence; ConstantBoundPropagation
 // cannot pair with AssociativeReduce evidence. No parallel TransformationEvidence
 // coproduct + no bare List<NodeId> admitting wrong arities.
 
@@ -464,17 +516,20 @@ cargo test --release -p v3-compiler --test integration complexity_tightness_comp
 #
 # Required fixture set:
 #   - fixture demonstrating LoopHoisting: e.g., O(n*m) loop with m-cost subgraph
-#     proven loop-invariant; lens reports Loose { improvement: { dominator:
-#     ClassPolynomial(2), dominated: ClassLinear }, first_transformation:
-#     LoopHoisting { ... } }
+#     proven loop-invariant (value-flow AND effect/drain-multiplicity invariant
+#     per LoopSemanticInvarianceWitness); lens reports Loose { improvement: {
+#     dominator: ClassPolynomial(2), dominated: ClassLinear },
+#     first_transformation: LoopHoisting { ... } }
 #   - fixture demonstrating DeadCodeElimination: e.g., quadratic subgraph
-#     producing a Port no downstream node reads; lens reports Loose {
+#     proven semantically dead — zero value/effect/drain/returned-modified-resource
+#     consumers per SemanticDeadnessWitness; lens reports Loose {
 #     improvement: { dominator: ClassPolynomial(2), dominated: ClassLinear },
 #     first_transformation: DeadCodeElimination { ... } }
 #   - fixture demonstrating ConstantBoundPropagation: e.g., nested loop with
-#     inner bound provably constant; lens reports Loose { improvement: {
-#     dominator: ClassPolynomial(2), dominated: ClassLinear },
-#     first_transformation: ConstantBoundPropagation { ... } }
+#     inner bound provably constant AND inner-loop effect/drain has no
+#     outer-iteration causality per ConstantBoundSemanticWitness; lens reports
+#     Loose { improvement: { dominator: ClassPolynomial(2), dominated:
+#     ClassLinear }, first_transformation: ConstantBoundPropagation { ... } }
 #
 # Carved out from class-level fixture requirement (deferred to future
 # symbolic-cost-tightness sibling lens per §2):
