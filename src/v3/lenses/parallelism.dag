@@ -21,7 +21,17 @@
 module lenses.parallelism
 
 import std.list { List, Empty, Cons, empty, cons }
-import v3.std.substrate { Dag, NodeId, NonSingletonList, lane2_workflow_at }
+import std.algebra { Monoid }
+import std.substrate { Behavior, LoopBound }
+import v3.std.substrate {
+  Dag,
+  NodeId,
+  NonSingletonList,
+  lane2_workflow_at
+}
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.lens { Lens }
+import v3.std.lens_application { LensEnforcement, EnforceableLens }
 import v3.spec.rust { rust_language }
 import std.effects {
   EffectShape,
@@ -279,3 +289,108 @@ fn loop_iteration_parallel_emission_indicator(d: Dag, workflow_root: NodeId) -> 
         ParallelEffect { branches: _ } => 0
       }
   }
+
+// --- T-Lens-Application-Surface / gate #95 (§4.4) — iteration-opt-in parallelism
+//
+// DESIGN LOCK: docs/design-lens-application-surface.md §2 parallelism bundle + §4.4 — user
+// `apply_lens(parallelism, loop_node, Enforce { budget: OptInIndependent, … })` authorizes parallel
+// iteration emission only when the iteration-independence analogue holds on the staged
+// `loop_iteration_parallel_emission_indicator` contract (today: Lane-2 scaffold + read-only ops).
+//
+// **Single substrate authority:** `parallelism_iteration_observed_mode(d, workflow_root)` folds that
+// indicator into `ParallelismMode`; `parallelism_lens.read` consumes the same function on the
+// `Behavior` node's root id. Host enforcement (`check_enforced_lens_applications`,
+// exported `parallelism_iteration_opt_in_enforcement_violates`) must not re-map integers in Rust.
+//
+// PRACTICE 4 (docs/modeling-discipline.md §4 Coproduct dissolution): **🟢 TERMINAL (GREEN)** at the
+// T-LAS iteration-parallelism **budget carrier** scope (`docs/design-lens-application-surface.md`
+// §2 / §4.4). `OptInIndependent` vs `Sequential` are the closed LAS labels referenced by
+// `parallelism_enforceable` / `EnforcedApplication`; workflow physics stays single-authority in
+// Lane‑2 `WorkflowEffect` (`lane2_workflow`), not parallel semantics duplicated here.
+// **Dissolution:** migrate only when LAS redesign replaces this sum with one substrate carrier for
+// the same §4.4 contract without a second route for violation/budget naming (gate **#95** program row).
+
+type ParallelismMode
+  // 🟢 TERMINAL (GREEN): LAS iteration-parallelism **budget carrier** (`EnforcedApplication` /
+  // `parallelism_enforcement_violates`). Variants partition an authored opt-in authorization
+  // (`OptInIndependent`) from the sequential default (`Sequential`) at the design boundary in
+  // `docs/design-lens-application-surface.md` §4.4; patterns 1–4 (modeling-discipline §4) do not apply
+  // without folding the LAS into a single closed carrier elsewhere. Ledger: preceding Practice 4 /
+  // DESIGN LOCK paragraphs in this §4.4 block (+ gate **#95** program row above).
+  = OptInIndependent
+  | Sequential
+
+fn parallelism_enforcement_project(m: ParallelismMode) -> ParallelismMode =
+  m
+
+fn parallelism_enforcement_violates(observed: ParallelismMode, declared: ParallelismMode) -> Bool =
+  match declared {
+    OptInIndependent =>
+      match observed {
+        Sequential => true
+        OptInIndependent => false
+      }
+    Sequential =>
+      match observed {
+        OptInIndependent => false
+        Sequential => false
+      }
+  }
+
+fn parallelism_lens_combine(a: ParallelismMode, b: ParallelismMode) -> ParallelismMode =
+  match a {
+    Sequential => Sequential
+    OptInIndependent =>
+      match b {
+        Sequential => Sequential
+        OptInIndependent => OptInIndependent
+      }
+  }
+
+fn behavior_node_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
+  }
+
+fn parallelism_iteration_observed_mode(d: Dag, workflow_root: NodeId) -> ParallelismMode =
+  if loop_iteration_parallel_emission_indicator(d, workflow_root) == 1 then
+    OptInIndependent
+  else
+    Sequential
+
+fn parallelism_lens_read(d: Dag, behavior: Behavior) -> Witness<ParallelismMode> =
+  Inhabits(parallelism_iteration_observed_mode(d, behavior_node_id(behavior)))
+
+fn parallelism_lens_iterate(body: ParallelismMode, _bound: LoopBound) -> ParallelismMode =
+  body
+
+fn parallelism_lens_validate(_d: Dag, _c: ParallelismMode) -> OptionalDiagnostic =
+  NoDiagnostic
+
+data parallelism_lens_monoid: Monoid<ParallelismMode> = {
+  op: parallelism_lens_combine
+  identity: OptInIndependent
+}
+
+data parallelism_lens: Lens<ParallelismMode> = {
+  name: "iteration_parallelism_opt_in"
+  read: parallelism_lens_read
+  sequential: parallelism_lens_monoid
+  branch: parallelism_lens_combine
+  iterate: parallelism_lens_iterate
+  validate: parallelism_lens_validate
+}
+
+data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode, ParallelismMode> = {
+  project: parallelism_enforcement_project
+  violates: parallelism_enforcement_violates
+}
+
+data parallelism_enforceable: EnforceableLens<ParallelismMode, ParallelismMode, ParallelismMode> = {
+  lens: parallelism_lens
+  enforcement: parallelism_enforcement
+}

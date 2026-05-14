@@ -365,6 +365,15 @@ impl NodeId {
     pub(crate) fn raw(self) -> u32 {
         self.0
     }
+
+    /// Constructs a [`NodeId`] from the dense node-table index (substrate `NodeId` encoding).
+    ///
+    /// Not every index names a [`Behavior`] in every [`Dag`]: [`crate::enforced_lens_application`]
+    /// validates `SectionRef::NodeScope` payloads against [`Dag::node_opt`] and declared-body
+    /// membership (`node_scope_subject_within_arrow_declaration`).
+    pub(crate) fn from_table_index(raw: u32) -> Self {
+        Self(raw)
+    }
 }
 
 /// Typed witness that a `NodeId` identifies a [`BindNode`].
@@ -1630,6 +1639,25 @@ fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a Bin
         return None;
     };
     Some((*bind_id).bind(dag))
+}
+
+/// Structural validation for authored `SectionRef::NodeScope` pairs: [`Dag::node_opt`] admits
+/// `subject`, and either `subject` is `fn_decl`'s lowered [`ArrowBody::UserDefined`] root bind node
+/// or it appears in that bind body's result subgraph (`collect_body_port` walk). Consumers must
+/// fail closed on payloads that weld unrelated declarations and raw indices — silent collapse into
+/// ordinary Lane‑2 observations is forbidden (`INVARIANTS.md` P2/P3).
+pub(crate) fn node_scope_subject_within_arrow_declaration(
+    dag: &Dag,
+    fn_decl: DeclarationId,
+    subject: NodeId,
+) -> bool {
+    if dag.node_opt(&subject).is_none() {
+        return false;
+    }
+    let Some(body_bind) = declaration_body_bind(dag, dag.declaration(fn_decl)) else {
+        return false;
+    };
+    subject == body_bind.id || bind_body_reachable_nodes(dag, body_bind).contains(&subject)
 }
 
 fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
