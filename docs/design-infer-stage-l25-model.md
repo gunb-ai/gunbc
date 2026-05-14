@@ -5,7 +5,7 @@
 **Authoring date:** 2026-05-14.
 **Authoring tier:** Director (zesty-bear-812).
 **Lane:** PB-5 (infer) per `docs/design-pure-bootstrap-zero.md` + `src/v3/SELF_HOSTING.md` §2 4-step migration discipline.
-**Migration order rank:** 3rd (per `docs/substrate-reflection-design.md` §12.6 — emit → lower → infer → parse → tokenize bottom-up; PB-6 landed at PR #3066, PB-4 in flight at PR #3077).
+**Migration order rank:** 3rd (per `docs/substrate-reflection-design.md` §12.6 — emit → lower → infer → parse for the 4 pipeline-stage migrations explicitly tabled there; `docs/design-pure-bootstrap-zero.md` PB-2 lane extends the chain with tokenize. PB-6 landed at PR #3066, PB-4 in flight at PR #3077).
 **Routing authority chain:** operator-ratification + PM-delegate (per 2026-05-14 directive) → PM amends close plan + §1.8 PB-5 gate row → Director authors per-step worker briefs → R3 Substrate Mgr (warm-wolf-698) dispatches workers.
 
 ---
@@ -280,7 +280,7 @@ Multi-port inference can emit multiple diagnostics. Order matters for golden-fix
 
 ### Q5: Migration scope — full single-PR OR phased?
 
-`infer.rs` is 7262 lines (per `wc -l src/v3/compiler/src/infer.rs` at this doc's HEAD; verified per cursor APPROVE_WITH_COMMENTS PR #3085). Per `feedback_paper_shrink_variants` discipline, phased migration with per-phase P5 receipts is acceptable. Possible phasing:
+`infer.rs` is ~7300 lines (per `wc -l src/v3/compiler/src/infer.rs`; specific count drifts with each main merge — verify at Step 2 brief time rather than treating any specific integer as authoritative). Per `feedback_paper_shrink_variants` discipline, phased migration with per-phase P5 receipts is acceptable. Possible phasing:
 
 - **5a**: TypeConnective dispatch core (Arrow + Atom + lookup walk) → `.dag`; corresponding `infer.rs` block deleted
 - **5b**: Algebra inhabitance fold → `.dag`; corresponding block deleted
