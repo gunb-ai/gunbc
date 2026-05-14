@@ -20,6 +20,11 @@ require_row_status() {
     echo "unexpected status for ${gate}: got '${status}', expected '${expected}'" >&2
     exit 1
   fi
+
+  if [[ "$row" != *"HEAD refresh 2026-05-14"* ]]; then
+    echo "R2 Evaluator ledger row for ${gate} lacks HEAD refresh marker" >&2
+    exit 1
+  fi
 }
 
 require_row_status "runtime_value_model_structural" "green"
@@ -27,8 +32,3 @@ require_row_status "body_evaluator_structural" "green"
 require_row_status "lens_application_complete_reflection" "in-flight"
 require_row_status "witness_construction_structural" "in-flight"
 require_row_status "cross_target_equivalence_harness_structural" "green"
-
-grep -Fq "HEAD refresh 2026-05-14" "$ledger" || {
-  echo "R2 Evaluator ledger refresh marker missing" >&2
-  exit 1
-}
