@@ -159,6 +159,8 @@ mod m2_substrate_inhabitance_test;
 mod memory_peak_cost_basis_demo;
 #[path = "integration/method_registry_test.rs"]
 mod method_registry_test;
+#[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
+mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/method_template_contract_test.rs"]
 mod method_template_contract_test;
 #[path = "integration/method_template_projection_emit_shim_coherence_test.rs"]
