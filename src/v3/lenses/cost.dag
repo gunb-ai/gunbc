@@ -58,13 +58,15 @@ module lenses.cost
 
 import std.list { List, empty, fold, cons }
 import std.substrate {
-  Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node,
+  Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node,
   TransformNode, TransformTarget, OperatorKind, ArithmeticOp
 }
 import std.algebra {
   MethodContract,
   CostShape,
+  Monoid,
   SymbolicCost,
+  dominates,
   unnamed_size_variable,
   sequential,
   iterate,
@@ -87,7 +89,9 @@ import std.computation {
 }
 import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
-import v3.std.lens_application { SectionRef }
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.lens { Lens }
+import v3.std.lens_application { SectionRef, LensEnforcement, EnforceableLens }
 
 // Cost-lens-owned user cost basis (T-User-Authored-Cost-Basis-Discipline audit:
 // `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`).
@@ -491,6 +495,84 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
         lookup_cost(payload.tail, port_id)
   }
 
+// ── T-LAS Slice B — `Lens<SymbolicCost>` + canonical enforcement (gate #90) ──
+//
+// Thin substrate packaging over the existing `symbolic_cost_of` /
+// `compute_symbolic_costs` authority — **no parallel cost algebra**. Composition
+// hooks reuse `std.algebra::{sequential,iterate}` / local `dominant` exactly as
+// the Behavior fold does; Q-Lens-Target-Context / LoopBound-measure refinements
+// remain tracked under gunbc#2175 without blocking enforcement landing.
+fn witness_from_symbolic_cost_lookup(s: Lookup<SymbolicCost>, at: Behavior) -> Witness<SymbolicCost> =
+  match s {
+    Hit(c) => Inhabits(c)
+    Miss =>
+      Violates {
+        reason: "symbolic_cost_of: missing SymbolicCost for behavior result port"
+        at: at
+      }
+  }
+
+fn cost_lens_read(d: Dag, b: Behavior) -> Witness<SymbolicCost> =
+  witness_from_symbolic_cost_lookup(symbolic_cost_of(d, behavior_result_port(b)), b)
+
+fn cost_lens_sequential_op(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  sequential(a, b)
+
+fn cost_lens_branch_op(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  dominant(a, b)
+
+fn cost_lens_iterate_op(body: SymbolicCost, bound: LoopBound) -> SymbolicCost =
+  match bound {
+    Cardinality(payload) =>
+      iterate(
+        LinearCost(unnamed_size_variable(payload.count)),
+        body
+      )
+    Descent(payload) =>
+      iterate(
+        LinearCost(unnamed_size_variable(payload.measure)),
+        body
+      )
+  }
+
+fn cost_lens_validate(d: Dag, c: SymbolicCost) -> OptionalDiagnostic =
+  NoDiagnostic
+
+fn cost_enforcement_project(c: SymbolicCost) -> SymbolicCost =
+  c
+
+// Strict excess in the `SymbolicCost` dominance lattice (mirrors
+// `complexity_enforcement_violates` orientation vs `asymptotic_dominates`).
+fn cost_enforcement_violates(observed: SymbolicCost, declared: SymbolicCost) -> Bool =
+  if dominates(observed, declared) then
+    if dominates(declared, observed) then 0 == 1 else 0 == 0
+  else
+    0 == 1
+
+data cost_lens_monoid: Monoid<SymbolicCost> = {
+  op: cost_lens_sequential_op
+  identity: ConstantCost(0)
+}
+
+data cost_lens: Lens<SymbolicCost> = {
+  name: "symbolic_cost"
+  read: cost_lens_read
+  sequential: cost_lens_monoid
+  branch: cost_lens_branch_op
+  iterate: cost_lens_iterate_op
+  validate: cost_lens_validate
+}
+
+data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost, SymbolicCost> = {
+  project: cost_enforcement_project
+  violates: cost_enforcement_violates
+}
+
+data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost, SymbolicCost> = {
+  lens: cost_lens
+  enforcement: cost_enforcement
+}
+
 // ── T-CostLens-Composition α-narrow disposition (gunb-ai/gunbc#2141) ─
 //
 // **Director-ratified α (narrow)** at gunbc#828 #issuecomment-4400772335
@@ -519,11 +601,10 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // Structural findings forcing the canvas-tier deferral (surfaced
 // gunbc#2068 #issuecomment-4399898495 + #issuecomment-4400390687):
-//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD — see the
-//      "Cost dimension data declaration / forward Lens boundary" section
-//      below ("do not author `data cost_lens`"); the existing scaffolding
-//      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold,
-//      NOT a `Lens<SymbolicCost>` instance.
+//   1. ~~No `data cost_lens` row~~ — **superseded at HEAD**: T-LAS Slice B
+//      (`gate #90 lens_enforcement_carrier_landed`) lands `cost_lens` /
+//      `cost_enforceable` as thin packaging over `symbolic_cost_of` above.
+//      Target-context / richer iterate semantics remain under gunbc#2175.
 //   2. `Lens<C>.read: fn(Dag, Behavior) -> Witness<C>` carries no
 //      target-context — Q-Lens-Target-Context PROPOSAL territory.
 //   3. Behavior→primitive-identity is structurally tractable via
@@ -628,4 +709,5 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 // policy, that must be named as the authoritative substrate decision.
 // Until the class-5 data declaration and direct `LoopNode.source` cost
 // reads retire, preserve `compute_symbolic_costs` / `symbolic_cost_of`
-// as the primary API and do not author `data cost_lens`.
+// as the primary API — `cost_lens` composes from those helpers (gate #90),
+// not a divergent cost pipeline.

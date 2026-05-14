@@ -187,6 +187,8 @@ mod r3_free_consequences_second_batch_test;
 mod r3_gate_60_phase2_width_nat_parser_test;
 #[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
 mod r3_gate_87_lens_cementing_regen_receipts_test;
+#[path = "integration/r3_gate_90_lens_enforcement_carrier_landed_test.rs"]
+mod r3_gate_90_lens_enforcement_carrier_landed_test;
 #[path = "integration/r3_lens_producer_retirement_executable_witness_test.rs"]
 mod r3_lens_producer_retirement_executable_witness_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
