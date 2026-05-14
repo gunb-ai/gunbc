@@ -47,7 +47,7 @@ Three input types feed emit:
 
 The fully-resolved `.dag` program after parse → lower → infer. After infer completes, every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with `state != Uninferred` invariant per the infer.rs header comment: `state == Unresolved iff diagnostics.contains(port_id)` — the diagnostic payload lives in the diagnostic table indexed by port_id, NOT in the `PortState` payload). The `Uninferred` variant is a pre-completion transient that infer guarantees is absent in the post-infer `Dag` emit consumes.
 
-**Important — the post-infer readiness invariant is a RUNTIME fail-closed gate, NOT a compile-time type carrier**: the plain `Dag` type does NOT carry an inferred-Dag witness in its type. Two valid resolution paths surface in §12 Q7 for operator ratification: (a) introduce an `InferredDag` newtype carrying the witness (compile-time guarantee), or (b) keep plain `Dag` and have emit fail-closed at runtime with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port is encountered at emit-time. The type-checked pipeline-composition signature `fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` does NOT enforce post-infer completion on its own.
+**Important — post-infer readiness must be modeled in the type, NOT enforced at runtime**: per `docs/modeling-discipline.md` Practice 2 (illegal states unrepresentable) + Practice 6 (API-level enforcement over convention) + `feedback_state_space_vs_behavioral_invariants` (type enforcement > API enforcement). The plain `Dag` type admits both pre-infer (`Uninferred` ports present) and post-infer states; emit consuming plain `Dag` would push enforcement to a behavioral runtime check, leaving the stage boundary convention-level. The correct shape is an `InferredDag` carrier (or equivalent typed-state newtype) that emit's signature requires by construction — `fn emit(d: InferredDag, s: LanguageSpec) -> EmissionResult`. §12 Q7 surfaces the resolution for operator ratification before Step 2 dispatch (Step 2 worker brief authoring depends on whether the carrier is `InferredDag` newtype, refined-`Dag` predicate-via-where-clause, or sum-variant `Dag = PreInferDag | InferredDag`).
 
 **Substrate authority**: `src/v3/std/substrate.dag` (defines `Dag`, `Declaration`, `Port`, `TypeShape`).
 **Lane dependency**: PB-Substrate (generates dag.rs from substrate.dag).
@@ -166,7 +166,7 @@ This is the **structural blocker** for PB-6 emit dispatch — substrate prereqs 
 
 ### §7.1 Upstream dependencies
 
-emit depends on `Dag` whose `PortState` is post-infer-resolved → output of infer stage (PB-5). Per §3.1 the post-infer readiness is a **runtime fail-closed gate** (emit fail-closes with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port encountered), NOT a compile-time type guarantee. Per `src/v3/SELF_HOSTING.md` §2 migration order, emit migrates FIRST despite consuming infer's output, because the bottom-up principle is about which substrate authority needs to exist; emit substrate authority + LanguageSpec spec authorities are smaller surface than infer's.
+emit depends on `Dag` whose `PortState` is post-infer-resolved → output of infer stage (PB-5). Per §3.1, post-infer readiness is modeled in the type via an `InferredDag` carrier (or equivalent typed-state newtype) per Modeling Practices 2 + 6 — illegal pre-infer state is unrepresentable at emit's signature boundary, NOT enforced at runtime. The signature is `fn emit(d: InferredDag, s: LanguageSpec) -> EmissionResult`. Per `src/v3/SELF_HOSTING.md` §2 migration order, emit migrates FIRST despite consuming infer's output, because the bottom-up principle is about which substrate authority needs to exist; emit substrate authority + LanguageSpec spec authorities are smaller surface than infer's.
 
 emit does NOT depend on parse (PB-3) or lower (PB-4) directly — those produce `Dag` which infer (PB-5) refines. emit consumes the refined `Dag` only.
 
@@ -178,7 +178,7 @@ R3 Verification Mgr's L4 emit/eval match gates + L5 cross-target consistency gat
 
 ### §7.3 Sibling-stage coordination
 
-When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations must produce `Dag` structures consistent with emit's input expectations. This is enforced as the §3.1 / §7.1 **runtime fail-closed gate** (emit triggers `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port is encountered), NOT a compile-time guarantee — the typed signature `fn emit(d: Dag, s: LanguageSpec) -> EmissionResult` does not carry a post-infer-completion witness. The cross-stage discipline is upstream: infer's responsibility to fully resolve every port before emit consumes; emit's runtime gate is the safety net. §12 Q7 surfaces whether to upgrade to a carrier-typed witness (InferredDag newtype) before PB-4/PB-5 migrate.
+When PB-4 lower / PB-5 infer subsequently migrate, their `.dag` implementations must produce typed-state outputs consistent with downstream stage expectations. Per §3.1 / §7.1, infer's output type is `InferredDag` — a carrier whose construction is gated on every port being `Resolved` or `Unresolved` (no `Uninferred` admitted). emit's signature `fn emit(d: InferredDag, s: LanguageSpec) -> EmissionResult` accepts only that typed-state; pre-infer `Dag` cannot be passed by construction. The stage boundary enforcement is API-level (Modeling Practice 6), NOT convention-level. §12 Q7 surfaces the exact carrier-shape (newtype vs refined-Dag-via-where-clause vs sum-variant) for operator ratification.
 
 ---
 
@@ -278,17 +278,25 @@ PostEmitVerifier substrate (currently hand-Rust in post_emit_verifier.rs per cyc
 
 **Director-recommend**: surface PB-6 emit migration as DEPENDENT ON PB-Runtime post_emit_verifier.dag migration completing first. PB-Runtime is on R3 Evaluator Mgr lane scope per msg_e66f4326 (β) option OR warm-wolf-698 R3 Substrate Mgr scope per (α) option. Decision is operator-pending.
 
-### Q7: Post-infer readiness — carrier-typed witness vs runtime fail-closed gate (NEW — codex BLOCKING #3066)
+### Q7: Post-infer readiness — typed-state carrier shape (NEW — codex BLOCKING #3066; codex REQUEST_CHANGES #3066-post-fix)
 
-Per §3.1 update, the post-infer `Dag` does NOT carry a compile-time witness that `state != Uninferred for all ports`. Two paths surface for operator ratification:
+Per §3.1 / §7.1 / §7.3 update, post-infer readiness MUST be modeled in the type at emit's signature boundary per `docs/modeling-discipline.md` Practices 2 (illegal states unrepresentable) + 6 (API-level enforcement over convention) + `feedback_state_space_vs_behavioral_invariants` (type enforcement > API enforcement). Plain `Dag` admits both pre-infer and post-infer states; emit consuming plain `Dag` would leave the stage boundary convention-level — codex REQUEST_CHANGES (PR #3066) flagged this as locking in a weaker boundary that modeling discipline asks to enforce structurally.
 
-**Option (a) — `InferredDag` newtype carrier**: introduce a wrapper type carrying the witness. Compile-time guarantee — emit cannot be invoked on non-post-infer Dag. Cost: extra substrate carrier just for the witness; couples emit signature to infer's completion fact via type rather than runtime check.
+The director-recommend in the earlier draft (keep plain `Dag` + runtime `UninferredPortPresent` gate) was wrong on this axis. Acknowledged + reversed.
 
-**Option (b) — runtime fail-closed gate**: keep plain `Dag`; emit fail-closes with `EmissionDiagnostic::UninferredPortPresent` if any `Uninferred` port encountered. Cost: weaker compile-time guarantee; relies on runtime trip + diagnostic.
+**Open question for operator ratification: which typed-state carrier shape?** Three valid options:
 
-**Director-recommend (b)**: the runtime gate is cheap (per-port scan during fold), and the carrier-newtype adds a substrate-tier carrier purely for a witness — violating `feedback_no_metadata_markers` adjacent (named state should be observable structurally, not via marker types). Honest acknowledgment of the runtime gate is preferable to a substrate-carrier-only-for-witness pattern.
+**Option (a) — `InferredDag` newtype**: simple wrapper around `Dag` whose constructor is the only path; constructor checks ports + returns `Result<InferredDag, InferDiagnostic>`. Pros: simple, idiomatic. Cons: extra wrapper-type.
 
-Operator ratification needed before Step 2 dispatch (Step 2 worker brief authoring depends on whether emit signature uses `Dag` or `InferredDag`).
+**Option (b) — refined-`Dag` via where-clause/predicate**: per the language's refinement type system (per `feedback_groundedness_gates_lenses` + the refinement work in dsl/std/), `Dag where all_ports_inferred(d)` as the input type. Pros: structural refinement; reuses substrate refinement machinery. Cons: depends on refinement predicate substrate being ready at HEAD.
+
+**Option (c) — sum-variant `Dag = PreInferDag | InferredDag`**: model the pipeline state as a closed-axis sum-variant on `Dag` itself; infer produces `InferredDag`, emit accepts only that variant. Pros: explicit state machine; aligns with `feedback_coproduct_dissolution` + closed-axis modeling discipline. Cons: requires refactoring all `Dag`-consuming code to handle both variants.
+
+**Director-recommend now: option (b) refinement-via-where-clause IF refinement substrate at HEAD; otherwise option (a) newtype as transition shape**. Reasoning: option (b) is most aligned with the language's structural-refinement framing (refinements are first-class facts about typed values, not marker types); option (a) is the pragmatic fallback when refinement substrate isn't ready. Option (c) is most structurally explicit but has higher refactoring cost across all `Dag`-consuming sites; operator can pick (c) if the explicit-state-machine framing is preferred over wrapper-types.
+
+Whatever shape is picked, the constraint is: **post-infer readiness IS modeled in the type at emit's signature; the runtime `UninferredPortPresent` framing is retired.**
+
+Operator ratification needed before Step 2 dispatch (Step 2 worker brief authoring depends on which carrier shape — newtype vs refinement vs sum-variant).
 
 ---
 
