@@ -6460,8 +6460,8 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 /// `src/bin/regen_lens.rs` relocates the Cargo `[[bin]]` entry to `regen_lens_entry.rs` and
 /// moves producer logic to `regen_lens_driver.rs`. Both remain hand-authored regen-lens
 /// producer surfaces until PB-1 emits the bin from `.dag` / PB-Runtime owns the pipeline — so
-/// they stay in this subset (see Codex review on PR #3083: path moves must not shrink the
-/// state-check).
+/// they stay in this subset; shrinking the predicate after a path move would falsely claim
+/// census progress without dissolving the producer.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
