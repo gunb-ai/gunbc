@@ -237,38 +237,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       continue_on_error: false,
       concurrency: none
     }, {
-      id: "changes",
-      name: none,
-      runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
-      steps: [UsesStep {
-          name: Some { value: "Checkout" },
-          id: none,
-          uses: { owner: "actions", repo: "checkout", ref: "v4" },
-          with: Some { value: { "fetch-depth": "0" } },
-          env: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "Detect non-docs changes" },
-          id: Some { value: "filter" },
-          run: "set -euo pipefail\nif [ \"${{ github.event_name }}\" = \"push\" ]; then\n  echo \"push event — always run heavy v3 job\"\n  echo \"code=true\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\ngit fetch origin main:refs/remotes/origin/main\nchanged=$(git diff --name-only origin/main...HEAD)\necho \"Changed files (first 200):\"\necho \"$changed\" | head -200\n# Docs-only allowlist: anything under docs/ OR a root-level *.md\n# file (no slash before .md). Examples that count as docs:\n#   docs/audit/foo.md           ✓\n#   docs/design-x.md            ✓\n#   WISHLIST.md                 ✓ (root *.md)\n#   ROADMAP.md                  ✓\n# Examples that count as code (run full v3):\n#   src/v3/compiler/src/foo.rs\n#   dsl/std/lens_foo.dag\n#   scripts/check-foo.sh\n#   .github/workflows/ci.yml    (workflow self-edit)\n#   src/v3/compiler/tests/README.md (nested .md, not root)\nnon_docs=$(echo \"$changed\" | grep -vE '^(docs/.*|[^/]+\\.md)$' || true)\nif [ -n \"$non_docs\" ]; then\n  echo \"Non-docs files detected; v3 will run full heavy compute:\"\n  echo \"$non_docs\" | head -50\n  echo \"code=true\" >> \"$GITHUB_OUTPUT\"\nelse\n  echo \"Docs-only PR (allowlist: docs/** + root *.md) — v3 will skip\"\n  echo \"(Layer 1 CI mitigation; dissolution trigger = affected-set lens CI integration)\"\n  echo \"code=false\" >> \"$GITHUB_OUTPUT\"\nfi\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }],
-      needs: [],
-      env: none,
-      outputs: Some { value: { "code": "${{ steps.filter.outputs.code }}" } },
-      if_condition: Some { value: "github.event.pull_request.draft != true" },
-      strategy: none,
-      timeout_minutes: Some { value: 3 },
-      continue_on_error: false,
-      concurrency: none
-    }, {
       id: "v3",
       name: none,
       runner: SelfHosted { labels: ["ubicloud-standard-8"] },
@@ -507,10 +475,10 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["changes"],
+      needs: [],
       env: none,
       outputs: none,
-      if_condition: Some { value: "github.event.pull_request.draft != true && (needs.changes.outputs.code == 'true' || github.event_name == 'push')" },
+      if_condition: Some { value: "github.event.pull_request.draft != true" },
       strategy: none,
       timeout_minutes: Some { value: 120 },
       continue_on_error: false,
@@ -520,9 +488,9 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       name: none,
       runner: SelfHosted { labels: ["ubicloud-standard-8"] },
       steps: [RunStep {
-          name: Some { value: "Validate gate evidence (fail-closed under filter/v3 failure)" },
+          name: Some { value: "Validate gate evidence (fail-closed under v3 failure)" },
           id: none,
-          run: "echo \"Gate evidence: changes.result=${{ needs.changes.result }} v3.result=${{ needs.v3.result }}\"\nif [ \"${{ needs.changes.result }}\" != \"success\" ]; then\n  echo \"::error::Layer 1 filter (changes job) did not succeed (result=${{ needs.changes.result }}).\"\n  echo \"::error::Cannot determine v3 skip legitimacy — skipped required-checks default to SUCCESS\"\n  echo \"::error::in GitHub branch protection (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks),\"\n  echo \"::error::so an explicit step failure here surfaces the missing-evidence as a diagnostic\"\n  echo \"::error::per P3 fail-closed / C-8 discipline.\"\n  exit 1\nfi\nif [ \"${{ needs.v3.result }}\" = \"failure\" ] || [ \"${{ needs.v3.result }}\" = \"cancelled\" ]; then\n  echo \"::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green.\"\n  exit 1\nfi\n# Either v3.result == success (ran cleanly) or v3.result == skipped (legit docs-only via changes.code=false)\necho \"Gate evidence validated; ratchet may proceed.\"\n",
+          run: "echo \"Gate evidence: v3.result=${{ needs.v3.result }}\"\nif [ \"${{ needs.v3.result }}\" = \"failure\" ] || [ \"${{ needs.v3.result }}\" = \"cancelled\" ]; then\n  echo \"::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green.\"\n  exit 1\nfi\nif [ \"${{ needs.v3.result }}\" != \"success\" ]; then\n  echo \"::error::v3 job has unexpected result (result=${{ needs.v3.result }}); expected success after Layer-2 path-regex removal.\"\n  exit 1\nfi\necho \"Gate evidence validated; ratchet may proceed.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -597,7 +565,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }],
-      needs: ["v3", "changes"],
+      needs: ["v3"],
       env: none,
       outputs: none,
       if_condition: Some { value: "${{ always() && github.event.pull_request.draft != true }}" },

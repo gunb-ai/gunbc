@@ -42,7 +42,7 @@
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use crate::common::find_list_empty_constructor_tag;
@@ -54,7 +54,8 @@ use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
 use v3_compiler::gunbc_ci::{
-    select_affected_gates, CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
+    select_affected_gates, select_affected_gates_for_binary_shim, CiBinaryShimAffectedSetReceipt,
+    CiGateMeta, CiWorkflowDagInput, CiWorkflowDiff,
 };
 use v3_compiler::lens_cost::complexity_of;
 use v3_compiler::{
@@ -942,6 +943,63 @@ fn lens_self_application_demonstrated_ci_touch_all_affected_gates_order() {
         ],
         "TouchAll must schedule the full gunbc-ci gate roster in prerequisite topo order"
     );
+}
+
+// --- R3 gate #103 (`ci_uses_affected_set_selection`): BinaryShim consumes lens-shaped receipts.
+
+#[test]
+fn ci_uses_affected_set_selection_binary_shim_narrow_on_gunbc_ci_topology() {
+    let g = gate57_ci_artifacts();
+    let receipt = CiBinaryShimAffectedSetReceipt {
+        narrowing_available: true,
+        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+    };
+    let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
+        .expect("binary shim selection must succeed on gunbc-ci topology");
+    let touch = select_affected_gates(
+        &g.input,
+        &CiWorkflowDiff::TouchedGates(BTreeSet::from([String::from("tests")])),
+    )
+    .expect("baseline touched-gates selection");
+    assert_eq!(plan, touch);
+}
+
+#[test]
+fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
+    let g = gate57_ci_artifacts();
+    let receipt = CiBinaryShimAffectedSetReceipt {
+        narrowing_available: false,
+        proven_direct_gate_touches: BTreeSet::from([String::from("tests")]),
+    };
+    let plan = select_affected_gates_for_binary_shim(&g.input, &receipt)
+        .expect("binary shim selection must succeed on gunbc-ci topology");
+    let full = select_affected_gates(&g.input, &CiWorkflowDiff::TouchAll).expect("TouchAll baseline");
+    assert_eq!(plan, full);
+}
+
+#[test]
+fn workflow_no_path_regex_policy_ci_yml() {
+    use std::fs;
+    use std::path::Path;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+    let path = repo_root.join(".github/workflows/ci.yml");
+    let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+
+    for forbidden in [
+        "git diff --name-only",
+        "needs.changes.outputs",
+        "grep -vE '^(docs/.*|[^/]+\\.md)$'",
+    ] {
+        assert!(
+            !raw.contains(forbidden),
+            "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection)",
+            path.display()
+        );
+    }
 }
 
 #[test]
