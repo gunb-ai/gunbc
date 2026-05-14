@@ -326,7 +326,8 @@ fn v2_cementing_basenames_from_capability_rows(
 /// `std.verification` `lens_capability_register_rows`.
 ///
 /// Used by gate #83 supporting CI to fail-closed on `LensCapabilityBehavioralStub` for the
-/// T-Lens-Behavioral-Parity quartet (narrow slice alongside Gap 4 in `docs/r3-actual-close-plan.md`).
+/// T-Lens-Behavioral-Parity quartet on the **`behavioral` field** of `lens_capability_register_rows`
+/// (narrow slice alongside Gap 4 in `docs/r3-actual-close-plan.md`).
 pub fn lens_capability_register_behavioral_label_by_basename(
     dag: &Dag,
 ) -> Result<BTreeMap<String, String>, String> {

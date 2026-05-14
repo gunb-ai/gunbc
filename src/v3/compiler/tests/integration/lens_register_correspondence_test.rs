@@ -332,11 +332,12 @@ fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
 }
 
 #[test]
-fn r3_gate_83_lens_capability_register_structural_has_zero_stub() {
+fn r3_gate_83_lens_capability_register_std_verification_behavioral_axis_has_zero_stub() {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
-        "bootstrap Dag should load cleanly for structural lens capability register ratchet, got {:?}",
+        "bootstrap Dag should load cleanly for std.verification lens_capability_register_rows \
+         behavioral-axis ratchet, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
     let labels = cementing_dispatch::lens_capability_register_behavioral_label_by_basename(&dag)
@@ -355,11 +356,11 @@ fn r3_gate_83_lens_capability_register_structural_has_zero_stub() {
     }
     assert!(
         blockers.is_empty(),
-        "R3 gate #83 — structural register ratchet (`std.verification` `lens_capability_register_rows`): \
-         the four T-Lens-Behavioral-Parity basenames must not carry `LensCapabilityBehavioralStub` \
-         (markdown \"BEHAVIORALLY STUB\" has no separate structural encoding). Pair with \
-         `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub` on \
-         `docs/v3-lens-capability-register.md`. Remaining STUB blocker(s): {blockers:?}."
+        "R3 gate #83 — `std.verification` `lens_capability_register_rows` behavioral-axis ratchet \
+         (field `behavioral: LensCapabilityBehavioralStatus`): the four T-Lens-Behavioral-Parity \
+         basenames must not carry `LensCapabilityBehavioralStub`. Pairs with the markdown PROXY/STUB \
+         string ratchet (`r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub` on \
+         `docs/v3-lens-capability-register.md`). Remaining STUB blocker(s): {blockers:?}."
     );
 }
 
