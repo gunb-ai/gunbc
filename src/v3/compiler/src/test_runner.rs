@@ -6456,10 +6456,7 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 /// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
 /// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
-    matches!(
-        path,
-        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
-    )
+    path == "src/v3/compiler/src/lens_declaration_apply.rs"
 }
 
 fn is_bin_shim_census_path(path: &str) -> bool {
