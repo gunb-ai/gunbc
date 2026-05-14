@@ -201,6 +201,8 @@ mod r3_gate_90_lens_enforcement_carrier_landed_test;
 mod r3_lens_producer_retirement_executable_witness_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
 mod r3_pb_runtime_evaluator_corpus_seed_test;
+#[path = "integration/r3_sg0_non_test_zero_test.rs"]
+mod r3_sg0_non_test_zero_test;
 #[path = "integration/r3_substrate_gap_reflection_closure_test.rs"]
 mod r3_substrate_gap_reflection_closure_test;
 #[path = "integration/r3_v3_self_host_demonstration_dag_test.rs"]
