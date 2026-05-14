@@ -18,7 +18,7 @@
 use std::collections::HashSet;
 
 use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
 fn behavior_result_port(b: &Behavior) -> PortId {
@@ -202,7 +202,9 @@ pub fn analyze_symbolic_cost_dimension(
             Some(Diagnostic::ParseError {
                 message: format!("symbolic_cost dimension: {reason}"),
                 span: behavior_span(at),
-                fixes: vec![],
+                correction: Correction::deferred_for_diagnostic_class(
+                    "SymbolicCostDimensionDiagnostic",
+                ),
             })
         })
         .collect();
@@ -215,7 +217,9 @@ pub fn analyze_symbolic_cost_dimension(
             message: "symbolic_cost dimension: missing symbolic cost for workflow root result port"
                 .into(),
             span: behavior_span(root),
-            fixes: vec![],
+            correction: Correction::deferred_for_diagnostic_class(
+                "SymbolicCostDimensionDiagnostic",
+            ),
         });
     }
 

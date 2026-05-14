@@ -196,7 +196,9 @@ impl<'a> Parser<'a> {
             Err(Diagnostic::ParseError {
                 message: format!("expected {expected:?}, got {:?}", token.kind),
                 span: token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             })
         }
     }
@@ -226,7 +228,9 @@ impl<'a> Parser<'a> {
                     "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {tk:?}"
                 ),
                 span: self.peek().span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             }),
         }
     }
@@ -485,7 +489,9 @@ impl<'a> Parser<'a> {
                             "expected string-literal key in map literal, got {other:?}"
                         ),
                         span: key_token.span,
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "ParseError",
+                        ),
                     });
                 }
             };
@@ -552,7 +558,7 @@ impl<'a> Parser<'a> {
                             "expected binding name in named payload match pattern after `{field_name}:`, got {other:?}"
                         ),
                         span: binding_token.span,
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                     });
                 }
             };
@@ -627,7 +633,9 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: "unterminated block body: reached EOF before closing `}`".to_string(),
                     span: open.span,
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "ParseError",
+                    ),
                 });
             }
             let token = self.bump().clone();
@@ -830,7 +838,9 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected `=` or `{{` after fn return type, got {other:?}"),
                 span: self.peek().span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             }),
         }
     }
@@ -844,7 +854,9 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected type name, got {other:?}"),
                     span: name_token.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "ParseError",
+                    ),
                 });
             }
         };
@@ -940,7 +952,9 @@ impl<'a> Parser<'a> {
             return Err(Diagnostic::ParseError {
                 message: format!("expected field label, got {:?}", name_token.kind),
                 span: name_token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             });
         };
         Ok((name, name_token.span))
@@ -991,7 +1005,9 @@ impl<'a> Parser<'a> {
                     span: inhabits_clause_span
                         .clone()
                         .unwrap_or_else(|| type_kw_span.clone()),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "ParseError",
+                    ),
                 });
             }
             let target = self.parse_type_expr()?;
@@ -1017,7 +1033,9 @@ impl<'a> Parser<'a> {
                 span: nominal_opaque_clause_span
                     .clone()
                     .unwrap_or_else(|| type_kw_span.clone()),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             });
         }
 
@@ -1221,7 +1239,9 @@ impl<'a> Parser<'a> {
             return Err(Diagnostic::ParseError {
                 message: format!("expected variant name, got {:?}", name_token.kind),
                 span: name_token.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             });
         };
         match &self.peek().kind {
@@ -1330,7 +1350,9 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected type name, got {other:?}"),
                     span: token.span,
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "ParseError",
+                    ),
                 });
             }
         };
@@ -1375,7 +1397,9 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected decimal width literal, got {other:?}"),
                 span: token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             }),
         }
     }
@@ -1428,7 +1452,9 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected identifier, got {other:?}"),
                 span: token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             }),
         }
     }
@@ -1544,7 +1570,7 @@ impl<'a> Parser<'a> {
                         "expected function name after `|>`, got {other:?} — pipe desugars only to `f` or `f(...)`"
                     ),
                     span: target_token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                 });
             }
         };
@@ -1573,21 +1599,21 @@ impl<'a> Parser<'a> {
                     "expected function name or call after `|>`; dotted paths are not callable in the current surface grammar"
                         .to_string(),
                 span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             SurfaceExpr::PathCall { span, .. } => Err(Diagnostic::ParseError {
                 message:
                     "expected function name or call after `|>`; dotted-path calls are not pipe targets in the current surface grammar"
                         .to_string(),
                 span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             SurfaceExpr::VariantRecord { span, .. } => Err(Diagnostic::ParseError {
                 message:
                     "expected function name or call after `|>`; named constructor literals are values, not callable pipe targets"
                         .to_string(),
                 span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
             }),
             _ => unreachable!("parse_ident_expr only returns Var, Call, Path, PathCall, or VariantRecord"),
         }
@@ -1613,7 +1639,7 @@ impl<'a> Parser<'a> {
         let cls = primary_atom_class(&token.kind).ok_or_else(|| Diagnostic::ParseError {
             message: format!("expected primary expression, got {:?}", token.kind),
             span: token.span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
         })?;
         match (cls, token.kind) {
             (PrimaryAtomClass::IntLiteral, TokenKind::IntLit(value)) => Ok(SurfaceExpr::Literal {
@@ -1642,7 +1668,9 @@ impl<'a> Parser<'a> {
                      (fix `PrimaryAtomRow` in `parse_tables.dag` or `regen_parse_tables` output)"
                 ),
                 span: token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "ParseError",
+                ),
             }),
         }
     }
@@ -1661,7 +1689,9 @@ impl<'a> Parser<'a> {
                         self.peek().kind
                     ),
                     span: self.peek().span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "ParseError",
+                    ),
                 });
             }
         }
@@ -1720,7 +1750,10 @@ impl<'a> Parser<'a> {
                                 "expected identifier after `.` in dotted path, got {other:?}"
                             ),
                             span: next.span,
-                            fixes: Vec::new(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "ParseError",
+                                ),
                         });
                     }
                 }
@@ -1766,7 +1799,10 @@ impl<'a> Parser<'a> {
                                 "expected identifier in lambda parameter list, got {other:?}"
                             ),
                             span: token.span,
-                            fixes: Vec::new(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "ParseError",
+                                ),
                         });
                     }
                 }
@@ -1909,7 +1945,7 @@ impl<'a> Parser<'a> {
                                     "expected binding name in payload match pattern after `{name}(`, got {other:?}"
                                 ),
                                 span: binding_token.span,
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                             });
                         }
                     };
@@ -1947,7 +1983,7 @@ impl<'a> Parser<'a> {
                         "expected variant name in match pattern, got {other:?} — M1(2.8) supports `Variant => expr`, `Variant(binding) => expr`, and `Variant {{ field: binding }} => expr`"
                     ),
                     span: name_token.span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("ParseError"),
                 });
             }
         };

@@ -36,7 +36,7 @@ use crate::dag::{
     TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
-    declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
+    declaration_display_name, witness_correction_for_decl, Correction, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
@@ -513,7 +513,9 @@ fn fail_mutual_cluster_build(
             Diagnostic::ResolveError {
                 name: reason.clone(),
                 span: pending_loop.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         dag.mark_unresolved(
@@ -521,7 +523,9 @@ fn fail_mutual_cluster_build(
             Diagnostic::ResolveError {
                 name: reason.clone(),
                 span: pending_loop.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     }
@@ -1646,25 +1650,26 @@ fn lower_parameter_refinements_phase(
         let mut refined_inputs = Vec::with_capacity(params.len());
         for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
             let input_decl = match &param.refinement {
-                Some(predicate) => match refinement_predicate_out_of_fragment(predicate) {
-                    Some((shape_label, span)) => {
-                        // DB-11 (3a.3) fail-closed boundary. The
-                        // discharge walker (`predicate_discharges` +
-                        // `refinement_ports_equal`) and the
-                        // composite-narrowing clone
-                        // (`clone_predicate_body`) both model only
-                        // `Value` and `Transform` predicate bodies.
-                        // Admitting a `where` predicate that lowers
-                        // through `Branch` / `Loop` / `Bind` would
-                        // produce a substrate state the consumers
-                        // silently disagree about — discharge would
-                        // reject matching shapes as "not equal," and
-                        // narrowing would discard the composite.
-                        // Reject at the lowering boundary so the
-                        // user gets an honest "unsupported shape"
-                        // diagnostic instead of a misleading
-                        // downstream mismatch.
-                        report_declaration_error(
+                Some(predicate) => {
+                    match refinement_predicate_out_of_fragment(predicate) {
+                        Some((shape_label, span)) => {
+                            // DB-11 (3a.3) fail-closed boundary. The
+                            // discharge walker (`predicate_discharges` +
+                            // `refinement_ports_equal`) and the
+                            // composite-narrowing clone
+                            // (`clone_predicate_body`) both model only
+                            // `Value` and `Transform` predicate bodies.
+                            // Admitting a `where` predicate that lowers
+                            // through `Branch` / `Loop` / `Bind` would
+                            // produce a substrate state the consumers
+                            // silently disagree about — discharge would
+                            // reject matching shapes as "not equal," and
+                            // narrowing would discard the composite.
+                            // Reject at the lowering boundary so the
+                            // user gets an honest "unsupported shape"
+                            // diagnostic instead of a misleading
+                            // downstream mismatch.
+                            report_declaration_error(
                             dag,
                             Diagnostic::ResolveError {
                                 name: format!(
@@ -1676,21 +1681,22 @@ fn lower_parameter_refinements_phase(
                                      bodies. Use a direct comparison or a call \
                                      to a Bool-returning helper instead."
                                 ),
-                                fixes: Vec::new(),
+                                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                                 span,
                             },
                         );
-                        base_decl
+                            base_decl
+                        }
+                        None => lower_parameter_refinement(
+                            base_decl,
+                            predicate,
+                            &param.name,
+                            symbols,
+                            dag,
+                            param.ty.span().clone(),
+                        ),
                     }
-                    None => lower_parameter_refinement(
-                        base_decl,
-                        predicate,
-                        &param.name,
-                        symbols,
-                        dag,
-                        param.ty.span().clone(),
-                    ),
-                },
+                }
                 None => base_decl,
             };
             refined_inputs.push(input_decl);
@@ -1787,7 +1793,9 @@ fn lower_type_alias_refinements_phase(
                          bodies. Use a direct comparison or a call \
                          to a Bool-returning helper instead."
                     ),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                     span: frag_span,
                 },
             );
@@ -1864,7 +1872,10 @@ fn lower_type_alias_refinements_phase(
                                     unsynthesized_names.join(", ")
                                 ),
                                 span: span.clone(),
-                                fixes: Vec::new(),
+                                correction:
+                                    crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                        "LoweringDiagnostic",
+                                    ),
                             },
                         );
                     }
@@ -1880,7 +1891,9 @@ fn lower_type_alias_refinements_phase(
                     Diagnostic::ResolveError {
                         name: reason,
                         span: pred_span,
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        ),
                     },
                 );
                 continue;
@@ -1953,7 +1966,9 @@ fn validate_scalar_data_refinements_phase(
                      `where` refinement — no narrowing branch in scope"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     }
@@ -2995,7 +3010,7 @@ fn collect_symbols(
                             existing_span.byte_start,
                             existing_span.byte_end,
                         ),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         span,
                     },
                 );
@@ -3059,7 +3074,7 @@ fn lower_item(
                         Diagnostic::ResolveError {
                             name: "lambda expressions currently require an expected function type (for example a `let` annotation or a function-typed parameter position)".to_string(),
                             span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                     scope.values.insert(name.clone(), port);
@@ -3412,7 +3427,9 @@ fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str)
         dag,
         Diagnostic::ResolveError {
             name: format!("invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "LoweringDiagnostic",
+            ),
             span,
         },
     );
@@ -3897,7 +3914,9 @@ fn build_template_arguments(
                 expected: template_param_count,
                 actual: args.len(),
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         // Arity mismatch is an authoritative failure. Consume the
@@ -4034,7 +4053,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
                 name: format!(
                     "function `{name}` has an opaque block body — M1(2.8) user code cannot yet use match / record literals / lambdas inside block-bodied fn definitions (see DOWNSTREAM_REQUIREMENTS.md class-5 gaps)"
                 ),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 span,
             },
         );
@@ -4046,7 +4065,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
                 name: format!(
                     "data `{name}` has an opaque body — M1(2.8) user code cannot ship a data body the compiler could not structurally validate (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
                 ),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 span,
             },
         );
@@ -4078,7 +4097,9 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                     dag,
                     Diagnostic::ResolveError {
                         name: format!("type `{name}` resolves to itself"),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        ),
                         span,
                     },
                 );
@@ -4100,7 +4121,9 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                 dag,
                 Diagnostic::ResolveError {
                     name: format!("unresolved type identifier `{name}`"),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                     span,
                 },
             );
@@ -4150,7 +4173,7 @@ fn resolve_template_for_type_parameters(
                         "type `{template_name}`: import-alias chain exceeds bound ({MAX_TEMPLATE_IMPORT_ALIAS_DEPTH} `ResolvedByName` hops)"
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             );
             None
@@ -4233,7 +4256,7 @@ fn lower_data_item(
                         invalid_cluster.members.join(", ")
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 };
                 let rejected = rejected_data_lambda_connective(
                     name,
@@ -4760,7 +4783,9 @@ fn symbolic_cost_constructor_spelling_is_canonical(
                  expected the canonical std.algebra `{target}` constructor"
             ),
             span: span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "LoweringDiagnostic",
+            ),
         },
     );
     false
@@ -4782,7 +4807,9 @@ fn lower_list_to_structural(
                     "data `{name}` has a list body but its declared type is not a List<_>"
                 ),
                 span: surface_expr_span(expr).clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         return None;
@@ -4829,7 +4856,9 @@ fn lower_map_to_structural(
                     "data `{name}` has a map body but its declared type is not a {expected_shape}"
                 ),
                 span: surface_expr_span(expr).clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         return None;
@@ -4867,7 +4896,9 @@ fn lower_string_map_entries(
                 Diagnostic::ResolveError {
                     name: format!("data `{data_name}` map body repeats key `{}`", entry.key),
                     span: entry.key_span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -4899,7 +4930,9 @@ fn lower_string_map_entries(
                         duplicate.key
                     ),
                     span: SourceSpan::new("<lower-field-map-invariant>", 0, 0),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             None
@@ -5291,7 +5324,7 @@ fn lower_record_to_structural(
                     "data `{data_name}`'s type annotation does not resolve to a record type (Conj); cannot apply inhabitance checking to the body"
                 ),
                 span: body_span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return None;
@@ -5319,7 +5352,9 @@ fn lower_record_to_structural(
                     record_field.name
                 ),
                 span: record_field.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         return None;
@@ -5338,7 +5373,9 @@ fn lower_record_to_structural(
                         record_field.name
                     ),
                     span: record_field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -5352,7 +5389,9 @@ fn lower_record_to_structural(
                 Diagnostic::ResolveError {
                     name: format!("data `{data_name}` is missing required field `{type_label}`"),
                     span: body_span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -5438,7 +5477,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires `op` as a resolved algebra field reference"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
@@ -5454,7 +5493,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` requires canonical `OrderedRing.eq`, but the `OrderedRing` algebra metadata is unavailable"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
@@ -5467,7 +5506,7 @@ fn validate_operator_realization_free_monoid_op_pairing(
                     "data `{data_name}` (`OperatorRealization`): `target: FreeMonoid` is only legal with `op: OrderedRing.eq` (fail-closed narrowing); resolved `op` does not match canonical `OrderedRing.eq`"
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return false;
@@ -5522,7 +5561,9 @@ fn enforce_non_negative_unit_count_payload(
         return Err(Diagnostic::ResolveError {
             name: "PositiveIntervalWidth.UnitCount payload is empty".to_string(),
             span: span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "LoweringDiagnostic",
+            ),
         });
     };
     match first {
@@ -5532,7 +5573,9 @@ fn enforce_non_negative_unit_count_payload(
                     name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
                         .to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 });
             };
             if n >= 0 {
@@ -5543,7 +5586,7 @@ fn enforce_non_negative_unit_count_payload(
                         s.as_str(),
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 })
             }
         }
@@ -5551,7 +5594,9 @@ fn enforce_non_negative_unit_count_payload(
             name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
                 .to_string(),
             span: span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "LoweringDiagnostic",
+            ),
         }),
     }
 }
@@ -5579,7 +5624,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` must be a DeclarationRef edge; use an identifier or dotted path, not a record literal"
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                 return None;
@@ -5595,7 +5640,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
                             ),
                             span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                     return None;
@@ -5623,7 +5668,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
                             ),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                     return None;
@@ -5642,7 +5687,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` references a function with a `where`-refined parameter before refinement discharge is available for data field references"
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             );
             return None;
@@ -5661,7 +5706,9 @@ fn lower_structural_field_value(
                     expected: TypeShape::new(expected),
                     actual: TypeShape::new(decl_id),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -5679,7 +5726,9 @@ fn lower_structural_field_value(
                     expected: TypeShape::new(expected),
                     actual: TypeShape::new(actual),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -5706,7 +5755,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` must be a list literal matching the declared List<_> type"
                     ),
                     span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             );
             return None;
@@ -5738,7 +5787,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` must be a map literal matching the declared Map<String, _> type"
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             );
             return None;
@@ -5763,7 +5812,7 @@ fn lower_structural_field_value(
                     "data `{data_name}` field `{field_label}` has a map value but the declared map key type is not String"
                 ),
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
         return None;
@@ -5780,7 +5829,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` must be a record literal matching the declared record type"
                     ),
                     span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             );
             return None;
@@ -5794,7 +5843,9 @@ fn lower_structural_field_value(
                         field.name
                     ),
                     span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             return None;
@@ -5826,7 +5877,7 @@ fn lower_structural_field_value(
                             field.name
                         ),
                         span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                 return None;
@@ -5848,7 +5899,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` is missing nested field `{label}`"
                         ),
                         span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                 return None;
@@ -5972,7 +6023,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` uses constructor `{target}` which is not a variant of the declared sum type"
                             ),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                         return None;
@@ -6000,7 +6051,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` uses constructor `{target}` which is not a variant of the declared sum type"
                             ),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                         return None;
@@ -6069,7 +6120,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` uses constructor `{name}` which is not a variant of the declared sum type"
                             ),
                             span: span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                         return None;
@@ -6084,7 +6135,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` must be a constructor expression matching the declared sum type"
                         ),
                         span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                     return None;
@@ -6104,7 +6155,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` constructor `{variant_name}` does not lower to a record payload shape: got {other:?}"
                         ),
                         span: variant_span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                 return None;
@@ -6120,7 +6171,9 @@ fn lower_structural_field_value(
                         expected: payload_fields.len(),
                         actual: args.len(),
                         span: variant_span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        ),
                     },
                 );
                 return None;
@@ -6149,7 +6202,7 @@ fn lower_structural_field_value(
                             field.name
                         ),
                         span: field.span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
                 return None;
@@ -6166,7 +6219,7 @@ fn lower_structural_field_value(
                                 field.name
                             ),
                             span: field.span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                     return None;
@@ -6183,7 +6236,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` constructor `{variant_name}` is missing payload field `{payload_field_label}`"
                             ),
                             span: variant_span.clone(),
-                            fixes: Vec::new(),
+                            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                         },
                     );
                     return None;
@@ -6221,7 +6274,7 @@ fn lower_structural_field_value(
                 "data `{data_name}` field `{field_label}` does not match the declared structural type"
             ),
             span: span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
         },
     );
     None
@@ -6275,7 +6328,9 @@ fn lower_scalar_literal_for_type(
                 return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                     name: "internal: malformed decimal integer literal".to_string(),
                     span: surface_expr_span(expr).clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 });
             };
             int_decl_id
@@ -6310,7 +6365,7 @@ fn lower_scalar_literal_for_type(
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
                 span,
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             });
         }
         return LowerScalarLiteralOutcome::Literal(literal_bits);
@@ -6320,7 +6375,9 @@ fn lower_scalar_literal_for_type(
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "internal: malformed decimal integer literal".to_string(),
                 span: surface_expr_span(expr).clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             });
         };
         match integer_range_for_decl(dag, expected_type) {
@@ -6339,7 +6396,9 @@ fn lower_scalar_literal_for_type(
     LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
         name: "scalar literal does not match declared type".to_string(),
         span: surface_expr_span(expr).clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
     })
 }
 
@@ -7195,7 +7254,9 @@ fn lower_fn_item_expr_body(
                          lowering invariant: seed_function_signatures_phase did not produce \
                          an Arrow connective for this Fn; observed connective: {observed:?}"
                     ),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                     span,
                 },
             );
@@ -7256,7 +7317,9 @@ fn lower_fn_item_expr_body(
                     invalid_cluster.members.join(", ")
                 ),
                 span: body_span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
         let bind_id = dag.alloc_node_id();
@@ -7335,7 +7398,7 @@ fn lower_fn_item_expr_body(
                         "function `{name}` is recursive but has no parameters; cannot terminate"
                     ),
                     span: body_span.clone(),
-                    fixes: witness_correction_for_decl(
+                    correction: witness_correction_for_decl(
                         dag,
                         return_decl_id,
                         body_span.clone(),
@@ -7344,8 +7407,11 @@ fn lower_fn_item_expr_body(
                             declaration_display_name(dag, return_decl_id)
                         ),
                     )
-                    .into_iter()
-                    .collect(),
+                    .unwrap_or_else(|| {
+                        crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        )
+                    }),
                 },
             );
             (err_port, err_port)
@@ -7367,7 +7433,7 @@ fn lower_fn_item_expr_body(
                         param = &params[0].name,
                     ),
                     span: body_span.clone(),
-                    fixes: witness_correction_for_decl(
+                    correction: witness_correction_for_decl(
                         dag,
                         return_decl_id,
                         body_span.clone(),
@@ -7375,9 +7441,7 @@ fn lower_fn_item_expr_body(
                             "replace the non-terminating body of `{name}` with a `{}` base case",
                             declaration_display_name(dag, return_decl_id)
                         ),
-                    )
-                    .into_iter()
-                    .collect(),
+                    ).unwrap_or_else(|| crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic")),
                 },
             );
             (err_port, err_port)
@@ -7498,7 +7562,9 @@ fn declaration_to_port_shape(
             return Err(Diagnostic::ResolveError {
                 name: format!("unknown type `{name}`"),
                 span: annotation_span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             });
         }
     }
@@ -7714,7 +7780,9 @@ fn lower_lambda_expr_to_arrow(
         return Err(Diagnostic::ResolveError {
             name: "lambda expression requires an expected function type".to_string(),
             span: span.clone(),
-            fixes: Vec::new(),
+            correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                "LoweringDiagnostic",
+            ),
         });
     };
     if expected_inputs.len() != params.len() {
@@ -7725,7 +7793,7 @@ fn lower_lambda_expr_to_arrow(
                 params.len(),
             ),
             span: span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
         });
     }
 
@@ -7756,7 +7824,9 @@ fn lower_lambda_expr_to_arrow(
             return Err(Diagnostic::ResolveError {
                 name,
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             });
         }
     }
@@ -7937,7 +8007,7 @@ fn callable_binding_conflict_diagnostic(
             arg_index + 1
         ),
         span: span.clone(),
-    fixes: Vec::new(),
+    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
     }
 }
 
@@ -8310,7 +8380,9 @@ fn lower_field_path_expr(
             Diagnostic::ResolveError {
                 name: "empty dotted path expression".to_string(),
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     };
@@ -8368,7 +8440,7 @@ fn lower_field_path_expr(
                 segments.join("."),
             ),
             span: span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
         },
     )
 }
@@ -8748,7 +8820,9 @@ fn duplicate_payload_pattern_binding_diagnostic(
             "named payload pattern `{variant_name}` binds `{binding_name}` more than once"
         ),
         span: span.clone(),
-        fixes: Vec::new(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
     }
 }
 
@@ -8947,7 +9021,7 @@ fn lower_expr(
                     }
                 }
                 let port = dag.alloc_port(None);
-                let fixes = expected_decl
+                let correction = expected_decl
                     .and_then(|decl| {
                         witness_correction_for_decl(
                             dag,
@@ -8959,14 +9033,17 @@ fn lower_expr(
                             ),
                         )
                     })
-                    .into_iter()
-                    .collect();
+                    .unwrap_or_else(|| {
+                        crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        )
+                    });
                 dag.mark_unresolved(
                     port,
                     Diagnostic::ResolveError {
                         name: name.clone(),
                         span: span.clone(),
-                        fixes,
+                        correction,
                     },
                 );
                 port
@@ -8984,7 +9061,7 @@ fn lower_expr(
                     let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
                 }
                 let port = dag.alloc_port(None);
-                let fixes = expected_decl
+                let correction = expected_decl
                     .and_then(|decl| {
                         witness_correction_for_decl(
                             dag,
@@ -8996,8 +9073,11 @@ fn lower_expr(
                             ),
                         )
                     })
-                    .into_iter()
-                    .collect();
+                    .unwrap_or_else(|| {
+                        crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        )
+                    });
                 let diagnostic_name = match expected_decl {
                     Some(exp) if walk_to_disj_decl(dag, exp).is_some() => format!(
                         "named constructor `{target}` is not a variant of the expected sum type `{}`",
@@ -9010,7 +9090,7 @@ fn lower_expr(
                     Diagnostic::ResolveError {
                         name: diagnostic_name,
                         span: span.clone(),
-                        fixes,
+                        correction,
                     },
                 );
                 return port;
@@ -9067,7 +9147,9 @@ fn lower_expr(
                     name: "lambda expression requires an expected function type at this position"
                         .to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
             port
@@ -9315,7 +9397,9 @@ fn lower_expr(
                     Diagnostic::ResolveError {
                         name: "empty dotted path in call expression".to_string(),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "LoweringDiagnostic",
+                        ),
                     },
                 );
             };
@@ -9334,7 +9418,7 @@ fn lower_expr(
                             "call-on-field-access through parameter `{head}` is not yet supported (Prereq-X1.b: requires runtime-callee dispatch substrate); only static `data` binding callees are accepted in this slice"
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
             }
@@ -9349,7 +9433,7 @@ fn lower_expr(
                             "call-on-field-access head `{head}` is not a top-level `data` declaration; static call-on-field-access (Prereq-X1.a) requires a `data` binding head"
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
             };
@@ -9365,7 +9449,7 @@ fn lower_expr(
                             "call-on-field-access head `{head}` has no compile-time value body; static call-on-field-access requires a `data` binding with a structural value body"
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
             };
@@ -9382,7 +9466,7 @@ fn lower_expr(
                             segments.join(".")
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
             };
@@ -9404,7 +9488,7 @@ fn lower_expr(
                             segments.join(".")
                         ),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                     },
                 );
             }
@@ -9444,7 +9528,7 @@ fn lower_expr(
                 Diagnostic::ResolveError {
                     name: "map literals are not yet supported in expression position (top-level data declarations only)".to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
                 },
             )
         }
@@ -9578,7 +9662,9 @@ fn lower_record_literal_expr(
                 name: "record literals require an expected record type at this position"
                     .to_string(),
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     };
@@ -9589,7 +9675,9 @@ fn lower_record_literal_expr(
                 name: "record literal does not have an expected record type at this position"
                     .to_string(),
                 span: span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     };
@@ -9608,7 +9696,9 @@ fn lower_record_literal_expr(
                 Diagnostic::ResolveError {
                     name: format!("record literal repeats field `{}`", field.name),
                     span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9626,7 +9716,9 @@ fn lower_record_literal_expr(
                         field.name
                     ),
                     span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9641,7 +9733,9 @@ fn lower_record_literal_expr(
                         "record literal is missing required field `{label}` for the expected type"
                     ),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         };
@@ -9675,7 +9769,7 @@ fn lower_variant_record_expr(
                     expr.target, expr.target
                 ),
                 span: expr.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
             },
         );
     };
@@ -9690,7 +9784,9 @@ fn lower_variant_record_expr(
                     expr.target
                 ),
                 span: expr.span.clone(),
-                fixes: Vec::new(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
             },
         );
     };
@@ -9705,7 +9801,9 @@ fn lower_variant_record_expr(
                         expr.target, field.name
                     ),
                     span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9723,7 +9821,9 @@ fn lower_variant_record_expr(
                         expr.target, field.name
                     ),
                     span: field.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9739,7 +9839,9 @@ fn lower_variant_record_expr(
                         expr.target
                     ),
                     span: expr.span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         };
@@ -9773,7 +9875,9 @@ fn lower_list_literal_expr(
                     name: "std `empty` constructor is unavailable while lowering a list literal"
                         .to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9788,7 +9892,9 @@ fn lower_list_literal_expr(
                         "std `singleton` constructor is unavailable while lowering a list literal"
                             .to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
@@ -9802,7 +9908,9 @@ fn lower_list_literal_expr(
                     name: "std `cons` constructor is unavailable while lowering a list literal"
                         .to_string(),
                     span: span.clone(),
-                    fixes: Vec::new(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
                 },
             );
         }
