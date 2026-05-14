@@ -4,8 +4,16 @@
 //! opt-in iteration parallelism surfaced through `parallelism_enforceable` /
 //! `v3_compiler::parallelism_iteration_opt_in_enforcement_violates` together with Lane-2
 //! `v3_compiler::loop_iteration_parallel_emission_indicator` (same contract as second-batch
-//! auto-loop receipts). `EnforcedApplication` + `NodeScope` proofs live alongside
-//! `check_enforced_lens_applications` (`enforced_lens_application.rs`, crate `#[cfg(test)]`).
+//! auto-loop receipts).
+//!
+//! This binary intentionally pins the **exported public bridge** Lane‑2 indicator ↔ opt‑in violates
+//! predicate (`compile_to_dag` staged harness + `workflow_lane2_subject`, no synthetic declaration
+//! injection). Mirrors gate #58 splitting: integration covers bootstrap/pass witnesses where the
+//! carrier is authored in checked-in substrate; Gate #95 executable `apply_lens`/`.dag` authoring of
+//! `EnforcedApplication`/`NodeScope` remains deferred (`../fixtures/` banner), while the **`check_enforced_lens_applications`**
+//! consumer path (**`EnforcedApplication` row + coupling guard + indicator read**) lives in crate
+//! `#[cfg(test)]` (`gate_95_parallelism_iteration_enforcement_tests` in `enforced_lens_application.rs`,
+//! synthetic `push_declaration` injection — Gate #94-style internal receipt).
 //!
 //! Fixture companion: `../fixtures/t_las_parallelism_iteration_gate95_fixture.dag`.
 //! Authority: `docs/design-lens-application-surface.md` §4.4.
