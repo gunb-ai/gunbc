@@ -13,13 +13,17 @@ not invent new enum variants.
 | Magma | closure only | — | not applicable (`AlgebraicLaw` is law-tagged; no “closure-only” law) |
 | Semigroup | associativity | `Associativity` | wired (bounded operational witness via lens apply tables) |
 | Commutative monoid | + commutativity | `Commutativity` | wired (same witness discipline) |
-| Monoid | + identity | `Identity` | **`NotYetImplemented`** (blocked until lens identity-element edge exists; PR-B.3 W2) |
+| Monoid | + identity | `Identity` | wired (bounded operational witness via identity candidate search) |
 | Semiring / ring | distributivity of `*` over `+`, etc. | **not in enum** | **flag §P1** — do not encode as a pretend `AlgebraicLaw` variant in fixtures |
 | Lattice / Boolean algebra | absorption, distributivity of ∧/∨ | **not in enum** | **flag §P1** if modeled as `AlgebraicLawKind` extensions |
 
-**Skeleton fixtures (Lane 2):** `src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag` carries a
-single `AlgebraicLaw(Identity, …)` placeholder claim — not a per-law explosion — aligned with
-`docs/briefs/r3-v-l4-l7-direct-scaffold-notes.md` §algebra coverage audit.
+**Gate #10 consumer receipt:** `src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag` carries the
+`r3_verification_l7_algebra_matrix_suite` matrix. The normal integration ratchet
+`r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts` runs that suite and asserts every
+current `AlgebraicLawKind` row has an honest `Int` additive or multiplicative witness. This is not
+full §Acceptance closure: non-enum laws such as distributivity, absorption, complement, and order
+laws remain substrate §P1 extensions, and the fixture must not encode them by overloading
+`Associativity`, `Commutativity`, or `Identity`.
 
 **Lane 1 (`DifferentialEquals`):** `(rust_emit_output, dag_eval_output)` pairing is authored in
 `r3_verification_l4_emit_eval_match.dag` but remains **`NotYetImplemented`** until the runner grows a
