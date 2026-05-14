@@ -13,7 +13,7 @@ use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
 use crate::sg0_census_test::{
-    EXPECTED_HAND_AUTHORED_FRAGMENTS, EXPECTED_HAND_AUTHORED_NON_TEST,
+    expected_hand_authored_fragments_count, expected_hand_authored_non_test_count,
 };
 
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_sg0_non_test_zero.dag");
@@ -46,13 +46,13 @@ fn r3_gate_8_sg0_non_test_zero_claims_execute_against_live_census() {
         &results,
         NON_TEST_CLAIM,
         "expected_hand_authored_non_test",
-        EXPECTED_HAND_AUTHORED_NON_TEST.len(),
+        expected_hand_authored_non_test_count(),
     );
     assert_live_census_result(
         &results,
         FRAGMENTS_CLAIM,
         "expected_hand_authored_fragments",
-        EXPECTED_HAND_AUTHORED_FRAGMENTS.len(),
+        expected_hand_authored_fragments_count(),
     );
 }
 
