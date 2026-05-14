@@ -189,6 +189,8 @@ mod r3_free_consequences_first_batch_test;
 mod r3_free_consequences_second_batch_test;
 #[path = "integration/r3_gate_60_phase2_width_nat_parser_test.rs"]
 mod r3_gate_60_phase2_width_nat_parser_test;
+#[path = "integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs"]
+mod r3_gate_62_file_ingestion_negative_bridge_audit_test;
 #[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
 mod r3_gate_87_lens_cementing_regen_receipts_test;
 #[path = "integration/r3_gate_90_lens_enforcement_carrier_landed_test.rs"]
@@ -225,6 +227,8 @@ mod sg6_hand_authored_census_test;
 mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
+#[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
+mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
