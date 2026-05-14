@@ -115,7 +115,7 @@ The affected-set lens composes existing R3 substrate (no new substrate required)
 | Substrate piece | File | Role in lens |
 |---|---|---|
 | `Dag` forward graph | `src/v3/std/` + `dag.rs` | Reverse-traverse edges to find consumers |
-| `DescentEvidence` (gate #72 CONSUMER_LANDED) | `src/v3/std/termination.dag:17` (type defn; see also `src/v3/std/computation.dag:11/:89` consumers) | For each callsite, well-founded descent evidence (`Strict / NonIncreasing / DescentUnknown` lattice) — narrows propagation |
+| `DescentEvidence` (gate #72 CONSUMER_LANDED + PASSING) | `src/v3/std/termination.dag:17` (type defn; see also `src/v3/std/computation.dag:11/:89` consumers) | For each callsite, well-founded descent evidence (`Strict / NonIncreasing / DescentUnknown` lattice) — narrows propagation |
 | `SubValueRelation` (gate #78 in-flight) | `src/v3/std/induction.dag:207` (type defn; see also call-site descent + composition helpers at `:220-385`) | Atomic-level subvalue tracking: which sub-piece flows where; threading provenance |
 | `Cardinality` lens | `src/v3/lenses/` | Distinguishes "data shape changed" from "data value changed" |
 | `cross_target_coverage` | `src/v3/std/cross_target_coverage.dag` | Per-substrate-variant × target emission paths — narrows cross-target propagation |
