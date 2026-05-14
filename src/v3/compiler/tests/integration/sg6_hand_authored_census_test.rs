@@ -167,9 +167,9 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         // checks without a host child, the wrappers + bin retire together
         // (R1 Closure dispatch on issue #973). Documented in ROADMAP T-Emit
         // / R1C-E lane row.
+        "gunbc_ci.rs",
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
-        "regen_lens.rs",
         "regen_parse.rs",
         // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
         // `src/v3/compiler/parse_tables.dag` into
@@ -192,11 +192,12 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     assert_eq!(
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
-         `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
-         issue #973), `regen_lens` (reads `src/v3/compiler/regen.dag`), \
-         `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
+         `gunbc_ci` (modeled CI host shim), `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
+         issue #973), `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
          carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \
-         `regen_v3`, and `self_host_fixed_point`. Adding a new bin re-introduces a \
+         `regen_v3`, and `self_host_fixed_point`. The `regen_lens` binary is a \
+         thin `[[bin]]` outside `src/bin/` (R3 gate #7); its driver lives in \
+         `regen_lens_driver.rs`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
          new regen / harness targets be added via a `.dag` registry instead. \
          Both `src/bin/<name>.rs` (flat-file bins; basename reported) and \
