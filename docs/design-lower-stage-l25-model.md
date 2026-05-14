@@ -204,9 +204,9 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | PB-3 Parse | `src/v3/std/parse_surface.dag` (live; `SurfaceModule` / `SurfaceItem` / `SurfaceExpr` / `SurfacePattern`) | PB-3 lane (R3 Substrate Mgr post-PB-4) | LIVE at HEAD per `grep -n "^type Surface" src/v3/std/parse_surface.dag` |
 | ElaborationSpec carrier | `src/v3/std/elaboration_spec.dag` (NEW substrate to author per Decision 3.C) | Director-tier substrate-fact-introduction | NEEDS AUTHORING; Step 2 brief scope |
 | LowerDiagnostic substrate extension | `src/v3/std/diagnostics.dag:150` `Diagnostic` carrier exists with `kind: AnyDiagnosticKind` (CompilerKind|LensInstanceKind discrimination per Q6.5 anti-bridge); Decision 2.B per-stage `source` axis is a SUBSTRATE EXTENSION (NOT currently live). Path: either (i) extend `Diagnostic` with `source: DiagnosticSource` field, or (ii) lane-local LowerDiagnostic sum mapping into CompilerKind | PB-Substrate + Director-tier per-stage diagnostic authoring + operator/PM ratification on extension path per §12 Q-new | Live `Diagnostic` + `AnyDiagnosticKind` + `EmissionDiagnostic` (line 201, separate per Q6.5) NO per-stage source axis live |
-| Symbol-table substrate | `src/v3/std/symbol_table.dag` (proposed; verify existence at Step 2) | Director-tier substrate-fact-introduction | NEEDS GREP VERIFICATION at Step 2 authoring; current `lower.rs` uses `HashMap<String, DeclarationId>` (hand-Rust; not `.dag` substrate) |
+| ~~Symbol-table substrate~~ DROPPED | ~~`src/v3/std/symbol_table.dag` (proposed)~~ — REMOVED per §12 Q2 RESOLVED: symbol table is implementation tier (pass-local lookup in `lower.dag` body), NOT substrate carrier. Earlier draft over-modeled implementation as substrate. | n/a | DROPPED per codex BLOCKING #3077 + LAYER MODEL discipline |
 
-**Critical observation**: PB-4 lower's substrate prereqs are LIGHTER than PB-6 emit's. PB-4 mostly extends existing live carriers (substrate.dag / diagnostics.dag) + authors 1 NEW carrier (ElaborationSpec) + verifies symbol-table substrate. PB-6 emit had 8 prereqs routing through R3 Grounding Mgr; PB-4 lower has 5 with most LIVE or DEPENDS-on-Decision-3.A.
+**Critical observation**: PB-4 lower's substrate prereqs are LIGHTER than PB-6 emit's. PB-4 mostly extends existing live carriers (substrate.dag / diagnostics.dag) + authors 1 NEW carrier (ElaborationSpec). Symbol-table is implementation-tier (per §12 Q2 RESOLVED), not a substrate prereq. PB-6 emit had 8 prereqs routing through R3 Grounding Mgr; PB-4 lower has 4 with most LIVE or DEPENDS-on-Decision-3.A.
 
 The DOMINANT dependency is **Decision 3.A operator-ratified sum-variant shape** — the `Dag = PreInferDag | InferredDag` carrier change ripples across all 4 pipeline stages. PB-4 lower's signature + output type depend on this landing first via PB-Substrate.
 
@@ -439,7 +439,7 @@ Subsequent L2.5 models (PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Dir
 **Live substrate referenced**:
 - `src/v3/std/parse_surface.dag:29` (SurfaceModule), `:149` (SurfaceExpr), `:123` (SurfacePattern), `:257` (SurfaceItem)
 - `src/v3/std/substrate.dag` (Dag, Declaration, Port — extends to PreInferDag|InferredDag per Decision 3.A)
-- `src/v3/std/diagnostics.dag:150` (Diagnostic carrier — extends with LowerDiagnostic variants per Decision 2.B)
+- `src/v3/std/diagnostics.dag:150` (Diagnostic carrier — `{ kind: AnyDiagnosticKind, span, message, correction }` per Q6.5 anti-bridge; line 139 AnyDiagnosticKind = CompilerKind | LensInstanceKind; line 201 EmissionDiagnostic separate per Q6.5). LowerDiagnostic extension path per §12 Q7 ratification (Director-recommend (b) lane-local sum + mapping into CompilerKind; Q7 explicitly leaves path to ratification)
 - `src/v3/compiler/src/lower.rs:1-23` (current hand-Rust top-comment with canonical lowering rules)
 
 **Memory disciplines applied**:
