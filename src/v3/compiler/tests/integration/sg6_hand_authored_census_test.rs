@@ -156,10 +156,11 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
         // R1C-E (T-Emit `.dag` `TestClaim` wrappers): thin `[[bin]]` shim emitted as
-        // `r1c_e_emit_gates_generated.rs` (PB-0 cycle-6); calls `r1c_e_gates::run_emit_gates_host_binary`.
+        // `r1c_e_emit_gates_generated.rs` (PB-0 cycle-6); CLI/args/stderr/exit at bin edge; calls
+        // `r1c_e_gates::check_*`.
         "r1c_e_emit_gates_generated.rs",
-        // `gunbc-ci` binary shim emitted as `gunbc_ci_generated.rs` (PB-0 cycle-6); calls
-        // `cementing_dispatch::gunbc_ci::run_host_binary`.
+        // `gunbc-ci` binary shim emitted as `gunbc_ci_generated.rs` (PB-0 cycle-6); CLI/env/fs at
+        // bin edge; uses `compile_to_dag` + `wall_clock_ratchet_manifest` + `cementing_dispatch` types as needed.
         "gunbc_ci_generated.rs",
         "regen_bootstrap.rs",
         "regen_lens.rs",

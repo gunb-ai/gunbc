@@ -244,8 +244,8 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 //
 // PB-0 cycle-6: `dag/{builder,cardinality_payload,effects,ports}` + `bin/{gunbc_ci,r1c_e_emit_gates}`
 // are emitted `*_generated.rs` from `tools/pb0_cycle6_emit_templates/` (`REGEN_OUTPUTS`); host
-// entrypoints are `cementing_dispatch::gunbc_ci::run_host_binary` and
-// `r1c_e_gates::run_emit_gates_host_binary`.
+// entrypoints are the generated `src/bin/*_generated.rs` shims (CLI/env/fs/process exit at the
+// bin edge per `CODING.md`); `cementing_dispatch::gunbc_ci` / `r1c_e_gates::check_*` stay library-side.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
