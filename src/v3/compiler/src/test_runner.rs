@@ -5049,33 +5049,34 @@ impl<'a> TestRunner<'a> {
                     "GeneratedFromDag manifest_entries variant `{label}` is not a GeneratedManifestEntry arm (expected PendingFact | ResolvedFact)"
                 ));
             }
-            let inner = match single_payload(&variant_payload) {
-                Ok(inner) => inner.clone(),
-                Err(reason) => {
-                    return ClaimResult::Fail(format!(
-                        "GeneratedFromDag manifest_entries `{label}` payload: {reason}"
-                    ));
-                }
-            };
-            // Single-field record variants (e.g., `PendingFact { output_path: Path }`)
-            // lower with `output_path` inlined as the bare payload value; multi-field
-            // variants (e.g., `ResolvedFact { output_path, dag_source, source_hash }`)
-            // wrap payload in `FieldValue::Record(fields)`. Extract `output_path`
-            // from whichever shape this arm produces.
-            let output_path = match &inner {
+            // The v3 lowerer hands variant payloads back in three shapes depending
+            // on field arity / construction style:
+            //  - single-field record variants (e.g., `PendingFact { output_path }`)
+            //    inline the field-value as `payload = [<bare-literal>]`;
+            //  - multi-field record variants (e.g., `ResolvedFact { output_path,
+            //    dag_source, source_hash }`) lower positionally as
+            //    `payload = [<output_path>, <dag_source>, <source_hash>]`;
+            //  - some construction paths wrap the fields in a single
+            //    `[Record([(name, value), ...])]` slot.
+            // For both arms of `GeneratedManifestEntry` the declared field order
+            // begins with `output_path`, so the first payload slot carries the
+            // path literal in every supported lowering shape. We accept all three
+            // by inspecting the first slot and, if it is a record, looking up
+            // `output_path` by field name.
+            let output_path = variant_payload.first().and_then(|head| match head {
                 FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
-                _ => record_fields(&inner).and_then(|fields| {
+                _ => record_fields(head).and_then(|fields| {
                     field(fields, "output_path").and_then(|v| match v {
                         FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
                         _ => None,
                     })
                 }),
-            };
+            });
             match output_path {
                 Some(path) => named_paths.push(path),
                 None => {
                     return ClaimResult::Fail(format!(
-                        "GeneratedFromDag GeneratedManifestEntry `{label}` missing String `output_path` field: {inner:?}"
+                        "GeneratedFromDag GeneratedManifestEntry `{label}` payload missing String `output_path` slot: {variant_payload:?}"
                     ));
                 }
             }
