@@ -31,15 +31,16 @@ fn gate_95_fixture_pins_parallelism_enforceable_carrier() {
 #[test]
 fn gate_95_opt_in_iteration_parallelism_via_lens_application_demonstrated_indicator_bridge() {
     let run = |witness_file: &'static str,
-                   directive: &'static str,
-                   indicator: i64,
-                   expect_violation: bool| {
+               directive: &'static str,
+               indicator: i64,
+               expect_violation: bool| {
         let source = format!(
             "// gunbc::r3_free_consequences::lane2_loop_witness: {directive}\n\
              import lenses.parallelism {{ parallelism_enforceable }}\n\
              fn gate95_integration_probe() -> Int = 0\n"
         );
-        let dag = compile_to_dag(source.as_str(), witness_file).expect("compile staged lane2 loop harness");
+        let dag = compile_to_dag(source.as_str(), witness_file)
+            .expect("compile staged lane2 loop harness");
         let subject = dag
             .workflow_lane2_subject()
             .expect("workflow shell Bind for Lane-2 registration");
