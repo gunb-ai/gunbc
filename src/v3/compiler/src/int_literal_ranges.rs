@@ -576,7 +576,8 @@ pub(crate) fn int_literal_lossless_in_f64(literal: &BigInt) -> bool {
     literal >= &min && literal <= &max
 }
 
-/// R3 gate #60: `MachineWidth<Word*>` or `MachineWidth<literal-Nat>` → bit width.
+/// R3 gate #60: `MachineWidth<Byte|Word*>` or `MachineWidth<literal-Nat>` → bit width.
+/// (`Byte` is the nominal 8-bit carrier in `dsl/std/bit.dag`; there is no `Word8`.)
 pub(crate) fn gate60_machine_width_bits(
     dag: &Dag,
     machine_width_inst: DeclarationId,
@@ -594,14 +595,14 @@ pub(crate) fn gate60_machine_width_bits(
         return None;
     }
     let slot = mw_args[0].value;
-    for (word_name, bits) in [
-        ("Word8", 8_u32),
+    for (carrier_name, bits) in [
+        ("Byte", 8_u32),
         ("Word16", 16),
         ("Word32", 32),
         ("Word64", 64),
         ("Word128", 128),
     ] {
-        if let Some(w) = dag.declaration_by_name(word_name) {
+        if let Some(w) = dag.declaration_by_name(carrier_name) {
             if slot == w.id {
                 return Some(bits);
             }
@@ -658,12 +659,14 @@ pub(crate) fn int_literal_float_coercion_target(
     dag: &Dag,
     decl: DeclarationId,
 ) -> Option<IntLiteralFloatCoercionTarget> {
+    // Only name the canonical width rows (`Real32`/`Real64`) that own `TypeRealization` targets in
+    // `rust.dag`. Compatibility aliases (`Float32 = Real32`, …) peel to these via
+    // [`peel_decl_head_for_integral_float_seed`], so listing `Float*` here would duplicate
+    // inference authority without adding emit coverage (codex #3115 — P2 single spine).
     let peeled = peel_decl_head_for_integral_float_seed(dag, decl);
     for (name, fmt) in [
         ("Real64", IntLiteralFloatCoercionTarget::F64),
-        ("Float64", IntLiteralFloatCoercionTarget::F64),
         ("Real32", IntLiteralFloatCoercionTarget::F32),
-        ("Float32", IntLiteralFloatCoercionTarget::F32),
     ] {
         if let Some(d) = dag.declaration_by_name(name) {
             if peeled == d.id {
@@ -1017,6 +1020,31 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 mod tests {
     use super::*;
     use crate::types::TypeShape;
+
+    #[test]
+    fn float_alias_peels_to_real_before_integral_float_coercion() {
+        let dag = Dag::new();
+        let float64 = dag.declaration_by_name("Float64").expect("Float64").id;
+        let real64 = dag.declaration_by_name("Real64").expect("Real64").id;
+        assert_eq!(
+            peel_decl_head_for_integral_float_seed(&dag, float64),
+            real64
+        );
+        assert_eq!(
+            int_literal_float_coercion_target(&dag, float64),
+            Some(IntLiteralFloatCoercionTarget::F64)
+        );
+        let float32 = dag.declaration_by_name("Float32").expect("Float32").id;
+        let real32 = dag.declaration_by_name("Real32").expect("Real32").id;
+        assert_eq!(
+            peel_decl_head_for_integral_float_seed(&dag, float32),
+            real32
+        );
+        assert_eq!(
+            int_literal_float_coercion_target(&dag, float32),
+            Some(IntLiteralFloatCoercionTarget::F32)
+        );
+    }
 
     #[test]
     fn magnitude_out_of_range_accepts_only_exact_int_interval_facts() {
