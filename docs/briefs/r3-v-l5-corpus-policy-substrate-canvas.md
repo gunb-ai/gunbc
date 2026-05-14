@@ -107,7 +107,7 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 ## 5. Substrate carrier shape (preliminary, conditional on Q1–Q5 ratification)
 
-Assuming canvas recommendations land (**A2 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement; no edit to `src/v3/std/verification.dag` other than the `import` line in the L5 fixture):
+Assuming canvas recommendations land (**A2 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement). `src/v3/std/verification.dag` is **not** edited. The only other change is an `import std.r3_l5_corpus` line in the L5 fixture (`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`) — not in `verification.dag`:
 
 ```
 type OracleAuthority
