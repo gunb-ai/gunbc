@@ -60,7 +60,7 @@ data wall_clock_warn_libtest_tokens: List<WallClockWarnLibtestToken> = [
   { test: "m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings" },
   { test: "t_pb_b_1_dag_runner_test::r1c_e_emit_gates_suite_passes_through_runner" },
   { test: "r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval" },
-  { test: "r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_l7_direct_suite_lists_four_l4_certification_seed_claims" },
+  { test: "r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_l7_direct_suite_lists_five_l4_certification_seed_claims" },
   { test: "r3_verification_l4_l7_l5_skeleton_test::r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts" },
   { test: "complexity_lens_behavioral_completion::literal_bind_cements_constant_complexity_summary" },
   { test: "complexity_lens_behavioral_completion::recursive_countdown_cements_linear_work_and_span" },
