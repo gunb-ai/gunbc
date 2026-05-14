@@ -21,11 +21,11 @@
 | Required target set | ✅ | `TestClaim.requires: List<ResourceReference>` (L567); L5 rows attach `L5RustcToolchain` / `L5Python3Toolchain` / `L5GoToolchain` |
 | Declared input sample or finite input family | ⚠️ partial | `BehavioralObservation.input_sample: DeclarationRef` exists (L307); `ForAllTargets` declares `input_ref: DeclarationRef` (L343), but the HEAD L5 fixture uses that slot to point at a `ProgramOutputBind` declaration rather than a typed input family — the input-vs-output role is currently overloaded, not absent. L5 programs are nullary at the entry point today. **Question Q5 below.** |
 | Expected semantic observation / oracle authority | ❌ | No carrier as a declared field on `ForAllTargets` (fields at L339–L344 are `command: String, args: List<String>, expect_exit_code: Int, input_ref: DeclarationRef`). The `ProgramOutputBind` cited in the L331–L334 doc-comment is observed by the runner conceptually but is not a typed field on this variant; the bind names *where* to look, not the *expected normalized value* or oracle. |
-| Effect class | ❌ for L5 rows | `std.effects` already declares `EffectShape` (`src/v3/std/effects.dag:338`) but no row on `TestClaim` / `ForAllTargets` declares it. Reuse-vs-introduce is **Q1 below**. |
+| Effect class | ❌ | No carrier on the Corpus Policy axis. `std.effects::EffectShape` (`src/v3/std/effects.dag:338`) exists but classifies along the idempotency axis (`IsIdempotent | IsBreaking`), not the locked Corpus Policy axis (`Pure | ControlledStdout | TypedFailure | DeferredEffectful` per `design-cross-target-equivalence.md` §"Side-effect Policy"). See **Q1 below**. |
 | Numeric policy | ❌ | No carrier; design doc §"Float Policy" + extension-spec §1.1 (`Int` overflow gate) both require it. **Q2 below.** |
 | Coverage reason | ❌ | No carrier. Free-form prose vs structured enum is **Q3 below**. |
 
-**Three facts have no HEAD carrier (expected observation/oracle, numeric policy, coverage reason). One has a carrier in a sibling module (effect class — `EffectShape`) but no edge to a corpus row. One is partial (input sample).** This canvas does not author any of them; it asks Director to ratify the carrier shape so a follow-up implementation PR can land without re-litigating shape mid-review.
+**Four facts have no HEAD carrier on the Corpus Policy axis (expected observation/oracle, effect class, numeric policy, coverage reason). One is partial (input sample).** `EffectShape` exists in a sibling module but classifies along a different axis (idempotency), not the locked Corpus Policy taxonomy — see Q1 disqualifier below. This canvas does not author any of the missing carriers; it asks Director to ratify the carrier shape so a follow-up implementation PR can land without re-litigating shape mid-review.
 
 ## 3. Existing HEAD seed (what would need to be back-filled)
 
@@ -51,10 +51,10 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 **A3.** Hybrid — reuse `EffectShape` and project a derived `CorpusEffectClass` view at the runner boundary.
 
 **Disqualifiers:**
-- **A2** stands up a parallel effect-classification authority for one consumer (L5 corpus rows) when `EffectShape` already exists — direct INVARIANTS §P1 single-authority risk; canvas-finding taxonomy "parallel representation".
-- **A3** keeps `EffectShape` as authority but adds an extra projection layer for a single consumer; pays Practice-4 cost without dissolution trigger.
+- **A1** is **disqualified on axis mismatch:** `EffectShape`'s `IsIdempotent | IsBreaking` partition (`src/v3/std/effects.dag:338`) classifies along the idempotency axis, not along the Corpus Policy axis `Pure | ControlledStdout | TypedFailure | DeferredEffectful` (`design-cross-target-equivalence.md` §"Side-effect Policy"). Routing the L5 effect-class fact through `EffectShape` would narrow a locked policy taxonomy into a different one — INVARIANTS §P1 faithfulness violation. Per codex BLOCKING 2026-05-14.
+- **A3** keeps `EffectShape` as authority but adds an extra projection layer for a single consumer; same axis-mismatch problem as **A1** plus Practice-4 cost without dissolution trigger.
 
-**Canvas recommendation:** **A1**. Single authority. Design doc §"Side-effect Policy" wording maps cleanly onto `EffectShape` once Director confirms `Pure / ControlledStdout / TypedFailure / DeferredEffectful` are all expressible in the existing partition (this canvas does not assume; it asks).
+**Canvas recommendation:** **A2**. Introduce `CorpusEffectClass = Pure | ControlledStdout | TypedFailure | DeferredEffectful` matching the design doc verbatim. This is **orthogonal** to `EffectShape`'s idempotency axis — not parallel-representation, but a separate classification along a different dimension. (If Director later wants a typed cross-axis relation between `EffectShape` and `CorpusEffectClass`, that lands as its own substrate fact; out of scope for this canvas.)
 
 ### Q2 — Numeric policy carrier
 
@@ -107,7 +107,7 @@ Each question lists structurally distinct options, the disqualifying axis for ea
 
 ## 5. Substrate carrier shape (preliminary, conditional on Q1–Q5 ratification)
 
-Assuming canvas recommendations land (**A1 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement; no edit to `src/v3/std/verification.dag` other than the `import` line in the L5 fixture):
+Assuming canvas recommendations land (**A2 + B1 + C4 + D2 + E2**), the substrate delta is a new module `src/v3/std/r3_l5_corpus.dag` (Q5-E2 module placement; no edit to `src/v3/std/verification.dag` other than the `import` line in the L5 fixture):
 
 ```
 type OracleAuthority
@@ -127,6 +127,12 @@ type NumericPolicy
   | FloatExcluded
   | FloatPolicyDeferred
 
+type CorpusEffectClass         // Q1-A2: matches design doc §"Side-effect Policy" verbatim;
+  = Pure                       // orthogonal axis to `EffectShape`'s idempotency partition
+  | ControlledStdout
+  | TypedFailure
+  | DeferredEffectful
+
 type CoverageReason
   = LanguageConstruct(DeclarationRef)       // typed edge to the std-library construct
   | RuntimeValueShape(DeclarationRef)       // typed edge to the value-shape type
@@ -136,13 +142,13 @@ type CoverageReason
 type L5CorpusRow {
   claim: TestClaim
   observation: ExpectedObservation
-  effect: EffectShape           // reuses `EffectShape` from `src/v3/std/effects.dag` (Q1-A1)
+  effect: CorpusEffectClass
   numeric: NumericPolicy
   coverage: CoverageReason
 }
 ```
 
-**Boundary consumer ratchet (implementation PR — NOT this PR):** `l5_cross_target_consistency.rs` extends the existing N>0 corpus check to require that every L5 `TestClaim` row has exactly one `L5CorpusRow` companion, and that `EffectShape` for every row is in the design-doc-allowed set (`Pure` or `ControlledStdout`; `TypedFailure` only when claim text says so; `DeferredEffectful` is fail-closed per design doc §"Side-effect Policy").
+**Boundary consumer ratchet (implementation PR — NOT this PR):** `l5_cross_target_consistency.rs` extends the existing N>0 corpus check to require that every L5 `TestClaim` row has exactly one `L5CorpusRow` companion, and that `CorpusEffectClass` for every row is in the design-doc-allowed set (`Pure` or `ControlledStdout`; `TypedFailure` only when claim text says so; `DeferredEffectful` is fail-closed per design doc §"Side-effect Policy").
 
 ## 6. Dispatch sequence (if Director ratifies)
 
