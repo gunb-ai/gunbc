@@ -12,10 +12,23 @@ use v3_compiler::{
     generated_full_bootstrap_dag, generated_full_bootstrap_without_parse_surface_dag,
     generated_std_bootstrap_dag,
     serialize::{first_difference, serialize_dag},
-    Dag,
+    Dag, BOOTSTRAP_FIXTURE_PATH_KEYS,
 };
 
 use std::collections::BTreeSet;
+
+const EXPECTED_DIAGNOSTICS_EMPTY_BOOTSTRAP_FIXTURES: &[&str] = &[
+    "dsl/extdeps/languages/rust/primitives.dag",
+    "src/v3/std/rust_method_template_contracts.dag",
+    "src/v3/std/python_method_template_contracts.dag",
+    "src/v3/std/go_method_template_contracts.dag",
+    "src/v3/std/anthropic_operations.dag",
+    "src/v3/std/cross_target_coverage.dag",
+    "dsl/extdeps/cron_schedule_model.dag",
+    "dsl/extdeps/github/github.dag",
+    "dsl/extdeps/github/actions.dag",
+    "dsl/extdeps/github/ci.dag",
+];
 
 #[test]
 fn full_bootstrap_extends_std_snapshot() {
@@ -86,6 +99,42 @@ fn diagnostics_empty_after_bootstrap_for_bootstrap_authority() {
         violations.is_empty(),
         "diagnostics_empty_after_bootstrap violations:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn diagnostics_empty_after_bootstrap_inventory_covers_all_bootstrap_fixtures() {
+    let dag = generated_full_bootstrap_dag();
+    let fixture_paths = dag
+        .bootstrap_fixture_virtual_paths()
+        .expect("bootstrap_fixture_authority lowers to structural virtual_path rows");
+    let fixture_paths: Vec<&str> = fixture_paths.iter().map(String::as_str).collect();
+
+    assert_eq!(
+        fixture_paths, EXPECTED_DIAGNOSTICS_EMPTY_BOOTSTRAP_FIXTURES,
+        "diagnostics_empty_after_bootstrap fixture inventory changed; update this ratchet with the new bootstrap fixture authority"
+    );
+    assert_eq!(
+        BOOTSTRAP_FIXTURE_PATH_KEYS, EXPECTED_DIAGNOSTICS_EMPTY_BOOTSTRAP_FIXTURES,
+        "regen fixture path keys must stay covered by the diagnostics-empty fixture inventory"
+    );
+
+    let authority_rows = bootstrap_authority_rows(&dag);
+    let authority_paths: BTreeSet<&str> = authority_rows
+        .iter()
+        .map(|(_, path)| path.as_str())
+        .collect();
+    for path in EXPECTED_DIAGNOSTICS_EMPTY_BOOTSTRAP_FIXTURES {
+        assert!(
+            authority_paths.contains(path),
+            "bootstrap fixture `{path}` must also be represented in bootstrap_authority so diagnostics can be attributed structurally"
+        );
+    }
+
+    assert!(
+        dag.diagnostics().is_empty(),
+        "diagnostics_empty_after_bootstrap fixture inventory failed: bootstrap Dag carries diagnostics: {:?}",
+        dag.diagnostics()
     );
 }
 
