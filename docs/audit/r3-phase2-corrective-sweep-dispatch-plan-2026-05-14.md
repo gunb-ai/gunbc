@@ -330,3 +330,76 @@ Each `P2X` node in §2 Mermaid graph maps to the corresponding "Phase 2.X" comma
 - **P25** ↔ Phase 2.5 commands
 - **P26** ↔ Phase 2.6 commands (Mgr-coord only; NO PR)
 - **P27** ↔ Phase 2.7 commands
+
+## §9. Design-coverage gap audit — per-entry readiness for dispatch
+
+**Operator discipline (2026-05-14)**: "no worker starts working without a design ready ... every test/file should clearly map to a design section that explains how/where it's going."
+
+This section audits whether every file currently in `EXPECTED_HAND_AUTHORED_NON_TEST` (37 entries at HEAD) + `EXPECTED_HAND_AUTHORED_TEST` (122 entries at HEAD) has design coverage at the level required by operator discipline — meaning each entry maps to a concrete design section explaining the migration path BEFORE worker dispatch.
+
+### §9.1 NON_TEST entry coverage
+
+**Authority artifact**: `docs/audit/r3-pb0-non-test-retirement-class-taxonomy-2026-05-13.md` (Track A taxonomy from PR #3045)
+
+| Coverage status | Count | Notes |
+|---|---|---|
+| (a)-class with explicit retirement path | ~4 | `cementing_dispatch.rs` (post-PR #3046 hub; retires when gate #87 closes) + a few transient-cementing-discipline files |
+| (b)-class with **GENERIC §1.1 cluster prereq** (NOT per-PB-X-lane) | ~25-30 | Bootstrap/regen cluster entries: `build.rs`, `bin/regen_*.rs`, `bin/gunbc_ci.rs`, `bin/r1c_e_emit_gates.rs`, `bin/self_host_fixed_point.rs`, `bootstrap.rs`, `bootstrap_regen_fresh.rs` — currently route through "§1.1 bootstrap/regen cluster — P5 atomic migration; not a single-PR retirement without Cluster M / regen brief canvas" generic prereq. **Per-PB-X-lane mapping NOT yet authored.** ⚠ |
+| (b)-class with **specific gate prereq** | ~10 | Pipeline-stage files: `emit.rs` / `emit/python_target.rs` / `emit/rust_target.rs` / `emit_rust.rs` (→ PB-6 / Gap 13), `dag.rs` / `dag/builder.rs` / `dag/cardinality_payload.rs` / `dag/effects.rs` / `dag/ports.rs` (→ PB-Substrate), `diagnostics.rs` / `dimension.rs` — cite §1.8 row but NOT explicit L2.5 model status |
+| (c)-class (Director-tier ratified hand-Rust) | 0 | None at HEAD |
+
+**Gap**: ~25-30 NON_TEST entries (largely bootstrap/regen cluster) have generic prereq instead of specific PB-X lane mapping. **Phase 2.3 (Track A reclassification) is the remediation step** — explicitly maps each entry to PB-X lane + L2.5 model status.
+
+### §9.2 TEST entry coverage
+
+**Authority artifact**: `docs/briefs/r3-v-cluster-m-84-bulkport-coordinator.md` (Cluster M Phase 3 Coordinator)
+
+| Coverage status | Count | Notes |
+|---|---|---|
+| **Class-level design only** (per-test inventory deferred to "mid-flight") | 122 | All 122 TEST entries route through Cluster M Phase 3 Coordinator framework with 6 class stubs: cementing-test (~20-25) / reflected-Dag (~25-30) / generic-DimReport (~20-25) / boundary (~10) / R1C-D-E (~3) / L4-L7-L5 (~5). Each class has a worker brief (some STUB, some DIRECTOR-SCAFFOLD); **per-test inventory + pilot/bulk split is filled in at Phase 3 dispatch time, NOT pre-dispatch.** ⚠ |
+| Per-test design citation | 0 | Per the Coordinator brief §2: *"Each class is a parallel-dispatchable worker batch. Coordinator finalizes the class stubs as Phase 3 begins"* — by design, per-test mapping is mid-flight, not pre-flight. |
+
+**Gap**: 122 TEST entries have CLASS-level design but no per-test design at dispatch-readiness. Per operator discipline ("no worker starts without design ready"), the Cluster M Coordinator's "finalize-at-dispatch" pattern is NOT compliant — needs pre-dispatch per-test inventory authoring.
+
+**Recommended remediation**: new phase (Phase 2.8 — Cluster M Phase 3 per-test design enumeration) before Cluster M Phase 3 worker dispatch begins. Coordinator authors per-test inventory + pilot/bulk split as static pre-dispatch artifact, NOT mid-flight finalization.
+
+### §9.3 Per-stage L2.5 domain-model authoring status
+
+**Authority**: `src/v3/SELF_HOSTING.md` §2.2 names L2.5 domain-model SET for each pipeline stage as prereq for Step 2 (pipeline slot). Per §2 gating rule 4: *"L3 stage N cannot start until L2.5's model for stage N is reviewed."*
+
+| Lane | Stage | L2.5 model authoring status | Workers eligible? |
+|---|---|---|---|
+| **PB-6** | emit.rs / emit/* / emit_rust.rs | **IN-FLIGHT** — Director (zesty-bear-812) authoring per msg_e66f4326 | NO until model lands + ratifies |
+| **PB-4** | lower.rs | **NOT STARTED** | NO |
+| **PB-5** | infer.rs | **NOT STARTED** | NO |
+| **PB-3** | parse.rs | **NOT STARTED** | NO |
+| **PB-2** | tokenize.rs (already retired earlier) | N/A (file already retired) | N/A |
+| **PB-Substrate** | dag.rs / dag/builder.rs / dag/ports.rs / dag/effects.rs / dag/cardinality_payload.rs | **NOT STARTED** on per-file L2.5 refinement (existing `src/v3/std/substrate.dag` is general substrate; per-file targeted refinement for code-emission not yet authored) | NO |
+| **PB-Bootstrap-Process** | bootstrap.rs / bootstrap_regen_fresh.rs | **NOT STARTED** on `bootstrap.dag` authority | NO |
+| **PB-Runtime** | test_runner.rs / lens_apply.rs / lens_testgen.rs / post_emit_verifier.rs | **NOT STARTED** on per-file `.dag` authorities | NO |
+| **PB-Lib+PB-Build** | lib.rs / build.rs | **NOT STARTED** | NO |
+| **PB-1** | bootstrap loader emission (data-driven) | brief authored at `docs/briefs/pb-1-data-driven-bootstrap.md`; non-goals amendment landed via PB-Zero cascade 2026-04-25 | partial (brief but no L2.5 model artifacts) |
+
+**Gap**: 7 of 9 PB-X lanes have NO L2.5 model authoring started. Director's PB-6 emit model is the only in-flight lane. Per operator discipline, **NO pipeline-stage worker dispatch should fire on PB-3/PB-4/PB-5/PB-Substrate/PB-Bootstrap-Process/PB-Runtime/PB-Lib+PB-Build until their L2.5 models land**.
+
+**Recommended remediation**: explicit per-lane L2.5 model authoring stream (Director-tier-design-up-front discipline already established). Could be folded into expanded warm-wolf-698 R3 Substrate Mgr scope (per operator §4 Item 5 α-ratification 2026-05-14) — Substrate Mgr authors L2.5 models for PB-Substrate / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build lanes; Director continues PB-6 + adjacent pipeline-stage authoring. Track this as parallel workstream to Phase 2 corrective sweep.
+
+### §9.4 Gap summary
+
+| Gap | Files affected | Remediation | In Phase 2? |
+|---|---|---|---|
+| **NON_TEST (b)-class generic §1.1 prereq** instead of specific PB-X lane | ~25-30 NON_TEST entries (bootstrap/regen cluster) | **Phase 2.3** (Track A reclassification) | ✓ COVERED |
+| **TEST entries with class-level design only** (per-test inventory mid-flight) | 122 TEST entries | **NEW: Phase 2.8** — Cluster M Phase 3 per-test design enumeration pre-dispatch | ✗ GAP — need new Phase |
+| **L2.5 per-stage models NOT authored** for 7 of 9 PB-X lanes | All pipeline-stage + adjacent retirement work | **Per-lane L2.5 authoring stream** — Director (PB-6 in flight) + warm-wolf-698 expanded scope (PB-Substrate / PB-Bootstrap-Process / PB-Runtime / PB-Lib+PB-Build) | ✗ GAP — parallel workstream, NOT in Phase 2 sweep |
+
+### §9.5 Pre-dispatch authority-gate (recommended Phase 2.7 §5.2 codification)
+
+Per §5.2 brief-dispatch authority-gate discipline (codified in Phase 2.7), every worker brief dispatch MUST satisfy:
+
+1. **Per-entry design citation**: the worker brief names the specific file(s) being retired AND cites a design section explaining how/where each goes (NOT just class-level).
+2. **L2.5 model status check**: if the work touches a pipeline-stage file, the L2.5 domain-model SET for that stage MUST be landed-and-reviewed (per `SELF_HOSTING.md` §2.2 Step 1).
+3. **Closure-ledger / §1.8 row alignment**: the receipt path is named (deletion / SG-0 census shrink / explicit deferral with lane + ROADMAP row citation).
+
+Workers fail-closed at brief-dispatch tier if any of these are missing. Reviewer-grep at PR-template tier checks for the citations.
+
+**This dispatch plan IS the substrate for §5.2** — by applying it to Phase 2 itself, we test the discipline before formalizing it. The §9 gap audit makes the per-entry coverage status explicit so dispatch can be sequenced against actual readiness, not aspirational class-level coverage.
