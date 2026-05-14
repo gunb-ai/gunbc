@@ -182,7 +182,12 @@ fn substrate_gap_function_valued_data_executes_through_evaluator() {
         .collect();
     assert_eq!(
         user_defined_arrow_names,
-        vec!["add_one", "test_function_valued_data"],
+        vec![
+            "add_one",
+            "report_int",
+            "test_function_valued_data",
+            "test_function_valued_dimension_report",
+        ],
         "only the named data callable and named caller should carry executable Arrow bodies"
     );
     assert!(
@@ -205,6 +210,80 @@ fn substrate_gap_function_valued_data_executes_through_evaluator() {
         .expect("function-valued data should execute through evaluator");
 
     assert_eq!(value, Value::LiteralValue(literal_bits_int(42)));
+}
+
+#[test]
+fn substrate_gap_function_valued_data_produces_dimension_report() {
+    let dag = cached_compile_to_dag(SOURCE, FILE);
+    assert!(
+        dag.diagnostics().is_empty(),
+        "representative must compile without diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    let report_int = dag
+        .declaration_by_name("report_int")
+        .expect("function-valued DimensionReport data")
+        .id;
+    let report_int_decl = dag.declaration(report_int);
+    assert!(
+        report_int_decl.value_body.is_none(),
+        "`report_int` must lower as executable function-valued data"
+    );
+    assert!(
+        matches!(
+            &report_int_decl.connective,
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            }
+        ),
+        "`report_int` must carry a UserDefined Arrow body"
+    );
+    assert!(
+        dag.nodes().iter().any(|node| {
+            matches!(
+                node,
+                Behavior::Transform(t)
+                    if matches!(&t.target, TransformTarget::Callable(target) if *target == report_int)
+            )
+        }),
+        "`report_int(42)` must lower to TransformTarget::Callable(report_int)"
+    );
+
+    let entry = bind_node_id_for_fn(&dag, "test_function_valued_dimension_report");
+    let mut state = EvalStateStack::with_root_frame(EvalFrame::empty());
+    let strategy = EvalStrategy::ApplicativeOrder {
+        input_order: InputEvaluationOrder::LeftFirst,
+    };
+    let value = evaluate_body(&dag, entry, &mut state, strategy)
+        .expect("function-valued data should produce DimensionReport through evaluator");
+
+    let Value::VariantValue { tag, payload } = value else {
+        panic!("expected Gate61DimensionReport::Gate61DimensionOk VariantValue");
+    };
+    let variant_label = dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == tag)
+            .map(|variant| variant.label.as_str())
+    });
+    assert_eq!(
+        variant_label,
+        Some("Gate61DimensionOk"),
+        "E6-G0d must materialize the Gate61DimensionOk variant constructor"
+    );
+    let Value::RecordValue(fields) = *payload else {
+        panic!("DimensionOk payload must be a RecordValue");
+    };
+    let composed = fields
+        .iter()
+        .find(|field| field.label == "composed")
+        .expect("DimensionOk.composed field");
+    assert_eq!(composed.value, Value::LiteralValue(literal_bits_int(42)));
 }
 
 #[test]
