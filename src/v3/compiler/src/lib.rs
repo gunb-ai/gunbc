@@ -3796,13 +3796,8 @@ pub mod lens_effect_enumeration {
         use crate::diagnostics::*;
 
         fn operation_effect_shape(op: &Operation) -> EffectShape {
-            crate::dag::operation_effect_shape(&Dag::new(), op).unwrap_or({
-                EffectShape::IsBreaking(BreakingShape::CreateEffect {
-                    cause: CreateCause::KeylessFallback {
-                        method: op.endpoint.method,
-                    },
-                })
-            })
+            crate::dag::operation_effect_shape(&Dag::new(), op)
+                .expect("std.effects operation anchors unavailable for generated adapter")
         }
 
         include!("lens_effect_enumeration_generated.rs");
