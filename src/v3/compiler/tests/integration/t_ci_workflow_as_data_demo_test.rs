@@ -817,7 +817,8 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
-/// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
+/// Mechanical source gate: the committed `.github/workflows/ci.yml` is **canonical serialized
+/// YAML** (R3 gate #98, `ci_yml_hand_authority_dissolved`); the committed
 /// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
 /// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
 ///
@@ -860,6 +861,46 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
         fresh.as_bytes(),
         expected.as_slice(),
         "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
+    );
+}
+
+/// **R3 gate #98** (`ci_yml_hand_authority_dissolved`): the committed YamlStatic Actions artifact is
+/// **exactly** the canonical `serde_yaml` serialization of its own parse after fail-closed
+/// structural projection validation (`tools/gen_gunbc_ci_workflow_dag`), matching §1.8 "byte-identical
+/// emission" for `project_github_actions(ci_workflow_dag, YamlStatic)` (same `Workflow` semantics the
+/// generator embeds into `gunbc.ci.github_actions_workflow`).
+///
+/// Migrate drift with:
+/// ```text
+/// CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag \\
+///   -- --write-canonical-github-actions-yaml .github/workflows/ci.yml
+/// CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag \\
+///   -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag
+/// ```
+#[test]
+fn ci_yml_hand_authority_dissolved() {
+    use std::path::Path;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+    let ci_yml = repo_root.join(".github/workflows/ci.yml");
+    assert!(ci_yml.is_file(), "missing {}", ci_yml.display(),);
+
+    let raw = std::fs::read_to_string(&ci_yml)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ci_yml.display()));
+    let v = gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(&raw)
+        .unwrap_or_else(|e| panic!("validate GitHub Actions workflow YAML: {e}"));
+    let mut canon = gen_gunbc_ci_workflow_dag::canonical_github_actions_yaml_string(&v)
+        .unwrap_or_else(|e| panic!("canonicalize workflow YAML emission: {e}"));
+    if !canon.ends_with('\n') {
+        canon.push('\n');
+    }
+    assert_eq!(
+        raw, canon,
+        "`{}` drifted from canonical emission (gate #98). Run the migration commands documented on this test.",
+        ci_yml.display()
     );
 }
 

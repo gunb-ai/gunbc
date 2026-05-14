@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -30,6 +30,22 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
     }
 }
 
+fn disj_variant_ty(dag: &Dag, name: &str, variant: &str) -> DeclarationId {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == variant)
+                .unwrap_or_else(|| panic!("`{name}` missing `{variant}` variant"))
+                .ty
+        }
+        other => panic!("`{name}` is not a Disj: {other:?}"),
+    }
+}
+
 fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
     let decl = dag
         .declaration_by_name(name)
@@ -44,6 +60,23 @@ fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
         }
         other => panic!("`{name}` is not a Conj: {other:?}"),
     }
+}
+
+fn data_field<'a>(dag: &'a Dag, data_name: &str, field: &str) -> &'a FieldValue {
+    let decl = dag
+        .declaration_by_name(data_name)
+        .unwrap_or_else(|| panic!("`{data_name}` missing from full bootstrap"));
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "`{data_name}` must lower to a structural data body, got {:?}",
+            decl.value_body
+        );
+    };
+    fields
+        .iter()
+        .find(|(label, _)| label == field)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("`{data_name}` missing `{field}` field"))
 }
 
 #[test]
@@ -284,6 +317,110 @@ fn timing_budget_max_field_is_nanoseconds() {
     );
 }
 
+/// Gate #54 acceptance: the carrier is not only the `TimingMeasurement` sum; the
+/// std module must publish the concrete `Lens<TimingMeasurement>` data row that
+/// downstream workflow-as-data/self-application gates can reference.
+#[test]
+fn timing_lens_data_row_lowers_to_lens_timing_measurement_hooks() {
+    let dag = generated_full_bootstrap_dag();
+    let expected_refs = [
+        ("read", "timing_lens_read"),
+        ("branch", "timing_branch_op"),
+        ("iterate", "timing_measurement_iterate"),
+        ("validate", "timing_lens_validate"),
+    ];
+    for (field, target) in expected_refs {
+        let target_id = dag
+            .declaration_by_name(target)
+            .unwrap_or_else(|| panic!("`{target}` missing from full bootstrap"))
+            .id;
+        assert_eq!(
+            data_field(&dag, "timing_lens", field),
+            &FieldValue::Reference(target_id),
+            "`timing_lens.{}` must reference `{}`",
+            field,
+            target
+        );
+    }
+
+    let lens_name = data_field(&dag, "timing_lens", "name");
+    assert_eq!(
+        lens_name,
+        &FieldValue::Literal(v3_compiler::dag::LiteralBits::String("timing".to_string())),
+        "`timing_lens.name` must stay the canonical timing dimension label"
+    );
+
+    let monoid_id = dag
+        .declaration_by_name("timing_lens_monoid")
+        .expect("`timing_lens_monoid` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        data_field(&dag, "timing_lens", "sequential"),
+        &FieldValue::Reference(monoid_id),
+        "`timing_lens.sequential` must use the timing monoid data row"
+    );
+}
+
+#[test]
+fn timing_lens_monoid_data_row_locks_observed_zero_identity() {
+    let dag = generated_full_bootstrap_dag();
+    let op_id = dag
+        .declaration_by_name("timing_sequential_op")
+        .expect("`timing_sequential_op` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        data_field(&dag, "timing_lens_monoid", "op"),
+        &FieldValue::Reference(op_id),
+        "`timing_lens_monoid.op` must reference timing_sequential_op"
+    );
+
+    let identity = data_field(&dag, "timing_lens_monoid", "identity");
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = identity
+    else {
+        panic!("`timing_lens_monoid.identity` must be Observed payload, got {identity:?}");
+    };
+    assert_eq!(
+        *constructor,
+        disj_variant_ty(&dag, "TimingMeasurement", "Observed"),
+        "`timing_lens_monoid.identity` must use the TimingMeasurement.Observed constructor"
+    );
+    assert_eq!(
+        payload.len(),
+        1,
+        "`Observed` identity payload arity drifted"
+    );
+    let FieldValue::Record(observed_fields) = &payload[0] else {
+        panic!("`Observed` identity payload must be a record, got {payload:?}");
+    };
+    let duration_fields = observed_fields
+        .iter()
+        .find(|(field, _)| field == "duration")
+        .map(|(_, value)| value)
+        .map(|duration| {
+            let FieldValue::Record(duration_fields) = duration else {
+                panic!("`Observed.duration` identity must be a record, got {duration:?}");
+            };
+            duration_fields
+        })
+        .unwrap_or(observed_fields);
+    let count_field = duration_fields.iter().find(|(field, _)| field == "count");
+    assert!(
+        count_field.is_some(),
+        "`Observed` identity must carry zero ns as either `duration.count` or lowered `count`; got {observed_fields:?}"
+    );
+    let Some((_, count)) = count_field else {
+        unreachable!("asserted count field presence above");
+    };
+    assert_eq!(
+        count,
+        &FieldValue::Literal(v3_compiler::dag::literal_bits_int(0)),
+        "`timing_lens_monoid.identity` must be Observed zero ns"
+    );
+}
+
 /// openai-pro / PR #2360: sequential and branch lens hooks must share one join
 /// (`timing_measurement_lens_combine`); branch must not re-implement a stale
 /// short-circuit that makes `(Stale, Unobserved)` order-sensitive vs sequential.
@@ -414,6 +551,110 @@ fn timing_measurement_iterate_fail_closed_on_observed_with_loop_bound() {
     assert!(
         !body.contains("Cardinality(_) => body") && !body.contains("Descent(_) => body"),
         "`timing_measurement_iterate` must not ignore `LoopBound` by returning `body` unchanged on `Observed`; got:\n{body}"
+    );
+}
+
+/// §1.8 gate #55 `shared_external_attachment_pattern_documented` — load-bearing
+/// aggregating receipt. Six invariants per `docs/design-timing-lens.md` §2 are
+/// each ratcheted by a per-field/per-variant test above; this aggregator binds
+/// them under a single named harness so the §1.8 row #55 predicate is
+/// load-bearing under workspace sweep (audit predicate-execution requirement).
+///
+/// inv.1 stable subject identity (NodeId, not String) — `workflow_observation_anchor_subject_node_is_node_id`
+/// inv.2 observed-artifact identity (ContentHash, not String) — `workflow_observation_anchor_artifact_digest_is_content_hash`
+/// inv.3 producer/observer/prover separation (branded nominals) — `workflow_observation_anchor_provenance_ids_are_branded`
+/// inv.4 attachment time + run context (Nanoseconds + WorkflowRunId) — `workflow_observation_anchor_attached_at_ns_is_nanoseconds` + above
+/// inv.5 report-state coproduct (Observed | Unobserved | Ambiguous | Stale) — `timing_measurement_variants_locked`
+/// inv.6 fail-closed on non-observed/non-valid — `timing_lens_validate_surfaces_diagnostic_for_non_observed_states` + `timing_measurement_iterate_fail_closed_on_observed_with_loop_bound`
+#[test]
+fn r3_gate_55_shared_external_attachment_pattern_documented() {
+    let dag = generated_full_bootstrap_dag();
+
+    // inv.1
+    let node_id = dag
+        .declaration_by_name("NodeId")
+        .expect("inv.1 NodeId nominal")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "subject_node"),
+        node_id,
+        "gate #55 inv.1: subject_node must be NodeId"
+    );
+
+    // inv.2
+    let content_hash = dag
+        .declaration_by_name("ContentHash")
+        .expect("inv.2 ContentHash nominal")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "artifact_digest"),
+        content_hash,
+        "gate #55 inv.2: artifact_digest must be ContentHash"
+    );
+
+    // inv.3
+    for (field, brand) in [
+        ("producer_id", "WorkflowProducerId"),
+        ("observer_id", "WorkflowObserverId"),
+        ("prover_id", "WorkflowProverId"),
+    ] {
+        let brand_id = dag
+            .declaration_by_name(brand)
+            .unwrap_or_else(|| panic!("inv.3 brand {brand} present"))
+            .id;
+        assert_eq!(
+            conj_field_ty(&dag, "WorkflowObservationAnchor", field),
+            brand_id,
+            "gate #55 inv.3: {field} must brand to {brand}"
+        );
+    }
+
+    // inv.4
+    let ns = dag
+        .declaration_by_name("Nanoseconds")
+        .expect("inv.4 Nanoseconds")
+        .id;
+    let run = dag
+        .declaration_by_name("WorkflowRunId")
+        .expect("inv.4 WorkflowRunId")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "attached_at_ns"),
+        ns,
+        "gate #55 inv.4: attached_at_ns must be Nanoseconds"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "workflow_run_id"),
+        run,
+        "gate #55 inv.4: workflow_run_id must be WorkflowRunId"
+    );
+
+    // inv.5
+    let variants: HashSet<String> = disj_variant_labels(&dag, "TimingMeasurement")
+        .into_iter()
+        .collect();
+    let expected: HashSet<&str> = ["Observed", "Unobserved", "Ambiguous", "Stale"]
+        .into_iter()
+        .collect();
+    let actual: HashSet<&str> = variants.iter().map(String::as_str).collect();
+    assert_eq!(
+        actual, expected,
+        "gate #55 inv.5: TimingMeasurement report-state coproduct"
+    );
+
+    // inv.6 — the per-arm fail-closed structural checks live in dedicated
+    // tests above; this aggregator re-asserts the source-level fail-closed
+    // sentinel so a regression in `timing_lens_validate` cannot quietly
+    // collapse this gate without tripping the aggregator too.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    assert!(
+        src.contains("timing_lens_validate_non_observed"),
+        "gate #55 inv.6: timing_lens_validate_non_observed must remain wired (fail-closed on non-Observed)"
+    );
+    assert!(
+        !src.contains("Empty => NoDiagnostic"),
+        "gate #55 inv.6: empty behavior_spine must not fail-open to NoDiagnostic"
     );
 }
 
