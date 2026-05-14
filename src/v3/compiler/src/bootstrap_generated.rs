@@ -29791,7 +29791,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 4848, 4886),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 4987, 5025),
         });
         declarations.push(Declaration {
             id: DeclarationId(866),
@@ -29810,7 +29810,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 5850, 5897),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 5989, 6036),
         });
         declarations.push(Declaration {
             id: DeclarationId(867),
@@ -29843,9 +29843,9 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 6540, 6650),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 6679, 6789),
         });
-        declarations.push(Declaration { id: DeclarationId(868), name: Some("bridge_ledger".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(685), arguments: vec![TemplateArgument { parameter: DeclarationId(686), value: DeclarationId(867) }] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(2116)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::List(vec![FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_source_span_file_participation_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R3".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2115), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("ROADMAP.md#lens-fold-file-path-semantics".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_mark_bootstrap_secret_nominal_opacity_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R2-Substrate".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("PR #937".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_canonical_lens_name_dispatch_pr1183_slice_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R2-Substrate".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_canonical_lens_name_patching_residual".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Runtime".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("docs/briefs/r3-pb-bridge-canonical-lens-name-dispatch-closure.md".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_include_str_side_channels_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("pipeline_authority".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_exact_string_patching_residual_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Tier-2".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_exact_string_semantic_patching_residual".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Runtime".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2115), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("docs/briefs/r3-v-bridge-row-4-exact-string-deeper-detail-receipt.md".to_string())))])])), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 7114, 8567) });
+        declarations.push(Declaration { id: DeclarationId(868), name: Some("bridge_ledger".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(685), arguments: vec![TemplateArgument { parameter: DeclarationId(686), value: DeclarationId(867) }] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(2116)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::List(vec![FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_source_span_file_participation_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R3".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2115), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("ROADMAP.md#lens-fold-file-path-semantics".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_mark_bootstrap_secret_nominal_opacity_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R2-Substrate".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("PR #937".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_canonical_lens_name_dispatch_pr1183_slice_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("R2-Substrate".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_canonical_lens_name_patching_residual".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Runtime".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("docs/briefs/r3-pb-bridge-canonical-lens-name-dispatch-closure.md".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_include_str_side_channels_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("pipeline_authority".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_exact_string_patching_residual_retired".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Tier-2".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2114), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs".to_string())))]), FieldValue::Record(vec![("name".to_string(), FieldValue::Literal(LiteralBits::String("bridge_exact_string_semantic_patching_residual".to_string()))), ("owner".to_string(), FieldValue::Literal(LiteralBits::String("PB-Runtime".to_string()))), ("status".to_string(), FieldValue::Variant { constructor: DeclarationId(2115), payload: vec![] }), ("authority".to_string(), FieldValue::Literal(LiteralBits::String("docs/briefs/r3-v-bridge-row-4-exact-string-deeper-detail-receipt.md".to_string())))])])), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 7253, 8706) });
         declarations.push(Declaration {
             id: DeclarationId(869),
             name: Some("Mutability".to_string()),
@@ -73924,7 +73924,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 4870, 4877),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 5009, 5016),
         });
         declarations.push(Declaration {
             id: DeclarationId(2115),
@@ -73938,7 +73938,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 4882, 4886),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 5021, 5025),
         });
         declarations.push(Declaration {
             id: DeclarationId(2116),
@@ -73958,7 +73958,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 7134, 7155),
+            span: SourceSpan::new("src/v3/std/bridge_ledger.dag", 7273, 7294),
         });
         declarations.push(Declaration {
             id: DeclarationId(2117),

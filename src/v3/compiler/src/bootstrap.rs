@@ -232,9 +232,11 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String, span: SourceSpan
 /// skipped or the snapshot drifts.
 pub(crate) fn ensure_kernel_bool_lane1e2b_bootstrap_witness(dag: &mut Dag) {
     let key = BootstrapAuthorityKey::for_kernel_bool();
-    let bool_id = match dag.declarations().iter().find(|d| {
-        d.name.as_deref() == Some("Bool") && d.span.file == key.path()
-    }) {
+    let bool_id = match dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == key.path())
+    {
         Some(d) => d.id,
         None => {
             dag.attach_bootstrap_diagnostic(
@@ -259,7 +261,10 @@ pub(crate) fn ensure_kernel_bool_lane1e2b_bootstrap_witness(dag: &mut Dag) {
         return;
     }
 
-    let inh_id = dag.declaration(bool_id).inhabits.expect("just set or pre-existing");
+    let inh_id = dag
+        .declaration(bool_id)
+        .inhabits
+        .expect("just set or pre-existing");
     let inh_decl = dag.declaration(inh_id);
     let ok = match &inh_decl.connective {
         TypeConnective::Instantiation {
