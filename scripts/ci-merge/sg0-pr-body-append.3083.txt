@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (a) removed src/v3/compiler/src/bin/regen_lens.rs
