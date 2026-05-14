@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -30,6 +30,22 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
     }
 }
 
+fn disj_variant_ty(dag: &Dag, name: &str, variant: &str) -> DeclarationId {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == variant)
+                .unwrap_or_else(|| panic!("`{name}` missing `{variant}` variant"))
+                .ty
+        }
+        other => panic!("`{name}` is not a Disj: {other:?}"),
+    }
+}
+
 fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
     let decl = dag
         .declaration_by_name(name)
@@ -44,6 +60,23 @@ fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
         }
         other => panic!("`{name}` is not a Conj: {other:?}"),
     }
+}
+
+fn data_field<'a>(dag: &'a Dag, data_name: &str, field: &str) -> &'a FieldValue {
+    let decl = dag
+        .declaration_by_name(data_name)
+        .unwrap_or_else(|| panic!("`{data_name}` missing from full bootstrap"));
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "`{data_name}` must lower to a structural data body, got {:?}",
+            decl.value_body
+        );
+    };
+    fields
+        .iter()
+        .find(|(label, _)| label == field)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("`{data_name}` missing `{field}` field"))
 }
 
 #[test]
@@ -281,6 +314,110 @@ fn timing_budget_max_field_is_nanoseconds() {
     assert_eq!(
         ty, nanoseconds,
         "`TimingBudget.max` must be `Nanoseconds` (aligned timing magnitude carrier)"
+    );
+}
+
+/// Gate #54 acceptance: the carrier is not only the `TimingMeasurement` sum; the
+/// std module must publish the concrete `Lens<TimingMeasurement>` data row that
+/// downstream workflow-as-data/self-application gates can reference.
+#[test]
+fn timing_lens_data_row_lowers_to_lens_timing_measurement_hooks() {
+    let dag = generated_full_bootstrap_dag();
+    let expected_refs = [
+        ("read", "timing_lens_read"),
+        ("branch", "timing_branch_op"),
+        ("iterate", "timing_measurement_iterate"),
+        ("validate", "timing_lens_validate"),
+    ];
+    for (field, target) in expected_refs {
+        let target_id = dag
+            .declaration_by_name(target)
+            .unwrap_or_else(|| panic!("`{target}` missing from full bootstrap"))
+            .id;
+        assert_eq!(
+            data_field(&dag, "timing_lens", field),
+            &FieldValue::Reference(target_id),
+            "`timing_lens.{}` must reference `{}`",
+            field,
+            target
+        );
+    }
+
+    let lens_name = data_field(&dag, "timing_lens", "name");
+    assert_eq!(
+        lens_name,
+        &FieldValue::Literal(v3_compiler::dag::LiteralBits::String("timing".to_string())),
+        "`timing_lens.name` must stay the canonical timing dimension label"
+    );
+
+    let monoid_id = dag
+        .declaration_by_name("timing_lens_monoid")
+        .expect("`timing_lens_monoid` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        data_field(&dag, "timing_lens", "sequential"),
+        &FieldValue::Reference(monoid_id),
+        "`timing_lens.sequential` must use the timing monoid data row"
+    );
+}
+
+#[test]
+fn timing_lens_monoid_data_row_locks_observed_zero_identity() {
+    let dag = generated_full_bootstrap_dag();
+    let op_id = dag
+        .declaration_by_name("timing_sequential_op")
+        .expect("`timing_sequential_op` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        data_field(&dag, "timing_lens_monoid", "op"),
+        &FieldValue::Reference(op_id),
+        "`timing_lens_monoid.op` must reference timing_sequential_op"
+    );
+
+    let identity = data_field(&dag, "timing_lens_monoid", "identity");
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = identity
+    else {
+        panic!("`timing_lens_monoid.identity` must be Observed payload, got {identity:?}");
+    };
+    assert_eq!(
+        *constructor,
+        disj_variant_ty(&dag, "TimingMeasurement", "Observed"),
+        "`timing_lens_monoid.identity` must use the TimingMeasurement.Observed constructor"
+    );
+    assert_eq!(
+        payload.len(),
+        1,
+        "`Observed` identity payload arity drifted"
+    );
+    let FieldValue::Record(observed_fields) = &payload[0] else {
+        panic!("`Observed` identity payload must be a record, got {payload:?}");
+    };
+    let duration_fields = observed_fields
+        .iter()
+        .find(|(field, _)| field == "duration")
+        .map(|(_, value)| value)
+        .map(|duration| {
+            let FieldValue::Record(duration_fields) = duration else {
+                panic!("`Observed.duration` identity must be a record, got {duration:?}");
+            };
+            duration_fields
+        })
+        .unwrap_or(observed_fields);
+    let count_field = duration_fields.iter().find(|(field, _)| field == "count");
+    assert!(
+        count_field.is_some(),
+        "`Observed` identity must carry zero ns as either `duration.count` or lowered `count`; got {observed_fields:?}"
+    );
+    let Some((_, count)) = count_field else {
+        unreachable!("asserted count field presence above");
+    };
+    assert_eq!(
+        count,
+        &FieldValue::Literal(v3_compiler::dag::literal_bits_int(0)),
+        "`timing_lens_monoid.identity` must be Observed zero ns"
     );
 }
 
