@@ -535,3 +535,26 @@ fn emit_action_ref(uses: &str) -> Result<String, Box<dyn std::error::Error>> {
         dag_string(ref_part)
     ))
 }
+
+/// Parse `ci.yml`-shaped YAML, fail closed on constructs the generator cannot project into
+/// [`extdeps.github.actions.Workflow`], then return the serde value.
+///
+/// Used by emission round-trip checks (`ci_yml_hand_authority_dissolved`) so the repo cannot
+/// carry hand-authored YAML that drifts outside the substrate-supported subset without breaking
+/// the structural generator first.
+pub fn parse_and_validate_github_actions_workflow_yaml(
+    raw_yaml: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let v: Value = serde_yaml::from_str(raw_yaml)?;
+    emit_workflow(&v)?;
+    Ok(v)
+}
+
+/// Deterministic emitter for hand-authority dissolution: **semantics encoded in serde_yaml's
+/// `Value` serialization** (comments and non-semantic layout are intentionally discarded —
+/// `.github/workflows/ci.yml` is the emitted artifact matching `project_github_actions(..., YamlStatic)`).
+pub fn canonical_github_actions_yaml_string(
+    workflow_value: &Value,
+) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(serde_yaml::to_string(workflow_value)?)
+}
