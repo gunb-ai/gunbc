@@ -23,7 +23,7 @@ use v3_compiler::dag::{
     operation_effect_shape, Behavior, BreakingShape, CallableRef, CompositionVerdict, CreateCause,
     EffectShape, HttpMethodScalar, IdempotentShape, InputField, KeySource, NonSingletonList,
     Operation, ParallelismUnsupportedKind, PathTemplate, RestEndpointBinding, UrlPathToken,
-    WorkflowEffect, WorkflowParallelismReport,
+    ParallelNonCommuteEvidence, WorkflowEffect, WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
@@ -176,11 +176,13 @@ fn parallel_upsert_cross_branch_fail_closed_same_operation() {
         panic!("expected ParallelismUnsupported — Upsert×Upsert has no merge witness in v1");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
-    let evidence = d
-        .non_commute_evidence
-        .expect("pairwise non-commute should expose typed operation evidence");
-    assert_eq!(evidence.left, expected_upsert);
-    assert_eq!(evidence.right, expected_upsert);
+    let ParallelNonCommuteEvidence::NonCommutingOperations { left, right } =
+        d.non_commute_evidence
+    else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
+    assert_eq!(left, expected_upsert);
+    assert_eq!(right, expected_upsert);
 }
 
 #[test]
@@ -213,10 +215,10 @@ fn parallel_upsert_cross_branch_fail_closed_reconstructed_operation() {
         panic!("expected ParallelismUnsupported");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
-    assert!(
-        d.non_commute_evidence.is_some(),
-        "reconstructed operations should still be routed as typed pair evidence"
-    );
+    assert!(matches!(
+        d.non_commute_evidence,
+        ParallelNonCommuteEvidence::NonCommutingOperations { .. }
+    ));
 }
 
 #[test]
@@ -254,15 +256,19 @@ fn parallel_different_path_param_names_not_proven_commute() {
         d.reason,
         "parallel branch operations do not commute under parallel scheduling"
     );
-    let evidence = d
-        .non_commute_evidence
-        .expect("pairwise non-commute should expose typed operation evidence");
+    let ParallelNonCommuteEvidence::NonCommutingOperations {
+        left: evidence_left,
+        right: evidence_right,
+    } = d.non_commute_evidence
+    else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
     assert!(matches!(
-        operation_effect_shape(&dag, &evidence.left),
+        operation_effect_shape(&dag, &evidence_left),
         Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
     ));
     assert!(matches!(
-        operation_effect_shape(&dag, &evidence.right),
+        operation_effect_shape(&dag, &evidence_right),
         Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
     ));
 }
@@ -297,15 +303,19 @@ fn parallel_read_vs_upsert_does_not_commute() {
         d.reason,
         "parallel branch operations do not commute under parallel scheduling"
     );
-    let evidence = d
-        .non_commute_evidence
-        .expect("pairwise non-commute should expose typed operation evidence");
+    let ParallelNonCommuteEvidence::NonCommutingOperations {
+        left: evidence_left,
+        right: evidence_right,
+    } = d.non_commute_evidence
+    else {
+        panic!("pairwise non-commute should expose typed operation evidence");
+    };
     assert!(matches!(
-        operation_effect_shape(&dag, &evidence.left),
+        operation_effect_shape(&dag, &evidence_left),
         Some(EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
     ));
     assert!(matches!(
-        operation_effect_shape(&dag, &evidence.right),
+        operation_effect_shape(&dag, &evidence_right),
         Some(EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. }))
     ));
 }
@@ -360,5 +370,8 @@ fn non_parallel_root_is_unsupported() {
         panic!("expected unsupported");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::NotParallelEffectRoot);
-    assert_eq!(d.non_commute_evidence, None);
+    assert_eq!(
+        d.non_commute_evidence,
+        ParallelNonCommuteEvidence::NoParallelNonCommuteEvidence
+    );
 }

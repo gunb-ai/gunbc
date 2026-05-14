@@ -11,7 +11,7 @@ fn parallel_unsupported(
         kind,
         downstream_stage: DOWNSTREAM.to_string(),
         reason: reason.into(),
-        non_commute_evidence: None,
+        non_commute_evidence: ParallelNonCommuteEvidence::NoParallelNonCommuteEvidence,
     })
 }
 
@@ -24,7 +24,7 @@ fn pairwise_non_commute(
         kind: ParallelismUnsupportedKind::PairwiseNonCommute,
         downstream_stage: DOWNSTREAM.to_string(),
         reason: reason.into(),
-        non_commute_evidence: Some(ParallelNonCommuteEvidence { left, right }),
+        non_commute_evidence: ParallelNonCommuteEvidence::NonCommutingOperations { left, right },
     }
 }
 
@@ -103,7 +103,8 @@ fn pairwise_cross_branch_commutes(
                                 downstream_stage: DOWNSTREAM.to_string(),
                                 reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
                                     .to_string(),
-                                non_commute_evidence: None,
+                                non_commute_evidence:
+                                    ParallelNonCommuteEvidence::NoParallelNonCommuteEvidence,
                             });
                         }
                     }

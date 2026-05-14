@@ -59,7 +59,7 @@ fn report_pairwise_non_commute(left: Operation, right: Operation) -> WorkflowPar
     kind: PairwiseNonCommute,
     downstream_stage: "lane2_stage2e_parallelism_lens",
     reason: "parallel branch operations do not commute under parallel scheduling",
-    non_commute_evidence: Some { value: { left: left, right: right } }
+    non_commute_evidence: NonCommutingOperations { left: left, right: right }
   })
 
 fn nsl_to_workflow_list(nsl: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =

@@ -173,15 +173,15 @@ The closure-ledger was refreshed against HEAD on 2026-05-14 UTC. Close still req
 **HEAD evidence**:
 - #79 complexity = **SATISFIED-BY-CONSTRUCTION** via temporary Rust cementing receipt (`complexity_lens_behavioral_completion.rs`) "until ComplexitySummary TestClaim literals are expressible"
 - #80 cost = **PASSING** ✓
-- #81 parallelism = **R3-LOAD-BEARING**, F-α sub-phase pending (Stage 2e walker port from `workflow_parallelism.rs` → `.dag`)
+- #81 parallelism = **PASSING** via Stage 2e pairwise non-commute evidence on `WorkflowParallelismReport`
 - #82 effect_enum = **R3-LOAD-BEARING**, F-β.1 canvas + F-β.2 atomic-migration pending
-- #83 `lens_capability_register_zero_proxy_zero_stub` (**§1.8 program gate / Cluster F sub-phase F-γ.2**) = **DECLARED** — canonical receipt is the **post-all-four-BEHAVIORALLY-COMPLETE** register cascade per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.4.2 and `docs/r3-structure.md` §Acceptance (not merely PROXY/STUB-zero while two rows stay **PARTIAL**). `parallelism.dag` and `effect_enumeration.dag` remain **PARTIAL** in `docs/v3-lens-capability-register.md` and `std.verification` `lens_capability_register_rows` until **#81** / **#82** land. **Supporting CI (necessary not sufficient):** `lens_register_correspondence_test.rs` (`every_regen_lens_entry_has_a_capability_register_row`, `r3_gate_83_lens_capability_register_scope_is_explicit`, `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`, `lens_capability_register_rows_match_md_v2_cementing_projection`) — regen→register discipline, **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` on the four T-LBP basenames in the markdown capability table, and Band-C v2-cementing-slice alignment vs `std.verification` `lens_capability_register_rows`; **does not** advance the §1.8 ledger Status for gate #83 (INVARIANTS P2 — one predicate; no parallel "narrow PASSING" row state).
+- #83 `lens_capability_register_zero_proxy_zero_stub` (**§1.8 program gate / Cluster F sub-phase F-γ.2**) = **DECLARED** — canonical receipt is the **post-all-four-BEHAVIORALLY-COMPLETE** register cascade per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.4.2 and `docs/r3-structure.md` §Acceptance (not merely PROXY/STUB-zero while effect enumeration stays **PARTIAL**). `effect_enumeration.dag` remains **PARTIAL** in `docs/v3-lens-capability-register.md` and `std.verification` `lens_capability_register_rows` until **#82** lands. **Supporting CI (necessary not sufficient):** `lens_register_correspondence_test.rs` (`every_regen_lens_entry_has_a_capability_register_row`, `r3_gate_83_lens_capability_register_scope_is_explicit`, `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`, `lens_capability_register_rows_match_md_v2_cementing_projection`) — regen→register discipline, **zero** `BEHAVIORALLY PROXY` / **zero** `BEHAVIORALLY STUB` on the four T-LBP basenames in the markdown capability table, and Band-C v2-cementing-slice alignment vs `std.verification` `lens_capability_register_rows`; **does not** advance the §1.8 ledger Status for gate #83 (INVARIANTS P2 — one predicate; no parallel "narrow PASSING" row state).
 
 **What's missing**:
 - Complexity: `ComplexitySummary` TestClaim literals (bridge-Rust to native-.dag migration)
-- Parallelism: Cluster F sub-phase F-α (Stage 2e walker port)
+- Parallelism: closed by typed `ParallelNonCommuteEvidence` on `WorkflowParallelismReport`
 - Effect: Cluster F sub-phase F-β.1 (canvas) + F-β.2 (atomic-migration impl)
-- Register: **PARTIAL → COMPLETE** for parallelism + effect_enum via **#81** / **#82**, then **F-γ.2** register sweep for full **#83** closure (PROXY/STUB-zero sub-check above already green)
+- Register: **PARTIAL → COMPLETE** for effect_enum via **#82**, then **F-γ.2** register sweep for full **#83** closure (PROXY/STUB-zero sub-check above already green)
 
 **Plan to cash**:
 - **Owner**: warm-wolf-698 (Substrate Mgr) for canvases + worker dispatch

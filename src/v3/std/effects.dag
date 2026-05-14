@@ -747,16 +747,15 @@ type ParallelismUnsupportedKind
   | PairwiseNonCommute
   | LensSurfacePending
 
-type ParallelNonCommuteEvidence {
-  left: Operation
-  right: Operation
-}
+type ParallelNonCommuteEvidence
+  = NoParallelNonCommuteEvidence
+  | NonCommutingOperations { left: Operation, right: Operation }
 
 type ParallelismUnsupportedDetail {
   kind: ParallelismUnsupportedKind
   downstream_stage: String
   reason: String
-  non_commute_evidence: ParallelNonCommuteEvidence?
+  non_commute_evidence: ParallelNonCommuteEvidence
 }
 
 // 🟢 TERMINAL. Lane 2 Stage 2e (DB-20) — parallel branch composition safety.
@@ -773,7 +772,7 @@ fn report_parallelism_unsupported(
     kind: kind,
     downstream_stage: "lane2_stage2e_parallelism_lens",
     reason: reason,
-    non_commute_evidence: none
+    non_commute_evidence: NoParallelNonCommuteEvidence
   })
 }
 
