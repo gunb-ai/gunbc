@@ -290,11 +290,15 @@ type ElaborationRule
 
 **Director-recommend: (a) closed-axis sum** per `feedback_coproduct_dissolution` Practice 4. Per-variant explicit-ness is the canonical thesis demonstration. Operator/PM ratification before Step 2 dispatch.
 
-### Q2: Symbol-table substrate carrier
+### Q2: Symbol-table implementation tier (NOT substrate)
 
-Current `lower.rs` uses `HashMap<String, DeclarationId>`. Per Step 3 `.dag` migration, symbol table needs `.dag` substrate carrier. Verified via `grep -rn "type SymbolTable\b" src/v3/std/ dsl/std/` — no existing carrier.
+**Reframed per codex BLOCKING PR #3077 /api/reviews/12015**: the symbol table is a pass-local lookup structure (built by Pass-1, consumed by Pass-2, discarded at lower return), NOT cross-stage substrate authority. Per LAYER MODEL discipline (INVARIANTS + `docs/modeling-discipline.md`): "if a type crosses a stage boundary or is consumed by a lens, it goes in `std/`; if it's internal to one stage's walk, it's implementation." Symbol table is internal-to-lower; promoting to `.dag` substrate would invent first-class authority for temporary compiler bookkeeping.
 
-**Director-recommend**: NEW `src/v3/std/symbol_table.dag` carrier with sorted-keyed deterministic structure (association list with insertion-order + lookup-via-fold OR refined-Map-via-where-clause if refinement substrate at HEAD). Specific carrier shape gated on Decision 3.A precedent (newtype / refinement / sum-variant) for similar typed-state contexts.
+**Earlier draft was wrong**: proposed `src/v3/std/symbol_table.dag` as a NEW substrate carrier; that would over-model implementation as substrate.
+
+**Corrected director-recommend**: symbol table stays in implementation tier of the `lower.dag` Step 3 work — as a local List/Map structure inside the lower body's recursive walk, not as exported substrate. Specific shape (sorted-keyed association list, refined Map, etc.) is implementation choice within `lower.dag`, not a separately-authored carrier.
+
+This question REMOVES from §12 open-ratification status — resolved inline as "no substrate carrier needed; implementation tier per LAYER MODEL". Q1 / Q3 / Q4 / Q5 / Q6 / Q7 remain open.
 
 ### Q3: 2-pass split — keep or single-pass?
 
@@ -326,14 +330,27 @@ Two paths for invariant enforcement:
 - Phase 4c: Pass 2 pattern lowering → `.dag`; corresponding block deleted
 - Phase 4d: Pass 2 item lowering → `.dag`; final `lower.rs` deletion
 
-**Director-recommend: (b) phased** for risk management on 11895-line migration. Each phase is its own PR with its own parity test + dissolution receipt. Operator/PM ratification on phasing acceptable per `feedback_paper_shrink_variants` (genuine deletion, not relocation).
+**Per-phase P5 receipt discipline** (per codex BLOCKING PR #3077 /api/reviews/12015): each phase PR must satisfy INVARIANTS P5 — exactly ONE checkable receipt from the closed set:
+- (i) deleted scaffold path (SG-0 census shrink with named file removal)
+- (ii) explicit deferral naming a concrete ROADMAP.md row
 
-**Per-phase parity witness shape** (per claude PR #3077 exploratory observation 2): the phase decomposition crosses Pass-1/Pass-2 boundary. Pass-1's output (declaration placeholders + symbol table) is intermediate state consumed only by Pass-2; it isn't a complete `PreInferDag` and cannot be parity-tested in isolation. Two phasing-discipline options:
+A phase PR that REFACTORS lower.rs to expose intermediate carrier (e.g., Pass1Output) WITHOUT simultaneous deletion would EXPAND or PROLONG hand-Rust, which P5 forbids without an explicit ROADMAP.md deferral row. Earlier draft framing "Phase 4a expose Pass1Output" did not meet this gate.
 
-- **(b.i) Per-pass parity via intermediate-state carrier**: Phase 4a authors a typed-state intermediate carrier (e.g., `Pass1Output { declarations: List<Declaration>, symbol_table: SymbolTable }`) + parity asserts `pass1_via_rust(surface) == pass1_via_dag(surface)`. Pass-2 then takes Pass1Output + completes elaboration. Slight refactoring of lower.rs to expose Pass-1 boundary cleanly.
-- **(b.ii) End-to-end per-phase, partial lower.rs deletion**: each phase deletes a SECTION of lower.rs (specific surface variants); parity is end-to-end `lower_via_rust(surface) == lower_via_dag(surface)` BUT only for the surface variants the phase migrated; Rust still handles others. Requires lower.rs + lower.dag delegation during transition — same shape as paper-shrink-relocation risk per `feedback_paper_shrink_variants`.
+**Reframed phasing options**:
 
-Director-recommend: **(b.i)** per Modeling Practice 2 illegal-states-unrepresentable (Pass1Output IS a typed carrier; its existence enforces the boundary). (b.ii) introduces transient delegating-dispatch coupling that risks paper-shrink class. Step 2 brief locks the per-phase parity-witness carrier shape.
+**(b.i) Phased migration with per-phase P5 receipts** (corrected):
+- Each phase requires either (i) genuine deletion of corresponding hand-Rust + SG-0 census shrink, OR (ii) ROADMAP.md deferral row naming WHERE the receipt will land at a later phase
+- Refactor-only phases (no deletion) MUST name explicit deferral row; without it, the phase fails P5 gate
+- Director-recommend: each phase IS a deletion phase — restructure phasing so every PR includes some lower.rs section deletion + corresponding `.dag` substrate landing.
+
+**(b.ii) Single-PR migration** (lower-risk-on-receipt-axis):
+- One PR with full lower.dag + all lower.rs deleted atomically
+- Single P5 receipt covering the entire migration; no per-phase receipt-gate concerns
+- Higher review-load risk (large diff) but cleaner discipline shape
+
+**Director-recommend: (b.ii) single-PR if reviewer bandwidth allows; phased ONLY IF each phase has valid P5 receipt per closed-set above**. The earlier "(b.i) phased with intermediate-state carrier" framing weakened P5 gate; corrected here.
+
+**Removed from earlier draft**: the "Pass1Output exposure" sub-option (b.i.original). That introduced a refactor-only phase with no valid P5 receipt under the strict reading. The corrected (b.i) requires every phase to be a deletion phase.
 
 ### Q6: PB-3 parse landing dependency
 
@@ -384,7 +401,7 @@ This doc lands on main when:
 8. ✅ Determinism preservation discipline (§10)
 9. ✅ Construction-time invariants identified (§11)
 10. ✅ Open design questions enumerated for operator/PM-delegate ratification (§12)
-11. ⏳ Operator/PM ratification on §12 Q1-Q7
+11. ⏳ Operator/PM ratification on §12 Q1, Q3, Q4, Q5, Q6, Q7 (Q2 RESOLVED inline per codex BLOCKING #3077)
 
 Post-ratification: this doc becomes the substrate authority for Step 2 worker brief authoring + §1.8 PB-4 gate row close-criterion predicate.
 
@@ -392,7 +409,7 @@ Post-ratification: this doc becomes the substrate authority for Step 2 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator / PM-delegate ratifies §12 Q1–Q7** (per operator 2026-05-14 directive "have pm sign off on everything")
+1. **Operator / PM-delegate ratifies §12 Q1, Q3, Q4, Q5, Q6, Q7 (Q2 RESOLVED inline per codex BLOCKING #3077)** (per operator 2026-05-14 directive "have pm sign off on everything")
 2. **PM amends close plan** to route through PB-X lanes + cite this doc as PB-4 L2.5 substrate
 3. **PM amends §1.8** with PB-4 gate row citing this doc as close-criterion authority
 4. **PB-Substrate Decision 3.A landing first** — `Dag = PreInferDag | InferredDag` carrier extension lands via warm-wolf-698 dispatch (cross-stage dependency)
@@ -439,7 +456,7 @@ Subsequent L2.5 models (PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Dir
 - `feedback_discipline_change_audit_all_contract_mentions` (signature consistency across §2 / §3 / §7 / §9)
 
 **Surfaces awaiting**:
-- Operator/PM ratification on §12 Q1–Q7 (per operator 2026-05-14 directive)
+- Operator/PM ratification on §12 Q1, Q3, Q4, Q5, Q6, Q7 (Q2 RESOLVED inline per codex BLOCKING #3077) (per operator 2026-05-14 directive)
 - Decision 3.A operator-ratified shape lands via PB-Substrate first (sum-variant Dag extension)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - R3 Grounding Mgr respawn (per Decision 5.A) if any substrate prereqs route through that lane
