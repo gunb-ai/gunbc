@@ -113,6 +113,7 @@ module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons, enumerate }
+import v3.std.lookup { map_get }
 import std.methods {
   append_method,
   concat_method,
@@ -595,7 +596,7 @@ fn operation_resource_key(op: Operation) -> String? =
   match last_path_param(op.endpoint.path) {
     Some(param) =>
       match map_get(op.inputs, param) {
-        Some { value: _ } => Some(param)
+        Some(field) => Some(param)
         None => None
       }
     None => None
