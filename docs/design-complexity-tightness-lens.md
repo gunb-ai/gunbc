@@ -344,13 +344,47 @@ type EnforcedTightness {
 }
 ```
 
-Plus a new lens declaration:
+Plus a new lens-instance declaration grounded in the live 6-field `Lens<C>` substrate at `src/v3/std/lens.dag:70` (name + read + sequential + branch + iterate + validate). Mirrors the `timing_lens` declaration pattern at `src/v3/std/timing_lens.dag:423-430` — function-body fields are 🟡 SCAFFOLD per implementation-tier dispatch (post-Gap-11), but the carrier-shape inhabitance is structural at design-tier:
 
 ```
-lens lens_complexity_tight: (Dag) -> TightnessAnalysis
+// 🟡 SCAFFOLD function-body fields per implementation-tier dispatch (post-Gap-11).
+// Carrier inhabits Lens<TightnessAnalysis> structurally at design-tier.
+data tightness_lens_sequential: Monoid<TightnessAnalysis> = {
+  op: tightness_sequential_op           // TBD: (TightnessAnalysis, TightnessAnalysis) -> TightnessAnalysis
+                                        //   Law: AlreadyTight ⊕ AlreadyTight = AlreadyTight;
+                                        //   either-side Loose absorbs (joining improvement.dominator/dominated
+                                        //   via BoundedLattice<AsymptoticClass> ≥; concatenating
+                                        //   transformation lists in order; reuses join_asymptotic_class
+                                        //   at src/v3/std/algebra.dag:514).
+  identity: AlreadyTight {              // identity for monoid; empty subgraph is tight at the smallest class
+    actual: ClassConstant
+    section: <empty-section-ref>        // TBD per substrate definition
+  }
+}
+
+// Inhabits the live 6-field Lens<C> substrate at src/v3/std/lens.dag:70.
+data lens_complexity_tight: Lens<TightnessAnalysis> = {
+  name: "complexity_tightness"
+  read: tightness_lens_read              // TBD: fn(Dag, Behavior) -> Witness<TightnessAnalysis>
+                                          //   Per-behavior classification — produces AlreadyTight or Loose
+                                          //   depending on whether a TightnessTransformation derives a
+                                          //   strictly-dominated class via Gap 11 SymbolicCost composition.
+  sequential: tightness_lens_sequential  // monoid above — sequential composition law
+  branch: tightness_branch_op            // TBD: fn(TightnessAnalysis, TightnessAnalysis) -> TightnessAnalysis
+                                          //   Branch combination — max-dominator across branches; transformations
+                                          //   union under the maximum branch (BoundedLattice<AsymptoticClass> join).
+  iterate: tightness_iterate             // TBD: fn(TightnessAnalysis, LoopBound) -> TightnessAnalysis
+                                          //   Loop amplification — multiply symbolic cost by LoopBound;
+                                          //   reclassify; lift improvement.dominator/dominated under composition.
+  validate: tightness_lens_validate      // TBD: fn(Dag, TightnessAnalysis) -> OptionalDiagnostic
+                                          //   Emit TightnessViolation when result is Loose (per §1.3 diagnostic);
+                                          //   Optional.None when AlreadyTight (structurally no-op).
+}
 ```
 
-Example use-site declaration (1-param self-comparison shape; lens is `Lens<TightnessAnalysis>` not `EnforceableLens`):
+Applying via `fold_lens<TightnessAnalysis>(lens_complexity_tight, dag)` (framework function at `src/v3/std/lens.dag:6`) produces a `DimensionReport<TightnessAnalysis>`. EnforcedTightness enforcement (§1.5 above) dispatches on the contained variant — AlreadyTight is no-op; Loose triggers `validate` → TightnessViolation diagnostic.
+
+Example use-site declaration (1-param self-comparison shape; lens is `Lens<TightnessAnalysis>` data-instance grounded above, not `EnforceableLens`):
 
 ```
 data witness_tightness: EnforcedTightness = {
@@ -374,7 +408,7 @@ Tightness lens is **same-algorithm-only**: it reasons about the program AS WRITT
 1. **§1.8 gate #79 `complexity_lens_behaviorally_complete`** — currently SATISFIED-BY-CONSTRUCTION via temporary Rust cementing receipt; full behavioral completion requires `ComplexitySummary` TestClaim literals + ProductCost/SumCost composition (Gap 11).
 2. **Close-plan Gap 11 LogCost / ProductCost / SumCost composition** — without this, `actual_class` collapses to ClassUnknown for composite expressions; `tight_class` would inherit the same limitation. Tightness lens consumes Gap 11's composition algebra.
 3. **`TightnessTransformation` substrate** — new `.dag` carriers per §1.5; needs ratification per `feedback_grep_carrier_semantic_before_ratification` 4-axis audit.
-4. **Lens dispatch infrastructure** — `lens_complexity_tight` registers as a new lens in `lens_capability_register`; consumer wiring in `analyze_complexity_tight_dimension` (or analogous Rust generated function until ported to `.dag`).
+4. **Lens dispatch infrastructure** — `lens_complexity_tight` is declared as a `data` instance of `Lens<TightnessAnalysis>` (6-field carrier per `src/v3/std/lens.dag:70` — see §1.5 declaration) and registers in `lens_capability_register`; framework application via `fold_lens<TightnessAnalysis>` at `src/v3/std/lens.dag:6`. Consumer wiring follows the established lens-fold pipeline (no parallel custom dispatcher).
 
 ## §4. Close criterion (substrate-debt-shaped predicate)
 
