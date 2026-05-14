@@ -138,11 +138,15 @@ New `.dag` declarations needed (grounded against existing lens-application subst
 // proof-witness carriers (one per variant, NOT a parallel coproduct).
 type TightnessTransformation
   = LoopFusion {
-      outer_loop_node: NodeId                 // role: outer (enclosing) sequential loop
-      inner_loop_node: NodeId                 // role: inner (fused) sequential loop
-      space_a: SymbolicCost                   // outer-loop iteration-space cost expression
-      space_b: SymbolicCost                   // inner-loop iteration-space cost expression
-      equivalence_witness: IterationSpaceEquivalenceWitness  // structural witness: space_a ≡ space_b derivable; shape TBD post-Gap-11
+      // Loop fusion = SIBLING/SEQUENTIAL loops with compatible iteration spaces
+      // (NOT outer/inner nested-loop relationship — that's ConstantBoundPropagation's
+      // shape). Per openai-pro BLOCKING PR #3067 2026-05-14: outer/inner naming
+      // misled toward nested-loop semantics; corrected to sequential first/second.
+      first_loop_node: NodeId                 // role: first sequential loop in fusion sequence
+      second_loop_node: NodeId                // role: second sequential loop (compatible iteration space)
+      space_a: SymbolicCost                   // first-loop iteration-space cost expression
+      space_b: SymbolicCost                   // second-loop iteration-space cost expression
+      equivalence_witness: IterationSpaceEquivalenceWitness  // structural witness: space_a ≡ space_b + sequential-not-nested + no inter-loop dependency-order blocker; shape TBD post-Gap-11
     }
   | LoopHoisting {
       enclosing_loop_node: NodeId             // role: outer loop containing the invariant subgraph
@@ -166,9 +170,16 @@ type TightnessTransformation
       associativity_witness: AssociativeReduceWitness  // structural witness: op is associative per algebra.dag laws; shape TBD post-Gap-11
     }
   | MapFilterFoldFusion {
-      pipeline_chain_nodes: List<NodeId>      // role: ordered chain of map/filter/fold nodes (≥2)
+      // Pipeline chain has minimum cardinality 2 (single map/filter/fold doesn't
+      // fuse). Per openai-pro BLOCKING PR #3067 2026-05-14: bare `List<NodeId>`
+      // admitted 0/1 nodes + non-pipeline nodes + duplicates + wrong ordering
+      // via prose-only comment. Fix: structural ≥2 enforcement via first +
+      // second + rest decomposition (rest is empty for exactly-2 chains).
+      first_pipeline_node: NodeId             // role: first map/filter/fold node in chain (ordered position 1)
+      second_pipeline_node: NodeId            // role: second map/filter/fold node (ordered position 2)
+      additional_pipeline_nodes: List<NodeId> // role: optional ordered tail (positions 3, 4, ...) — empty for exactly-2 chains
       shared_iteration_cost: SymbolicCost     // common iteration-space cost across chain elements
-      shared_space_witness: SharedIterationSpaceWitness  // structural witness: chain elements share iteration space; shape TBD post-Gap-11
+      shared_space_witness: SharedIterationSpaceWitness  // structural witness: chain elements share iteration space + are all map/filter/fold operation nodes + ordering preserved; shape TBD post-Gap-11
     }
 
 // 🟡 SCAFFOLD per-variant proof-witness types — concrete shapes finalize
