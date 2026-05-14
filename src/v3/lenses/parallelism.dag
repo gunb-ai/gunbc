@@ -311,6 +311,12 @@ fn loop_iteration_parallel_emission_indicator(d: Dag, workflow_root: NodeId) -> 
 // the same §4.4 contract without a second route for violation/budget naming (gate **#95** program row).
 
 type ParallelismMode
+  // 🟢 TERMINAL (GREEN): LAS iteration-parallelism **budget carrier** (`EnforcedApplication` /
+  // `parallelism_enforcement_violates`). Variants partition an authored opt-in authorization
+  // (`OptInIndependent`) from the sequential default (`Sequential`) at the design boundary in
+  // `docs/design-lens-application-surface.md` §4.4; patterns 1–4 (modeling-discipline §4) do not apply
+  // without folding the LAS into a single closed carrier elsewhere. Ledger: preceding Practice 4 /
+  // DESIGN LOCK paragraphs in this §4.4 block (+ gate **#95** program row above).
   = OptInIndependent
   | Sequential
 
