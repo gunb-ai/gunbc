@@ -41,7 +41,7 @@ Per `docs/design-emission-model.md:44-48` (verbatim):
 
 ## §3 Input types (declared in `.dag` substrate)
 
-Three input types feed emit:
+Two input types feed emit (`InferredDag` carrier + `LanguageSpec` per-target authority). A third "EmissionConfig" input was considered but resolved as redundant — target selection IS via LanguageSpec choice (§3.3 below).
 
 ### §3.1 `Dag` (post-infer)
 
@@ -63,11 +63,13 @@ Per-target structural facts: primitive set with refinement bounds, algebra inhab
 **§12 Q1 raises operator ratification BEFORE PB-6 Step 2 dispatch**: confirm v3 live authority (`src/v3/std/emit_model.dag` + `src/v3/spec/<target>.dag`) is the canonical PB-6 substrate; legacy layer treated as separate dissolution lane.
 **Lane dependency**: T-Ground-LanguageSpec (R3 Grounding Mgr lane / Gap 13) — schema authoring; T-Ground-CrossTarget-Meta (R3 Grounding Mgr lane / Gap 13) — portability requirements.
 
-### §3.3 `EmissionConfig` (target selection + shape disambiguation)
+### §3.3 Target selection — IS via LanguageSpec, NOT a separate `EmissionConfig` carrier
 
-Selects which Shape A target to emit to (Rust / Python / Go for R3). **EmissionConfig is Shape-A-only by construction** — Shape B is user-space artifact emission (SPICE / English / YAML / Verilog / Terraform), authored by users as standalone `.dag` programs walking typed values via `concat`/`fold`/`match`. Shape B is NOT a compiler-emit dispatch axis and does NOT belong in PB-6 EmissionConfig surface (per `docs/thesis/what-else-falls-out.md` §"Two shapes of omni-emission" + `r3-structure.md` framing). PB-6 emit substrate is compiler-emit only.
+Target selection is achieved by **passing the per-target `LanguageSpec` instance to emit** — there is no separate `EmissionConfig` carrier needed for R3 scope. The collection of LanguageSpec instances at `src/v3/spec/{rust,python,go}.dag` IS the per-target authority (§3.2); choosing which target to emit = choosing which `LanguageSpec` value to pass.
 
-**Substrate authority**: `src/v3/std/emit_config.dag` is a NEW substrate file PB-6 must author. Verified at this doc's HEAD via `grep -rn "type EmissionConfig" src/v3/std/ dsl/std/` (no existing declaration; the only `LanguageSpec`-adjacent types in `src/v3/std/emit_model.dag` cover realization meta-types, not target-selection / dispatch config). Per `feedback_substrate_principle_audit` 6-question audit: target-selection is a structural axis (which-target-of-N) requiring its own carrier; refinement of `LanguageSpec` would conflate per-target-realization-facts with per-emission-target-selection. Authoring routes via Step 2 (pipeline-slot ExternalRealization PR) — Director-tier substrate-fact-introduction.
+Earlier draft (commits before this fix) proposed a 3rd `EmissionConfig` input to emit; codex BLOCKING #3066 surfaced this as a substrate-boundary mismatch with §2's 2-arg framing + §9 Step 2's 2-arg signature. The 3rd input was redundant — the target identity is already encoded in `LanguageSpec`. Resolved by aligning all sections on **2-arg emit signature**: `fn emit(d: <InferredDagCarrier>, spec: LanguageSpec) -> EmissionResult`.
+
+**Shape A scope discipline** (preserved from §3.3 of earlier draft): Shape B is user-space artifact emission (standalone `.dag` programs), NOT a compiler-emit dispatch axis. The per-target LanguageSpec set covers only Shape A targets (Rust / Python / Go for R3); Shape B is post-R3 user-emission scope. See §8.2.
 
 ---
 
@@ -81,19 +83,25 @@ Structured per target: typically a typed string-tree composed via `std/string.da
 
 **Substrate authority**: `src/v3/std/target_source.dag` (proposed) OR refinement of existing `EmissionResult` carriers in `src/v3/std/emit_model.dag`.
 
-### §4.2 `EmissionDiagnostic` (closed-axis sum-variant)
+### §4.2 `EmissionDiagnostic` (closed-axis sum-variant) — LIVE substrate at `src/v3/std/diagnostics.dag:201`
 
-Fail-closed surface (per `docs/design-emission-model.md:166-190`):
+Verified via grep at this doc's HEAD: `EmissionDiagnostic` is already a LIVE substrate authority at `src/v3/std/diagnostics.dag:201`, NOT future T-Ground-Diagnostic work. The carrier-of-truth is this file; PB-6 emit consumes the existing variants:
 
 ```
-type EmissionDiagnostic =
-  | UnderRefined { program_intent: ProgramIntent, candidates: List<Candidate>, unspecified_axis: Axis, resolution_hints: List<Hint> }
-  | NoInhabitant { program_intent: ProgramIntent, target: TargetRef, blocker: BlockerCause }
-  | (additional variants surfaced during Step 2 authoring)
+type EmissionDiagnostic
+  = UnderRefined { unspecified_axis: String }
+  | NoInhabitant
+  | ContradictoryUse { binding: String, sites: List<String> }
+  | OutOfR2Scope { construct: String }
+  | LifetimeProgramExtractionPending { detail: String }   // 🟡 TRANSITIONAL
+  | FoldNotImplemented                                     // 🟡 TRANSITIONAL
+  | MissingEmissionPath { connective: FormAxis, behavior: BehaviorAxis, target: ShapeATarget }
+  | (additional variants per diagnostics.dag — Step 2 brief authors against full live shape)
 ```
 
-**Substrate authority**: T-Ground-Diagnostic (R3 Grounding Mgr lane / Gap 13) authors `EmissionDiagnostic` carrier; emit consumes it.
-**Lane dependency**: T-Ground-Diagnostic.
+Each variant grounds in `design-emission-model.md` worked-example sections (e.g., UnderRefined ~417-464 / NoInhabitant ~684-731) + the lifetime-analyzer + cross-target-meta surfaces. Some variants are 🟡 TRANSITIONAL (LifetimeProgramExtractionPending / FoldNotImplemented) with explicit retirement triggers documented in diagnostics.dag.
+
+**Substrate authority**: `src/v3/std/diagnostics.dag:201` (LIVE — NOT future work). Amendments to `EmissionDiagnostic` shape route through this file. Earlier draft framed this as "T-Ground-Diagnostic (NOT-STARTED)" — that was wrong; the carrier is live. Step 2 worker brief authoring cites this file directly + carries the full variant set forward without dropping any 🟡 TRANSITIONAL ones (per INVARIANTS P2 + Modeling Practice 3 facts-carry-forward).
 
 ### §4.3 `EmissionResult` (disjoint sum)
 
@@ -156,13 +164,13 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`: anchor prer
 | PB-Substrate | `src/v3/std/substrate.dag` → dag.rs/ports.rs/effects.rs | Gap 13 R3 Grounding Mgr lane + R3 Substrate Mgr (warm-wolf-698) | In-flight (PR #3040 sum-variant landed; broader PB-Substrate work continues) |
 | T-Ground-LanguageSpec | LIVE v3 authority: `LanguageSpec` carrier at `src/v3/std/emit_model.dag:430` + per-target instances at `src/v3/spec/{rust,python,go}.dag` (4 Realization meta-types each) + L1 markers at `src/v3/spec/v3_l1.dag`. Legacy bootstrap (NOT to consume as PB-6 authority): `dsl/std/languages.dag:438` + `dsl/extdeps/languages/<target>/*.dag` decomposition — separate dissolution lane | Gap 13 R3 Grounding Mgr lane | **§12 Q1 raises operator ratification BEFORE PB-6 Step 2 dispatch**: confirm v3 live authority canonical |
 | T-Ground-Coercion-Fold | mechanical fold implementation | Gap 13 R3 Grounding Mgr lane | In-flight (PR #1980 ScratchIntExamples retirement; broader work continues) |
-| T-Ground-Diagnostic | `EmissionDiagnostic` carrier | Gap 13 R3 Grounding Mgr lane | NOT-STARTED per closure-ledger; brief authored at PR #1216 |
+| T-Ground-Diagnostic | `EmissionDiagnostic` carrier — **LIVE** at `src/v3/std/diagnostics.dag:201` (7+ variants including UnderRefined / NoInhabitant / ContradictoryUse / OutOfR2Scope / MissingEmissionPath / 2 🟡 TRANSITIONAL) | Gap 13 R3 Grounding Mgr lane | LIVE at HEAD — what's pending is the emission-path CONSUMPTION + 🟡 TRANSITIONAL retirement triggers; the carrier authoring is complete. Earlier draft incorrectly framed as "NOT-STARTED" — corrected per codex BLOCKING #3066 |
 | T-Ground-Lifetime-Analyzer | structural intent derivation | Gap 13 R3 Grounding Mgr lane | In-flight (R2-scope a/b/c impl landed at PR #1206) |
 | T-Ground-CrossTarget-Meta | portability requirements meta | Gap 13 R3 Grounding Mgr lane | In-flight (PR #2103 L6 EmissionPathProjection CLOSED) |
 | `target_source.dag` (if new) | TargetSource carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification |
-| `emit_config.dag` (if new) | EmissionConfig carrier | Director-tier substrate-fact-introduction | NEEDS canvas-ratification OR refinement of existing emit_model.dag |
+| ~~`emit_config.dag`~~ DROPPED | ~~EmissionConfig carrier~~ — resolved as redundant per §3.3 (target selection IS via LanguageSpec choice); no separate substrate file needed | n/a | DROPPED per codex BLOCKING #3066 resolution |
 
-**Critical observation**: 6 of 8 prereq rows above route through **R3 Grounding Mgr lane (Gap 13)** — PB-Substrate (Gap 13 + Substrate Mgr co-ownership) + T-Ground-LanguageSpec + T-Ground-Coercion-Fold + T-Ground-Diagnostic + T-Ground-Lifetime-Analyzer + T-Ground-CrossTarget-Meta. The remaining 2 (`target_source.dag` + `emit_config.dag`) are Director-tier substrate-fact-introduction scope. Gap 13 R3 Grounding Mgr lane is currently between-sessions (per still-dove-462 archive pattern). PB-6 emit Step 3 implementation cannot proceed substantively until R3 Grounding Mgr lane re-spawns AND closes the 3 key sub-lanes (LanguageSpec / Coercion-Fold / Diagnostic).
+**Critical observation**: 6 of 8 prereq rows above route through **R3 Grounding Mgr lane (Gap 13)** — PB-Substrate (Gap 13 + Substrate Mgr co-ownership) + T-Ground-LanguageSpec + T-Ground-Coercion-Fold + T-Ground-Diagnostic (carrier LIVE; consumption-side pending) + T-Ground-Lifetime-Analyzer + T-Ground-CrossTarget-Meta. The remaining 2 (`target_source.dag` + dropped EmissionConfig per §3.3 resolution) are Director-tier substrate-fact-introduction scope (only `target_source.dag` remains; EmissionConfig dropped per codex BLOCKING resolution). Gap 13 R3 Grounding Mgr lane is currently between-sessions (per still-dove-462 archive pattern). PB-6 emit Step 3 implementation cannot proceed substantively until R3 Grounding Mgr lane re-spawns AND closes the key sub-lanes (LanguageSpec / Coercion-Fold consumption / Diagnostic 🟡 TRANSITIONAL retirements).
 
 This is the **structural blocker** for PB-6 emit dispatch — substrate prereqs are upstream of pipeline-stage migration. Step 2 (pipeline-slot ExternalRealization) can proceed in parallel with Grounding Mgr work; Step 3 (implementation) must wait.
 
