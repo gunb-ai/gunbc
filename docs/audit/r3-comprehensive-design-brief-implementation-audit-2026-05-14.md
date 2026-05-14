@@ -25,7 +25,7 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 | Gates CONSUMER_LANDED | 50 | Working toward PASSING |
 | Gates DECLARED | 32 | Awaiting implementation dispatch |
 | Close-plan Gaps | 13 | Gaps 1-11 active; 12-13 reserved |
-| Operator-ratified Gaps (§4 items) | 4 of 5 | Items 1-4 IN-R3 2026-05-13; Item 5 (R2-Evaluator) pending |
+| Operator-ratified Gaps (§4 items) | 5 of 5 | Items 1-4 IN-R3 2026-05-13; Item 5 (R2-Evaluator) RATIFIED 2026-05-14 via α option (warm-wolf-698 expanded scope) |
 | Design docs authored for R3 | 48 | `design-*.md` + `r3-*.md` |
 | Audit docs landed | 23 | Director/PM substantive artifacts |
 
@@ -63,7 +63,7 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 | T-Tier3-Dissolution (PB Mgr) | ~8-12 | Gates #1-#4; Phase 1 bench baseline landed |
 | Cross-Mgr Coordination (Director/PM) | ~15-25 | Cluster F carve-promotion + Cluster M sequencing + Gap 3 |
 
-## §2. 5 critical authority chain breaks
+## §2. 4 critical authority chain breaks + 1 dispatch-ready queue
 
 ### §2.1 PB-0 framework bypass — the originating finding
 
@@ -113,7 +113,7 @@ This doc is the substrate for the Phase 2 multi-PR corrective sweep authorized b
 
 **Status**: gates #81/#82 (R3-load-bearing) cascading via F-α + F-β.1 + F-β.2 sub-phases; sequencing documented but execution still requires canvas-tier ratification + worker dispatch coordination.
 
-### §2.5 Cluster M Phase 3 + T-WAD Slices 5-8 queue (sequencing-correct)
+### §2.5 Cluster M Phase 3 + T-WAD Slices 5-8 — DISPATCH-READY queue (NOT an authority chain break)
 
 **Design authority**: `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` (Phase 1/2/3 sequencing) + `docs/design-ci-workflow-emitter-dispatch.md` + `docs/design-ci-workflow-substrate-shape-2026-05-12.md` (T-WAD slices).
 
@@ -189,7 +189,7 @@ Per operator §4 Item 5 α-ratification 2026-05-14 (R2-Evaluator authority RESOL
 ## §5. Operator-visibility framing post-corrective
 
 When Phase 2 sweep lands, operator surface becomes:
-- **5 authority chain breaks identified + addressed in coordinated multi-PR sweep**
+- **4 critical authority chain breaks + 1 dispatch-ready queue identified; all 5 addressed in coordinated multi-PR sweep**
 - **Cumulative real cashed at HEAD = ~0 pending revert restoration** (template-relocation paper-shrink corrected)
 - **Design-doc-tier authority now enforced at brief-dispatch via §5.2 discipline** (root cause addressed)
 - **All 13 close-plan Gaps re-anchored on substantive design-doc citations** (Gap 1 + Gap 3 + Gap 9 + Gap 4 + Gap 5/7)
