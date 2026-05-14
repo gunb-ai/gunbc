@@ -430,6 +430,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
+    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
+    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",

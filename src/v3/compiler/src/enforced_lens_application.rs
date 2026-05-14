@@ -27,18 +27,29 @@
 //! fault path (never compared as ordinary wall-clock `Nat` against the fault sentinel), while
 //! `Observed` wall-clock nanoseconds use the same strict `>` edge as gate #94 against
 //! `TimingBudget.max`.
+//!
+//! Gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`): when a program
+//! authors `EnforcedApplication<ParallelismMode, ParallelismMode, ParallelismMode>` referencing
+//! `parallelism_enforceable` (`lenses.parallelism`) with a [`SectionRef::NodeScope`] section, infer
+//! observes **cross-iteration parallel emission** eligibility via authored
+//! [`crate::lens_parallelism::parallelism_iteration_observed_mode`] (`parallelism.dag`) on the scope's
+//! `NodeId` — identical to lens `parallelism_lens.read`'s substrate surface and the staged
+//! `loop_iteration_parallel_emission_indicator`. Budget violations delegate to authored
+//! `parallelism_enforcement_violates` via [`crate::lens_declaration_apply::apply_lens_declaration`];
+//! host code does not remap raw indicator integers independently.
 
 use std::collections::HashMap;
 
 use crate::dag::{
     literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Behavior, Dag,
-    DeclarationId, FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective,
-    ValueBody,
+    DeclarationId, FieldValue, LiteralBits, Lookup, NodeId, PortId, PositiveDescentAmount,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
     complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
 };
+use crate::lens_declaration_apply::{apply_lens_declaration, LensApplyError};
 
 fn diagnostic_severity_substrate_disj(dag: &Dag) -> Option<DeclarationId> {
     dag.declarations()
@@ -284,7 +295,205 @@ fn is_timing_enforceable_lens_value(
     lens_ref == Some(lens_id) && enforcement_ref == Some(enforcement_id)
 }
 
-/// Fail-closed check for landed complexity + timing enforcement applications.
+/// Local bookkeeping parallel to authored [`crate::lens_parallelism::ParallelismMode`] for
+/// substrate `apply_lens_declaration` witnesses (DSL sum ↔ [`FieldValue::Variant`]).
+///
+/// Observations must come only from [`crate::lens_parallelism::parallelism_iteration_observed_mode`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ParallelismIterationBudget {
+    OptInIndependent,
+    Sequential,
+}
+
+fn parallelism_iteration_budget_from_substrate(
+    observed: crate::lens_parallelism::ParallelismMode,
+) -> ParallelismIterationBudget {
+    match observed {
+        crate::lens_parallelism::ParallelismMode::OptInIndependent => {
+            ParallelismIterationBudget::OptInIndependent
+        }
+        crate::lens_parallelism::ParallelismMode::Sequential => {
+            ParallelismIterationBudget::Sequential
+        }
+    }
+}
+
+fn parallelism_mode_disj_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("ParallelismMode") && d.span.file.ends_with("parallelism.dag")
+        })
+        .map(|d| d.id)
+}
+
+fn parallelism_enforcement_violates_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("parallelism_enforcement_violates")
+                && d.span.file.ends_with("parallelism.dag")
+        })
+        .map(|d| d.id)
+}
+
+fn parallelism_iteration_budget_as_variant_field_value(
+    dag: &Dag,
+    pm_disj: DeclarationId,
+    budget: ParallelismIterationBudget,
+) -> Option<FieldValue> {
+    let TypeConnective::Disj { variants } = &dag.declaration(pm_disj).connective else {
+        return None;
+    };
+    let label = match budget {
+        ParallelismIterationBudget::OptInIndependent => "OptInIndependent",
+        ParallelismIterationBudget::Sequential => "Sequential",
+    };
+    let ctor = variants.iter().find(|v| v.label == label)?.ty;
+    Some(FieldValue::Variant {
+        constructor: ctor,
+        payload: Vec::new(),
+    })
+}
+
+fn parallelism_enforcement_violates_via_substrate(
+    dag: &Dag,
+    pm_disj: DeclarationId,
+    observed: ParallelismIterationBudget,
+    declared: ParallelismIterationBudget,
+) -> Result<bool, LensApplyError> {
+    let lens_id = parallelism_enforcement_violates_decl_id(dag).ok_or(
+        LensApplyError::SubstrateReflect("parallelism_enforcement_violates declaration"),
+    )?;
+    let observed_fv = parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, observed)
+        .ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode observed variant",
+    ))?;
+    let declared_fv = parallelism_iteration_budget_as_variant_field_value(dag, pm_disj, declared)
+        .ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode declared variant",
+    ))?;
+    let out = apply_lens_declaration(dag, None, lens_id, &[observed_fv, declared_fv])?;
+    match out {
+        FieldValue::Literal(LiteralBits::Bool(b)) => Ok(b),
+        _ => Err(LensApplyError::TypeMismatch(
+            "parallelism_enforcement_violates Bool output",
+        )),
+    }
+}
+
+fn section_ref_node_scope_constructor_id(
+    dag: &Dag,
+    section_ref_disj: DeclarationId,
+) -> Option<DeclarationId> {
+    let TypeConnective::Disj { variants } = &dag.declaration(section_ref_disj).connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.label == "NodeScope")
+        .map(|v| v.ty)
+}
+
+fn field_value_parallelism_iteration_budget(
+    dag: &Dag,
+    disj: DeclarationId,
+    value: &FieldValue,
+) -> Option<ParallelismIterationBudget> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    if !payload.is_empty() {
+        return None;
+    }
+    let TypeConnective::Disj { variants } = &dag.declaration(disj).connective else {
+        return None;
+    };
+    let label = variants
+        .iter()
+        .find(|v| v.ty == *constructor)?
+        .label
+        .as_str();
+    match label {
+        "OptInIndependent" => Some(ParallelismIterationBudget::OptInIndependent),
+        "Sequential" => Some(ParallelismIterationBudget::Sequential),
+        _ => None,
+    }
+}
+
+fn resolve_node_scope_section(
+    _dag: &Dag,
+    section: &FieldValue,
+    node_scope_conj: DeclarationId,
+) -> Option<(DeclarationId, NodeId)> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = section
+    else {
+        return None;
+    };
+    if *constructor != node_scope_conj {
+        return None;
+    }
+    let parts: &[(String, FieldValue)] = match payload.as_slice() {
+        [FieldValue::Record(rec)] => rec.as_slice(),
+        _ => return None,
+    };
+    let mut decl_ref: Option<DeclarationId> = None;
+    let mut node_idx: Option<u32> = None;
+    for (k, v) in parts {
+        if k == "declaration" {
+            if let FieldValue::Reference(id) = v {
+                decl_ref = Some(*id);
+            }
+        } else if k == "node" {
+            if let FieldValue::Literal(LiteralBits::Int(s)) = v {
+                node_idx = s.parse().ok();
+            }
+        }
+    }
+    Some((decl_ref?, NodeId::from_table_index(node_idx?)))
+}
+
+/// Returns `true` when an authored **`ParallelismMode::OptInIndependent`** budget violates the
+/// observed iteration-parallelism emission contract from authored
+/// `parallelism_iteration_observed_mode` (Lane‑2 `loop_iteration_parallel_emission_indicator`:
+/// indicator `1` ⇒ `OptInIndependent`; otherwise `Sequential`).
+///
+/// **Gate #95 interim surface** (see `docs/design-lens-application-surface.md` §4.4): pairs with
+/// [`check_enforced_lens_applications`] for full `EnforcedApplication`/`NodeScope` routing.
+///
+/// Requires `dag` to carry lowered `parallelism.dag` (`parallelism_enforcement_violates`);
+/// observes via [`crate::lens_parallelism::parallelism_iteration_observed_mode`]. Delegates violation
+/// semantics to that substrate via [`apply_lens_declaration`].
+///
+/// Returns [`Err`] when `parallelism.dag` is absent from this [`Dag`] or substrate evaluation fails
+/// ([`LensApplyError`]) — no panics on arbitrary caller-supplied graphs (CODING.md § Hidden panic surface).
+pub fn parallelism_iteration_opt_in_enforcement_violates(
+    dag: &Dag,
+    workflow_root: NodeId,
+) -> Result<bool, LensApplyError> {
+    let pm_disj = parallelism_mode_disj_decl_id(dag).ok_or(LensApplyError::SubstrateReflect(
+        "ParallelismMode from parallelism.dag",
+    ))?;
+    let observed = parallelism_iteration_budget_from_substrate(
+        crate::lens_parallelism::parallelism_iteration_observed_mode(dag, workflow_root),
+    );
+    parallelism_enforcement_violates_via_substrate(
+        dag,
+        pm_disj,
+        observed,
+        ParallelismIterationBudget::OptInIndependent,
+    )
+}
+
+/// Fail-closed check for landed complexity, timing, and iteration-opt-in parallelism enforcement
+/// applications (`EnforcedApplication` rows).
 ///
 /// Exported at the crate root (`v3_compiler::check_enforced_lens_applications`) so integration
 /// tests can re-invoke the same post-infer pass as `infer::infer` without treating declaration
@@ -352,6 +561,18 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
         return;
     };
+    let Some(node_scope_conj) = section_ref_node_scope_constructor_id(dag, section_ref_disj) else {
+        return;
+    };
+    let parallelism_enforceable_id = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("parallelism_enforceable")
+                && d.span.file.ends_with("parallelism.dag")
+        })
+        .map(|d| d.id);
+    let parallelism_mode_disj = parallelism_mode_disj_decl_id(dag);
     let Some(diagnostic_severity_disj) = diagnostic_severity_substrate_disj(dag) else {
         attach_missing_diagnostic_severity_substrate_diagnostic(dag, enforced_template);
         return;
@@ -670,8 +891,165 @@ pub fn check_enforced_lens_applications(dag: &mut Dag) {
                 diagnostic_severity_disj,
                 severity_val,
                 violation_message,
-                span,
+                span.clone(),
             ));
+        }
+
+        if let (Some(peid), FieldValue::Reference(pe_ref)) =
+            (parallelism_enforceable_id, enforceable_lens)
+        {
+            if *pe_ref == peid {
+                let Some(pm_disj) = parallelism_mode_disj else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not resolve substrate `ParallelismMode` from \
+                             `parallelism.dag` (modeled authority missing; fail-closed)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                let Some((fn_decl, subject_node)) =
+                    resolve_node_scope_section(dag, section, node_scope_conj)
+                else {
+                    violations.push(Diagnostic::ParseError {
+                        message: "lens enforcement: parallelism `EnforcedApplication` requires a \
+                                  `SectionRef::NodeScope { declaration, node }` section (see \
+                                  docs/design-lens-application-surface.md §4.4)"
+                            .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                let Some(fn_subject) = dag.declaration_opt(&fn_decl) else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: parallelism `SectionRef::NodeScope.declaration` \
+                             names a substrate `DeclarationId` that is absent from this `Dag` \
+                             (structured reference out of bounds; fail-closed)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                if !matches!(&fn_subject.connective, TypeConnective::Arrow { .. }) {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: parallelism `NodeScope.declaration` must name a \
+                                  function (`Arrow` declaration)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                if !crate::dag::node_scope_subject_within_arrow_declaration(
+                    dag,
+                    fn_decl,
+                    subject_node,
+                ) {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: parallelism `SectionRef::NodeScope.node` must name a \
+                                   substrate node in the authored `declaration` body's lowered graph \
+                                   (declaring function bind or descendant reachable from its result \
+                                   subgraph); malformed `(declaration, node)` pairs fail closed instead \
+                                   of reading `loop_iteration_parallel_emission_indicator` out-of-scope"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                }
+                let Some(budget_host) =
+                    field_value_parallelism_iteration_budget(dag, pm_disj, budget_val)
+                else {
+                    violations.push(Diagnostic::ParseError {
+                        message:
+                            "lens enforcement: could not read parallelism budget `ParallelismMode` \
+                                  (expected nullary `OptInIndependent` or `Sequential`)"
+                                .to_string(),
+                        span: decl.span.clone(),
+                        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                            "EnforcedLensApplicationDiagnostic",
+                        ),
+                    });
+                    continue;
+                };
+                let indicator =
+                    crate::loop_iteration_parallel_emission_indicator(dag, subject_node);
+                let observed_host = parallelism_iteration_budget_from_substrate(
+                    crate::lens_parallelism::parallelism_iteration_observed_mode(dag, subject_node),
+                );
+                let violates = match parallelism_enforcement_violates_via_substrate(
+                    dag,
+                    pm_disj,
+                    observed_host,
+                    budget_host,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        violations.push(Diagnostic::ParseError {
+                            message: format!(
+                                "lens enforcement: could not evaluate `parallelism_enforcement_violates` \
+                                 from `parallelism.dag` (fail-closed): {e:?}"
+                            ),
+                            span: decl.span.clone(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "EnforcedLensApplicationDiagnostic",
+                                ),
+                        });
+                        continue;
+                    }
+                };
+                if !violates {
+                    continue;
+                }
+
+                let severity_val = match fm.get("diagnostic_severity") {
+                    Some(v) => *v,
+                    _ => {
+                        violations.push(Diagnostic::ParseError {
+                            message:
+                                "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
+                                    .to_string(),
+                            span: decl.span.clone(),
+                            correction:
+                                crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                    "EnforcedLensApplicationDiagnostic",
+                                ),
+                        });
+                        continue;
+                    }
+                };
+                let violation_message = format!(
+                    "lens enforcement violation: parallelism iteration `ParallelismMode` budget {budget_host:?} inconsistent \
+                     with `loop_iteration_parallel_emission_indicator={indicator}` observation (declared `EnforcedApplication` \
+                     at {})",
+                    decl.name.as_deref().unwrap_or("?")
+                );
+                violations.push(enforced_violation_diagnostic(
+                    dag,
+                    diagnostic_severity_disj,
+                    severity_val,
+                    violation_message,
+                    span.clone(),
+                ));
+            }
         }
     }
 
@@ -1346,5 +1724,349 @@ mod gate_58_timing_enforcement_unit_tests {
             s - 1,
             TimingMeasurementEnforcementUsage::ObservedWallNs(s)
         ));
+    }
+}
+
+#[cfg(test)]
+mod gate_95_parallelism_iteration_enforcement_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::dag::{Declaration, DeclarationId, TemplateArgument, TypeConnective, ValueBody};
+    use crate::diagnostics::Diagnostic;
+
+    fn push_parallelism_iteration_enforced_declaration(
+        dag: &mut Dag,
+        witness_name: &str,
+        fn_decl: DeclarationId,
+        subject: NodeId,
+    ) {
+        let enforced_template = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("EnforcedApplication")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .expect("EnforcedApplication")
+            .id;
+        let pm_disj = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("ParallelismMode")
+                    && d.span.file.ends_with("parallelism.dag")
+            })
+            .expect("ParallelismMode")
+            .id;
+        let parallelism_enforceable = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("parallelism_enforceable")
+                    && d.span.file.ends_with("parallelism.dag")
+            })
+            .expect("parallelism_enforceable")
+            .id;
+        let section_ref_disj = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("SectionRef")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .expect("SectionRef")
+            .id;
+        let node_scope_ctor =
+            section_ref_node_scope_constructor_id(dag, section_ref_disj).expect("NodeScope");
+        let TypeConnective::Disj {
+            variants: pm_variants,
+        } = &dag.declaration(pm_disj).connective
+        else {
+            panic!("ParallelismMode sum");
+        };
+        let optin_ctor = pm_variants
+            .iter()
+            .find(|v| v.label == "OptInIndependent")
+            .expect("OptInIndependent ctor")
+            .ty;
+        let ds_disj =
+            diagnostic_severity_substrate_disj(dag).expect("DiagnosticSeverity substrate");
+        let TypeConnective::Disj {
+            variants: ds_variants,
+        } = &dag.declaration(ds_disj).connective
+        else {
+            panic!("DiagnosticSeverity sum");
+        };
+        let error_ctor = ds_variants
+            .iter()
+            .find(|v| v.label == "Error")
+            .expect("DiagnosticSeverity.Error")
+            .ty;
+
+        let template_params = dag.declaration(enforced_template).type_params.clone();
+        assert_eq!(
+            template_params.len(),
+            3,
+            "EnforcedApplication exposes Output/Budget/Projected formal parameters"
+        );
+        let instantiation_arguments: Vec<TemplateArgument> = template_params
+            .into_iter()
+            .map(|parameter| TemplateArgument {
+                parameter,
+                value: pm_disj,
+            })
+            .collect();
+
+        let new_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: new_id,
+            name: Some(witness_name.to_string()),
+            connective: TypeConnective::Instantiation {
+                template: enforced_template,
+                arguments: instantiation_arguments,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: Some(new_id),
+            specialization_parent: None,
+            inhabits: None,
+            value_body: Some(ValueBody::Structural {
+                fields: vec![
+                    (
+                        "enforceable_lens".to_string(),
+                        FieldValue::Reference(parallelism_enforceable),
+                    ),
+                    (
+                        "section".to_string(),
+                        FieldValue::Variant {
+                            constructor: node_scope_ctor,
+                            payload: vec![FieldValue::Record(vec![
+                                ("declaration".to_string(), FieldValue::Reference(fn_decl)),
+                                (
+                                    "node".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int(
+                                        subject.raw().to_string(),
+                                    )),
+                                ),
+                            ])],
+                        },
+                    ),
+                    (
+                        "budget".to_string(),
+                        FieldValue::Variant {
+                            constructor: optin_ctor,
+                            payload: Vec::new(),
+                        },
+                    ),
+                    (
+                        "diagnostic_severity".to_string(),
+                        FieldValue::Variant {
+                            constructor: error_ctor,
+                            payload: Vec::new(),
+                        },
+                    ),
+                    (
+                        "span".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "file".to_string(),
+                                FieldValue::Literal(LiteralBits::String(
+                                    "gate95_injected.dag".to_string(),
+                                )),
+                            ),
+                            (
+                                "start".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
+                            (
+                                "end".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                            ),
+                        ]),
+                    ),
+                ],
+            }),
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("gate95_injected.dag", 0, 1),
+        });
+    }
+
+    #[test]
+    fn opt_in_budget_is_clean_when_lane2_reads_parallelizable_indicator() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_iteration_parallelism_clean.v3",
+        )
+        .expect("compile");
+        let subject = dag.workflow_lane2_subject().expect("workflow shell bind");
+        let fn_decl = dag
+            .declaration_by_name("gate95_demo_fn")
+            .expect("fn decl")
+            .id;
+        let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
+        assert_eq!(indicator, 1);
+        assert!(!parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap());
+
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_iteration_parallelism_clean_witness",
+            fn_decl,
+            subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert!(
+            dag.diagnostics().is_empty(),
+            "unexpected diagnostics: {:?}",
+            dag.diagnostics()
+        );
+    }
+
+    #[test]
+    fn opt_in_budget_violates_when_lane2_reads_sequential_indicator() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_iteration_parallelism_violation.v3",
+        )
+        .expect("compile");
+        let subject = dag.workflow_lane2_subject().expect("workflow shell bind");
+        let fn_decl = dag
+            .declaration_by_name("gate95_demo_fn")
+            .expect("fn decl")
+            .id;
+        let indicator = crate::loop_iteration_parallel_emission_indicator(&dag, subject);
+        assert_eq!(indicator, 0);
+        assert!(parallelism_iteration_opt_in_enforcement_violates(&dag, subject).unwrap());
+
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_iteration_parallelism_violation_witness",
+            fn_decl,
+            subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(
+            dag.diagnostics().len(),
+            1,
+            "expected iteration-opt-in parallelism violation diagnostic; got {:?}",
+            dag.diagnostics()
+        );
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected ParseError violation, got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("loop_iteration_parallel_emission_indicator=0"),
+            "message must name the sequential observation; got {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_out_of_range_node_scope_subject() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_oob_node_idx.v3",
+        )
+        .expect("compile");
+        let fn_decl = dag
+            .declaration_by_name("gate95_demo_fn")
+            .expect("fn decl")
+            .id;
+        let bogus_subject = NodeId::from_table_index(dag.nodes().len() as u32);
+        assert!(
+            dag.node_opt(&bogus_subject).is_none(),
+            "fixture must use one-past-last node index as nonexistent NodeId witness"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_oob_witness",
+            fn_decl,
+            bogus_subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected ParseError coupling failure; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("fail closed") && message.contains("NodeScope"),
+            "unexpected message: {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_absent_declaration_reference_in_node_scope() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_demo_fn() -> Int = 0\n",
+            "gate95_absent_decl_ref.v3",
+        )
+        .expect("compile");
+        let subject = dag.workflow_lane2_subject().expect("workflow shell bind");
+        let phantom_decl = DeclarationId::test_raw(u32::MAX);
+        assert!(
+            dag.declaration_opt(&phantom_decl).is_none(),
+            "fixture phantom `DeclarationId` must be absent from the declaration table"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_absent_decl_ref_witness",
+            phantom_decl,
+            subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected ParseError absent-declaration coupling failure; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("absent") && message.contains("`Dag`"),
+            "unexpected message: {message:?}"
+        );
+    }
+
+    #[test]
+    fn opt_in_rejects_node_scope_foreign_to_declaration() {
+        let mut dag = compile_to_dag(
+            "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n\
+             import lenses.parallelism { parallelism_enforceable }\n\
+             fn gate95_early() -> Int = 0\n\
+             fn gate95_last() -> Int = 1\n",
+            "gate95_foreign_subject.v3",
+        )
+        .expect("compile");
+        let fn_early = dag.declaration_by_name("gate95_early").expect("early").id;
+        let alien_subject = dag.workflow_lane2_subject().expect("last fn bind shell");
+        assert!(
+            !crate::dag::node_scope_subject_within_arrow_declaration(&dag, fn_early, alien_subject),
+            "fixture ordering invariant: alien subject must be outside gate95_early's lowered body \
+             (workflow shell must not alias the early Arrow root)"
+        );
+        push_parallelism_iteration_enforced_declaration(
+            &mut dag,
+            "gate95_foreign_subject_witness",
+            fn_early,
+            alien_subject,
+        );
+        check_enforced_lens_applications(&mut dag);
+        assert_eq!(dag.diagnostics().len(), 1, "{:?}", dag.diagnostics());
+        let (_, diagnostic) = dag.diagnostics().iter().next().expect("diagnostic");
+        let Diagnostic::ParseError { message, .. } = diagnostic else {
+            panic!("expected boundary ParseError for decoupled subject; got {diagnostic:?}");
+        };
+        assert!(
+            message.contains("lowered graph")
+                && message.contains("loop_iteration_parallel_emission_indicator"),
+            "unexpected coupling message: {message:?}"
+        );
     }
 }
