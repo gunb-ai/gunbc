@@ -5733,6 +5733,9 @@ impl TestClaimValue {
     }
 }
 
+/// **🟢 TERMINAL coproduct** (per `docs/modeling-discipline.md` Practice 4): mirrors `Quantifier`
+/// in `src/v3/std/verification.dag` (`ForAll` | `Exists`) for runner-side folding only — not a
+/// parallel substrate authority.
 #[derive(Debug, Clone, Copy)]
 enum QuantifierKind {
     ForAll,
