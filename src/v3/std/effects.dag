@@ -351,7 +351,13 @@ type EffectShape
 type CreateCause
   = PostAlways
   | KeylessFallback { method: HttpMethod }
-  | ClassifierAnchorResolutionFailed
+
+type EffectClassificationFailure
+  = ClassifierAnchorResolutionFailed
+
+type EffectClassificationResult
+  = EffectClassified { shape: EffectShape }
+  | EffectClassificationFailed { failure: EffectClassificationFailure }
 
 // 🟢 TERMINAL. These are the durable structural places an idempotency
 // key can come from in the current effect algebra: path, one field,
@@ -511,6 +517,10 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
         transport_effect_shape(op)
     else
       transport_effect_shape(op)
+}
+
+fn classify_operation_effect(op: Operation) -> EffectClassificationResult {
+  EffectClassified { shape: operation_effect_shape(op) }
 }
 
 fn transport_effect_shape(op: Operation) -> EffectShape {
