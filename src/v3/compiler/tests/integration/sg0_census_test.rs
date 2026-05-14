@@ -702,6 +702,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #8 (`sg0_non_test_zero`): host receipt proving the combined
+    // `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS`
+    // state-check executes through `.dag` `TestRunner` claims while the live
+    // SG-0 residual counts remain nonzero.
+    "src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs",
     // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
     // non-canonical `.dag` residual-census receipt until the canonical
     // PB-Runtime reflection consumer lands. P5 test-subset deferral:
@@ -864,6 +869,14 @@ const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
+
+pub(crate) fn expected_hand_authored_non_test_count() -> usize {
+    EXPECTED_HAND_AUTHORED_NON_TEST.len()
+}
+
+pub(crate) fn expected_hand_authored_fragments_count() -> usize {
+    EXPECTED_HAND_AUTHORED_FRAGMENTS.len()
+}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum TestsAsDataMigrationClass {
