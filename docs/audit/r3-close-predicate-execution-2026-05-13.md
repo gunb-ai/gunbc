@@ -29,7 +29,7 @@ Overall verdict remains **PENDING** until (a) every non-PASSING row transitions 
 
 ## Ledger-snapshot anchor (boundary discipline, INVARIANTS P2)
 
-This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 only, after PR #3060 landed the L5 corpus runner scaffold and this PR records §1.8 gate #15 as `CONSUMER_LANDED` rather than PASSING. If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
+This index was originally derived from `docs/r3-program-plan.md` §1.8 at commit `c055495c8` (the base commit of the Phase 2 PR). The 2026-05-14 follow-up re-derives row #15 only, after PR #3060 landed the L5 corpus runner scaffold and this PR records §1.8 gate #15 as `CONSUMER_LANDED` rather than PASSING. The gate #10 follow-up re-derives row #10 after the L7 algebra matrix became a normal non-ignored ratchet and §1.8 row #10 moved to `CONSUMER_LANDED + PASSING`. If a future PR edits §1.8, that PR must re-derive any affected rows in the same change per the row-count parity check below.
 
 ## Row-count parity (ledger source of truth)
 
@@ -43,7 +43,7 @@ At the ledger-snapshot anchor commit `c055495c8`, that count is **106** (skeleto
 
 ## Status-bucket distribution after row #15 re-derivation
 
-Derived from the `c055495c8` §1.8 status snapshot plus the single 2026-05-14 row #15 delta (`DECLARED` → `CONSUMER_LANDED`) recorded in this follow-up:
+Derived from the `c055495c8` §1.8 status snapshot plus 2026-05-14 deltas for row #15 (`DECLARED` → `CONSUMER_LANDED`) and row #10 (`CONSUMER_LANDED` → `CONSUMER_LANDED + PASSING`) recorded in follow-ups:
 
 | Bucket | Count | Predicate-execution requirement (§8) |
 |---|---:|---|
@@ -73,7 +73,7 @@ Close-time canonical predicate harness for `PASSING` / `SATISFIED-BY-CONSTRUCTIO
 | 7 | `regen_lens_dot_rs_retired` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #7 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 8 | `sg0_non_test_zero` | state-check | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #8 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 9 | `l4_emit_eval_match` | structural-fold | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #9 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
-| 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `CONSUMER_LANDED` (consumer-side surface landed; full §Acceptance not yet PASSING) per §1.8 row #10 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
+| 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (normal non-ignored ratchet `r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts` under `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs`) or narrow command `cargo test -p v3-compiler --test integration r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts`; cross-ref `docs/r3-program-plan.md` §1.8 row #10. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep. The ratchet covers the current `AlgebraicLawKind` executable surface (`Associativity`, `Commutativity`, `Identity`); non-enum laws remain substrate §P1 extensions. |
 | 11 | `tc1_eta_equivalence_executable` | DimensionReport-typed | **N/A_NOT_PASSING** | Predicate not yet load-bearing: §1.8 Status `DECLARED` (no PASSING claim at HEAD) per §1.8 row #11 Notes. | NOT_APPLICABLE_AT_HEAD — §8 predicate-execution requirement attaches only to PASSING gates. |
 | 12 | `tc2_church_rosser_executable` | DimensionReport-typed | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc2_church_rosser_executable` and sibling ratchets cited under §1.8 row #12 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #12. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |
 | 13 | `tc3_pattern_a_second_mover_executable` | DimensionReport-typed | **HARNESS_NAMED** | `cargo test --workspace --exclude gunbc-dag-tests` (HEAD ratchet `tc3_pattern_a_second_mover_executable` and sibling ratchets cited under §1.8 row #13 Notes); cross-ref `docs/r3-structure.md` §Acceptance gate #13. | Harness named; execution receipt is produced by the §10 close-ceremony 24h workspace re-sweep, not by this Phase 2 PR. See §Workspace batch receipt for the partial fmt + clippy receipts captured during Phase 2 authoring. |

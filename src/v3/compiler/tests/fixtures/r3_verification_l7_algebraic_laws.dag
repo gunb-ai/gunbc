@@ -15,8 +15,9 @@
 // lattice units vs free-monoid empty (codex review / PR #2394). Additive vs multiplicative identity
 // is expressed **only** by wiring distinct binary `Int` lenses (`+` vs `*`). Passing-matrix rows
 // below intentionally exclude obligations whose tags imply non-`Int` inhabitants or non-additive /
-// non-multiplicative operations until faithful witnesses exist. This fixture does **not** claim
-// ROADMAP / gate `l7_algebraic_laws_witnessed` exhaustive per-(algebra, inhabitant, law) closure.
+// non-multiplicative operations until faithful witnesses exist. Gate #10 is load-bearing for the
+// current `AlgebraicLawKind` executable surface; non-enum laws such as distributivity / absorption
+// remain substrate §P1 extensions rather than fixture-local encodings.
 
 module std.r3_verification_l7_algebraic_laws
 
@@ -56,9 +57,8 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
 // Boolean-algebra / free-monoid identity placeholders likewise stay **out** of the passing matrix.
 //
 // §1.8 gate #10 canonical `TestClaim.name` / declaration id (`docs/r3-program-plan.md`): bounded
-// `AlgebraicLaw::Associativity` on honest `Int` `+` (Semigroup slice). **PASSING** on the §Acceptance
-// ledger remains exhaustive per-(algebra, inhabitant, law) coverage per `r3-structure.md`; this row
-// is the executable consumer hook matching gate id `l7_algebraic_laws_witnessed`.
+// `AlgebraicLaw::Associativity` on honest `Int` `+` (Semigroup lead row). The suite below is the
+// load-bearing matrix receipt for every currently executable `AlgebraicLawKind` row.
 data l7_algebraic_laws_witnessed: TestClaim = {
   name: "l7_algebraic_laws_witnessed",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",

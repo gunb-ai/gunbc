@@ -69,12 +69,12 @@ Current substrate and runner state:
 
 - `AlgebraicLawKind` has `Associativity`, `Commutativity`, and `Identity`.
 - `TestPredicate::AlgebraicLaw` accepts `law` plus `lens_ref`.
-- The runner only wires `Associativity`; `Commutativity` and `Identity` return `NotYetImplemented`.
+- The runner wires `Associativity`, `Commutativity`, and `Identity` through bounded operational witness tables / identity-candidate search.
 - `dsl/std/algebra.dag` also names distributivity for semiring/ring/lattice-like structures, but there is no `Distributivity` variant yet.
 
-The first L7 seed should therefore use `Associativity`, the only runner-wired law today. A reasonable first witness candidate is the existing lens-composition associativity surface (`src/v3/lenses/lens_composition_associative_witness.dag`) or an equivalent fixture-local lens-composition operation.
+The L7 matrix fixture uses the currently executable law surface and honest additive/multiplicative `Int` witnesses. It remains intentionally separate from non-enum laws such as distributivity, which require substrate §P1 expansion rather than fixture-local encodings.
 
-This is a seed only. It demonstrates the L7 harness path; it does not prove algebra coverage and does not close `l7_algebraic_laws_witnessed`.
+The normal `r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts` ratchet is the gate #10 receipt for the current `AlgebraicLawKind` surface.
 
 ## Algebra Coverage Audit
 

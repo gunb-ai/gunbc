@@ -95,11 +95,9 @@ Recommended sequencing:
 
 ## Dispatch Readiness
 
-Option B: exhaustive L7 coverage is not fixture-dispatchable as one complete
-implementation slice today. The dispatchable next unit is a bounded
-per-inhabitant fixture extension for enum-backed `Associativity`,
-`Commutativity`, and `Identity` over live kernel/declaration inhabitants, with
-`Identity` still expected to return `NotYetImplemented`. The complete
-`l7_algebraic_laws_witnessed` gate remains gated on P1 law-surface expansion
-for distributivity, absorption, complement, inverse, annihilation, order, and
-approximate-field semantics.
+Option B is superseded for gate #10: the bounded matrix for enum-backed
+`Associativity`, `Commutativity`, and `Identity` over honest additive /
+multiplicative `Int` witnesses is now the `l7_algebraic_laws_witnessed`
+receipt. Future distributivity, absorption, complement, inverse, annihilation,
+order, and approximate-field semantics remain P1 law-surface expansion work,
+not fixture-local overloads of the existing enum variants.

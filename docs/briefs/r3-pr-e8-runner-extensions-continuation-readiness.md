@@ -21,8 +21,9 @@ Current main has one E8 implementation path already beyond the original bundle:
   `src/v3/compiler/src/test_runner.rs` through bounded operational witness
   tables. They are transitional runner checks, not substrate law-fact
   evaluation.
-- `AlgebraicLaw::Identity` remains fail-closed as `NotYetImplemented` because no
-  lens identity-element edge is exposed on the algebra inhabitance.
+- `AlgebraicLaw::Identity` is wired through the bounded identity-candidate
+  search in `src/v3/compiler/src/test_runner.rs`; it is still a transitional
+  runner witness rather than substrate law-fact evaluation.
 - `AlgebraicLawKind::Distributivity` is still absent from
   `src/v3/std/verification.dag`; any distributivity work remains a P1
   substrate-fact-introduction item, not an E8 runner workaround.

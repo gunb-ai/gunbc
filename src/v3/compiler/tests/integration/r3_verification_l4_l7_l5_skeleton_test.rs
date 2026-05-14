@@ -8,10 +8,10 @@
 //! `Commutativity`, and `Identity` operational witnesses on **honest additive vs multiplicative `Int`
 //! lenses** (`+` vs `*`). Canonical §1.8 gate **#10** `l7_algebraic_laws_witnessed` maps to the matrix
 //! lead row (`AlgebraicLaw::Associativity` on `Int` `+`). The L7 matrix suite locks claims whose **Int
-//! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); lattice /
-//! Boolean / free-monoid obligations and lattice meet/join law tags stay **out** of the passing
-//! matrix until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see
-//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Gate **#15**
+//! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); the
+//! normal (non-ignored) matrix ratchet is the §1.8 #10 receipt for the current `AlgebraicLawKind`
+//! executable surface. Lattice / Boolean / free-monoid obligations and non-enum laws remain
+//! substrate §P1 extensions, not fixture-local overclaims. Gate **#15**
 //! `l5_cross_target_consistency` (Rust / Python / Go `ForAllTargets` corpus) lives in
 //! `tests/boundary/l5_cross_target_consistency.rs` (via `tests/integration.rs`).
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
@@ -249,13 +249,12 @@ fn l7_algebraic_laws_witnessed_passes_bounded_associativity_witness() {
     });
 }
 
-/// Bounded-runner receipt for [`L7_MATRIX_SUITE`] only — **not** exhaustive §Acceptance / ROADMAP coverage.
+/// §1.8 gate #10 receipt for the current executable [`AlgebraicLawKind`] surface.
 ///
 /// One [`TestRunner::run_suite`] covers every [`L7_MATRIX_PASS_CLAIMS`] row (including semigroup
 /// associativity and commutative-monoid commutativity) plus embedded-source `a + b` / `a * b`
 /// checks — avoids duplicate full-suite passes that tripped the Phase-0 2s ratchet.
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     // Algebra-faithful Int lenses: additive obligations use `+`; multiplicative `Identity` uses `*`.
