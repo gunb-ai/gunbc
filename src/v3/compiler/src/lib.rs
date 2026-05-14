@@ -4505,7 +4505,7 @@ pub mod lens_cost {
 
 /// Symbolic-cost lens (Lane 2 Stage 2d / DB-7). Authority lives in
 /// `src/v3/lenses/cost.dag`; the Rust projection is auto-emitted
-/// into `src/v3/compiler/src/lens_cost_symbolic_generated.rs` and
+/// into `src/v3/compiler/src/cost_symbolic_lens_generated.rs` and
 /// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
 ///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
@@ -4534,7 +4534,7 @@ pub mod lens_cost_symbolic {
         };
         use crate::Witness;
 
-        include!("lens_cost_symbolic_generated.rs");
+        include!("cost_symbolic_lens_generated.rs");
     }
 
     pub use generated::{
