@@ -5039,14 +5039,12 @@ impl<'a> TestRunner<'a> {
         // not inside `GeneratedFromDag`.
         // Payload carries `manifest_entries: List<GeneratedManifestEntry>`
         // (`PendingFact { output_path }` | `ResolvedFact { output_path,
-        // dag_source, source_hash }`). Runner-side today: extract `output_path`
-        // from each arm; require the manifest `output_path` set to equal
-        // `GENERATED_FILES` / `build.rs::REGEN_OUTPUTS` exactly (set equality
-        // implies membership; no dupes / omissions — every REGEN survivor is
-        // attached); then require the SG-0 `expected_hand_authored_test` census is empty.
-        // The 3-way byte-equality assertion on `ResolvedFact` lands in the
-        // follow-up Evaluator-Mgr-owned runtime PR; both arms are accepted
-        // structurally here without consuming resolution data.
+        // dag_source, source_hash }`). The runner consumes the shared
+        // `output_path` field from both arms, and validates that every
+        // `ResolvedFact` also carries a real declaration edge plus a non-empty
+        // hash token. The later byte-regeneration check can then treat
+        // `ResolvedFact` as already shape-materialized, not as a PendingFact
+        // with inert extra payload.
         let [authority, FieldValue::List(manifest_entries)] = payload else {
             return ClaimResult::Fail(
                 "GeneratedFromDag payload should be (DeclarationRef, List<GeneratedManifestEntry>)"
@@ -5098,6 +5096,48 @@ impl<'a> TestRunner<'a> {
                     return ClaimResult::Fail(format!(
                         "GeneratedFromDag GeneratedManifestEntry `{label}` payload missing String `output_path` slot: {variant_payload:?}"
                     ));
+                }
+            }
+            if label == "ResolvedFact" {
+                let (dag_source, source_hash) = match variant_payload.as_slice() {
+                    [FieldValue::Record(fields)] => (
+                        field(fields, "dag_source"),
+                        field(fields, "source_hash"),
+                    ),
+                    [_, dag_source, source_hash] => (Some(dag_source), Some(source_hash)),
+                    _ => (None, None),
+                };
+                match dag_source {
+                    Some(FieldValue::Reference(_)) => {}
+                    Some(other) => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact `dag_source` must be a DeclarationRef edge, got {other:?}"
+                        ));
+                    }
+                    None => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact payload missing `dag_source` DeclarationRef: {variant_payload:?}"
+                        ));
+                    }
+                }
+                match source_hash {
+                    Some(FieldValue::Literal(LiteralBits::String(hash))) if !hash.is_empty() => {}
+                    Some(FieldValue::Literal(LiteralBits::String(_))) => {
+                        return ClaimResult::Fail(
+                            "GeneratedFromDag ResolvedFact `source_hash` must be non-empty"
+                                .to_string(),
+                        );
+                    }
+                    Some(other) => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact `source_hash` must be a String literal, got {other:?}"
+                        ));
+                    }
+                    None => {
+                        return ClaimResult::Fail(format!(
+                            "GeneratedFromDag ResolvedFact payload missing `source_hash`: {variant_payload:?}"
+                        ));
+                    }
                 }
             }
         }
