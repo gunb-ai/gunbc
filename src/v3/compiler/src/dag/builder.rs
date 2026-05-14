@@ -1193,8 +1193,14 @@ mod tests {
     #[test]
     fn push_transform_resolved_field_project_seeds_output_from_label_authority() {
         let mut dag = Dag::new();
-        let int_ty = dag.int_decl().expect("bootstrap Int");
-        let bool_ty = dag.bool_decl().expect("bootstrap Bool");
+        let int_ty = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
+        let bool_ty = dag
+            .declaration_by_name("Bool")
+            .expect("bootstrap Bool declaration")
+            .id;
         let point_ty = push_test_declaration(
             &mut dag,
             Some("Point"),
@@ -1231,7 +1237,10 @@ mod tests {
     #[test]
     fn push_transform_unresolved_field_project_does_not_seed_output_shape() {
         let mut dag = Dag::new();
-        let int_ty = dag.int_decl().expect("bootstrap Int");
+        let int_ty = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
         let point_ty = push_test_declaration(
             &mut dag,
             Some("Point"),
