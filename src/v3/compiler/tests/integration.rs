@@ -167,8 +167,6 @@ mod method_template_contract_test;
 mod method_template_projection_emit_shim_coherence_test;
 #[path = "integration/no_coercion_cost_dimension_ratchet_test.rs"]
 mod no_coercion_cost_dimension_ratchet_test;
-#[path = "integration/p0_std_render_repeat_string_test.rs"]
-mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pb_method_template_projection_test.rs"]
@@ -263,6 +261,8 @@ mod value_body_substrate_mirror_isomorphism_test;
 mod wiring_scanner_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
+#[path = "integration/workflow_substrate_carriers_test.rs"]
+mod workflow_substrate_carriers_test;
 
 mod t_demo_fixture_test {
     //! **Layer:** integration

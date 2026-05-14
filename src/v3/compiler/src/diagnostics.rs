@@ -793,8 +793,8 @@ pub(crate) fn witness_correction_for_decl(
 /// `bootstrap_authority` set declared by
 /// `src/v3/std/bootstrap_authority.dag`. Held internally as a
 /// `&'static str` because the only minters are the bootstrap loader
-/// (`bootstrap_regen_fresh::parse_fixture`) and bootstrap kernel-patch
-/// helpers (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`),
+/// (`bootstrap_regen_fresh::parse_fixture`) and kernel `Bool` Lane-1e-2b
+/// inhabitance wiring (`crate::lower::wire_kernel_bool_boolean_algebra_inhabits`),
 /// both of which iterate the `&'static`-keyed authority arrays
 /// produced by `build.rs` (`STAGED_FILES`/`V3_SPECS`/`COMPILER_FILES`/
 /// `EXTDEPS_FILES`) — derivations of the same substrate

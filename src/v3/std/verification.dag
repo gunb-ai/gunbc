@@ -451,6 +451,9 @@ type TestPredicate
   // joint preconditions in `docs/briefs/r3-pb-t-fixedpoint-worker.md` §"Dispatch
   // preconditions". Do not rename or shadow the R1 claim; do not extend this
   // enum from PB without Substrate ack (see `INVARIANTS.md` P1).
+  // 2026-05-13 joint-precondition coordination audit:
+  // `docs/audit/r3-gap3-fixed-point-precondition-coordination-2026-05-13.md` —
+  // all four joint preconditions non-green at HEAD; strong suite stays unauthored.
   | FixedPointConverges {
       compile_target: Path
       expected: SnapshotRef
