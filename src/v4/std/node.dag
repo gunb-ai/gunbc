@@ -185,7 +185,12 @@ type NodeKind
 // is never addressed by a readable string. `Positional.index` gives a
 // positional child a representation-independent identity (CULTURE §8 —
 // the Node structure is canonical and deterministic, not order-dependent
-// on incidental list storage).
+// on incidental list storage). The index carrier is the kernel `Int`,
+// but in a well-formed node it admits no illegal inhabitant:
+// `node_well_formed` requires positional indices to be exactly 0..n-1 in
+// order, so negative / duplicate / gapped indices — representable in the
+// `Int` — never pass the checked invariant (STRUCTURE.md A3: a checked
+// structural predicate, not type-level unrepresentability).
 type EdgeLabel
   = Named { name: Symbol }
   | Positional { index: Int }
@@ -218,8 +223,9 @@ type Node {
 //
 // A connective FIXES its edge discipline. Conj/Disj address children by
 // name; Arrow/Cardinality/Instantiation by position; `Atom` is terminal
-// and has no children. A Conj with a positional edge — or an Atom with
-// any edge — is malformed: `node_well_formed` rejects it. The illegal
+// and has no children. A Conj with a positional edge, an Atom with any
+// edge, or a positional connective whose indices are negative / gapped /
+// out of order is malformed: `node_well_formed` rejects it. The illegal
 // pairing is representable (one `children: List<Edge>` list, no per-
 // connective redesign) but it is never SILENTLY accepted — the checked
 // predicate below is the structural invariant consumers (parse /
@@ -243,35 +249,49 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
 }
 
 
-// Does one edge's label kind match the required discipline?
-// (`NoEdges` is checked at the list level — an edge can never satisfy it.)
-fn edge_conforms(e: Edge, d: EdgeDiscipline) -> Bool {
-  match d {
-    NoEdges => false
-    LabeledEdges => match e.label {
-      Named { name: _ } => true
-      Positional { index: _ } => false
-    }
-    PositionalEdges => match e.label {
-      Named { name: _ } => false
-      Positional { index: _ } => true
-    }
+// Is one edge addressed by name (`Named`) rather than by position?
+fn edge_is_named(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => true
+    Positional { index: _ } => false
   }
 }
 
+// Is `e` a positional edge sitting at its canonical index? `pos` is the
+// edge's 0-based position in the children list; a positional edge's
+// `index` MUST equal it. This single check rejects four illegal states
+// at once: a `Named` label on a positional connective, a NEGATIVE index,
+// a duplicate index, and a gap — so a node that passes has positional
+// children at exactly the indices 0..n-1, in order.
+fn edge_at_canonical_index(e: Edge, pos: Int) -> Bool {
+  match e.label {
+    Named { name: _ } => false
+    Positional { index: i } => i == pos
+  }
+}
 
-// Do all of a node's edges satisfy the discipline?
-//   NoEdges        → the children list must be empty
-//   Labeled/Positional → every edge's label kind must match
+fn all_edges_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_named(e: e)
+  })
+}
+
+fn positional_edges_canonical(children: List<Edge>) -> Bool {
+  fold(enumerate(children), init: true, f: fn(acc, pair) {
+    acc && edge_at_canonical_index(e: pair.second, pos: pair.first)
+  })
+}
+
+
+// Do all of a node's edges satisfy the connective's discipline?
+//   NoEdges          → the children list must be empty
+//   LabeledEdges     → every edge is addressed by name
+//   PositionalEdges  → the edges are exactly the indices 0..n-1, in order
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0
-    LabeledEdges => fold(children, init: true, f: fn(acc, e) {
-      acc && edge_conforms(e: e, d: d)
-    })
-    PositionalEdges => fold(children, init: true, f: fn(acc, e) {
-      acc && edge_conforms(e: e, d: d)
-    })
+    LabeledEdges => all_edges_named(children: children)
+    PositionalEdges => positional_edges_canonical(children: children)
   }
 }
 
