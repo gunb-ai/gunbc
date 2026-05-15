@@ -104,27 +104,17 @@ type TokenizeDiagnostic
 
 **Lane dependency**: PR #3077 §12 Q7 ratification; Director-tier per-stage variant authoring.
 
-### §4.3 No separate `TokenizeResult` sum-variant — proposed carrier extension for diagnostic coupling
+### §4.3 Tokenize output is `Result<List<Token>, TokenizeDiagnostic>` — NO `TokenizedSource` extension
 
-**Live state**: bare `List<Token>` has no natural diagnostic field. Per codex INLINE BLOCKING #3126 (analogous finding propagated): claiming "diagnostics coupled INTO List<Token>" without naming the substrate-extension shape would overstate live state. Tokenize output today returns `Result<Vec<Token>, Diagnostic>` (sum) per `tokenize_generated.rs:96`.
+> **Codex PR #3127 BLOCKING (sha d15e1f29) revision**: an earlier draft of this section proposed a `TokenizedSource { tokens, diagnostics }` extension parallel to PR #3126's earlier-draft `SurfaceModule { items, diagnostics }`. Both proposals are REJECTED for the same reason: tokenize and parse sit in the **fail-fast output domain**, not the structural-output domain. The cross-stage discriminator (re-stated in PR #3138's §4.3 reframe of the parse doc) places tokenize alongside PB-3 parse + PB-6 emit: a partial token list with a corrupt token in the middle is not a valid downstream input for parse, so the failure couples via `Result`, not into the structural carrier. No `TokenizedSource` carrier is being authored; §12 Q6 (TokenizedSource carrier shape) is resolved as "rejected — Result-sum per cross-stage discriminator".
 
-**Proposed substrate extension** (parallel to PR #3126 §4.3 SurfaceModule extension):
+**Live state matches**: `tokenize_generated.rs:96` already returns `pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic>`. The L2.5 ratifies this shape rather than replacing it.
 
-```
-// Proposed wrapper carrier for tokenize output (PROPOSED extension):
-type TokenizedSource {
-  tokens: List<Token>
-  diagnostics: List<TokenizeDiagnostic>
-}
-```
+Step 2 signature: `fn tokenize(source: String) -> Result<List<Token>, TokenizeDiagnostic>` — `List<Token>` is the Ok-branch payload, `TokenizeDiagnostic` (§4.2 substrate extension) is the Err-branch variant. This is the **single canonical boundary carrier** between PB-2 tokenize and PB-3 parse: `List<Token>` on the Ok branch, no parallel `TokenizedSource`.
 
-Where `TokenizedSource` is the typed-state output carrier with diagnostics coupled structurally. Step 2 worker brief includes this carrier authoring as part of pipeline-slot PR scope.
-
-Same pattern as PB-3 parse + PB-4 lower + PB-5 infer: output IS the typed-state carrier; diagnostics couple structurally — each requires its own carrier extension if not already live.
-
-Cross-stage consistency: tokenize / parse / lower / infer use structural diagnostic coupling (PROPOSED per-stage carrier extensions); emit uses Result sum (final-artifact output domain).
-
-Signature: `fn tokenize(source: String) -> TokenizedSource` (NOT bare List<Token>; NOT TokenizeResult sum-variant). Decision between `TokenizedSource` shape (proposed wrapper) vs alternative shapes (extend Token to carry per-token diagnostic / etc.) is operator/PM ratification at §12 Q6 (added per cursor BLOCKING PR #3127).
+**Cross-stage discriminator** (consistent with PR #3138 parse L2.5 §4.3):
+- **Result-sum** (PB-2 tokenize + PB-3 parse + PB-6 emit): fail-fast output domain — partial token/parse/emit output is not a valid intermediate.
+- **Typed-state-with-coupled-diagnostics** (PB-4 lower + PB-5 infer): structural output domain — Unresolved ports / pre-inferred Dag are valid intermediates consumed downstream.
 
 ---
 
@@ -204,9 +194,9 @@ Tokenize is target-agnostic byte-scanning; Shape A/B disambiguation lives at emi
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-tokenize-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> TokenizedSource` declared in compiler.dag with `ExternalRealization` body. Output is the `TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }` wrapper carrier per §4.3 (proposed substrate extension; resolved per §12 Q6). Note: `tokenize.dag` exists as scanner-state-machine substrate, BUT residual hand-Rust includes (a) `regen_tokenize` codegen-driver logic, (b) SG-1a raw-text-extractor scaffold for `dag_keyword_set`/`dag_operators` per `tokenize.dag:16-22`, (c) character-predicate scaffold (`byte.is_ascii_digit()` etc. at `tokenize_generated.rs:15-22`) leaking through codegen. Step 4 carries scaffold-retirement scope, NOT just codegen-artifact retirement. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> Result<List<Token>, TokenizeDiagnostic>` declared in `src/v3/compiler/pipeline.dag` (per dsl/gunbc/compiler.dag:24 — internal pipeline lives in pipeline.dag, NOT generic compiler.dag) with `ExternalRealization` body. **Single canonical boundary carrier**: `List<Token>` on the Ok branch — no parallel `TokenizedSource` wrapper, no `diagnostics` field added to tokenize output (§4.3 Result-sum disposition; §12 Q6 resolved REJECTED). Matches live `tokenize_generated.rs:96` `Result<Vec<Token>, Diagnostic>` shape; only refinement is per-stage `TokenizeDiagnostic` variant typing (§4.2). Note: `tokenize.dag` exists as scanner-state-machine substrate, BUT residual hand-Rust includes (a) `regen_tokenize` codegen-driver logic (P5 deferral receipt: `docs/design-pure-bootstrap-zero.md:116` PB-Bootstrap-Process lane + ROADMAP.md:467 character-level row), (b) SG-1a raw-text-extractor scaffold for `dag_keyword_set`/`dag_operators` per `tokenize.dag:16-22`, (c) character-predicate scaffold (`byte.is_ascii_digit()` etc. at `tokenize_generated.rs:15-22`) leaking through codegen (P5 receipt: ROADMAP.md:467 phase-2 retype, gated on Class 5 Gap 3 + std.unicode bootstrap/load-set decision). Step 4 carries scaffold-retirement scope, NOT just codegen-artifact retirement. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | pipeline.dag refinement |
 | **Step 3: Verify substrate completeness** | Audit `src/v3/compiler/tokenize.dag` vs `tokenize_generated.rs` — confirm `.dag` is the complete authority (no hand-Rust logic in `tokenize_generated.rs` beyond mechanical codegen artifacts); identify any residual hand-Rust scaffolding that needs retirement. Per `feedback_paper_shrink_variants` discipline: verify tokenize.dag is NOT V1 template-relocation (hand-Rust scanner logic relocated to `.dag` text without substrate-substance growth). | R3 Substrate Mgr — worker dispatched against Director-authored Step 3 brief | tokenize.dag audit |
-| **Step 4: Retire residual hand-Rust + codegen-driver decoupling** | If Step 3 reveals residual hand-Rust scaffolding: retire it. If `regen_tokenize` codegen-driver retirement is needed in PB-2 scope (vs PB-Bootstrap-Process): coordinate the cross-lane handoff. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by whatever residual lands. | R3 Substrate Mgr + coordination with PB-Bootstrap-Process lane | residual hand-Rust deletion |
+| **Step 4: Retire residual hand-Rust + codegen-driver decoupling** | If Step 3 reveals residual hand-Rust scaffolding: retire it. `regen_tokenize` codegen-driver retirement is **NOT** in PB-2 scope — it routes to the PB-Bootstrap-Process lane at `docs/design-pure-bootstrap-zero.md:116` (author `bootstrap.dag` + generated trampoline; sized M; verification gates per `docs/design-pure-bootstrap-zero.md:118-123`). Phase-2 char-class retype (`Char` / `List<Char>` / `CharClass`) routes to ROADMAP.md:467 ("Character-level under-consumption in tokenize + syntax authorities"), gated on **Class 5 Gap 3** (top-level `ValueBody` boundary at ROADMAP.md:416) plus the std.unicode bootstrap/load-set decision. Overall non-test census reaches 0 per ROADMAP.md:53 T-PB-A. PB-2 Step 4 retires only what closes in-lane; the named cross-lane receipts above are the P5 deferral. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by whatever residual lands. | R3 Substrate Mgr + coordination with PB-Bootstrap-Process lane | residual hand-Rust deletion |
 
 **Critical**: PB-2's Step 3 is VERIFY not AUTHOR (substrate already exists). PB-2's Step 4 is HANDOFF/RETIRE not PORT (no porting needed beyond what's already in tokenize.dag).
 
@@ -278,17 +268,13 @@ PB-3 parse's input is List<Token> from tokenize. **Does PB-2 tokenize migration 
 
 **Director-recommend: NO bidirectional blocking** — Token carrier shape is stable across both migrations. Same independence pattern as PB-4 lower vs PB-3 parse per PR #3077 §12 Q6 + PB-5 infer vs PB-4 lower per PR #3085 §12 Q6.
 
-### Q6: TokenizedSource carrier shape (NEW per cursor BLOCKING PR #3127)
+### Q6: TokenizedSource carrier shape — RESOLVED REJECTED (codex PR #3127 BLOCKING)
 
-Per §4.3 + Step 2 row: tokenize output is the PROPOSED `TokenizedSource` wrapper carrier (extends current `Result<Vec<Token>, Diagnostic>` to typed-state structural coupling). Per cursor BLOCKING #3127: the carrier shape needs explicit operator/PM ratification.
+**Disposition**: REJECTED. No `TokenizedSource` carrier is being authored.
 
-Two options:
+**Why**: this Q was opened on the (incorrect) premise that tokenize, like PB-4 lower / PB-5 infer, should couple diagnostics structurally into its output carrier. The cross-stage discriminator (§4.3, mirrored in PR #3138 parse-L2.5 §4.3) classifies tokenize alongside PB-3 parse + PB-6 emit in the **fail-fast output domain**: a partial token list with a corrupt token in the middle is not a valid intermediate for parse, so the failure couples via `Result`, not into the structural carrier. Live shape at `tokenize_generated.rs:96` already matches this disposition (`Result<Vec<Token>, Diagnostic>`); the L2.5 ratifies the live shape rather than proposing an extension.
 
-**Option (a) — Wrapper record carrier**: `type TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }`. Simple structural coupling; mirrors PB-3 parse's proposed SurfaceModule extension shape (per PR #3126 §4.3).
-
-**Option (b) — Per-Token diagnostic coupling**: extend Token itself with optional `error: Option<TokenizeDiagnostic>` field. Diagnostics attach to specific tokens rather than a separate list. Cons: every Token now has Option field; downstream consumers must handle.
-
-**Director-recommend: (a) wrapper record** for parallelism with PB-3 SurfaceModule extension + simpler downstream consumer shape. Operator/PM ratification.
+**Step 2 boundary carrier** is therefore unique: `Result<List<Token>, TokenizeDiagnostic>`, with `List<Token>` on the Ok branch and no parallel `TokenizedSource`. No PM/operator ratification is needed beyond confirming the discriminator, which is also load-bearing in PR #3138.
 
 ---
 
@@ -359,8 +345,8 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 
 **Memory disciplines applied**:
 - `feedback_lenses_not_passes` (tokenize = substrate-driven byte fold, NOT decision engine)
-- `feedback_fail_closed_discipline` C-8 (TokenizeDiagnostic coupled INTO output)
-- `feedback_state_space_vs_behavioral_invariants` (typed-state List<Token> output)
+- `feedback_fail_closed_discipline` C-8 (tokenize returns `Result<List<Token>, TokenizeDiagnostic>` — fail-closed Result-sum like parse + emit; the Err branch is the only carrier for diagnostics, no structural coupling into `List<Token>`)
+- `feedback_state_space_vs_behavioral_invariants` (tokenize output is `Result<List<Token>, TokenizeDiagnostic>` — the type rules out partial-tokenize states by construction; `List<Token>` itself carries no diagnostic field per §4.3)
 - `feedback_target_agnostic_ir` (tokenize output carries no target-specific facts)
 - `feedback_paper_shrink_variants` (Step 3 audit explicitly checks substrate vs paper-shrink)
 - `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id` (Gap-tier anchors)
@@ -368,7 +354,7 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 - `feedback_grep_carrier_semantic_before_ratification` (4-axis grep applied at authoring time)
 
 **Surfaces awaiting**:
-- Operator/PM ratification on §12 Q1–Q6
+- Operator/PM ratification on §12 Q1–Q5 (Q6 resolved REJECTED in-doc per codex PR #3127 BLOCKING — no ratification needed)
 - PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - Coordination with PB-Bootstrap-Process lane for codegen-driver retirement per Q1
