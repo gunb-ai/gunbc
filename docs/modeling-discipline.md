@@ -11,7 +11,7 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Six Modeling Practices
+## Seven Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -26,6 +26,7 @@ Mapping:
 - Practice 4 (Coproduct dissolution) — implements **P1: Modeling Faithfulness**
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
+- Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -108,7 +109,7 @@ Every enum with N ≥ 2 variants must be classified as one of:
 - **🔴 RED (dissolvable-now)** — richer source exists and extraction
   is cheap. Do it immediately, before the next consumer is added.
 
-**Four dissolution patterns to try in order** before classifying as
+**Five dissolution patterns to try in order** before classifying as
 terminal:
 
 1. **Fact placement.** Variants trace to different consumers or DAG
