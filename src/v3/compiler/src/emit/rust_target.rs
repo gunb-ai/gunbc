@@ -4304,6 +4304,10 @@ impl<'a> Ctx<'a> {
                 &[("name", qualified_name), ("binding", rendered_binding)],
             ));
         }
+        // `ViolatesSubject::AtBehavior` is a Rust tuple variant (gate #104 / `dimensions.dag`
+        // mirrors `ViolatesSubject`); without this arm, emit renders named-field `_0:` patterns for
+        // the single-payload disj stub. Same dissolution trigger as `Lookup`/`Hit` above: positional
+        // vs struct payloads are not modeled structurally on the Disj emission surface yet.
         let is_violates_subject_at_behavior = field_name == "_0"
             && matches!(
                 qualified_name.split("::").collect::<Vec<_>>().as_slice(),
