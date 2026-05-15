@@ -77,9 +77,10 @@ import v4.std.node { Node }
 // land — the growth mechanism of `Connective`/`Behavior`.
 //
 // Every coproduct below carries the full Practice-4 🟢/🟡/🔴
-// classification + 4-pattern ledger (modeling-discipline.md §4 —
-// operator-ratified binding 2026-05-15). The `Diagnostic` record is a
-// Conj, not a coproduct, so no ledger applies to it.
+// classification + the 5-pattern dissolution ledger (modeling-
+// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
+// enumerates FIVE patterns, the fifth being Parameterized-family). The
+// `Diagnostic` record is a Conj, not a coproduct, so no ledger applies.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ import v4.std.node { Node }
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: a reason is consumed UNIFORMLY — every
 //      Diagnostic renderer and every diagnostic-exhaustiveness TestClaim
 //      branches over the whole reason set; it is not a per-consumer fact
@@ -126,6 +127,11 @@ import v4.std.node { Node }
 //   4. Dimensional — FAILS: a Diagnostic fires for EXACTLY ONE reason;
 //      the variants are mutually-exclusive alternatives, never
 //      simultaneous coordinates of one value.
+//   5. Parameterized family — FAILS: the variants are not `F<X>` for X
+//      over a separately-declared set; `EdgeLabelKindMismatch` and
+//      `DuplicateEdgeName` are two distinct structural-failure kinds
+//      with no shared parameterized shape — no underlying set this
+//      enum is an enumerated copy of (not a Practice-7 projection).
 // Terminal: an irreducible closed classifier of structural-failure
 // kinds — the std/node.dag-`Connective` pattern (closed; growth = a
 // ratified diff to this declaration).
@@ -144,15 +150,43 @@ type NamedReason
 // types or the kernel-ambient `Int` —
 //   - PortLocus / FileLocus carry an opaque `Symbol` identity (K-1 — a
 //     port name / file path is an identifier, never a readable `String`
-//     the kernel can branch on).
-//   - NodeLocus carries the offending `Node` itself.
-//   - SpanLocus carries a half-open `[start, end)` offset pair over the
-//     kernel-ambient `Int` — the minimal source-range representation,
-//     needing no source-text substrate (none exists at T-3).
+//     the kernel can branch on). An opaque identity admits no illegal
+//     sub-state.
+//   - NodeLocus carries the offending `Node` itself. `Node` well-
+//     formedness is std/node.dag's `node_well_formed` concern, not a
+//     Locus sub-state.
+//   - SpanLocus carries a half-open `[start, end)` source-offset pair.
+//     SCAFFOLD — this is the YELLOW driver (see ledger). With only the
+//     kernel-ambient `Int` available at T-3, `{ start: Int, end: Int }`
+//     STRUCTURALLY ADMITS illegal states — a negative offset, or
+//     `start > end` — which modeling-discipline.md §2 (illegal states
+//     unrepresentable) forbids; no bounded-offset substrate exists yet
+//     to exclude them. It is therefore a TRACKED scaffold, declared
+//     with the three bridge properties:
+//       (a) scaffold doc — THIS note; the carrier is provisional, not
+//           the terminal span shape.
+//       (b) bounds on use — a producer MUST construct only a valid
+//           half-open span (`0 <= start <= end`). Until the substrate
+//           enforces it the invariant is producer-side; a SpanLocus
+//           violating it is a producer bug, not a legal value.
+//       (c) dissolution trigger — when std/cardinality.dag's refinement
+//           substrate lands (its own T-3 entry — cardinality refinement
+//           + bounded iteration), `start`/`end` become refined non-
+//           negative offsets with `start <= end` type-enforced, and
+//           this scaffold dissolves.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The 4-way
+// SUM is itself terminal (port/node/file/span are irreducible
+// granularity alternatives — see patterns below); what makes the
+// coproduct YELLOW rather than GREEN is the SpanLocus PAYLOAD — a richer
+// source for it (a refined bounded-offset pair) exists, but its
+// substrate is not ready (§2 note above).
+//   Named trigger: std/cardinality.dag's refinement substrate lands ⇒
+//   SpanLocus's `{ start, end }` refine to non-negative, `start <= end`
+//   offsets; the coproduct then reclassifies 🟢 GREEN.
+// Five patterns attempted on the SUM (all FAIL to dissolve it — the sum
+// is genuinely terminal; only the SpanLocus payload is scaffold):
 //   1. Fact placement — FAILS: the locus is consumed uniformly by the
 //      diagnostic renderer; it is not a per-consumer fact.
 //   2. Variant-is-data — FAILS: the four variants carry DIFFERENT
@@ -161,13 +195,15 @@ type NamedReason
 //      illegal combinations representable (a `NodeLocus` carrying a
 //      span) — the inverse of P2 (illegal states unrepresentable).
 //   3. Algebraic form — N/A: a source locus is not an algebra carrier;
-//      there is no richer std/ structure it traces to.
+//      there is no richer std/ structure the SUM traces to.
 //   4. Dimensional — FAILS: a Diagnostic points at EXACTLY ONE locus
 //      granularity — the variants are alternatives, not simultaneous
 //      coordinates (a fault is reported at the port OR node OR file OR
 //      span, the most specific the producer knows).
-// Terminal: an irreducible set of source-location granularities at the
-// diagnostic boundary.
+//   5. Parameterized family — FAILS: the four variants are not `F<X>`
+//      for X over a declared set; their payloads are structurally
+//      distinct (`Symbol` / `Node` / `Int` pair), not a mechanical copy
+//      of some enumerable set (not a Practice-7 projection).
 type Locus
   = PortLocus { port: Symbol }
   | NodeLocus { node: Node }
@@ -195,7 +231,7 @@ type Locus
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: consumed uniformly by the renderer that
 //      explains why no fix is offered; not a per-consumer fact.
 //   2. Variant-is-data — FAILS: the only "data" form is a `String`
@@ -207,6 +243,10 @@ type Locus
 //   4. Dimensional — FAILS: a "no fix" answers EXACTLY ONE why — the
 //      two root causes (can't-know / can't-see) are disjoint and the
 //      three cells mutually exclusive; never simultaneous coordinates.
+//   5. Parameterized family — FAILS: the three variants are not `F<X>`
+//      over a separately-declared set; they are an epistemic-boundary
+//      partition, not a mechanical copy of some enumerable set (not a
+//      Practice-7 projection).
 // Terminal: the exhaustive, irreducible partition of "why can't the fix
 // be mechanically derived" — every no-fix case answers structurally.
 type NoCorrectionReason
@@ -233,7 +273,7 @@ type NoCorrectionReason
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: every Diagnostic consumer that surfaces
 //      the fix handles BOTH arms (render the suggested `Node`, or render
 //      the no-fix reason); it is not a per-consumer fact.
@@ -247,6 +287,11 @@ type NoCorrectionReason
 //   4. Dimensional — FAILS: a Diagnostic either HAS a mechanically-
 //      derivable fix OR does not — disjoint alternatives, never
 //      simultaneous coordinates.
+//   5. Parameterized family — FAILS: the two arms are not `F<X>` over a
+//      declared set; `Suggested` and `Unavailable` carry structurally
+//      distinct payloads (a `Node`; a `NoCorrectionReason`), not a
+//      mechanical copy of an enumerable set (not a Practice-7
+//      projection).
 // Terminal: the irreducible two-case answer to the "show the correct
 // code" obligation — a typed sum, never `Option<Node>`.
 type Correction
