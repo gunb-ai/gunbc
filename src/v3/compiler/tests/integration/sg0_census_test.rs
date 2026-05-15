@@ -432,8 +432,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
-    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
-    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
@@ -701,6 +699,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the live lens-producer residual count while Row-4 / Item 4 retirement
     // preconditions remain open.
     "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
+    // PATH X / Brief 3 + ROADMAP `char_in_class` interpreter parity row (ASCII codegen vs evaluator).
+    "src/v3/compiler/tests/integration/r3_path_b_brief3_char_in_class_execution_test.rs",
     // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
     // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
@@ -785,6 +785,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
+    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     // §1.8 gate #88 (`lens_application_carrier_landed`): bootstrap field / arity locks for
     // `EnforcedApplication` + `IntrospectApplication` in `src/v3/std/lens_application.dag`.
     "src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs",

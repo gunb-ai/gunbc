@@ -5303,6 +5303,13 @@ mod regen_parse_tables_emit;
 #[path = "tokenize_generated.rs"]
 mod tokenize;
 
+/// Integration-parity hooks: `byte_matches` / `ScannerCharClass` for substrate-vs-codegen
+/// receipts (ROADMAP `char_in_class` interpreter parity row). **Unsupported** for external
+/// crates except the in-repo integration harness (`#[doc(hidden)]` per `enforced_lens_application`
+/// precedent above).
+#[doc(hidden)]
+pub use tokenize::{byte_matches, ScannerCharClass};
+
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
     render_parse_tables_generated_rs, RenderParseTablesGeneratedError,
