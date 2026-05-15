@@ -41,6 +41,29 @@ A ship-eligible v4 has every item PROVEN, NOT-IN-V4 (with named reason), or NOT-
 
 ---
 
+## §0.5 v4 scaffold-completeness status (2026-05-15) — AUTHORITATIVE
+
+This section is the single source of truth for v4-scaffold-vs-questionnaire status. Where scattered `R4-DEFERRED` / `SCAFFOLD-GAP` wording survives in §1-§17 from incremental ratification, **this section supersedes it** (same precedence as the §0 vocabulary + preamble applicability mapping).
+
+**Scaffold-completeness assessment**: every §1-§12 promise was cross-checked against the v4 file tree + `src/v4/TASKS.md`. Result: every promise has a v4 owner file + task. The gaps found were closed in-PR:
+
+| Gap (audit §) | Was | Now | Owner file | Task |
+|---|---|---|---|---|
+| User-defined-lens / `apply_lens` surface (§1.5, §6.2) | referenced everywhere, owned nowhere | scaffolded | `lens/application.dag` | T-23 |
+| CI-workflow-as-data (§3.2) | hand-authored `ci.yml`, no `.dag` authority (v3's gate-#98 gap) | scaffolded | `workflow/ci.dag` | T-24 |
+| Affected-set lens (§2.5.F) | only the interim shell bridge | scaffolded (early) | `lens/affected_set.dag` | T-21 |
+| Interpreter / `dag run` primary path (THESIS:225) | absent (only emit existed) | scaffolded | `compiler/05_eval.dag` | T-22 |
+
+**Lower-priority dispositions (resolved here, not hard gaps)**:
+- **§3.7d dry-run**: `NOT-PROMISED-as-separate-file`. Dry-run is emergent from `compiler/05_eval.dag` (eval without effects) + the lens framework — not a distinct scaffold file. Composes with `lens/affected_set.dag` ("given this diff, what re-executes").
+- **§6.2 audience-duality fixtures**: `fixture_integration_canonical` is the T-16 full-stack demo; `fixture_compiler_nerd_canonical` (structural-proof audience) is named in T-14's corpus scope. Covered; no separate scaffold needed.
+
+**Stale-wording note**: §1.5 falsification probe, §9 anti-pattern list, §10 close ceremony, §11 Q3, and the §13-§16 `(SCAFFOLD-GAP)` allocation headers retain pre-ratification `R4-DEFERRED` / `SCAFFOLD-GAP` phrasing. Each is RESOLVED per its inline `**Disposition**` line and/or this section. The labels are historical; the dispositions are authoritative. (Not rewritten line-by-line — that's the same incremental-edit-drift the operator flagged on the task count; this section is the consolidated truth instead.)
+
+**Verdict**: v4 scaffold PASSES the questionnaire's scaffold-completeness bar. Every promise has an owner + task; zero unresolved OPERATOR-DECISION-REQUIRED; the 4 gaps found are closed. What remains is *implementation* (the 28 XL tasks) under an already-complete substrate allocation — not missing structure.
+
+---
+
 ## §1. The dimension promises
 
 ### §1.1 Complexity

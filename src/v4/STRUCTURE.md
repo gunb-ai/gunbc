@@ -54,9 +54,11 @@ src/v4/
     03_normalize.dag     # ParseTree -> NormalizedTree (sugar dissolution)
     03_resolve.dag       # NormalizedTree -> ResolvedTree (symbol binding)
     04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
-    05_emit.dag          # InferredTree + TargetSpec -> TargetSource
+    05_emit.dag          # InferredTree + TargetSpec -> TargetSource (omni-emission projection)
+    05_eval.dag          # InferredTree + Inputs -> Value (THE PRIMARY execution path,
+                         # THESIS:225; sibling of emit — eval executes, emit projects)
 
-  lens/                  # dimensions (9 files, parallel after compiler)
+  lens/                  # dimensions (11 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -66,8 +68,10 @@ src/v4/
     synthesis.dag        # cross-algorithm complexity (C7; advisory via Report carrier)
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
+    affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
+    application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
 
-  workflow/              # recursive-flex — work-direction in .dag (6 files)
+  workflow/              # recursive-flex — work-direction in .dag (7 files)
     brief.dag            # typed Brief schema
     worker_output.dag    # WorkerOutput { dissolves: Set<HandResidual>, cited_anchor }
     doc_anchor.dag       # typed DocAnchor pointers into authority docs
@@ -75,6 +79,8 @@ src/v4/
     cycle.dag            # work cycle as data, lens-readable
     bootstrap.dag        # bootstrap orchestration AS DATA (seed-once → self-host
                          # → fixed-point); v2 interprets it; no build.rs/shell
+    ci.dag               # CI pipeline AS DATA; .github/workflows/ci.yml is derived
+                         # (THESIS:226 — adding a CI gate = editing this one file)
 
   bin/
     main.dag             # emits main.rs trampoline (0-floor compliant)
@@ -84,7 +90,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 53 .dag files + 3 docs + 5 .gitkeep = 61 files at scaffold time.**
+**Total: 57 .dag files + 3 docs + 5 .gitkeep = 65 files at scaffold time.**
 
 ## Anchor convention
 

@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-24 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+28 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -31,6 +31,15 @@ Phase 1.5 (test + bootstrap substrate — early, before compiler stages):
         content lands as the pipeline matures. T-15 consumes it for
         fixed-point validation. NOT a build.rs/shell (that = the v3
         regression door).
+  T-21  lens/affected_set.dag            [needs T-1, T-2, T-3]
+        Incremental re-exec frontier (operator: "wanted very early").
+        Structural authority that replaces scripts/detect-affected-
+        components.sh. Consumed by T-24 (ci) + eval (skip pure
+        unchanged subgraphs).
+  T-24  workflow/ci.dag                  [needs T-21, T-20]
+        CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
+        v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
+        job selection — the shell bridge dissolves once both land.
 
 Phase 2 (serial — pipeline stages):
   T-6   compiler/01_tokenize.dag         [needs T-3]
@@ -38,6 +47,10 @@ Phase 2 (serial — pipeline stages):
   T-8   compiler/03_normalize.dag + 03_resolve.dag   [needs T-7]
   T-9   compiler/04_infer.dag            [needs T-8, T-2, T-3]
   T-10  compiler/05_emit.dag + 00_compile.dag       [needs T-9, T-4]
+  T-22  compiler/05_eval.dag             [needs T-9]
+        The interpreter — THE PRIMARY execution path (THESIS:225).
+        Sibling of emit (same InferredTree input). workflow/bootstrap.dag
+        + TestClaim eval + lens dry-run all compose over it.
 
 Phase 3 (parallel — lens dimensions):
   T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)
@@ -48,6 +61,10 @@ Phase 3 (parallel — lens dimensions):
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
          discipline; STRUCTURAL not exhaustive-fixture per TESTING.md)
                                                     [needs T-3, T-4, T-12, T-13]
+  T-23  lens/application.dag  (apply_lens surface — opt-in depth + the ONLY
+         advisory→fail-closed bridge; load-bearing for §1.5 user-defined
+         dimensions + §6.2 audience duality + C7 Report→Diagnostic)
+                                                    [needs T-1, lens framework]
 
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
@@ -502,9 +519,77 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+### T-21: lens/affected_set.dag — incremental re-exec frontier
+
+**File**: `src/v4/lens/affected_set.dag` (operator-ratified 2026-05-15: "something i wanted to get working very early on")
+**Why early (Phase 1.5)**: load-bearing for incremental cross-run execution AND it is the structural replacement for `scripts/detect-affected-components.sh` (the interim shell bridge currently gating v2/v3/v4 CI selection).
+
+**Modeling decisions**:
+- `affected_set: (Dag, Diff) -> Witness<ReExecFrontier>` shape
+- Diff representation (file-set? node-set? structural-delta over the Dag?)
+- Purity-aware skipping: an unchanged pure subgraph is incrementally skippable; what makes a subgraph "unchanged" structurally?
+- Composition with `compiler/05_eval.dag` (skip) and `workflow/ci.dag` (job selection)
+
+**Scope**: L (large — load-bearing for incremental execution + CI dissolution)
+
+**Reference**: THESIS §205-210 free consequences (incremental cross-run) + v4-close-interrogation.md §2.5.F + memory: feedback_no_textual_enforcement_bridges
+
+---
+
+### T-22: compiler/05_eval.dag — the interpreter (PRIMARY execution path)
+
+**File**: `src/v4/compiler/05_eval.dag` (operator-raised 2026-05-15: "what about the interpreter")
+**Why load-bearing**: THESIS:225 — `dag run` is THE primary execution path. eval is not an afterthought to emit; it is the default. Sibling of `05_emit.dag` (same `InferredTree` input; eval executes, emit projects to target languages).
+
+**Modeling decisions**:
+- `eval: (InferredTree, Inputs) -> Result<Value, Diagnostic>` shape
+- Bounded-execution enforcement (INVARIANTS P4 — no unbounded loops; how does the evaluator structurally refuse non-termination?)
+- The shared substrate three consumers compose over: `workflow/bootstrap.dag` (interpreted, not compiled), TestClaim evaluation, lens dry-run
+- Concept-unification (THESIS:188): interpreter runtime = language spec = transport spec — eval reads the same `extdeps/languages/*.dag` carriers emit does
+
+**Scope**: XL (extra-large — THE primary execution path; bootstrap + tests + dry-run all depend on it)
+
+**Reference**: THESIS:225 + concept-unification THESIS:188 + STRUCTURE.md §"Bootstrap chain" (v2's eval seeds; v4's eval takes over)
+
+---
+
+### T-23: lens/application.dag — apply_lens surface (opt-in depth)
+
+**File**: `src/v4/lens/application.dag` (closes prior-audit BLOCKING GAP 1)
+**Why load-bearing**: `apply_lens(<lens>, Enforce { ... })` is referenced by `report.dag`, `synthesis.dag`, and the C7 advisory→blocking bridge — but had no substrate home until now. It is simultaneously: §1.5 user-defined-dimensions surface, §6.2 audience-duality opt-in-depth mechanism, and the ONLY advisory→fail-closed path.
+
+**Modeling decisions**:
+- `EnforcedApplication<Output, Budget>` vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: two separate carriers, NOT a sum — per r3-structure.md:40)
+- `SectionRef = DeclarationScope | NodeScope` (where a lens attaches)
+- The advisory→fail-closed conversion: how `Enforce { }` turns a lens's `Set<Report>` into fail-closed Diagnostics (the single explicit bridge per `std/report.dag` discipline)
+- Default policy: unannotated functions get synthesized Introspect-only (no implicit Enforce) per THESIS:307-321 opt-in depth
+
+**Scope**: L (large — connective tissue for three thesis claims)
+
+**Reference**: THESIS:95-101 + THESIS:307-321 + r3-structure.md:40 (v3 precedent) + std/report.dag discipline
+
+---
+
+### T-24: workflow/ci.dag — CI pipeline AS DATA
+
+**File**: `src/v4/workflow/ci.dag` (closes prior-audit BLOCKING GAP 2)
+**Why load-bearing**: THESIS:223-226 — "adding a CI gate = editing one .dag file." v3's gate #98 `ci_yml_hand_authority_dissolved` was an open R3 gap precisely because CI YAML stayed hand-authored. v4 must not reproduce it.
+
+**Modeling decisions**:
+- `CiPipeline { jobs, gates }` shape
+- `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
+- Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
+- The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
+
+**Scope**: L (large — closes the v3 hand-authored-CI gap; dissolves the shell bridge)
+
+**Reference**: THESIS:223-226 + v4-close-interrogation.md §3.2 + v3 gate #98 (the gap not to reproduce)
+
+---
+
 ## Summary
 
-24 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+28 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 
