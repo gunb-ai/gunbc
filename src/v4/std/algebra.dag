@@ -318,85 +318,60 @@ type Ordering
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Homomorphism<Source, Target> — THE single carrier (U1, header).
+// Homomorphism<C, Source, Target> — THE single carrier (U1, header).
 //
-// A structure-preserving map between two algebras OF THE SAME CLASS. A
-// homomorphism preserves exactly one algebra structure, so the carrier
-// is a closed coproduct with one variant per class; each variant pairs
-// the SAME class on both sides (`Magma<Source>` with `Magma<Target>`,
-// etc.). Cross-class pairs (e.g. a Ring source with a Lattice target)
-// are therefore STRUCTURALLY UNREPRESENTABLE — not pushed to a later
-// validator (INVARIANTS P2 + modeling-discipline.md Practice 2/6:
-// illegal states unrepresentable at the carrier boundary). This is the
-// only v2-expressible shape that enforces same-class: a single
-// shared-class discriminant would need dependent typing, and per-class
-// homomorphism *types* would violate U1's ONE-carrier mandate — so it
-// is ONE coproduct type, the single carrier, variants discriminating
-// the preserved class.
+// A structure-preserving map between two algebras OF THE SAME CLASS.
+// ONE generic record, not an enumerated mirror of the algebra set. `C`
+// is the algebra structure (Magma, Monoid, Ring, …); `source: C<Source>`
+// and `target: C<Target>` share the SAME `C`, so same-class is
+// structural and FREE — a cross-class pair (Ring source / Lattice
+// target) is unrepresentable because there is only one `C` (INVARIANTS
+// P2 + modeling-discipline.md Practice 2/6). Cost-of-change = 1: adding
+// an algebra adds its declaration and edits NOTHING here (the prior
+// 15-variant per-class enum was a parallel representation of the
+// algebra-structure set — cost-of-change 2, an ungrounded enumerated
+// mirror; it did not attach to its M9 parent "algebra structure". This
+// is the dissolution of that smell).
 //
-// Each variant carries both same-class structures (the preserved-
-// algebra fact flows forward intact — P2 facts-flow-forward, the
-// witness.dag "Holds CARRIES the proven fact" discipline) plus `map`,
-// the carrier-level function. "Structure-preserving" is the LAW each
-// variant asserts (every operation/constant preserved), verified by
-// the L7 algebra-law surface against the variant's source/target,
-// never a flag (feedback_no_annotations). Find (compiler/04_infer.dag
-// T-9) binds the variant; Realize/Measure/L7 read it.
+// `C` is a higher-kinded parameter — a type *constructor* (a
+// parameterized declaration) instantiated at `Source`/`Target`. This is
+// "just Node underlying" per node.dag A1: the `Instantiation` connective
+// + a name-reference Node resolved through the namespace. (Earlier work
+// wrongly dismissed this as needing dependent typing; higher-kinded is
+// strictly weaker. The v2-seed admissibility of `C<Source>` is verified
+// by the bootstrap gate below — if the frozen seed cannot resolve a
+// higher-kinded parameter this declaration would fail 0-diagnostics,
+// which is the honest empirical test, not an assumption.)
 //
-// FreeMonoid is deliberately ABSENT as a variant. A free monoid is a
-// monoid; its structure-preserving maps ARE monoid homomorphisms
-// (`HomMonoid` on the free monoid's carrier). Giving it its own
-// variant would force `Algebra<T>`-style parameter conflation —
-// `FreeMonoid<T>`'s `T` is the GENERATOR while every other class's
-// parameter is the CARRIER (openai-pro 12674 / THESIS:194-195
-// "String inhabits FreeMonoid<Char>"). Binding generator↔carrier is an
-// inhabitance concern, explicitly struck from T-2 (operator-ratified);
-// routing free-monoid maps through `HomMonoid` keeps that out of this
-// structures-only file and stays faithful (category Mon).
+// Homomorphism is no longer a coproduct, so it carries no Practice-4
+// 🟢/🟡/🔴 ledger — there are no variants to dissolve; the dissolution
+// already happened (15 → 1).
+//
+// `map` is the carrier-level function. "Structure-preserving" is the
+// LAW it asserts (every operation/constant of `C` preserved), verified
+// by the L7 algebra-law surface against `source`/`target`, never a flag
+// (feedback_no_annotations). The preserved-algebra fact flows forward
+// intact via `source`/`target` (P2 facts-flow-forward — witness.dag
+// "Holds CARRIES the proven fact"). Find (compiler/04_infer.dag T-9)
+// binds `C`; Realize/Measure/L7 read it.
+//
+// FreeMonoid: a free monoid is a monoid; its structure-preserving maps
+// are monoid homomorphisms (`C = Monoid` over the free monoid's
+// carrier). Generator↔carrier binding is an inhabitance concern,
+// struck from T-2 — kept out of this structures-only file (faithful to
+// category Mon).
 //
 // "WITH its realization cost" (U1): this is the ONE carrier all five
 // phases read — Find binds it, Realize projects it, Measure folds its
 // cost FROM `map`'s own structure, Compare (lens/synthesis) reads that.
-// There is deliberately NO cost field per variant: a stored cost would
-// be a representation parallel to the map it measures — the engine debt
-// U1 forbids (THESIS:185-186 coercion = emission, coercion cost =
-// complexity: one object, many lens projections).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger:
-//   1. Fact placement — FAILS: every consumer (Find/Realize/Measure/L7)
-//      reads the same carrier to validate preservation; not a
-//      per-consumer scatter.
-//   2. Variant-is-data — FAILS: the per-class source/target structures
-//      have genuinely different shapes (Magma vs Ring vs Lattice); no
-//      uniform label space to fold to one record. Collapsing also
-//      re-admits the cross-class illegal state this shape exists to
-//      forbid.
-//   3. Algebraic form — N/A by construction: variants ARE references
-//      to the std/ algebra structures (pattern 3's own target shape);
-//      the closed per-class selector is structurally required because
-//      same-class enforcement has no v2 dependent-typing alternative.
-//   4. Dimensional — FAILS: a homomorphism preserves EXACTLY ONE class;
-//      genuine alternatives, never coordinates.
-// Terminal: the closed taxonomy of homomorphism classes over this
-// file's structure-imposed algebras (anchor: Wikipedia "Homomorphism";
-// a fixed finite set). No richer source; the taxonomy IS the source.
-// Cost-of-change: a new structure-imposed algebra adds its declaration
-// + one variant here.
-type Homomorphism<Source, Target>
-  = HomMagma { source: Magma<Source>, target: Magma<Target>, map: fn(Source) -> Target }
-  | HomSemigroup { source: Semigroup<Source>, target: Semigroup<Target>, map: fn(Source) -> Target }
-  | HomMonoid { source: Monoid<Source>, target: Monoid<Target>, map: fn(Source) -> Target }
-  | HomCommutativeMonoid { source: CommutativeMonoid<Source>, target: CommutativeMonoid<Target>, map: fn(Source) -> Target }
-  | HomGroup { source: Group<Source>, target: Group<Target>, map: fn(Source) -> Target }
-  | HomAbelianGroup { source: AbelianGroup<Source>, target: AbelianGroup<Target>, map: fn(Source) -> Target }
-  | HomSemiring { source: Semiring<Source>, target: Semiring<Target>, map: fn(Source) -> Target }
-  | HomCommutativeSemiring { source: CommutativeSemiring<Source>, target: CommutativeSemiring<Target>, map: fn(Source) -> Target }
-  | HomRing { source: Ring<Source>, target: Ring<Target>, map: fn(Source) -> Target }
-  | HomCommutativeRing { source: CommutativeRing<Source>, target: CommutativeRing<Target>, map: fn(Source) -> Target }
-  | HomOrderedRing { source: OrderedRing<Source>, target: OrderedRing<Target>, map: fn(Source) -> Target }
-  | HomField { source: Field<Source>, target: Field<Target>, map: fn(Source) -> Target }
-  | HomLattice { source: Lattice<Source>, target: Lattice<Target>, map: fn(Source) -> Target }
-  | HomBoundedLattice { source: BoundedLattice<Source>, target: BoundedLattice<Target>, map: fn(Source) -> Target }
-  | HomBooleanAlgebra { source: BooleanAlgebra<Source>, target: BooleanAlgebra<Target>, map: fn(Source) -> Target }
+// There is deliberately NO cost field: a stored cost would be a
+// representation parallel to the map it measures — the engine debt U1
+// forbids (THESIS:185-186 coercion = emission, coercion cost =
+// complexity: one object, many lens projections). Anchor: Wikipedia
+// "Homomorphism".
+type Homomorphism<C, Source, Target> {
+  source: C<Source>
+  target: C<Target>
+  map: fn(Source) -> Target
+}
 
