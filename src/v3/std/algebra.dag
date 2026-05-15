@@ -303,10 +303,10 @@ fn rational_add_nonzero(a: Rational, b: Rational) -> NonZeroRational {
   host rational_add_nonzero
 }
 
-fn exponential_base_ge(a: ExponentialBase, b: ExponentialBase) -> Bool =
+fn exponential_base_ge(a: Int, b: Int) -> Bool =
   a >= b
 
-fn exponential_base_mul(a: ExponentialBase, b: ExponentialBase) -> ExponentialBase {
+fn exponential_base_mul(a: Int, b: Int) -> ExponentialBase {
   host exponential_base_mul
 }
 
