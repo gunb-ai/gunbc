@@ -222,6 +222,35 @@ type Field<T> {
   commutative_ring: CommutativeRing<T>
 }
 
+// ApproximateField — the rounding-aware structure IEEE-754 floating-
+// point inhabits. Same operation surface as a field, but its axioms
+// hold only UP TO ROUNDING: floating-point `+` is NOT associative,
+// distributivity is approximate, and there is no exact multiplicative
+// inverse. It is therefore deliberately NOT `Field` and does NOT nest
+// the exact-law tower — nesting `CommutativeRing`/`Field` would assert
+// exact ring/field axioms `Float` does not satisfy (the same fail-open
+// fabrication smell INVARIANTS P3 forbids, and the reason `Field`
+// omits a total `reciprocal`). It is a ROOT-like structure (it does
+// not refine the exact numeric tower), so per the nesting-vs-root
+// modeling note above it declares its primitive operations directly.
+// The rounding-approximate axioms — including multiplicative-inverse-
+// on-nonzero — are the grounded definition; `reciprocal`/division
+// realization + its Tier-2 totalization is the inhabitant's
+// (std/float.dag) per STRUCTURE.md architectural commitment #2, so
+// there is no total `reciprocal` field here (exactly as `Field`).
+// `Float` inhabits THIS; that grounding flows through the U1 spine as
+// `Homomorphism<ApproximateField, …>` (THESIS grounding-completeness,
+// INVARIANTS P2). Anchor: https://en.wikipedia.org/wiki/IEEE_754
+// (floating-point arithmetic is not exactly associative/distributive).
+type ApproximateField<T> {
+  add: fn(T, T) -> T
+  zero: T
+  negate: fn(T) -> T
+  mul: fn(T, T) -> T
+  one: T
+  compare: fn(T, T) -> Ordering
+}
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Lattice structures: two idempotent, commutative, associative
