@@ -99,7 +99,13 @@
 //   - `inhabits` is NOT a field of `Node`: A1 forbids non-`children`
 //     Node-recursion, and inhabitance is a cross-declaration relation
 //     expressed via name-reference `Atom`s (resolved through the
-//     namespace) — declared/owned by std/algebra.dag (T-2).
+//     namespace) — each inhabiting concrete type declares its OWN
+//     inhabitance in its own concept file (std/integer.dag,
+//     std/logic.dag, …); std/algebra.dag (T-2) owns only the algebra
+//     STRUCTURES that get inhabited, never the inhabitance instances
+//     (P2). (T-1-closeout correction 2026-05-15: the prior
+//     "declared/owned by std/algebra.dag (T-2)" wording predated the
+//     operator-ratified structures-only scope.)
 //
 // Consumes:
 //   nothing — this is the substrate root
