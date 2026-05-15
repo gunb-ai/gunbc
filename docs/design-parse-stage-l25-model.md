@@ -178,7 +178,7 @@ parse's structure is **recursive-descent dispatching on compile-time-generated g
 
 ### §5.1 Compile-time table generation
 
-Per Decision 3.B (b) operator-ratified: GrammarSpec is `.dag` substrate compiled to parser dispatch tables at build time. Live precedent at `parse_tables.dag` + `parse_tables_generated.rs`. The 6 table-families:
+Per Decision 3.B (b) operator-ratified: the parser-dispatch tables (concept "GrammarSpec"; no `type GrammarSpec` carrier — see §3.2) are `.dag` substrate compiled at build time. Live precedent at `parse_tables.dag` + `parse_tables_generated.rs`. The 6 table-families:
 
 1. Binary-operator precedence table (SG-2c-1)
 2. Top-level item keyword dispatch (SG-2c-2)
@@ -341,7 +341,7 @@ This phases naturally with the substrate-capability landing as the trigger for S
 
 PB-3 parse's input is `List<Token>` from tokenize (PB-2). **Does PB-3 parse migration block on PB-2 tokenize migration completing?**
 
-**Director-recommend: NO — PB-3 parse migrates independently of PB-2 tokenize status**, same shape as PB-4 lower per PR #3077 §12 Q6 + PB-5 infer per PR #3085 §12 Q6. Token carrier shape is stable; PB-3 parse migrates when its substrate (GrammarSpec + parse_tables.dag + substrate-capability for Step 3b) is at HEAD.
+**Director-recommend: NO — PB-3 parse migrates independently of PB-2 tokenize status**, same shape as PB-4 lower per PR #3077 §12 Q6 + PB-5 infer per PR #3085 §12 Q6. Token carrier shape is stable; PB-3 parse migrates when its substrate (`parse_tables.dag` 6 table-families + substrate-capability for Step 3b recursive list-body emission) is at HEAD.
 
 ---
 
