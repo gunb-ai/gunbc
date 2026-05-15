@@ -42,7 +42,7 @@ So PB-2 is "substrate-driven by `.dag` AT scanner-state-machine level but NOT at
 
 Per the live substrate at `src/v3/std/tokenize.dag:1-15`:
 
-**Tokenize is a substrate-driven scanner: `String → List<Token>`, dispatching on byte character class (Whitespace / Digit / IdentStart / IdentContinue) per `tokenize.dag` declarations. Token taxonomy + scanner logic both live in `.dag` substrate; `tokenize_generated.rs` is the codegen artifact from `regen_tokenize`.**
+**Tokenize is a substrate-driven scanner: `(String, SourceFileId) → Result<List<Token>, TokenizeDiagnostic>` (two inputs per §3.1 source-identity discipline; fail-fast Result-sum per §4.3 cross-stage discriminator), dispatching on byte character class (Whitespace / Digit / IdentStart / IdentContinue) per `tokenize.dag` declarations. Token taxonomy + scanner logic both live in `.dag` substrate; `tokenize_generated.rs` is the codegen artifact from `regen_tokenize`.**
 
 The substrate authority is structured as:
 1. **Token taxonomy** in `src/v3/std/tokenize.dag` (shared vocabulary for compiler + future user-space tooling)
