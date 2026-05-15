@@ -69,6 +69,8 @@ mod e6_g1a_option3_static_lens_test;
 mod e_i_lane_induction_preflight_test;
 #[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
 mod e_p_per_call_descent_lens_consumer_cementing;
+#[path = "integration/cementing/effect_enumeration_lens_behavioral_completion.rs"]
+mod effect_enumeration_lens_behavioral_completion;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
