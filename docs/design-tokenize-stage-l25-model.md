@@ -103,6 +103,22 @@ Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants
 // fixed in PR #3138). TokenizeDiagnostic references the live `CharClass`
 // directly.
 
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per modeling-discipline Practice 4
+// (Coproduct dissolution) + `feedback_coproduct_dissolution` + codex PR #3138
+// BLOCKING sha 887c69671 Finding 2 (fixed in PR #3138):
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// variant set against `src/v3/compiler/src/tokenize_generated.rs:96`
+// `Diagnostic::*` construction sites (tokenize-stage only — not cross-stage),
+// promote to 🟢 TERMINAL at the per-stage diagnostic-variant scope. The
+// listed variants below are a starting set; Step 2 brief authoring closes
+// the enumeration. PR #3077 §12 Q7 ratification (DONE 2026-05-15T00:21:19Z —
+// see §15 step 3 + §14 "Surfaces awaiting") determines whether this stays
+// per-stage sum (option b) or extends shared Diagnostic (option a).
+//
+// **Anti-bridge**: per Q6.5 anti-bridge invariant at diagnostics.dag:135-141,
+// TokenizeDiagnostic does NOT collapse into CompilerDiagnosticKind without
+// substrate-extension ratification.
 type TokenizeDiagnostic
   = UnterminatedStringLiteral { opener_span: SourceSpan }
   | InvalidCharacter { byte: Nat, span: SourceSpan, expected_class: CharClass }
@@ -110,7 +126,7 @@ type TokenizeDiagnostic
   | (additional variants per Step 2 worker brief authoring against tokenize_generated.rs)
 ```
 
-**Lane dependency**: PR #3077 §12 Q7 ratification; Director-tier per-stage variant authoring.
+**Lane dependency**: PR #3077 §12 Q7 ratification — DONE 2026-05-15T00:21:19Z when PR #3077 (PB-4 lower L2.5) merged carrying the cross-stage Decision 2.B Q7 ratification (see §15 step 3 below); Director-tier per-stage variant authoring is the remaining lane work.
 
 ### §4.3 Tokenize output is `Result<List<Token>, TokenizeDiagnostic>` — NO `TokenizedSource` extension
 
@@ -321,7 +337,7 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 
 1. **Operator / PM-delegate ratifies §12 Q1–Q5** only (per 2026-05-14 directive; §12 Q6 was resolved REJECTED in-doc per codex PR #3127 BLOCKING + cross-stage Result-sum discriminator and needs no separate ratification cycle)
 2. **PM amends close plan + §1.8** to route through PB-X lanes + cite this doc as PB-2 L2.5 substrate
-3. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path; affects TokenizeDiagnostic shape)
+3. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path; affects TokenizeDiagnostic shape). **DONE 2026-05-15T00:21:19Z** when PR #3077 (PB-4 lower L2.5) merged; Q7 ratification carried in that merge. The §4.2 + §7.2 "TokenizeDiagnostic extension waits on Q7" gate is therefore now satisfied — TokenizeDiagnostic per-stage variant authoring is genuinely unblocked, not just procedurally listed as the next step. Companion to PR #3138 design-parse-stage-l25-model.md §15 step 4 Q7-DONE annotation.
 4. **Director authors PB-2 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope; trivial since substrate already lives in tokenize.dag)
 5. **R3 Substrate Mgr (warm-wolf-698)** dispatches Step 2 worker
 6. **Director ratifies Step 2 PR + admin-merges**
@@ -363,6 +379,6 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 
 **Surfaces awaiting**:
 - Operator/PM ratification on §12 Q1–Q5 (Q6 resolved REJECTED in-doc per codex PR #3127 BLOCKING — no ratification needed)
-- PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)
+- ~~PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)~~ — DONE 2026-05-15T00:21:19Z (PR #3077 merged carrying Q7 ratification; see §15 step 3)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
 - Coordination with PB-Bootstrap-Process lane for codegen-driver retirement per Q1
