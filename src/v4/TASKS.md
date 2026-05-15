@@ -1,6 +1,8 @@
 # v4 — XL Task Plan
 
-15 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+19 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+
+**Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
 ## Execution graph
 
@@ -9,7 +11,11 @@ Phase 1 (parallel — substrate foundation):
   T-1   std/node.dag                     [BLOCKS: all]
   T-2   std/algebra.dag                  [needs T-1]
   T-3   std/* supporting (6 files)       [needs T-1]
-  T-4   extdeps/languages/{rust,python,go}.dag   [needs T-1, T-2]
+  T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag   [needs T-1, T-2]
+  T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
+  T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
+  T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
+  T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
 
 Phase 2 (serial — pipeline stages):
@@ -17,16 +23,19 @@ Phase 2 (serial — pipeline stages):
   T-7   compiler/02_parse.dag            [needs T-6]
   T-8   compiler/03_normalize.dag + 03_resolve.dag   [needs T-7]
   T-9   compiler/04_infer.dag            [needs T-8, T-2, T-3]
-  T-10  compiler/05_emit.dag             [needs T-9, T-4]
+  T-10  compiler/05_emit.dag + 00_compile.dag       [needs T-9, T-4]
 
 Phase 3 (parallel — lens dimensions):
-  T-11  emit per-target specialization (extends T-10 across rust/python/go)
+  T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
 
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
+  T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
+        + React/TS frontend + OpenAPI wire contract
+        [needs T-4, T-4.5, T-4.6, T-4.7, T-10, T-11]
 ```
 
 ## Task definitions
@@ -34,7 +43,6 @@ Phase 4 (serial — close the loop):
 ### T-1: std/node.dag — substrate root
 
 **File**: `src/v4/std/node.dag`
-**Estimate**: 3-5 days
 **Why first**: every other file consumes this. Get this right; the rest follows.
 
 **Modeling decisions**:
@@ -52,7 +60,6 @@ Phase 4 (serial — close the loop):
 ### T-2: std/algebra.dag — algebraic primitives
 
 **File**: `src/v4/std/algebra.dag`
-**Estimate**: 3-5 days
 **Why critical**: the epistemic chain roots here. Without this, codegen has no walk path.
 
 **Modeling decisions**:
@@ -69,7 +76,6 @@ Phase 4 (serial — close the loop):
 ### T-3: std/* supporting (cardinality, witness, diagnostic, primitive, collection, verification)
 
 **File**: 6 files in `src/v4/std/`
-**Estimate**: 5-7 days (bundle)
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
 
 **Modeling decisions per file** (see file headers for specifics).
@@ -80,16 +86,16 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-4: extdeps/languages/{rust,python,go}.dag
+### T-4: extdeps/languages/{rust,python,go,cpp,typescript}.dag
 
-**File**: 3 files in `src/v4/extdeps/languages/`
-**Estimate**: 4-6 days (bundle — same shape per target)
-**Why bundled**: identical structural shape per target; the SHAPE is the work.
+**File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
+**Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
 **Modeling decisions**:
-- Per-target primitive inhabitance (i32 -> OrderedRing, etc.)
-- Per-target realization cost shape
-- Emission rule encoding (declarative spec vs procedural)
+- Per-language primitive inhabitance (i32 -> OrderedRing, std::vector<T> -> List<T>, etc.)
+- Per-language realization cost shape
+- Grammar encoding (declarative production rules vs procedural recognizer)
+- Type system: nominal (Rust, Java) vs structural (TypeScript, Go), or both (C++)
 
 **Reference**:
 - v2: `src/v2/languages.dag`
@@ -100,7 +106,6 @@ Phase 4 (serial — close the loop):
 ### T-4.5: extdeps/process.dag + extdeps/file_system.dag
 
 **File**: 2 files in `src/v4/extdeps/`
-**Estimate**: 3-5 days (bundle — both are OS contracts modeled per their canonical anchors)
 **Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
 **Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
 
@@ -117,7 +122,6 @@ Phase 4 (serial — close the loop):
 ### T-5: workflow/* — recursive-flex (FIRST IN EXECUTION ORDER)
 
 **File**: 5 files in `src/v4/workflow/`
-**Estimate**: 5-7 days
 **Why FIRST**: this IS the structural fix to v3's hierarchy/gaming failure. Implement workflow substrate before any compiler work, so every subsequent task's WorkerOutput is a typed instance.
 
 **Modeling decisions**:
@@ -134,7 +138,6 @@ Phase 4 (serial — close the loop):
 
 ### T-6: compiler/01_tokenize.dag
 
-**Estimate**: 3-5 days
 **I/O**: `FreeMonoid<Char> -> Result<TokenStream, Diagnostic>`
 
 **Modeling decisions**:
@@ -150,7 +153,6 @@ Phase 4 (serial — close the loop):
 
 ### T-7: compiler/02_parse.dag
 
-**Estimate**: 5-7 days (the parser is real work)
 **I/O**: `TokenStream -> Result<ParseTree, Diagnostic>`
 
 **Modeling decisions**:
@@ -166,7 +168,6 @@ Phase 4 (serial — close the loop):
 
 ### T-8: compiler/03_normalize.dag + 03_resolve.dag
 
-**Estimate**: 5-7 days (bundle)
 **I/O**: `ParseTree -> NormalizedTree -> ResolvedTree`
 
 **Modeling decisions**:
@@ -180,7 +181,6 @@ Phase 4 (serial — close the loop):
 
 ### T-9: compiler/04_infer.dag
 
-**Estimate**: 7-10 days (the meat — type inference is hard)
 **I/O**: `ResolvedTree -> Result<InferredTree, Diagnostic>`
 
 **This is the file v2 split into 12 files (`04_*`).** v4's discipline: this is ONE file. Pressure to split = substrate design escalation, not a worker decision.
@@ -198,7 +198,6 @@ Phase 4 (serial — close the loop):
 
 ### T-10: compiler/05_emit.dag + compiler/00_compile.dag — emission + orchestrator
 
-**Estimate**: 5-7 days (bundle — orchestrator is the trivial wiring of the stages)
 **I/O**:
 - `emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>`
 - `compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>` (orchestrator)
@@ -216,7 +215,6 @@ Phase 4 (serial — close the loop):
 
 ### T-11: emit per-target specialization
 
-**Estimate**: 5-7 days
 **Why separate from T-10**: T-10 is the orchestrator; T-11 is the per-target translation tables that populate emit's behavior across rust/python/go.
 
 **Modeling decisions**:
@@ -227,7 +225,6 @@ Phase 4 (serial — close the loop):
 
 ### T-12: lens/complexity.dag + lens/cost.dag
 
-**Estimate**: 6-8 days (bundle — closely related)
 **I/O**: `Node -> Witness<ComplexityBound>`, `Node -> Witness<SymbolicCost>`
 
 **Modeling decisions**:
@@ -239,7 +236,6 @@ Phase 4 (serial — close the loop):
 
 ### T-13: lens/{parallelism,effect,ownership,idempotency}.dag
 
-**Estimate**: 6-8 days (bundle — smaller per-lens)
 **I/O**: `Node -> Witness<...>` per lens
 
 **Modeling decisions per lens** (see file headers).
@@ -248,7 +244,6 @@ Phase 4 (serial — close the loop):
 
 ### T-14: test/claim/* + test/fixture/*
 
-**Estimate**: 4-6 days
 **Why**: test infra port + fixture authoring. TestClaim data lives here.
 
 **Modeling decisions**:
@@ -262,7 +257,6 @@ Phase 4 (serial — close the loop):
 
 ### T-15: bin/main.dag + bootstrap glue + self-host validation
 
-**Estimate**: 4-6 days
 **Why last**: validates the whole stack. v4 compiles itself, produces bit-identical output, ships.
 
 **Modeling decisions**:
@@ -278,10 +272,91 @@ Phase 4 (serial — close the loop):
 - TestClaim suite passes
 - Hand-authored Rust count = **0** (excluding the machine-emitted trampoline)
 
+### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi)
+
+**File**: 6 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models)
+**Why bundled**: identical structural shape per format; each file declares the format MODEL (data structure + parse/emit operations).
+
+**Modeling decisions**:
+- Recursive vs iterative parsing strategy (per-format)
+- Number model (RFC 8259 §6 for JSON: arbitrary-precision OR IEEE-754; v4 default + opt-in)
+- Schema-to-type derivation (json_schema.dag): given a schema, generate corresponding `.dag` types via `schema_to_type` operation
+- Anchor/Alias resolution (yaml.dag): YAML's structure-sharing must resolve before producing typed value
+- Dialect handling (csv.dag): delimiter/quote/escape/line-terminator parameterization
+
+**Scope**: M-L (medium-to-large; six files but each is bounded by its anchored spec)
+
+---
+
+### T-4.7: extdeps/frameworks/react.dag
+
+**File**: `src/v4/extdeps/frameworks/react.dag` (operator-ratified 2026-05-15: React framework substrate; coupled with T-16 full-stack demo)
+**Why solo**: framework substrates are conceptually rich (Component / Hook / Effect / Lifecycle); React is the load-bearing first.
+
+**Modeling decisions**:
+- Hook-as-substrate: HookKind closed enum (UseState | UseEffect | UseMemo | UseRef | UseContext | ...)
+- Effect lifecycle modeling (Mount / Unmount / DependencyChange / EveryRender)
+- Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals — surface as Diagnostic)
+- Component composition (props-down, events-up; structural propagation through Node tree)
+- Server Components vs Client Components distinction (or unified with Effect annotation)
+
+**Scope**: L (large — substrate decisions cascade across full-stack demo T-16)
+
+**Reference**:
+- Anchor in file header (https://react.dev/reference/react)
+- `docs/design-r4-full-stack-omni-emission-canvas.md` — 5-Q canvas (consult, do not block)
+
+---
+
+### T-4.8: extdeps/coordination.dag
+
+**File**: `src/v4/extdeps/coordination.dag` (operator-ratified 2026-05-15 IN-B: Bind composition + Effect annotation; NO 6th L1 behavior)
+**Why solo**: multi-program coordination is the most consequential effect-typing in v4 — discipline matters.
+
+**Modeling decisions**:
+- Endpoint shape (NetworkAddress + LanguageRef + optional FrameworkRef)
+- DeploymentUnit = collection of Endpoints + WireContracts between them
+- WireContract = typed interface between two endpoints + CoordinationSemantics
+- CoordinationSemantics = Sync | Async | Stream | PubSub | EventuallyConsistent (closed enum — operator-ratified C1 closure per node.dag discipline)
+- Effect-typing: HttpEffect, QueueEffect, StreamEffect, PubSubEffect — each is a typed parameter to Bind
+- Failure-at-boundary modeling (composes with std/diagnostic.dag — no silent partial-failure)
+- Idempotency at endpoint (composes with lens/idempotency.dag)
+
+**Scope**: L (large — substrate decisions affect every distributed-app demo)
+
+**Discipline**: NO 6th L1 behavior. If during work the temptation surfaces to add a `Coordinate` behavior to `std/node.dag`, STOP and escalate. The IN-B decision (operator 2026-05-15) is binding — coordination IS Bind composition + Effect annotation.
+
+---
+
+### T-16: Full-stack omni-emission demo
+
+**Output**: ONE `.dag` program → multi-language multi-endpoint application
+**Operator framing 2026-05-15**: "consider pipeline emission i.e. 'backend program using react in the frontend (and say rust/C++ in the backend)' — i suggest we frontload this style of work — this is exactly what we keep deferring"
+
+**Deliverable**: a single .dag file declaring a TODO-app-class application that emits:
+- Rust backend (+ optionally C++ backend variant)
+- React/TypeScript frontend
+- OpenAPI wire contract between backend and frontend
+- SQL DDL for persistence
+- Markdown docs
+
+All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tree); coherence is structural, not test-checked.
+
+**Modeling decisions**:
+- How does the .dag file express endpoint partitioning (which fragment runs where)? (uses extdeps/coordination.dag's Endpoint + DeploymentUnit)
+- Wire contract derivation (does it auto-derive from shared types, or is it explicitly declared?)
+- Cross-target consistency: same domain types in Rust + TypeScript — tested via L5
+
+**Scope**: XL (extra-large — this is the visceral cash of the omni-emission thesis)
+
+**Why this task is the v4-flagship demo**: per operator "this is exactly what we keep deferring" — v4 fronts loading it because it forces the substrate decisions (T-4.7 React, T-4.8 coordination) to be made well, not as afterthoughts.
+
+---
+
 ## Summary
 
-15 tasks. Roughly 6-10 weeks at 2-3 parallel workers. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation.
+19 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
-If a task overruns or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
+If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 
 The release is when v4-done. Not before, not after.

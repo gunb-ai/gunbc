@@ -24,13 +24,27 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
 
-  extdeps/               # external system contracts (5 files)
-    languages/           # target language specs (Shape A: per-target compiler emission)
+  extdeps/               # external system contracts (15 files)
+    languages/           # language models (direction-agnostic — emit AND ingest)
       rust.dag
       python.dag
       go.dag
-    process.dag          # OS process model (POSIX/SUS — fork/exec/wait, exit codes)
+      cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
+      typescript.dag     # TypeScript + ECMAScript
+    frameworks/          # framework substrates (UI / server / data)
+      react.dag          # React: Component/Hook/Effect (frontload per operator 2026-05-15)
+    formats/             # data format models (direction-agnostic)
+      json.dag
+      yaml.dag
+      csv.dag
+      toml.dag
+      json_schema.dag
+      openapi.dag
+    process.dag          # OS process model (POSIX/SUS)
     file_system.dag      # OS file system model (POSIX file/directory operations)
+    coordination.dag     # multi-program: Endpoint/DeploymentUnit/sync/async/stream/pubsub
+                         # (effect-typed carriers over existing 5 L1 behaviors;
+                         # NO 6th behavior per IN-B decision 2026-05-15)
 
   compiler/              # pipeline orchestrator + 6 stages (7 files)
     00_compile.dag       # orchestrator: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
@@ -64,7 +78,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 32 .dag files + 3 docs + 2 .gitkeep = 37 files at scaffold time.**
+**Total: 42 .dag files + 3 docs + 2 .gitkeep = 47 files at scaffold time.**
 
 ## Anchor convention
 

@@ -1,0 +1,23 @@
+// src/v4/extdeps/formats/yaml.dag
+//
+// Scope: YAML data format model — direction-agnostic.
+// Anchor: https://yaml.org/spec/1.2.2/ (YAML 1.2.2 spec)
+//
+// Owns:
+//   - YamlValue = Null | Bool | Int | Float | String | Sequence | Mapping (closed sum)
+//   - Mapping = Map<YamlValue, YamlValue> (YAML allows non-string keys)
+//   - Sequence = List<YamlValue>
+//   - Anchor/Alias resolution (YAML's structure-sharing — must resolve before producing typed value)
+//   - parse(String) -> Result<YamlValue, Diagnostic>
+//   - emit(YamlValue) -> String
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.5
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.yaml
+

@@ -1127,26 +1127,23 @@ To prevent R3-class debt from re-emerging:
 - [ ] Coverage: enumerate the 6 connectives × 5 behaviors structural form space. For each, does the v4 ingestion path support it for all anchored formats? L6-style completeness for ingestion.
 - [ ] Effect-model preservation: ingest a Python source file with side effects. Are the effects classifiable via the effect lens (§1.4) post-ingestion? Or does ingestion produce opaque blobs the lens can't read?
 
-**Critical decision needed (SCAFFOLD-GAP)**:
+**Decision (operator-ratified 2026-05-15)**: language modeling is **direction-agnostic** — each `extdeps/languages/<lang>.dag` declares the LANGUAGE itself (grammar, types, semantics) as pure extdeps; both emission AND ingestion are operations against the single language model. No separate emit/ingest files; no "target spec" vs "ingest spec" split. This matches the THESIS:185-188 concept-unification claim ("Target language spec = transport spec = interpreter runtime" — one substrate carrier; different lenses read different facts from the same data; ingest IS another lens-shape read).
 
-The v4 scaffold currently has `extdeps/languages/{rust,python,go}.dag` framed as **target specs (emission only)**. For ingestion to be substantive, these need to be **bidirectional** — the same anchored language reference produces both ingestion and emission rules. Three options:
+Data formats are separate from languages — non-code formats (JSON / YAML / CSV / TOML / JSON Schema / OpenAPI) live in new `extdeps/formats/*.dag`. Same shape per format: declare the model, emit/ingest are operations over it.
 
-1. **Bidirectional unified**: each `extdeps/languages/<lang>.dag` declares both emission AND ingestion. Per concept-unification (one substrate carrier reads multiple lenses). Cleanest.
-2. **Split per direction**: `extdeps/languages/<lang>/emit.dag` + `extdeps/languages/<lang>/ingest.dag`. Adds files (substrate inflation risk per `feedback_construction_over_ratchets`). Not recommended.
-3. **Unified language file + format files**: `extdeps/languages/*.dag` stays language-target spec; new `extdeps/formats/*.dag` for non-code formats (JSON/YAML/etc.). Hybrid. Recommended.
+Solve concrete problems as they come — no preemptive split. The substrate stays minimal until pressure surfaces.
 
-PM recommendation: **option 3** — language ingestion is a property of the language spec (each language file already needs to model its grammar for emission; ingestion uses the same grammar in reverse), data-format ingestion is a separate substrate (JSON ≠ a programming language).
-
-**Scaffold additions needed** (pending operator ratification):
+**Scaffold additions** (operator-ratified 2026-05-15):
 - `extdeps/formats/json.dag` — Anchor: ECMA-404 / RFC 8259
 - `extdeps/formats/yaml.dag` — Anchor: YAML 1.2 spec
 - `extdeps/formats/csv.dag` — Anchor: RFC 4180
 - `extdeps/formats/toml.dag` — Anchor: TOML v1.0 spec
 - `extdeps/formats/json_schema.dag` — Anchor: JSON Schema spec (Draft 2020-12)
 - `extdeps/formats/openapi.dag` — Anchor: OpenAPI Specification 3.1
-- (decision: protobuf, xml — defer or include?)
 
-Plus extending `extdeps/languages/<lang>.dag` headers to declare bidirectional grammar (parser + emitter from same spec).
+Decision pending: `protobuf`, `xml`, other formats — surface when concrete consumer demand arises. Per zero-deferrals: not a deferral, but a separate scope-expansion decision at the point of need.
+
+Existing `extdeps/languages/<lang>.dag` files do NOT need split. Their header should describe the language itself (grammar/types/semantics); emit and ingest are operations against the same model.
 
 ---
 
@@ -1170,9 +1167,15 @@ Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go
 - [ ] **L6 form completeness**: do all 6 connectives × 5 behaviors emit to every target? Per §3.5 L6 matrix.
 - [ ] **Falsification probe**: pick a `.dag` form that emits cleanly to Rust but cannot emit to LLVM IR (e.g., something Rust's borrow checker accepts but LLVM IR's SSA form rejects). Does v4 fail-closed when LLVM IR is targeted, or silently emit broken IR?
 
-**Scaffold additions needed**:
-- 4 new files in `src/v4/extdeps/languages/`: `c.dag`, `cpp.dag`, `llvm_ir.dag`, `typescript.dag`
-- TASKS.md: extend T-4 (extdeps languages bundle) from 3 files to 7
+**Disposition** (operator-ratified 2026-05-15): IN for C++ and TypeScript. Add `cpp.dag` and `typescript.dag` to v4 scaffold NOW.
+- C is a subset of C++ — `cpp.dag` covers both surfaces; no separate `c.dag` (unless concrete C-only-consumer demand surfaces).
+- LLVM IR is a distinct concept (IR, not source language) — surface separately if needed.
+- Go remains in v4 scope ("optional, keep for now; can replace if needed").
+
+**Scaffold additions** (operator-ratified):
+- `extdeps/languages/cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard); subsumes C subset
+- `extdeps/languages/typescript.dag` — Anchor: TypeScript Handbook + ECMAScript spec (ECMA-262)
+- TASKS.md: T-4 (extdeps languages) grows from 3 → 5 files (rust, python, go, cpp, typescript)
 
 ---
 
@@ -1198,12 +1201,15 @@ New directory: `src/v4/extdeps/frameworks/`. Per-framework files:
 - `extdeps/frameworks/react.dag` (initial framework)
 - Extension to TASKS.md: new T-4.6 for framework substrates
 
-**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). Two valid shapes:
+**Disposition** (operator-ratified 2026-05-15): **IN**. Operator framing: "consider pipeline emission i.e. 'backend program using react in the frontend (and say rust/C++ in the backend)' — i suggest we frontload this style of work — this is exactly what we keep deferring."
 
-- **IN**: operator commits to React-as-framework-substrate scope NOW. v4 ship blocks on the framework substrate landing. The 5-Q canvas at `design-r4-full-stack-omni-emission-canvas.md` is resolved by operator decision (not deferred to a future canvas-ratification ceremony). v4 scaffolds `extdeps/frameworks/react.dag` immediately and a worker is dispatched per the resolved canvas.
-- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "framework substrates require their own modeling phase; v4 ships with language-target omni-emission only; framework support is a v4-amendment for after v4 ships"). React/framework substrate is removed from this audit doc as out-of-scope.
+This couples §15 (framework substrates) and §16 (multi-program coordination) into one work stream: a single `.dag` describes a full-stack application, emitting Rust/C++ backend AND React/TypeScript frontend, sharing one Node tree per gate #28.
 
-There is no third option (deferred to canvas, fast-follow, etc.). Operator decides IN or OUT now.
+**Scaffold additions** (operator-ratified):
+- `extdeps/frameworks/react.dag` — Anchor: https://react.dev/reference/react (React docs)
+- New TASKS.md entry covering full-stack omni-emission demo as v4 deliverable
+
+The 5-Q canvas at `design-r4-full-stack-omni-emission-canvas.md` is consulted as input but does NOT block v4 — operator can resolve Q-decisions inline as the React worker dispatches.
 
 ---
 
@@ -1231,13 +1237,12 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 - [ ] Cross-endpoint dimension propagation: does affected-set lens extend across deployment-unit boundaries?
 - [ ] **Falsification probe**: design a 2-endpoint distributed program. Demonstrate end-to-end emission per Shape-A + the wire contract per Shape-B + coordination behavior captured structurally.
 
-**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). The most consequential v4 substrate decision because it can trigger C1 stop-signal (substrate extension). Three valid shapes:
+**Disposition** (operator-ratified 2026-05-15): **IN-B** (Bind composition + Effect annotation; no 6th L1 behavior). Coupled with §15: pipeline emission is the demonstrative driver.
 
-- **IN-A: 6th L1 behavior** — operator ratifies a `Coordinate` behavior for sync/async/stream/pubsub. The C1 stop-signal four-dissolution-attempt protocol is run IMMEDIATELY (not deferred); operator-witnessed. If dissolutions all fail with structural arguments, substrate extension lands. v4 ship blocks on this.
-- **IN-B: Bind composition + Effect annotation** — operator commits coordination is library-level over existing 5 behaviors. `extdeps/coordination.dag` is scaffolded NOW with the substrate types (`Endpoint`, `DeploymentUnit`, etc.) and a worker is dispatched. v4 ship blocks on the multi-program demo.
-- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "multi-program coordination is the next omni-emission expansion; v4 ships with single-program omni-emission only"). Multi-program is removed from this audit as out-of-scope.
+Rationale: async / stream / pubsub are deployment patterns and effect-types, not behavior shapes. An HTTP call IS a `Bind` with an HTTP-effect type; a pubsub publish IS a `Bind` with a Queue-effect type; an async stream IS a `Bind` over a `Stream<T>` carrier. Substrate stays at 5 L1 behaviors (C1 stop-signal preserved per THESIS:202). Coordination concepts (`Endpoint`, `DeploymentUnit`, sync/async/stream/pubsub semantics) live as typed carriers in `extdeps/coordination.dag`.
 
-Operator decides IN-A, IN-B, or OUT now.
+**Scaffold addition** (operator-ratified):
+- `extdeps/coordination.dag` — Anchor: this PR conversation + memory: feedback_construction_over_ratchets (substrate-extension caution); declares Endpoint/DeploymentUnit/sync/async/stream/pubsub semantics as effect-typed carriers over existing 5 behaviors.
 
 ---
 
@@ -1284,12 +1289,12 @@ Compiler proves a DIFFERENT algorithm with equivalent semantics achieves better 
 
 **v4 owner**: extends `src/v4/lens/complexity.dag` (or new `src/v4/lens/synthesis.dag` if substrate-cohesion warrants).
 
-**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). Highest research-tier risk in v4 scope. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Two valid shapes:
+**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). **XL scope, research-tier risk**. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Two valid shapes:
 
-- **IN**: operator commits cross-algorithm complexity to v4 scope. v4 ship blocks on the synthesis-lens substrate. Acknowledged: this likely doubles or triples v4 timeline because algorithm synthesis is research-tier. Operator commits the time/scope cost.
-- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "cross-algorithm synthesis is research-tier and not viable in v4 ship timeline; v4 ships with same-algorithm tightness only; cross-algorithm requires fresh scope-expansion decision after v4 ships"). C7 removed from v4 scope.
+- **IN**: operator commits cross-algorithm complexity to v4 scope. v4 ship blocks on synthesis-lens substrate landing. Scope is XL (substrate addition, semantic-equivalence library, pattern-recognition substrate, multi-axis lens composition).
+- **OUT**: operator commits explicit NOT-IN-V4. Reason recorded (e.g., "cross-algorithm synthesis is research-tier scope; v4 ships with same-algorithm tightness only"). Cross-algorithm requires fresh scope-expansion decision after v4 ships.
 
-Operator decides IN or OUT now. There is no "fast-follow" or "deadline-tight escape" — that's a deferral, which the zero-deferrals policy refuses.
+Operator decides IN or OUT.
 
 ---
 
