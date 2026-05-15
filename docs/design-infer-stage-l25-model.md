@@ -109,6 +109,21 @@ type IdentifierRef
 // String-wrapper masquerading as typed; that contradicts the typed-carrier
 // discipline + creates a second authority on algebra identity. Closed-axis
 // enum is the structurally honest form):
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per cursor PR #3085 INLINE
+// BLOCKING + modeling-discipline Practice 4: substrate coproducts require
+// 🟢/🟡/🔴 classification + named ledger/trigger for dissolution.
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// algebra-axiom set against infer.rs algebra-inhabitance check sites at
+// `src/v3/compiler/src/infer.rs` AND verifies coverage parity with the
+// 3-variant subset already live at verification.dag:146 AlgebraicLawKind,
+// promote to 🟢 TERMINAL at the per-stage algebra-axis scope.
+//
+// **Adjacent live**: verification.dag:146 AlgebraicLawKind already declares
+// 3-variant subset (Associativity / Commutativity / Identity) at the
+// algebraic-law-kind scope. AlgebraAxis is a broader closed-axis enumeration
+// covering the algebra-inhabitance failure axes specifically (Closure /
+// Inverse / Distributivity / OrderingTotality / etc.).
 type AlgebraAxis
   = Closure
   | Associativity
@@ -119,9 +134,26 @@ type AlgebraAxis
   | OrderingTotality
   | OrderingTransitivity
   | OrderingAntisymmetry
-  // Step 2 brief enumerates the full closed set against infer.rs algebra-inhabitance check sites;
-  // adjacent to verification.dag:146 `AlgebraicLawKind` which has the 3-variant subset already live
+  // Variants enumerated per Step 2 brief grep of infer.rs algebra-inhabitance
+  // check sites; promote to 🟢 TERMINAL once full set covers actual check axes.
 
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per cursor PR #3085 INLINE
+// BLOCKING + modeling-discipline Practice 4 (Coproduct dissolution):
+// substrate coproducts require 🟢/🟡/🔴 classification + dissolution trigger.
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// variant set against `parse_generated.rs` Diagnostic::ParseError, lower.rs
+// Diagnostic construction sites, and infer.rs Dag::mark_unresolved emission
+// sites — promote to 🟢 TERMINAL at the per-stage diagnostic-variant scope.
+// PR #3077 §12 Q7 ratification on Decision 2.B extension path determines
+// whether this stays per-stage sum (option b) or extends shared Diagnostic
+// (option a).
+//
+// **Anti-bridge**: per Q6.5 anti-bridge invariant at diagnostics.dag:135-141,
+// InferDiagnostic does NOT collapse into CompilerDiagnosticKind without
+// substrate-extension ratification; the relationship between this proposed
+// per-stage sum + the shared Diagnostic carrier is itself the ratification
+// scope of PR #3077 §12 Q7.
 type InferDiagnostic
   = UnresolvedIdentifier { identifier: IdentifierRef, scope: SectionRef }
   | NotCallable { type_connective: TypeConnective }
