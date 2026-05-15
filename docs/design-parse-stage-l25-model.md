@@ -206,7 +206,13 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`.
 
 ### §7.1 Upstream dependencies
 
-parse depends on `List<Token>` from tokenize (PB-2). PB-2 tokenize migration is downstream in the bottom-up order. Per `src/v3/SELF_HOSTING.md` §2 migration order, parse migrates AFTER tokenize substrate-side stable, but Token carrier shape is stable regardless of whether tokenize-emitter is hand-Rust or `.dag` — PB-3 parse migration is independent of PB-2 tokenize migration status (same independence pattern as PB-4 lower vs PB-3 parse per PR #3077 §12 Q6).
+parse depends on `List<Token>` from tokenize (PB-2). **Two distinct axes per cursor PR #3126 APPROVE_WITH_COMMENTS clarification**:
+
+1. **Substrate-stability ordering** (SELF_HOSTING.md §2 migration order; bottom-up): tokenize's substrate (Token carrier shape) must be stable BEFORE parse migration proceeds. This is already true at HEAD — `src/v3/std/tokenize.dag:65-67` declares the live Token carrier shape; tokenize.dag is the substrate authority. Substrate-side stability ✓.
+
+2. **Migration-timing independence** (parallel-dispatch axis): PB-3 parse migration can ship in parallel with PB-2 tokenize MIGRATION — i.e., parse migration doesn't WAIT for PB-2's residual hand-Rust retirement (per PB-2 L2.5 §1: SG-1a + character-level scaffold + codegen-driver retirement). What parse needs is the stable Token CARRIER, which already exists; PB-2's migration is about retiring the residual emitter-side hand-Rust, not about changing the carrier.
+
+So: ordering (substrate-stability) IS satisfied (live); independence (migration-timing) means parse migration is parallel-dispatchable with respect to PB-2's residual-retirement work. Both claims coherent on the same axis split; not contradictory.
 
 ### §7.2 Downstream consumers
 
