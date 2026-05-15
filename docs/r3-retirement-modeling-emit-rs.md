@@ -199,7 +199,8 @@ Fix: **defer the `EmitDispatchError` shape entirely** until per-language typed e
 ### §4.4 Codegen driver outline
 
 A new codegen driver `src/v3/compiler/src/regen_emit_dispatcher.rs` (or extension of an existing regen driver) reads:
-- The new carriers in `emit_model.dag` (EmitMode, EmittedSource, EmitDispatchError)
+- The new non-error carriers in `emit_model.dag` (`EmitMode`, `EmittedSource`)
+- The typed per-language error carrier once it exists; until then the dispatcher error shape is deliberately not modeled
 - The functions `emit_with_mode`, `emit`, `emit_module`
 - The LanguageSpec declarations at `src/v3/spec/*.dag` (already live substrate; no carrier change needed)
 
