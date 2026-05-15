@@ -1,22 +1,25 @@
 // lenses.effect_enumeration — structural effect-shape lens.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PARTIAL.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
 // See docs/v3-lens-capability-register.md.
 //
-// --- F-β.1 / gate #82 — migration-shape canvas (substrate prereq for F-β.2) ---
+// --- F-β.2 / gate #82 — Operation-row consumer path ---
 //
 // Locked design: docs/design-effect-enumeration-resource-threading.md §3.2 + §6.2.
-// Sequencing: docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md §1.2 (F-β.1).
-// This section is ratification-facing documentation plus the
-// `EffectEnumerationAuthoritySite` sum below; `enumerate_effects` behavior is
-// unchanged until F-β.2 lands the atomic migration.
+// Sequencing: docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md §1.2 (F-β.2).
+// Gate #82's completed behavior is the generated Operation consumer
+// `operation_structural_effect_shape(Operation)`, which consumes existing
+// `v3.std.services::Operation` rows through canonical
+// `std.effects::operation_effect_shape`. `enumerate_effects(Dag)` remains the
+// behavior-node report path pinned by gate #87; it does not directly discover
+// Operation rows until a future substrate hook exposes those rows inside `Dag`.
 //
 // **Caller-side effect-set pinning carrier** — no new substrate type. The
 // pinning surface is the existing `v3.std.services::Operation` row:
 //   type Operation { callable: CallableRef; inputs: Map<String, InputField>;
 //                    endpoint: RestEndpointBinding }
 //
-// **Which `Operation` fields the post-F-β.2 lens body reads for effect facts**
+// **Which `Operation` fields the gate #82 consumer reads for effect facts**
 // (Director ratification target — disposition is design-locked):
 //
 // - `callable: CallableRef` — PRIMARY authority. Resolve `callable.decl` to
@@ -33,29 +36,30 @@
 //   EffectShape derivation channel.
 //
 // - `endpoint: RestEndpointBinding` — E-9 per-target realization (`method`,
-//   `path` live here for emitters). Post-migration it MUST NOT feed effect-kind
-//   classification (retires `derive_effect_shape(method, path)` / Channel-B
-//   ambient metadata; design §6.2 + §8.3).
+//   `path` live here for emitters). The Operation consumer MUST NOT feed
+//   endpoint shape into effect-kind classification (retires
+//   `derive_effect_shape(method, path)` / Channel-B ambient metadata; design
+//   §6.2 + §8.3).
 //
 // **Resource-threading unified rule** (design §2.4) — two orthogonal structural
-// facts the F-β.2 kind-classifier consumes: (a) effect set from the threaded
+// facts the Operation kind-classifier consumes: (a) effect set from the threaded
 // arrow signature behind `Operation.callable`; (b) effect kind from
 // inhabitance on that callable. Signature alone cannot split read vs write;
 // missing kind inhabitance for a resource in the effect set is fail-closed
 // (`EffectKindUndeclared` in the design pseudocode), not a silent default.
 //
-// **Walker rewire surface** (F-β.2 implementation): effect facts currently fold
-// `Dag.nodes` / `Behavior` only. Post-migration the lens also discovers grounded
-// `Operation` rows (`List<Operation>` fixtures per PR-β..ω lineage in
-// `services.dag` header) and threads the same report carrier; exact merge order
-// and substrate hook for operation discovery are F-β.2 consumer wiring, not
-// F-β.1 canvas scope.
+// **Report-surface boundary**: `enumerate_effects(Dag)` still folds
+// `Dag.nodes` / `Behavior` only. If a later migration teaches the report carrier
+// to discover grounded `Operation` rows (`List<Operation>` fixtures per PR-β..ω
+// lineage in `services.dag` header), that path must consume the same
+// `operation_structural_effect_shape(Operation)` authority instead of
+// reintroducing a signature or endpoint-derived classifier.
 //
 // ---
 //
-// This lens is the first closed-system unenumerated-effects surface:
-// it walks the five Behavior variants and derives effect facts from
-// callable type-signature shape, not from the legacy enumerated taxonomy.
+// The behavior-node report surface walks the five Behavior variants and derives
+// effect facts from callable type-signature shape, not from the legacy
+// enumerated taxonomy.
 // The current substrate does not yet expose a resource-kind witness, so
 // same-resource threading is recognized conservatively as a callable whose
 // output declaration is one of its input declarations. Non-callable transforms
@@ -70,6 +74,14 @@
 module lenses.effect_enumeration
 
 import std.list { List, empty, fold, cons }
+import std.effects {
+  BreakingShape,
+  EffectClassificationResult,
+  EffectShape,
+  IdempotentShape,
+  classify_operation_effect
+}
+import v3.std.services { Operation }
 import v3.std.substrate {
   Dag,
   Behavior,
@@ -88,9 +100,9 @@ import v3.std.substrate {
   declaration_by_id
 }
 
-// Dual authority sites for the post-F-β.2 walker (F-β.1 canvas; see module
-// header). Variants are tag-only: they document the migration-shape rewire
-// surface for Director ratification without changing today's fold.
+// Dual current authority sites: the behavior-node report surface and the
+// services Operation adapter. Variants are tag-only; concrete classification is
+// owned by the functions below.
 type EffectEnumerationAuthoritySite =
   SubstrateDagBehaviorNode
   | ServicesOperationCarrier
@@ -154,6 +166,34 @@ fn enumerate_effects(d: Dag) -> EffectEnumerationReport =
     coverage_gaps: compute_coverage_gaps(d),
     redundant_reads: empty(),
     transaction: transaction_pattern(d)
+  }
+
+fn operation_structural_effect_shape(op: Operation) -> StructuralEffectShape =
+  match classify_operation_effect(op) {
+    EffectClassified { shape: shape } => effect_shape_to_structural(shape)
+    EffectClassificationFailed { failure: _ } =>
+      UnknownEffect {
+        reason: "operation effect classification failed"
+      }
+  }
+
+fn effect_shape_to_structural(shape: EffectShape) -> StructuralEffectShape =
+  match shape {
+    IsIdempotent(idempotent) => idempotent_shape_to_structural(idempotent)
+    IsBreaking(breaking) => breaking_shape_to_structural(breaking)
+  }
+
+fn idempotent_shape_to_structural(shape: IdempotentShape) -> StructuralEffectShape =
+  match shape {
+    ReadEffect => ReadShaped
+    UpsertEffect { key_source: _ } => WriteShaped
+    DeleteEffect { key_source: _ } => WriteShaped
+  }
+
+fn breaking_shape_to_structural(shape: BreakingShape) -> StructuralEffectShape =
+  match shape {
+    CreateEffect { cause: _ } => WriteShaped
+    AppendEffect => WriteShaped
   }
 
 fn compute_effect_facts(d: Dag) -> List<EffectFact> =

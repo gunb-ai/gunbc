@@ -49,6 +49,37 @@ pub fn enumerate_effects(p0: &Dag) -> EffectEnumerationReport {
         transaction: transaction_pattern(p0),
     }
 }
+pub fn operation_structural_effect_shape(p0: &Operation) -> StructuralEffectShape {
+    match &(classify_operation_effect(p0)) {
+        EffectClassificationResult::EffectClassified { shape: shape } => {
+            effect_shape_to_structural(shape)
+        }
+        EffectClassificationResult::EffectClassificationFailed { failure: _ } => {
+            StructuralEffectShape::UnknownEffect {
+                reason: String::from("operation effect classification failed"),
+            }
+        }
+    }
+}
+pub fn effect_shape_to_structural(p0: &EffectShape) -> StructuralEffectShape {
+    match p0 {
+        EffectShape::IsIdempotent(idempotent) => idempotent_shape_to_structural(idempotent),
+        EffectShape::IsBreaking(breaking) => breaking_shape_to_structural(breaking),
+    }
+}
+pub fn idempotent_shape_to_structural(p0: &IdempotentShape) -> StructuralEffectShape {
+    match p0 {
+        IdempotentShape::ReadEffect => StructuralEffectShape::ReadShaped,
+        IdempotentShape::UpsertEffect { key_source: _ } => StructuralEffectShape::WriteShaped,
+        IdempotentShape::DeleteEffect { key_source: _ } => StructuralEffectShape::WriteShaped,
+    }
+}
+pub fn breaking_shape_to_structural(p0: &BreakingShape) -> StructuralEffectShape {
+    match p0 {
+        BreakingShape::CreateEffect { cause: _ } => StructuralEffectShape::WriteShaped,
+        BreakingShape::AppendEffect => StructuralEffectShape::WriteShaped,
+    }
+}
 pub fn compute_effect_facts(p0: &Dag) -> Vec<EffectFact> {
     ((p0).nodes())
         .iter()

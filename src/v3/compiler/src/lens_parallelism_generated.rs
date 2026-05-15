@@ -95,7 +95,10 @@ fn pairwise_cross_branch_commutes(
                                 "parallel branch operations do not commute under parallel scheduling",
                             ));
                         }
-                        Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                        Err(
+                            EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                            | EffectClassificationFailure::UnknownOperationCallable,
+                        ) => {
                             return Err(ParallelismUnsupportedDetail {
                                 kind: ParallelismUnsupportedKind::EffectClassificationUnavailable,
                                 downstream_stage: DOWNSTREAM.to_string(),
@@ -168,7 +171,11 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
     for op in ops {
         match classify_operation_effect(p0, op) {
             Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) => {}
-            Ok(_) | Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => return 0,
+            Ok(_)
+            | Err(
+                EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                | EffectClassificationFailure::UnknownOperationCallable,
+            ) => return 0,
         }
     }
     1
