@@ -20,58 +20,28 @@
 // syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
 // extractor and derive directly from the lowered Dag in the same PR.
 //
-// **Tracked scaffold (character-level under-consumption — consumption gap,
-// not substrate gap).** The scan phases below slice the ASCII/Unicode
-// codepoint space in two parallel forms, neither of which consumes the
-// character-level authorities that already exist in `dsl/std/`:
+// **Character-level scaffold (narrowed SG-1 half).**
+// SG-1 scanner **class predicates** are no longer handwritten in `regen_tokenize`:
+// `cargo run … regen_tokenize` translates each `dsl/std/unicode.dag`
+// `fn char_in_class` match arm (`cp` → bytecode `byte`) keyed by constructor
+// name. This module imports `char_in_class` as the nominal authoritative
+// classifier on top of structural `ascii_scan_order`. Extraction rides the
+// committed `.dag` surface text until `compile_to_dag` can lower that `fn`
+// body for codegen (bootstrap still carries those spans as ArrowBody staging).
 //
-//   1. **Reserved individual codepoints as opaque strings.** `StringEscapeSpec`
-//      fields (`suffix: String`, `output_codepoint: Int`), `LocalPunctSpec.
-//      pattern: String`, `string_literal_delimiter: String`,
-//      `line_comment_prefix: String` — all encode one or more specific
-//      codepoints as byte strings. Parallel authority in
-//      `dsl/extdeps/languages/dag/syntax.dag` does the same for operators
-//      (`OperatorSpec.symbol: String`) and keywords
-//      (`dag_keyword_set: Map<String, Bool>` keys).
+// **Still open (Phase-2 / ROADMAP):** opaque `String` rows here and shared
+// syntax encode individual codepoints as spellings instead of typed `Char` /
+// `List<Char>` (`StringEscapeSpec.suffix`, `LocalPunctSpec.pattern`,
+// `string_literal_delimiter`, `line_comment_prefix`, keyword / operator symbols).
 //
-//   2. **Reserved codepoint classes as hidden Rust predicates.**
-//      `regen_tokenize.rs` `push_str`s `is_ascii_whitespace` /
-//      `is_ascii_digit` / `is_ascii_alphabetic` / `is_ascii_alphanumeric`
-//      plus a bare `byte == b'_'` into the generated tokenizer. Not mentioned
-//      in `.dag` at all.
+// **Existing authorities cited** (`dsl/std/` loads in bootstrap; see also
+// `src/v3/compiler/regen.dag`): `std.types::Char`, `std.string_type::String`,
+// `std.unicode`, `std.encoding`, `std.bit::Byte`.
 //
-// **Existing authorities to consume** (already imported cross-tree today —
-// e.g. `src/v3/compiler/regen.dag:3` imports `std.types`):
-//   - `std.types::Char = Int` (Unicode scalar, U+0000–U+10FFFF).
-//   - `std.string_type::String = FreeMonoid<Char>` (String already decomposes).
-//   - `std.unicode` (`DisplayWidth`, `UnicodeBlock`, block/width classification).
-//   - `std.encoding` (`Encoding = ASCII | UTF8 | Latin1 | Text | Binary |
-//     Unknown` lattice with `ASCII <: UTF8 <: Text` — literally the
-//     ASCII→Unicode→… causal chain).
-//   - `std.bit::Byte`.
-//
-// **CharClass — tokenizer half (bounded interim, not full lane closure).**
-// `std.unicode` declares `CharClass` + `char_in_class` (canonical `.dag`
-// authority). `ascii_scan_order` makes tokenizer scanner precedence a
-// structural `List<CharClass>` consumed directly by `regen_tokenize`; ASCII
-// predicate bodies remain a bounded generator bridge until `char_in_class`
-// semantics are structurally consumed.
-//
-// **Framing.** Phase 1 was a consumption gap: the character-level modeling was
-// already present, but tokenize.dag and syntax.dag encoded the same activity
-// (slicing the ASCII/Unicode space) in non-canonical forms (opaque strings,
-// hidden Rust predicates) instead of consuming the canonical `Char` /
-// `std.unicode` authorities. Phase 2's substrate/load-set prerequisites are:
-// scanner rows such as `data ascii_scan_order: List<CharClass> = [...]` need
-// top-level structural `data` bodies for lists/sum constructors, and
-// `std.unicode` must be in the runtime bootstrap/load set before `CharClass`
-// resolves from this compiler authority. Named dissolution trigger (tracked in
-// ROADMAP as a follow-up lane): retype the opaque-string fields in this file and
-// `syntax.dag` to consume `Char` / `List<Char>`, author the scanner class list,
-// then rewire `regen_tokenize` to read it structurally rather than hardcoding
-// host-stdlib method names. Goal is
-// faithful consumption of an existing borrow, not re-implementing Unicode in
-// `.dag`.
+// **Framing.** Class-row consumption is anchored on `CharClass` + the live
+// `char_in_class` predicates in `dsl/std/unicode.dag`; retyping the remaining
+// string witnesses and deriving shared-syntax rows from lowered `syntax.dag`
+// is downstream substrate work named in ROADMAP.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: signed unary `-` merged into a following decimal `IntLit` when the
@@ -94,12 +64,13 @@ import v3.std.tokenize {
 }
 
 import v3.std.unicode {
-  CharClass
+  CharClass,
+  char_in_class,
 }
 
-// Scanner order is now structurally owned by tokenizer authority. Predicate
-// bodies still live in `regen_tokenize` until `char_in_class` is structurally
-// executable for this path.
+// Scanner precedence (`ascii_scan_order`) is tokenizer-owned substrate; bytecode
+// class checks follow `dsl/std/unicode.dag` (`char_in_class` — imported nominal
+// anchor for reviewers + `compile_to_dag` resolution).
 data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]
 
 // `TokenKind` variant labels (`src/v3/std/tokenize.dag`): when the **previous** token
