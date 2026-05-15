@@ -76,7 +76,7 @@ These 6 table-families ARE the GrammarSpec content. The build system reads `pars
 
 ### §4.1 `SurfaceModule` (typed-state output)
 
-Per `src/v3/std/parse_surface.dag:29` (verified live): `SurfaceModule` is the top-level parse output carrying `List<SurfaceItem>` + module-level metadata.
+Per `src/v3/std/parse_surface.dag:29` (verified live): `SurfaceModule { items: List<SurfaceItem> }` — single field only. Per cursor PR #3126 APPROVE_WITH_COMMENTS line:79 + INVARIANTS P1 live-state honesty: earlier draft "+ module-level metadata" was a phantom addition; live carrier has ONLY the `items` field.
 
 **Live failure boundary** (per `parse_generated.rs:138`): parse returns `Result<SurfaceModule, Diagnostic>` (fail-closed; aborts on first parse error). NO diagnostic-stream coupling in live state.
 
