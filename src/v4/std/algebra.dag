@@ -43,6 +43,8 @@
 
 module v4.std.algebra
 
+import v4.std.node { Node }
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
@@ -224,6 +226,27 @@ type BooleanAlgebra<T> {
 // sequence types ground by aliasing onto it (e.g. a text type onto
 // FreeMonoid over a char type) — that aliasing is the inhabitant's
 // concern, not this file's. Anchor: Wikipedia "Free monoid".
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). The two
+// variants are the constructors of an inductive type (base + cons),
+// not compressed structure. Ledger — four patterns attempted:
+//   1. Fact placement — FAILS: Empty/Cons are not per-consumer facts;
+//      every structural fold over a FreeMonoid handles BOTH (induction
+//      base + step). No consumer uses only one.
+//   2. Variant-is-data — FAILS: the variants have DIFFERENT shapes
+//      (Empty nullary; Cons {head, tail}). Collapsing to {kind, head?,
+//      tail?} makes "Cons with no head" representable — the inverse of
+//      P2 (illegal states unrepresentable).
+//   3. Algebraic form — N/A: this declaration IS the std/ algebraic
+//      source other types ground in (THESIS:194 root primitive;
+//      epistemic-stacking.md). There is no richer source to point at —
+//      pointing it elsewhere is circular.
+//   4. Dimensional — FAILS: a sequence is EITHER empty OR head+tail;
+//      genuine alternatives (recursion base vs inductive case), never
+//      simultaneous coordinates. No value is "both".
+// Terminal: irreducible inductive definition of the free monoid; a
+// root primitive grounded in monoid theory.
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
