@@ -8562,6 +8562,10 @@ fn lower_field_path_expr(
             if let Some(port) = resolve_data_path(dag, &value_body, rest, span) {
                 return port;
             }
+            return unresolved_port(
+                dag,
+                data_field_path_diagnostic(dag, decl_id, &value_body, rest, span),
+            );
         }
     }
     unresolved_port(
@@ -8575,6 +8579,49 @@ fn lower_field_path_expr(
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
         },
     )
+}
+
+fn data_declared_type_display_name(dag: &Dag, decl_id: DeclarationId) -> String {
+    dag.declaration(decl_id)
+        .meta_tag
+        .map(|ty| declaration_display_name(dag, ty))
+        .unwrap_or_else(|| declaration_display_name(dag, decl_id))
+}
+
+fn data_field_path_diagnostic(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+    span: &SourceSpan,
+) -> Diagnostic {
+    let type_name = data_declared_type_display_name(dag, decl_id);
+    let field = segments.first().map_or("<empty>", String::as_str);
+    let name = match value_body {
+        crate::dag::ValueBody::Scalar(_) => format!("{type_name} has no field {field}"),
+        crate::dag::ValueBody::Structural { .. } => {
+            format!(
+                "{type_name} has no compile-time scalar field path `{}`",
+                segments.join(".")
+            )
+        }
+        crate::dag::ValueBody::Unparsed(_) => {
+            format!("{type_name} data value body is not lowered to a compile-time field value")
+        }
+        crate::dag::ValueBody::List(_) | crate::dag::ValueBody::Map(_) => {
+            format!(
+                "{type_name} data value does not support dotted field path `{}`",
+                segments.join(".")
+            )
+        }
+    };
+    Diagnostic::ResolveError {
+        name,
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
 }
 
 /// DB-10 (3a.2): walk a sequence of field segments through a data
