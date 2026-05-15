@@ -3804,11 +3804,33 @@ pub mod lens_effect_enumeration {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        non_shorthand_field_patterns
     )]
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+
+        enum EffectClassificationResult {
+            EffectClassified {
+                shape: EffectShape,
+            },
+            EffectClassificationFailed {
+                failure: EffectClassificationFailure,
+            },
+        }
+
+        fn classify_operation_effect(op: &Operation) -> EffectClassificationResult {
+            match crate::dag::classify_operation_effect(&Dag::new(), op) {
+                Ok(shape) => EffectClassificationResult::EffectClassified { shape },
+                Err(failure) => EffectClassificationResult::EffectClassificationFailed { failure },
+            }
+        }
+
+        fn operation_effect_shape(op: &Operation) -> EffectShape {
+            crate::dag::operation_effect_shape(&Dag::new(), op)
+                .expect("std.effects operation anchors unavailable for generated adapter")
+        }
 
         include!("lens_effect_enumeration_generated.rs");
     }
@@ -3817,6 +3839,15 @@ pub mod lens_effect_enumeration {
         enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
         StructuralEffectShape, TransactionalPattern,
     };
+
+    pub fn operation_structural_effect_shape(op: &crate::dag::Operation) -> StructuralEffectShape {
+        match crate::dag::operation_effect_shape(&crate::dag::Dag::new(), op) {
+            Some(shape) => generated::effect_shape_to_structural(&shape),
+            None => StructuralEffectShape::UnknownEffect {
+                reason: "std.effects operation anchors unavailable".to_string(),
+            },
+        }
+    }
 }
 
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;

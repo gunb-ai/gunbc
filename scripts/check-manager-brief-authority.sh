@@ -434,9 +434,13 @@ check_q4_landed_pr_in_history() {
       # empty state in constrained CI contexts even when the pull request is
       # plainly merged. The REST pull endpoint needs only read access and
       # exposes `merged_at` directly.
-      local merged_at=""
+      local merged_at="" api_out=""
       gh_stderr_file="$(mktemp)"
-      merged_at="$(gh api "repos/${REPO_SLUG}/pulls/${pr_num}" --jq '.merged_at // ""' 2>"$gh_stderr_file" || true)"
+      if api_out="$(gh api "repos/${REPO_SLUG}/pulls/${pr_num}" --jq '.merged_at // ""' 2>"$gh_stderr_file")"; then
+        merged_at="$api_out"
+      else
+        merged_at=""
+      fi
       if [ -z "$gh_stderr" ]; then
         gh_stderr="$(cat "$gh_stderr_file" 2>/dev/null || true)"
       fi

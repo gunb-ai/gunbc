@@ -428,6 +428,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Lane E-P per ROADMAP.md "Lane E-P — per-call descent-evidence provenance (M)" — see
     // INVARIANTS.md §P5 row for dissolution trigger (lens-consumer match-arm walker extension).
     "src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs",
+    // R3 gate #82: Operation-row consumer receipt for effect_enumeration COMPLETE.
+    "src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
