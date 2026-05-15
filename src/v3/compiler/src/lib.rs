@@ -4672,10 +4672,11 @@ pub mod lens_cost_symbolic {
         generated::lookup_cost(table, port)
     }
 
-    /// Rust projection of [`v3_std_lookup::Lookup`](crate::dag::Lookup) at [`SymbolicCost`].
-    /// Alias keeps embedder-stable naming alongside [`lens_cost::CostLookup`](crate::lens_cost).
+    /// Alias for [`Lookup`] at [`SymbolicCost`] — structural [`Hit`](Lookup::Hit) /
+    /// [`Miss`](crate::dag::Lookup::Miss) projections from the folded cost table.
     ///
     /// [`SymbolicCost`]: crate::dag::SymbolicCost
+    /// [`Lookup`]: crate::dag::Lookup
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 

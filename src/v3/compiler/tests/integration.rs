@@ -447,7 +447,7 @@ mod lane2_stage_2f_dimension_test {
     use v3_compiler::analyze_symbolic_cost_dimension;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
-    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::DimensionReport;
 
     fn find_bind_port(dag: &Dag, name: &str) -> PortId {
@@ -563,7 +563,7 @@ mod lane2_stage_2f_dimension_test {
         let dag = compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3").expect("compiles");
         let root = find_bind_root(&dag, "x");
         let report = analyze_symbolic_cost_dimension(&dag, root);
-        let lens = match symbolic_cost_of(&dag, &find_bind_port(&dag, "x")) {
+        let lens = match symbolic_cost_lookup(&dag, &find_bind_port(&dag, "x")) {
             SymbolicCostLookup::Hit(cost) => cost,
             SymbolicCostLookup::Miss => panic!("expected Hit"),
         };
@@ -638,7 +638,7 @@ mod lane2_stage_2f_dimension_test {
 mod e7_analyze_complexity_integration {
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Behavior;
-    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
     use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
 
     fn find_bind_root(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
@@ -827,14 +827,14 @@ mod e7_analyze_complexity_integration {
     }
 
     /// E7 §test 1 (cross-check): `analyze_complexity.composed` matches
-    /// the lens authority `symbolic_cost_of` at the workflow root.
+    /// the lens folded table lookup [`symbolic_cost_lookup`] at the workflow root's port.
     /// Confirms the wrapper preserves the lens contract.
     #[test]
     fn analyze_complexity_composed_matches_lens_at_workflow_root() {
         let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
         let root = find_bind_root(&dag, "z");
 
-        let SymbolicCostLookup::Hit(lens_cost) = symbolic_cost_of(&dag, &find_bind_port(&dag, "z"))
+        let SymbolicCostLookup::Hit(lens_cost) = symbolic_cost_lookup(&dag, &find_bind_port(&dag, "z"))
         else {
             panic!("lens authority must produce a Hit on a well-typed program");
         };

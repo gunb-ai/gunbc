@@ -30,7 +30,7 @@ use v3_compiler::dag::{
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::realization_cost::{
     compose_symbolic_cost_with_realization_costs, RealizationCostAmount, RealizationCostKey,
     RealizationCostTable,
@@ -171,7 +171,7 @@ let demo: Int = countdown(3) + 1
     );
 
     let countdown = find_bind_value(&user, "countdown");
-    let algebra_cost = match symbolic_cost_of(&user, &countdown) {
+    let algebra_cost = match symbolic_cost_lookup(&user, &countdown) {
         SymbolicCostLookup::Hit(cost) => cost,
         SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
     };
@@ -234,7 +234,7 @@ fn coercion_cost_equals_complexity_by_construction() {
     run_on_larger_stack(|| {
         let user = cross_target_structural_cost_derivation_fixture();
         let demo_port = find_bind_value(&user, "demo");
-        let via_cost = match symbolic_cost_of(&user, &demo_port) {
+        let via_cost = match symbolic_cost_lookup(&user, &demo_port) {
             SymbolicCostLookup::Hit(cost) => cost,
             SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `demo`"),
         };
@@ -428,9 +428,9 @@ fn cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness(
             .filter_map(Behavior::as_bind)
             .find(|bind| bind.name == "folded")
             .expect("gate #51 folded bind");
-        let pre_fold_cost = match symbolic_cost_of(&dag, &folded_bind.value) {
+        let pre_fold_cost = match symbolic_cost_lookup(&dag, &folded_bind.value) {
             SymbolicCostLookup::Hit(cost) => cost,
-            SymbolicCostLookup::Miss => panic!("gate #51 symbolic_cost_of returned Miss"),
+            SymbolicCostLookup::Miss => panic!("gate #51 symbolic_cost_lookup returned Miss"),
         };
         assert!(
             matches!(pre_fold_cost, SymbolicCost::ConstantCost { _0: 1 }),

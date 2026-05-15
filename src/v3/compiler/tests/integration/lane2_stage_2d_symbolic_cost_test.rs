@@ -23,7 +23,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{
-    symbolic_cost_of, transform_cost_for_target, SymbolicCostEntry, SymbolicCostLookup,
+    symbolic_cost_lookup, transform_cost_for_target, SymbolicCostEntry, SymbolicCostLookup,
 };
 
 use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
@@ -54,10 +54,10 @@ fn find_bind_value(dag: &Dag, name: &str) -> PortId {
 }
 
 fn expect_cost(dag: &Dag, port: PortId) -> SymbolicCost {
-    match symbolic_cost_of(dag, &port) {
+    match symbolic_cost_lookup(dag, &port) {
         SymbolicCostLookup::Hit(cost) => cost,
         SymbolicCostLookup::Miss => {
-            panic!("symbolic_cost_of returned Miss for {port:?}")
+            panic!("symbolic_cost_lookup returned Miss for {port:?}")
         }
     }
 }
