@@ -105,10 +105,13 @@ type SyntaxFormRef
   | LiteralForm    // expected at literal position
 
 type ParseDiagnostic
-  = UnexpectedToken { found: TokenKindRef, expected: List<TokenKindRef>, context: SyntaxFormRef }
+  // Every variant carries SourceSpan structurally per cursor PR #3126 BLOCKING
+  // line:65 + INVARIANTS P2/P3 (fail-closed source attribution requires
+  // span on every diagnostic, not optional):
+  = UnexpectedToken { found: TokenKindRef, expected: List<TokenKindRef>, context: SyntaxFormRef, span: SourceSpan }
   | UnterminatedConstruct { construct: SyntaxFormRef, opener_span: SourceSpan }
-  | InvalidLiteral { kind: TokenKindRef, reason: String }   // reason is human display
-  | DuplicateRecordFieldLabel { label: NonEmptyStr, prior_span: SourceSpan }   // per PR #3075 ratchet
+  | InvalidLiteral { kind: TokenKindRef, reason: String, span: SourceSpan }   // reason is human display; span required
+  | DuplicateRecordFieldLabel { label: NonEmptyStr, prior_span: SourceSpan, span: SourceSpan }   // per PR #3075 ratchet; both spans required (current site + prior site)
   | (additional variants per Step 2 worker brief authoring against parse_generated.rs)
 ```
 
