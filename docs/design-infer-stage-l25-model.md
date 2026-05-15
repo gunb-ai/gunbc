@@ -36,10 +36,15 @@ This is structurally distinct from PB-4 lower:
 
 Per the live `infer.rs:5-15` rules:
 - `Arrow { inputs, output, body }` → direct signature inference from input/output declarations
-- `Atom(Identifier { name, resolved })` → follow resolved link OR look up name in declaration table (§8.9 inhabitance walk)
+- `Atom(AtomPayload)` per LIVE substrate.dag:87 5-variant sum (per codex PR #3085 BLOCKING finding 1 — earlier "Atom(Identifier { name, resolved })" was stale; infer.rs:10 top-comment drifted vs live substrate):
+  - `Literal(LiteralBits)` → literal-typed port; no resolution needed
+  - `UnresolvedIdentifier(String)` → fail-closed Unresolved + diagnostic at this port
+  - `ResolvedByStructure(DeclarationId)` → follow chain to declaration
+  - `ResolvedByName(DeclarationId)` → follow chain to declaration (§8.9 inhabitance walk)
+  - `TypeParam(String)` → type-parameter (post-instantiation resolved or unresolved)
 - Other TypeConnective variants → not callable; produce Unresolved + diagnostic
 
-**Fail-closed (INVARIANTS C-8)**: every detectable problem routes through `Dag::mark_unresolved` (current Rust API) or equivalent `.dag` substrate operation. Post-infer invariant: `state != Uninferred for all ports` AND `state == Unresolved iff diagnostics.contains(port_id)`.
+**Fail-closed (INVARIANTS C-8)**: every detectable problem routes through `Dag::mark_unresolved` (current Rust API) or equivalent `.dag` substrate operation. Post-infer invariant: `state != Uninferred for all ports` AND `state == Unresolved iff diagnostics.contains(port_id)` — where the diagnostic-table is a PROPOSED substrate extension to `Dag` carrier (live `Dag { declarations, nodes, ports, clusters }` at substrate.dag:525 has NO diagnostics field per codex PR #3085 BLOCKING finding 2). Step 2 PR scope includes `diagnostics: Map<PortId, Diagnostic>` field extension to Dag, OR PB-Substrate prereq adds it before PB-5 dispatch.
 
 **Typed-state carrier per Decision 3.A operator-ratified shape** (sum-variant `Dag = PreInferDag | InferredDag` per `feedback_coproduct_dissolution` Practice 4): infer's signature is `fn infer(d: PreInferDag) -> InferredDag` — the variant transition IS the structural invariant of inference completion. Pre-infer state cannot exist in `InferredDag` by construction.
 
@@ -63,7 +68,7 @@ Per `feedback_lenses_not_passes` + observation in §2: infer's "rule book" is em
 - Lower maps SURFACE FORMS (which are user-authored grammar) → substrate behaviors. The mapping is a design choice (multiple valid mappings possible per grammar/elaboration separation per Decision 2.A 4-param compile).
 - Infer propagates TYPES through substrate-declared algebraic structure. The propagation rule per TypeConnective variant is determined by the variant's algebraic role (Arrow's direct-signature, Atom's lookup, etc.). The rule is forced by the substrate's structure; no design freedom for re-mapping.
 
-If a future substrate refactor adds new TypeConnective variants, the inference rules extend automatically — they're per-variant structural facts, not pluggable rules.
+**If a future substrate refactor adds new TypeConnective variants**, the inference rules do NOT extend automatically. Per cursor INLINE BLOCKING #3085 + thesis stop-signal discipline: a 7th TypeConnective variant requires (a) explicit C1 substrate-extension audit + (b) named infer-rule receipt for the new variant's structural inference behavior. The "per-variant structural facts" framing means new variants need new per-variant facts, NOT silent inheritance. Earlier draft "rules extend automatically" weakened the substrate-extension stop signal; corrected here.
 
 ---
 
@@ -71,7 +76,7 @@ If a future substrate refactor adds new TypeConnective variants, the inference r
 
 ### §4.1 `InferredDag` (typed-state output carrier per Decision 3.A)
 
-Per Decision 3.A operator-ratified, infer produces `InferredDag` variant explicitly. Construction-time invariant: every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with diagnostic in the diagnostic table per the `state == Unresolved iff diagnostics.contains(port_id)` biconditional). `Uninferred` cannot exist in `InferredDag` by construction.
+Per Decision 3.A operator-ratified, infer produces `InferredDag` variant explicitly. Construction-time invariant: every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with diagnostic in the PROPOSED diagnostic-table substrate extension — live `Dag { declarations, nodes, ports, clusters }` at `src/v3/std/substrate.dag:525` has NO diagnostics field; Step 2 PR scope includes `diagnostics: Map<PortId, Diagnostic>` field extension OR PB-Substrate prereq). The biconditional `state == Unresolved iff diagnostics.contains(port_id)` is the construction-time enforcement target, not a live invariant. `Uninferred` cannot exist in `InferredDag` by construction (independent of the diagnostic-table substrate extension).
 
 **Substrate authority — DEPENDS on Decision 3.A landing**: extension of `src/v3/std/substrate.dag` `Dag` declaration to sum-variant; `InferredDag` variant constructor enforces port-state invariant. PB-Substrate work.
 
@@ -109,6 +114,21 @@ type IdentifierRef
 // String-wrapper masquerading as typed; that contradicts the typed-carrier
 // discipline + creates a second authority on algebra identity. Closed-axis
 // enum is the structurally honest form):
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per cursor PR #3085 INLINE
+// BLOCKING + modeling-discipline Practice 4: substrate coproducts require
+// 🟢/🟡/🔴 classification + named ledger/trigger for dissolution.
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// algebra-axiom set against infer.rs algebra-inhabitance check sites at
+// `src/v3/compiler/src/infer.rs` AND verifies coverage parity with the
+// 3-variant subset already live at verification.dag:146 AlgebraicLawKind,
+// promote to 🟢 TERMINAL at the per-stage algebra-axis scope.
+//
+// **Adjacent live**: verification.dag:146 AlgebraicLawKind already declares
+// 3-variant subset (Associativity / Commutativity / Identity) at the
+// algebraic-law-kind scope. AlgebraAxis is a broader closed-axis enumeration
+// covering the algebra-inhabitance failure axes specifically (Closure /
+// Inverse / Distributivity / OrderingTotality / etc.).
 type AlgebraAxis
   = Closure
   | Associativity
@@ -119,9 +139,26 @@ type AlgebraAxis
   | OrderingTotality
   | OrderingTransitivity
   | OrderingAntisymmetry
-  // Step 2 brief enumerates the full closed set against infer.rs algebra-inhabitance check sites;
-  // adjacent to verification.dag:146 `AlgebraicLawKind` which has the 3-variant subset already live
+  // Variants enumerated per Step 2 brief grep of infer.rs algebra-inhabitance
+  // check sites; promote to 🟢 TERMINAL once full set covers actual check axes.
 
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per cursor PR #3085 INLINE
+// BLOCKING + modeling-discipline Practice 4 (Coproduct dissolution):
+// substrate coproducts require 🟢/🟡/🔴 classification + dissolution trigger.
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// variant set against `parse_generated.rs` Diagnostic::ParseError, lower.rs
+// Diagnostic construction sites, and infer.rs Dag::mark_unresolved emission
+// sites — promote to 🟢 TERMINAL at the per-stage diagnostic-variant scope.
+// PR #3077 §12 Q7 ratification on Decision 2.B extension path determines
+// whether this stays per-stage sum (option b) or extends shared Diagnostic
+// (option a).
+//
+// **Anti-bridge**: per Q6.5 anti-bridge invariant at diagnostics.dag:135-141,
+// InferDiagnostic does NOT collapse into CompilerDiagnosticKind without
+// substrate-extension ratification; the relationship between this proposed
+// per-stage sum + the shared Diagnostic carrier is itself the ratification
+// scope of PR #3077 §12 Q7.
 type InferDiagnostic
   = UnresolvedIdentifier { identifier: IdentifierRef, scope: SectionRef }
   | NotCallable { type_connective: TypeConnective }
@@ -136,9 +173,9 @@ type InferDiagnostic
 
 ### §4.3 `InferResult` — NOT a separate sum-variant
 
-Unlike lower's `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>`, infer's output is plain `InferredDag` — diagnostics are coupled INTO the InferredDag via the `state == Unresolved iff diagnostics.contains(port_id)` biconditional. Per `feedback_state_space_vs_behavioral_invariants`: the structural coupling makes the diagnostic-port relationship a type invariant, not a sum-variant.
+Unlike lower's `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>`, infer's output is plain `InferredDag` — diagnostics couple INTO the InferredDag via the `state == Unresolved iff diagnostics.contains(port_id)` biconditional, where the diagnostic-table is a PROPOSED substrate extension (live Dag at substrate.dag:525 lacks diagnostics field; see §2 fail-closed note for extension scope). Per `feedback_state_space_vs_behavioral_invariants`: the structural coupling — once the substrate extension lands — makes the diagnostic-port relationship a type invariant, not a sum-variant.
 
-`InferredDag` is honest about partial inference success — ports that failed inference are `Unresolved` with explanation in the diagnostic table; ports that succeeded are `Resolved(TypeShape)`. The InferredDag is well-formed even with partial-failure; downstream consumers (emit) handle `Unresolved` ports per their own fail-closed discipline.
+`InferredDag` is honest about partial inference success — ports that failed inference are `Unresolved` with explanation in the PROPOSED diagnostic table; ports that succeeded are `Resolved(TypeShape)`. The InferredDag is well-formed even with partial-failure (post substrate extension); downstream consumers (emit) handle `Unresolved` ports per their own fail-closed discipline.
 
 ---
 
@@ -230,7 +267,7 @@ infer is target-agnostic structural inference; Shape A/B disambiguation is emit'
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-infer-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn infer(d: PreInferDag) -> InferredDag` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current `infer.rs`). Signature uses Decision 3.A sum-variant typed-state at both boundaries (input = PreInferDag, output = InferredDag); Modeling Practice 6 API-level enforcement. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn infer(d: PreInferDag) -> InferredDag` declared in `src/v3/compiler/pipeline.dag` (per dsl/gunbc/compiler.dag:24 — internal pipeline lives in pipeline.dag, NOT generic compiler.dag) with `ExternalRealization` body (Rust-backed placeholder pointing to current `infer.rs`). Signature uses Decision 3.A sum-variant typed-state at both boundaries (input = PreInferDag, output = InferredDag); Modeling Practice 6 API-level enforcement. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | pipeline.dag refinement |
 | **Step 3: Implementation** | `src/v3/std/infer.dag` (the .dag implementation; structural TypeConnective dispatch + forward propagation). NO separate "InferenceSpec" file — substrate IS the rule book per §3.2. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/infer.dag (NEW substrate authority) |
 | **Step 4: Parity test + simultaneous Rust deletion** | Parity verification authored as `.dag` TestClaim — generated test fixture set + `.dag` TestClaim asserting `infer_via_rust(pre_infer_dag) == infer_via_dag(pre_infer_dag)` structural-equality across canonical corpus (Dag comparison up to NodeId renaming + diagnostic table equality). **P5 dissolution receipt**: this TestClaim is transient-by-construction; dissolves when infer.rs deletes in same PR. Any hand-Rust scaffolding bears P5 receipt `parity_infer_dag_vs_rust_scaffolding — transient; dissolves with infer.rs deletion in same PR per Step 4 atomic discipline`. `infer.rs` DELETED in same PR. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries at PR-merge. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | tests/parity_infer_dag_vs_rust (TestClaim shape) + `infer.rs` deletion |
 
