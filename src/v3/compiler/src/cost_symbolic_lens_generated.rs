@@ -360,7 +360,7 @@ pub fn witness_from_symbolic_cost_lookup(
         Lookup::Hit(c) => Witness::Inhabits((c).clone()),
         Lookup::Miss => Witness::Violates {
             reason: String::from("symbolic_cost_of: missing SymbolicCost for behavior result port"),
-            subject: ViolatesSubject::AtBehavior { _0: (p1).clone() },
+            subject: ViolatesSubject::AtBehavior((p1).clone()),
         },
     }
 }
