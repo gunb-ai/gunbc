@@ -19,21 +19,21 @@
 //   outside this lens's target-agnostic abstract `SymbolicCost` scope.
 // See docs/v3-lens-capability-register.md.
 //
-// Produces **`Witness<SymbolicCost>`** at the public `symbolic_cost_of` / `Lens.read`
-// boundary (gate #104 / R3 §1.8 — lawful `Violates { at }` attaches to **`resolve_producer`**
-// for the queried port when the folded table misses, and absent producers surface
-// **`Inhabits(UnknownCost("…"))`** instead of pinning `Violates` to an unrelated node).
-// The forward **Behavior fold still stores `Lookup<SymbolicCost>` per port** (`Hit`/`Miss`)
-// so `emit_rust_module` can lower the combinators compositionally — the only faithful
-// `Witness` projection is **`witness_from_symbolic_cost_lookup`**, not duplicated algebra.
+// Produces **`Witness<SymbolicCost>`** at **`Lens.read`** (`cost_lens_read`) and at the Rust
+// `lens_cost_symbolic::symbolic_cost_of` host (gate #104 / R3 §1.8). The `.dag` fold stores
+// `Lookup<SymbolicCost>` per port for compositional lowering; **`symbolic_cost_of` itself is not
+// emitted here**: the Rust host merges [`Dag::resolve_producer_lookup`] (typed producer walk —
+// discriminates **NoProducer** vs **MissingPort** / **MissingNode** / **BindCycle**) with
+// [`witness_from_symbolic_cost_lookup`] so malformed substrate fails closed per INVARIANTS P3.
+// Legitimate **NoProducer** (parameter / external binding) surfaces as
+// **`Inhabits(UnknownCost("…"))`** — not a fabricated `Violates { at }` on an unrelated node.
 
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
 import std.substrate {
   Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node,
-  TransformNode, TransformTarget, OperatorKind, ArithmeticOp,
-  resolve_producer
+  TransformNode, TransformTarget, OperatorKind, ArithmeticOp
 }
 import std.algebra {
   MethodContract,
@@ -132,18 +132,9 @@ type SymbolicCostEntry {
   cost: Lookup<SymbolicCost>
 }
 
-fn symbolic_cost_of(d: Dag, port_id: PortId) -> Witness<SymbolicCost> =
-  match resolve_producer(d, port_id) {
-    Some(subject) =>
-      witness_from_symbolic_cost_lookup(
-        lookup_cost(compute_symbolic_costs(d), port_id),
-        subject
-      )
-    None =>
-      Inhabits(
-        UnknownCost("symbolic_cost_of: unresolved producer for port")
-      )
-  }
+// `symbolic_cost_of`: authored only in Rust (`v3_compiler::lens_cost_symbolic::symbolic_cost_of`):
+// merges typed `ProducerLookup` with `witness_from_symbolic_cost_lookup` so malformed substrate is
+// not collapsed into `Option::None`.
 
 // §6a Option 3 demo consumer: cost analysis reads per-method metadata from
 // the unified carrier keyed by `(algebra_id, method_id)`, keeping the
@@ -481,9 +472,12 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 
 // ── T-LAS Slice B — `Lens<SymbolicCost>` + canonical enforcement (gate #90) ──
 //
-// Thin substrate packaging over the existing `symbolic_cost_of` /
-// `compute_symbolic_costs` authority — **no parallel cost algebra**. Composition
-// hooks reuse `std.algebra::{sequential,iterate}` / local `dominant` exactly as
+// Thin substrate packaging over `compute_symbolic_costs` / `lookup_cost` — **no parallel cost algebra**.
+// The `symbolic_cost_of` host in `v3_compiler` composes typed `ProducerLookup` with
+// `witness_from_symbolic_cost_lookup` (not emitted as a `.dag` fn — avoids `resolve_producer_opt`
+// collapsing malformed substrate).
+//
+// Composition hooks reuse `std.algebra::{sequential,iterate}` / local `dominant` exactly as
 // the Behavior fold does; Q-Lens-Target-Context / LoopBound-measure refinements
 // remain tracked under gunbc#2175 without blocking enforcement landing.
 fn witness_from_symbolic_cost_lookup(s: Lookup<SymbolicCost>, at: Behavior) -> Witness<SymbolicCost> =
