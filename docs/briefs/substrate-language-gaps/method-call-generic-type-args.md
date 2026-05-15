@@ -15,6 +15,14 @@ fn int_label(x: Int) -> String = "one"
 let labels: List<String> = map(singleton(1), int_label)
 ```
 
+The same surface may be referenced as the `std.list` top-level function form in design prose: `list.map<A, B>(xs, named_fn)`.
+
+## When This Matters
+
+This matters for `.dag` authors who want fluent method-style code. It is not blocking current R3 retirement work because driver code can use top-level collection functions.
+
 ## Status
 
 Ergonomics gap only. This does not block Path B tokenize/parse driver authoring because the top-level generic function form parses, lowers, infers, and emits.
+
+Estimated effort: substantial parser / surface-model work, likely multi-month.

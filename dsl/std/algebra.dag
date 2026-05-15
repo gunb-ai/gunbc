@@ -382,13 +382,18 @@ type BooleanAlgebra<T> {
 //   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
 //     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
 //     in std/primitives.dag, not a partial algebra field.
-//   Method-field type grammar cannot yet carry per-field generic params, so
-//   the receiver-shaped record fields below stay endomorphic. Non-endomorphic
-//   executable mapping is live through the top-level std.list functions:
-//     map<A, B>(list: List<A>, f: fn(A) -> B) -> List<B>
-//     fold<T, U>(list: List<T>, init: U, f: fn(U, T) -> U) -> U
-//   See src/v3/std/list.dag for the executable surface; the method-template
-//   rows below carry MappedElement / FoldAccumulator for compiler consumers.
+//   Method-field type-grammar limitation (PR #3142, Path B Brief 1,
+//   2026-05-15): FreeMonoid<T> record-field type grammar cannot encode
+//   method-local generic type parameters. Receiver-shaped fields like
+//   `map: fn(fn(T) -> T) -> FreeMonoid<T>` stay endomorphic on T because
+//   per-field generic params are a separate substrate-language gap (see
+//   docs/briefs/substrate-language-gaps/).
+//
+//   For non-endomorphic mapping, use the top-level std.list function form,
+//   which works end-to-end (parse/lower/infer/emit) and is pinned by
+//   generic_method_type_params_test:
+//     src/v3/std/list.dag:132 map<A, B>(List<A>, fn(A) -> B) -> List<B>
+//     src/v3/std/list.dag:96  fold<T, U>(List<T>, U, fn(U, T) -> U) -> U
 //   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
   // Monoid operations

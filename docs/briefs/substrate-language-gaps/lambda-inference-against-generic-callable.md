@@ -28,3 +28,7 @@ let folded: String = fold(singleton(1), "", keep_label)
 ## Status
 
 Ergonomics gap only. This does not block Path B tokenize/parse driver authoring as long as driver code uses named helper functions for collection transforms.
+
+This matters for `.dag` authors who want inline collection transforms. Named functions are more verbose but workable, and downstream R3 Briefs 7-9 should honor that constraint.
+
+Estimated effort: infer-stage work, likely 1-3 months.
