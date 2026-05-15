@@ -5,7 +5,7 @@
 //! imports used by hand-authored verification fixtures; keep this serializer aligned with
 //! `test_runner::field_value_to_symbolic_cost_eq_pattern` decoding rules.
 
-use v3_compiler::dag::{NonSingletonList, NonZeroRational, SymbolicCost};
+use v3_compiler::dag::{NonSingletonList, NonZeroRational, Rational, SymbolicCost};
 
 /// Escape UTF-8 for embedding inside a v3 double-quoted string (e.g. `TestClaim.source`).
 ///
@@ -78,12 +78,12 @@ pub fn symbolic_cost_as_v3_data_initializer(cost: &SymbolicCost) -> String {
         SymbolicCost::PolynomialCost { var, degree } => format!(
             "PolynomialCost {{ var: unnamed_size_variable(PortId({})), degree: {} }}",
             var.source_port.raw(),
-            rational_v3(degree)
+            rational_v3(degree.as_rational())
         ),
         SymbolicCost::PolyLogCost { var, exponent } => format!(
             "PolyLogCost {{ var: unnamed_size_variable(PortId({})), exponent: {} }}",
             var.source_port.raw(),
-            rational_v3(exponent)
+            rational_v3(exponent.as_rational())
         ),
         SymbolicCost::ExponentialCost { base, var } => format!(
             "ExponentialCost {{ base: {}, var: unnamed_size_variable(PortId({})) }}",
