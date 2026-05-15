@@ -64,25 +64,25 @@ type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 // Expression body (PATH X / Brief 3): staged `.dag` sources skip-parse brace-bodied
 // `fn` bodies into `ArrowBody::Unparsed`; `fn ... -> T = expr` parses as real
 // `SurfaceExpr` regardless of extension. Predicate semantics stay substrate-authored
-// (no host `is_ascii_*`); `code_point(c: c)` inlined per arm to avoid inner `let`.
+// (no host `is_ascii_*`); `code_point(c)` inlined per arm to avoid inner `let`.
 fn char_in_class(c: Char, class: CharClass) -> Bool =
   match class {
     // Match Rust `u8::is_ascii_whitespace`: TAB, LF, FF, CR, SPACE — not U+000B VT.
     Whitespace =>
-      code_point(c: c) == 9 || code_point(c: c) == 10 || code_point(c: c) == 12
-      || code_point(c: c) == 13 || code_point(c: c) == 32
-    Digit => code_point(c: c) >= 48 && code_point(c: c) <= 57
+      code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
+      || code_point(c) == 13 || code_point(c) == 32
+    Digit => code_point(c) >= 48 && code_point(c) <= 57
     IdentStart =>
-      (code_point(c: c) >= 65 && code_point(c: c) <= 90)
-      || (code_point(c: c) >= 97 && code_point(c: c) <= 122)
-      || code_point(c: c) == 95
+      code_point(c) >= 65 && code_point(c) <= 90
+      || code_point(c) >= 97 && code_point(c) <= 122
+      || code_point(c) == 95
     // Inline digit range (same as `Digit` arm) — do not call `char_in_class`
     // recursively here: same `c` gives no structural descent for CX proofs.
     IdentContinue =>
-      (code_point(c: c) >= 48 && code_point(c: c) <= 57)
-      || (code_point(c: c) >= 65 && code_point(c: c) <= 90)
-      || (code_point(c: c) >= 97 && code_point(c: c) <= 122)
-      || code_point(c: c) == 95
+      code_point(c) >= 48 && code_point(c) <= 57
+      || code_point(c) >= 65 && code_point(c) <= 90
+      || code_point(c) >= 97 && code_point(c) <= 122
+      || code_point(c) == 95
   }
 
 // --- Display width classification ---
@@ -160,9 +160,7 @@ data wide_blocks: List<UnicodeBlock> = [
 
 // Extract the integer code point from a Char.
 // `+ 0` coerces branded Char to plain Int for the typechecker.
-fn code_point(c: Char) -> Int {
-  c + 0
-}
+fn code_point(c: Char) -> Int = c + 0
 
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
   cp >= block.start && cp <= block.end_inclusive

@@ -1,0 +1,26 @@
+// PATH X / Brief 3: `std.unicode.char_in_class` lowers and executes end-to-end.
+//
+// Named `Char` data witnesses (avoid char-literal surface); wrappers are plain
+// `fn` callable from the eager evaluator — no inline lambdas (coord with Brief 1).
+//
+// Use **positional** calls: `ident: expr` inside call parens parses as a record
+// field, not a named argument (see substrate-language-gaps doc).
+
+module test.r3_path_b_brief3_char_in_class_exec
+
+import std.types { Char }
+import std.unicode { CharClass, char_in_class }
+
+data letter_a: Char = 97
+
+data digit_5: Char = 53
+
+data space_chr: Char = 32
+
+fn receipt_letter_is_ident_start() -> Bool = char_in_class(letter_a, IdentStart)
+
+fn receipt_digit_not_ident_start() -> Bool = char_in_class(digit_5, IdentStart)
+
+fn receipt_space_not_ident_start() -> Bool = char_in_class(space_chr, IdentStart)
+
+fn receipt_digit_is_digit() -> Bool = char_in_class(digit_5, Digit)

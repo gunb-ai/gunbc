@@ -20,28 +20,11 @@
 // syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
 // extractor and derive directly from the lowered Dag in the same PR.
 //
-// **Character-level scaffold (narrowed SG-1 half).**
-// SG-1 scanner **class predicates** are no longer handwritten in `regen_tokenize`:
-// `cargo run … regen_tokenize` translates each `dsl/std/unicode.dag`
-// `fn char_in_class` match arm (`cp` → bytecode `byte`) keyed by constructor
-// name. This module imports `char_in_class` as the nominal authoritative
-// classifier on top of structural `ascii_scan_order`. Extraction rides the
-// committed `.dag` surface text until `compile_to_dag` can lower that `fn`
-// body for codegen (bootstrap still carries those spans as ArrowBody staging).
-//
-// **Still open (Phase-2 / ROADMAP):** opaque `String` rows here and shared
-// syntax encode individual codepoints as spellings instead of typed `Char` /
-// `List<Char>` (`StringEscapeSpec.suffix`, `LocalPunctSpec.pattern`,
-// `string_literal_delimiter`, `line_comment_prefix`, keyword / operator symbols).
-//
-// **Existing authorities cited** (`dsl/std/` loads in bootstrap; see also
-// `src/v3/compiler/regen.dag`): `std.types::Char`, `std.string_type::String`,
-// `std.unicode`, `std.encoding`, `std.bit::Byte`.
-//
-// **Framing.** Class-row consumption is anchored on `CharClass` + the live
-// `char_in_class` predicates in `dsl/std/unicode.dag`; retyping the remaining
-// string witnesses and deriving shared-syntax rows from lowered `syntax.dag`
-// is downstream substrate work named in ROADMAP.
+// **Character classes.** Scanner precedence is `ascii_scan_order: List<CharClass>`;
+// membership semantics live in substrate `dsl/std/unicode.dag` (`char_in_class`).
+// Deferred (ROADMAP / class-5 program): opaque `String` spellings here and in
+// shared syntax (`suffix`, `pattern`, delimiters, keyword/operator symbols) →
+// `Char` / `List<Char>`. See docs/briefs/substrate-language-gaps/.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: signed unary `-` merged into a following decimal `IntLit` when the
