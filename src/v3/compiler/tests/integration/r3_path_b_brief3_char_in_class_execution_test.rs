@@ -74,8 +74,7 @@ fn path_b_brief3_char_in_class_authority_is_user_defined() {
         .declaration_by_name("char_in_class")
         .expect("bootstrap must expose unicode.dag char_in_class");
     assert_eq!(
-        decl.span.file,
-        "dsl/std/unicode.dag",
+        decl.span.file, "dsl/std/unicode.dag",
         "witness must be the dsl/std authority declaration"
     );
     let TypeConnective::Arrow { body, .. } = &decl.connective else {
@@ -151,8 +150,14 @@ fn path_b_brief3_char_in_class_matches_codegen_byte_matches_on_ascii() {
         for (scanner, fn_name) in [
             (ScannerCharClass::Whitespace, "brief3_membership_whitespace"),
             (ScannerCharClass::Digit, "brief3_membership_digit"),
-            (ScannerCharClass::IdentStart, "brief3_membership_ident_start"),
-            (ScannerCharClass::IdentContinue, "brief3_membership_ident_continue"),
+            (
+                ScannerCharClass::IdentStart,
+                "brief3_membership_ident_start",
+            ),
+            (
+                ScannerCharClass::IdentContinue,
+                "brief3_membership_ident_continue",
+            ),
         ] {
             let codegen = byte_matches(byte, scanner);
             let lowered = eval_utf8_char_class_predicate(&dag, fn_name, byte, &strategy);
