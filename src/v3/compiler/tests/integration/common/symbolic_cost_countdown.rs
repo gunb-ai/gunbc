@@ -6,7 +6,7 @@
 //! degree-1 **`PolynomialCost`** on the parameter — not a product shell keyed off two
 //! distinct `PortId`s for the same induction chain.
 
-use v3_compiler::dag::SymbolicCost;
+use v3_compiler::dag::{NonZeroRational, SymbolicCost};
 
 /// Returns `true` when `cost` contains a product or unknown anywhere under a
 /// composite tree walk (super-linear / ambiguous bound carriers).
@@ -32,7 +32,13 @@ pub fn assert_recursive_countdown_linear_semantics(cost: &SymbolicCost) {
     );
 
     assert!(
-        matches!(cost, SymbolicCost::PolynomialCost { .. }),
+        matches!(
+            cost,
+            SymbolicCost::PolynomialCost {
+                degree,
+                ..
+            } if degree == &NonZeroRational::ONE
+        ),
         "recursive countdown must normalize to degree-1 PolynomialCost on the unary parameter (gate #78 \
          oracle); got {cost:?}"
     );

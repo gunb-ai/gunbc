@@ -61,7 +61,7 @@
 //! rather than that PR having to re-author the fixtures.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
+use v3_compiler::dag::{Behavior, NonZeroRational, PortId, SymbolicCost};
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup, ComplexitySummary};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
@@ -113,7 +113,7 @@ fn cost_contains_polynomial_or_unknown(cost: &SymbolicCost) -> bool {
 
 fn cost_contains_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::PolynomialCost { .. } => true,
+        SymbolicCost::PolynomialCost { degree, .. } => degree == &NonZeroRational::ONE,
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             terms.iter().any(|t| cost_contains_linear(t.as_ref()))
         }
@@ -185,14 +185,14 @@ fn ep_count_c(xs: EpListC) -> Int =
         );
         assert!(
             cost_contains_linear(&summary.work),
-            "match-payload tail-recursion work should carry a `LinearCost` term on \
-             the descending parameter (frozen v2 projection), got {:?}",
+            "match-payload tail-recursion work should carry a degree-1 `PolynomialCost` term on \
+             the descending parameter, got {:?}",
             summary.work
         );
         assert!(
             cost_contains_linear(&summary.span),
-            "match-payload tail-recursion span should carry a `LinearCost` term on \
-             the descending parameter (frozen v2 projection), got {:?}",
+            "match-payload tail-recursion span should carry a degree-1 `PolynomialCost` term on \
+             the descending parameter, got {:?}",
             summary.span
         );
         assert_proven(&summary.work_certainty, "match-payload work certainty");

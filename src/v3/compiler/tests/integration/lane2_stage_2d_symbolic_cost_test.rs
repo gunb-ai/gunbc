@@ -73,7 +73,7 @@ fn is_constant(cost: &SymbolicCost) -> bool {
 
 fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::PolynomialCost { .. } => true,
+        SymbolicCost::PolynomialCost { degree, .. } => degree == &NonZeroRational::ONE,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
             terms.iter().any(|term| mentions_linear(term.as_ref()))
         }
@@ -439,13 +439,13 @@ budgeted_test! {
     {
         // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`
         // lowers to a Loop whose source is the `n` param port. The
-        // lens's `loop_cost` fires LinearCost(size_var_of(source)),
-        // so the bound carries a LinearCost term.
+        // lens's `loop_cost` fires degree-1 PolynomialCost(size_var_of(source)),
+        // so the bound carries a linear term.
         let dag = cached_compile_to_dag(LANE2D_COUNTDOWN_SOURCE, LANE2D_COUNTDOWN_FILE);
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
         assert!(
             mentions_linear(&cost),
-            "recursive fn should surface a LinearCost term, got {cost:?}"
+            "recursive fn should surface a degree-1 PolynomialCost term, got {cost:?}"
         );
     }
 }
@@ -498,7 +498,7 @@ fn symbolic_cost_operator_div_preserves_operand_costs_beside_log_surcharge() {
             );
             assert!(
                 mentions_linear(&cost_expensive),
-                "expensive dividend port should keep a Linear term until dominance normalization; got {cost_expensive:?}"
+                "expensive dividend port should keep a degree-1 PolynomialCost term until dominance normalization; got {cost_expensive:?}"
             );
 
             let acc_cheap = vec![
