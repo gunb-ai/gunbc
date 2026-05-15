@@ -43,8 +43,6 @@
 
 module v4.std.algebra
 
-import v4.std.node { Node }
-
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
@@ -292,6 +290,56 @@ type Ordering
 
 
 // ─────────────────────────────────────────────────────────────────────
+// Algebra<T> — the closed witness "T carries one of the algebra
+// structures declared above". It exists so the Homomorphism carrier can
+// name WHICH algebra it preserves without (a) a raw substrate `Node`
+// (any node — a non-algebra — would be representable: the Practice 2/6
+// + P2 fail-open at the carrier boundary), and without (b) a
+// higher-kinded `forall A: Algebra` parameter the v2 seed cannot
+// express. Each variant carries the actual structure (not a bare tag),
+// so the preserved-algebra fact flows forward intact (P2).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: every Homomorphism consumer (Find /
+//      Realize / Measure / L7) reads the same field to validate
+//      preservation; not a scattered per-consumer fact.
+//   2. Variant-is-data — FAILS: the wrapped structures have genuinely
+//      different shapes (Magma vs Ring vs Lattice); no uniform label
+//      space to fold into one record.
+//   3. Algebraic form — N/A by construction: the variants ARE the
+//      references to the std/ algebra structures (pattern 3's own
+//      target shape). A closed selector over them is structurally
+//      required because a carrier field must name one algebra and the
+//      v2 seed has no `forall A: Algebra` quantifier — this IS the
+//      dissolved form, not a compression of one.
+//   4. Dimensional — FAILS: a homomorphism preserves EXACTLY ONE
+//      algebra class; genuine alternatives, never coordinates.
+// Terminal: the closed taxonomy of algebraic structures this file
+// declares (anchor: Wikipedia "Algebraic structure" — a fixed finite
+// set). No richer source; the taxonomy IS the source. Cost-of-change:
+// a new algebra structure adds its declaration + one variant here.
+type Algebra<T>
+  = AlgMagma { magma: Magma<T> }
+  | AlgSemigroup { semigroup: Semigroup<T> }
+  | AlgMonoid { monoid: Monoid<T> }
+  | AlgCommutativeMonoid { commutative_monoid: CommutativeMonoid<T> }
+  | AlgGroup { group: Group<T> }
+  | AlgAbelianGroup { abelian_group: AbelianGroup<T> }
+  | AlgSemiring { semiring: Semiring<T> }
+  | AlgCommutativeSemiring { commutative_semiring: CommutativeSemiring<T> }
+  | AlgRing { ring: Ring<T> }
+  | AlgCommutativeRing { commutative_ring: CommutativeRing<T> }
+  | AlgOrderedRing { ordered_ring: OrderedRing<T> }
+  | AlgField { field: Field<T> }
+  | AlgLattice { lattice: Lattice<T> }
+  | AlgBoundedLattice { bounded_lattice: BoundedLattice<T> }
+  | AlgBooleanAlgebra { boolean_algebra: BooleanAlgebra<T> }
+  | AlgFreeMonoid { free_monoid: FreeMonoid<T> }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Homomorphism<Source, Target> — THE single carrier (U1, header).
 //
 // A structure-preserving map between two algebras. The defining facts
@@ -300,15 +348,16 @@ type Ordering
 // proven fact" — a carrier that drops what it proved re-imports the
 // hole it exists to close):
 //   - `source_algebra` / `target_algebra` — the algebra structures the
-//     map preserves, carried as node.dag `Node` references (every
-//     algebra above IS a Node — node.dag is the universal structural
-//     reference, so no higher-kinded parameter is needed). The Find
-//     phase (compiler/04_infer.dag T-9) binds these from the resolved
-//     inhabitance; Realize (05_emit/05_eval), Measure (lens/cost →
-//     lens/complexity) and the L7 algebra-law surface READ them to
-//     validate that preservation actually holds. Omitting them (an
-//     earlier shape did) drops the preserved-structure identity — the
-//     THESIS grounding-completeness + P2 violation this revision fixes.
+//     map preserves, typed `Algebra<Source>` / `Algebra<Target>` (the
+//     closed witness above) — NOT a raw `Node`. This carries the
+//     preserved-structure identity forward AND structurally forbids a
+//     non-algebra inhabiting the carrier (closes both the P2 facts-
+//     flow-forward gap an earlier omit-shape had AND the Practice 2/6
+//     + P2 fail-open a raw-`Node` shape had). The Find phase
+//     (compiler/04_infer.dag T-9) binds the specific variant from the
+//     resolved inhabitance; Realize (05_emit/05_eval), Measure
+//     (lens/cost → lens/complexity) and the L7 algebra-law surface READ
+//     it to validate preservation actually holds.
 //   - `map` — the carrier-level map. "Structure-preserving" is the LAW
 //     it asserts (each operation/constant preserved), verified by the
 //     L7 surface against `source_algebra`/`target_algebra`, never a
@@ -316,15 +365,15 @@ type Ordering
 //
 // "WITH its realization cost" (U1): this is the ONE object all five
 // phases read — Find binds it, Realize projects it, Measure folds its
-// cost FROM `map`'s own Node structure, Compare (lens/synthesis) reads
-// that. There is deliberately NO cost field: a stored cost would be a
+// cost FROM `map`'s own structure, Compare (lens/synthesis) reads that.
+// There is deliberately NO cost field: a stored cost would be a
 // representation parallel to the map it measures — the engine debt U1
 // forbids (THESIS:185-186 coercion = emission, coercion cost =
 // complexity: one object, many lens projections). Anchor: Wikipedia
 // "Homomorphism".
 type Homomorphism<Source, Target> {
-  source_algebra: Node
-  target_algebra: Node
+  source_algebra: Algebra<Source>
+  target_algebra: Algebra<Target>
   map: fn(Source) -> Target
 }
 
