@@ -3,9 +3,22 @@
 // Scope: cost lens — symbolic cost composition with target-realization.
 // Anchor: THESIS Cost dimension §1.2 + per-target realization in extdeps/languages/*
 //
+// U2 (operator-ratified 2026-05-15) — cost is TOTAL over the closed
+// kernel. SymbolicCost is defined at the kernel level (the 6 connectives
+// × 5 behaviors), NOT per surface-feature. There is NO per-feature cost
+// opt-in: anything expressible is kernel-composed, so it has a cost by
+// construction; new surface dissolves to already-costed kernel nodes
+// (C3); a new connective/behavior is a C1 STOP. A future language
+// addition therefore CANNOT bypass cost/complexity — that is the
+// no-eternal-maintenance property. This is the single U1 cost carrier;
+// `lens/complexity.dag` CONSUMES this and projects it asymptotically —
+// it never re-derives cost (one mechanism, two projections). Verify the
+// SymbolicCost lattice axioms at fill (`UnknownCost`-as-top must satisfy
+// the lattice laws — the AbelianGroup<Nat> precedent).
+//
 // Owns:
 //   - SymbolicCost lattice (Constant + Linear + Polynomial + PolyLog + Exponential + Factorial + Log + Sum/Product + UnknownCost)
-//   - lens read: Node -> Witness<SymbolicCost>
+//   - lens read: Node -> Witness<SymbolicCost>   (total over the closed kernel)
 //   - composes algebra+realization end-to-end
 //
 // Consumes:

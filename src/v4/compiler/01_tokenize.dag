@@ -3,10 +3,17 @@
 // Scope: pipeline stage 1 — Source string to TokenStream. Pure function.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
 //
+// B2-OMNI (operator-ratified 2026-05-15): tokenize is the first half of
+// the GENERIC ingest walker (with 02_parse), driven by a `LanguageModel`'s
+// declarative lexical rules — NOT .dag-specific. `.dag` is language #1.
+// A .dag-only character class hardcoded here reintroduces the N×M trap =
+// STOP. See 00_compile.dag B2-OMNI for the pivot.
+//
 // Owns:
 //   - TokenStream type (output)
-//   - tokenize: FreeMonoid<Char> -> Result<TokenStream, Diagnostic>
-//   - character-class predicates
+//   - tokenize: (FreeMonoid<Char>, LexRules) -> Result<TokenStream, Diagnostic>
+//     (LexRules is declarative data from the LanguageModel, not code here)
+//   - character-class predicates (driven by LexRules)
 //
 // Consumes:
 //   - std/primitive.dag: Char, String

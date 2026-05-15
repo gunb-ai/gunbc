@@ -1,0 +1,34 @@
+// src/v4/test/claim/boundary/english_ingest_fail_closed.dag
+//
+// Scope: TestClaim — the English boundary-honesty probe (T-4.11). English
+//        is NOT a language model (natural language has no formal grammar
+//        — operator-ratified fork). It is a boundary-honesty probe with
+//        two demonstrable wins:
+//          (a) Shape B emit: a `.dag` program walking typed values →
+//              English prose (this is the existing T-16 Markdown/docs
+//              artifact; no new substrate).
+//          (b) the honest win: pointing `ingest` at arbitrary English
+//              prose produces a PRECISE Diagnostic — never a fabricated
+//              parse. This is the no-engine / no-fallback thesis made
+//              visible: the architecture refusing to lie IS the result.
+// Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
+//         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
+//
+// Owns:
+//   - test_english_prose_ingest_is_diagnostic: TestClaim
+//     - input: arbitrary English prose handed to `ingest`
+//     - expected: a precise Diagnostic (reason = NotInLosslessCore /
+//       AmbiguousIntent), NOT a fabricated/partial Node — fail-closed
+//   - test_english_emit_is_shapeB_docs: TestClaim
+//     - input: a typed `.dag` value + a Shape B English-doc walker
+//     - expected: English prose output; coherent with the same Node the
+//       other T-16 artifacts derive from (no parallel authority)
+//
+// Consumes:
+//   - std/verification.dag, std/diagnostic.dag
+//   - compiler/00_compile.dag (the `ingest` boundary — B2-OMNI)
+//
+// Status: scaffold — fill per TASKS.md T-4.11
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.test.claim.boundary.english_ingest_fail_closed
