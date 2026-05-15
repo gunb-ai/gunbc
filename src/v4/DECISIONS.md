@@ -40,7 +40,7 @@ through — and moves to Part 1.
 | **L-3** | **Down-the-stack** B2-OMNI probes added (operator-ratified 2026-05-15, parallel up front): T-4.12 `extdeps/languages/llvm_ir.dag` (SSA IR — generalize down the stack; F ~all-structural), T-4.13 `extdeps/languages/machine_code.dag` (bottom of stack; no cosmetics; disassembly = the extreme fail-closed/no-engine test), T-4.14 `extdeps/languages/ptx.dag` (CUDA SIMT — IN-B bet vs the 5 behaviors). Validates the model across the **full target spectrum** (source→IR→machine code) — concretizes C5-fidelity ("we don't necessarily output a binary; F is model+intent-relative"). **Forks DISSOLVED (cascade-closure, resolves 3250390911; no PROPOSED residue):** neither was a genuine open fork — each is forced by an already-ratified parent, and the alternative *contradicts* a ratified decision. (1) machine_code = ONE model parameterized by an `Isa` — **forced by B2-OMNI** (parameterize-not-enumerate / O(N+M); per-ISA files ARE the N×M trap B2-OMNI forbids). (2) CUDA = model **PTX** — **forced by L-3's own ratified down-the-stack-IR scope**: PTX is the SIMT *IR* layer (the down-the-stack probe T-4.14 exists to test); CUDA-C++ is just another Shape A *source* language already covered by general modeling, so it would not be a down-the-stack probe at all. Per P5 the fork dissolves into already-ratified coordinates, not a new decision | `TASKS.md` T-4.12/4.13/4.14 + `extdeps/languages/{llvm_ir,machine_code,ptx}.dag` |
 | **QRY-1** | **RETRACTED & reframed (operator-corrected 2026-05-15).** "query = user-defined lens" is wrong: user-vs-kernel is PROVENANCE, not a structural distinction (feedback_naming_is_aliasing) — a decorative name distinguished only by who-authored-it must not exist ("a real distinction, or not exist"). There is NO query concept/noun/subsystem. The REAL axis is **scope/parameterization**, already modeled with no new noun: (1) `SectionRef` (DeclarationScope\|NodeScope) — applying a lens AT a scope; (2) parameterized lens signatures — the **affected-set lens (T-21) `(Dag,Diff)->Witness<ReExecFrontier>` is the archetype**: "the affected set of THIS change" = `affected_set(dag,diff)`, already first-class. Lenses, read at scopes and/or parameterized. No `query.dag`. The B2-OMNI "one read over the Node pivot, all ingested languages" property holds for ANY lens, not a "query" | `lens/application.dag` header + THESIS §1.5 + `lens/affected_set.dag` (T-21) |
 | **PAR-1** | Parallelism (T-13) is a THESIS free consequence, a target-AGNOSTIC lens reporting the independence **FACT** (`Witness<ParallelismMap>`); WHETHER/HOW to realize it is target-DEPENDENT — a cost-derived decision (U1/U2 per-target) at emit(T-11)/eval(T-22), NOT the lens. independence = structural-disjointness ∧ effect-independence (consumes `lens/effect.dag`, B3 — Node-disjoint is necessary not sufficient) ∧ fold-combiner associativity-by-inhabitance (consumes `std/algebra.dag` — parallel-reduce is an algebra fact, not a heuristic). fact ≠ spawn-decision; no annotation, no scheduling heuristic. **User-facing contract:** NOT a "parallelize my code" command (forbidden — engine-shaped from the user's seat); a lens the user READS (same UX as complexity/cost); control = structure not a knob; default introspective with the realize-decision derived+inspectable per target (e.g. honestly "no — CPython GIL"); guarantee via `apply_lens(parallelism, Enforce)` (T-23, uniform opt-in-depth). 4 worked examples embedded | `lens/parallelism.dag` header + `TASKS.md` T-13 |
-| **B1** | One content-addressing scheme: a `std`-level Merkle catamorphism `content_hash : Node -> Hash` over the **canonical-form clause** (a SEPARATE explicit node.dag authority — NOT subsumed by A1, which only covers recursion/axis-closure/generics/termination). `Hash` is an opaque digest (no content accessor, K-1-style). One scheme consumed by T-15/T-20/T-21 + A3 + C5. NOT workflow-level | `std/primitive.dag` (`Hash`); `std/node.dag` (canonical-form clause + `content_hash` fold — T-1 worker encodes per relay) |
+| **B1** | One content-addressing scheme: a `std`-level Merkle catamorphism `content_hash : Node -> Hash` over the **canonical-form clause** (a SEPARATE explicit node.dag authority — NOT subsumed by A1, which only covers recursion/axis-closure/generics/termination). `Hash` is an opaque digest (no content accessor, K-1-style). One scheme consumed by T-15/T-20/T-21 + A3 + C5. NOT workflow-level | `std/primitive.dag` (`Hash`); `std/node.dag` **B1-CANON block** (the canonical-form clause — operator-DESIGNED & ratified in-header 2026-05-15, pulled back from worker delegation because every consumer rests on it; T-1 IMPLEMENTS `content_hash = merkle_fold ∘ canonical` to that contract, does not design it) |
 | **PARSE-1** | Bodiless `fn` (signature-only / contract-as-checked-signature) is **not needed in the v2-bridge era** (operator-ratified 2026-05-15) — verified by constructive pre-flight: frozen v2's parser **rejects** bodiless `fn` (`expected LBrace`) but cleanly parses the full ratified kernel shape **with bodies** (40k-line `src/v2` corpus + kernel probe, zero syntax errors; the 65 src/v2 errors are 100% post-parse import/cycle). So bridge-era substrate contracts stay **comment-prose** (current scaffold form) and the fail-closed parse-class gate is SAFE — v2 is never asked to parse bodiless fn. **Forward requirement (the conditional that makes the deferral acceptable):** v4's OWN `.dag` grammar (T-7) MUST admit a bodiless signature declaration as a first-class production — graduating the "immutable I/O contract for the worker" from comment-prose to **compiler-enforced** (filled body must conform to the frozen signature; divergence = fail-closed type error, structural per no-annotations). Supportable by construction (v4's own grammar; nothing external constrains it); per B2-OMNI it is a grammar-DATA production, not hardcoded in the walker. v4-self-parser-era only — never through the v2 bridge | `compiler/02_parse.dag` header + T-20 pre-flight note |
 
 ---
@@ -102,11 +102,13 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 > **Status 2026-05-15 — Part 3 CLOSED.** All open forks ratified and
 > encoded (see Part 1): B1 (std-level fold — operator confirmed),
 > B2→B2-OMNI, B3, B4→IR-1, C4, C5. The per-header encoding pass is
-> complete. **THREE** node.dag-contract items the T-1 worker encodes per
-> relay (it owns that file): **K-1** (opaque Symbol), the **canonical-form
-> clause** (total deterministic normal form — a SEPARATE authority, NOT
-> subsumed by A1; B1 depends on it), and **`content_hash`** (the Merkle
-> fold over that form). Nothing in Part 3 remains PROPOSED.
+> complete. node.dag-contract items: **K-1** (opaque Symbol — modeled) +
+> the **canonical-form clause** (now **B1-CANON** — operator-DESIGNED &
+> ratified in the node.dag header 2026-05-15, NOT a worker-relay choice:
+> a SEPARATE authority, NOT subsumed by A1, B1 depends on it; the
+> 6-point contract is fixed) + **`content_hash = merkle_fold ∘
+> canonical`** which T-1 IMPLEMENTS to the B1-CANON contract (it does
+> not design it). Nothing in Part 3 remains PROPOSED.
 
 ### B1 — One content-addressing scheme (ELEVATED: load-bearing for A3)
 
@@ -117,12 +119,20 @@ parent. Each is confirm-or-redirect, not a fresh fork.
   Node structure. **Correction (3248138046):** A1 does NOT make Node
   canonical — A1 ratifies recursion / axis-closure / generics /
   termination only. Canonical form is a SEPARATE explicit node.dag
-  authority — the **canonical-form clause** — which the T-1 worker
-  encodes alongside K-1 and `content_hash`. B1 *depends on* that clause;
-  it is not subsumed by A1. The clause must define a total deterministic
-  normal form (structural child order; opaque-Symbol identity per K-1; no
-  incidental ordering) so the fold is well-defined. Defined **once**,
-  consumed by T-15/T-20/T-21 + the A3 check.
+  authority — the **canonical-form clause**, now **B1-CANON**,
+  operator-DESIGNED & ratified in the `std/node.dag` header 2026-05-15
+  (pulled back from worker delegation — every consumer rests on it).
+  B1 *depends on* that clause; it is not subsumed by A1. B1-CANON fixes
+  the total deterministic normal form as a 6-point contract: (1)
+  post-normalize domain; (2) α-equivalence via K-1 De Bruijn for bound /
+  opaque identity for free; (3) **child order is ALGEBRA-DERIVED**, not
+  hand-flagged — default SEQUENCED, commutative only where the algebra
+  proves it (fail-closed: over-fire safe, collision = silent correctness
+  bug); (4) recursion by-reference, name-ref hashed by Symbol identity,
+  never inlined (totality on `type T=…T…`); (5) structural catamorphism,
+  decidable, Merkle ⇒ shared sub-Nodes hash once (dedup free); (6) no
+  incidental ordering. T-1 IMPLEMENTS `content_hash`; it does not design
+  it. Defined **once**, consumed by T-15/T-20/T-21 + the A3 check.
 - **Tradeoff / settled:** *where it lives* — `std`-level: a pure fold
   over the canonical Node, not `workflow`-level (operator-confirmed).
 - **Encodes into:** `std/node.dag` (canonical-form clause) + the chosen

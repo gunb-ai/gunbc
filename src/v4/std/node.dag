@@ -11,6 +11,10 @@
 //   - Node / NodeKind / Edge: the one recursive type + its skeleton
 //   - the edge-discipline structural invariant (a connective fixes its
 //     edge shape; the illegal pairing is never silently constructible)
+//   - B1-CANON: the canonical-form clause (the total deterministic
+//     normal form) + the `content_hash = merkle_fold ∘ canonical`
+//     contract — a SEPARATE authority from A1; T-1 implements it, does
+//     not design it (see the B1-CANON block below)
 //
 // A1 (operator-ratified 2026-05-15) — the recursion contract:
 //   - ONE recursive type: Node. Recursion lives SOLELY in Node children
@@ -82,6 +86,67 @@
 //   - Bonus consistency: with opaque Symbol the content-hash fold over an
 //     `Atom` is automatically rename-invariant — α-equivalent programs
 //     hash equal — because the fold cannot observe the spelling.
+//
+// B1-CANON (operator-ratified 2026-05-15) — the canonical-form clause.
+//   A SEPARATE explicit authority from A1 (A1 = recursion-admissibility /
+//   axis-closure / generics / termination; THIS = the total deterministic
+//   normal form B1's `content_hash` folds over). B1 DEPENDS on this; it
+//   is NOT subsumed by A1. Designed + ratified HERE, not a worker-relay
+//   choice: every consumer (B1, A3, T-15, T-20, T-21, the AGENT-1
+//   content-addressed Diff) rests on it — the most load-bearing
+//   definition in the substrate is not delegated. T-1 IMPLEMENTS this
+//   contract (`canonical : Node -> Node`; `content_hash =
+//   merkle_fold ∘ canonical`); it does not redesign it.
+//
+//   1. DOMAIN — post-normalize. `canonical` is defined on the C3-
+//      normalized kernel (the 4 sugar forms already dissolved). Raw
+//      parse trees are out of domain — sugar variance cannot reach the
+//      hash because it is gone before canonicalization.
+//   2. α-EQUIVALENCE (K-1). A BOUND occurrence is replaced by its
+//      binder-relative De Bruijn position; a FREE Symbol keeps opaque
+//      K-1 identity (equality only). ⇒ renaming a bound local is
+//      hash-invariant by construction (the full statement of the K-1
+//      "bonus"; this is affected_set Ex.2 "rename a local ⇒ same hash").
+//   3. CHILD ORDER IS ALGEBRA-DERIVED, never hand-flagged (the subtle,
+//      highest-risk point). Whether a node's children are SEQUENCED
+//      (order is content) or COMMUTATIVE (order quotiented — canonical
+//      sorts those children by their own recursive content_hash) is
+//      DERIVED from the connective's algebra inhabitance
+//      (std/algebra.dag, T-2) — never a per-connective hand table or
+//      heuristic (feedback_lenses_not_passes: a heuristic here = missing
+//      physics). DEFAULT = SEQUENCED, and the asymmetry is deliberate +
+//      fail-closed (feedback_fail_closed_discipline): treating a
+//      commutative collection as sequenced only makes affected_set
+//      OVER-fire (wasted recompute — safe); treating a sequenced
+//      collection as commutative collapses distinct programs to one
+//      hash (a MISSED change — a silent correctness bug). A collection
+//      is commutative ONLY where the algebra PROVES it (e.g. a Conj
+//      inhabiting a Symbol-keyed product/record — projection is by
+//      Symbol, so field order is provably irrelevant; a positional
+//      tuple-Conj stays SEQUENCED). Canonical form is thus a
+//      CONSEQUENCE of algebra, not a spec of its own (closed system).
+//   4. RECURSION IS BY-REFERENCE — hashed by Symbol identity, NEVER
+//      inlined. Recursive types/fns are (per A1) Instantiation / name-
+//      reference `Atom`s carrying an opaque Symbol. The fold treats a
+//      name-ref as a LEAF (its K-1 Symbol identity); it never expands
+//      it. A definition's body is canonicalized once, its self-
+//      references being name-ref leaves. THIS is what makes
+//      `content_hash` total on `type T = … T …` — without it the fold
+//      would not terminate.
+//   5. TOTALITY / DECIDABILITY. With (4) `canonical` is a structural
+//      catamorphism over a FINITE Node tree (recursion is by-reference);
+//      it terminates by Node finiteness and is decidable
+//      (feedback_decidability_invariant; the same A2-implicit descent
+//      `node_well_formed` uses). `content_hash = merkle_fold ∘
+//      canonical`; structurally-shared sub-Nodes hash ONCE — content-
+//      addressing / dedup / the affected_set "unchanged subgraph"
+//      detection is a FREE consequence of the Merkle property, not
+//      separate machinery.
+//   6. NO INCIDENTAL ORDERING. The ONLY order that survives into the
+//      normal form is (3)'s algebra-proven SEQUENCED child order.
+//      Declaration source order, import order, post-resolve binding
+//      order, whitespace/comments (gone post-normalize) — none enter
+//      `canonical`. The "no incidental ordering" requirement, precise.
 //
 // T-1 scope dispositions (operator-ratified 2026-05-15):
 //   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
