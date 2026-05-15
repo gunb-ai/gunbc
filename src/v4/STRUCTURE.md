@@ -324,6 +324,32 @@ These are non-negotiable across all v4 work:
    judgment. Not "the substrate refuses.") This surfacing structure is in
    force from scaffold time; the tasks fill behavior *under* it.
 
+   **PROOF-1 (operator-ratified 2026-05-15) — the external trust-
+   discharge for A3.** A3 is honest that the guarantee is *un-hideable*,
+   not *impossible-to-violate*, and that seed trust is a named axiom.
+   PROOF-1 is the mechanism that SHRINKS that trust surface: gunbc's
+   structural evidence — A2 termination descent, the algebra-homomorphism
+   epistemic chain, the cost bound, the effect facts — is EMITTED as a
+   machine-checkable proof term in an external proof assistant
+   (Lean/Coq); their small, independently-audited KERNEL checks it. This
+   converts "trust gunbc's internal checker + the frozen seed" into an
+   INTERSUBJECTIVE check against a trust anchor gunbc does not own. It
+   does NOT make gunbc un-gameable — the external kernel + the
+   faithfulness of the evidence→proof-term emission are the NEW named
+   axioms; PROOF-1 *moves* trust to a stronger anchor, it does not
+   eliminate it (the same `feedback_no_engine`/Trusting-Trust honesty A3
+   itself observes). Hard constraints: (i) the lens EXPORTS witnesses
+   gunbc ALREADY HAS (the descent evidence, the homomorphism) — the
+   external prover only KERNEL-CHECKS, it never SEARCHES for a proof (a
+   searching export would violate no-engine + A2 "checker not
+   discoverer"); (ii) it discharges only what is structurally GROUNDED —
+   ungroundable concepts remain fail-closed Diagnostics; PROOF-1 inherits
+   gunbc's honesty boundary, it does not paper over it. Realized as a
+   lens = (evidence read) ⊕ (B2-OMNI emit to a `lean`/`coq` language
+   model — ordinary emit targets, no new subsystem); NO new file (the
+   closed-tree invariant holds). Primary export source = A2; an agent may
+   REQUEST it (AGENT-1).
+
 8. **On-disk emitted artifacts are checked projections, not authority
    (C4, operator-ratified 2026-05-15).** Some emitted artifacts must live
    on disk because an external tool reads them from the repo (GitHub
