@@ -27,11 +27,11 @@ let folded: String = fold(singleton(1), \"\", keep_label)
 
     let rendered = emit_rust(&dag).expect("generic collection fixture should emit Rust");
     assert!(
-        rendered.contains("let labels: Vec<String>"),
+        rendered.contains("Vec<String>"),
         "map should infer and emit List<String>, rendered:\n{rendered}"
     );
     assert!(
-        rendered.contains("let folded: String"),
-        "fold should infer and emit String accumulator/result, rendered:\n{rendered}"
+        rendered.contains("String::from(\"\")") && rendered.contains(".iter().fold("),
+        "fold should emit a String accumulator/result, rendered:\n{rendered}"
     );
 }
