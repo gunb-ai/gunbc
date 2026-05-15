@@ -1,6 +1,7 @@
 # src/v4/lens/complexity.dag
 #
 # Scope: complexity lens — structural fact carried by data model, not behavioral test.
+# Anchor: https://en.wikipedia.org/wiki/Computational_complexity_theory + https://en.wikipedia.org/wiki/Big_O_notation
 #
 # Owns:
 #   - Complexity dimension type

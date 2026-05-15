@@ -1,6 +1,7 @@
 # src/v4/std/collection.dag
 #
 # Scope: bounded containers — every collection carries cardinality and element type.
+# Anchor: https://en.wikipedia.org/wiki/Free_monoid (List/String) + https://en.wikipedia.org/wiki/Algebra_of_sets (Set/Map)
 #
 # Owns:
 #   - List<T, n: Cardinality>, Set<T, n>, Map<K, V, n>

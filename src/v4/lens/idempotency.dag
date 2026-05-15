@@ -1,6 +1,7 @@
 # src/v4/lens/idempotency.dag
 #
 # Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally.
+# Anchor: https://en.wikipedia.org/wiki/Idempotence
 #
 # Owns:
 #   - lens read: Node -> Witness<IdempotencyClaim>

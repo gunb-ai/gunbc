@@ -1,6 +1,7 @@
 # src/v4/compiler/03_resolve.dag
 #
 # Scope: pipeline stage 3b — symbol resolution. Identifier to declaration binding.
+# Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 #
 # Owns:
 #   - ResolvedTree type

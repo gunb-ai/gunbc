@@ -1,6 +1,7 @@
 # src/v4/bin/main.dag
 #
 # Scope: emits main.rs trampoline (0-floor compliant per design-pure-bootstrap-zero.md:210).
+# Anchor: https://en.wikipedia.org/wiki/Entry_point + design-pure-bootstrap-zero.md trampoline (0-floor)
 #
 # Owns:
 #   - main.rs is machine-emitted from this .dag; not hand-authored

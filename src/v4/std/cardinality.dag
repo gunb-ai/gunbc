@@ -1,6 +1,7 @@
 # src/v4/std/cardinality.dag
 #
 # Scope: cardinality refinement substrate — bounded/unbounded distinctions, no escape.
+# Anchor: https://en.wikipedia.org/wiki/Cardinality
 #
 # Owns:
 #   - Cardinality refinement types

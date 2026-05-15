@@ -1,6 +1,7 @@
 # src/v4/extdeps/languages/python.dag
 #
 # Scope: Python target language spec — primitives, syntax, codegen rules.
+# Anchor: https://docs.python.org/3/reference/datamodel.html (Python Data Model)
 #
 # Owns:
 #   - Python primitives + data model

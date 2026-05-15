@@ -1,6 +1,7 @@
 # src/v4/workflow/doc_anchor.dag
 #
 # Scope: typed DocAnchor — pointers into authority docs (THESIS, MODELING, design docs).
+# Anchor: self-referential — this convention itself; structural pointers replace prose citations
 #
 # Owns:
 #   - DocAnchor { doc: DocId, section: SectionPath, claim: ClaimText }

@@ -1,6 +1,7 @@
 # src/v4/lens/parallelism.dag
 #
 # Scope: parallelism lens — independence visible in dependency graph structure.
+# Anchor: https://en.wikipedia.org/wiki/Dataflow_programming (DAG dependency model)
 #
 # Owns:
 #   - lens read: Node -> Witness<ParallelismMap>

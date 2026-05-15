@@ -1,6 +1,7 @@
 # src/v4/compiler/03_normalize.dag
 #
 # Scope: pipeline stage 3a — ParseTree to NormalizedTree. Surface sugar dissolution.
+# Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 #
 # Owns:
 #   - NormalizedTree type

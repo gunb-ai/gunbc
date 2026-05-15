@@ -1,6 +1,7 @@
 # src/v4/workflow/retirement.dag
 #
 # Scope: structural Retirement predicate — 'X is dissolved' is a substrate fact, not a list-length.
+# Anchor: memory: feedback_paper_shrink_variants + Witness-based retirement (no list-length gaming)
 #
 # Owns:
 #   - retired: HandResidual -> Witness<RetirementProof>

@@ -24,10 +24,13 @@ src/v4/
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
 
-  extdeps/languages/     # target language specs (3 files, Shape A targets)
-    rust.dag
-    python.dag
-    go.dag
+  extdeps/               # external system contracts (5 files)
+    languages/           # target language specs (Shape A: per-target compiler emission)
+      rust.dag
+      python.dag
+      go.dag
+    process.dag          # OS process model (POSIX/SUS — fork/exec/wait, exit codes)
+    file_system.dag      # OS file system model (POSIX file/directory operations)
 
   compiler/              # pipeline orchestrator + 6 stages (7 files)
     00_compile.dag       # orchestrator: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
@@ -61,7 +64,32 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 29 .dag files + 3 docs + test directories = 32 files at scaffold time.**
+**Total: 32 .dag files + 3 docs + 2 .gitkeep = 37 files at scaffold time.**
+
+## Anchor convention
+
+Every v4 `.dag` file carries an `# Anchor:` line in its header. The anchor is
+a citation to canonical knowledge that grounds the file's modeling — typically
+a Wikipedia article, a language specification, a POSIX standard, or an
+authoritative gunbc doc (THESIS.md, MODELING.md, INVARIANTS.md, memory entries).
+
+The discipline:
+- **Reviewers can validate the model against the anchor.** If `extdeps/process.dag`
+  models a "Process" but the structure doesn't match what
+  https://en.wikipedia.org/wiki/Process_(computing) says a process is, the
+  reviewer surfaces it.
+- **Workers ground modeling in shared facts.** Per `feedback_modeling_philosophy`
+  and `feedback_epistemic_stacking`: every concept attaches to an explicit
+  ontology rooted in canonical knowledge — no opaque names, no invented
+  vocabulary disconnected from established meaning.
+- **For external dependencies (`extdeps/`)** the anchor is mandatory and
+  external (Wikipedia / spec). For internal substrate (`std/`, `compiler/`,
+  `lens/`, `workflow/`) the anchor may be internal (THESIS, MODELING) when
+  the concept is gunbc-specific, or external when it grounds in standard
+  CS / math.
+- **One anchor per file.** Multiple references for the same concept can be
+  joined on one line; the file represents one cohesive concept and should
+  have one canonical anchor for that concept.
 
 ## Architectural commitments (ratified during PR #3147 review)
 

@@ -1,6 +1,7 @@
 # src/v4/compiler/04_infer.dag
 #
 # Scope: pipeline stage 4 — type inference + checking. Single-file discipline; split = stop signal.
+# Anchor: https://en.wikipedia.org/wiki/Type_inference (Hindley–Milner family + algebra-homomorphism search per THESIS:173)
 #
 # Owns:
 #   - InferredTree type (with full type/algebra/cardinality info)

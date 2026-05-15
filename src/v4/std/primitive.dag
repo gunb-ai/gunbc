@@ -1,6 +1,7 @@
 # src/v4/std/primitive.dag
 #
 # Scope: target-grounded primitives with declared algebra inhabitance.
+# Anchor: Per-target — Rust Reference §Types, Python Data Model, Go Spec (per THESIS:173)
 #
 # Owns:
 #   - Int, Float, String, Char, Bool

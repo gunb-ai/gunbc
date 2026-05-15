@@ -1,6 +1,7 @@
 # src/v4/workflow/worker_output.dag
 #
 # Scope: WorkerOutput schema — workers declare what substrate fact dissolves what residual.
+# Anchor: THESIS facet 4 + memory: feedback_paper_shrink_variants (gaming surface this carrier closes)
 #
 # Owns:
 #   - WorkerOutput { task_id, file_modified, dissolves: Set<HandResidual>, cited_anchor: DocAnchor }

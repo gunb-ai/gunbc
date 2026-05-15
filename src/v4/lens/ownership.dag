@@ -1,6 +1,7 @@
 # src/v4/lens/ownership.dag
 #
 # Scope: ownership lens — proves no aliased mutation in emitted code.
+# Anchor: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html + https://en.wikipedia.org/wiki/Linear_type_system
 #
 # Owns:
 #   - lens read: Node -> Witness<OwnershipMap>

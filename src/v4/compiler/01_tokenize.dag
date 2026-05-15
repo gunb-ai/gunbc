@@ -1,6 +1,7 @@
 # src/v4/compiler/01_tokenize.dag
 #
 # Scope: pipeline stage 1 — Source string to TokenStream. Pure function.
+# Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
 #
 # Owns:
 #   - TokenStream type (output)

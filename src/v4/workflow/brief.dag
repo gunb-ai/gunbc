@@ -1,6 +1,7 @@
 # src/v4/workflow/brief.dag
 #
 # Scope: typed Brief schema — work-direction substrate. Every brief cites doc anchors.
+# Anchor: THESIS facet 4 (recursive-flex) §259-272 + this PR conversation (workflow-as-data)
 #
 # Owns:
 #   - Brief { task_id, file_path, contract: TypedContract, cites: Set<DocAnchor>, decisions: Set<DecisionPoint> }

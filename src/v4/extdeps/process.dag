@@ -1,0 +1,28 @@
+# src/v4/extdeps/process.dag
+#
+# Scope: process model — child process invocation, lifecycle, exit codes, signals.
+# Anchor: https://en.wikipedia.org/wiki/Process_(computing)
+#         (POSIX/SUS process model — fork/exec/wait, exit codes, signal handling)
+#
+# Owns:
+#   - Process { id, command, state, parent, exit_code }
+#   - ProcessId (PID, PositiveInt — never zero per POSIX)
+#   - ProcessState = Running | Exited(ExitCode) | Signaled(SignalNum)
+#   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
+#   - SignalNum (per POSIX signal table)
+#   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
+#   - spawn(cmd) -> Result<Process, Diagnostic>     (fork+exec)
+#   - wait(p)    -> Result<ExitCode, Diagnostic>    (blocks until terminated)
+#   - capture(p) -> Result<{stdout, stderr, exit}, Diagnostic>  (read pipes + wait)
+#
+# Consumes:
+#   - std/diagnostic.dag: Diagnostic
+#   - std/primitive.dag: Int, String + their totalizations
+#   - std/collection.dag: List, Map
+#   - extdeps/file_system.dag: AbsolutePath (for Command.program)
+#
+# Status: scaffold — fill per TASKS.md T-4.5
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,6 +1,7 @@
 # src/v4/std/verification.dag
 #
 # Scope: TestClaim schema — tests are data, not code. Imported design from v3.
+# Anchor: THESIS.md "Tests are structural data" §348-368 + Self-hosting facet 3
 #
 # Owns:
 #   - TestClaim { kind: AssertKind, label: String, input, expected }

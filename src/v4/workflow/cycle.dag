@@ -1,6 +1,7 @@
 # src/v4/workflow/cycle.dag
 #
 # Scope: work cycle as data — cycle progression is lens-readable, not prose status updates.
+# Anchor: THESIS facet 4 (recursive-flex) — work cycles as lens-readable data
 #
 # Owns:
 #   - Cycle { briefs: Set<Brief>, outputs: Set<WorkerOutput>, retirements: Set<Retirement> }

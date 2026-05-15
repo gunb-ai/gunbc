@@ -1,6 +1,7 @@
 # src/v4/lens/cost.dag
 #
 # Scope: cost lens — symbolic cost composition with target-realization.
+# Anchor: THESIS Cost dimension §1.2 + per-target realization in extdeps/languages/*
 #
 # Owns:
 #   - SymbolicCost lattice (Constant + Linear + Polynomial + PolyLog + Exponential + Factorial + Log + Sum/Product + UnknownCost)

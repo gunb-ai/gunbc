@@ -1,6 +1,7 @@
 # src/v4/extdeps/languages/go.dag
 #
 # Scope: Go target language spec — primitives, syntax, codegen rules.
+# Anchor: https://go.dev/ref/spec (Go Programming Language Specification)
 #
 # Owns:
 #   - Go primitives

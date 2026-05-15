@@ -1,6 +1,7 @@
 # src/v4/compiler/02_parse.dag
 #
 # Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
+# Anchor: https://en.wikipedia.org/wiki/Parsing
 #
 # Owns:
 #   - ParseTree type

@@ -1,6 +1,7 @@
 # src/v4/std/diagnostic.dag
 #
 # Scope: fail-closed Diagnostic schema with structural reason+at.
+# Anchor: THESIS.md "Show the correct code" §103-105 + INVARIANTS P3
 #
 # Owns:
 #   - Diagnostic { reason: NamedReason, at: Locus }

@@ -1,6 +1,7 @@
 # src/v4/std/witness.dag
 #
 # Scope: fail-closed read discipline — no Option::None in lens reads.
+# Anchor: THESIS fail-closed discipline + INVARIANTS P3 (no Option::None in lens reads)
 #
 # Owns:
 #   - Witness<C> = Holds | Violates(reason: NamedReason)

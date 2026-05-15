@@ -1,6 +1,7 @@
 # src/v4/compiler/05_emit.dag
 #
 # Scope: pipeline stage 5 — emission orchestrator. Reads target spec, emits source.
+# Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
 #
 # Owns:
 #   - emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>

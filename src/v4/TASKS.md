@@ -97,6 +97,23 @@ Phase 4 (serial — close the loop):
 
 ---
 
+### T-4.5: extdeps/process.dag + extdeps/file_system.dag
+
+**File**: 2 files in `src/v4/extdeps/`
+**Estimate**: 3-5 days (bundle — both are OS contracts modeled per their canonical anchors)
+**Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
+**Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
+
+**Modeling decisions**:
+- `process.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
+- `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as Diagnostic NamedReason variants.
+
+**Reference**:
+- Anchors in file headers (Wikipedia: Process, Wikipedia: File system, POSIX File and Directory Operations)
+- v2 / v3 had ad-hoc I/O sprinkled across files — v4 consolidates per substrate-cohesion discipline
+
+---
+
 ### T-5: workflow/* — recursive-flex (FIRST IN EXECUTION ORDER)
 
 **File**: 5 files in `src/v4/workflow/`

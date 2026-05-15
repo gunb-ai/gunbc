@@ -1,6 +1,7 @@
 # src/v4/compiler/00_compile.dag
 #
 # Scope: pipeline orchestrator — wires tokenize → parse → normalize → resolve → infer → emit
+# Anchor: https://en.wikipedia.org/wiki/Compiler (general phase architecture)
 #        into a single compile() entry point. Called by bin/main.dag and by
 #        every end-to-end TestClaim.
 #

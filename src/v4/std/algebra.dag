@@ -1,6 +1,7 @@
 # src/v4/std/algebra.dag
 #
 # Scope: algebraic primitives that ground every concrete type via inhabitance.
+# Anchor: https://en.wikipedia.org/wiki/Algebraic_structure (Magma, Monoid, Group, FreeMonoid<T>)
 #
 # Owns:
 #   - Magma (closure)

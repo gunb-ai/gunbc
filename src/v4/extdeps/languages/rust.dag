@@ -1,6 +1,7 @@
 # src/v4/extdeps/languages/rust.dag
 #
 # Scope: Rust target language spec — primitives, syntax, codegen rules.
+# Anchor: https://doc.rust-lang.org/reference/ (Rust Reference)
 #
 # Owns:
 #   - Rust primitives (i32, String, Vec<T>, ...) with algebra inhabitance

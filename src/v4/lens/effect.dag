@@ -1,6 +1,7 @@
 # src/v4/lens/effect.dag
 #
 # Scope: effect lens — effects derived from type-signature shape, no parallel taxonomy.
+# Anchor: https://en.wikipedia.org/wiki/Effect_system
 #
 # Owns:
 #   - lens read: Node -> Witness<EffectMap>

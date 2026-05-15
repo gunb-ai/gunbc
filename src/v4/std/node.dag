@@ -1,6 +1,7 @@
 # src/v4/std/node.dag
 #
 # Scope: foundational substrate — type connectives + L1 behaviors. THE root of the epistemic chain.
+# Anchor: THESIS.md "Substrate shape" §198-203 + MODELING.md
 #
 # Owns:
 #   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
