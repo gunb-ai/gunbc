@@ -130,7 +130,7 @@ Phase 4 (serial — close the loop):
 flat — dispatch in waves):
 - `diagnostic`, `cardinality` need only `node.dag`.
 - `logic`, `nat`, `collection`, `witness`, `verification` need `algebra.dag` (T-2) or `diagnostic`.
-- `machine` needs `logic` + `nat`; `text` needs `nat`; `integer` needs `nat` + `machine`; `float` needs `machine`.
+- `machine` needs `logic` + `nat`; `text` needs `nat` + `algebra.dag` (T-2, FreeMonoid); `integer` needs `nat` + `machine` + `algebra.dag` (T-2, OrderedRing/AbelianGroup); `float` needs `machine` + `algebra.dag` (T-2, ApproximateField). Every scalar file except `machine` consumes `algebra.dag` — none of the scalar/numeric cluster is dispatchable before T-2.
 
 **Modeling decisions per file** (see file headers for specifics).
 
@@ -595,6 +595,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Diff representation (file-set? node-set? structural-delta over the Dag?)
 - Purity-aware skipping: an unchanged pure subgraph is incrementally skippable; what makes a subgraph "unchanged" structurally?
 - Composition with `compiler/05_eval.dag` (skip) and `workflow/ci.dag` (job selection)
+- Structural caching is the **dual** of the affected set — the same mechanism. A build/exec artifact's cache key is `content_hash` (B1) of its input subgraph: the affected set names what re-runs, a cache restores what doesn't. Caching is not a separate system. The cache backend (GHA `actions/cache`, a remote build cache, a local memo table) is just an emission target of the hash.
 
 **Scope**: L (large — load-bearing for incremental execution + CI dissolution)
 
@@ -645,6 +646,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - `CiPipeline { jobs, gates }` shape
 - `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
+- Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
 
 **Scope**: L (large — closes the v3 hand-authored-CI gap; dissolves the shell bridge)

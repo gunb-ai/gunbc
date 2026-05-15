@@ -14,6 +14,16 @@
 //   - composes with compiler/05_eval.dag (skip unchanged pure subgraphs)
 //   - composes with workflow/ci.dag (gate/job selection — replaces the
 //     interim scripts/detect-affected-components.sh shell bridge)
+//   - structural caching is the DUAL of the affected set — the SAME
+//     mechanism, not a separate system. A build/exec artifact's cache key
+//     IS `content_hash` (B1, std/node.dag) of its input subgraph: the
+//     affected set names what changed (re-run); a cache restores what did
+//     NOT (skip the work). Purity + content-addressing make every
+//     artifact memoizable by construction (THESIS "free consequences:
+//     automatic memoization") — caching is this lens read the other way.
+//     ONE content-hash keys a CI artifact cache, a remote build cache, or
+//     a local memo table equally; the backend (e.g. GHA `actions/cache`)
+//     is just an emission target of the hash.
 //
 // Consumes:
 //   - std/node.dag, std/witness.dag
