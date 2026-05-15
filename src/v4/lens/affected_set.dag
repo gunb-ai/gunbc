@@ -43,6 +43,55 @@
 //     none here). n_reason/n_diag/emit/eval all SKIP. Minimal by
 //     construction — the forward-closure is exactly the affected cone.
 //
+//   ── ADVERSARIAL minimality stress (R1/R2/R3 — derisk 2026-05-15;
+//      no-engine applied to the FEATURE: do NOT assert minimality —
+//      construct the edit that breaks it if the model is wrong) ──
+//   Extend the graph: n_log (an effectful Transform whose SIGNATURE
+//   carries the effect, B3 — say `-> Eff<Stderr> Unit`) ← n_evalD.
+//
+//   Ex.R1 — a realistic EFFECTFUL local edit. Edit n_log's body only
+//     (reword the message it writes); its signature/effect is
+//     UNCHANGED. content_hash(n_log) changes. Expected frontier =
+//     { n_log, n_evalD } — the Stderr-observing cone ONLY; n_emitR,
+//     n_pure, n_diag SKIP. Minimal IFF the effect algebra is FINE
+//     enough that the cone is "observers of *this* effect (Stderr)",
+//     not "all effectful code". This is an effect-GRANULARITY property,
+//     NOT effect-lens strength (effects are READ off the signature per
+//     B3, never inferred — so the lens is strong by construction; the
+//     open risk is coarse effects). CONTRACT IMPLIED ON lens/effect.dag
+//     (B3): a coarse model (one ambient IO) ⇒ every effectful edit's
+//     cone = every effectful node ⇒ the feature degrades to "re-run
+//     ~everything" while STILL being correct (fail-closed). Granularity
+//     is the knob; surface it now, not after T-13/T-21 build on it.
+//
+//   Ex.R2 — a WIDELY-SHARED sub-node, PARTIALLY changed (the dominant
+//     gate). n_reason is consumed by n_diag, n_emitR, n_evalD + (say)
+//     50 other sites. Edit ONE variant that ONLY n_emitR matches; the
+//     other sites consume OTHER, unchanged variants. content_hash(
+//     n_reason) changes. Expected frontier = { the changed variant
+//     sub-Node, n_emitR, n_emitR's dependents } — the 50 sites on
+//     UNCHANGED variants SKIP. Minimal IFF the dependency edges are
+//     NODE-PRECISE: "n_X depends on the *sub-Node* of n_reason it
+//     consumes", NOT "n_X depends on the n_reason declaration". With
+//     B1-CANON's Merkle property an unchanged sub-Node keeps its hash,
+//     so "did MY input change?" is a free hash compare — but ONLY IF
+//     infer emitted the precise edge. CONTRACT IMPLIED ON
+//     compiler/04_infer.dag (T-9): the consumed Dag MUST carry
+//     node-precise use→def edges to the consumed sub-Node, never
+//     declaration/module-coarse. Coarse edges ⇒ every variant edit
+//     re-fires ALL consumers; affected_set inherits that coarseness
+//     regardless of B1/effects. THIS is the dominant minimality gate —
+//     more load-bearing than the effect lens.
+//
+//   Ex.R3 — "what counts as changed" is RETIRED-safe by B1-CANON
+//     (std/node.dag #3157): child order is algebra-derived, default
+//     SEQUENCED unless the algebra PROVES commutativity. Worst case is
+//     a cosmetic reorder of not-proven-commutative children → OVER-fire
+//     (wasted recompute — SAFE), never a missed change (a hash
+//     collision = silent correctness bug, structurally foreclosed by
+//     the fail-closed default). The Diff-granularity leak is bounded in
+//     the safe direction BY CONSTRUCTION — no residual research risk.
+//
 // Owns:
 //   - affected_set: (Dag, Diff) -> Witness<ReExecFrontier>
 //     (NODE granularity — the minimal node set that must re-run;
@@ -77,8 +126,19 @@
 //
 // Consumes:
 //   - std/node.dag, std/witness.dag
-//   - lens/effect.dag (effect-independence gates safe skip — Ex.3)
-//   - compiler/04_infer.dag: the typed dependency graph (Dag)
+//   - std/node.dag B1-CANON: the canonical-form clause + content_hash
+//     Merkle property — "did MY input sub-Node change?" is a free hash
+//     compare (Ex.R2/R3); the structural Diff (below) is well-defined
+//     BY B1-CANON, not assumed
+//   - lens/effect.dag (B3): effect-independence gates safe skip (Ex.3).
+//     CONTRACT (Ex.R1): the effect algebra MUST be fine-grained enough
+//     that a typical local edit's cone = observers of THAT effect, not
+//     all effectful code — else minimality degrades (still correct,
+//     fail-closed). Granularity, not lens strength
+//   - compiler/04_infer.dag: the typed dependency graph (Dag).
+//     CONTRACT (Ex.R2 — the dominant gate): edges MUST be NODE-PRECISE
+//     to the consumed sub-Node, never declaration/module-coarse; coarse
+//     edges ⇒ affected_set correct but NOT minimal
 //   - std/primitive.dag: Hash (B1 content_hash — the structural Diff)
 //
 // Status: scaffold — fill per TASKS.md T-21
