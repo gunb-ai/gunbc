@@ -291,15 +291,42 @@ fn all_edges_positional(children: List<Edge>) -> Bool {
   })
 }
 
+// How many of `children` carry the Named key `name`?
+// (`Symbol` equality is the one operation K-1 grants the opaque type.)
+fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, e) {
+    match e.label {
+      Named { name: n } => if n == name { acc + 1 } else { acc }
+      Positional => acc
+    }
+  })
+}
+
+// Are all Named keys distinct? A `Named` edge is an ADDRESS — two
+// children sharing a key make "address a child by name" ambiguous, so a
+// labeled connective with a duplicate key is malformed. Checked here so
+// downstream consumers can treat a well-formed Conj/Disj's names as keys
+// without each re-verifying uniqueness (INVARIANTS P2 — one authority).
+fn all_names_distinct(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
+      Positional => acc
+    }
+  })
+}
+
 
 // Do all of a node's edges satisfy the connective's discipline?
 //   NoEdges          → the children list must be empty
-//   LabeledEdges     → every edge is addressed by name
+//   LabeledEdges     → every edge is addressed by name AND all names are
+//                      distinct (a name is an address — no duplicates)
 //   PositionalEdges  → every edge is positional (order = list order)
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0
-    LabeledEdges => all_edges_named(children: children)
+    LabeledEdges =>
+      all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
   }
 }
