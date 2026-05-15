@@ -157,8 +157,6 @@ type SymbolicCostEntry {
 fn symbolic_cost_fallback_subject_for_unresolved_port(d: Dag) -> Behavior =
   match d.nodes {
     Cons(payload) => payload.head
-    Empty =>
-      symbolic_cost_fallback_subject_for_unresolved_port(d)
   }
 
 fn symbolic_cost_of(d: Dag, port_id: PortId) -> Witness<SymbolicCost> =
