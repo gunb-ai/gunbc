@@ -266,20 +266,16 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
 fn edge_is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
-    Positional { index: _ } => false
+    Positional => false
   }
 }
 
-// Is `e` a positional edge sitting at its canonical index? `pos` is the
-// edge's 0-based position in the children list; a positional edge's
-// `index` MUST equal it. This single check rejects four illegal states
-// at once: a `Named` label on a positional connective, a NEGATIVE index,
-// a duplicate index, and a gap — so a node that passes has positional
-// children at exactly the indices 0..n-1, in order.
-fn edge_at_canonical_index(e: Edge, pos: Int) -> Bool {
+// Is one edge a positional edge? (Its position is its index in the
+// parent's `children` list — there is nothing else to check.)
+fn edge_is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
-    Positional { index: i } => i == pos
+    Positional => true
   }
 }
 
@@ -289,9 +285,9 @@ fn all_edges_named(children: List<Edge>) -> Bool {
   })
 }
 
-fn positional_edges_canonical(children: List<Edge>) -> Bool {
-  fold(enumerate(children), init: true, f: fn(acc, pair) {
-    acc && edge_at_canonical_index(e: pair.second, pos: pair.first)
+fn all_edges_positional(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_positional(e: e)
   })
 }
 
@@ -299,12 +295,12 @@ fn positional_edges_canonical(children: List<Edge>) -> Bool {
 // Do all of a node's edges satisfy the connective's discipline?
 //   NoEdges          → the children list must be empty
 //   LabeledEdges     → every edge is addressed by name
-//   PositionalEdges  → the edges are exactly the indices 0..n-1, in order
+//   PositionalEdges  → every edge is positional (order = list order)
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0
     LabeledEdges => all_edges_named(children: children)
-    PositionalEdges => positional_edges_canonical(children: children)
+    PositionalEdges => all_edges_positional(children: children)
   }
 }
 
@@ -312,10 +308,16 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 // node_well_formed — the checked structural invariant (D3).
 //
 // For a type node, the connective fixes the discipline and every edge
-// must conform. For a computation node, T-1 imposes NO connective-style
-// edge constraint: per-behavior edge wiring is owned by the pipeline-
-// stage tasks (T-6+), so there is no rule at this layer to violate —
-// the `true` here is the empty-constraint statement, not an assumed pass.
+// must conform. For a computation node this returns `true` — NOT because
+// computation nodes are unconstrained, but because their per-behavior
+// edge wiring is not yet modeled at this substrate-root layer.
+//
+// NAMED OBLIGATION ON T-6+ (not optional): the pipeline-stage tasks that
+// build the computation substrate (T-6 tokenize … T-22 eval) MUST extend
+// this predicate with each behavior's edge discipline as they land. A
+// future reader must not read this `true` as "computation nodes are
+// unconstrained, forever" — it is an explicitly EMPTY constraint
+// awaiting T-6+, recorded here as their entry obligation.
 fn node_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: c } =>
