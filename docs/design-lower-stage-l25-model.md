@@ -112,6 +112,11 @@ Per Decision 3.A operator-ratified (sum-variant `Dag = PreInferDag | InferredDag
 
 ```
 // Per Decision 2.B substrate extension (NEW; NOT currently live):
+// 🟢 TERMINAL at the pipeline-stage discrimination scope. Closed-axis
+// sum over all pipeline stages; no further dissolution. Per Practice 4
+// (Coproduct dissolution) — adding a new pipeline stage requires
+// explicit substrate-extension audit + ratification (analogous to
+// adding new TypeConnective variants per PB-5 §3.2 stop-signal).
 type DiagnosticSource = Parse | Lower | Infer | Emit
 type Diagnostic {
   kind: AnyDiagnosticKind     // existing — kind-layer discrimination
