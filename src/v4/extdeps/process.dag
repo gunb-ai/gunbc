@@ -5,7 +5,12 @@
 //         (POSIX/SUS process model — fork/exec/wait, exit codes, signal handling)
 //
 // Owns:
-//   - Process { id, command, state, parent, exit_code }
+//   - Process { id, command, state, parent }
+//     (NO separate exit_code field — termination status lives ONLY inside
+//     ProcessState::Exited(ExitCode). A separate exit_code would allow
+//     Running-with-exit-code or Exited(0)-but-exit_code=1 — illegal states
+//     representable. The state sum is the single source of truth; exit
+//     code is reached via pattern-match on state.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
 //   - ProcessState = Running | Exited(ExitCode) | Signaled(SignalNum)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)

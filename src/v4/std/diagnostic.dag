@@ -8,13 +8,17 @@
 // Anchor: THESIS.md "Show the correct code" §103-105 + INVARIANTS P3
 //
 // Owns:
-//   - Diagnostic { reason: NamedReason, at: Locus, suggested_correction: Option<NodeFragment> }
+//   - Diagnostic { reason: NamedReason, at: Locus, correction: Correction }
 //   - NamedReason enum (structural; never opaque string)
 //   - Locus = port|node|file|span
-//   - NodeFragment (the structurally-correct alternative the diagnostic
-//     points to; Option because some user-input-boundary diagnostics
-//     genuinely cannot determine a correction — but absent must carry a
-//     named reason, never a silent None)
+//   - Correction = Suggested(NodeFragment) | Unavailable(NoCorrectionReason)
+//     (typed sum — NOT Option<NodeFragment>. "no correction available" is
+//     a structural Unavailable case carrying a NoCorrectionReason, never a
+//     bare None enforced by convention. Type-enforced per INVARIANTS P2,
+//     not API-enforced.)
+//   - NoCorrectionReason = closed enum (UserInputBoundary | AmbiguousIntent
+//     | ExternalContractUnknown | ...) — every "no fix" answers WHY structurally
+//   - NodeFragment (the structurally-correct alternative the diagnostic points to)
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj

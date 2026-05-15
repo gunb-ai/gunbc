@@ -1,7 +1,14 @@
 // src/v4/extdeps/coordination.dag
 //
 // Scope: Multi-program coordination — distributed deployment + sync/async/stream/pubsub semantics.
-// Anchor: this PR conversation + memory: feedback_construction_over_ratchets (substrate-extension caution; coordination is effect-typed not behavior-typed); THESIS:215-221 omni-emission
+// Anchor: https://en.wikipedia.org/wiki/Distributed_computing +
+//         https://en.wikipedia.org/wiki/Messaging_pattern (request-reply = sync;
+//         fire-and-forget = async; publish-subscribe = pubsub; stream = pipe)
+//         + https://en.wikipedia.org/wiki/Inter-process_communication
+// Design note (NOT the anchor): coordination is effect-typed not behavior-typed
+//   (IN-B decision; no 6th L1 behavior) — see memory feedback_construction_over_ratchets
+//   + THESIS:215-221 omni-emission. The anchor above is the external-spec
+//   authority per STRUCTURE.md extdeps anchor convention; this line is rationale.
 //
 // Owns:
 //   - Endpoint { address: NetworkAddress, language: LanguageRef, framework: Option<FrameworkRef> }
