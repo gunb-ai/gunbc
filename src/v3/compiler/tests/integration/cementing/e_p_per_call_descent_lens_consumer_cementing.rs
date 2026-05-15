@@ -290,7 +290,7 @@ fn ep_count_acc_e(xs: EpListE, acc: Int, limit: Int) -> Int =
     });
 }
 
-/// Cost-lens sibling: `symbolic_cost_of` on the multi-arg accumulator fixture
+/// Cost-lens sibling: `symbolic_cost_lookup` on the multi-arg accumulator fixture
 /// must collapse to the descending-parameter `LinearCost`, not multiply across
 /// the preserved / accumulator arguments. See module doc for the
 /// lens-consumer match-arm walker blocker.

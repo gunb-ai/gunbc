@@ -19,7 +19,7 @@ use crate::evaluator::{
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_cost::{cost_of, CostLookup};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use crate::lens_cost_target_realization::type_realization_meta;
 use crate::lens_declaration_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
