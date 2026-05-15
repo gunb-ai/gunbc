@@ -508,7 +508,7 @@ fn witness_from_complexity_lookup(s: Lookup<ComplexitySummary>, at: Behavior) ->
     Miss =>
       Violates {
         reason: "complexity_of: missing ComplexitySummary for behavior result port"
-        at: at
+        subject: AtBehavior(at)
       }
   }
 

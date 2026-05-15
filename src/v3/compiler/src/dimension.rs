@@ -41,11 +41,74 @@ fn behavior_span(at: &Behavior) -> SourceSpan {
     }
 }
 
+fn diagnostic_anchor_from_symbolic_cost_query_port(
+    d: &Dag,
+    query_port: &PortId,
+) -> Option<SourceSpan> {
+    let port_ref = d.port_opt(query_port)?;
+    let producer = port_ref.produced_by?;
+    d.node_opt(&producer).map(behavior_span)
+}
+
+/// Hint for malformed-producer lookups when emitting [`Diagnostic`] rows from witnesses that only carry
+/// [`ViolatesSubject::AtBehavior`] today: the offending behavior's own result [`PortId`] keyed the cost table
+/// miss. [`ProducerLookupMissing*`](ViolatesSubject) witnesses have no authoritative query port baked into
+/// the substrate residue — callers of [`violates_subject_diagnostic_span`] must pass **`Some(port)`** from
+/// the same keyed query as [`lens_cost_symbolic::symbolic_cost_of`](crate::lens_cost_symbolic::symbolic_cost_of).
+fn producer_lookup_anchor_hint(subject: &ViolatesSubject) -> Option<PortId> {
+    match subject {
+        ViolatesSubject::AtBehavior(b) => Some(behavior_result_port(b)),
+        ViolatesSubject::ProducerLookupMissingPort { .. }
+        | ViolatesSubject::ProducerLookupMissingNode { .. } => None,
+    }
+}
+
+/// IDE-/diagnostic-facing span for [`Witness::Violates`] when reporting
+/// [`ViolatesSubject::ProducerLookupMissingPort`] /
+/// [`ViolatesSubject::ProducerLookupMissingNode`].
+///
+/// Substrate residues name only offending [`PortId`] / [`NodeId`] handles —
+/// carrying no source location. [`lens_cost_symbolic::symbolic_cost_of`](crate::lens_cost_symbolic::symbolic_cost_of)
+/// is **port-keyed**; pass the **same `port`** it was called with here so diagnostics can anchor at the
+/// consumer port's declaring [`Behavior`] (parity with [`ViolatesSubject::AtBehavior`]), instead of the
+/// placeholder `malformed_substrate_producer_walk` sentinel used when **`lookup_port`** is unavailable.
+///
+/// [`ViolatesSubject::AtBehavior`]: ignores **`lookup_port`** and always attributes the offending behavior span.
+#[must_use]
+pub fn violates_subject_diagnostic_span(
+    d: &Dag,
+    lookup_port: Option<&PortId>,
+    subject: &ViolatesSubject,
+) -> SourceSpan {
+    match subject {
+        ViolatesSubject::AtBehavior(b) => behavior_span(b),
+        ViolatesSubject::ProducerLookupMissingPort { .. }
+        | ViolatesSubject::ProducerLookupMissingNode { .. } => lookup_port
+            .and_then(|p| diagnostic_anchor_from_symbolic_cost_query_port(d, p))
+            .unwrap_or_else(|| SourceSpan::new("malformed_substrate_producer_walk", 0, 0)),
+    }
+}
+
 /// Evidence partition — mirrors `Witness<Carrier>` in `std/dimensions.dag`.
 #[derive(Debug, Clone)]
 pub enum Witness<C> {
     Inhabits(C),
-    Violates { reason: String, at: Behavior },
+    Violates {
+        reason: String,
+        subject: ViolatesSubject,
+    },
+}
+
+/// 🟢 TERMINAL coproduct (**Practice 4** / `docs/modeling-discipline.md` §4):
+/// hand mirror of `ViolatesSubject` in `src/v3/std/dimensions.dag`. Variants are the discriminated outcomes
+/// of the producer walk ([`crate::dag::ProducerLookup`]) paired with lawful `Behavior` attribution — not a
+/// decomposable record without collapsing P3 fail-closed residue. **Ledger:** dissolution patterns 1–4 in §4
+/// do not apply; substrate + `Witness::Violates.subject` already name the single authority (gate #104).
+#[derive(Debug, Clone)]
+pub enum ViolatesSubject {
+    AtBehavior(Behavior),
+    ProducerLookupMissingPort { port: PortId },
+    ProducerLookupMissingNode { producer: NodeId },
 }
 
 /// Report carrier — mirrors `DimensionReport<Carrier>` in `std/dimensions.dag`.
@@ -171,7 +234,7 @@ pub fn analyze_symbolic_cost_dimension(
         match lookup_symbolic_cost(&cost_table, &port) {
             SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
                 reason: "missing symbolic cost for behavior result port".into(),
-                at: behavior.clone(),
+                subject: ViolatesSubject::AtBehavior(behavior.clone()),
             }),
             SymbolicCostLookup::Hit(cost) => witnesses.push(Witness::Inhabits(cost)),
         }
@@ -197,12 +260,16 @@ pub fn analyze_symbolic_cost_dimension(
     let mut violations: Vec<Diagnostic> = witnesses
         .iter()
         .filter_map(|w| {
-            let Witness::Violates { reason, at } = w else {
+            let Witness::Violates { reason, subject } = w else {
                 return None;
             };
             Some(Diagnostic::ParseError {
                 message: format!("symbolic_cost dimension: {reason}"),
-                span: behavior_span(at),
+                span: violates_subject_diagnostic_span(
+                    d,
+                    producer_lookup_anchor_hint(subject).as_ref(),
+                    subject,
+                ),
                 correction: Correction::deferred_for_diagnostic_class(
                     "SymbolicCostDimensionDiagnostic",
                 ),
@@ -537,6 +604,64 @@ mod fail_closed_tests {
             witnesses.len() >= 3,
             "expected transform + two literal witnesses, got {}",
             witnesses.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod violates_subject_diagnostic_span_tests {
+    use super::*;
+    use crate::dag::{literal_bits_int, Dag, PortId};
+
+    #[test]
+    fn producer_lookup_residue_prefers_consumer_behavior_span_when_keyed_port_given() {
+        let mut dag = Dag::new();
+        let anchored = SourceSpan::new("fixture_cost_port.dag", 11, 19);
+        let value_out = dag.push_value(literal_bits_int(42), anchored.clone());
+        let subject = ViolatesSubject::ProducerLookupMissingPort {
+            port: PortId::test_raw(999),
+        };
+
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, Some(&value_out), &subject),
+            anchored
+        );
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, None, &subject),
+            SourceSpan::new("malformed_substrate_producer_walk", 0, 0),
+        );
+
+        let node_miss = ViolatesSubject::ProducerLookupMissingNode {
+            producer: crate::dag::NodeId::from_table_index(424242),
+        };
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, Some(&value_out), &node_miss),
+            anchored
+        );
+    }
+
+    #[test]
+    fn at_behavior_always_anchors_the_subject_even_if_lookup_hint_differs() {
+        let mut dag = Dag::new();
+        let s1 = SourceSpan::new("subject_behavior.dag", 1, 4);
+        let s2 = SourceSpan::new("other_port_noise.dag", 77, 88);
+        let p_subj = dag.push_value(literal_bits_int(11), s1.clone());
+        let p_other = dag.push_value(literal_bits_int(22), s2.clone());
+        let nid = dag
+            .port_opt(&p_subj)
+            .expect("literal port wired")
+            .produced_by
+            .expect("value node should produce output port");
+        let b_subj = dag.node(nid).clone();
+
+        assert_eq!(
+            violates_subject_diagnostic_span(
+                &dag,
+                Some(&p_other),
+                &ViolatesSubject::AtBehavior(b_subj),
+            ),
+            s1,
+            "hint must not override declared subject behavior attribution",
         );
     }
 }

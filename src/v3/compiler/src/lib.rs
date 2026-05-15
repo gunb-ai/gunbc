@@ -4191,6 +4191,7 @@ pub mod lens_cost {
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
         };
+        use crate::ViolatesSubject;
         use crate::Witness;
 
         include!("complexity_lens_generated.rs");
@@ -4555,6 +4556,19 @@ pub mod lens_cost {
 /// into `src/v3/compiler/src/cost_symbolic_lens_generated.rs` and
 /// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
 ///
+/// **Dual gate #104 witness entrypoints — different contracts:**
+/// - **[`symbolic_cost_of`]** is **port-keyed**: runs typed [`crate::dag::Dag::resolve_producer_lookup`]
+///   and may return **malformed-substrate** [`Witness::Violates`](crate::dimension::Witness::Violates)
+///   with [`ViolatesSubject`](crate::dimension::ViolatesSubject) (**`ProducerLookupMissingPort`** /
+///   **`ProducerLookupMissingNode`**, or **`AtBehavior`** for **`BindCycle`**), or **`NoProducer`** with
+///   table **`Hit` → `Inhabits`** / **`Miss` → `UnknownCost`**.
+/// - **`Lens.read`** is implemented by the generated **`cost_lens_read`** (same fold + table as this
+///   module): caller supplies subject **`Behavior`** `b`; it runs **`lookup_cost(compute_symbolic_costs(..),
+///   behavior_result_port(b))`**, and on table **`Miss`** uses [`Witness::Violates`](crate::dimension::Witness::Violates) with
+///   **`subject: ViolatesSubject::AtBehavior(b)`** — it does **not** re-run **`resolve_producer_lookup`**,
+///   so it never emits the producer-walk malformed reasons (facts attach to the behavior the caller is
+///   pinning).
+///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
 /// `src/v3/compiler/src/dag.rs` rather than the generated module
 /// because they're declared in `src/v3/std/algebra.dag`, which
@@ -4579,6 +4593,7 @@ pub mod lens_cost_symbolic {
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
         };
+        use crate::ViolatesSubject;
         use crate::Witness;
 
         include!("cost_symbolic_lens_generated.rs");
@@ -4597,8 +4612,9 @@ pub mod lens_cost_symbolic {
     /// earlier in the fold; applying collapse only after the full vector would leave those lookups
     /// observing uncollapsed `ProductCost` shells (facts-forward / single-authority for composed
     /// rows).
-    /// **Single public authority** for symbolic-cost facts: [`symbolic_cost_of`] is just
-    /// [`generated::lookup_cost`] over this table — no parallel uncollapsed export (P2).
+    ///
+    /// **Single public folded table.** [`compute_symbolic_costs`] is the normalization authority
+    /// (P2): [`generated::compute_symbolic_costs`] plus the collapse pass above.
     pub fn compute_symbolic_costs(dag: &crate::dag::Dag) -> Vec<SymbolicCostEntry> {
         use crate::dag::Lookup;
 
@@ -4621,19 +4637,98 @@ pub mod lens_cost_symbolic {
             })
     }
 
-    /// [`generated::lookup_cost`] over [`compute_symbolic_costs`] — the normalized lens surface (see
-    /// module docs on [`compute_symbolic_costs`]).
+    /// Port-only [`Witness`](crate::dimension::Witness) over [`SymbolicCost`] (R3 §1.8 gate #104).
+    ///
+    /// Uses [`crate::dag::Dag::resolve_producer_lookup`] (typed walk) — **not**
+    /// [`crate::dag::Dag::resolve_producer_opt`], which merges legitimate `NoProducer` with malformed
+    /// substrate (`MissingPort` / `MissingNode` / `BindCycle`) into `None` (INVARIANTS P3 forbids that
+    /// collapse here).
+    ///
+    /// - [`ProducerLookup::Found`]: merges table lookup via [`generated::witness_from_symbolic_cost_lookup`]
+    ///   (lawful `Violates` on table **`Miss`** uses [`ViolatesSubject::AtBehavior`] with the resolved producer).
+    /// - [`ProducerLookup::NoProducer`]: **INVARIANTS P2** — still consult the **same** `folded`
+    ///   [`generated::lookup_cost`] as `Found`. Table **`Hit`** (e.g. bind-parameter seeds from
+    ///   [`generated::seed_bind_params`]) flows forward as **`Inhabits`**. Only plain parameters /
+    ///   externals with **no** folded row (**`Miss`**) use **`Inhabits(UnknownCost("…"))`** — not
+    ///   substrate corruption and not a fake `Violates`.
+    /// - Malformed substrate: **`Violates { reason, subject }`** ([`ViolatesSubject`]) —
+    ///   **no fabricated unrelated [`Behavior`].** **`BindCycle`** uses **`AtBehavior(dag.node(detected_at))`**
+    ///   (detected Bind). **`MissingPort`** / **`MissingNode`** carry only the offending [`PortId`] /
+    ///   [`NodeId`] residue from the walker. When projecting to IDE diagnostics from this **port-keyed**
+    ///   query, compose spans with **`Some(port)`** via [`crate::violates_subject_diagnostic_span`] so producer-walk residues can anchor like [`ViolatesSubject::AtBehavior`] when the keyed port declares a lawful producer.
+    ///
+    /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
+    ///
+    /// [`ProducerLookup::Found`]: crate::dag::ProducerLookup::Found
+    /// [`ProducerLookup::NoProducer`]: crate::dag::ProducerLookup::NoProducer
+    /// [`ProducerLookup::MissingPort`]: crate::dag::ProducerLookup::MissingPort
+    /// [`ProducerLookup::MissingNode`]: crate::dag::ProducerLookup::MissingNode
+    /// [`ProducerLookup::BindCycle`]: crate::dag::ProducerLookup::BindCycle
+    /// [`ViolatesSubject::AtBehavior`]: crate::dimension::ViolatesSubject::AtBehavior
+    /// [`ViolatesSubject`]: crate::dimension::ViolatesSubject
+    /// [`NodeId`]: crate::dag::NodeId
+    /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
-    ) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
+    ) -> crate::dimension::Witness<crate::dag::SymbolicCost> {
+        use crate::dag::ProducerLookup;
+        use crate::dimension::ViolatesSubject;
+
+        let folded = generated::lookup_cost(&compute_symbolic_costs(dag), port);
+        match dag.resolve_producer_lookup(port) {
+            ProducerLookup::Found(subject) => {
+                generated::witness_from_symbolic_cost_lookup(&folded, subject.clone())
+            }
+            ProducerLookup::NoProducer => match folded {
+                SymbolicCostLookup::Hit(cost) => crate::dimension::Witness::Inhabits(cost),
+                SymbolicCostLookup::Miss => {
+                    crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
+                        _0: String::from(
+                            "symbolic_cost_of: no producer for port (parameter or external binding)",
+                        ),
+                    })
+                }
+            },
+            ProducerLookup::MissingPort { port: missing } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — MissingPort {:?}",
+                    missing
+                ),
+                subject: ViolatesSubject::ProducerLookupMissingPort { port: missing },
+            },
+            ProducerLookup::MissingNode { producer } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — MissingNode {:?}",
+                    producer
+                ),
+                subject: ViolatesSubject::ProducerLookupMissingNode { producer },
+            },
+            ProducerLookup::BindCycle { detected_at } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — BindCycle at {:?}",
+                    detected_at
+                ),
+                subject: ViolatesSubject::AtBehavior(dag.node(detected_at).clone()),
+            },
+        }
+    }
+
+    /// Table-only [`Lookup`] for one port—the same folded [`compute_symbolic_costs`] facts
+    /// [`symbolic_cost_of`] inspects—but **without** producer resolution /
+    /// [`Witness`](crate::dimension::Witness) packaging (algebra-level consumers; dimensional spine).
+    #[inline]
+    pub fn symbolic_cost_lookup(
+        dag: &crate::dag::Dag,
+        port: &crate::dag::PortId,
+    ) -> SymbolicCostLookup {
         generated::lookup_cost(&compute_symbolic_costs(dag), port)
     }
 
     /// Scan a single port against a table from [`compute_symbolic_costs`].
     ///
     /// Callers that need many ports should compute once and use this instead of
-    /// [`symbolic_cost_of`], which rebuilds the full table on every lookup.
+    /// [`symbolic_cost_lookup`], which rebuilds the full table on every lookup.
     #[inline]
     pub fn lookup_symbolic_cost(
         table: &[SymbolicCostEntry],
@@ -4642,10 +4737,10 @@ pub mod lens_cost_symbolic {
         generated::lookup_cost(table, port)
     }
 
-    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
-    /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
-    /// returns `Lookup<SymbolicCost>` directly; this name stays for
-    /// embedder stability, mirroring `lens_cost::CostLookup`.
+    /// Alias for [`Lookup`] at [`SymbolicCost`] (`Hit` / `Miss`) over [`compute_symbolic_costs`] rows.
+    ///
+    /// [`SymbolicCost`]: crate::dag::SymbolicCost
+    /// [`Lookup`]: crate::dag::Lookup
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
@@ -5513,7 +5608,7 @@ pub use lens_parallelism::{analyze_parallelism, loop_iteration_parallel_emission
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
 pub use dimension::{
     analyze_complexity, analyze_symbolic_cost_dimension, behavior_spine_in_node_order,
-    DimensionReport, Witness,
+    violates_subject_diagnostic_span, DimensionReport, ViolatesSubject, Witness,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
