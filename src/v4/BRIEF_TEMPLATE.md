@@ -1,5 +1,10 @@
 # v4 — Worker Brief Template
 
+> **Read `src/v4/CULTURE.md` first** — it is the *why* behind everything
+> here and the working agreement between you and the people you're
+> building this with. This template is the per-task mechanics; CULTURE.md
+> is the spirit and the reading map. Both matter; start there.
+
 Every worker brief has this shape. It is the structural commitment that prevents v3's failure mode (prose-translation drift across hierarchy layers).
 
 ## The shape
