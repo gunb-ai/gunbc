@@ -4649,26 +4649,23 @@ pub mod lens_cost_symbolic {
 
         let folded = generated::lookup_cost(&compute_symbolic_costs(dag), port);
         match dag.resolve_producer_lookup(port) {
-            ProducerLookup::Found(subject) => generated::witness_from_symbolic_cost_lookup(
-                &folded,
-                subject.clone(),
-            ),
-            ProducerLookup::NoProducer => crate::dimension::Witness::Inhabits(
-                crate::dag::SymbolicCost::UnknownCost {
+            ProducerLookup::Found(subject) => {
+                generated::witness_from_symbolic_cost_lookup(&folded, subject.clone())
+            }
+            ProducerLookup::NoProducer => {
+                crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
                     _0: String::from(
                         "symbolic_cost_of: no producer for port (parameter or external binding)",
                     ),
-                },
-            ),
-            ProducerLookup::MissingPort { port: missing } => {
-                crate::dimension::Witness::Violates {
-                    reason: format!(
-                        "symbolic_cost_of: malformed substrate — MissingPort {:?}",
-                        missing
-                    ),
-                    at: dag.substrate_lens_read_diagnostic_anchor(),
-                }
+                })
             }
+            ProducerLookup::MissingPort { port: missing } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — MissingPort {:?}",
+                    missing
+                ),
+                at: dag.substrate_lens_read_diagnostic_anchor(),
+            },
             ProducerLookup::MissingNode { producer } => crate::dimension::Witness::Violates {
                 reason: format!(
                     "symbolic_cost_of: malformed substrate — MissingNode {:?}",
