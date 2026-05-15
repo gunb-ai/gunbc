@@ -56,7 +56,7 @@ src/v4/
     04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
     05_emit.dag          # InferredTree + TargetSpec -> TargetSource
 
-  lens/                  # dimensions (8 files, parallel after compiler)
+  lens/                  # dimensions (9 files, parallel after compiler)
     complexity.dag
     cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
@@ -65,6 +65,7 @@ src/v4/
     idempotency.dag
     synthesis.dag        # cross-algorithm complexity (C7; advisory via Report carrier)
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
+    testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
 
   workflow/              # recursive-flex — work-direction in .dag (5 files)
     brief.dag            # typed Brief schema
@@ -81,7 +82,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 51 .dag files + 3 docs + 4 .gitkeep = 58 files at scaffold time.**
+**Total: 52 .dag files + 3 docs + 5 .gitkeep = 60 files at scaffold time.**
 
 ## Anchor convention
 
@@ -162,6 +163,14 @@ reference this section when dispatching workers.
    The "show the correct code" promise is structural — every Diagnostic
    site CAN carry a suggested fix. Lenses populate it where they have the
    structural information; absent fix is `None`, not a missing field.
+
+4. **Every TestClaim slots into one (Tier × Layer) cell** (per THESIS §168-182
+   correctness tiers + TESTING.md §141 test layers — two orthogonal axes).
+   - **Correctness Tier** (when bug is caught): Tier1 (compile-time) | Tier2 (runtime-totalized) | Tier3 (runtime-observed L4-L7)
+   - **Test Layer** (where test runs, with target ratios per TESTING.md): Unit ~75% | Integration ~15% | Boundary ~10%
+   Testgen output respects ratio targets; coverage lens verifies completeness
+   across the (Tier × Layer × Substrate) cross-product. Workers writing
+   manual TestClaims declare both axes in the claim metadata.
 
 ## The closed-system invariants
 

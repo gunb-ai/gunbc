@@ -1,0 +1,53 @@
+// src/v4/lens/testgen.dag
+//
+// Scope: testgen lens — reads substrate declarations and produces TestClaim
+//        instances structurally. The producer side of "tests are data, not
+//        code" (THESIS facet 3). Output is consumed by lens/coverage.dag
+//        which verifies the produced set covers the expected substrate
+//        cross-product.
+// Anchor: TESTING.md §"Test layers (target ratios)" + THESIS.md §348-368
+//         "Tests are structural data" + §168-182 correctness tiers +
+//         memory: feedback_groundedness_gates_lenses (testgen applies
+//         to every program by construction)
+//
+// Owns:
+//   - Generator<C> generic carrier (parameterized over substrate concept)
+//   - Per-substrate-kind testgen rules:
+//     - type_construction(Atom | Conj | Disj | ...) -> Set<Constructible TestClaim>
+//     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
+//     - diagnostic_exhaustiveness(NamedReason variant) -> Set<DiagnosticEmitted TestClaim>
+//     - lens_applicability(Lens × Program) -> Set<LensProducesResult TestClaim>
+//     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<BitEqual TestClaim>
+//   - TestClassification = (Tier, Layer) for every produced claim
+//     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
+//     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
+//   - lens read: () -> Set<TestClaim>  (the produced corpus)
+//
+// Tier × Layer cross-cut discipline (per TESTING.md ratio targets):
+//   - Unit tests target ~75%: type-construction, exhaustiveness, lens-applicability
+//   - Integration tests target ~15%: cross-stage invariants, fixed-point convergence
+//   - Boundary tests target ~10%: language roundtrips (rustc/python/go/cpp/ts), L4 runtime equivalence
+//   - testgen output respecting these ratios is structurally enforceable via coverage lens
+//
+// Bootstrap path:
+//   - test/claim/manual/ holds hand-authored TestClaims authored after T-1 lands
+//   - testgen (T-19) produces the same corpus programmatically
+//   - Assertion: testgen-produced set ⊇ manual set; manual claims are
+//     anti-regression anchors against testgen drift
+//
+// Consumes:
+//   - std/node.dag (substrate to walk)
+//   - std/algebra.dag (algebra inhabitance for L7-class testgen)
+//   - std/verification.dag (TestClaim output schema)
+//   - std/diagnostic.dag (Diagnostic.NamedReason for exhaustiveness testgen)
+//   - lens/*.dag (each lens's declared read shape, for applicability testgen)
+//   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
+//
+// Status: scaffold — fill per TASKS.md T-19
+// Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
+// substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
+// This buys test evidence early — every Phase 2+ task gets a testgen-
+// derived corpus instead of hand-authoring.
+
+module v4.lens.testgen
+

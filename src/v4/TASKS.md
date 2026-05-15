@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-21 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+22 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -17,6 +17,13 @@ Phase 1 (parallel — substrate foundation):
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
+
+Phase 1.5 (test substrate — early, before compiler stages):
+  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
+        Produces TestClaim corpus from substrate; manual TestClaims in
+        test/claim/manual/ serve as anti-regression contract until
+        T-19 implementation lands. Every Phase 2+ task benefits from
+        testgen-derived test coverage instead of hand-authoring.
 
 Phase 2 (serial — pipeline stages):
   T-6   compiler/01_tokenize.dag         [needs T-3]
@@ -412,6 +419,32 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+### T-19: lens/testgen.dag — producer of TestClaim corpus from substrate
+
+**File**: `src/v4/lens/testgen.dag` (operator-ratified 2026-05-15: testgen as substrate fold; Phase 1.5 placement so test corpus exists before compiler stages need it)
+**Why early**: per operator "i want testgen to be working fairly early — for the compiler itself". Phase 1.5 placement means T-6+ tasks consume testgen-derived TestClaims rather than hand-authoring.
+**Why solo**: testgen is a producer with cross-cutting consumption of every substrate file; one cohesive home.
+
+**Modeling decisions**:
+- Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
+- Per-substrate-kind testgen rules (see file header for the 5 categories: type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip)
+- TestClassification = (Tier, Layer) on every produced claim — Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
+- Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
+
+**Scope**: L (large — substrate-traversal across every concept; cross-cutting consumption)
+
+**Bootstrap pragma** (per operator: "manual authoring is fine as well"):
+- After T-1 (`std/node.dag`) lands: hand-author 5-10 TestClaims in `test/claim/manual/` covering type-construction for the 6 connectives + 5 behaviors. Validates schema + shape immediately.
+- After T-2 (`std/algebra.dag`) lands: hand-author algebra-law TestClaims for at least Magma/Monoid.
+- After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
+
+**Reference**:
+- TESTING.md §141 "Test layers (target ratios)" — Unit ~75% / Integration ~15% / Boundary ~10%
+- THESIS.md §168-182 — correctness Tier 1/2/3
+- THESIS.md §348-368 — "Tests are structural data"
+
+---
+
 ### T-18: lens/coverage.dag — meta-lens for coverage discipline
 
 **File**: `src/v4/lens/coverage.dag` (operator-ratified 2026-05-15: structural coverage enforcement, not exhaustive fixtures)
@@ -435,7 +468,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ## Summary
 
-21 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+22 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 
