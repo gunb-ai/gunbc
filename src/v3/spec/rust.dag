@@ -68,6 +68,7 @@ import v3.std.emit_model {
   MethodTemplateContract, SingleTemplate, NamedArg
 }
 import std.methods { concat_method, fold_method, is_empty_method, length_method, map_method }
+import std.formatting { format, int_to_string, char_to_string, bool_to_string }
 import v3.std.rust_method_template_contracts {
   rust_filter_method_template_contract,
   rust_flat_map_method_template_contract,
@@ -1499,6 +1500,47 @@ data rust_contains_callable: CallableRealization = {
   parameters: [
     { slot: 0, disposition: Borrowed },
     { slot: 1, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data rust_string_format_callable: CallableRealization = {
+  language: rust_language
+  target: format
+  strategy: StringFormat
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data rust_int_to_string_callable: CallableRealization = {
+  language: rust_language
+  target: int_to_string
+  strategy: IntToString
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data rust_char_to_string_callable: CallableRealization = {
+  language: rust_language
+  target: char_to_string
+  strategy: CharToString
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data rust_bool_to_string_callable: CallableRealization = {
+  language: rust_language
+  target: bool_to_string
+  strategy: BoolToString
+  parameters: [
+    { slot: 0, disposition: Consumed }
   ]
   cost: 1
 }

@@ -219,6 +219,10 @@ type CallableStrategy
   | ListMap
   | ListFilter
   | ListContains
+  | StringFormat
+  | IntToString
+  | CharToString
+  | BoolToString
 
 // Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
 // carrier for structural-match lowering onto realized target carriers such as

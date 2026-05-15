@@ -3155,7 +3155,7 @@ pub(crate) struct VerifierOutputPolicyVariants {
 /// This mirrors `PatternBindingRuleVariants`: one bootstrap-time
 /// name walk through the Disj, then downstream consumers compare
 /// typed `DeclarationId`s only. Without the cache, each emitter
-/// re-resolves the same ten variant labels independently at parse
+/// re-resolves the same variant labels independently at parse
 /// time, recreating the "multiple call sites reconstruct the same
 /// fact" bridge.
 #[derive(Debug, Default, Clone)]
@@ -3170,6 +3170,10 @@ pub(crate) struct CallableStrategyVariants {
     pub list_map: Option<DeclarationId>,
     pub list_filter: Option<DeclarationId>,
     pub list_contains: Option<DeclarationId>,
+    pub string_format: Option<DeclarationId>,
+    pub int_to_string: Option<DeclarationId>,
+    pub char_to_string: Option<DeclarationId>,
+    pub bool_to_string: Option<DeclarationId>,
 }
 
 #[derive(Debug, Clone)]
@@ -4732,6 +4736,18 @@ impl Dag {
                         "ListContains" => {
                             callable_strategy_variants.list_contains = Some(variant.ty);
                         }
+                        "StringFormat" => {
+                            callable_strategy_variants.string_format = Some(variant.ty);
+                        }
+                        "IntToString" => {
+                            callable_strategy_variants.int_to_string = Some(variant.ty);
+                        }
+                        "CharToString" => {
+                            callable_strategy_variants.char_to_string = Some(variant.ty);
+                        }
+                        "BoolToString" => {
+                            callable_strategy_variants.bool_to_string = Some(variant.ty);
+                        }
                         _ => {}
                     }
                 }
@@ -5398,6 +5414,22 @@ mod tests {
         assert!(
             variants.list_contains.is_some(),
             "CallableStrategy.ListContains"
+        );
+        assert!(
+            variants.string_format.is_some(),
+            "CallableStrategy.StringFormat"
+        );
+        assert!(
+            variants.int_to_string.is_some(),
+            "CallableStrategy.IntToString"
+        );
+        assert!(
+            variants.char_to_string.is_some(),
+            "CallableStrategy.CharToString"
+        );
+        assert!(
+            variants.bool_to_string.is_some(),
+            "CallableStrategy.BoolToString"
         );
     }
 
