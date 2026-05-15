@@ -12,6 +12,31 @@
 //     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
 //     no other path from advisory to blocking exists
 //
+// QRY-1 (operator-ratified 2026-05-15) — "language queries" ARE
+// user-defined dimensions; this file is their home. A query is a
+// USER-DEFINED LENS (the same `Node -> Set<Match>` / `Witness` shape as
+// every lens; THESIS §1.5/95-101 — "a user writes a lens in .dag … the
+// compiler validates every program against it using the same mechanism
+// as built-in dimensions"). Properties, by construction:
+//   - LANGUAGE-AGNOSTIC by the B2-OMNI Node pivot: a query is written
+//     against `Node`, so ONE query runs over every ingested language
+//     (Rust/Python/Verilog/SQL/…) with no per-language rewrite — O(1)
+//     per language, the same O(N+M) argument as B2-OMNI. This is a free
+//     consequence and is asserted here (was folklore, now contract).
+//   - Composes DERIVED facts, not just syntax: a query may read other
+//     lenses' outputs (effects/complexity/parallelism/…), strictly more
+//     than text/AST tools.
+//   - Introspective READ by default (`IntrospectApplication` — you run a
+//     query to SEE); `Enforce` optional (a query becomes a fail-closed
+//     custom gate/policy). Same uniform UX as parallelism/complexity.
+//   - A query RESULT is itself a `Node` (bounded kernel — NO new output
+//     carrier: a structured collection of matched Node-refs + their
+//     InferredFacts). Fail-closed/no-engine: empty match = empty set (a
+//     fact); unmodeled concept = Diagnostic, never a guess.
+//   - NON-MOVE (binding): there is NO `query.dag` / query subsystem. A
+//     query IS a lens; a query feature would be parallel authority with
+//     the lens shape = the feature-creep the closed system forbids. STOP.
+//
 // Consumes:
 //   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
 //   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
