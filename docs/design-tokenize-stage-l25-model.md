@@ -70,7 +70,8 @@ Distinct from PB-3 parse which has explicit GrammarSpec per Decision 3.B (b) com
 ### §4.1 `List<Token>` (typed-state output)
 
 Per `src/v3/std/tokenize.dag` (live; Token + TokenKind closed-axis sum):
-- Token carries `kind: TokenKind` + `span: SourceSpan` + optional `lexeme: String`
+- Token carries `kind: TokenKind` + `span: SourceSpan` (verified at `src/v3/std/tokenize.dag:65-67`; the live carrier is 2 fields only, no optional lexeme on Token itself)
+- TokenKind variants carry their own payloads: `Ident(String)`, `IntLit(String)`, `StringLit(String)`, etc. — lexeme-content lives ON the variant, NOT on Token
 - TokenKind closed-axis: keywords (KwLet/KwIf/KwThen/...), identifiers (Ident), literals (IntLit/StringLit), operators (Eq/EqEq/Lt/Gt/...), punctuation (LParen/RParen/...), etc.
 
 **Construction-time invariant**: every consumed byte advances the scanner position; every emitted Token carries source-span provenance. No silent byte-skipping; no fabricated tokens.
@@ -252,12 +253,16 @@ Step 2 worker brief enumerates the full variant set by grepping `tokenize_genera
 
 What's the formal predicate for "tokenize substrate is complete + residual hand-Rust can retire"?
 
-**Director-recommend**: predicate = `cargo test --release -p v3-compiler --test integration tokenize_substrate_authority` shows:
-- (a) `tokenize.dag` content unchanged but codegen regenerates `tokenize_generated.rs` byte-identically
+**Director-recommend**: predicate spans BOTH the codegen artifact AND the codegen-driver boundary (per codex BLOCKING PR #3127 — earlier scoping to tokenize_generated.rs alone missed the regen_tokenize logic + .dag authority boundary).
+
+Predicate = `cargo test --release -p v3-compiler --test integration tokenize_substrate_authority` shows:
+- (a) `tokenize.dag` content unchanged but codegen regenerates `tokenize_generated.rs` byte-identically (idempotent codegen)
 - (b) `tokenize_generated.rs` contains NO hand-edit zones (all body is codegen-driver-emitted)
 - (c) No fallback Rust scanner logic outside the codegen artifact
+- (d) **`regen_tokenize` codegen-driver itself contains NO scanner-logic decisions** — it reads `tokenize.dag` declaratively and emits Rust mechanically. If `regen_tokenize` carries scanner logic (rather than just template-rendering substrate facts), the substrate isn't actually complete: the driver IS hand-Rust scanner logic in disguise.
+- (e) **Or explicit ROADMAP.md deferral row** naming `regen_tokenize` codegen-driver retirement scope as PB-Bootstrap-Process lane (per Q1); deferral receipt is PB-2 → PB-Bootstrap-Process handoff at the codegen-driver authority boundary.
 
-If (a)(b)(c) hold, substrate is complete; only residual is the codegen-driver itself (PB-Bootstrap-Process scope per Q1).
+If (a)(b)(c)(d) hold, substrate is complete + tokenize_generated.rs can retire (replaced by Evaluator-loaded `.dag` at runtime per PB-Runtime). If (d) is violated but (e) is named, partial-completion with explicit deferral is acceptable (per `feedback_paper_shrink_variants` P5 receipt discipline).
 
 ### Q5: PB-3 parse landing dependency
 
