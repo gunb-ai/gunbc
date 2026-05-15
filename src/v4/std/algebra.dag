@@ -253,9 +253,27 @@ type FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Ordering — the result of a total-order comparison. A closed sum
-// (M4); consumed by OrderedRing.compare. Anchor: order theory
-// (trichotomy: exactly one of <, =, > holds).
+// Ordering — the result of a total-order comparison. Consumed by
+// OrderedRing.compare. Anchor: order theory (trichotomy: exactly one
+// of <, =, > holds).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: a comparison result is consumed
+//      uniformly (every `compare` consumer branches on all three); not
+//      a scattered per-consumer fact.
+//   2. Variant-is-data — FAILS: promoting to `{ sign: Int }` (-1/0/+1)
+//      replaces a closed 3-valued exhaustive sum with an unbounded Int
+//      (sign=42 representable) — violates P2 + M4 (closed sets are
+//      enums, not numeric proxies). The enum IS the faithful form.
+//   3. Algebraic form — N/A: Less/Equal/Greater do not trace to
+//      distinct std/ structures; they ARE the codomain of the order
+//      relation (trichotomy). No richer std/ source.
+//   4. Dimensional — FAILS: a comparison yields EXACTLY ONE of three
+//      (total-order trichotomy: exactly one of a<b, a=b, a>b holds) —
+//      mutually-exclusive alternatives, not simultaneous coordinates.
+// Terminal: irreducible trichotomy codomain of a total order.
 type Ordering
   = Less
   | Equal
@@ -265,27 +283,37 @@ type Ordering
 // ─────────────────────────────────────────────────────────────────────
 // Homomorphism<Source, Target> — THE single carrier (U1, header).
 //
-// A structure-preserving map between two algebra carriers. The carrier
-// IS the map: "structure-preserving" is the LAW it asserts (each
-// operation/constant is preserved), the same way Semigroup asserts
-// associativity — verified by the L7 algebra-law surface, never stored
-// as a flag (feedback_no_annotations). WHICH algebra's structure is
-// preserved is bound by the context that constructs the homomorphism
-// (the Find phase, compiler/04_infer.dag T-9), not duplicated here; a
-// fully-general "homomorphism over any algebra class" would need a
-// higher-kinded parameter the v2 seed cannot express, and pinning a
-// source/target algebra field here would be that parallel duplication.
+// A structure-preserving map between two algebras. The defining facts
+// are THREE and all flow forward in the carrier (INVARIANTS P2 facts-
+// flow-forward; same discipline as witness.dag's "Holds CARRIES the
+// proven fact" — a carrier that drops what it proved re-imports the
+// hole it exists to close):
+//   - `source_algebra` / `target_algebra` — the algebra structures the
+//     map preserves, carried as node.dag `Node` references (every
+//     algebra above IS a Node — node.dag is the universal structural
+//     reference, so no higher-kinded parameter is needed). The Find
+//     phase (compiler/04_infer.dag T-9) binds these from the resolved
+//     inhabitance; Realize (05_emit/05_eval), Measure (lens/cost →
+//     lens/complexity) and the L7 algebra-law surface READ them to
+//     validate that preservation actually holds. Omitting them (an
+//     earlier shape did) drops the preserved-structure identity — the
+//     THESIS grounding-completeness + P2 violation this revision fixes.
+//   - `map` — the carrier-level map. "Structure-preserving" is the LAW
+//     it asserts (each operation/constant preserved), verified by the
+//     L7 surface against `source_algebra`/`target_algebra`, never a
+//     flag (feedback_no_annotations).
 //
 // "WITH its realization cost" (U1): this is the ONE object all five
-// phases read — Find (04_infer) binds it, Realize (05_emit / 05_eval)
-// projects it to a target, Measure (lens/cost → lens/complexity) folds
-// its cost FROM `map`'s own Node structure, Compare (lens/synthesis)
-// reads that. There is deliberately NO cost field: a stored cost would
-// be a representation parallel to the map it measures — the engine debt
-// U1 forbids (THESIS:185-186 coercion = emission, coercion cost =
+// phases read — Find binds it, Realize projects it, Measure folds its
+// cost FROM `map`'s own Node structure, Compare (lens/synthesis) reads
+// that. There is deliberately NO cost field: a stored cost would be a
+// representation parallel to the map it measures — the engine debt U1
+// forbids (THESIS:185-186 coercion = emission, coercion cost =
 // complexity: one object, many lens projections). Anchor: Wikipedia
 // "Homomorphism".
 type Homomorphism<Source, Target> {
+  source_algebra: Node
+  target_algebra: Node
   map: fn(Source) -> Target
 }
 
