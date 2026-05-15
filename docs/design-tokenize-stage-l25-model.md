@@ -311,7 +311,7 @@ This doc lands on main when:
 8. ✅ Determinism preservation discipline (§10)
 9. ✅ Tokenization invariants explicit (§11)
 10. ✅ Open design questions enumerated for operator/PM ratification (§12)
-11. ⏳ Operator/PM ratification on §12 Q1-Q6
+11. ⏳ Operator/PM ratification on §12 Q1–Q5 only (Q6 resolved REJECTED in §12 per codex PR #3127 BLOCKING + cross-stage Result-sum discriminator — no ratification needed; see §14 "Surfaces awaiting" + §15 step 1 for the same scoping)
 
 Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker brief authoring + §1.8 PB-2 gate row close-criterion predicate.
 
