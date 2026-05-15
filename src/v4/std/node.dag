@@ -179,21 +179,22 @@ type NodeKind
 // ─────────────────────────────────────────────────────────────────────
 // EdgeLabel — how a child Node is addressed from its parent.
 //
-// `Named` for the labeled-children connectives (Conj/Disj); `Positional`
-// for the positional-children connectives (Arrow/Cardinality/
-// Instantiation). The label name is an opaque `Symbol` per K-1 — a child
-// is never addressed by a readable string. `Positional.index` gives a
-// positional child a representation-independent identity (CULTURE §8 —
-// the Node structure is canonical and deterministic, not order-dependent
-// on incidental list storage). The index carrier is the kernel `Int`,
-// but in a well-formed node it admits no illegal inhabitant:
-// `node_well_formed` requires positional indices to be exactly 0..n-1 in
-// order, so negative / duplicate / gapped indices — representable in the
-// `Int` — never pass the checked invariant (STRUCTURE.md A3: a checked
-// structural predicate, not type-level unrepresentability).
+// `Named` (carrying an opaque `Symbol` per K-1 — never a readable string)
+// for the labeled-children connectives (Conj/Disj). `Positional` is a
+// bare marker for the positional-children connectives (Arrow/Cardinality/
+// Instantiation): a positional child's identity IS its 0-based position
+// in the parent's `children` list. That list order is the SINGLE
+// authority for positional order (CULTURE §8 — canonical, deterministic).
+//
+// There is deliberately NO stored index. A `Positional { index: Int }`
+// field would duplicate the list order — a second authority that can
+// disagree (INVARIANTS P2), and it is exactly that duplication that made
+// negative / gapped / duplicate / out-of-order indices representable.
+// With no index field those illegal states are STRUCTURALLY
+// UNREPRESENTABLE — not "rejected by a checker."
 type EdgeLabel
   = Named { name: Symbol }
-  | Positional { index: Int }
+  | Positional
 
 
 // Edge — a parent Node's reference to one child Node.
@@ -221,15 +222,27 @@ type Node {
 // ─────────────────────────────────────────────────────────────────────
 // Edge-discipline invariant (operator directive D3, 2026-05-15).
 //
-// A connective FIXES its edge discipline. Conj/Disj address children by
-// name; Arrow/Cardinality/Instantiation by position; `Atom` is terminal
-// and has no children. A Conj with a positional edge, an Atom with any
-// edge, or a positional connective whose indices are negative / gapped /
-// out of order is malformed: `node_well_formed` rejects it. The illegal
-// pairing is representable (one `children: List<Edge>` list, no per-
-// connective redesign) but it is never SILENTLY accepted — the checked
-// predicate below is the structural invariant consumers (parse /
-// normalize) evaluate fail-closed.
+// A connective FIXES its edge discipline: Conj/Disj address children by
+// name (`Named`), Arrow/Cardinality/Instantiation by position
+// (`Positional`), `Atom` is terminal with no children. The one illegal
+// state left to guard is a label-KIND mismatch — a `Named` edge under a
+// positional connective (or the reverse), or any edge under `Atom`.
+//
+// That mismatch is CHECK-enforced, not type-unrepresentable: making it
+// unrepresentable would require connective-specific child collections —
+// the per-connective redesign D3 explicitly declined ("keep one
+// `children: List<Edge>` list"). `node_well_formed` is therefore the
+// structural invariant consumers (parse / normalize) evaluate fail-closed
+// (INVARIANTS P3).
+//
+// This is deliberately NOT justified by the STRUCTURE.md A3 precedent.
+// A3 is checked-rather-than-unrepresentable because it guards an
+// unpreventable human edit (Trusting-Trust — editing the seed). A
+// malformed edge is an in-language VALUE — structurally preventable — so
+// INVARIANTS P2 would prefer type-unrepresentability; the only reason it
+// stays a check here is the D3 no-redesign call, not an A3-style
+// impossibility. (Contrast: the closed `Connective` enum below — a 7th
+// connective genuinely IS the A3 case, an edit to this file.)
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
