@@ -4,7 +4,11 @@
 // Anchor: THESIS fail-closed discipline + INVARIANTS P3 (no Option::None in lens reads)
 //
 // Owns:
-//   - Witness<C> = Holds | Violates(reason: NamedReason)
+//   - Witness<C> = Holds(C) | Violates(reason: NamedReason)
+//     (Holds CARRIES the proven fact C. A successful read must compose
+//     its result forward — a payload-less success variant would silently
+//     drop the fact it proved, violating facts-flow-forward / INVARIANTS
+//     P2 and re-importing the Option::None hole this type exists to close.)
 //   - replaces Option::None at lens read channels
 //
 // Consumes:

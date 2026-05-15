@@ -13,12 +13,19 @@
 //     code is reached via pattern-match on state.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
 //   - ProcessState = Running | Exited(ExitCode) | Signaled(SignalNum)
+//   - Termination = Exited(ExitCode) | Signaled(SignalNum)
+//     (the terminal projection of ProcessState — the ONLY two ways a
+//     process ends per POSIX. wait/capture return THIS, never bare
+//     ExitCode: a signal-killed process has no exit code; fabricating one
+//     (or flattening signal death into a Diagnostic) loses the SignalNum
+//     and makes an illegal state representable. `Running` is structurally
+//     excluded from Termination — wait cannot return a non-terminal state.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
-//   - spawn(cmd) -> Result<Process, Diagnostic>     (fork+exec)
-//   - wait(p)    -> Result<ExitCode, Diagnostic>    (blocks until terminated)
-//   - capture(p) -> Result<{stdout, stderr, exit}, Diagnostic>  (read pipes + wait)
+//   - spawn(cmd) -> Result<Process, Diagnostic>      (fork+exec)
+//   - wait(p)    -> Result<Termination, Diagnostic>  (blocks until terminated)
+//   - capture(p) -> Result<{stdout, stderr, term: Termination}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
