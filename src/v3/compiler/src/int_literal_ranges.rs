@@ -17,6 +17,7 @@
 //!
 //! | Location | Behavior |
 //! | --- | --- |
+//! | `infer::decide` (`Behavior::Value` integral literal vs annotated fixed-width real) | **Yes** — lossless IEEE narrow via [`int_literal_allowed_integral_seed_for_real_decl`] (R3 gate #67). |
 //! | `infer::try_reconcile_int_literal_decision_set` | `let` / `data` pre-seed vs default `Int64` literal; in-range narrow; OOB → `MagnitudeOutOfRange`. |
 //! | `infer::decide_transform` (calls) | Parameter-narrow type vs default-`Int` argument literal; narrow or OOB. |
 //! | `infer::int_literal_implicit_bind_tolerated_for_expected` | Callable template binding when structural binding fails on int literal. |
@@ -525,6 +526,171 @@ pub(crate) fn literal_bigint_at(dag: &Dag, port: PortId) -> Option<BigInt> {
     BigInt::from_str(s).ok()
 }
 
+/// IEEE-754 width targeted by an integral literal that seeds a fixed-width real.
+///
+/// 🟡 STAGED — compiler-internal discriminant for gate-#67 interim seeding; dissolve when
+/// float lexeme / substrate width facts subsume this path (Practice 4 — internal enum).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IntLiteralFloatCoercionTarget {
+    F32,
+    F64,
+}
+
+/// Peels empty `Instantiate(T, [])` and `ResolvedBy{Structure,Name}` heads (gate-#60 alias chain).
+/// Shared by integral-float seeding and Rust emit `Compose<Algebra, MachineWidth<…>>` inspection.
+pub(crate) fn peel_decl_head_for_integral_float_seed(
+    dag: &Dag,
+    mut decl: DeclarationId,
+) -> DeclarationId {
+    for _ in 0..32 {
+        let d = dag.declaration(decl);
+        match &d.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                decl = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                decl = *next;
+            }
+            _ => return decl,
+        }
+    }
+    decl
+}
+
+/// True when every integer with this magnitude is representable **exactly** as an `f32`.
+pub(crate) fn int_literal_lossless_in_f32(literal: &BigInt) -> bool {
+    // IEEE-754 binary32 has 24 explicit significand bits → all |n| ≤ 2^24 round-trip exactly.
+    let max = BigInt::from(16777216u32);
+    let min = -max.clone();
+    literal >= &min && literal <= &max
+}
+
+/// True when every integer with this magnitude is representable **exactly** as an `f64`.
+pub(crate) fn int_literal_lossless_in_f64(literal: &BigInt) -> bool {
+    let max = BigInt::from(9007199254740992u64);
+    let min = -max.clone();
+    literal >= &min && literal <= &max
+}
+
+/// R3 gate #60: `MachineWidth<Byte|Word*>` or `MachineWidth<literal-Nat>` → bit width.
+/// (`Byte` is the nominal 8-bit carrier in `dsl/std/bit.dag`; there is no `Word8`.)
+pub(crate) fn gate60_machine_width_bits(
+    dag: &Dag,
+    machine_width_inst: DeclarationId,
+) -> Option<u32> {
+    let wdecl = dag.declaration(machine_width_inst);
+    let TypeConnective::Instantiation {
+        template,
+        arguments: mw_args,
+    } = &wdecl.connective
+    else {
+        return None;
+    };
+    let mw_tpl = dag.declaration_by_name("MachineWidth")?.id;
+    if *template != mw_tpl || mw_args.len() != 1 {
+        return None;
+    }
+    let slot = mw_args[0].value;
+    for (carrier_name, bits) in [
+        ("Byte", 8_u32),
+        ("Word16", 16),
+        ("Word32", 32),
+        ("Word64", 64),
+        ("Word128", 128),
+    ] {
+        if let Some(w) = dag.declaration_by_name(carrier_name) {
+            if slot == w.id {
+                return Some(bits);
+            }
+        }
+    }
+    let inner = dag.declaration(slot);
+    if let TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(decimal))) = &inner.connective
+    {
+        let n: u32 = decimal.parse().ok()?;
+        return matches!(n, 8 | 16 | 32 | 64 | 128).then_some(n);
+    }
+    None
+}
+
+fn structural_compose_real_machine_width(
+    dag: &Dag,
+    decl: DeclarationId,
+) -> Option<IntLiteralFloatCoercionTarget> {
+    let compose = dag.declaration_by_name("Compose")?.id;
+    let real = dag.declaration_by_name("Real")?.id;
+
+    let decl = peel_decl_head_for_integral_float_seed(dag, decl);
+    let d = dag.declaration(decl);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &d.connective
+    else {
+        return None;
+    };
+    if *template != compose || arguments.len() != 2 {
+        return None;
+    }
+    if !arguments.iter().any(|a| a.value == real) {
+        return None;
+    }
+    let mut out = None;
+    for arg in arguments {
+        if arg.value == real {
+            continue;
+        }
+        if let Some(bits) = gate60_machine_width_bits(dag, arg.value) {
+            match bits {
+                32 => out = Some(IntLiteralFloatCoercionTarget::F32),
+                64 => out = Some(IntLiteralFloatCoercionTarget::F64),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+pub(crate) fn int_literal_float_coercion_target(
+    dag: &Dag,
+    decl: DeclarationId,
+) -> Option<IntLiteralFloatCoercionTarget> {
+    // Only name the canonical width rows (`Real32`/`Real64`) that own `TypeRealization` targets in
+    // `rust.dag`. Compatibility aliases (`Float32 = Real32`, …) peel to these via
+    // [`peel_decl_head_for_integral_float_seed`], so listing `Float*` here would duplicate
+    // inference authority without adding emit coverage (codex #3115 — P2 single spine).
+    let peeled = peel_decl_head_for_integral_float_seed(dag, decl);
+    for (name, fmt) in [
+        ("Real64", IntLiteralFloatCoercionTarget::F64),
+        ("Real32", IntLiteralFloatCoercionTarget::F32),
+    ] {
+        if let Some(d) = dag.declaration_by_name(name) {
+            if peeled == d.id {
+                return Some(fmt);
+            }
+        }
+    }
+    structural_compose_real_machine_width(dag, decl)
+}
+
+/// `let r: Real<64> = 0` (etc.): integer literals may seed fixed-width reals when the tokenizer
+/// has no float lexeme yet — emit prints a decimal fragment Rust accepts in `f32`/`f64` slots.
+pub(crate) fn int_literal_allowed_integral_seed_for_real_decl(
+    dag: &Dag,
+    literal: &BigInt,
+    decl: DeclarationId,
+) -> bool {
+    match int_literal_float_coercion_target(dag, decl) {
+        Some(IntLiteralFloatCoercionTarget::F64) => int_literal_lossless_in_f64(literal),
+        Some(IntLiteralFloatCoercionTarget::F32) => int_literal_lossless_in_f32(literal),
+        None => false,
+    }
+}
+
 pub(crate) fn int_literal_fits_expected_type(
     dag: &Dag,
     literal: &BigInt,
@@ -854,6 +1020,31 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 mod tests {
     use super::*;
     use crate::types::TypeShape;
+
+    #[test]
+    fn float_alias_peels_to_real_before_integral_float_coercion() {
+        let dag = Dag::new();
+        let float64 = dag.declaration_by_name("Float64").expect("Float64").id;
+        let real64 = dag.declaration_by_name("Real64").expect("Real64").id;
+        assert_eq!(
+            peel_decl_head_for_integral_float_seed(&dag, float64),
+            real64
+        );
+        assert_eq!(
+            int_literal_float_coercion_target(&dag, float64),
+            Some(IntLiteralFloatCoercionTarget::F64)
+        );
+        let float32 = dag.declaration_by_name("Float32").expect("Float32").id;
+        let real32 = dag.declaration_by_name("Real32").expect("Real32").id;
+        assert_eq!(
+            peel_decl_head_for_integral_float_seed(&dag, float32),
+            real32
+        );
+        assert_eq!(
+            int_literal_float_coercion_target(&dag, float32),
+            Some(IntLiteralFloatCoercionTarget::F32)
+        );
+    }
 
     #[test]
     fn magnitude_out_of_range_accepts_only_exact_int_interval_facts() {

@@ -209,6 +209,42 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
 }
 
+/// R3 gate #67 / T-Numeric-Construction — `numeric_construction_demonstration`:
+/// construction syntax `Int<32>` + `Real<64>` (lowers to anonymous `Compose<…, MachineWidth<…>>`)
+/// so the fixture exercises gate-#60 parse/lower + emit structural carrier resolution, not only
+/// named `Int32`/`Real64` aliases. Integer `0` seeds `Real<64>` while float lexemes are absent
+/// (`int_literal_allowed_integral_seed_for_real_decl`).
+const NUMERIC_CONSTRUCTION_DEMONSTRATION_V3: &str = "\
+import std.integer { Int }
+import std.float { Real }
+
+let i: Int<32> = 42
+let _r: Real<64> = 0
+let out: Int<32> = i
+";
+
+#[test]
+fn numeric_construction_demonstration_emit_uses_i32_and_f64_gate_67() {
+    let out = emit(NUMERIC_CONSTRUCTION_DEMONSTRATION_V3);
+    assert!(
+        out.contains("i32") && out.contains("f64"),
+        "expected Rust `i32` + `f64` for Int<32> + Real<64>; got:\n{out}",
+    );
+    assert!(
+        out.contains("42"),
+        "expected emitted Rust to retain int literal 42; got:\n{out}",
+    );
+}
+
+#[test]
+fn numeric_construction_demonstration_rustc_roundtrip_executes_gate_67() {
+    assert_eq!(
+        roundtrip_stdout(NUMERIC_CONSTRUCTION_DEMONSTRATION_V3),
+        "42",
+        "gate #67 end-to-end program should print widened int witness on stdout",
+    );
+}
+
 #[test]
 fn emit_rust_result_top_level_binding_prints_debug_string() {
     let out = emit(

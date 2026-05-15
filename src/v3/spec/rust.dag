@@ -93,6 +93,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra, Monoid, FreeMonoid }
+import std.float { Real32, Real64 }
 import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128, IntPlatform, UIntPlatform }
 import v3.std.lookup { Lookup }
 import v3.std.dimensions { Witness }
@@ -142,6 +143,25 @@ data rust_i32: TypeRealization = {
   language: rust_language
   target: Int32
   carrier: "i32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+// Fixed-width IEEE-754 reals (`dsl/std/float.dag` — `Real32`/`Real64` construction entries).
+data rust_f32: TypeRealization = {
+  language: rust_language
+  target: Real32
+  carrier: "f32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_f64: TypeRealization = {
+  language: rust_language
+  target: Real64
+  carrier: "f64"
   is_copy: true
   fields: []
   cost: 1

@@ -55,8 +55,9 @@ use std::str::FromStr;
 use num_bigint::BigInt;
 
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_bigint_at,
-    magnitude_out_of_range_for_interval, IntegerRangeLookup,
+    int_literal_allowed_integral_seed_for_real_decl, int_literal_fits_expected_type,
+    integer_range_for_decl, literal_bigint_at, magnitude_out_of_range_for_interval,
+    IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -101,7 +102,17 @@ fn try_reconcile_int_literal_decision_set(
                     None
                 }
             }
-            Ok(None) => None,
+            Ok(None) => {
+                if int_literal_allowed_integral_seed_for_real_decl(
+                    dag,
+                    &literal,
+                    existing.declaration,
+                ) {
+                    Some(IntLiteralSetReconciliation::Keep)
+                } else {
+                    None
+                }
+            }
             Err(diag) => {
                 if !matches!(dag.port(port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(port, diag);
@@ -129,7 +140,14 @@ fn try_reconcile_int_literal_decision_set(
                     None
                 }
             }
-            Ok(None) => None,
+            Ok(None) => {
+                if int_literal_allowed_integral_seed_for_real_decl(dag, &literal, ty.declaration) {
+                    dag.set_port_type(port, ty);
+                    Some(IntLiteralSetReconciliation::SetNarrow)
+                } else {
+                    None
+                }
+            }
             Err(diag) => {
                 if !matches!(dag.port(port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(port, diag);
@@ -921,7 +939,13 @@ fn int_literal_magnitude_narrow_merge(
             }
         },
         Err(diag) => IntLiteralNarrowMerge::reject(diag),
-        Ok(None) => IntLiteralNarrowMerge::NotApplicable,
+        Ok(None) => {
+            if int_literal_allowed_integral_seed_for_real_decl(dag, &lit, to.declaration) {
+                IntLiteralNarrowMerge::Merge
+            } else {
+                IntLiteralNarrowMerge::NotApplicable
+            }
+        }
     }
 }
 
@@ -1003,6 +1027,15 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                 }
                                 Err(diag) => return Decision::fail(v.output, diag),
                                 Ok(None) => {}
+                            }
+                            // No integer `range(min,max)` facts: allow lossless integral literals to
+                            // seed fixed-width `Real<N>` / `Float<N>` while float lexemes are absent.
+                            if int_literal_allowed_integral_seed_for_real_decl(
+                                dag,
+                                &literal,
+                                existing.declaration,
+                            ) {
+                                return Decision::Set(v.output, *existing);
                             }
                         }
                     }
@@ -1392,6 +1425,24 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 // Default literal shape is `Int`; align the argument port with
                                 // the callee's narrow range-backed type (same as `let` / `data`
                                 // pre-seed + `Decision::Set` reunion for annotated literals).
+                                return Decision::Set(*input_port, *expected_ty);
+                            }
+                            Ok(None)
+                                if int_literal_allowed_integral_seed_for_real_decl(
+                                    dag,
+                                    &literal,
+                                    expected_ty.declaration,
+                                ) =>
+                            {
+                                if let Some(diag) = check_refinement_discharge(
+                                    dag,
+                                    actual,
+                                    expected_ty,
+                                    &t.target,
+                                    &t.span,
+                                ) {
+                                    return Decision::fail(t.output, diag);
+                                }
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
@@ -2701,7 +2752,9 @@ fn int_literal_implicit_bind_tolerated_for_expected(
             IntegerRangeLookup::Invalid(diag) => Err(diag),
             IntegerRangeLookup::Missing => Ok(false),
         },
-        Ok(None) => Ok(false),
+        Ok(None) => Ok(int_literal_allowed_integral_seed_for_real_decl(
+            dag, &literal, expected,
+        )),
         Err(diag) => Err(diag),
     }
 }

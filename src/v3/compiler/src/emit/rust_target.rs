@@ -3296,6 +3296,96 @@ enum ArrowRustEmitPolicy {
     StorageRcDynFn,
 }
 
+/// Machine-width slot in `Compose<Algebra, MachineWidth<…>>`: gate-#60 may allocate a fresh
+/// literal-nat id per occurrence while std aliases reuse a different id for the same bit width.
+/// Compare widths via [`crate::int_literal_ranges::gate60_machine_width_bits`], not raw
+/// `DeclarationId` equality.
+fn gate60_compose_machine_width_slots_equal(dag: &Dag, a: DeclarationId, b: DeclarationId) -> bool {
+    if a == b {
+        return true;
+    }
+    match (
+        crate::int_literal_ranges::gate60_machine_width_bits(dag, a),
+        crate::int_literal_ranges::gate60_machine_width_bits(dag, b),
+    ) {
+        (Some(ba), Some(bb)) => ba == bb,
+        _ => false,
+    }
+}
+
+/// Structural equivalence for the two `Compose` template arguments: algebra slot (position 0)
+/// must match by declaration identity; width slot (position 1) matches by gate-#60 bit width.
+fn gate60_compose_template_args_equivalent(
+    dag: &Dag,
+    left: &[TemplateArgument],
+    right: &[TemplateArgument],
+) -> bool {
+    if left.len() != 2 || right.len() != 2 {
+        return false;
+    }
+    left[0].parameter == right[0].parameter
+        && left[1].parameter == right[1].parameter
+        && left[0].value == right[0].value
+        && gate60_compose_machine_width_slots_equal(dag, left[1].value, right[1].value)
+}
+
+/// Named substrate alias (`type Int32 = Compose<…>` / `Real64`, …) that **instantiates `Compose`
+/// with the same template-argument spine** as `declaration` after gate-#60 peeling, and owns a
+/// `TypeRealization` row in `rust.dag`.
+///
+/// This bridges anonymous `Compose` ids to [`RealizationIndexes::types`] without an emitter-local
+/// algebra×width mirror (INVARIANTS P2/P5 — carrier authority is the DAG + realization rows).
+fn gate60_realized_named_compose_peer(
+    dag: &Dag,
+    types: &HashMap<DeclarationId, TypeRealizationBinding>,
+    declaration: DeclarationId,
+) -> Option<DeclarationId> {
+    let compose = dag.declaration_by_name("Compose")?.id;
+    let peeled =
+        crate::int_literal_ranges::peel_decl_head_for_integral_float_seed(dag, declaration);
+    let d = dag.declaration(peeled);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &d.connective
+    else {
+        return None;
+    };
+    if *template != compose || arguments.len() != 2 {
+        return None;
+    }
+    let mut matches: Vec<DeclarationId> = Vec::new();
+    for decl in dag.declarations() {
+        if decl.id == peeled {
+            continue;
+        }
+        if decl.name.is_none() {
+            continue;
+        }
+        if !types.contains_key(&decl.id) {
+            continue;
+        }
+        let TypeConnective::Instantiation {
+            template: other_template,
+            arguments: other_args,
+        } = &decl.connective
+        else {
+            continue;
+        };
+        if *other_template != compose || other_args.len() != arguments.len() {
+            continue;
+        }
+        if !gate60_compose_template_args_equivalent(dag, other_args, arguments) {
+            continue;
+        }
+        matches.push(decl.id);
+    }
+    match matches.as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum InputConsumer<'a> {
@@ -3609,6 +3699,22 @@ impl<'a> Ctx<'a> {
         self.dispatch_producer(port, &RenderLocals::default(), RenderMode::OwnedConstruct)
     }
 
+    /// Integer literals lowered from surface `Real<N> = <int>` (R3 gate #67) retain
+    /// `LiteralBits::Int` but resolve to `f32`/`f64` Rust types — rustc rejects `let x: f64 = 0`.
+    fn render_value_with_port_rust_type(
+        &self,
+        port: PortId,
+        v: &ValueNode,
+    ) -> Result<String, EmitError> {
+        if let LiteralBits::Int(decimal) = &v.data {
+            let rust_ty = self.rust_type_name_for_port(port)?;
+            if rust_ty == "f32" || rust_ty == "f64" {
+                return Ok(format!("{decimal}.0"));
+            }
+        }
+        Ok(render_value(v, &self.indexes.syntax.literals))
+    }
+
     fn dispatch_producer(
         &self,
         port: PortId,
@@ -3623,12 +3729,13 @@ impl<'a> Ctx<'a> {
         match self.dag.node(node_id) {
             Behavior::Value(v) => match mode {
                 RenderMode::BorrowedRead => {
-                    self.render_borrowed_expr(port, render_value(v, &self.indexes.syntax.literals))
+                    let expr = self.render_value_with_port_rust_type(port, v)?;
+                    self.render_borrowed_expr(port, expr)
                 }
                 RenderMode::CopyRead
                 | RenderMode::OwnedConstruct
                 | RenderMode::OwnedConstructLastUse => {
-                    Ok(render_value(v, &self.indexes.syntax.literals))
+                    self.render_value_with_port_rust_type(port, v)
                 }
             },
             Behavior::Transform(t) => self.render_transform(t, locals, mode),
@@ -5581,6 +5688,14 @@ impl<'a> Ctx<'a> {
         }
         if let Some(binding) = self.indexes.types.get(&declaration) {
             return Ok(binding.carrier.clone());
+        }
+        if let Some(named_peer) =
+            gate60_realized_named_compose_peer(self.dag, &self.indexes.types, declaration)
+        {
+            if let Some(binding) = self.indexes.types.get(&named_peer) {
+                return Ok(binding.carrier.clone());
+            }
+            return Err(EmitError::MissingTypeRealization { target: named_peer });
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
