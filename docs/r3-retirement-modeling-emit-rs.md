@@ -180,21 +180,21 @@ Worker authoring Brief 7 (codegen driver) must verify the substrate-language cap
 // declaration namespace for the per-language `<language>_emit` function
 // (or analogous lookup pattern; see Brief 7 substrate-Mgr canvas).
 fn emit_with_mode(dag: Dag, language: DeclarationRef, mode: EmitMode)
-  -> Result<EmittedSource, EmitDispatchError> =
+  -> Result<EmittedSource, TypedEmitError> =
   invoke_language_emit(dag, language, mode)
 
-fn emit(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, EmitDispatchError> =
+fn emit(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, TypedEmitError> =
   emit_with_mode(dag, language, Program)
 
-fn emit_module(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, EmitDispatchError> =
+fn emit_module(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, TypedEmitError> =
   emit_with_mode(dag, language, Module)
 ```
 
-**EmitDispatchError** stays a sum, but per-variant inner type is opaque pending per-language emit declarations:
+`TypedEmitError` is a placeholder name in this sketch, not a proposed carrier:
 
 **Per codex BLOCKING PR #3139 2026-05-15 (review #12458)**: an earlier draft of this section proposed `type EmitDispatchError { language: DeclarationRef, detail: String }` as 🟡 SCAFFOLD pending per-language typed error carriers. RETRACTED — that shape bakes a `detail: String` channel into the substrate API, which is exactly the "typed diagnostic carriers, not warning text / strings" failure mode that INVARIANTS P3 + `docs/modeling-discipline.md` Practice 1 forbid. SCAFFOLD-with-String at the substrate-API level is still a String-API at HEAD; the scaffold marker doesn't excuse the typed-carrier requirement.
 
-Fix: **defer the `EmitDispatchError` shape entirely** until per-language typed error carriers land (Brief 7+ codegen-driver authoring). Don't model an interim error carrier. The dispatcher's signature stays `fn emit_with_mode(dag, language, mode) -> Result<EmittedSource, ???>` with `???` left as a forward-reference until the typed-per-language error sum can be authored. Workers attempting Brief 7+ surface back if the error-carrier shape becomes load-bearing before per-language errors exist — that's a substantive substrate-language question worth ratifying explicitly, not papering over with a String channel.
+Fix: **defer the error-carrier shape entirely** until per-language typed error carriers land (Brief 7+ codegen-driver authoring). Don't model an interim error carrier. The dispatcher's signature keeps a typed-error forward reference until the typed-per-language error sum can be authored. Workers attempting Brief 7+ surface back if the error-carrier shape becomes load-bearing before per-language errors exist — that's a substantive substrate-language question worth ratifying explicitly, not papering over with a String channel.
 
 ### §4.4 Codegen driver outline
 
@@ -216,7 +216,7 @@ Specifically: the existing test suite already exercises `emit(dag, EmitTarget::R
 
 Determinism (D-1) is preserved automatically because the generated dispatcher is a pure DeclarationRef lookup + invocation — no map/set iteration with non-deterministic ordering, no timestamps, no `file!()`/`line!()`. Same `(dag, language, mode)` → same lookup → same per-language call → same output. The LanguageSpec registry's declaration-walk must be deterministic (likely guaranteed by the substrate's declaration-id ordering — verify during Brief 7 authoring).
 
-**Anti-paper-shrink discriminator**: the retirement PR must include diff hunks ADDING the `EmitMode`, `EmittedSource`, `EmitDispatchError` carriers to `emit_model.dag` AND the three pure functions (`emit_with_mode`, `emit`, `emit_module`). The Rust counterparts in `emit.rs` (lines 1060-1163) are DELETED. The generated file appears at `src/v3/compiler/src/emit_dispatcher_generated.rs`. If the retirement PR instead moves `emit.rs` content to `tools/emit_dispatcher.rs.in` without growing `emit_model.dag`, the substrate-growth check fails (no new carriers added) — paper-shrink caught. Also: the retirement PR must NOT reintroduce a closed `enum EmitTarget` in the generated Rust — the open-registry LanguageSpec discipline applies to both substrate AND emitted Rust.
+**Anti-paper-shrink discriminator**: the retirement PR must include diff hunks ADDING the `EmitMode` and `EmittedSource` carriers to `emit_model.dag`, authoring the typed error carrier only if the per-language error variants are also modeled, AND the three pure functions (`emit_with_mode`, `emit`, `emit_module`). The Rust counterparts in `emit.rs` (lines 1060-1163) are DELETED. The generated file appears at `src/v3/compiler/src/emit_dispatcher_generated.rs`. If the retirement PR instead moves `emit.rs` content to `tools/emit_dispatcher.rs.in` without growing `emit_model.dag`, the substrate-growth check fails (no new carriers added) — paper-shrink caught. Also: the retirement PR must NOT reintroduce a closed `enum EmitTarget` in the generated Rust — the open-registry LanguageSpec discipline applies to both substrate AND emitted Rust.
 
 ---
 
@@ -253,15 +253,15 @@ After Layers 1-5: `emit.rs` is empty except for `pub use` re-exports. Delete the
 
 1. **DeclarationRef-as-function-invocation in `.dag`**: does `.dag` currently support `decl_ref(args)` syntax where `decl_ref` is a `DeclarationRef` value resolved at lower time? `regen_*` drivers do this in Rust, but if `.dag` itself can't express it, the dispatcher needs codegen-side glue. Spot-checking suggests this works per the pattern in `pipeline.dag::PipelineStageBinding`.
 2. **Declaration-namespace walk by type-tag**: the dispatcher walks the namespace for `data X: LanguageSpec` rows. Does `.dag` support walk-declarations-by-type-tag at compile time? If not, that's a substrate-language gap (sibling-gap brief shape — non-blocking, document as future work).
-3. **Result<T, E> sum-carrier dispatch**: the dispatcher returns `Result<EmittedSource, EmitDispatchError>`. Both `Result` and the per-target wrapping (`GoEmitFailed(GoEmitError)`) need to be expressible. `Result` is standard library (`std.result` per other `.dag` files); per-target wrapping needs `EmitDispatchError` declared (this doc proposes it).
+3. **Result<T, E> sum-carrier dispatch**: the dispatcher returns `Result<EmittedSource, TypedEmitError>`. `Result` is standard library (`std.result` per other `.dag` files), but `TypedEmitError` is deliberately deferred until the per-language error variants are modeled. Do not substitute a generic string payload to make the sketch type-check.
 4. **Codegen driver placement**: extend an existing regen driver, or author a new `regen_emit_dispatcher.rs`? Recommendation: new driver, named for its single responsibility, matching `regen_tokenize.rs` pattern.
 
 ---
 
 ## §7 Substantive retirement risks
 
-1. **Paper-shrink via dispatcher template-clone**: naive shape = `mv emit.rs::{EmitMode, EmittedSource, emit_with_mode, ...} → tools/emit_dispatcher.rs.in`, codegen-driver copies through, `emit.rs` lines 1060-1163 deleted. Anti-discriminator: substrate-growth check on `emit_model.dag` (must add the 3 new carriers + 3 fns) + open-registry preservation (no closed `enum EmitTarget` in generated Rust).
-2. **EmitDispatchError carrier coupling to Layer 4-5**: the dispatcher's error sum references per-target error types that don't exist as `.dag` substrate yet. Until Layers 4-5 author them, the dispatcher's `EmitDispatchError` must either (a) carry a placeholder generic error, or (b) the dispatcher itself defers retirement until per-target error types exist. Recommendation: (b) — Layer 1 retires together with the per-target error sum-variants declared as SCAFFOLD pending Layer 4-5.
+1. **Paper-shrink via dispatcher template-clone**: naive shape = `mv emit.rs::{EmitMode, EmittedSource, emit_with_mode, ...} → tools/emit_dispatcher.rs.in`, codegen-driver copies through, `emit.rs` lines 1060-1163 deleted. Anti-discriminator: substrate-growth check on `emit_model.dag` (must add the non-error carriers + 3 fns, and typed error carriers only with per-language variants) + open-registry preservation (no closed `enum EmitTarget` in generated Rust).
+2. **Typed error carrier coupling to Layer 4-5**: the dispatcher's error sum references per-target error types that don't exist as `.dag` substrate yet. Until Layers 4-5 author them, the dispatcher itself defers retirement; no placeholder generic/string error is allowed.
 3. **Cross-target convenience wrappers** (`emit_rust_text`, `emit_go_module_text`, etc.) need replacement under the open-registry shape. The 6 wrappers in `emit.rs:1105-1163` collapse to ONE function `emit_text(dag: Dag, language: DeclarationRef) -> Result<String, ...>` that callers parameterize on the LanguageSpec they want. Callers update at the same time as the dispatcher retires.
 4. **Tests import from `crate::emit::*`**: the retirement PR will break test imports unless the generated file is re-exported from `crate::emit` (i.e., a thin `mod emit { pub use crate::emit_dispatcher_generated::*; }` shim survives until Phase 2 test-harness dissolution).
 
