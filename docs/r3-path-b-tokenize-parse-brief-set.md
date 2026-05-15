@@ -23,7 +23,7 @@ Phase 0 (parallel, no dependencies):
 Phase 1 (parallel, no dependencies on Phase 0):
   Brief 4 — Host effects: File I/O bundle (read + write)
   Brief 5 — Host effects: Process spawn (for rustfmt)
-  Brief 6 — Meta-circular: compile_to_dag foreign-function bridge
+  Brief 6 — Meta-circular: self-hosted compile_to_dag (SCOPE MARKER ONLY — Phase 5 program, NOT dispatchable within this brief set)
 
 Phase 2 (depends on Phases 0+1 substantially landing):
   Brief 7 — Tokenize codegen driver authoring (.dag replacement for regen_tokenize.rs)
@@ -199,37 +199,23 @@ So `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, Ide
 
 ---
 
-## Brief 6 — Meta-circular: compile_to_dag Foreign-Function Bridge
+## Brief 6 — Meta-circular: self-hosted compile_to_dag (Phase 5 scope expansion)
 
-**Owner**: deep-wolf-155 direct dispatch.
+**Owner**: deep-wolf-155 direct dispatch — but NOT in scope for this brief set.
 
-**Source of blocker**: regen_tokenize.rs calls `crate::compile_to_dag(source, file)` — the Rust function that runs the full parse/lower/infer pipeline on a `.dag` source string and returns a `Dag` value. To call this from `.dag`, we need either (a) a host-bridge or (b) the full self-hosted compiler. Operator's NO WORKAROUNDS means we should pursue the structurally honest path.
+**Per codex BLOCKING PR #3139 2026-05-15 (review #12458)**: an earlier draft of this brief presented an "FFI bridge" option (a) as a deliverable path. RETRACTED. The FFI bridge preserves hand-Rust compiler authority — it explicitly "does not retire the Rust compile_to_dag function itself" — which is a workaround, not retirement. Operator's NO WORKAROUNDS stance + INVARIANTS P5 forbid landing it as a deliverable path. Authorizing an FFI bridge in this brief set would send a worker to execute the wrong work.
 
-**Scope**:
-- Investigate the architectural choice: foreign-function-interface vs self-hosted-compiler.
-  - **(a) FFI bridge**: `.dag` substrate declares `fn compile_to_dag_foreign(source: String, file: String) -> Result<Dag, CompileError>` as a foreign function; runtime calls into Rust. Pragmatic. **Does not retire the Rust compile_to_dag function itself**.
-  - **(b) Self-hosted**: parse / lower / infer are `.dag`-authored; compile_to_dag is itself substrate. **This is Phase 5**.
+**Source of blocker**: regen_tokenize.rs calls `crate::compile_to_dag(source, file)` — the Rust function that runs the full parse/lower/infer pipeline on a `.dag` source string and returns a `Dag` value. To call this from `.dag` substrate WITHOUT preserving hand-Rust compiler authority requires the **full self-hosted compiler** — parse / lower / infer / emit are all `.dag`-authored; `compile_to_dag` is itself substrate; the runtime executes `.dag` directly (or via a minimal seed loader).
 
-  Operator framing: NO WORKAROUNDS suggests (b) is the right target, but (b) is the full Phase 5 (1-2 years). Pragmatically (a) unblocks tokenize/parse codegen-driver retirement WITHOUT solving Phase 5. **Surface this trade-off back to operator before committing to either path.**
+**This is Phase 5 / meta-circular bootstrap writ large.** It is not 1-2 months of work; it is 1-2 years of substantive substrate-language + bootstrap-architecture work. The class-5 brace-body parse work (Brief 3 + the broader scope doc filed alongside it) is a prerequisite. The 161 ArrowBody::Unparsed std fn bodies must lower to UserDefined first. The bootstrap loop must converge byte-identically.
 
-- Land (assuming operator picks (a) for tokenize/parse scope): FFI substrate + runtime bridge.
-- Land (assuming operator picks (b)): this brief becomes the Phase 5 brief set and scope expands dramatically.
+**Scope (within the Path B tokenize/parse program): NOT IN SCOPE.** This brief is retained as a SCOPE MARKER for the meta-circular bootstrap requirement, NOT as a dispatchable brief. The tokenize/parse codegen-driver retirement (Briefs 7-9) is structurally blocked on Brief 6 in the sense that it can't run without compile_to_dag being substrate-callable — but the right resolution is NOT "build an FFI bridge to skirt around the blocker," it's "land the meta-circular bootstrap" which is its own program.
 
-**Deliverables (path-dependent on operator decision)**:
-- For (a): foreign-function substrate + runtime + test fixture demonstrating `.dag` → calls Rust → gets Dag back.
-- For (b): full Phase 5 scope expansion document.
+**Honest implication**: Briefs 7-9 (codegen-driver authoring) cannot retire `regen_tokenize.rs` / `regen_parse_*.rs` until Brief 6's underlying requirement (self-hosted compile_to_dag) lands. This brief set unblocks Briefs 7-9's PREREQUISITES (Briefs 1-5) but the codegen drivers themselves only retire when Phase 5 lands. Until then, they remain hand-Rust trampolines pointing at the meta-circular bootstrap dissolution trigger (per the catalogue's "moved out-of-tree" / Phase 5 trajectory).
 
-**Acceptance criteria** (assuming (a)):
-- `cargo test -p v3-compiler --test integration ffi_compile_to_dag_test` passes.
-- A `.dag` fixture loads `tokenize.dag` source via FileReadEffect (Brief 4), calls compile_to_dag via FFI bridge, walks the resulting Dag, asserts a specific declaration exists.
+**Recommendation to operator**: declare Brief 6 / Phase 5 / meta-circular bootstrap as a SEPARATE program from the Path B tokenize/parse brief set. Path B's value is the substrate-language closures (Briefs 1-5); the codegen-driver retirements (Briefs 7-9) are downstream of Phase 5. Forcing Briefs 7-9 to "land before Phase 5" via FFI bridges produces paper-shrink, not retirement.
 
-**Risks + open questions**:
-- Operator's NO WORKAROUNDS stance — is (a) FFI a workaround, or is it the structurally correct intermediate step toward (b)? Need explicit operator ratification.
-- Type marshaling: how does `Dag` cross the FFI boundary? Is it a `.dag` data value already (since `Dag` is substrate)?
-- Error marshaling: `CompileError` is currently a Rust enum; needs `.dag` counterpart if FFI returns it.
-- Recursion concerns: if `.dag` code calls compile_to_dag on `.dag` source that itself calls compile_to_dag, can the runtime handle the recursion?
-
-**Estimated effort**: 1-2 months for (a); 1-2 years for (b).
+**Estimated effort**: this is the Phase 5 program. Not estimated here. Per `docs/r3-rust-retirement-catalogue.md` 5-phase plan: research-tier; possibly 1-2 years; possibly requires structural changes to how bootstrap loading works.
 
 ---
 
@@ -237,11 +223,11 @@ So `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, Ide
 
 **Owner**: deep-wolf-155 direct dispatch.
 
-**Prerequisites**: Briefs 1-6 substantially landed (per-method type params, format templating, char-class structural, file I/O, process spawn for rustfmt, compile_to_dag bridge).
+**Prerequisites**: Briefs 1-5 substantially landed (per-method type params, format templating, char-class structural, file I/O, process spawn for rustfmt) PLUS Brief 6 / Phase 5 / self-hosted compile_to_dag landed as a SEPARATE program. Per codex BLOCKING PR #3139 (review #12458): no FFI workaround acceptable; meta-circular bootstrap is the only structurally honest path.
 
 **Scope**:
 - Author `src/v3/compiler/tokenize_codegen.dag` (or analogous) — the `.dag` substrate that replaces `regen_tokenize.rs`. Reads `tokenize.dag` + `std/tokenize.dag` + shared syntax authority + emits Rust source for `tokenize_generated.rs`.
-- The driver itself uses the substrate-language features from Briefs 1-3 + host effects from Briefs 4-5 + meta-circular bridge from Brief 6.
+- The driver itself uses the substrate-language features from Briefs 1-3 + host effects from Briefs 4-5 + the self-hosted compile_to_dag from the separately-scoped Phase 5 program.
 - Retirement PR: `regen_tokenize.rs` deleted; `tokenize_generated.rs` is now produced by `.dag`-driven codegen.
 
 **Deliverables**:
@@ -330,7 +316,7 @@ So `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, Ide
 
 ## Open questions for operator before dispatch
 
-1. **Brief 6 architectural choice**: FFI bridge (a) vs full self-hosted (b). NO WORKAROUNDS suggests (b), but (b) is Phase 5 in full and would expand this brief set dramatically. Recommendation: dispatch (a) for tokenize/parse scope; (b) is its own program.
+1. **Brief 6 architectural choice**: **RESOLVED** per codex BLOCKING PR #3139 (review #12458) 2026-05-15 — FFI bridge is a workaround that preserves hand-Rust compiler authority; rejected. Brief 6 / Phase 5 / meta-circular bootstrap is its own program, separate from Path B. Path B value = substrate-language closures (Briefs 1-5); codegen-driver retirements (Briefs 7-9) are downstream of Phase 5 and not dispatchable within this brief set.
 
 2. **Spawn cadence**: spawn all 6 substrate-language briefs in parallel now (workers run simultaneously), or sequentially (one finishes before next starts)? Parallel is faster but risks duplicate investigation work; sequential is slower but workers learn from each other.
 

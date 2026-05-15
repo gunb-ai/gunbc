@@ -192,19 +192,9 @@ fn emit_module(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, Emit
 
 **EmitDispatchError** stays a sum, but per-variant inner type is opaque pending per-language emit declarations:
 
-```dag
-// Sum discriminating WHICH LanguageSpec produced the error — but the
-// variant tag is the LanguageSpec declaration itself (open registry),
-// not a closed Go|Rust|Python enum.
-//
-// 🟡 SCAFFOLD until Brief 7+ per-language emit declarations land — at
-// which point the error-shape is per-LanguageSpec and discovered
-// structurally just like the success path.
-type EmitDispatchError {
-  language: DeclarationRef     // the LanguageSpec row that produced the error
-  detail: String                // 🟡 SCAFFOLD — typed per-language error carriers TBD post-Brief-7
-}
-```
+**Per codex BLOCKING PR #3139 2026-05-15 (review #12458)**: an earlier draft of this section proposed `type EmitDispatchError { language: DeclarationRef, detail: String }` as 🟡 SCAFFOLD pending per-language typed error carriers. RETRACTED — that shape bakes a `detail: String` channel into the substrate API, which is exactly the "typed diagnostic carriers, not warning text / strings" failure mode that INVARIANTS P3 + `docs/modeling-discipline.md` Practice 1 forbid. SCAFFOLD-with-String at the substrate-API level is still a String-API at HEAD; the scaffold marker doesn't excuse the typed-carrier requirement.
+
+Fix: **defer the `EmitDispatchError` shape entirely** until per-language typed error carriers land (Brief 7+ codegen-driver authoring). Don't model an interim error carrier. The dispatcher's signature stays `fn emit_with_mode(dag, language, mode) -> Result<EmittedSource, ???>` with `???` left as a forward-reference until the typed-per-language error sum can be authored. Workers attempting Brief 7+ surface back if the error-carrier shape becomes load-bearing before per-language errors exist — that's a substantive substrate-language question worth ratifying explicitly, not papering over with a String channel.
 
 ### §4.4 Codegen driver outline
 
