@@ -4559,14 +4559,15 @@ pub mod lens_cost {
 /// **Dual gate #104 witness entrypoints — different contracts:**
 /// - **[`symbolic_cost_of`]** is **port-keyed**: runs typed [`crate::dag::Dag::resolve_producer_lookup`]
 ///   and may return **malformed-substrate** [`Witness::Violates`](crate::dimension::Witness::Violates)
-///   with [`ViolatesSubject`](crate::dimension::ViolatesSubject) (`MissingPort`, `MissingNode`, or
-///   `AtBehavior` for **`BindCycle`**), or **`NoProducer`** with table **`Hit` → `Inhabits`** /
-///   **`Miss` → `UnknownCost`**.
+///   with [`ViolatesSubject`](crate::dimension::ViolatesSubject) (**`ProducerLookupMissingPort`** /
+///   **`ProducerLookupMissingNode`**, or **`AtBehavior`** for **`BindCycle`**), or **`NoProducer`** with
+///   table **`Hit` → `Inhabits`** / **`Miss` → `UnknownCost`**.
 /// - **`Lens.read`** is implemented by the generated **`cost_lens_read`** (same fold + table as this
 ///   module): caller supplies subject **`Behavior`** `b`; it runs **`lookup_cost(compute_symbolic_costs(..),
-///   behavior_result_port(b))`**, packaged with [`Witness::Violates`]
-///   at **`at = b`** on table miss only — it does **not** re-run **`resolve_producer_lookup`**, so it never
-///   emits the producer-walk malformed reasons (facts attach to the behavior the caller is pinning).
+///   behavior_result_port(b))`**, and on table **`Miss`** uses [`Witness::Violates`](crate::dimension::Witness::Violates) with
+///   **`subject: ViolatesSubject::AtBehavior(b)`** — it does **not** re-run **`resolve_producer_lookup`**,
+///   so it never emits the producer-walk malformed reasons (facts attach to the behavior the caller is
+///   pinning).
 ///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
 /// `src/v3/compiler/src/dag.rs` rather than the generated module
