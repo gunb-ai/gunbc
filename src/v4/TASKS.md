@@ -71,8 +71,9 @@ Phase 3 (parallel — lens dimensions):
          advisory→fail-closed bridge; load-bearing for §1.5 user-defined
          dimensions + §6.2 audience duality + C7 Report→Diagnostic)
          + AGENT-1: also owns the non-text AGENT-SURFACE contract — agent
-           reads lenses + submits a structural Node Diff (= an ingest,
-           B2-OMNI), gets Witness<ReExecFrontier> + faithful re-emit
+           reads lenses + submits a structural apply_diff:(Node,Diff)->
+           Node (enters B2-OMNI at `core`, a sibling of ingest, NOT an
+           ingest), gets Witness<ReExecFrontier> + faithful re-emit
            (C5/C4), fail-closed via apply_lens(Enforce). A client/
            composition of T-21 + B2-OMNI + C5/C4 — no new file, no new
            authority (DECISIONS.md AGENT-1; lens/application.dag header).

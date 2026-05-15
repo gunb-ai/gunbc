@@ -49,10 +49,13 @@
 //           lens/affected_set.dag). The affected lens IS what replaces
 //           file-reading exploration ("what is even relevant here").
 //   WRITE — it does not emit a text patch; a change is a STRUCTURAL
-//           Node Diff, which is just an INGEST (B2-OMNI,
-//           compiler/00_compile.dag: a structured edit is one more
-//           `Source`). Content-addressed by B1 `content_hash` — the
-//           Diff is identity over structure, not lines.
+//           `apply_diff : (Node, Diff) -> Node` transform. It is
+//           ALREADY Node, so it does NOT pass `ingest` (no source
+//           text, no LanguageModel, no parse). It enters the B2-OMNI
+//           pipeline at `core` — a SIBLING entry point to `ingest`,
+//           not an instance of it: `emit ∘ core ∘ apply_diff` (cf.
+//           `compile = emit ∘ core ∘ ingest`). Diff content-addressed
+//           by B1 `content_hash` — identity over structure, not lines.
 //   BACK  — it gets `Witness<ReExecFrontier>` (from affected_set: the
 //           minimal re-execution cone of its change) + a FAITHFUL
 //           re-emit (C5 ingest = emit⁻¹ on the modeled core; C4
@@ -62,7 +65,9 @@
 //           bridge above) blocks fail-closed. The agent earns no
 //           special trust; structure gates it.
 // BOUNDARY: this is a CLIENT of (apply_lens here) + (affected_set T-21)
-// + (B2-OMNI ingest/emit) + (C5/C4). It introduces NO new authority,
+// + (the B2-OMNI pipeline, entered at `core` via apply_diff, then
+// `emit`) + (C5/C4 for the faithful re-emit). It introduces NO new
+// authority,
 // noun, or query subsystem (consistent with QRY-1 above +
 // feedback_closed_system_design). It is the ratified COMPOSITION named
 // and given a home, so it is a contract T-23 is accountable to — not an
