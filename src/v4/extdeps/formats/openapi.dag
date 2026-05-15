@@ -16,7 +16,7 @@
 //   - extdeps/formats/json_schema.dag: schema modeling
 //   - extdeps/formats/yaml.dag, extdeps/formats/json.dag: parse surface
 //
-// Status: scaffold — fill per TASKS.md T-4.5
+// Status: scaffold — fill per TASKS.md T-4.6
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).

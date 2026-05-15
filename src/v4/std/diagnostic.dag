@@ -22,8 +22,14 @@
 //     through, per feedback_nodes_are_nodes + feedback_naming_is_aliasing).
 //     WHERE the correction applies is not carried by the fragment — it is
 //     the Diagnostic's own `at: Locus`.
-//   - NoCorrectionReason = closed enum (UserInputBoundary | AmbiguousIntent
-//     | ExternalContractUnknown | ...) — every "no fix" answers WHY structurally
+//   - NoCorrectionReason = UserInputBoundary | AmbiguousIntent
+//     | ExternalContractUnknown   (closed — the exhaustive partition of
+//     "why can't the fix be mechanically derived": intent the compiler
+//     cannot know (one missing user choice = UserInputBoundary; many valid
+//     candidates = AmbiguousIntent) OR information the compiler cannot see
+//     (behind an external contract = ExternalContractUnknown). NO "..." —
+//     a 4th reason at fill-time is a substrate-extension STOP, not a
+//     silent escape. Every "no fix" thus answers WHY structurally.)
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj

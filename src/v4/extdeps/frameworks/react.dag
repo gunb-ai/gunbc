@@ -6,7 +6,18 @@
 // Owns:
 //   - Component { props, state, render: () -> Node }
 //   - Hook { kind: HookKind, dependencies: List<Node> }
-//   - HookKind = UseState | UseEffect | UseMemo | UseRef | UseContext | ... (closed enum)
+//   - HookKind = Builtin(BuiltinHook) | Custom(Node)
+//     (a custom hook is a composition of other hooks per Rules-of-Hooks —
+//     it is a Node, not a new kind; feedback_nodes_are_nodes. This keeps
+//     HookKind genuinely closed while still representing every React program:
+//     the built-in set is finite, custom hooks reduce to Node composition.)
+//   - BuiltinHook = UseState | UseReducer | UseContext | UseRef
+//     | UseImperativeHandle | UseEffect | UseLayoutEffect | UseInsertionEffect
+//     | UseMemo | UseCallback | UseTransition | UseDeferredValue | UseId
+//     | UseSyncExternalStore | UseDebugValue | UseActionState | UseOptimistic
+//     | Use   (closed — the complete built-in Hook set per the react.dev
+//     Anchor; NO "..." — a hook missing at fill-time is a substrate-extension
+//     STOP, not a silently-permitted open enum)
 //   - ComponentEffect { trigger: EffectTrigger, body: Behavior }
 //   - EffectTrigger = Mount | Unmount | DependencyChange | EveryRender (closed enum)
 //   - Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals)
