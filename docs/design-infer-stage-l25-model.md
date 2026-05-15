@@ -76,7 +76,7 @@ Per `feedback_lenses_not_passes` + observation in §2: infer's "rule book" is em
 
 ### §4.1 `InferredDag` (typed-state output carrier per Decision 3.A)
 
-Per Decision 3.A operator-ratified, infer produces `InferredDag` variant explicitly. Construction-time invariant: every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with diagnostic in the diagnostic table per the `state == Unresolved iff diagnostics.contains(port_id)` biconditional). `Uninferred` cannot exist in `InferredDag` by construction.
+Per Decision 3.A operator-ratified, infer produces `InferredDag` variant explicitly. Construction-time invariant: every `Port.state` is either `Resolved(TypeShape)` or `Unresolved` (with diagnostic in the PROPOSED diagnostic-table substrate extension — live `Dag { declarations, nodes, ports, clusters }` at `src/v3/std/substrate.dag:525` has NO diagnostics field; Step 2 PR scope includes `diagnostics: Map<PortId, Diagnostic>` field extension OR PB-Substrate prereq). The biconditional `state == Unresolved iff diagnostics.contains(port_id)` is the construction-time enforcement target, not a live invariant. `Uninferred` cannot exist in `InferredDag` by construction (independent of the diagnostic-table substrate extension).
 
 **Substrate authority — DEPENDS on Decision 3.A landing**: extension of `src/v3/std/substrate.dag` `Dag` declaration to sum-variant; `InferredDag` variant constructor enforces port-state invariant. PB-Substrate work.
 
@@ -173,9 +173,9 @@ type InferDiagnostic
 
 ### §4.3 `InferResult` — NOT a separate sum-variant
 
-Unlike lower's `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>`, infer's output is plain `InferredDag` — diagnostics are coupled INTO the InferredDag via the `state == Unresolved iff diagnostics.contains(port_id)` biconditional. Per `feedback_state_space_vs_behavioral_invariants`: the structural coupling makes the diagnostic-port relationship a type invariant, not a sum-variant.
+Unlike lower's `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>`, infer's output is plain `InferredDag` — diagnostics couple INTO the InferredDag via the `state == Unresolved iff diagnostics.contains(port_id)` biconditional, where the diagnostic-table is a PROPOSED substrate extension (live Dag at substrate.dag:525 lacks diagnostics field; see §2 fail-closed note for extension scope). Per `feedback_state_space_vs_behavioral_invariants`: the structural coupling — once the substrate extension lands — makes the diagnostic-port relationship a type invariant, not a sum-variant.
 
-`InferredDag` is honest about partial inference success — ports that failed inference are `Unresolved` with explanation in the diagnostic table; ports that succeeded are `Resolved(TypeShape)`. The InferredDag is well-formed even with partial-failure; downstream consumers (emit) handle `Unresolved` ports per their own fail-closed discipline.
+`InferredDag` is honest about partial inference success — ports that failed inference are `Unresolved` with explanation in the PROPOSED diagnostic table; ports that succeeded are `Resolved(TypeShape)`. The InferredDag is well-formed even with partial-failure (post substrate extension); downstream consumers (emit) handle `Unresolved` ports per their own fail-closed discipline.
 
 ---
 
