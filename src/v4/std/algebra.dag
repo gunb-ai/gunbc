@@ -4,13 +4,26 @@
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure (Magma, Monoid, Group, FreeMonoid<T>)
 //
 // Owns:
-//   - Magma (closure)
-//   - Monoid
-//   - BooleanAlgebra (classical logic)
-//   - FreeMonoid<T> (free constructions)
-//   - the algebra STRUCTURES only. A concrete type declares its OWN
-//     inhabitance in its own file (std/integer.dag, std/logic.dag, …);
-//     algebra.dag owns what gets inhabited, never the instances (P2).
+//   - the algebra-STRUCTURE hierarchy — the THESIS roots AND the derived
+//     structures the substrate's concrete types inhabit:
+//       * Magma (closure) → Semigroup → Monoid → Group → AbelianGroup
+//       * Semiring → Ring → OrderedRing → Field
+//       * ApproximateField — the rounding-aware weakening of Field that
+//         std/float.dag inhabits (IEEE-754 rounding breaks
+//         associativity/distributivity, so Float is NOT an exact Field;
+//         see std/float.dag + DECISIONS.md C5-fidelity)
+//       * BooleanAlgebra (classical logic)
+//       * FreeMonoid<T> (free constructions)
+//     The "roots" (Magma/Monoid/BooleanAlgebra/FreeMonoid) are where the
+//     ontology bottoms out; the derived structures are compositions of
+//     them — but ALL are declared here, because the scalar files
+//     reference them by name (nat→Monoid/Semiring, integer→OrderedRing/
+//     AbelianGroup, float→ApproximateField, logic→BooleanAlgebra,
+//     text→FreeMonoid). A scalar's grounding is represented, not
+//     deferred, iff this file owns the structure it names.
+//   - STRUCTURES ONLY. A concrete type declares its OWN inhabitance in
+//     its own file (std/integer.dag, std/logic.dag, …); algebra.dag owns
+//     what gets inhabited, never the instances (P2).
 //
 // U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
 //   - ONE carrier: a structure-preserving map between algebras, WITH its
