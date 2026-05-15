@@ -45,7 +45,7 @@ pub fn memory_peak_enforcement_violates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{max_path, PortId, Rational, SizeVariable};
+    use crate::dag::{max_path, polynomial_linear, PortId, Rational, SizeVariable};
 
     fn var(p: PortId) -> SizeVariable {
         // Mirrors `unnamed_size_variable` / absent `display_name`; substrate lists BOTH fields at
@@ -100,8 +100,8 @@ mod tests {
 
     #[test]
     fn enforcement_violates_on_incomparable_size_variables_fail_closed() {
-        let a = polynomial_linear(var(PortId::test_raw(203)),);
-        let b = polynomial_linear(var(PortId::test_raw(204)),);
+        let a = polynomial_linear(var(PortId::test_raw(203)));
+        let b = polynomial_linear(var(PortId::test_raw(204)));
         assert!(
             memory_peak_enforcement_violates(&a, &b),
             "incomparable `LinearCost` keys must not pass Enforce silently"
@@ -118,10 +118,7 @@ mod tests {
         };
         let peak_branch = compose_branch_memory_peak(q.clone(), q);
         assert!(
-            memory_peak_enforcement_violates(
-                &polynomial_linear(n.clone()),
-                &peak_branch
-            ),
+            memory_peak_enforcement_violates(&polynomial_linear(n.clone()), &peak_branch),
             "O(n²) peak should exceed O(n) declared budget",
         );
     }

@@ -6020,11 +6020,12 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
             degree_raw: exponent.numerator / exponent.denominator,
         },
-        SymbolicCost::ExponentialCost { var, .. }
-        | SymbolicCost::FactorialCost { var } => SymbolicCostEqPattern::Polynomial {
-            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            degree_raw: 1,
-        },
+        SymbolicCost::ExponentialCost { var, .. } | SymbolicCost::FactorialCost { var } => {
+            SymbolicCostEqPattern::Polynomial {
+                source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
+                degree_raw: 1,
+            }
+        }
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
             list.iter()
                 .map(|boxed| symbolic_cost_to_eq_pattern(boxed.as_ref()))
@@ -6541,10 +6542,7 @@ fn is_display_name_optional_absent_constructor(dag: &Dag, ctor: DeclarationId) -
     size_variable_display_name_optional_none_constructor_id(dag) == Some(ctor)
 }
 
-fn degree_raw_from_rational_like_field_value(
-    dag: &Dag,
-    fv: &FieldValue,
-) -> Result<i64, String> {
+fn degree_raw_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Result<i64, String> {
     if let FieldValue::Literal(LiteralBits::Int(n)) = fv {
         return n.parse::<i64>().map_err(|err| {
             format!("SymbolicCostExprEquals: Rational/degree literal `{n}` is not i64: {err}")
@@ -8242,19 +8240,15 @@ mod symbolic_cost_expr_equals_decoder_tests {
 
     #[test]
     fn eq_pattern_linear_matches_algebra_identity_source_port_only() {
-        use crate::dag::{PortId, SizeVariable, SymbolicCost};
-        let with_label = SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: PortId::test_raw(42),
-                display_name: Some("n".to_string()),
-            },
-        };
-        let unnamed = SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: PortId::test_raw(42),
-                display_name: None,
-            },
-        };
+        use crate::dag::{polynomial_linear, PortId, SizeVariable};
+        let with_label = polynomial_linear(SizeVariable {
+            source_port: PortId::test_raw(42),
+            display_name: Some("n".to_string()),
+        });
+        let unnamed = polynomial_linear(SizeVariable {
+            source_port: PortId::test_raw(42),
+            display_name: None,
+        });
         assert_eq!(
             super::symbolic_cost_to_eq_pattern(&with_label),
             super::symbolic_cost_to_eq_pattern(&unnamed)
@@ -8263,19 +8257,15 @@ mod symbolic_cost_expr_equals_decoder_tests {
 
     #[test]
     fn eq_pattern_linear_distinguishes_source_ports() {
-        use crate::dag::{PortId, SizeVariable, SymbolicCost};
-        let a = SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: PortId::test_raw(1),
-                display_name: None,
-            },
-        };
-        let b = SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: PortId::test_raw(2),
-                display_name: None,
-            },
-        };
+        use crate::dag::{polynomial_linear, PortId, SizeVariable};
+        let a = polynomial_linear(SizeVariable {
+            source_port: PortId::test_raw(1),
+            display_name: None,
+        });
+        let b = polynomial_linear(SizeVariable {
+            source_port: PortId::test_raw(2),
+            display_name: None,
+        });
         assert_ne!(
             super::symbolic_cost_to_eq_pattern(&a),
             super::symbolic_cost_to_eq_pattern(&b)

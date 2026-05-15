@@ -4212,9 +4212,9 @@ pub mod lens_cost {
         fn rejects_under_reported_asymptotic_class_class_log_vs_classified_linear_work() {
             let summary = ComplexitySummary {
                 work: crate::dag::polynomial_linear(SizeVariable {
-                        source_port: PortId::test_raw(1),
-                        display_name: None,
-                    }),
+                    source_port: PortId::test_raw(1),
+                    display_name: None,
+                }),
                 span: SymbolicCost::ConstantCost { _0: 0 },
                 asymptotic_class: AsymptoticClass::ClassLog,
                 work_certainty: Certainty::Proven,

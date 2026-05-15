@@ -1553,9 +1553,9 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
                 return cost;
             }
             polynomial_linear(SizeVariable {
-                    source_port: param,
-                    display_name: None,
-                })
+                source_port: param,
+                display_name: None,
+            })
         }
         _ => cost,
     }
@@ -5206,13 +5206,13 @@ mod tests {
         let mk_product = |other: PortId| SymbolicCost::ProductCost {
             _0: NonSingletonList::from_vec(vec![
                 Box::new(polynomial_linear(SizeVariable {
-                        source_port: param,
-                        display_name: None,
-                    })),
+                    source_port: param,
+                    display_name: None,
+                })),
                 Box::new(polynomial_linear(SizeVariable {
-                        source_port: other,
-                        display_name: None,
-                    })),
+                    source_port: other,
+                    display_name: None,
+                })),
             ])
             .expect("two linear factors"),
         };
