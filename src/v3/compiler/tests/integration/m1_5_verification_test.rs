@@ -849,7 +849,9 @@ fn symbolic_cost_expr_equals_countdown_demo_suite_passes() {
         let countdown_port = find_bind_value_port(&program, "countdown");
         let countdown_cost = match symbolic_cost_lookup(&program, &countdown_port) {
             SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup returned Miss for `countdown`"),
+            SymbolicCostLookup::Miss => {
+                panic!("symbolic_cost_lookup returned Miss for `countdown`")
+            }
         };
         assert_recursive_countdown_linear_semantics(&countdown_cost);
 

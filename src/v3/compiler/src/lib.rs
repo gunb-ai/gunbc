@@ -4622,18 +4622,17 @@ pub mod lens_cost_symbolic {
             })
     }
 
-    /// Port-only **[`Witness`]\<[SymbolicCost]>** (R3 §1.8 gate #104): resolves the port's producer
-    /// via [`crate::dag::Dag::resolve_producer_opt`]; on table miss attaches
-    /// [`Witness::Violates`](crate::dimension::Witness::Violates) with **`at`** that producer—never
-    /// an unrelated caller. When **no producer** exists on the queried port,
-    /// returns [`Witness::Inhabits`](crate::dimension::Witness::Inhabits) with
-    /// [`SymbolicCost::UnknownCost`] (conservative lattice top — **not**
-    /// a fabricated `Violates`).
+    /// Port-only [`Witness`](crate::dimension::Witness) over [`SymbolicCost`] (R3 §1.8 gate #104):
+    /// resolves the port's producer via [`crate::dag::Dag::resolve_producer_opt`]; on table miss
+    /// attaches [`Witness::Violates`](crate::dimension::Witness::Violates) with **`at`** set to that
+    /// producer—never an unrelated caller. When **no producer** exists on the queried port, returns
+    /// [`Witness::Inhabits`](crate::dimension::Witness::Inhabits) with
+    /// [`SymbolicCost::UnknownCost`](crate::dag::SymbolicCost::UnknownCost) (conservative lattice
+    /// top—not a fabricated `Violates`).
     ///
     /// Uses normalized [`compute_symbolic_costs`], then [`generated::witness_from_symbolic_cost_lookup`].
     ///
-    /// [SymbolicCost]: crate::dag::SymbolicCost
-    /// [`Witness`]: crate::dimension::Witness
+    /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,

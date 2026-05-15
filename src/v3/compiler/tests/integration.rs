@@ -834,7 +834,8 @@ mod e7_analyze_complexity_integration {
         let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
         let root = find_bind_root(&dag, "z");
 
-        let SymbolicCostLookup::Hit(lens_cost) = symbolic_cost_lookup(&dag, &find_bind_port(&dag, "z"))
+        let SymbolicCostLookup::Hit(lens_cost) =
+            symbolic_cost_lookup(&dag, &find_bind_port(&dag, "z"))
         else {
             panic!("lens authority must produce a Hit on a well-typed program");
         };
