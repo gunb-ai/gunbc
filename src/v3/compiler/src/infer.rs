@@ -1492,6 +1492,15 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 if let Some(diag) =
                     check_refinement_discharge(dag, actual, expected_ty, &t.target, &t.span)
                 {
+                    if let Some(literal) = literal_bigint_at(dag, *input_port) {
+                        if int_literal_bigint_statically_discharges_refinement_chain(
+                            dag,
+                            &literal,
+                            expected_ty.declaration,
+                        ) {
+                            return Decision::Set(*input_port, *expected_ty);
+                        }
+                    }
                     return Decision::fail(t.output, diag);
                 }
             }

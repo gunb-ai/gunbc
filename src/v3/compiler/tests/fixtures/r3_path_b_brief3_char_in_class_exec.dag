@@ -1,9 +1,7 @@
 // PATH X / Brief 3: `std.unicode.char_in_class` lowers and executes end-to-end.
 //
-// Pass **positional** unicode-scalar literals for the `Char` parameter: gate-20
-// literal discharge attaches `unicode_scalar`/brand refinement at the call site.
-// (Using `data x: Char = 97` and then `x` as an argument yields an unrefined
-// carrier port today — refinement discharge rejects without a narrowing branch.)
+// Positional unicode-scalar literals narrow to nominal `Char` at the call via
+// the same gate-20 registry static discharge as `data`/lowering (`unicode_scalar`/brand).
 
 module test.r3_path_b_brief3_char_in_class_exec
 

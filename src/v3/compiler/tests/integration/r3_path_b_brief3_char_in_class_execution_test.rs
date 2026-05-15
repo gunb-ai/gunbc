@@ -3,11 +3,11 @@
 
 use crate::common::cached_compile_to_dag;
 
+use v3_compiler::dag::LiteralBits;
 use v3_compiler::dag::{ArrowBody, TypeConnective};
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
-use v3_compiler::dag::LiteralBits;
 
 const FIXTURE: &str = include_str!("../fixtures/r3_path_b_brief3_char_in_class_exec.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_path_b_brief3_char_in_class_exec.dag";
@@ -38,8 +38,7 @@ fn path_b_brief3_char_in_class_authority_is_user_defined() {
         .declaration_by_name("char_in_class")
         .expect("bootstrap must expose unicode.dag char_in_class");
     assert_eq!(
-        decl.span.file,
-        "dsl/std/unicode.dag",
+        decl.span.file, "dsl/std/unicode.dag",
         "witness must be the dsl/std authority declaration"
     );
     let TypeConnective::Arrow { body, .. } = &decl.connective else {
@@ -54,11 +53,7 @@ fn path_b_brief3_char_in_class_authority_is_user_defined() {
 #[test]
 fn path_b_brief3_char_in_class_executes_via_evaluator() {
     let dag = cached_compile_to_dag(FIXTURE, FIXTURE_PATH);
-    assert!(
-        dag.diagnostics().is_empty(),
-        "{:?}",
-        dag.diagnostics()
-    );
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 
     let strategy = EvalStrategy::ApplicativeOrder {
         input_order: InputEvaluationOrder::LeftFirst,
