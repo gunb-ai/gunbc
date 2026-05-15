@@ -11,7 +11,7 @@
 //   - affected_set: (Dag, Diff) -> Witness<ReExecFrontier>
 //     (the minimal node set that must re-run; everything else is
 //     incrementally skippable because pure + unchanged)
-//     (`Diff` is the std/node.dag D1 type — EdgeSelector/Path/Edit/Diff;
+//     (`Diff` is the std/node.dag D1 type — Path/Edit/Diff;
 //      this lens CONSUMES it, it does not own it. The frontier seed is
 //      the set of changed Paths; "unchanged" is `content_hash` (B1)
 //      equality — the structural-caching dual already stated below.

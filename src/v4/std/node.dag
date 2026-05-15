@@ -462,37 +462,32 @@ fn node_well_formed(n: Node) -> Bool {
 
 // ─────────────────────────────────────────────────────────────────────
 // D1 — the structural-delta vocabulary over Node (operator-ratified
-// 2026-05-15). DATA ONLY. The operations (subterm_at / apply_diff /
-// paths_independent / diff_well_formed) live in lens/application.dag,
-// NOT here — see the D1 header block above for the forced-by-cycle
-// rationale (std/diagnostic.dag already depends on std/node.dag).
-
-
-// EdgeSelector — one step of a Path. Mirrors `EdgeLabel`: `ByName` for
-// the name-addressed connectives (Conj/Disj), `ByPosition` for the
-// positional ones (Arrow/Cardinality/Instantiation).
-//
-// `ByPosition`'s `index` is a NAVIGATION QUERY against the parent's
-// live `children` order — deliberately NOT the stored-edge-index
-// anti-pattern `EdgeLabel.Positional` rejects (which carries no index
-// so no second authority can disagree with list order). A selector is
-// a transient query, never stored on the tree, so it introduces no
-// second authority (P2 — a distinct concern). `Int` (not a Nat import)
-// keeps this file's "Consumes: nothing" root status; an out-of-range
-// or negative index simply fails Path resolution fail-closed in
-// lens/application.dag — bounds are a resolution fact, not a type.
-type EdgeSelector
-  = ByName { name: Symbol }
-  | ByPosition { index: Int }
+// 2026-05-15; shape refined per a P2 review finding, PR #3162). DATA
+// ONLY. The operations (subterm_at / apply_diff) live in
+// lens/application.dag, NOT here — see the D1 header block above for
+// the forced-by-cycle rationale (std/diagnostic.dag already depends on
+// std/node.dag).
 
 
 // Path — the route from a root Node to a descendant: the ordered list
-// of selectors to follow. A flat finite list, NOT a new recursive type
-// (A1: `Node` stays the sole recursion). The empty `steps` list denotes
-// the root itself. Anchor term: a term-rewriting *position* /
-// *occurrence*; the practitioner form is a JSON Pointer (RFC 6901).
+// of `Named`-edge keys to follow. `List<Symbol>`, NOT a new recursive
+// type (A1: `Node` stays the sole recursion). The empty `steps` list
+// denotes the root itself. Each step descends the `Named` edge keyed
+// by that opaque `Symbol` (resolution = `Symbol` equality, K-1-clean).
+//
+// There is deliberately NO positional/ordinal step: a stored `Int`
+// ordinal would admit negative / out-of-range values — the
+// representable-illegal-state this file designed out at `EdgeLabel`
+// (P2 finding 1, PR #3162). Positional-connective children
+// (Arrow/Cardinality/Instantiation) are reached by replacing the
+// nearest enclosing `Named` subtree (the safe over-fire #3157 blesses);
+// surgical positional addressing is a future operator-ratified
+// extension, omitted because the consumes-nothing root has no ordinal
+// primitive (no kernel `Nat`; a recursive Peano = A1 STOP). Anchor
+// term: a term-rewriting *position* / *occurrence*; the practitioner
+// form is a JSON Pointer (RFC 6901) restricted to member-name tokens.
 type Path {
-  steps: List<EdgeSelector>
+  steps: List<Symbol>
 }
 
 
@@ -506,18 +501,18 @@ type Edit {
 }
 
 
-// Diff — a set of Edits, carried as `List<Edit>` because `Set` is not
-// kernel-ambient AND the set-semantics here come from the
-// well-formedness INVARIANT, not the container: a Diff is well-formed
-// iff its Edits' Paths are pairwise INDEPENDENT (no Path a prefix of
-// another — term-rewriting "parallel positions"). Independence makes
-// list order irrelevant (hence "set") and makes `apply_diff` a
-// deterministic total function or a fail-closed Diagnostic. The
-// predicate (`diff_well_formed`) and `apply_diff` live in
-// lens/application.dag (consumer-fail-closes, per the
-// `node_well_formed` discipline above); the INVARIANT is named here so
-// there is ONE authority for "what a well-formed Diff is", parallel to
-// `node_well_formed` for `Node`.
+// Diff — an ORDERED list of Edits applied as SEQUENTIAL rewrites
+// (`root |> apply(e1) |> apply(e2) |> …`). There is deliberately NO
+// set / pairwise-independence / "parallel positions" invariant: ANY
+// `List<Edit>` is a valid rewrite program, so no illegal state is
+// representable and no external well-formedness predicate exists to
+// recover one (P2 finding 2, PR #3162 — the prior "set, validity via
+// `diff_well_formed`" shape was exactly the illegal-states-representable
+// anti-pattern). An Edit whose Path no longer resolves after earlier
+// Edits ⇒ a fail-closed Diagnostic at apply time (legitimate
+// operational behavior, NOT a type-level illegal state). `apply_diff`
+// (lens/application.dag) is a fold; all-or-nothing — any failing step
+// makes the whole result that one Diagnostic.
 type Diff {
   edits: List<Edit>
 }
