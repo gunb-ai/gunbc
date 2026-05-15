@@ -2866,6 +2866,10 @@ fn require_callable_strategy(
             variants.list_contains,
             CallableStrategyBinding::ListContains,
         ),
+        (variants.string_format, CallableStrategyBinding::StringFormat),
+        (variants.int_to_string, CallableStrategyBinding::IntToString),
+        (variants.char_to_string, CallableStrategyBinding::CharToString),
+        (variants.bool_to_string, CallableStrategyBinding::BoolToString),
     ];
     for (variant_id, binding) in strategies {
         let Some(variant_id) = variant_id else {
@@ -2881,7 +2885,7 @@ fn require_callable_strategy(
     Err(EmitError::MalformedRealization {
         declaration,
         detail:
-            "CallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
+            "CallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains/StringFormat/IntToString/CharToString/BoolToString",
     })
 }
 
@@ -3439,6 +3443,26 @@ fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<Te
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }
+}
+
+fn dag_uses_any_callable(dag: &Dag, names: &[&str]) -> bool {
+    names.iter().any(|name| dag_uses_callable(dag, name))
+}
+
+fn dag_uses_callable(dag: &Dag, name: &str) -> bool {
+    let Some(target) = dag.declaration_by_name(name).map(|decl| decl.id) else {
+        return false;
+    };
+    dag.nodes().iter().any(|node| {
+        let Behavior::Transform(transform) = node else {
+            return false;
+        };
+        let TransformTarget::Callable(callable) = transform.target else {
+            return false;
+        };
+        let (template, _) = callable_template(callable, dag);
+        template == target
+    })
 }
 
 fn bound_callable_argument(
