@@ -4643,29 +4643,29 @@ pub mod lens_cost_symbolic {
     /// substrate (`MissingPort` / `MissingNode` / `BindCycle`) into `None` (INVARIANTS P3 forbids that
     /// collapse here).
     ///
-/// - [`ProducerLookup::Found`]: merges table lookup via [`generated::witness_from_symbolic_cost_lookup`]
-///   (lawful `Violates` on table **`Miss`** uses [`ViolatesSubject::AtBehavior`] with the resolved producer).
+    /// - [`ProducerLookup::Found`]: merges table lookup via [`generated::witness_from_symbolic_cost_lookup`]
+    ///   (lawful `Violates` on table **`Miss`** uses [`ViolatesSubject::AtBehavior`] with the resolved producer).
     /// - [`ProducerLookup::NoProducer`]: **INVARIANTS P2** — still consult the **same** `folded`
     ///   [`generated::lookup_cost`] as `Found`. Table **`Hit`** (e.g. bind-parameter seeds from
     ///   [`generated::seed_bind_params`]) flows forward as **`Inhabits`**. Only plain parameters /
     ///   externals with **no** folded row (**`Miss`**) use **`Inhabits(UnknownCost("…"))`** — not
     ///   substrate corruption and not a fake `Violates`.
-/// - Malformed substrate: **`Violates { reason, subject }`** ([`ViolatesSubject`]) —
-///   **no fabricated unrelated [`Behavior`].** **`BindCycle`** uses **`AtBehavior(dag.node(detected_at))`**
-///   (detected Bind). **`MissingPort`** / **`MissingNode`** carry only the offending [`PortId`] /
-///   [`NodeId`] residue from the walker.
+    /// - Malformed substrate: **`Violates { reason, subject }`** ([`ViolatesSubject`]) —
+    ///   **no fabricated unrelated [`Behavior`].** **`BindCycle`** uses **`AtBehavior(dag.node(detected_at))`**
+    ///   (detected Bind). **`MissingPort`** / **`MissingNode`** carry only the offending [`PortId`] /
+    ///   [`NodeId`] residue from the walker.
     ///
     /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
     ///
     /// [`ProducerLookup::Found`]: crate::dag::ProducerLookup::Found
     /// [`ProducerLookup::NoProducer`]: crate::dag::ProducerLookup::NoProducer
     /// [`ProducerLookup::MissingPort`]: crate::dag::ProducerLookup::MissingPort
-/// [`ProducerLookup::MissingNode`]: crate::dag::ProducerLookup::MissingNode
-/// [`ProducerLookup::BindCycle`]: crate::dag::ProducerLookup::BindCycle
-/// [`ViolatesSubject::AtBehavior`]: crate::dimension::ViolatesSubject::AtBehavior
-/// [`ViolatesSubject`]: crate::dimension::ViolatesSubject
-/// [`NodeId`]: crate::dag::NodeId
-/// [`SymbolicCost`]: crate::dag::SymbolicCost
+    /// [`ProducerLookup::MissingNode`]: crate::dag::ProducerLookup::MissingNode
+    /// [`ProducerLookup::BindCycle`]: crate::dag::ProducerLookup::BindCycle
+    /// [`ViolatesSubject::AtBehavior`]: crate::dimension::ViolatesSubject::AtBehavior
+    /// [`ViolatesSubject`]: crate::dimension::ViolatesSubject
+    /// [`NodeId`]: crate::dag::NodeId
+    /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
