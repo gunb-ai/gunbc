@@ -354,7 +354,6 @@ type CreateCause
 
 type EffectClassificationFailure
   = ClassifierAnchorResolutionFailed
-  | UnknownOperationCallable
 
 type EffectClassificationResult
   = EffectClassified { shape: EffectShape }
@@ -521,26 +520,8 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
 }
 
 fn classify_operation_effect(op: Operation) -> EffectClassificationResult {
-  if operation_callable_is_known(op) then
-    EffectClassified { shape: operation_effect_shape(op) }
-  else
-    EffectClassificationFailed { failure: UnknownOperationCallable }
+  EffectClassified { shape: operation_effect_shape(op) }
 }
-
-fn operation_callable_is_known(op: Operation) -> Bool =
-  op.callable.decl == append_method ||
-  op.callable.decl == concat_method ||
-  op.callable.decl == get_method ||
-  op.callable.decl == lookup_method ||
-  op.callable.decl == map_get_method ||
-  op.callable.decl == has_method ||
-  op.callable.decl == map_has_method ||
-  op.callable.decl == count_method ||
-  op.callable.decl == length_method ||
-  op.callable.decl == map_insert_method ||
-  op.callable.decl == replace_method ||
-  op.callable.decl == with_method ||
-  op.callable.decl == diff_method
 
 fn transport_effect_shape(op: Operation) -> EffectShape {
   if method_is_read(op.endpoint.method) then
