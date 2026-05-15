@@ -319,7 +319,7 @@ Post-ratification: this doc becomes substrate authority for Step 2/3/4 worker br
 
 ## §15 Authoring sequence post-ratification
 
-1. **Operator / PM-delegate ratifies §12 Q1–Q6** (per 2026-05-14 directive)
+1. **Operator / PM-delegate ratifies §12 Q1–Q5** only (per 2026-05-14 directive; §12 Q6 was resolved REJECTED in-doc per codex PR #3127 BLOCKING + cross-stage Result-sum discriminator and needs no separate ratification cycle)
 2. **PM amends close plan + §1.8** to route through PB-X lanes + cite this doc as PB-2 L2.5 substrate
 3. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path; affects TokenizeDiagnostic shape)
 4. **Director authors PB-2 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope; trivial since substrate already lives in tokenize.dag)
