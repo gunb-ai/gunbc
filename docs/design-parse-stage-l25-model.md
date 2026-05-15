@@ -432,6 +432,6 @@ Subsequent L2.5 model (PB-2 tokenize) follows same sequence with its own substra
 
 **Surfaces awaiting**:
 - Operator/PM ratification on §12 Q1–Q6
-- PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)
+- ~~PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)~~ — DONE 2026-05-15T00:21:19Z (PR #3077 merged carrying Q7 ratification; see §15 step 4)
 - Substrate-capability landing (recursive list-body emission per Q1 + SELF_HOSTING.md §6 Phase 4a)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
