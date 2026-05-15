@@ -8,16 +8,12 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
 
+const NON_ENDOMORPHIC_MAP_DEMO: &str =
+    include_str!("../fixtures/path_b_brief_1/non_endomorphic_map_demo.v3");
+
 #[test]
 fn non_endomorphic_map_and_accumulator_polymorphic_fold_compile_and_emit() {
-    let source = "\
-fn int_label(x: Int) -> String = \"one\"
-fn keep_label(acc: String, x: Int) -> String = acc
-let labels: List<String> = map(singleton(1), int_label)
-let folded: String = fold(singleton(1), \"\", keep_label)
-";
-
-    let dag = compile_to_dag(source, "generic_method_type_params.v3")
+    let dag = compile_to_dag(NON_ENDOMORPHIC_MAP_DEMO, "non_endomorphic_map_demo.v3")
         .expect("non-endomorphic map and accumulator-polymorphic fold should compile");
     assert!(
         dag.diagnostics().is_empty(),

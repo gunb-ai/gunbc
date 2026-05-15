@@ -1,0 +1,5 @@
+fn int_label(x: Int) -> String = "one"
+fn keep_label(acc: String, x: Int) -> String = acc
+
+let labels: List<String> = map(singleton(1), int_label)
+let folded: String = fold(singleton(1), "", keep_label)

@@ -382,12 +382,13 @@ type BooleanAlgebra<T> {
 //   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
 //     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
 //     in std/primitives.dag, not a partial algebra field.
-//   map/fold are parametrically typed by the method-template rows below:
-//     map: fn(T) -> U -> FreeMonoid<U>
-//     fold: init Acc plus step fn(Acc, T) -> Acc -> Acc
-//   The record field spellings below remain the abstract receiver-shaped
-//   surface. Executable std.list exposes the same facts as generic functions
-//   (`map<A, B>`, `fold<T, U>`) until dotted method-call syntax exists.
+//   Method-field type grammar cannot yet carry per-field generic params, so
+//   the receiver-shaped record fields below stay endomorphic. Non-endomorphic
+//   executable mapping is live through the top-level std.list functions:
+//     map<A, B>(list: List<A>, f: fn(A) -> B) -> List<B>
+//     fold<T, U>(list: List<T>, init: U, f: fn(U, T) -> U) -> U
+//   See src/v3/std/list.dag for the executable surface; the method-template
+//   rows below carry MappedElement / FoldAccumulator for compiler consumers.
 //   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
   // Monoid operations
@@ -401,7 +402,8 @@ type FreeMonoid<T> {
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
-  // Iteration-shaped operations (map is endomorphic on T; fold is monoid-shaped on T)
+  // Iteration-shaped receiver fields. Per-field generics live in the executable
+  // std.list functions until method-field type grammar is widened.
   map: fn(fn(T) -> T) -> FreeMonoid<T>
   filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
   fold: fn(T, fn(T, T) -> T) -> T
