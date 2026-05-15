@@ -32,6 +32,35 @@
 //     occurrence at a different instantiation) is a STOP unless a decidable
 //     bound is exhibited (defers to the A2 decidability resolution).
 //
+// A2 (operator-ratified 2026-05-15) — termination is Tier-1, not optional:
+//   - `Loop` is BOUNDED RECURSION, total-by-construction (the
+//     Coq/Agda/Idris totality choice — INVARIANTS:72). No Y-combinator,
+//     no general recursion. This is the established INVARIANT P4 made
+//     explicit as the T-1 substrate shape.
+//   - Termination is a Tier-1 (compile-time) structural fact carried as
+//     descent evidence: IMPLICIT when recursion descends on a sub-Node
+//     (the bounded-kernel "recursion in children" default — the common
+//     case, no measure needed); EXPLICIT RankingDimension/TerminationProof
+//     (lexicographic/multiset per Dershowitz-Manna) when descent is not
+//     structural.
+//   - A CHECKER reading VERIFIES the descent proof (decidable). It never
+//     searches/discovers a measure (INVARIANTS:66 "checker not discoverer"
+//     = feedback_no_engine). `DescentUnknown` ⇒ fail-closed Diagnostic,
+//     never a fabricated or assumed termination.
+//   - The bound IS the structural datum lens/cost.dag reads — termination
+//     ∧ complexity are ONE read on the U1 homomorphism-with-cost spine
+//     (this is why C2 cost derivation is sound).
+//   - Genuine unboundedness (servers/streams/REPLs) is a TERMINATING step
+//     iterated by the coordination-boundary driver — never an unbounded
+//     `.dag` loop.
+//   - Residual boundary (ratified, not buried): a true-but-not-
+//     structurally-rankable termination (open conjecture / un-encodable
+//     math) is NOT expressible as a total value — express it as bounded
+//     search returning a fail-closed typed result; you may not CLAIM a
+//     totality you cannot prove. Where even that is impossible ⇒ STOP-
+//     escalate (a modeling conversation, not a worker hack). Correct
+//     closure of a decidable system (INVARIANTS:31), not a defect.
+//
 // Consumes:
 //   nothing — this is the substrate root
 //
