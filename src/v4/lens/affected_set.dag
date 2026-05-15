@@ -7,17 +7,79 @@
 //   the structural replacement for the shell script currently gating
 //   v2/v3/v4 CI selection. Phase 1.5.
 //
+// GRANULARITY (operator-corrected 2026-05-15): there is ONE real
+// granularity — NODE. "File/module-affected" is NOT a separate tier; it
+// is node-granularity PROJECTED UP (the set of files containing ≥1
+// affected node). Do not model two tiers; model node, project for the
+// file/CI view.
+//
+// WORKED EXAMPLES (the design contract — the T-21 worker fills to satisfy
+// these; node-granularity, target-agnostic FACT per the lens discipline):
+//
+//   Graph (→ = "depends on"; content_hash per node, B1):
+//     n_reason  (NamedReason variant set, in std/diagnostic.dag)
+//       ← n_diag (Diagnostic { reason }) ← n_emitR (a Rust emit rule)
+//       ← n_diag                          ← n_evalD (eval's diag path)
+//     n_pure   (a pure helper, no dep on n_reason)
+//
+//   Ex.1 — add a NamedReason variant. Diff: content_hash(n_reason)
+//     changed. forward-closure → { n_reason, n_diag, n_emitR, n_evalD }.
+//     ReExecFrontier = those 4. n_pure is SKIPPED — its input hashes are
+//     unchanged AND it is pure ⇒ provably same output (THESIS:205-210).
+//     File-view (projection): the files containing those 4 nodes.
+//
+//   Ex.2 — reformat a comment / rename a local (no semantic change).
+//     content_hash UNCHANGED (canonical-form + opaque Symbol, K-1/B1 —
+//     α-equivalence). Diff empty ⇒ ReExecFrontier = ∅. Nothing re-runs.
+//     This is the payoff: cosmetic edits cost zero recompute, BY the hash.
+//
+//   Ex.3 — change a node whose effect the effect-lens cannot bound.
+//     FAIL-CLOSED: the lens cannot PROVE downstream unchanged ⇒ it
+//     conservatively INCLUDES the dependents (re-run), never optimistically
+//     skips. no-engine: doubt resolves toward more re-execution surfaced,
+//     never a fabricated "it's fine."
+//
+//   Ex.4 — change n_pure only. Frontier = { n_pure } (+ its dependents,
+//     none here). n_reason/n_diag/emit/eval all SKIP. Minimal by
+//     construction — the forward-closure is exactly the affected cone.
+//
 // Owns:
 //   - affected_set: (Dag, Diff) -> Witness<ReExecFrontier>
-//     (the minimal node set that must re-run; everything else is
-//     incrementally skippable because pure + unchanged)
+//     (NODE granularity — the minimal node set that must re-run;
+//     everything else is incrementally skippable because pure +
+//     content-hash-unchanged. File/CI view = project the frontier to
+//     containing files. fail-closed: unprovable ⇒ included, never skipped)
+//   - Diff is STRUCTURAL: a node is "changed" iff its B1 content_hash
+//     differs from the prior pin — NOT a textual git diff
 //   - composes with compiler/05_eval.dag (skip unchanged pure subgraphs)
 //   - composes with workflow/ci.dag (gate/job selection — replaces the
 //     interim scripts/detect-affected-components.sh shell bridge)
 //
+// DOGFOOD REALITY via the frozen v2 seed (operator asked "how fast can we
+// dogfood this using v2?" — honest answer, verified 2026-05-15):
+//   - v2 HAS a `run` interpreter + emits a structured `dag-artifact.json`
+//     (`compile --target dag`). But that artifact is MODULE-level
+//     (module/imports/items/span), NOT the Node tree — and v2 is the
+//     FROZEN seed: we cannot enrich its emission (A3). So there is NO
+//     node-granularity path through v2; node-granularity arrives with the
+//     v4 pipeline at T-9 (the typed Dag) — no v2 shortcut exists.
+//   - Worse: v2 cleanly compiles ONLY the v4 v2-subset scaffolds, whose
+//     artifact has EMPTY imports/items (header-stubs). v2 cannot compile
+//     its own src/v2/*.dag or v3 dsl/. So today there is NO corpus with
+//     real edges for v2 to compute an affected-set over. A "demo" over
+//     edge-empty stubs would be theater = forbidden (no-engine).
+//   - Earliest HONEST dogfood = MODULE-granularity over `dag-artifact.json`
+//     run by `v2-compiler run` (a hand-authored .dag), once v4 files carry
+//     REAL `import`/declarations so the artifact's edges populate. That is
+//     gated on (a) real content (T-1/T-3 landing → #3151), and (b) the
+//     v2-interpreter pre-flight: can `v2-compiler run` execute the
+//     affected-set .dag over the artifact? — verify BEFORE relying on it.
+//
 // Consumes:
 //   - std/node.dag, std/witness.dag
+//   - lens/effect.dag (effect-independence gates safe skip — Ex.3)
 //   - compiler/04_infer.dag: the typed dependency graph (Dag)
+//   - std/primitive.dag: Hash (B1 content_hash — the structural Diff)
 //
 // Status: scaffold — fill per TASKS.md T-21
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
