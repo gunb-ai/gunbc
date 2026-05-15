@@ -13,7 +13,11 @@
 #
 # Writes:
 #   v2=true|false  — true if src/v2/ or workspace deps (Cargo.toml/lock) changed
-#   v3=true|false  — true if src/v3/, dsl/, or workspace deps changed
+#                    (v2 binary is frozen-buildable; deps changes can break the build)
+#   v3=true|false  — true if src/v3/ or dsl/ changed
+#                    (v3 is FROZEN — workspace dep changes do NOT trigger v3 CI;
+#                    we don't care if v3 incidentally breaks because v3 is abandoned;
+#                    if v3 is ever revived, the first src/v3/ PR catches latent breakage)
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
@@ -63,8 +67,11 @@ else
   echo "v2 affected: no (skipping v2 fixed-point)" >&2
 fi
 
-# v3 affected: src/v3/, dsl/ (v3 reads dsl/), OR workspace deps changed.
-if echo "$changed" | grep -qE '^src/v3/|^dsl/|^Cargo\.(toml|lock)$'; then
+# v3 affected: src/v3/ OR dsl/ ONLY. Workspace deps (Cargo.toml/lock) do NOT
+# trigger v3 CI under the freeze — we don't care if v3 incidentally breaks
+# because v3 is abandoned. If v3 is ever revived, the first src/v3/ PR catches
+# any latent dep-bump breakage anyway.
+if echo "$changed" | grep -qE '^src/v3/|^dsl/'; then
   v3_state="true"
   echo "v3 affected: yes" >&2
 else
