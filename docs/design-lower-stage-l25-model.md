@@ -54,7 +54,17 @@ The raw surface-form representation produced by parse stage. Tree of `SurfaceIte
 
 ### §3.2 `ElaborationSpec` (surface-form → substrate-behavior rules per Decision 3.C)
 
-Per Decision 3.C operator-ratified: `.dag` rules consumed by lower, NOT Rust code reading `.dag`. ElaborationSpec is the declared authority that maps surface forms to substrate behaviors. Each rule is a structural fact mapping a `SurfaceExpr` / `SurfaceItem` / `SurfacePattern` variant to a `Behavior` construction recipe.
+Per Decision 3.C operator-ratified: `.dag` rules consumed by lower, NOT Rust code reading `.dag`. ElaborationSpec is the declared authority for **ALL lowering decisions** (per cursor INLINE BLOCKING PR #3077 line:33 — earlier draft "maps surface forms to behaviors" was too narrow; lower constructs Declarations / TypeConnectives / BranchPatterns / Bindings beyond just Behavior recipes).
+
+**Full ElaborationSpec scope** covers all surface-to-substrate mapping decisions:
+
+1. **SurfaceItem → Declaration recipes**: per-variant rules (Fn / FnExternalBody / Data / TypeAtom / TypeRecord) for Declaration placeholder shape + Let/Module/Import skip-allocation rules per §5.1
+2. **SurfaceType → TypeConnective recipes**: per-variant rules for Atom / Arrow / Compose / Disj construction
+3. **SurfaceExpr → Behavior recipes**: per-variant rules for Value / Transform / Branch / Loop / Bind construction
+4. **SurfacePattern → BranchPattern recipes**: per-variant rules for ResolvedVariant / UnresolvedVariant / record-pattern construction (consumed by Branch nodes)
+5. **Binding-site rules**: how Bind's params + result_port are constructed from Fn item params + body return-port
+
+Each rule is a structural fact mapping a surface-form variant to a substrate-construction recipe. ElaborationSpec is single-authority for the surface→substrate mapping across ALL these axes; no axis lives in implementation-tier hand-Rust.
 
 Per the live top-comment at `lower.rs:8-21`, the canonical lowering rules currently in hand-Rust:
 - `SurfaceLiteral::{Int, Bool, String}` → `Value(LiteralBits::*)`
@@ -102,6 +112,11 @@ Per Decision 3.A operator-ratified (sum-variant `Dag = PreInferDag | InferredDag
 
 ```
 // Per Decision 2.B substrate extension (NEW; NOT currently live):
+// 🟢 TERMINAL at the pipeline-stage discrimination scope. Closed-axis
+// sum over all pipeline stages; no further dissolution. Per Practice 4
+// (Coproduct dissolution) — adding a new pipeline stage requires
+// explicit substrate-extension audit + ratification (analogous to
+// adding new TypeConnective variants per PB-5 §3.2 stop-signal).
 type DiagnosticSource = Parse | Lower | Infer | Emit
 type Diagnostic {
   kind: AnyDiagnosticKind     // existing — kind-layer discrimination
@@ -119,7 +134,10 @@ type Diagnostic {
 // stringifying a closed-axis variant boundary would be a typed-carrier
 // regression. `reason: String` is intentional human display detail only.
 //
-// Typed surface-form reference for unsupported-form diagnostic:
+// 🟢 TERMINAL at the surface-form-reference scope. Closed-axis sum over
+// live Surface* carriers (parse_surface.dag); no further dissolution.
+// Each variant wraps a typed substrate carrier directly. Per cursor +
+// codex PR #3077 PR #3085 Practice 4 discipline (Coproduct dissolution).
 type SurfaceFormRef
   = ExprForm(SurfaceExpr)
   | ItemForm(SurfaceItem)
@@ -127,12 +145,21 @@ type SurfaceFormRef
   | TypeForm(SurfaceType)
   | LiteralForm(SurfaceLiteral)
 
-// Typed identifier reference for resolve errors (identifier-as-typed-fact,
-// not stringified). PR #3077 BLOCKING applies same discipline.
+// 🟡 SCAFFOLD at PROPOSED stage. Dissolution trigger: Step 2 brief
+// enumerates the full identifier-kind set against lower.rs identifier-
+// resolution sites; promote to 🟢 TERMINAL when SurfaceVarRef +
+// TypePathRef + ModulePathRef cover the actual axes. Adjacent live
+// substrate: none (this is a NEW carrier).
 type IdentifierRef
   = SurfaceVarRef { name: NonEmptyStr, span: SourceSpan }
   // Future: TypePathRef, ModulePathRef per Step 2 brief authoring
 
+// 🟡 SCAFFOLD at PROPOSED stage. Dissolution trigger: Step 2 brief
+// enumerates the full variant set against lower.rs Diagnostic emission
+// sites; promote to 🟢 TERMINAL at per-stage diagnostic-variant scope.
+// Anti-bridge per Q6.5 (diagnostics.dag:135-141): does NOT collapse
+// into CompilerDiagnosticKind without PR #3077 §12 Q7 ratification on
+// Decision 2.B extension path.
 type LowerDiagnostic
   = ResolveError { identifier: IdentifierRef, scope_chain: List<DeclarationId> }
   | UnsupportedSurfaceForm { form: SurfaceFormRef, reason: String }  // form is typed; reason is human display
@@ -156,7 +183,12 @@ Earlier draft proposed `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>
 **Corrected diagnostic-anchor model** (typed at the same level as diagnostic variants):
 
 ```
-// Typed diagnostic anchor — closed-axis sum over anchor kinds:
+// 🟢 TERMINAL at the diagnostic-anchor scope. Closed-axis sum
+// covering all lowering-stage diagnostic anchor kinds (port-level /
+// declaration-level / field-level / surface-form-level). No further
+// dissolution — each variant carries a typed reference to the
+// associated substrate object. Per cursor + codex PR #3077 Practice 4
+// discipline (Coproduct dissolution).
 type DiagnosticAnchor
   = PortAnchor { port_id: PortId }
   | DeclarationAnchor { declaration_id: DeclarationId }
@@ -189,9 +221,16 @@ lower composes from these substrate facts via 2-pass walk:
 
 Per `lower.rs:3-7` top-comment: "Pass 1 walks all top-level items and allocates placeholder Declarations for each named type/fn, populating a symbol table (name → DeclarationId)."
 
-Pass 1 is purely structural: SurfaceItem variants map 1:1 to Declaration placeholders. No resolution happens; identifiers are not yet bound. Output: symbol table (name → DeclarationId) + `PreInferDag` with placeholder declarations.
+Pass 1 is purely structural: **NAMED-DECLARATION SurfaceItem variants** map to Declaration placeholders. Per live `lower.rs:2950-2958` (verified per cursor BLOCKING #3077):
 
-Per Modeling Practice 4 (Coproduct dissolution): each `SurfaceItem` variant has exactly one Declaration shape it maps to (per `lower.rs` top-comment + the 4-pattern dissolution receipt at the Declaration sum-variant level). The mapping is mechanical.
+- **Allocate declaration**: `SurfaceItem::Fn` / `FnExternalBody` / `Data` / `TypeAtom` / `TypeRecord` (named type / fn / data declarations get top-level Declaration placeholders)
+- **Skip allocation** (continue in collect_symbols): `SurfaceItem::Let { .. }` / `SurfaceItem::Module { .. }` / `SurfaceItem::Import { .. }` — these are parsed facts that flow forward but have NO top-level Declaration at M1(2.7). Let-bodies lower to Bind expressions in Pass 2; Module/Import items are parsed-facts preserved but un-declared.
+
+No resolution happens in Pass 1; identifiers are not yet bound. Output: symbol table (name → DeclarationId) + `PreInferDag` with placeholder declarations for named-declaration variants only.
+
+Per Modeling Practice 4 (Coproduct dissolution): SurfaceItem variants split into **DeclarationAllocating** (Fn/FnExternalBody/Data/TypeAtom/TypeRecord/etc.) + **NonDeclarationAllocating** (Let/Module/Import). The mapping is mechanical per variant kind, NOT uniform "1:1 to Declaration" across all SurfaceItem.
+
+Earlier draft "every SurfaceItem variant maps 1:1 to a Declaration placeholder" was wrong — overstated. Per cursor INLINE BLOCKING PR #3077 line:130: Let/Module/Import are skipped in collect_symbols; they're parsed facts that flow forward to Pass 2 (for Let bodies) or are preserved-but-undeclared (Module/Import).
 
 ### §5.2 Pass 2 — Connective + behavior body lowering
 
@@ -262,7 +301,7 @@ lower is structural-only; it produces target-agnostic `PreInferDag`. Shape A vs 
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-lower-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn lower(surface: SurfaceModule, elaboration: ElaborationSpec) -> PreInferDag` declared in compiler.dag with `ExternalRealization` body (Rust-backed placeholder pointing to current `lower.rs`). The signature uses `PreInferDag` directly (NOT a Result sum-variant); diagnostics couple INTO PreInferDag via **anchor-typed** diagnostic table per §4.3 (NOT port-only biconditional — anchors include PortAnchor / DeclarationAnchor / RecordFieldAnchor / SurfaceFormAnchor; biconditional applies only to PortAnchor). Modeling Practice 6 API-level enforcement at the PreInferDag carrier constructor. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn lower(surface: SurfaceModule, elaboration: ElaborationSpec) -> PreInferDag` declared in `src/v3/compiler/pipeline.dag` (per dsl/gunbc/compiler.dag:24 — internal pipeline lives in pipeline.dag, NOT generic compiler.dag) with `ExternalRealization` body (Rust-backed placeholder pointing to current `lower.rs`). The signature uses `PreInferDag` directly (NOT a Result sum-variant); diagnostics couple INTO PreInferDag via **anchor-typed** diagnostic table per §4.3 (NOT port-only biconditional — anchors include PortAnchor / DeclarationAnchor / RecordFieldAnchor / SurfaceFormAnchor; biconditional applies only to PortAnchor). Modeling Practice 6 API-level enforcement at the PreInferDag carrier constructor. Step 2 worker brief authoring routes through Director after Decision 3.A operator ratification + PB-Substrate carrier extension. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | pipeline.dag refinement |
 | **Step 3: Implementation** | `src/v3/std/lower.dag` (the .dag implementation of lower; fill the function body using ElaborationSpec rules) + `src/v3/std/elaboration_spec.dag` (NEW substrate carrier for the rules) | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 3 brief | src/v3/std/lower.dag + src/v3/std/elaboration_spec.dag (NEW substrate authorities) |
 | **Step 4: Parity test + simultaneous Rust deletion** | Parity verification authored as `.dag` TestClaim — generated test fixture set + `.dag` TestClaim asserting `lower_via_rust(surface) == lower_via_dag(surface, elaboration_spec)` structural-equality across canonical corpus (Dag comparison up to NodeId renaming). **P5 dissolution receipt**: this TestClaim is transient-by-construction; dissolves when lower.rs deletes in same PR. Any hand-Rust scaffolding for stage0 lower invocation routing bears P5 receipt `parity_lower_dag_vs_rust_scaffolding — transient; dissolves with lower.rs deletion in same PR per Step 4 atomic discipline`. `lower.rs` + (any per-pass sibling files like `lower_pass1.rs` if extant) DELETED in same PR. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by N entries at PR-merge. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 4 brief | tests/parity_lower_dag_vs_rust (TestClaim shape, not hand-Rust .rs file) + `lower.rs` deletion |
 
@@ -461,7 +500,7 @@ Subsequent L2.5 models (PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Dir
 
 **Memory disciplines applied**:
 - `feedback_lenses_not_passes` (lower = structural elaboration, not decision engine)
-- `feedback_fail_closed_discipline` C-8 (diagnostics coupled INTO PreInferDag via biconditional; partial-failure represented structurally, not via Result sum-variant)
+- `feedback_fail_closed_discipline` C-8 (diagnostics coupled INTO PreInferDag via **anchor-typed** diagnostic table per §4.3; biconditional applies ONLY to PortAnchor-anchored diagnostics; other anchor kinds (DeclarationAnchor / RecordFieldAnchor / SurfaceFormAnchor) couple without port-state coupling; partial-failure represented structurally across anchor kinds, not via Result sum-variant)
 - `feedback_state_space_vs_behavioral_invariants` (typed-state PreInferDag at output)
 - `feedback_coproduct_dissolution` Practice 4 (sum-variant Dag per Decision 3.A)
 - `feedback_no_textual_enforcement_bridges` (no decision-logic in lower; ElaborationSpec facts)
