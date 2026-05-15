@@ -5,7 +5,15 @@
 //
 // Owns:
 //   - TestClaim { kind: AssertKind, label: String, input, expected }
-//   - AssertKind = Equals | Diagnostic | Compiles | RoundTrips | ...
+//   - AssertKind = Equals | Diagnostic | Compiles | RoundTrips   (closed —
+//     the complete assertion set. Tier1 = Compiles | Diagnostic; Tier2 =
+//     Equals; the self-host / format fixed point = RoundTrips. NO "..." —
+//     a 5th kind at fill-time is a substrate-extension STOP, not a silent
+//     open enum.)
+//   - Boundary/simulation does NOT add an AssertKind. A simulated external
+//     dependency is generated Node bound into `input` (program ∘ generated
+//     simulator) — see lens/testgen.dag simulator-generation arm. The
+//     assertion shape stays one of the closed 4; only `input` changes.
 //   - no hand-Rust tests; every test predicate IS a TestClaim instance
 //
 // Consumes:

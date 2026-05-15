@@ -12,12 +12,40 @@
 //
 // Owns:
 //   - Generator<C> generic carrier (parameterized over substrate concept)
-//   - Per-substrate-kind testgen rules:
-//     - type_construction(Atom | Conj | Disj | ...) -> Set<Constructible TestClaim>
+//   - Per-substrate-kind testgen rules. Every rule emits TestClaims whose
+//     `kind` is one of std/verification.dag's CLOSED AssertKind
+//     (Equals | Diagnostic | Compiles | RoundTrips) — testgen names the
+//     AssertKind, it does NOT coin parallel claim vocabulary:
+//     - type_construction(Atom | Conj | Disj | Arrow | Cardinality
+//       | Instantiation) -> Set<Compiles TestClaim>
+//       (the complete closed 6-connective kernel — no "...")
 //     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
-//     - diagnostic_exhaustiveness(NamedReason variant) -> Set<DiagnosticEmitted TestClaim>
-//     - lens_applicability(Lens × Program) -> Set<LensProducesResult TestClaim>
-//     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<BitEqual TestClaim>
+//     - diagnostic_exhaustiveness(NamedReason variant) -> Set<Diagnostic TestClaim>
+//     - lens_applicability(Lens × Program) -> Set<Equals TestClaim>
+//     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<RoundTrips TestClaim>
+//   - Simulator-generation arm (operator-ratified 2026-05-15: lives HERE,
+//     not a separate lens/simulation.dag — testgen owns both claim
+//     production and the simulators its boundary claims need):
+//     - simulator_generation(WireContract | Effect | Language) -> Node
+//       generates a hermetic simulator (just Node — bounded kernel) from
+//       the declared contract. NOT hand-written (would be a rotting
+//       mirror — feedback_isomorphism_or_generation_for_mirrors); the
+//       simulator is structurally bound to the contract and regenerates
+//       when it changes.
+//     - external_conformance(Language | WireContract × Node)
+//       -> Set<{Compiles|Equals|RoundTrips} TestClaim>
+//       boundary claims whose `input` is (program ∘ generated simulator) —
+//       hermetic AND deterministic. The live oracle (real rustc / live
+//       endpoint) is the OPT-IN boundary run, never the default suite.
+//   - Simulation adds NO AssertKind: it substitutes generated-simulator
+//     Node into `input` at the WireContract boundary. AssertKind stays
+//     the closed 4 (see std/verification.dag).
+//   - Sim fidelity caveat: a generated simulator is faithful-to-CONTRACT,
+//     not faithful-to-reality. Catching contract under-specification is
+//     STRUCTURAL — the opt-in live-oracle reconciliation is a CI-as-data
+//     gate; sim-pass + oracle-fail ⟹ the WireContract is incomplete ⟹
+//     STOP and extend the carrier. Generated simulation is necessary,
+//     not sufficient.
 //   - TestClassification = (Tier, Layer) for every produced claim
 //     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
 //     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
@@ -42,6 +70,7 @@
 //   - std/diagnostic.dag (Diagnostic.NamedReason for exhaustiveness testgen)
 //   - lens/*.dag (each lens's declared read shape, for applicability testgen)
 //   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
+//   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
 //
 // Status: scaffold — fill per TASKS.md T-19
 // Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
