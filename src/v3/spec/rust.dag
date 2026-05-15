@@ -77,7 +77,7 @@ import v3.std.rust_method_template_contracts {
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id,
-  declaration_by_name
+  declaration_by_name, substrate_lens_read_diagnostic_anchor
 }
 import std.computation { per_call_pattern_at, per_call_descent_operand_port }
 import v3.std.clean_emission {
@@ -1803,6 +1803,16 @@ data rust_workflow_root_port_accessor: SubstrateAccessorRealization = {
 data workflow_root_port_binding_rust: SubstrateAccessorBinding = {
   accessor: workflow_root_port
   realization: rust_workflow_root_port_accessor
+  language: rust_language
+}
+
+data rust_substrate_lens_read_diagnostic_anchor_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).substrate_lens_read_diagnostic_anchor()"
+}
+
+data substrate_lens_read_diagnostic_anchor_binding_rust: SubstrateAccessorBinding = {
+  accessor: substrate_lens_read_diagnostic_anchor
+  realization: rust_substrate_lens_read_diagnostic_anchor_accessor
   language: rust_language
 }
 

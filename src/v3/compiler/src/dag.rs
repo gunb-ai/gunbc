@@ -4021,6 +4021,16 @@ impl Dag {
         None
     }
 
+    /// Gate #104 / R3 §1.8: deterministic `Behavior` anchor for `Witness::Violates { at }`
+    /// fallbacks where no producer `Behavior` is available (`resolve_producer` miss, empty Dag).
+    /// Never fabricates lattice facts — only clones the first topo `Behavior`; empty DAG panics (precondition breach).
+    pub fn substrate_lens_read_diagnostic_anchor(&self) -> Behavior {
+        self.nodes
+            .first()
+            .cloned()
+            .expect("substrate_lens_read_diagnostic_anchor: Dag.nodes unexpectedly empty")
+    }
+
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }

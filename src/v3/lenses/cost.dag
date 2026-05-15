@@ -58,7 +58,7 @@ import std.list { List, empty, fold, cons }
 import std.substrate {
   Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node,
   TransformNode, TransformTarget, OperatorKind, ArithmeticOp,
-  resolve_producer
+  resolve_producer, substrate_lens_read_diagnostic_anchor
 }
 import std.algebra {
   MethodContract,
@@ -154,9 +154,22 @@ type SymbolicCostEntry {
   cost: Witness<SymbolicCost>
 }
 
-fn symbolic_cost_fallback_subject_for_unresolved_port(d: Dag) -> Behavior =
-  match d.nodes {
-    Cons(payload) => payload.head
+fn lookup_cost_with_subject(
+  acc: List<SymbolicCostEntry>,
+  port_id: PortId,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  match acc {
+    Empty =>
+      Violates {
+        reason: "symbolic_cost_of: missing SymbolicCost for behavior result port"
+        at: subject
+      }
+    Cons(payload) =>
+      if payload.head.port == port_id then
+        payload.head.cost
+      else
+        lookup_cost_with_subject(payload.tail, port_id, subject)
   }
 
 fn symbolic_cost_of(d: Dag, port_id: PortId) -> Witness<SymbolicCost> =
@@ -168,10 +181,11 @@ fn symbolic_cost_of(d: Dag, port_id: PortId) -> Witness<SymbolicCost> =
         subject
       )
     None =>
-      Violates {
-        reason: "symbolic_cost_of: unresolved producer for port"
-        at: symbolic_cost_fallback_subject_for_unresolved_port(d)
-      }
+      // INVARIANTS P1/P3: absent producer — no fabricated `Witness::Violates { at }` on an
+      // unrelated node; advertise conservative lattice-top carrier only (PR #3137 review).
+      wc_inhabits(
+        UnknownCost("symbolic_cost_of: unresolved producer for port")
+      )
   }
 
 fn wc_inhabits(cost: SymbolicCost) -> Witness<SymbolicCost> =
