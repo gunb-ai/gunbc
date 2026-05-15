@@ -432,8 +432,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
-    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
-    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
@@ -787,6 +785,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
+    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     // §1.8 gate #88 (`lens_application_carrier_landed`): bootstrap field / arity locks for
     // `EnforcedApplication` + `IntrospectApplication` in `src/v3/std/lens_application.dag`.
     "src/v3/compiler/tests/integration/t_lens_application_carrier_test.rs",

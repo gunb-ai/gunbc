@@ -617,11 +617,17 @@ pub(crate) fn gate60_machine_width_bits(
     None
 }
 
+/// Bootstrap `Compose<…, …>` template declaration id (structural gate-#60 / Rust emit walks).
+#[inline]
+pub(crate) fn compose_carrier_template_declaration_id(dag: &Dag) -> Option<DeclarationId> {
+    dag.declaration_by_name("Compose").map(|d| d.id)
+}
+
 fn structural_compose_real_machine_width(
     dag: &Dag,
     decl: DeclarationId,
 ) -> Option<IntLiteralFloatCoercionTarget> {
-    let compose = dag.declaration_by_name("Compose")?.id;
+    let compose = compose_carrier_template_declaration_id(dag)?;
     let real = dag.declaration_by_name("Real")?.id;
 
     let decl = peel_decl_head_for_integral_float_seed(dag, decl);
