@@ -54,7 +54,17 @@ The raw surface-form representation produced by parse stage. Tree of `SurfaceIte
 
 ### §3.2 `ElaborationSpec` (surface-form → substrate-behavior rules per Decision 3.C)
 
-Per Decision 3.C operator-ratified: `.dag` rules consumed by lower, NOT Rust code reading `.dag`. ElaborationSpec is the declared authority that maps surface forms to substrate behaviors. Each rule is a structural fact mapping a `SurfaceExpr` / `SurfaceItem` / `SurfacePattern` variant to a `Behavior` construction recipe.
+Per Decision 3.C operator-ratified: `.dag` rules consumed by lower, NOT Rust code reading `.dag`. ElaborationSpec is the declared authority for **ALL lowering decisions** (per cursor INLINE BLOCKING PR #3077 line:33 — earlier draft "maps surface forms to behaviors" was too narrow; lower constructs Declarations / TypeConnectives / BranchPatterns / Bindings beyond just Behavior recipes).
+
+**Full ElaborationSpec scope** covers all surface-to-substrate mapping decisions:
+
+1. **SurfaceItem → Declaration recipes**: per-variant rules (Fn / FnExternalBody / Data / TypeAtom / TypeRecord) for Declaration placeholder shape + Let/Module/Import skip-allocation rules per §5.1
+2. **SurfaceType → TypeConnective recipes**: per-variant rules for Atom / Arrow / Compose / Disj construction
+3. **SurfaceExpr → Behavior recipes**: per-variant rules for Value / Transform / Branch / Loop / Bind construction
+4. **SurfacePattern → BranchPattern recipes**: per-variant rules for ResolvedVariant / UnresolvedVariant / record-pattern construction (consumed by Branch nodes)
+5. **Binding-site rules**: how Bind's params + result_port are constructed from Fn item params + body return-port
+
+Each rule is a structural fact mapping a surface-form variant to a substrate-construction recipe. ElaborationSpec is single-authority for the surface→substrate mapping across ALL these axes; no axis lives in implementation-tier hand-Rust.
 
 Per the live top-comment at `lower.rs:8-21`, the canonical lowering rules currently in hand-Rust:
 - `SurfaceLiteral::{Int, Bool, String}` → `Value(LiteralBits::*)`
