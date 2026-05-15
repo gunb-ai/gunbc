@@ -183,7 +183,7 @@ Per Decision 2.B / PR #3077 §12 Q7: tokenize diagnostics are discriminable by s
 
 ### §7.3 Sibling-stage coordination
 
-Cross-stage discipline: **tokenize** → List<Token> → parse → SurfaceModule → lower → PreInferDag → infer → InferredDag → emit → EmissionResult.
+Cross-stage discipline (Ok-branch propagation; Err branches are stage-terminal fail-fast per §4.3 Result-sum discriminator): **tokenize** → `List<Token>` (Ok of `Result<List<Token>, TokenizeDiagnostic>`) → parse → `SurfaceModule` (Ok of `Result<SurfaceModule, ParseDiagnostic>`) → lower → `PreInferDag` (typed-state with coupled diagnostics; structural output domain) → infer → `InferredDag` (typed-state) → emit → `Result<EmittedArtifact, EmissionDiagnostic>` (fail-fast like tokenize/parse). The chain shows the success-path data flow; on any stage's Err branch the pipeline aborts at that stage (no partial-output propagation across boundaries).
 
 Tokenize is the FOUNDATION; its output type stability affects every downstream stage. Since `tokenize.dag` is already the live substrate authority, this stability is preserved across PB-2 migration.
 
