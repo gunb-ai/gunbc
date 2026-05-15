@@ -68,9 +68,11 @@ import v4.std.node { Symbol }
 // edit, when the checker exists (cost-of-change = 1).
 //
 // LEXICOGRAPHIC / MULTISET (Dershowitz-Manna 1979). `TerminationProof`
-// carries an ORDERED `List<RankedDescent>` — the lexicographic ranking
-// tuple, the general case (a single-element list is plain single-measure
-// descent). The multiset-ordering INTERPRETATION is a second way the same
+// carries a structurally NON-EMPTY, ordered head/tail of `RankedDescent`
+// — the lexicographic ranking tuple, the general case (a `head` with an
+// empty `tail` is plain single-measure descent). The non-empty encoding
+// is load-bearing: see `TerminationProof`. The multiset-ordering
+// INTERPRETATION is a second way the same
 // dimension collection can be read; choosing between the two is, again, a
 // fold the termination checker performs, with no T-3 consumer. It is
 // deliberately not a carrier here: a faithful `Multiset` would need an
@@ -155,21 +157,38 @@ type RankedDescent {
 // TerminationProof — the descent proof a checker VERIFIES (never
 // discovers) for an EXPLICIT non-structural recursion.
 //
-// `steps` is the lexicographic ranking tuple (Dershowitz-Manna 1979):
-// an ordered list of (dimension, claimed-evidence) pairs, highest
-// priority first. A checker confirms well-foundedness by reading `steps`
-// against the loop's structure — it does not search for a measure
-// (INVARIANTS:66). An empty `steps` proves nothing; it is not a claim of
-// termination.
+// The lexicographic ranking tuple (Dershowitz-Manna 1979) — (dimension,
+// claimed-evidence) pairs, highest priority first — modeled as a
+// structurally NON-EMPTY list: a mandatory `head` plus a `tail` of any
+// further pairs. A ranking with ZERO dimensions is not a weak proof, it
+// is the ABSENCE of a proof; the head/tail encoding makes that absent
+// state unrepresentable (INVARIANTS P2 — illegal states unrepresentable).
+// A plain `List<RankedDescent>` would have admitted `[]`, and an empty
+// proof inside `Multiplicity::Unbounded { step }` is exactly the
+// "unbounded without a witness" state this file claims to forbid — so the
+// non-empty encoding is what actually CLOSES that no-escape-hatch, rather
+// than only relocating it.
 //
-// Single-recursive-call scope: `steps` carries the descent at THE
-// recursive call (the brief's single self-recursive function shape). A
-// loop with recursive calls in multiple `Branch` arms generalises this
-// to a per-edge collection — that generalisation lands when the `Loop` /
-// `Branch` edge structure is modeled (T-6+, node.dag's "NAMED OBLIGATION
-// ON T-6+"); cost-of-change = 1, no T-3 consumer needs it yet.
+// This is the TYPE-level guarantee: a `TerminationProof` always claims at
+// least one ranking dimension. Whether the claimed `DescentEvidence` is
+// strong enough — a lexicographic combination that yields well-
+// foundedness, vs. e.g. every dimension `DescentUnknown` — is the
+// SEMANTIC question the termination checker verifies, fail-closed, when
+// that pipeline stage lands (INVARIANTS:66 — checker, not discoverer).
+// The type fixes structural non-vacuity; the checker fixes sufficiency.
+// (`DescentUnknown` is deliberately still admissible in a `RankedDescent`:
+// a valid lexicographic proof may carry it on lower-priority dimensions;
+// rejecting an insufficient proof is the checker's act, not the type's.)
+//
+// Single-recursive-call scope: this carries the descent at THE recursive
+// call (the brief's single self-recursive function shape). A loop with
+// recursive calls in multiple `Branch` arms generalises to a per-edge
+// collection — that lands when the `Loop` / `Branch` edge structure is
+// modeled (T-6+, node.dag's "NAMED OBLIGATION ON T-6+"); cost-of-change
+// = 1, no T-3 consumer needs it yet.
 type TerminationProof {
-  steps: List<RankedDescent>
+  head: RankedDescent
+  tail: List<RankedDescent>
 }
 
 
@@ -188,7 +207,11 @@ type TerminationProof {
 // witness — the proof the per-iteration step terminates. An unbounded-
 // without-witness state is therefore structurally unrepresentable
 // (INVARIANTS P4): there is no way to name something unbounded without
-// exhibiting that its step is itself bounded.
+// exhibiting that its step is itself bounded. The witness cannot be
+// vacuous either — `TerminationProof` is structurally non-empty (a
+// mandatory `head`), so `Unbounded { step: { head, tail } }` always
+// carries at least one claimed ranking dimension; the empty-proof escape
+// hatch is closed at the type level, not merely by convention.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
