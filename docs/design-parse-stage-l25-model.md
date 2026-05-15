@@ -104,15 +104,29 @@ type SyntaxFormRef
   | TypeForm       // expected in type position
   | LiteralForm    // expected at literal position
 
-type ParseDiagnostic
-  // Every variant carries SourceSpan structurally per cursor PR #3126 BLOCKING
-  // line:65 + INVARIANTS P2/P3 (fail-closed source attribution requires
-  // span on every diagnostic, not optional):
-  = UnexpectedToken { found: TokenKindRef, expected: List<TokenKindRef>, context: SyntaxFormRef, span: SourceSpan }
-  | UnterminatedConstruct { construct: SyntaxFormRef, opener_span: SourceSpan }
-  | InvalidLiteral { kind: TokenKindRef, reason: String, span: SourceSpan }   // reason is human display; span required
-  | DuplicateRecordFieldLabel { label: NonEmptyStr, prior_span: SourceSpan, span: SourceSpan }   // per PR #3075 ratchet; both spans required (current site + prior site)
-  | (additional variants per Step 2 worker brief authoring against parse_generated.rs)
+// Diagnostic = record-wraps-kind pattern per codex BLOCKING PR #3126 finding 1:
+// matches live Diagnostic shape at diagnostics.dag:150 (record { kind, span, ... }
+// where kind is the closed-axis sum, span on the record). Earlier draft mixed
+// kind + span into variant fields directly; corrected to:
+
+type ParseDiagnostic {
+  kind: ParseDiagnosticKind
+  span: SourceSpan
+  // Optional: additional context fields per Step 2 brief enumeration
+}
+
+type ParseDiagnosticKind
+  = UnexpectedToken { found: TokenKindRef, expected: List<TokenKindRef>, context: SyntaxFormRef }
+  | UnterminatedConstruct { construct: SyntaxFormRef, opener_span: SourceSpan }   // additional opener_span here; ParseDiagnostic.span is the unterminated-end position
+  | InvalidLiteral { kind: TokenKindRef, reason: String }   // reason is human display
+  | DuplicateRecordFieldLabel { label: NonEmptyStr, prior_span: SourceSpan }   // per PR #3075 ratchet; ParseDiagnostic.span is current-site
+  // (additional variants per Step 2 worker brief authoring against parse_generated.rs)
+
+// Per cursor PR #3126 BLOCKING line:65: span lives on ParseDiagnostic record,
+// not on each kind variant. Per codex finding 1: matches live Diagnostic
+// shape (kind + span on record carrier). Single source of truth for span;
+// variant-specific spans (opener_span / prior_span) live on kind variants
+// where they're meaningful.
 ```
 
 **Lane dependency**: PR #3077 §12 Q7 ratification (cross-stage); Director-tier per-stage variant authoring.
@@ -195,7 +209,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`.
 
 | Prereq | Substrate authority | Gap-tier lane | Status at HEAD (as of 2026-05-14) |
 |---|---|---|---|
-| PB-2 Tokenize | `src/v3/std/tokenize.dag` (NEW per PB-2 L2.5) + Token carrier | PB-2 lane (R3 Substrate Mgr post-PB-3) | NOT-STARTED; Director PB-2 L2.5 in flight (sibling doc) |
+| PB-2 Tokenize | `src/v3/std/tokenize.dag` (LIVE — 143 lines; Token + TokenKind taxonomy already substantially landed per `design-pure-bootstrap.md` §"PB-2 — tokenize retire") | PB-2 lane (R3 Substrate Mgr) | LIVE substrate at HEAD; PB-2's residual scope is scaffold-retirement (SG-1a + character-level + codegen-driver per PB-2 L2.5 §1), NOT carrier authoring. PB-3 consumes the live Token carrier; carrier shape stable across PB-2's residual-retirement timing. |
 | Live SurfaceModule + Surface* carriers | `src/v3/std/parse_surface.dag` (live; closed-axis sums) | PB-Substrate | LIVE at HEAD per PR #3077 §3.1 audit |
 | Live grammar tables substrate | `src/v3/compiler/parse_tables.dag` (517 lines; SG-2c-1/2/3/4/6/7 tables) | PB-Substrate | LIVE at HEAD; Step 3 extends |
 | Substrate-capability: recursive list-body emission | `src/v3/std/list.dag` capability + SELF_HOSTING.md §6 Phase 4a | PB-Substrate + R3 Grounding Mgr lane | BLOCKER for full Step 3; per parse_tables.dag:13-22 STOP-AND-ESCALATE |
