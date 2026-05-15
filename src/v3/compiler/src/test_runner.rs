@@ -6340,8 +6340,9 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
                 dag,
                 peel_single_underscore_record(single_payload(payload)?),
             )?;
-            Ok(SymbolicCostEqPattern::Linear {
+            Ok(SymbolicCostEqPattern::Polynomial {
                 source_port: SymbolicCostPortPattern::ExpectedBindParam,
+                degree: Rational::ONE,
             })
         }
         other => Err(format!(

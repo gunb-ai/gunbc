@@ -126,6 +126,18 @@ impl NonZeroRational {
         &self.0
     }
 
+    pub fn is_positive(&self) -> bool {
+        self.0.numerator() > 0
+    }
+
+    pub fn is_negative(&self) -> bool {
+        self.0.numerator() < 0
+    }
+
+    pub fn as_positive_integral_i64(&self) -> Option<i64> {
+        (self.0.denominator() == 1 && self.0.numerator() > 0).then_some(self.0.numerator())
+    }
+
     pub fn add(&self, other: &Self) -> Rational {
         self.0.add(&other.0)
     }
@@ -469,19 +481,21 @@ where
     let b = b.borrow();
     match a {
         SymbolicCost::UnknownCost { .. } => true,
-        SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
+        SymbolicCost::ConstantCost { .. } => match b {
+            SymbolicCost::ConstantCost { .. } => true,
+            SymbolicCost::PolynomialCost { degree, .. } => degree.is_negative(),
+            _ => false,
+        },
         SymbolicCost::PolynomialCost {
             var: va,
             degree: ka,
         } => match b {
-            SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
+            SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => ka.is_positive(),
             SymbolicCost::PolynomialCost {
                 var: vb,
                 degree: kb,
             } => va == vb && ka >= kb,
-            SymbolicCost::PolyLogCost { var: vb, .. } => {
-                va == vb && ka.as_rational().numerator() > 0
-            }
+            SymbolicCost::PolyLogCost { var: vb, .. } => va == vb && ka.is_positive(),
             _ => false,
         },
         SymbolicCost::PolyLogCost { var: va, exponent: ea } => match b {
@@ -531,7 +545,7 @@ where
             } else if degree == &NonZeroRational::TWO {
                 AsymptoticClass::ClassQuadratic
             } else {
-                match positive_amount_from_i64(degree.raw()) {
+                match degree.as_positive_integral_i64().and_then(positive_amount_from_i64) {
                     Some(pos) => AsymptoticClass::ClassPolynomial { degree: pos },
                     None => AsymptoticClass::ClassUnknown,
                 }

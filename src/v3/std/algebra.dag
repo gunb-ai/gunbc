@@ -48,25 +48,31 @@
 // lets `SymbolicCost` stay a trustworthy algebra element without
 // a "maybe" mode consumers have to unwrap.
 //
-// Four-pattern dissolution receipt (Q4 per DB-7):
+// Four-pattern dissolution receipt (Q4 per DB-7, refreshed for gate #105):
 //
 //   - Pattern 1 (fact placement): fails. Every consumer dispatches
-//     on cost variant first — dominance on Polynomial/Linear pairs,
-//     list flattening on Sum/Product, name extraction on
-//     Linear/Log/Polynomial. No neutral placement above the variant
-//     tag.
+//     on cost variant first — dominance on Polynomial/PolyLog/Log/
+//     Exponential/Factorial pairs, list flattening on Sum/Product,
+//     and size-variable extraction on every variable-bearing arm. No
+//     neutral placement above the variant tag carries those facts.
 //   - Pattern 2 (variant-is-data): fails. ConstantCost carries a
-//     literal Int; LinearCost/LogCost carry a SizeVariable;
-//     PolynomialCost carries `{var, degree}`; Product/Sum carry
-//     lists of costs; UnknownCost carries a reason String. Each
-//     payload is structurally distinct.
-//   - Pattern 3 (algebraic-form): confirms terminality. The seven
-//     variants are the asymptotic bounds the thesis reasons about;
-//     exotic bounds (O(n!), O(2^n)) collapse to `UnknownCost` with
-//     a reason until a concrete consumer forces variant growth.
+//     literal Int; LogCost carries a SizeVariable; PolynomialCost,
+//     PolyLogCost, ExponentialCost, and FactorialCost carry distinct
+//     refined payload records; Product/Sum carry lists of costs;
+//     UnknownCost carries a reason String. Each payload is
+//     structurally distinct, including refinement carriers
+//     NonZeroRational / PolyLogExponent / ExponentialBase.
+//   - Pattern 3 (algebraic-form): confirms terminality for the
+//     nine Tier-1 variants. Constant, logarithmic, polynomial,
+//     polylogarithmic, exponential, factorial, sum/product, and
+//     unknown-top bounds are the asymptotic families live cost-lens
+//     consumers dispatch on after gate #105. Tier-2 families still
+//     collapse to `UnknownCost` with a reason until a concrete
+//     consumer forces variant growth.
 //   - Pattern 4 (dimensional): fails. No common coordinate space
-//     generates all seven — LinearCost's payload is a SizeVariable,
-//     ProductCost's is a list, ConstantCost's is an Int.
+//     generates all nine — ProductCost's payload is a list,
+//     ConstantCost's is an Int, UnknownCost's is a String, and the
+//     variable-bearing arms use different refinement facts.
 //
 // STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
@@ -295,6 +301,10 @@ fn rational_gt_zero(a: Rational) -> Bool {
   host rational_gt_zero
 }
 
+fn rational_lt_zero(a: Rational) -> Bool {
+  host rational_lt_zero
+}
+
 fn rational_add_is_zero(a: Rational, b: Rational) -> Bool {
   host rational_add_is_zero
 }
@@ -389,7 +399,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       match b {
         ConstantCost(_) => True
         UnknownCost(_) => False
-        PolynomialCost(_) => False
+        PolynomialCost(pb) => rational_lt_zero(pb.degree)
         ProductCost(_) => False
         SumCost(_) => False
         LogCost(_) => False
@@ -399,8 +409,8 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       }
     PolynomialCost(pa) =>
       match b {
-        ConstantCost(_) => True
-        LogCost(_) => True
+        ConstantCost(_) => rational_gt_zero(pa.degree)
+        LogCost(_) => rational_gt_zero(pa.degree)
         PolynomialCost(pb) =>
           if same_size_variable(pa.var, pb.var) then
             rational_ge(pa.degree, pb.degree)
