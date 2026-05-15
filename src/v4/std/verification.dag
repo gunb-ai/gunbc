@@ -1,0 +1,31 @@
+// src/v4/std/verification.dag
+//
+// Scope: TestClaim schema — tests are data, not code. Imported design from v3.
+// Anchor: THESIS.md "Tests are structural data" §348-368 + Self-hosting facet 3
+//
+// Owns:
+//   - TestClaim { kind: AssertKind, label: String, input, expected }
+//   - AssertKind = Equals | Diagnostic | Compiles | RoundTrips   (closed —
+//     the complete assertion set. Tier1 = Compiles | Diagnostic; Tier2 =
+//     Equals; the self-host / format fixed point = RoundTrips. NO "..." —
+//     a 5th kind at fill-time is a substrate-extension STOP, not a silent
+//     open enum.)
+//   - Boundary/simulation does NOT add an AssertKind. A simulated external
+//     dependency is generated Node bound into `input` (program ∘ generated
+//     simulator) — see lens/testgen.dag simulator-generation arm. The
+//     assertion shape stays one of the closed 4; only `input` changes.
+//   - no hand-Rust tests; every test predicate IS a TestClaim instance
+//
+// Consumes:
+//   - std/node.dag: Conj, Disj for claim shape
+//   - std/diagnostic.dag: Diagnostic for failure mode
+//   - std/primitive.dag: String for label
+//
+// Status: scaffold — fill per TASKS.md T-3
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.verification
+

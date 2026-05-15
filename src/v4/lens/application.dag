@@ -1,0 +1,25 @@
+// src/v4/lens/application.dag
+//
+// Scope: lens-application surface — how a user attaches a lens to a program section (declaration / module / expression scope) with configurable enforcement. THE opt-in-depth mechanism + user-defined-dimensions surface + the ONLY advisory→fail-closed bridge. Referenced by report.dag/synthesis.dag's apply_lens(Enforce) — this file is its substrate home.
+// Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
+//
+// Owns:
+//   - EnforcedApplication<Output, Budget> (lens, section, budget, severity, span)
+//   - IntrospectApplication<Output> (lens, section, span; no Budget — advisory)
+//   - SectionRef = DeclarationScope | NodeScope (disjoint sum; where the lens attaches)
+//   - apply_lens(lens, section, config) — the user-facing surface
+//   - THE single advisory→fail-closed bridge: Enforce { } converts a lens's
+//     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
+//     no other path from advisory to blocking exists
+//
+// Consumes:
+//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
+//   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
+//
+// Status: scaffold — fill per TASKS.md T-23
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.lens.application
+

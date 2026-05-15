@@ -1,0 +1,25 @@
+// src/v4/compiler/00_compile.dag
+//
+// Scope: pipeline orchestrator — wires tokenize → parse → normalize → resolve → infer → emit
+// Anchor: https://en.wikipedia.org/wiki/Compiler (general phase architecture)
+//        into a single compile() entry point. Called by bin/main.dag and by
+//        every end-to-end TestClaim.
+//
+// Owns:
+//   - compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
+//     (the top-level entry; fail-fast on any stage's Diagnostic)
+//
+// Consumes:
+//   - compiler/01_tokenize.dag → 05_emit.dag (every stage)
+//   - std/diagnostic.dag for error propagation
+//   - extdeps/languages/*.dag for TargetSpec
+//
+// Status: scaffold — fill per TASKS.md T-10 (paired with emit implementation;
+//         orchestrator is the consumer of every prior stage)
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.compiler.compile
+

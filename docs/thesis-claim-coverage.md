@@ -197,8 +197,8 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 
 | # | Claim | Disposition | Evidence | Status |
 |---|---|---|---|---|
-| 64 | (R1) Suboptimal-complexity contract violation: function annotated bound errors at compile | R1-closed | T-Demo `impossible_bug_class_suite_r1` includes suboptimal-complexity demo | partial (CostBounded receipt is runner-fail) |
-| 65 | (R1) Idempotency-contract violation: marked `@idempotent` function structure errors | R1-closed | T-Demo impossible-bugs suite (`compose_effects` + `AppendEffect` violation) | green |
+| 64 | (R1) Suboptimal-complexity contract violation: lens-derived complexity exceeds the structural cost bound (consumer/inhabitance) → compile error (no annotation) | R1-closed | T-Demo `impossible_bug_class_suite_r1` includes suboptimal-complexity demo | partial (CostBounded receipt is runner-fail) |
+| 65 | (R1) Idempotency-contract violation: structurally non-idempotent operation in an idempotence-required (algebra-inhabitance) position → compile error (no annotation) | R1-closed | T-Demo impossible-bugs suite (`compose_effects` + `AppendEffect` violation) | green |
 | 66 | (R1) Transport/type-drift: client/server cannot hold different types for same field | R1-closed | T-Demo impossible-bugs suite (`TypeMismatch` multi-target) | green |
 | 67 | (R2+) Nested-optional flatten: `Option<Option<T>>` patterns error at compile | R2-gated | `docs/r2-structure.md` Goal 4; gated on cardinality refinement; closed by PR #890 / `6562081e` | green |
 | 68 | (R2+) Unenumerated effects: operations intrinsically read/write via type signature | R2-gated | `docs/r2-structure.md` Goal 4; `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` + `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md` closed-system structural derivation path | in-flight (implementation worker dispatchable; consumer/lens PR active) |

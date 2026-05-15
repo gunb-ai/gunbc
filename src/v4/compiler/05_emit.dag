@@ -1,0 +1,29 @@
+// src/v4/compiler/05_emit.dag
+//
+// Scope: pipeline stage 5 — emission orchestrator. Reads target spec, emits source.
+// Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
+// Unifies: (per THESIS:188) coercion = emission. NO separate coercion engine. The compiler reads target spec and translates; coercion logic lives in THIS file. A worker hitting "I need to coerce X to Y" extends emit, not a new file.
+// Primary: emission is MECHANICAL projection of the epistemic chain
+//   (per THESIS:196 "the epistemic chain IS the emission algorithm;
+//   every emitter special case is evidence of an ungrounded concept
+//   upstream"). A worker writing `if target == X` special-cases here
+//   has found an UPSTREAM grounding gap — STOP, fix std/algebra.dag or
+//   the epistemic chain (04_infer.dag), do NOT special-case the emitter.
+//
+// Owns:
+//   - emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>
+//   - target-agnostic IR; per-target spec drives concrete emission
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag
+//   - compiler/04_infer.dag: InferredTree
+//   - extdeps/languages/*.dag: TargetSpec
+//
+// Status: scaffold — fill per TASKS.md T-10
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.compiler.emit
+

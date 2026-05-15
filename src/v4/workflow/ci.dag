@@ -1,0 +1,25 @@
+// src/v4/workflow/ci.dag
+//
+// Scope: CI pipeline AS DATA. .github/workflows/ci.yml becomes a DERIVED artifact emitted from this file. Adding a CI gate = editing this one .dag file (THESIS:226). v3's gate #98 ci_yml_hand_authority_dissolved was an open R3 gap precisely because CI YAML was hand-authored — v4 must NOT reproduce it.
+// Anchor: THESIS:223-226 (meta-process modeling: "Bootstrap, CI ... modeled as .dag workflows") + v4-close-interrogation.md §3.2 (ci_workflow_modeled_as_dag) + v3 gate #98 (the gap v4 must not reproduce)
+//
+// Owns:
+//   - CiPipeline { jobs: List<CiJob>, gates: List<CiGate> }
+//   - affected-set-driven job selection: consumes lens/affected_set.dag
+//     (this is what replaces scripts/detect-affected-components.sh — the
+//     shell bridge dissolves once this + affected_set land)
+//   - emission target: .github/workflows/ci.yml as DERIVED artifact (Shape B
+//     user-program emission — .dag walks CiPipeline, emits YAML)
+//
+// Consumes:
+//   - lens/affected_set.dag: job selection
+//   - extdeps/process.dag: CI steps spawn subprocesses
+//   - workflow/bootstrap.dag: CI runs the bootstrap chain
+//
+// Status: scaffold — fill per TASKS.md T-24
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.workflow.ci
+

@@ -1,0 +1,22 @@
+// src/v4/extdeps/formats/toml.dag
+//
+// Scope: TOML data format model — direction-agnostic.
+// Anchor: https://toml.io/en/v1.0.0 (TOML v1.0.0 spec)
+//
+// Owns:
+//   - TomlValue = String | Int | Float | Bool | Datetime | Array | InlineTable | Table (closed sum)
+//   - Table = Map<NonEmptyStr, TomlValue>
+//   - Datetime model (TOML §Date-Time: RFC 3339 subset)
+//   - parse(String) -> Result<TomlValue, Diagnostic>
+//   - emit(TomlValue) -> String
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.toml
+

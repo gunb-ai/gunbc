@@ -1,0 +1,22 @@
+// src/v4/extdeps/languages/cpp.dag
+//
+// Scope: C++ language model — direction-agnostic. Subsumes C subset (C is a syntactic subset of C++).
+// Anchor: https://www.iso.org/standard/79358.html (ISO/IEC 14882, C++ standard) + https://en.cppreference.com
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
+//
+// Owns:
+//   - C++ grammar (declarations, expressions, statements, templates, classes)
+//   - Type system (primitive types + struct + union + class + template instantiation)
+//   - Inhabitance: int -> OrderedRing, std::string -> FreeMonoid<char>, std::vector<T> -> ...
+//   - Cost realization: per-operation cost on C++ targets
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/primitive.dag
+//
+// Status: scaffold — fill per TASKS.md T-4
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.languages.cpp
+

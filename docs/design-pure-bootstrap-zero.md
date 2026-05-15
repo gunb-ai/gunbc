@@ -2,6 +2,8 @@
 
 **Status:** `LIVE` (promoted 2026-04-25 via cascade promotion [PR #782](https://github.com/gunb-ai/gunbc/pull/782)). Supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now marked SUPERSEDED with explicit retraction) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) (also retracted). This doc is the live authority on the Pure Bootstrap to Zero program.
 
+> **v4 supersession (2026-05-15).** The 0-floor target articulated in this doc now applies to **v4** ([`src/v4/`](../src/v4/)) as the operational instantiation. v2 binary serves as v4's stage minus one (per [`src/v4/STRUCTURE.md`](../src/v4/STRUCTURE.md) "Bootstrap chain"); v4's compiler emits its own Rust trampoline (`bin/main.dag`) to satisfy 0-floor without needing the runtime-resolution choices (shipped binary / runtime crate / rustc-macro) described below. v3 references throughout this doc describe the v2→v3 transition that v4 supersedes; v3 is frozen pending v4 ship.
+
 **Promotion evidence chain (cited in cascade promotion PR body):**
 - D1 audit: PRs #769 + #771 + #775 + #777 + #779 (audit doc with substrate-generation already proven; 23 generated files + 24 REGEN_OUTPUTS entries; 38-type substrate.dag coverage survey)
 - D2 PB-1 brief amendment: PR #770 (non-goals revised under 0-floor)

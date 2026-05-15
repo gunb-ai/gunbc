@@ -1,0 +1,45 @@
+// src/v4/std/diagnostic.dag
+//
+// Scope: fail-closed Diagnostic schema with structural reason+at+correction.
+//        Per STRUCTURE.md architectural commitment #3, the schema CARRIES
+//        the suggested-correction obligation — the substrate must be able
+//        to enforce THESIS:103-105 "show the correct code", so the field
+//        is part of the type, not optional bolt-on.
+// Anchor: THESIS.md "Show the correct code" §103-105 + INVARIANTS P3
+//
+// Owns:
+//   - Diagnostic { reason: NamedReason, at: Locus, correction: Correction }
+//   - NamedReason enum (structural; never opaque string)
+//   - Locus = port|node|file|span
+//   - Correction = Suggested(Node) | Unavailable(NoCorrectionReason)
+//     (typed sum — NOT Option<Node>. "no correction available" is
+//     a structural Unavailable case carrying a NoCorrectionReason, never a
+//     bare None enforced by convention. Type-enforced per INVARIANTS P2,
+//     not API-enforced.)
+//     The suggested correction is a Node — the bounded kernel says Node is
+//     the ONLY recursive type, so a subtree of Nodes IS a Node (no separate
+//     "NodeFragment": that would be a decorative alias the compiler sees
+//     through, per feedback_nodes_are_nodes + feedback_naming_is_aliasing).
+//     WHERE the correction applies is not carried by the fragment — it is
+//     the Diagnostic's own `at: Locus`.
+//   - NoCorrectionReason = UserInputBoundary | AmbiguousIntent
+//     | ExternalContractUnknown   (closed — the exhaustive partition of
+//     "why can't the fix be mechanically derived": intent the compiler
+//     cannot know (one missing user choice = UserInputBoundary; many valid
+//     candidates = AmbiguousIntent) OR information the compiler cannot see
+//     (behind an external contract = ExternalContractUnknown). NO "..." —
+//     a 4th reason at fill-time is a substrate-extension STOP, not a
+//     silent escape. Every "no fix" thus answers WHY structurally.)
+//
+// Consumes:
+//   - std/node.dag: Conj, Disj
+//   - std/primitive.dag: String for messages
+//
+// Status: scaffold — fill per TASKS.md T-3
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.diagnostic
+

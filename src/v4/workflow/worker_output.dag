@@ -1,0 +1,21 @@
+// src/v4/workflow/worker_output.dag
+//
+// Scope: WorkerOutput schema — workers declare what substrate fact dissolves what residual.
+// Anchor: THESIS facet 4 + memory: feedback_paper_shrink_variants (gaming surface this carrier closes)
+//
+// Owns:
+//   - WorkerOutput { task_id, file_modified, dissolves: Set<HandResidual>, cited_anchor: DocAnchor }
+//   - paper-shrink IS structurally rejected: dissolves predicate must hold against substrate
+//
+// Consumes:
+//   - std/node.dag, std/collection.dag
+//   - workflow/doc_anchor.dag, workflow/retirement.dag
+//
+// Status: scaffold — fill per TASKS.md T-5
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.workflow.worker_output
+

@@ -1,0 +1,21 @@
+// src/v4/extdeps/formats/csv.dag
+//
+// Scope: CSV (Comma-Separated Values) data format model — direction-agnostic.
+// Anchor: https://datatracker.ietf.org/doc/html/rfc4180 (RFC 4180)
+//
+// Owns:
+//   - CsvDocument { header: Option<List<String>>, rows: List<List<String>> }
+//   - parse(String, Dialect) -> Result<CsvDocument, Diagnostic>
+//   - emit(CsvDocument, Dialect) -> String
+//   - Dialect { delimiter: Char, quote: Char, escape: Option<Char>, line_terminator: String }
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/primitive.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.csv
+

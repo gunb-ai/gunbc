@@ -1,0 +1,23 @@
+// src/v4/extdeps/formats/json_schema.dag
+//
+// Scope: JSON Schema model — schema-driven validation + type derivation. Direction-agnostic.
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12)
+//
+// Owns:
+//   - JsonSchema { type, properties, required, items, ... }
+//   - Validation: validate(JsonValue, JsonSchema) -> Result<(), Diagnostic>
+//   - Type derivation: schema_to_type(JsonSchema) -> Result<Node (TypeNode), Diagnostic>
+//     (this is the load-bearing capability — given a schema, generate corresponding .dag types)
+//   - emit(Node (TypeNode)) -> JsonSchema (for emit direction)
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/witness.dag
+//   - extdeps/formats/json.dag: JsonValue (subject of validation)
+//
+// Status: scaffold — fill per TASKS.md T-4.6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.json_schema
+

@@ -1,0 +1,74 @@
+// src/v4/std/node.dag
+//
+// Scope: foundational substrate — type connectives + L1 behaviors. THE root of the epistemic chain.
+// Anchor: THESIS.md "Substrate shape" §198-203 + MODELING.md
+//
+// Owns:
+//   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
+//   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
+//   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
+//
+// A1 (operator-ratified 2026-05-15) — the recursion contract:
+//   - ONE recursive type: Node. Recursion lives SOLELY in Node children
+//     (the children list), never in a self-referential type definition.
+//   - A Node carries ORTHOGONAL flat-discriminant coordinates — connective
+//     (∈ the closed 6, incl. `Instantiation` which is how genericity is
+//     expressed: parameter-names + the Instantiation connective, NOT a
+//     recursive Generic type) and, for computation Nodes, behavior (∈ the
+//     closed 5). The two-coordinated-substrate framing (THESIS §198-203)
+//     = these axes stay orthogonal; it does NOT license a 2nd recursive
+//     type. Behaviors are STRUCTURAL, never lens-derived (same discipline
+//     as feedback_no_annotations); THESIS's uncommitted "unified substrate"
+//     means *deriving behaviors away* — rejected here.
+//   - A separate recursive Behavior / Inferred / Pattern / Generic type is
+//     the bounded-kernel violation that split v2 infer into 12 files —
+//     STOP and escalate, NOT a worker choice.
+//   - Recursive generics: a recursive generic is a FINITE Node tree with
+//     an `Instantiation` connective + a name-reference Node back to its
+//     own declaration (resolved through the namespace — feedback_naming_is
+//     _aliasing); it is "just Node underlying." Regular recursion (same
+//     parameter at the recursive occurrence) is unconditionally admissible
+//     and decidable. Non-regular / polymorphic recursion (recursive
+//     occurrence at a different instantiation) is a STOP unless a decidable
+//     bound is exhibited (defers to the A2 decidability resolution).
+//
+// A2 (operator-ratified 2026-05-15) — termination is Tier-1, not optional:
+//   - `Loop` is BOUNDED RECURSION, total-by-construction (the
+//     Coq/Agda/Idris totality choice — INVARIANTS:72). No Y-combinator,
+//     no general recursion. This is the established INVARIANT P4 made
+//     explicit as the T-1 substrate shape.
+//   - Termination is a Tier-1 (compile-time) structural fact carried as
+//     descent evidence: IMPLICIT when recursion descends on a sub-Node
+//     (the bounded-kernel "recursion in children" default — the common
+//     case, no measure needed); EXPLICIT RankingDimension/TerminationProof
+//     (lexicographic/multiset per Dershowitz-Manna) when descent is not
+//     structural.
+//   - A CHECKER reading VERIFIES the descent proof (decidable). It never
+//     searches/discovers a measure (INVARIANTS:66 "checker not discoverer"
+//     = feedback_no_engine). `DescentUnknown` ⇒ fail-closed Diagnostic,
+//     never a fabricated or assumed termination.
+//   - The bound IS the structural datum lens/cost.dag reads — termination
+//     ∧ complexity are ONE read on the U1 homomorphism-with-cost spine
+//     (this is why C2 cost derivation is sound).
+//   - Genuine unboundedness (servers/streams/REPLs) is a TERMINATING step
+//     iterated by the coordination-boundary driver — never an unbounded
+//     `.dag` loop.
+//   - Residual boundary (ratified, not buried): a true-but-not-
+//     structurally-rankable termination (open conjecture / un-encodable
+//     math) is NOT expressible as a total value — express it as bounded
+//     search returning a fail-closed typed result; you may not CLAIM a
+//     totality you cannot prove. Where even that is impossible ⇒ STOP-
+//     escalate (a modeling conversation, not a worker hack). Correct
+//     closure of a decidable system (INVARIANTS:31), not a defect.
+//
+// Consumes:
+//   nothing — this is the substrate root
+//
+// Status: scaffold — fill per TASKS.md T-1
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.node
+

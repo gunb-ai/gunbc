@@ -1,0 +1,23 @@
+// src/v4/extdeps/formats/json.dag
+//
+// Scope: JSON data format model — direction-agnostic.
+// Anchor: https://datatracker.ietf.org/doc/html/rfc8259 (RFC 8259) + https://ecma-international.org/publications-and-standards/standards/ecma-404/ (ECMA-404)
+//
+// Owns:
+//   - JsonValue = Null | Bool | Number | String | Array | Object (closed sum)
+//   - Object = Map<String, JsonValue>
+//   - Array = List<JsonValue>
+//   - Number model (RFC 8259 §6: arbitrary-precision OR IEEE-754; v4 picks IEEE-754 default + BigDecimal opt-in)
+//   - parse(String) -> Result<JsonValue, Diagnostic>
+//   - emit(JsonValue) -> String
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (FreeMonoid)
+//
+// Status: scaffold — fill per TASKS.md T-4.6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.json
+

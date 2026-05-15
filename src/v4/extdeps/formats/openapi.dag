@@ -1,0 +1,25 @@
+// src/v4/extdeps/formats/openapi.dag
+//
+// Scope: OpenAPI Specification model — REST API contract description. Direction-agnostic.
+// Anchor: https://spec.openapis.org/oas/v3.1.0 (OpenAPI Specification v3.1.0)
+//
+// Owns:
+//   - OpenApiSpec { info, servers, paths, components, ... }
+//   - Path { operations: Map<HttpMethod, Operation> }
+//   - Operation { parameters, request_body, responses, ... }
+//   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
+//   - emit(OpenApiSpec) -> String  (typically YAML)
+//   - Type derivation from components.schemas (delegates to json_schema.dag)
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag
+//   - extdeps/formats/json_schema.dag: schema modeling
+//   - extdeps/formats/yaml.dag, extdeps/formats/json.dag: parse surface
+//
+// Status: scaffold — fill per TASKS.md T-4.6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.openapi
+

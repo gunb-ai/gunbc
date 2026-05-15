@@ -1,0 +1,21 @@
+// src/v4/bin/main.dag
+//
+// Scope: emits main.rs trampoline (0-floor compliant per design-pure-bootstrap-zero.md:210).
+// Anchor: https://en.wikipedia.org/wiki/Entry_point + design-pure-bootstrap-zero.md trampoline (0-floor)
+//
+// Owns:
+//   - main.rs is machine-emitted from this .dag; not hand-authored
+//   - one-line include!() trampoline pattern
+//
+// Consumes:
+//   - std/node.dag
+//   - compiler/05_emit.dag (entry into the pipeline)
+//
+// Status: scaffold — fill per TASKS.md T-15
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.bin.main
+

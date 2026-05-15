@@ -1,0 +1,37 @@
+// src/v4/extdeps/file_system.dag
+//
+// Scope: file system model — paths, file kinds, read/write/list operations.
+// Anchor: https://en.wikipedia.org/wiki/File_system
+//         + https://pubs.opengroup.org/onlinepubs/9699919799/ (POSIX File and Directory Operations)
+//
+// Owns:
+//   - Path = AbsolutePath | RelativePath
+//   - AbsolutePath { components: NonEmptyList<PathComponent> }
+//   - RelativePath { components: List<PathComponent> }
+//   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
+//   - FileKind = RegularFile | Directory | Symlink(target: Path)
+//   - read_file(p)        -> Result<FreeMonoid<Char>, Diagnostic>
+//   - write_file(p, body) -> Result<Unit, Diagnostic>
+//   - list_dir(p)         -> Result<List<PathComponent>, Diagnostic>
+//   - file_kind(p)        -> Result<FileKind, Diagnostic>
+//
+// Scope NOT included in v4 (subset for compiler self-hosting needs):
+//   - Permissions (mode bits) — out of scope; v4 compiler reads/writes own files
+//   - Timestamps (atime/mtime/ctime) — out of scope; not needed for emission
+//   - Memory mapping — out of scope; v4 reads files into memory wholesale
+//   - File locking — out of scope; v4 is single-process
+//
+// Consumes:
+//   - std/diagnostic.dag: Diagnostic
+//   - std/primitive.dag: String, Char + their totalizations
+//   - std/algebra.dag: FreeMonoid<Char>
+//   - std/collection.dag: List, NonEmptyList
+//
+// Status: scaffold — fill per TASKS.md T-4.5
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.extdeps.file_system
+

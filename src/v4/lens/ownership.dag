@@ -1,0 +1,20 @@
+// src/v4/lens/ownership.dag
+//
+// Scope: ownership lens — proves no aliased mutation in emitted code.
+// Anchor: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html + https://en.wikipedia.org/wiki/Linear_type_system
+//
+// Owns:
+//   - lens read: Node -> Witness<OwnershipMap>
+//   - aliasing modeled in substrate (cardinality + behavior)
+//
+// Consumes:
+//   - std/node.dag, std/cardinality.dag, std/witness.dag
+//
+// Status: scaffold — fill per TASKS.md T-13
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.lens.ownership
+

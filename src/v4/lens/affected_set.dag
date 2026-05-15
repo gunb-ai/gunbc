@@ -1,0 +1,28 @@
+// src/v4/lens/affected_set.dag
+//
+// Scope: affected-set lens — given a diff over the dependency graph, derive the MINIMAL subgraph that must re-execute. Canonical authority for incremental execution + CI job selection. scripts/detect-affected-components.sh is the interim BOOTSTRAP BRIDGE; this lens is the structural authority that replaces it (per feedback_no_textual_enforcement_bridges).
+// Anchor: THESIS "Free consequences" §205-210 (incremental cross-run execution) + v4-close-interrogation.md §2.5.F affected-set + memory: feedback_no_textual_enforcement_bridges
+// Why EARLY (operator 2026-05-15: "something i wanted to get working
+//   very early on"): load-bearing for incremental execution AND it is
+//   the structural replacement for the shell script currently gating
+//   v2/v3/v4 CI selection. Phase 1.5.
+//
+// Owns:
+//   - affected_set: (Dag, Diff) -> Witness<ReExecFrontier>
+//     (the minimal node set that must re-run; everything else is
+//     incrementally skippable because pure + unchanged)
+//   - composes with compiler/05_eval.dag (skip unchanged pure subgraphs)
+//   - composes with workflow/ci.dag (gate/job selection — replaces the
+//     interim scripts/detect-affected-components.sh shell bridge)
+//
+// Consumes:
+//   - std/node.dag, std/witness.dag
+//   - compiler/04_infer.dag: the typed dependency graph (Dag)
+//
+// Status: scaffold — fill per TASKS.md T-21
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.lens.affected_set
+

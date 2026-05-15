@@ -1,0 +1,23 @@
+// src/v4/compiler/01_tokenize.dag
+//
+// Scope: pipeline stage 1 — Source string to TokenStream. Pure function.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
+//
+// Owns:
+//   - TokenStream type (output)
+//   - tokenize: FreeMonoid<Char> -> Result<TokenStream, Diagnostic>
+//   - character-class predicates
+//
+// Consumes:
+//   - std/primitive.dag: Char, String
+//   - std/diagnostic.dag: Diagnostic
+//   - std/witness.dag: Witness<C>
+//
+// Status: scaffold — fill per TASKS.md T-6
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.compiler.tokenize
+

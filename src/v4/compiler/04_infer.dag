@@ -1,0 +1,28 @@
+// src/v4/compiler/04_infer.dag
+//
+// Scope: pipeline stage 4 — type inference + checking. Single-file discipline; split = stop signal.
+// Anchor: https://en.wikipedia.org/wiki/Type_inference (Hindley–Milner family + algebra-homomorphism search per THESIS:173)
+// Primary: this file (+ lens/* + std/algebra.dag grounding) is the
+//   compiler's LOAD-BEARING work — validating the epistemic chain. Per
+//   THESIS:13 + :196: the compiler is a causal/algebra engine first;
+//   emission is mechanical translation downstream. Algebra-homomorphism
+//   search here IS the enforcement; an ungroundable concept is a
+//   Diagnostic, never a downstream emitter special-case.
+//
+// Owns:
+//   - InferredTree type (with full type/algebra/cardinality info)
+//   - infer: ResolvedTree -> Result<InferredTree, Diagnostic>
+//   - algebra-homomorphism search for target-grounding
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/cardinality.dag, std/diagnostic.dag
+//   - compiler/03_resolve.dag: ResolvedTree
+//
+// Status: scaffold — fill per TASKS.md T-9
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.compiler.infer
+
