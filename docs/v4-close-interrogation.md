@@ -1289,12 +1289,15 @@ Compiler proves a DIFFERENT algorithm with equivalent semantics achieves better 
 
 **v4 owner**: extends `src/v4/lens/complexity.dag` (or new `src/v4/lens/synthesis.dag` if substrate-cohesion warrants).
 
-**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). **XL scope, research-tier risk**. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Two valid shapes:
+**Disposition** (operator-ratified 2026-05-15): **IN**. XL scope, research-tier risk acknowledged. v4 ships with cross-algorithm complexity synthesis as a structural capability.
 
-- **IN**: operator commits cross-algorithm complexity to v4 scope. v4 ship blocks on synthesis-lens substrate landing. Scope is XL (substrate addition, semantic-equivalence library, pattern-recognition substrate, multi-axis lens composition).
-- **OUT**: operator commits explicit NOT-IN-V4. Reason recorded (e.g., "cross-algorithm synthesis is research-tier scope; v4 ships with same-algorithm tightness only"). Cross-algorithm requires fresh scope-expansion decision after v4 ships.
+**Scaffold additions** (operator-ratified):
+- `lens/synthesis.dag` — Anchor: https://en.wikipedia.org/wiki/Program_synthesis + r4-carve-out-routing.md C7
+- `std/report.dag` — Anchor: r4-carve-out-routing.md C7 advisory/Diagnostic discrimination
 
-Operator decides IN or OUT.
+Why a separate Report carrier (not folded into Diagnostic): the advisory-vs-fail-closed semantic split is load-bearing per INVARIANTS C-8 ("lens enforcement is Error or it isn't — no warning steady state"). Report IS the IS-NOT branch — advisory by construction. A user's `apply_lens(synthesis, Enforce { ... })` declaration converts advisory Report to fail-closed Diagnostic per opt-in-depth discipline (THESIS:307-321).
+
+**TASKS.md addition**: T-17 (lens/synthesis.dag + std/report.dag); Phase 3, downstream of T-12 (current-complexity input).
 
 ---
 

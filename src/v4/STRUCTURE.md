@@ -23,6 +23,7 @@ src/v4/
     primitive.dag        # Int/Float/String/Char/Bool with inhabitance
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
+    report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
   extdeps/               # external system contracts (15 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
@@ -55,13 +56,14 @@ src/v4/
     04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
     05_emit.dag          # InferredTree + TargetSpec -> TargetSource
 
-  lens/                  # dimensions (6 files, parallel after compiler)
+  lens/                  # dimensions (7 files, parallel after compiler)
     complexity.dag
     cost.dag
     parallelism.dag
     effect.dag
     ownership.dag
     idempotency.dag
+    synthesis.dag        # cross-algorithm complexity (C7; advisory via Report carrier)
 
   workflow/              # recursive-flex — work-direction in .dag (5 files)
     brief.dag            # typed Brief schema
@@ -78,7 +80,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 42 .dag files + 3 docs + 2 .gitkeep = 47 files at scaffold time.**
+**Total: 44 .dag files + 3 docs + 2 .gitkeep = 49 files at scaffold time.**
 
 ## Anchor convention
 

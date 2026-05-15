@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-19 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+20 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -29,6 +29,8 @@ Phase 3 (parallel — lens dimensions):
   T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
+  T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
+         XL scope, research-tier risk)              [needs T-12 for current-complexity input]
 
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
@@ -353,9 +355,31 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+### T-17: lens/synthesis.dag + std/report.dag — cross-algorithm complexity (C7)
+
+**File**: 2 files (operator-ratified 2026-05-15 IN: cross-algorithm complexity synthesis lens)
+**Why bundled**: the synthesis lens is the consumer of the Report advisory carrier; both must land together for the lens to have anything to emit.
+
+**Scope**: **XL, research-tier risk** — substrate additions cascade; semantic-equivalence representation, pattern-recognition substrate, transformation-rule library are all substrate-design decisions individually. STOP-and-escalate discipline applies fully.
+
+**Modeling decisions**:
+- Semantic equivalence: how is "two programs compute the same I/O relation" represented structurally? Pure-function input/output specifications? Algebraic-axiom-preserving rewrites? Tree-rewriting under a typed equivalence?
+- Pattern-recognition substrate: how does the lens match user program against algorithm-class templates? (Template matching? Constraint solving? Structural unification?)
+- Transformation rule library: bubble-sort → merge-sort, naive-matmul → Strassen, naive-string-match → KMP, etc. — encoded as algebraic rewrites OR (input-shape → output-shape) pairs OR named patterns
+- Report carrier shape (`std/report.dag`): closed-enum `ReportReason` disjoint from Diagnostic's `NamedReason`; advisory by construction; opt-in fail-closed via `apply_lens(synthesis, Enforce { ... })`
+- Composition with lens/complexity.dag: synthesis reads current program's complexity (via complexity lens), produces Report with proposed-algorithm-complexity for comparison
+
+**Reference**:
+- `docs/r4-carve-out-routing.md` C7 — Director-tier design scope spec
+- `lens/complexity.dag` — current-complexity input
+- THESIS.md correctness dimensions §1.1 — complexity dimension parent
+- INVARIANTS C-8 — fail-closed discipline (Report is the IS-NOT-fail-closed branch)
+
+---
+
 ## Summary
 
-19 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+20 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 

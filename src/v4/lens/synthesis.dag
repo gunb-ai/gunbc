@@ -1,0 +1,40 @@
+// src/v4/lens/synthesis.dag
+//
+// Scope: cross-algorithm complexity lens — prove a DIFFERENT program achieves
+//        better complexity than user's, for the same I/O relation. Distinct
+//        from lens/complexity.dag (same-algorithm tightness via semantics-
+//        preserving rewrites); synthesis reasons ACROSS program shapes (e.g.,
+//        bubble-sort → merge-sort, naive-matmul → Strassen).
+// Anchor: https://en.wikipedia.org/wiki/Program_synthesis +
+//         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
+//         Diagnostic; algorithm choice is design-tier — programmer decides)
+//
+// Owns:
+//   - lens read: Node -> Witness<Report>  (Report carrier, NOT Diagnostic)
+//   - semantic-equivalence relation (when do two programs compute the same
+//     input→output relation? structural, not behavioral)
+//   - pattern-recognition substrate (match user program against algorithm-
+//     class templates: sort / search / matmul / graph-traverse / etc.)
+//   - transformation rule library (algorithm-class rewrites)
+//   - cross-algorithm cost comparison (composes with lens/complexity.dag)
+//
+// Discipline (per INVARIANTS C-8 + r4-carve-out-routing.md C7):
+//   - The LENS itself is advisory (emits Report, not Diagnostic) — algorithm
+//     choice is design-tier; programmer informed, programmer chooses
+//   - A user's apply_lens(synthesis, Enforce { ... }) declaration converts
+//     advisory Report into fail-closed Diagnostic per their policy choice
+//   - Default policy: Introspect (advisory) per opt-in-depth discipline
+//
+// Consumes:
+//   - std/node.dag, std/witness.dag, std/algebra.dag
+//   - std/report.dag (advisory carrier)
+//   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)
+//
+// Status: scaffold — fill per TASKS.md T-17
+// Brief: see BRIEF_TEMPLATE.md. T-17 is XL scope, research-tier risk —
+// substrate additions WILL surface that may trigger operator escalation
+// (e.g., semantic-equivalence shape, pattern-recognition substrate
+// shape). STOP-and-escalate discipline applies fully.
+
+module v4.lens.synthesis
+

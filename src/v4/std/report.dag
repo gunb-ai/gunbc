@@ -1,0 +1,38 @@
+// src/v4/std/report.dag
+//
+// Scope: advisory carrier — non-fail-closed information channel for programmer.
+//        Distinct from std/diagnostic.dag's Diagnostic (which is fail-closed
+//        per INVARIANTS P3 / C-8). Report is design-tier advisory output where
+//        the programmer makes the choice. Used by lens/synthesis.dag (cross-
+//        algorithm complexity) and any future advisory-tier lens.
+// Anchor: docs/r4-carve-out-routing.md C7 design discrimination — "advisory
+//         suggestions ... route through a separate introspection/report
+//         carrier (NOT DiagnosticSeverity)"; INVARIANTS C-8 contrast (lens
+//         enforcement is Error or it isn't — Report is the IS NOT branch)
+//
+// Owns:
+//   - Report { reason: ReportReason, at: Locus, suggestion: ReportSuggestion }
+//   - ReportReason (closed enum of advisory categories — DISJOINT from
+//     Diagnostic's NamedReason; advisory-class vs error-class)
+//   - ReportSuggestion (typed alternative the report points to; structurally
+//     parallel to Diagnostic.suggested_correction but with non-blocking
+//     semantics)
+//
+// Discipline:
+//   - Report has NO Witness::Violates pairing. A lens emits Witness<Report>;
+//     Holds means "no advisory observation," Violates means "advisory
+//     observation present" — but Violates here is informational, not blocking
+//   - Per opt-in-depth: a Report becomes blocking only via user-authored
+//     apply_lens(<lens>, Enforce { ... }) declaration (THESIS:307-321)
+//
+// Consumes:
+//   - std/node.dag, std/primitive.dag (String for messages)
+//   - std/diagnostic.dag: Locus (shared structural reference for "where in
+//     the program"; Report and Diagnostic share Locus but diverge on
+//     reason/severity semantics)
+//
+// Status: scaffold — fill per TASKS.md T-17
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.std.report
+
