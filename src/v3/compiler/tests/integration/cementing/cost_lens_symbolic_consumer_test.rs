@@ -87,7 +87,7 @@ fn expect_symbolic_cost_dimension(dag: &v3_compiler::dag::Dag, bind_name: &str) 
 
 fn linear_size_ports(cost: &SymbolicCost, out: &mut Vec<PortId>) {
     match cost {
-        SymbolicCost::LinearCost { _0: var } | SymbolicCost::LogCost { _0: var } => {
+        SymbolicCost::PolynomialCost { var, .. } | SymbolicCost::LogCost { _0: var } => {
             out.push(var.source_port);
         }
         SymbolicCost::PolynomialCost { var, .. } => {

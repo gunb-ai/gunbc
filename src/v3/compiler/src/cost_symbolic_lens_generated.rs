@@ -138,12 +138,7 @@ pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCo
         CallPattern::ArithmeticSubtractCall {
             steps: _,
             ring_param: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::ArithmeticDivideCall {
             divisor: _,
             ring_param: _,
@@ -153,41 +148,16 @@ pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCo
                 display_name: None,
             },
         }),
-        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::CollectionShrinkCall {
             amount: _,
             collection: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::FoldBodyCall {
             outer_collection: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
-        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
-        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
+        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
+        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::SameArgumentCall => Lookup::Miss,
     }
 }
@@ -213,12 +183,7 @@ pub fn behavior_result_port(p0: &Behavior) -> PortId {
     }
 }
 pub fn linear_at(p0: &PortId) -> Lookup<SymbolicCost> {
-    Lookup::Hit(SymbolicCost::LinearCost {
-        _0: SizeVariable {
-            source_port: *p0,
-            display_name: None,
-        },
-    })
+    Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p0, display_name: None }))
 }
 pub fn combine_iterate(
     p0: &Lookup<SymbolicCost>,
@@ -382,24 +347,20 @@ pub fn cost_lens_branch_op(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
 pub fn cost_lens_iterate_op(p0: SymbolicCost, p1: &LoopBound) -> SymbolicCost {
     match p1 {
         LoopBound::Cardinality { count: payload } => iterate(
-            SymbolicCost::LinearCost {
-                _0: SizeVariable {
+            polynomial_linear(SizeVariable {
                     source_port: *payload,
                     display_name: None,
-                },
-            },
+                }),
             (p0).clone(),
         ),
         LoopBound::Descent {
             cluster: __payload_cluster,
             measure: __payload_measure,
         } => iterate(
-            SymbolicCost::LinearCost {
-                _0: SizeVariable {
+            polynomial_linear(SizeVariable {
                     source_port: *__payload_measure,
                     display_name: None,
-                },
-            },
+                }),
             (p0).clone(),
         ),
     }

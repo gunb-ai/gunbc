@@ -113,7 +113,7 @@ fn cost_contains_polynomial_or_unknown(cost: &SymbolicCost) -> bool {
 
 fn cost_contains_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::PolynomialCost { .. } => true,
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             terms.iter().any(|t| cost_contains_linear(t.as_ref()))
         }
@@ -123,7 +123,7 @@ fn cost_contains_linear(cost: &SymbolicCost) -> bool {
 
 fn linear_size_ports(cost: &SymbolicCost, out: &mut Vec<PortId>) {
     match cost {
-        SymbolicCost::LinearCost { _0: var } | SymbolicCost::LogCost { _0: var } => {
+        SymbolicCost::PolynomialCost { var, .. } | SymbolicCost::LogCost { _0: var } => {
             out.push(var.source_port);
         }
         SymbolicCost::PolynomialCost { var, .. } => out.push(var.source_port),

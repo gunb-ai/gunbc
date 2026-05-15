@@ -6009,15 +6009,21 @@ enum SymbolicCostPortPattern {
 fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     match cost {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
-        SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
-            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
-        },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
             source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            degree_raw: degree.raw(),
+            degree_raw: degree.numerator / degree.denominator,
+        },
+        SymbolicCost::PolyLogCost { var, exponent } => SymbolicCostEqPattern::Polynomial {
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
+            degree_raw: exponent.numerator / exponent.denominator,
+        },
+        SymbolicCost::ExponentialCost { var, .. }
+        | SymbolicCost::FactorialCost { var } => SymbolicCostEqPattern::Polynomial {
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
+            degree_raw: 1,
         },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
             list.iter()
@@ -6149,9 +6155,7 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let inner = single_payload(payload)?;
                     let source_port =
                         parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
-                    Ok(SymbolicCostEqPattern::Linear {
-                        source_port,
-                    })
+                    Ok(SymbolicCostEqPattern::Polynomial { source_port, degree_raw: 1 })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
@@ -6177,7 +6181,7 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     })?;
                     let source_port =
                         parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
-                    let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
+                    let degree_raw = degree_raw_from_rational_like_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
                         source_port,
                         degree_raw,
@@ -6537,10 +6541,15 @@ fn is_display_name_optional_absent_constructor(dag: &Dag, ctor: DeclarationId) -
     size_variable_display_name_optional_none_constructor_id(dag) == Some(ctor)
 }
 
-fn degree_raw_from_degree_at_least_two_field_value(
+fn degree_raw_from_rational_like_field_value(
     dag: &Dag,
     fv: &FieldValue,
 ) -> Result<i64, String> {
+    if let FieldValue::Literal(LiteralBits::Int(n)) = fv {
+        return n.parse::<i64>().map_err(|err| {
+            format!("SymbolicCostExprEquals: Rational/degree literal `{n}` is not i64: {err}")
+        });
+    }
     let FieldValue::Variant {
         constructor,
         payload,
@@ -6571,7 +6580,7 @@ fn degree_raw_from_degree_at_least_two_field_value(
             let prev = field(fields, "previous").ok_or_else(|| {
                 "SymbolicCostExprEquals: DegreeSuccessor missing `previous`".to_string()
             })?;
-            let prev_raw = degree_raw_from_degree_at_least_two_field_value(dag, prev)?;
+            let prev_raw = degree_raw_from_rational_like_field_value(dag, prev)?;
             Ok(prev_raw + 1)
         }
         other => Err(format!(

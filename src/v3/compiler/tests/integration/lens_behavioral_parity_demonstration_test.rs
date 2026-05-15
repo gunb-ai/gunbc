@@ -106,7 +106,7 @@ fn find_bind(dag: &Dag, name: &str) -> v3_compiler::dag::BindNode {
 
 fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
     match cost {
-        SymbolicCost::LinearCost { _0: var } => var.source_port == source_port,
+        SymbolicCost::PolynomialCost { var, .. } => var.source_port == source_port,
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => terms
             .iter()
             .any(|term| contains_linear(term.as_ref(), source_port)),

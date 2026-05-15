@@ -13,7 +13,9 @@
 //! consumer (`docs/r3-program-plan.md` gate #91).
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, BindNode, DegreeAtLeastTwo, SizeVariable, SymbolicCost};
+use v3_compiler::dag::{
+    polynomial_linear, Behavior, BindNode, Rational, SizeVariable, SymbolicCost,
+};
 use v3_compiler::memory_peak_cost::{compose_branch_memory_peak, memory_peak_enforcement_violates};
 
 fn find_bind<'a>(dag: &'a v3_compiler::dag::Dag, name: &str) -> &'a BindNode {
@@ -60,14 +62,14 @@ fn memory_peak_cost_basis_demo_function_models_branch_peak_exceeding_linear_budg
         // memory peak for the conditional is max(O(n²), O(1)).
         let arm_heavy = SymbolicCost::PolynomialCost {
             var: n.clone(),
-            degree: DegreeAtLeastTwo::TWO,
+            degree: Rational::TWO,
         };
         let arm_light = SymbolicCost::ConstantCost { _0: 0 };
         let observed_peak = compose_branch_memory_peak(arm_heavy, arm_light);
 
         // User-authored budgets are **thresholds**, not duplicated basis declarations
         // (`docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`).
-        let declared_budget_mem_dim = SymbolicCost::LinearCost { _0: n };
+        let declared_budget_mem_dim = polynomial_linear(n);
 
         assert!(
             memory_peak_enforcement_violates(&declared_budget_mem_dim, &observed_peak),

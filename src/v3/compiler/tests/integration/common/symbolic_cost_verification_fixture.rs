@@ -5,7 +5,7 @@
 //! imports used by hand-authored verification fixtures; keep this serializer aligned with
 //! `test_runner::field_value_to_symbolic_cost_eq_pattern` decoding rules.
 
-use v3_compiler::dag::{DegreeAtLeastTwo, NonSingletonList, SymbolicCost};
+use v3_compiler::dag::{NonSingletonList, Rational, SymbolicCost};
 
 /// Escape UTF-8 for embedding inside a v3 double-quoted string (e.g. `TestClaim.source`).
 ///
@@ -37,14 +37,8 @@ pub fn escape_v3_string_literal_content(s: &str) -> String {
     out
 }
 
-fn degree_at_least_two_v3(d: &DegreeAtLeastTwo) -> String {
-    match d {
-        DegreeAtLeastTwo::DegreeTwo => "DegreeTwo".to_string(),
-        DegreeAtLeastTwo::DegreeSuccessor { previous } => format!(
-            "DegreeSuccessor {{ previous: {} }}",
-            degree_at_least_two_v3(previous)
-        ),
-    }
+fn rational_v3(d: &Rational) -> String {
+    d.raw().to_string()
 }
 
 fn symbolic_cost_list_tail_v3(terms: &[SymbolicCost]) -> String {
@@ -77,10 +71,6 @@ fn symbolic_cost_list_tail_v3(terms: &[SymbolicCost]) -> String {
 pub fn symbolic_cost_as_v3_data_initializer(cost: &SymbolicCost) -> String {
     match cost {
         SymbolicCost::ConstantCost { _0: n } => format!("ConstantCost({n})"),
-        SymbolicCost::LinearCost { _0: sv } => format!(
-            "LinearCost(unnamed_size_variable(PortId({})))",
-            sv.source_port.raw()
-        ),
         SymbolicCost::LogCost { _0: sv } => format!(
             "LogCost(unnamed_size_variable(PortId({})))",
             sv.source_port.raw()
@@ -88,7 +78,21 @@ pub fn symbolic_cost_as_v3_data_initializer(cost: &SymbolicCost) -> String {
         SymbolicCost::PolynomialCost { var, degree } => format!(
             "PolynomialCost {{ var: unnamed_size_variable(PortId({})), degree: {} }}",
             var.source_port.raw(),
-            degree_at_least_two_v3(degree)
+            rational_v3(degree)
+        ),
+        SymbolicCost::PolyLogCost { var, exponent } => format!(
+            "PolyLogCost {{ var: unnamed_size_variable(PortId({})), exponent: {} }}",
+            var.source_port.raw(),
+            rational_v3(exponent)
+        ),
+        SymbolicCost::ExponentialCost { base, var } => format!(
+            "ExponentialCost {{ base: {}, var: unnamed_size_variable(PortId({})) }}",
+            base,
+            var.source_port.raw()
+        ),
+        SymbolicCost::FactorialCost { var } => format!(
+            "FactorialCost {{ var: unnamed_size_variable(PortId({})) }}",
+            var.source_port.raw()
         ),
         SymbolicCost::ProductCost { _0: nsl } => {
             let v: Vec<SymbolicCost> = nsl.to_vec().into_iter().map(|b| *b).collect();
@@ -125,20 +129,24 @@ mod symbolic_cost_verification_fixture_tests {
     }
 
     #[test]
-    fn linear_emits_unnamed_size_variable() {
+    fn linear_polynomial_emits_unnamed_size_variable() {
         let dag = Dag::new();
         let p = dag
             .ports()
             .first()
             .expect("empty dag should still allocate ports")
             .id();
-        let c = SymbolicCost::LinearCost {
-            _0: SizeVariable {
+        let c = SymbolicCost::PolynomialCost {
+            var: SizeVariable {
                 source_port: p,
                 display_name: None,
             },
+            degree: Rational::ONE,
         };
-        let expected = format!("LinearCost(unnamed_size_variable(PortId({})))", p.raw());
+        let expected = format!(
+            "PolynomialCost {{ var: unnamed_size_variable(PortId({})), degree: 1 }}",
+            p.raw()
+        );
         assert_eq!(symbolic_cost_as_v3_data_initializer(&c), expected);
     }
 

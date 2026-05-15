@@ -1538,7 +1538,10 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     }
 
     match (terms.first.as_ref(), terms.second.as_ref()) {
-        (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
+        (
+            SymbolicCost::PolynomialCost { var: va, .. },
+            SymbolicCost::PolynomialCost { var: vb, .. },
+        ) => {
             let non_param_port = if va.source_port == param && vb.source_port != param {
                 vb.source_port
             } else if vb.source_port == param && va.source_port != param {
@@ -1549,12 +1552,10 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
             if !unary_bind_duplicate_iter_alias_evidence(dag, bind, param, non_param_port) {
                 return cost;
             }
-            SymbolicCost::LinearCost {
-                _0: SizeVariable {
+            polynomial_linear(SizeVariable {
                     source_port: param,
                     display_name: None,
-                },
-            }
+                })
         }
         _ => cost,
     }
@@ -5204,18 +5205,14 @@ mod tests {
 
         let mk_product = |other: PortId| SymbolicCost::ProductCost {
             _0: NonSingletonList::from_vec(vec![
-                Box::new(SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                Box::new(polynomial_linear(SizeVariable {
                         source_port: param,
                         display_name: None,
-                    },
-                }),
-                Box::new(SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                    })),
+                Box::new(polynomial_linear(SizeVariable {
                         source_port: other,
                         display_name: None,
-                    },
-                }),
+                    })),
             ])
             .expect("two linear factors"),
         };
@@ -5226,7 +5223,7 @@ mod tests {
             mk_product(descent_port),
         );
         assert!(
-            matches!(collapsed, SymbolicCost::LinearCost { .. }),
+            matches!(collapsed, SymbolicCost::PolynomialCost { .. }),
             "gate #78 duplicate iterate-alias (param loop × descent operand, call under loop body) \
              should collapse: {collapsed:?}"
         );

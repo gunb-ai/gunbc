@@ -45,7 +45,7 @@ pub fn memory_peak_enforcement_violates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{max_path, DegreeAtLeastTwo, PortId, SizeVariable};
+    use crate::dag::{max_path, PortId, Rational, SizeVariable};
 
     fn var(p: PortId) -> SizeVariable {
         // Mirrors `unnamed_size_variable` / absent `display_name`; substrate lists BOTH fields at
@@ -61,7 +61,7 @@ mod tests {
         // Pin the authoritative composition operator: branch / peak merges must not drift.
         let p0 = PortId::test_raw(110);
         let p1 = PortId::test_raw(111);
-        let a = SymbolicCost::LinearCost { _0: var(p0) };
+        let a = polynomial_linear(var(p0));
         let b = SymbolicCost::LogCost { _0: var(p1) };
         assert_eq!(
             compose_branch_memory_peak(a.clone(), b.clone()),
@@ -74,7 +74,7 @@ mod tests {
         let p = PortId::test_raw(200);
         let n = var(p);
         let budget = SymbolicCost::LogCost { _0: n.clone() };
-        let peak = SymbolicCost::LinearCost { _0: n };
+        let peak = polynomial_linear(n);
         assert!(memory_peak_enforcement_violates(&budget, &peak));
     }
 
@@ -82,7 +82,7 @@ mod tests {
     fn enforcement_clean_when_budget_covers_peak() {
         let p = PortId::test_raw(201);
         let n = var(p);
-        let budget = SymbolicCost::LinearCost { _0: n.clone() };
+        let budget = polynomial_linear(n.clone());
         let peak = SymbolicCost::LogCost { _0: n };
         assert!(!memory_peak_enforcement_violates(&budget, &peak));
     }
@@ -91,21 +91,17 @@ mod tests {
     fn enforcement_clean_when_budget_ties_observed_peak_under_dominance() {
         let p = PortId::test_raw(202);
         let n = var(p);
-        let cost = SymbolicCost::LinearCost { _0: n.clone() };
+        let cost = polynomial_linear(n.clone());
         assert!(
-            !memory_peak_enforcement_violates(&cost, &SymbolicCost::LinearCost { _0: n }),
+            !memory_peak_enforcement_violates(&cost, &polynomial_linear(n)),
             "reflexive asymptotic pairs must not violate (EXCEEDS is strict over = in the contract)"
         );
     }
 
     #[test]
     fn enforcement_violates_on_incomparable_size_variables_fail_closed() {
-        let a = SymbolicCost::LinearCost {
-            _0: var(PortId::test_raw(203)),
-        };
-        let b = SymbolicCost::LinearCost {
-            _0: var(PortId::test_raw(204)),
-        };
+        let a = polynomial_linear(var(PortId::test_raw(203)),);
+        let b = polynomial_linear(var(PortId::test_raw(204)),);
         assert!(
             memory_peak_enforcement_violates(&a, &b),
             "incomparable `LinearCost` keys must not pass Enforce silently"
@@ -118,12 +114,12 @@ mod tests {
         let n = var(p);
         let q = SymbolicCost::PolynomialCost {
             var: n.clone(),
-            degree: DegreeAtLeastTwo::TWO,
+            degree: Rational::TWO,
         };
         let peak_branch = compose_branch_memory_peak(q.clone(), q);
         assert!(
             memory_peak_enforcement_violates(
-                &SymbolicCost::LinearCost { _0: n.clone() },
+                &polynomial_linear(n.clone()),
                 &peak_branch
             ),
             "O(n²) peak should exceed O(n) declared budget",

@@ -220,12 +220,7 @@ pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCo
         CallPattern::ArithmeticSubtractCall {
             steps: _,
             ring_param: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::ArithmeticDivideCall {
             divisor: _,
             ring_param: _,
@@ -235,41 +230,16 @@ pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCo
                 display_name: None,
             },
         }),
-        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::CollectionShrinkCall {
             amount: _,
             collection: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::FoldBodyCall {
             outer_collection: _,
-        } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
-        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
-        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                source_port: *p1,
-                display_name: None,
-            },
-        }),
+        } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
+        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
+        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(polynomial_linear(SizeVariable { source_port: *p1, display_name: None })),
         CallPattern::SameArgumentCall => Lookup::Miss,
     }
 }
@@ -288,15 +258,10 @@ pub fn summary_from_iter_bound(p0: &Lookup<SymbolicCost>) -> Lookup<ComplexitySu
                     Certainty::Proven,
                 ))
             }
-            SymbolicCost::LinearCost { _0: _ } => {
-                hit_complexity_summary_lookup(summary_from_costs(
-                    (cost).clone(),
-                    (cost).clone(),
-                    Certainty::Proven,
-                    Certainty::Proven,
-                ))
-            }
-            SymbolicCost::PolynomialCost { var: _, degree: _ } => {
+            SymbolicCost::PolynomialCost { var: _, degree: _ }
+            | SymbolicCost::PolyLogCost { var: _, exponent: _ }
+            | SymbolicCost::ExponentialCost { base: _, var: _ }
+            | SymbolicCost::FactorialCost { var: _ } => {
                 hit_complexity_summary_lookup(summary_from_costs(
                     (cost).clone(),
                     (cost).clone(),
@@ -335,18 +300,8 @@ pub fn loop_summary(p0: &Dag, p1: &[ComplexityEntry], p2: &LoopNode) -> Lookup<C
         )),
         &(combine_iterate(
             &(hit_complexity_summary_lookup(summary_from_costs(
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
-                        source_port: ((p2).source),
-                        display_name: None,
-                    },
-                },
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
-                        source_port: ((p2).source),
-                        display_name: None,
-                    },
-                },
+                polynomial_linear(SizeVariable { source_port: ((p2).source), display_name: None }),
+                polynomial_linear(SizeVariable { source_port: ((p2).source), display_name: None }),
                 Certainty::Proven,
                 Certainty::Proven,
             ))),
@@ -606,18 +561,14 @@ pub fn complexity_lens_iterate_op(p0: &ComplexitySummary, p1: &LoopBound) -> Com
     match p1 {
         LoopBound::Cardinality { count: payload } => compose_summary_iterate(
             &(summary_from_costs(
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                polynomial_linear(SizeVariable {
                         source_port: *payload,
                         display_name: None,
-                    },
-                },
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                    }),
+                polynomial_linear(SizeVariable {
                         source_port: *payload,
                         display_name: None,
-                    },
-                },
+                    }),
                 Certainty::Proven,
                 Certainty::Proven,
             )),
@@ -628,18 +579,14 @@ pub fn complexity_lens_iterate_op(p0: &ComplexitySummary, p1: &LoopBound) -> Com
             measure: __payload_measure,
         } => compose_summary_iterate(
             &(summary_from_costs(
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                polynomial_linear(SizeVariable {
                         source_port: *__payload_measure,
                         display_name: None,
-                    },
-                },
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
+                    }),
+                polynomial_linear(SizeVariable {
                         source_port: *__payload_measure,
                         display_name: None,
-                    },
-                },
+                    }),
                 Certainty::Proven,
                 Certainty::Proven,
             )),

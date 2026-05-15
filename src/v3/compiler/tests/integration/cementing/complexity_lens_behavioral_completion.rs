@@ -44,7 +44,7 @@ fn assert_proven(certainty: &Certainty, context: &str) {
 
 fn contains_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::PolynomialCost { .. } => true,
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             terms.iter().any(|term| contains_linear(term.as_ref()))
         }

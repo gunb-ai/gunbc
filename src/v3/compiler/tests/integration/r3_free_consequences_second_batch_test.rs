@@ -408,7 +408,7 @@ fn field_ref(dag: &Dag, decl_name: &str, field_name: &str) -> DeclarationId {
 
 fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::PolynomialCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
             terms.iter().any(|term| mentions_linear(term.as_ref()))
         }

@@ -16,9 +16,9 @@ use std::process::{Command, Stdio};
 use v3_compiler::compile_to_dag;
 use v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates;
 use v3_compiler::dag::{
-    classify_symbolic_cost, dominates, iterate, max_path, normalize, positive_descent_count,
-    sequential, ArithmeticOp, AsymptoticClass, Behavior, Dag, DegreeAtLeastTwo, Lookup,
-    NonSingletonList, OperatorKind, PortId, SizeVariable, SymbolicCost, TransformTarget,
+    classify_symbolic_cost, dominates, iterate, max_path, normalize, polynomial_linear,
+    positive_descent_count, sequential, ArithmeticOp, AsymptoticClass, Behavior, Dag, Lookup,
+    NonSingletonList, OperatorKind, PortId, Rational, SizeVariable, SymbolicCost, TransformTarget,
     TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
@@ -73,7 +73,7 @@ fn is_constant(cost: &SymbolicCost) -> bool {
 
 fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::PolynomialCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
             terms.iter().any(|term| mentions_linear(term.as_ref()))
         }
@@ -112,13 +112,13 @@ fn size_var(source_port: PortId) -> SizeVariable {
 }
 
 fn linear(port: PortId) -> SymbolicCost {
-    SymbolicCost::LinearCost { _0: size_var(port) }
+    polynomial_linear(size_var(port))
 }
 
 fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
     SymbolicCost::PolynomialCost {
         var: size_var(port),
-        degree: DegreeAtLeastTwo::new(degree).expect("polynomial degree must be >= 2"),
+        degree: Rational::from_i64(degree),
     }
 }
 
@@ -458,12 +458,10 @@ fn symbolic_cost_operator_div_preserves_operand_costs_beside_log_surcharge() {
         .stack_size(64 * 1024 * 1024)
         .spawn(|| {
             let (p_div, p_two) = two_distinct_ports();
-            let linear = SymbolicCost::LinearCost {
-                _0: SizeVariable {
+            let linear = polynomial_linear(SizeVariable {
                     source_port: p_div,
                     display_name: None,
-                },
-            };
+                });
             let acc_expensive = vec![
                 SymbolicCostEntry {
                     port: p_div,
@@ -567,7 +565,7 @@ budgeted_test! {
         let l = linear(port);
         let result = sequential(constant(5), l);
         assert!(
-            matches!(result, SymbolicCost::LinearCost { .. }),
+            matches!(result, SymbolicCost::PolynomialCost { .. }),
             "Constant + Linear should normalize to Linear, got {result:?}"
         );
     }
@@ -903,15 +901,15 @@ fn classify_symbolic_cost_polynomial_degree_orders_like_enforcement_lattice() {
 
     let p2 = SymbolicCost::PolynomialCost {
         var: v.clone(),
-        degree: DegreeAtLeastTwo::TWO,
+        degree: Rational::TWO,
     };
     let p3 = SymbolicCost::PolynomialCost {
         var: v.clone(),
-        degree: DegreeAtLeastTwo::new(3).expect("degree 3"),
+        degree: Rational::from_i64(3),
     };
     let p5 = SymbolicCost::PolynomialCost {
         var: v,
-        degree: DegreeAtLeastTwo::new(5).expect("degree 5"),
+        degree: Rational::from_i64(5),
     };
 
     let c2 = classify_symbolic_cost(&p2);

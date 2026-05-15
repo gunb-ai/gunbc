@@ -26,6 +26,80 @@ pub struct MethodContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rational {
+    pub numerator: i64,
+    pub denominator: i64,
+}
+
+impl Rational {
+    pub const ONE: Self = Self {
+        numerator: 1,
+        denominator: 1,
+    };
+
+    pub const TWO: Self = Self {
+        numerator: 2,
+        denominator: 1,
+    };
+
+    pub fn new(numerator: i64, denominator: i64) -> Option<Self> {
+        if denominator == 0 {
+            return None;
+        }
+        let sign = if denominator < 0 { -1 } else { 1 };
+        let numerator = numerator * sign;
+        let denominator = denominator.abs();
+        let divisor = gcd_i64(numerator.abs(), denominator);
+        Some(Self {
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+        })
+    }
+
+    pub fn from_i64(value: i64) -> Self {
+        Self {
+            numerator: value,
+            denominator: 1,
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.numerator == 0
+    }
+
+    pub fn add(&self, other: &Self) -> Self {
+        Self::new(
+            self.numerator * other.denominator + other.numerator * self.denominator,
+            self.denominator * other.denominator,
+        )
+        .expect("product of non-zero rational denominators is non-zero")
+    }
+
+    pub fn raw(&self) -> i64 {
+        self.numerator / self.denominator
+    }
+}
+
+impl PartialOrd for Rational {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some((self.numerator * other.denominator).cmp(&(other.numerator * self.denominator)))
+    }
+}
+
+fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
+    while b != 0 {
+        let next = a % b;
+        a = b;
+        b = next;
+    }
+    a.max(1)
+}
+
+pub type NonZeroRational = Rational;
+pub type PolyLogExponent = Rational;
+pub type ExponentialBase = i64;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
     DegreeTwo,
     DegreeSuccessor { previous: Box<DegreeAtLeastTwo> },
@@ -57,14 +131,24 @@ type BoxedSymbolicCostList = NonSingletonList<Box<SymbolicCost>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicCost {
     ConstantCost { _0: i64 },
-    LinearCost { _0: SizeVariable },
     PolynomialCost {
         var: SizeVariable,
-        degree: DegreeAtLeastTwo,
+        degree: NonZeroRational,
+    },
+    PolyLogCost {
+        var: SizeVariable,
+        exponent: PolyLogExponent,
     },
     ProductCost { _0: BoxedSymbolicCostList },
     SumCost { _0: BoxedSymbolicCostList },
     LogCost { _0: SizeVariable },
+    ExponentialCost {
+        base: ExponentialBase,
+        var: SizeVariable,
+    },
+    FactorialCost {
+        var: SizeVariable,
+    },
     UnknownCost { _0: String },
 }
 
@@ -203,11 +287,64 @@ fn boxed_cost_list_from_vec(terms: Vec<SymbolicCost>) -> BoxedSymbolicCostList {
 }
 
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-    if let (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) = (&a, &b) {
+    if let (
+        SymbolicCost::PolynomialCost {
+            var: va,
+            degree: da,
+        },
+        SymbolicCost::PolynomialCost {
+            var: vb,
+            degree: db,
+        },
+    ) = (&a, &b)
+    {
         if va == vb {
+            let degree = da.add(db);
+            if degree.is_zero() {
+                return SymbolicCost::ConstantCost { _0: 1 };
+            }
             return SymbolicCost::PolynomialCost {
                 var: va.clone(),
-                degree: DegreeAtLeastTwo::TWO,
+                degree,
+            };
+        }
+    }
+    if let (
+        SymbolicCost::PolyLogCost {
+            var: va,
+            exponent: ea,
+        },
+        SymbolicCost::PolyLogCost {
+            var: vb,
+            exponent: eb,
+        },
+    ) = (&a, &b)
+    {
+        if va == vb {
+            return SymbolicCost::PolyLogCost {
+                var: va.clone(),
+                exponent: ea.add(eb),
+            };
+        }
+    }
+    if let (
+        SymbolicCost::ExponentialCost { base: ba, var: va },
+        SymbolicCost::ExponentialCost { base: bb, var: vb },
+    ) = (&a, &b)
+    {
+        if va == vb {
+            return SymbolicCost::ExponentialCost {
+                base: ba * bb,
+                var: va.clone(),
+            };
+        }
+    }
+    if let (SymbolicCost::FactorialCost { var: va }, SymbolicCost::FactorialCost { var: vb }) =
+        (&a, &b)
+    {
+        if va == vb {
+            return SymbolicCost::UnknownCost {
+                _0: "(v!)² exceeds Tier 1 — pending R4 named-variant canvas".to_string(),
             };
         }
     }
@@ -257,27 +394,44 @@ where
     match a {
         SymbolicCost::UnknownCost { .. } => true,
         SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
-        SymbolicCost::LinearCost { _0: va } => match b {
-            SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
-            SymbolicCost::LinearCost { _0: vb } => va == vb,
-            SymbolicCost::PolynomialCost { var: _, degree: _ } => false,
-            _ => false,
-        },
         SymbolicCost::PolynomialCost {
             var: va,
             degree: ka,
         } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
-            SymbolicCost::LinearCost { _0: vb } => va == vb,
             SymbolicCost::PolynomialCost {
                 var: vb,
                 degree: kb,
-            } => va == vb && ka.raw() >= kb.raw(),
+            } => va == vb && ka >= kb,
+            SymbolicCost::PolyLogCost { var: vb, .. } => va == vb && ka.numerator > 0,
+            _ => false,
+        },
+        SymbolicCost::PolyLogCost { var: va, exponent: ea } => match b {
+            SymbolicCost::ConstantCost { .. } => true,
+            SymbolicCost::LogCost { _0: vb } => va == vb,
+            SymbolicCost::PolyLogCost { var: vb, exponent: eb } => va == vb && ea >= eb,
             _ => false,
         },
         SymbolicCost::LogCost { _0: va } => match b {
             SymbolicCost::ConstantCost { .. } => true,
             SymbolicCost::LogCost { _0: vb } => va == vb,
+            _ => false,
+        },
+        SymbolicCost::ExponentialCost { var: va, base: ba } => match b {
+            SymbolicCost::ConstantCost { .. } => true,
+            SymbolicCost::LogCost { _0: vb }
+            | SymbolicCost::PolynomialCost { var: vb, .. }
+            | SymbolicCost::PolyLogCost { var: vb, .. } => va == vb,
+            SymbolicCost::ExponentialCost { var: vb, base: bb } => va == vb && ba >= bb,
+            _ => false,
+        },
+        SymbolicCost::FactorialCost { var: va } => match b {
+            SymbolicCost::ConstantCost { .. } => true,
+            SymbolicCost::LogCost { _0: vb }
+            | SymbolicCost::PolynomialCost { var: vb, .. }
+            | SymbolicCost::PolyLogCost { var: vb, .. }
+            | SymbolicCost::ExponentialCost { var: vb, .. }
+            | SymbolicCost::FactorialCost { var: vb } => va == vb,
             _ => false,
         },
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
@@ -292,21 +446,31 @@ where
 {
     match cost.borrow() {
         SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
-        SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
         SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
         SymbolicCost::PolynomialCost { degree, .. } => {
-            let raw = degree.raw();
-            if raw == 2 {
+            if degree == &Rational::ONE {
+                AsymptoticClass::ClassLinear
+            } else if degree == &Rational::TWO {
                 AsymptoticClass::ClassQuadratic
             } else {
-                match positive_amount_from_i64(raw) {
+                match positive_amount_from_i64(degree.numerator / degree.denominator) {
                     Some(pos) => AsymptoticClass::ClassPolynomial { degree: pos },
                     None => AsymptoticClass::ClassUnknown,
                 }
             }
         }
+        SymbolicCost::PolyLogCost { .. } => AsymptoticClass::ClassUnknown,
+        SymbolicCost::ExponentialCost { .. } => AsymptoticClass::ClassExponential,
+        SymbolicCost::FactorialCost { .. } => AsymptoticClass::ClassUnknown,
         SymbolicCost::ProductCost { .. }
         | SymbolicCost::SumCost { .. }
         | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,
+    }
+}
+
+pub fn polynomial_linear(var: SizeVariable) -> SymbolicCost {
+    SymbolicCost::PolynomialCost {
+        var,
+        degree: Rational::ONE,
     }
 }

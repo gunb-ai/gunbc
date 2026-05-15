@@ -74,7 +74,7 @@ fn realization_row_cost_int(decl: &Declaration) -> i64 {
 
 fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
-        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::PolynomialCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
             terms.iter().any(|term| mentions_linear(term.as_ref()))
         }
