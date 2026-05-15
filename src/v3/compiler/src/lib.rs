@@ -4555,6 +4555,16 @@ pub mod lens_cost {
 /// into `src/v3/compiler/src/cost_symbolic_lens_generated.rs` and
 /// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
 ///
+/// **Dual gate #104 witness entrypoints — different contracts:**
+/// - **[`symbolic_cost_of`]** is **port-keyed**: runs typed [`crate::dag::Dag::resolve_producer_lookup`]
+///   and may return **malformed-substrate** [`crate::dimension::Witness::Violates`] (`MissingPort`,
+///   `MissingNode`, `BindCycle`) or **`NoProducer` → `UnknownCost`**.
+/// - **`Lens.read`** is implemented by the generated **`cost_lens_read`** (same fold + table as this
+///   module): caller supplies subject **`Behavior`** `b`; it runs **`lookup_cost(compute_symbolic_costs(..),
+///   behavior_result_port(b))`**, packaged with [`Witness::Violates`]
+///   at **`at = b`** on table miss only — it does **not** re-run **`resolve_producer_lookup`**, so it never
+///   emits the producer-walk malformed reasons (facts attach to the behavior the caller is pinning).
+///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
 /// `src/v3/compiler/src/dag.rs` rather than the generated module
 /// because they're declared in `src/v3/std/algebra.dag`, which
@@ -4639,6 +4649,10 @@ pub mod lens_cost_symbolic {
     ///   no resolving [`Behavior`] ([`ProducerLookup::MissingPort`], [`ProducerLookup::MissingNode`])
     ///   fall back to [`Dag::substrate_lens_read_diagnostic_anchor`] only because there is no
     ///   honest producer node at the witness boundary yet.
+    ///
+    /// **Precondition:** that anchor path requires **non-empty** [`Dag::nodes`](crate::dag::Dag::nodes);
+    /// an empty nodegraph is not a supported substrate for these `Violates` arms (same bootstrap invariant
+    /// as normal `Dag` construction — empty `Dag` + anchor is a hard error).
     ///
     /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
     ///

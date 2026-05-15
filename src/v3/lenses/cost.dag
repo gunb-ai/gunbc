@@ -27,6 +27,11 @@
 // [`witness_from_symbolic_cost_lookup`] so malformed substrate fails closed per INVARIANTS P3.
 // Legitimate **NoProducer** (parameter / external binding) surfaces as
 // **`Inhabits(UnknownCost("…"))`** — not a fabricated `Violates { at }` on an unrelated node.
+//
+// **`Lens.read` (`cost_lens_read`) vs `symbolic_cost_of`:** `cost_lens_read` is table-only
+// (`lookup_cost` + `witness_from_symbolic_cost_lookup` with **caller-supplied** `Behavior` `b`); it does
+// **not** run `resolve_producer_lookup`, so it never surfaces MissingPort / MissingNode / BindCycle
+// malformed reasons — those stay on the port-keyed Rust host.
 
 module lenses.cost
 
