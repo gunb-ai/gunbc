@@ -23,7 +23,7 @@
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
-//   - std/primitive.dag: String, Char + their totalizations
+//   - std/text.dag: Char, String (and their Tier-2 totalizations)
 //   - std/algebra.dag: FreeMonoid<Char>
 //   - std/collection.dag: List, NonEmptyList
 //
