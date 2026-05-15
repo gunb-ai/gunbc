@@ -10,7 +10,7 @@ The XL tasks below define "v4 done" (the count is intentionally NOT stated — i
 Phase 1 (parallel — substrate foundation):
   T-1   std/node.dag                     [BLOCKS: all]
   T-2   std/algebra.dag                  [needs T-1]
-  T-3   std/* supporting (11 files)      [needs T-1; scalar/numeric stack is its own ordered cluster]
+  T-3   std/* supporting (11 files)      [needs T-1, T-2; diagnostic/cardinality are T-1-only, the scalar/numeric stack needs T-2 (algebra) — ordered cluster, see T-3 detail]
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag   [needs T-1, T-2]
   T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
   T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
