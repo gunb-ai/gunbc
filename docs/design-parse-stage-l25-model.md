@@ -30,7 +30,7 @@ Per the live `src/v3/compiler/src/parse_generated.rs:1-3` top-comment + `parse_t
 
 **Parse is a substrate-driven recursive-descent function: `List<Token> → SurfaceModule`, dispatching on token kind per compile-time-generated grammar tables. Surface carriers (`SurfaceModule`, `SurfaceItem`, `SurfaceExpr`, `SurfacePattern`, `SurfaceType`) are declared in `.dag` substrate; parser dispatch tables are declared in `.dag` substrate; parser BODY is the residual hand-Rust SG-2c surface still requiring substrate capability to retire.**
 
-Per Decision 3.B operator-ratified (b) compile-time parser tables: GrammarSpec is `.dag` substrate that compiles to parser dispatch tables at build time. The parser engine reads compile-time-generated tables; no runtime grammar interpretation. This is more thesis-accurate than runtime data-driven (option a) — substrate authority all the way down.
+Per Decision 3.B operator-ratified (b) compile-time parser tables: the 6 SG-2c table-families in `parse_tables.dag` (conceptually called "GrammarSpec", though there is no `type GrammarSpec` carrier — see §3.2) are codegenned to parser dispatch tables at build time. The parser engine reads compile-time-generated tables; no runtime grammar interpretation, no runtime grammar input. This is more thesis-accurate than runtime data-driven (option a) — substrate authority all the way down.
 
 Per `feedback_lenses_not_passes`: parse dispatch decisions are substrate facts (token-to-operator mapping; bracket-role membership; type-rhs-boundary; primary-prefix dispatch). Anything parse "decides" is a grammar table that should be declared in `.dag`, not encoded in parser body logic.
 
@@ -40,7 +40,9 @@ Per `feedback_lenses_not_passes`: parse dispatch decisions are substrate facts (
 
 ## §3 Input types (declared in `.dag` substrate)
 
-Two input types feed parse (`List<Token>` from tokenize + `GrammarSpec` per Decision 3.B compile-time tables):
+**One** input type feeds parse at the API boundary: `List<Token>` from tokenize. Parser-dispatch tables (the conceptual "GrammarSpec" per Decision 3.B (b)) are NOT a runtime input — they are compile-time substrate at `parse_tables.dag`, codegenned into the parser body, and have no `type GrammarSpec` carrier.
+
+> **Cursor PR #3126 INLINE BLOCKING line:32 correction (2026-05-14T23:30:04Z, fixed in PR #3138)**: earlier draft framed `GrammarSpec` as a second declared `.dag` input type. Verified via `grep -rn "^type GrammarSpec\b" src/v3/ dsl/` — empty. No `type GrammarSpec` carrier exists in the repo. "GrammarSpec" in this doc is a concept-level grouping for the 6 SG-2c table-families in `parse_tables.dag` (§3.2 below); it is not a substrate type and never appears in the Step-2 `fn parse` signature.
 
 ### §3.1 `List<Token>` (output of tokenize stage)
 
@@ -50,9 +52,9 @@ The token stream produced by PB-2 tokenize. Each `Token` carries a `TokenKind` d
 
 **Lane dependency**: PB-2 tokenize (provides Token carrier + List<Token> output).
 
-### §3.2 `GrammarSpec` (compile-time parser tables per Decision 3.B (b))
+### §3.2 Compile-time parser tables per Decision 3.B (b) — concept "GrammarSpec", NOT a carrier
 
-Per Decision 3.B operator-overrode my rec to (b) compile-time parser tables: GrammarSpec is `.dag` substrate that the build system compiles to parser-dispatch tables. NOT a runtime-interpreted spec.
+Per Decision 3.B operator-overrode my rec to (b) compile-time parser tables: "GrammarSpec" names the **conceptual** grouping of 6 SG-2c table-families authored in `parse_tables.dag` and codegenned into the parser body. There is no `type GrammarSpec` declaration; the name is shorthand for those 6 table-families taken collectively, not a substrate carrier or runtime input.
 
 **Live substrate precedent** at `src/v3/compiler/parse_tables.dag:1-30` (verified):
 - Binary operator token-to-semantics mapping (SG-2c-1)
@@ -62,9 +64,9 @@ Per Decision 3.B operator-overrode my rec to (b) compile-time parser tables: Gra
 - Primary-expression prefix openers (SG-2c-6)
 - Primary-expression atomic tail tokens (SG-2c-7)
 
-These 6 table-families ARE the GrammarSpec content. The build system reads `parse_tables.dag` + emits `parse_tables_generated.rs` (compile-time codegen); the parser body consumes the generated tables via `binary_op_at_level`, `top_level_item_dispatch`, `is_type_rhs_boundary_keyword`, `bracket_role`, `primary_prefix_dispatch`, `primary_atom_class`.
+These 6 table-families ARE what "GrammarSpec" names. The build system reads `parse_tables.dag` + emits `parse_tables_generated.rs` (compile-time codegen); the parser body consumes the generated tables via `binary_op_at_level`, `top_level_item_dispatch`, `is_type_rhs_boundary_keyword`, `bracket_role`, `primary_prefix_dispatch`, `primary_atom_class`. None of these is reached through a `GrammarSpec` carrier; they are direct table lookups inside the parser body.
 
-**Per Decision 3.B (b) "harder/more correct"**: compile-time table generation IS substrate authority all-the-way-down. Runtime grammar interpretation (option a my-original-rec) would require a generic parser engine reading GrammarSpec at runtime — more flexible but introduces runtime authority that compile-time tables don't have. (b) preserves the property that GrammarSpec is data-known-at-compile-time, not data-fetched-at-runtime.
+**Per Decision 3.B (b) "harder/more correct"**: compile-time table generation IS substrate authority all-the-way-down. Runtime grammar interpretation (option a my-original-rec) would require a generic parser engine reading a runtime spec — more flexible but introduces runtime authority that compile-time tables don't have. (b) preserves the property that the grammar is data-known-at-compile-time, not data-fetched-at-runtime, and therefore needs no runtime carrier.
 
 **Substrate authority**: `src/v3/compiler/parse_tables.dag` is LIVE at HEAD (517 lines; 6 table-families). PB-3 migration extends this with the full SG-2c parser body authority via the substrate capability dependency in §6 (recursive list-body emission per SELF_HOSTING.md §6 Phase 4a).
 
@@ -160,7 +162,7 @@ Signature: `fn parse(tokens: List<Token>) -> Result<SurfaceModule, ParseDiagnost
 
 **Per codex BLOCKING PR #3126**: earlier draft of this section proposed `fn parse(tokens, grammar: GrammarSpec) -> SurfaceModule` with embedded diagnostics field. Both load-bearing problems:
 
-1. **GrammarSpec parallel-authority** (P2 violation): §3.2 says GrammarSpec is compile-time-only, NOT runtime-interpreted. But the proposed signature accepted it as runtime input — creating two authorities (compiled parser tables baked at compile time + runtime GrammarSpec value). The corrected signature consumes the compiled tables via internal parser-table-driven dispatch; NO runtime GrammarSpec input. Step 2 brief authoring routes the GrammarSpec as compile() top-level input (per Decision 2.A 4-param signature) → build system generates parse tables → parse() consumes generated tables at runtime.
+1. **GrammarSpec parallel-authority** (P2 violation): §3.2 says the parser tables are compile-time-only, NOT runtime-interpreted, and have no `type GrammarSpec` carrier in the repo. The earlier-draft signature accepted a `GrammarSpec` value as runtime input — that would have invented a parallel authority alongside the compile-time tables AND a substrate type that doesn't exist. The corrected signature consumes the compiled tables via internal parser-table-driven dispatch — no runtime grammar input, no `GrammarSpec` parameter, no carrier needed.
 
 2. **Fail-closed weakening** (P3 + Practice 1+2 violation): live parser at `parse_generated.rs:138` returns `Result<SurfaceModule, Diagnostic>` (fail-closed, aborts on first error). Earlier draft proposed `SurfaceModule` with embedded diagnostics — would let partial-parse states be constructible + let downstream observe "success" output after parse failure. The corrected signature preserves fail-closed Result: parse either succeeds with complete SurfaceModule OR fails with first-encountered ParseDiagnostic (no partial states).
 
