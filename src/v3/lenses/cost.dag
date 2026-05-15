@@ -19,7 +19,7 @@
 //   outside this lens's target-agnostic abstract `SymbolicCost` scope.
 // See docs/v3-lens-capability-register.md.
 //
-// Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
+// Produces `Witness<SymbolicCost>` facts per port using `SymbolicCost`
 // combinators (`sequential`, `iterate`, `max_path`) from
 // `std.algebra`, whose `SizeVariable` carrier is `source_port: PortId` +
 // `display_name: String?` (presentation-only label; identity is `source_port`
@@ -47,19 +47,18 @@
 // `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on
 // `compile_to_dag` fixtures.
 //
-// Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
-// see docs/thesis/compiler-std-consolidation.md). The prior lens-local
-// `SymbolicCostLookup = MissingCost | FoundCost(SymbolicCost)` enum
-// was a parallel `Missing|Found(T)` sum that dissolved into `Lookup<T>`
-// per the strict two-variant ratchet; the Rust surface keeps a
-// `SymbolicCostLookup` *type alias* for embedders.
+// Gate #104 (R3 §1.8): folded costs use `Witness<SymbolicCost>` end-to-end
+// (`Inhabits` / `Violates { reason, at }`). Port-only callers use `symbolic_cost_of`
+// with `resolve_producer` for attribution; lens read pins `Lens.read` attribution
+// to the passed `Behavior` via `cost_lens_read`.
 
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
 import std.substrate {
   Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node,
-  TransformNode, TransformTarget, OperatorKind, ArithmeticOp
+  TransformNode, TransformTarget, OperatorKind, ArithmeticOp,
+  resolve_producer
 }
 import std.algebra {
   MethodContract,
@@ -70,9 +69,7 @@ import std.algebra {
   unnamed_size_variable,
   sequential,
   iterate,
-  max_path,
-  miss_symbolic_cost_lookup,
-  hit_symbolic_cost_lookup
+  max_path
 }
 import std.computation {
   CallPattern,
@@ -87,7 +84,6 @@ import std.computation {
   per_call_pattern_at,
   per_call_descent_operand_port
 }
-import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
@@ -155,11 +151,96 @@ type CostBasisDeclaration {
 
 type SymbolicCostEntry {
   port: PortId
-  cost: Lookup<SymbolicCost>
+  cost: Witness<SymbolicCost>
 }
 
-fn symbolic_cost_of(d: Dag, port_id: PortId) -> Lookup<SymbolicCost> =
-  lookup_cost(compute_symbolic_costs(d), port_id)
+fn symbolic_cost_fallback_subject_for_unresolved_port(d: Dag) -> Behavior =
+  match d.nodes {
+    Cons(payload) => payload.head
+    Empty =>
+      symbolic_cost_fallback_subject_for_unresolved_port(d)
+  }
+
+fn symbolic_cost_of(d: Dag, port_id: PortId) -> Witness<SymbolicCost> =
+  match resolve_producer(d, port_id) {
+    Some(subject) =>
+      lookup_cost_with_subject(
+        compute_symbolic_costs(d),
+        port_id,
+        subject
+      )
+    None =>
+      Violates {
+        reason: "symbolic_cost_of: unresolved producer for port"
+        at: symbolic_cost_fallback_subject_for_unresolved_port(d)
+      }
+  }
+
+fn wc_inhabits(cost: SymbolicCost) -> Witness<SymbolicCost> =
+  Inhabits(cost)
+
+fn witness_combine_sequential(
+  wa: Witness<SymbolicCost>,
+  wb: Witness<SymbolicCost>
+) -> Witness<SymbolicCost> =
+  match wa {
+    Inhabits(ax) =>
+      match wb {
+        Inhabits(bx) => wc_inhabits(sequential(ax, bx))
+        Violates(reason = rbody, at = abody) =>
+          Violates {
+            reason: rbody
+            at: abody
+          }
+      }
+    Violates(reason = rax, at = aax) =>
+      Violates {
+        reason: rax
+        at: aax
+      }
+  }
+
+fn witness_combine_iterate(
+  bound_w: Witness<SymbolicCost>,
+  body_w: Witness<SymbolicCost>
+) -> Witness<SymbolicCost> =
+  match bound_w {
+    Inhabits(b) =>
+      match body_w {
+        Inhabits(y) => wc_inhabits(iterate(b, y))
+        Violates(reason = ry, at = ay) =>
+          Violates {
+            reason: ry
+            at: ay
+          }
+      }
+    Violates(reason = rx, at = ax) =>
+      Violates {
+        reason: rx
+        at: ax
+      }
+  }
+
+fn witness_combine_max(
+  wa: Witness<SymbolicCost>,
+  wb: Witness<SymbolicCost>
+) -> Witness<SymbolicCost> =
+  match wa {
+    Inhabits(ax) =>
+      match wb {
+        Inhabits(bx) => wc_inhabits(dominant(ax, bx))
+        Violates(reason = r2, at = a2) =>
+          Violates {
+            reason: r2
+            at: a2
+          }
+      }
+    Violates(reason = r1, at = a1) =>
+      Violates {
+        reason: r1
+        at: a1
+      }
+  }
 
 // §6a Option 3 demo consumer: cost analysis reads per-method metadata from
 // the unified carrier keyed by `(algebra_id, method_id)`, keeping the
