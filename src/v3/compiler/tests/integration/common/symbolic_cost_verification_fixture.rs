@@ -41,13 +41,11 @@ fn rational_v3(d: &Rational) -> String {
     if d.denominator() == 1 {
         d.numerator().to_string()
     } else {
-        panic!(
-            "symbolic_cost_as_v3_data_initializer cannot serialize non-integer Rational {}/{} \
-             without losing facts; v3 Rational is the opaque Field<FieldOfFractions<Int>> carrier, \
-             not a numerator/denominator record",
+        format!(
+            "rational_from_parts(numerator: {}, denominator: {})",
             d.numerator(),
             d.denominator()
-        );
+        )
     }
 }
 

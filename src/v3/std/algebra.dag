@@ -293,6 +293,10 @@ fn rational_two() -> NonZeroRational {
   host rational_two
 }
 
+fn rational_from_parts(numerator: Int, denominator: Int) -> Rational {
+  host rational_from_parts
+}
+
 fn rational_ge(a: Rational, b: Rational) -> Bool {
   host rational_ge
 }

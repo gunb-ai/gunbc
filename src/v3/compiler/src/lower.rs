@@ -5739,6 +5739,18 @@ fn lower_structural_field_value(
     span: &SourceSpan,
     pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::FieldValue> {
+    if let Some(rational) = lower_rational_from_parts_field_value(
+        data_name,
+        field_label,
+        expr,
+        expected_type,
+        symbols,
+        dag,
+        span,
+    ) {
+        return Some(rational);
+    }
+
     if let Some(marker_id) = dag.declaration_by_name("DeclarationRef").map(|d| d.id) {
         if walks_to(dag, expected_type, marker_id) {
             let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) else {
@@ -6403,6 +6415,134 @@ fn lower_structural_field_value(
         },
     );
     None
+}
+
+fn lower_rational_from_parts_field_value(
+    data_name: &str,
+    field_label: &str,
+    expr: &SurfaceExpr,
+    expected_type: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    span: &SourceSpan,
+) -> Option<crate::dag::FieldValue> {
+    let rational_id = dag.declaration_by_name("Rational")?.id;
+    if !walks_to(dag, expected_type, rational_id) {
+        return None;
+    }
+    let SurfaceExpr::Call { target, args, .. } = expr else {
+        return None;
+    };
+    let Some(&resolved) = symbols.get(target) else {
+        return None;
+    };
+    let Some(canonical) = dag.declaration_by_name("rational_from_parts").map(|d| d.id) else {
+        return None;
+    };
+    if resolved != canonical {
+        return None;
+    }
+    let [arg] = args.as_slice() else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ArityMismatch {
+                function: "rational_from_parts".to_string(),
+                expected: 1,
+                actual: args.len(),
+                span: span.clone(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+            },
+        );
+        return None;
+    };
+    let SurfaceExpr::Record { fields, .. } = arg else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` field `{field_label}` rational_from_parts expects named fields `numerator` and `denominator`"
+                ),
+                span: surface_expr_span(arg).clone(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+            },
+        );
+        return None;
+    };
+    let mut numerator: Option<String> = None;
+    let mut denominator: Option<String> = None;
+    for field in fields {
+        let SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(value),
+            ..
+        } = &field.value
+        else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` rational_from_parts field `{}` must be an Int literal",
+                        field.name
+                    ),
+                    span: field.span.clone(),
+                    correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+                },
+            );
+            return None;
+        };
+        match field.name.as_str() {
+            "numerator" => numerator = Some(value.clone()),
+            "denominator" => denominator = Some(value.clone()),
+            other => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` rational_from_parts has unknown field `{other}`"
+                        ),
+                        span: field.span.clone(),
+                        correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+                    },
+                );
+                return None;
+            }
+        }
+    }
+    let Some(numerator) = numerator else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` field `{field_label}` rational_from_parts missing `numerator`"
+                ),
+                span: span.clone(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+            },
+        );
+        return None;
+    };
+    let Some(denominator) = denominator else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` field `{field_label}` rational_from_parts missing `denominator`"
+                ),
+                span: span.clone(),
+                correction: Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
+            },
+        );
+        return None;
+    };
+    Some(crate::dag::FieldValue::Record(vec![
+        (
+            "__rational_numerator".to_string(),
+            crate::dag::FieldValue::Literal(LiteralBits::Int(numerator)),
+        ),
+        (
+            "__rational_denominator".to_string(),
+            crate::dag::FieldValue::Literal(LiteralBits::Int(denominator)),
+        ),
+    ]))
 }
 
 fn is_value_level_arrow_declaration(decl: &crate::dag::Declaration) -> bool {
