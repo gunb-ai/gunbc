@@ -394,14 +394,14 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - Endpoint shape (NetworkAddress + LanguageRef + optional FrameworkRef)
 - DeploymentUnit = collection of Endpoints + WireContracts between them
 - WireContract = typed interface between two endpoints + CoordinationSemantics
-- CoordinationSemantics = Sync | Async | Stream | PubSub | EventuallyConsistent (closed enum — operator-ratified C1 closure per node.dag discipline)
+- CoordinationSemantics = Sync | Async(SettleBound) | Stream | PubSub | EventuallyConsistent(ConvergeBound) (closed enum — operator-ratified C1 closure per node.dag discipline; non-immediate-settlement variants carry their bound as a STRUCTURAL field per operator fork 2026-05-15, read deterministically by the testgen simulator arm — see coordination.dag header)
 - Effect-typing: HttpEffect, QueueEffect, StreamEffect, PubSubEffect — each is a typed parameter to Bind
 - Failure-at-boundary modeling (composes with std/diagnostic.dag — no silent partial-failure)
 - Idempotency at endpoint (composes with lens/idempotency.dag)
 
 **Scope**: L (large — substrate decisions affect every distributed-app demo)
 
-**Discipline**: NO 6th L1 behavior. If during work the temptation surfaces to add a `Coordinate` behavior to `std/node.dag`, STOP and escalate. The IN-B decision (operator 2026-05-15) is binding — coordination IS Bind composition + Effect annotation.
+**Discipline**: NO 6th L1 behavior. If during work the temptation surfaces to add a `Coordinate` behavior to `std/node.dag`, STOP and escalate. The IN-B decision (operator 2026-05-15) is binding — coordination IS Bind composition + effect typing (effects intrinsic to the type signature, NOT an annotation layer).
 
 ---
 
