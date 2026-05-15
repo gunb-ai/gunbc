@@ -46,6 +46,29 @@
 //   12-file split cannot recur (its cause — a separate recursive inferred
 //   type — is structurally gone via IR-1/A1).
 //
+// B-4 (side-session 2026-05-15) — resolution is NODE-PRECISE (the
+//   affected_set R2 minimality contract):
+//   - A use-site is a name-reference `Atom`; its binding MUST resolve to
+//     the EXACT declaration `Node` it refers to — never merely that
+//     declaration's module/scope. Node-precise binding originates at
+//     compiler/03_resolve.dag and is preserved through `resolved_type`.
+//   - This is NOT a 5th `InferredFacts` field (that would be the IR-1
+//     STOP). The use→def dependency graph is DERIVED BY TRAVERSAL over
+//     the already-resolved name-references — the resolved reference IS
+//     the edge — the same "derive, don't store" discipline as
+//     `content_hash` (a fold) and D1 (no new field). lens/affected_set.dag
+//     (T-21) folds that traversal (changed Node → name-refs resolving to
+//     it → enclosing declarations, transitively) for the MINIMAL re-exec
+//     frontier.
+//   - Why a CONTRACT, not an option: coarse (module/scope) resolution
+//     leaves affected_set correct but maximally OVER-fires (any change in
+//     a module re-runs every importer). Node-precise resolution is the
+//     dominant gate on affected_set R2 minimality — a precision INVARIANT
+//     on this stage, not a T-21 concern. (Distinct axis from #3157's
+//     hash-granularity "over-fire = safe" tolerance: that is content
+//     identity; THIS is dependency-edge granularity — correctness-
+//     preserving but minimality-critical.)
+//
 // Owns:
 //   - InferredTree = Node + the frozen flat `InferredFacts` coordinate
 //   - infer: ResolvedTree -> Result<InferredTree, Diagnostic>

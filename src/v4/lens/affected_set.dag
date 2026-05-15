@@ -33,7 +33,14 @@
 //
 // Consumes:
 //   - std/node.dag (incl. the D1 Diff type), std/witness.dag
-//   - compiler/04_infer.dag: the typed dependency graph (Dag)
+//   - compiler/04_infer.dag: the typed dependency graph (Dag) — the
+//     use→def edges are NOT a stored field (IR-1 freezes InferredFacts
+//     at 4); per the 04_infer.dag B-4 contract they are DERIVED BY
+//     TRAVERSAL over already-resolved name-references. Minimality of
+//     this lens's frontier depends on that resolution being
+//     NODE-PRECISE (use-site → exact def Node, not module/scope);
+//     coarse resolution = correct but maximally over-firing. This lens
+//     folds the traversal; it stores no dependency-edge set.
 //
 // Status: scaffold — fill per TASKS.md T-21
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
