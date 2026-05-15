@@ -33,6 +33,14 @@ import v3.std.diagnostics { Diagnostic }
 // The coproduct is authored at the witness level, not above it in
 // an `Option<Witness>` shape, so "no evidence" and "evidence of
 // violation" cannot masquerade as each other (DB-3 §Rationale).
+//
+// Practice 4 / `docs/modeling-discipline.md` §4 — **🟢 TERMINAL** coproduct (`ViolatesSubject`):
+// not a dissolvable scaffold; variants are identical to the residues of typed `ProducerLookup`
+// attribution — lawful `Behavior` (`AtBehavior`) vs malformed walk (`ProducerLookupMissing*`) — and
+// must not flatten into fields on `Witness<V>` without collapsing P3 fail-closed distinctions (INVARIANTS
+// P1: witness subject traces to substrate walk authority only). Ledger: dissolution patterns **1–4** in
+// Practice 4 are **NA** without erasing `missing port` vs `missing node` vs lawful `Behavior` facts.
+//
 type ViolatesSubject
   = AtBehavior(Behavior)
   | ProducerLookupMissingPort { port: PortId }
