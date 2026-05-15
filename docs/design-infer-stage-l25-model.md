@@ -63,7 +63,7 @@ Per `feedback_lenses_not_passes` + observation in §2: infer's "rule book" is em
 - Lower maps SURFACE FORMS (which are user-authored grammar) → substrate behaviors. The mapping is a design choice (multiple valid mappings possible per grammar/elaboration separation per Decision 2.A 4-param compile).
 - Infer propagates TYPES through substrate-declared algebraic structure. The propagation rule per TypeConnective variant is determined by the variant's algebraic role (Arrow's direct-signature, Atom's lookup, etc.). The rule is forced by the substrate's structure; no design freedom for re-mapping.
 
-If a future substrate refactor adds new TypeConnective variants, the inference rules extend automatically — they're per-variant structural facts, not pluggable rules.
+**If a future substrate refactor adds new TypeConnective variants**, the inference rules do NOT extend automatically. Per cursor INLINE BLOCKING #3085 + thesis stop-signal discipline: a 7th TypeConnective variant requires (a) explicit C1 substrate-extension audit + (b) named infer-rule receipt for the new variant's structural inference behavior. The "per-variant structural facts" framing means new variants need new per-variant facts, NOT silent inheritance. Earlier draft "rules extend automatically" weakened the substrate-extension stop signal; corrected here.
 
 ---
 
