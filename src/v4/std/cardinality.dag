@@ -27,8 +27,8 @@ import v4.std.node { Symbol }
 // SCOPE. This file serves INVARIANTS P4 (Decidability) in two related
 // ways, both assigned by std/node.dag's A2 + Q2 dispositions:
 //   - the DESCENT-EVIDENCE carriers — `DescentEvidence`, `RankingDimension`,
-//     `RankedDescent`, `TerminationProof` — the structural proof that an
-//     EXPLICIT non-structural recursion is well-founded;
+//     `TerminationProof` — the structural proof that an EXPLICIT
+//     non-structural recursion is well-founded;
 //   - the MULTIPLICITY refinement — `Multiplicity` — the type-level
 //     bounded/unbounded distinction, with no escape hatch (P4).
 //
@@ -42,14 +42,13 @@ import v4.std.node { Symbol }
 // meaning of node.dag's `Cardinality` connective.
 //
 // CHECKER, NOT DISCOVERER (INVARIANTS:66 / node.dag A2 / feedback_no_
-// engine). A `TerminationProof` is a CLAIM: it carries, per ranking
-// dimension, the `DescentEvidence` the proof asserts. A later pipeline
-// stage — the termination checker — VERIFIES that claim against the loop's
-// actual structure; it never SEARCHES for a measure. These are the
-// carriers it reads; the checker itself is not modeled here (it is a
-// pipeline-stage task, T-6+). `DescentUnknown` is the fail-closed value:
-// an undetermined edge is never silently promoted to a fabricated
-// `Strict`.
+// engine). A `TerminationProof` is a structural CLAIM of well-founded
+// descent. A later pipeline stage — the termination checker — VERIFIES
+// that claim against the loop's actual structure; it never SEARCHES for
+// a measure. The checker itself is not modeled here (it is a pipeline-
+// stage task, T-6+); `DescentEvidence` is the per-edge observation
+// vocabulary it emits while verifying — `DescentUnknown` its fail-closed
+// value, never a fabricated `Strict`.
 //
 // THE IMPLICIT CASE HAS NO CARRIER (node.dag A2 / Q2). When a recursion
 // descends on a proper sub-Node child, termination is already free from
@@ -67,18 +66,21 @@ import v4.std.node { Symbol }
 // bolted on ahead of its consumer; it lands in THIS file, one visible
 // edit, when the checker exists (cost-of-change = 1).
 //
-// LEXICOGRAPHIC / MULTISET (Dershowitz-Manna 1979). `TerminationProof`
-// carries a structurally NON-EMPTY, ordered head/tail of `RankedDescent`
-// — the lexicographic ranking tuple, the general case (a `head` with an
-// empty `tail` is plain single-measure descent). The non-empty encoding
-// is load-bearing: see `TerminationProof`. The multiset-ordering
-// INTERPRETATION is a second way the same
-// dimension collection can be read; choosing between the two is, again, a
-// fold the termination checker performs, with no T-3 consumer. It is
-// deliberately not a carrier here: a faithful `Multiset` would need an
-// unordered collection the substrate does not have (a `List` "read as
-// unordered" is a non-canonical representation — CULTURE §8), and the
-// discriminator lands with the checker that needs it (cost-of-change = 1).
+// LEXICOGRAPHIC (Dershowitz-Manna 1979). `TerminationProof` is a
+// lexicographic descent certificate: a (possibly empty) priority-ordered
+// list of higher-priority `non_increasing` dimensions plus exactly one
+// mandatory `strict` dimension. The per-dimension descent fact is encoded
+// by STRUCTURAL POSITION — being in `non_increasing` means non-increasing,
+// being `strict` means strictly-decreasing — never a stored
+// `DescentEvidence` field (a stored field would permit a proof whose
+// every entry is non-strict / unknown, i.e. no real witness — the exact
+// hole the operator flagged BLOCKING; see `TerminationProof`).
+// The multiset-ordering INTERPRETATION (a second Dershowitz-Manna
+// extension) is a fold the termination checker performs; it has no T-3
+// consumer and is deliberately not a carrier here — a faithful `Multiset`
+// would need an unordered collection the substrate does not have (a
+// `List` "read as unordered" is non-canonical — CULTURE §8). It lands
+// with the checker that needs it (cost-of-change = 1).
 //
 // LAWS ARE GROUNDED DEFINITIONS, NEVER FLAGS (feedback_no_annotations).
 // "Well-founded", "strictly decreases" are the cited definitions of the
@@ -89,6 +91,17 @@ import v4.std.node { Symbol }
 // DescentEvidence — at one recursive-call edge, the observed relation of
 // a ranking measure between caller and callee: it strictly decreases,
 // does not increase, or is not determined.
+//
+// This is the termination CHECKER's per-edge observation vocabulary — the
+// result of comparing a measure across a call edge. It is deliberately
+// NOT stored as a field of `TerminationProof`: a proof that stored a free
+// `DescentEvidence` per dimension could carry an all-non-strict / all-
+// `DescentUnknown` value set — a "proof" with no actual witness (the
+// operator BLOCKING finding on PR #3163). The proof instead encodes its
+// descent claim by STRUCTURAL POSITION (see `TerminationProof`);
+// `DescentEvidence` is what the checker EMITS while verifying that claim,
+// fail-closed. It is a carrier modeled ahead of its T-6+ consumer, per
+// the brief's settled decision (plain closed sum, no lattice).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
@@ -139,56 +152,46 @@ type RankingDimension {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RankedDescent — one ranking dimension paired with the `DescentEvidence`
-// a proof claims for it at the recursive-call edge.
+// TerminationProof — a lexicographic descent certificate (Dershowitz-
+// Manna 1979) for an EXPLICIT non-structural recursion: the structural
+// CLAIM a termination checker VERIFIES (never discovers, INVARIANTS:66).
 //
-// The pairing is structural so the claim cannot drift from the dimension
-// it is about: two positionally-aligned `List<RankingDimension>` /
-// `List<DescentEvidence>` would admit a length mismatch — an illegal
-// state (modeling-discipline.md §4 Practice 2 / INVARIANTS P2). One
-// `RankedDescent` per dimension forecloses that.
-type RankedDescent {
-  dimension: RankingDimension
-  evidence: DescentEvidence
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// TerminationProof — the descent proof a checker VERIFIES (never
-// discovers) for an EXPLICIT non-structural recursion.
+// Shape — and why it is this shape (operator BLOCKING review, PR #3163):
+//   - `strict` — the one dimension claimed to strictly decrease. A
+//     MANDATORY field, so every `TerminationProof` structurally contains
+//     a real descent witness. There is no representable proof with zero
+//     dimensions, and none whose descent claim is entirely non-strict —
+//     a "proof" that is either is the ABSENCE of a proof (INVARIANTS P2:
+//     illegal states unrepresentable).
+//   - `non_increasing` — the strictly-higher-priority dimensions, in
+//     priority order, each claimed not to increase. Possibly empty (then
+//     the certificate is plain single-measure strict descent). Lower-
+//     priority dimensions are irrelevant to a lexicographic argument once
+//     a strict position is fixed, so they are deliberately not carried.
 //
-// The lexicographic ranking tuple (Dershowitz-Manna 1979) — (dimension,
-// claimed-evidence) pairs, highest priority first — modeled as a
-// structurally NON-EMPTY list: a mandatory `head` plus a `tail` of any
-// further pairs. A ranking with ZERO dimensions is not a weak proof, it
-// is the ABSENCE of a proof; the head/tail encoding makes that absent
-// state unrepresentable (INVARIANTS P2 — illegal states unrepresentable).
-// A plain `List<RankedDescent>` would have admitted `[]`, and an empty
-// proof inside `Multiplicity::Unbounded { step }` is exactly the
-// "unbounded without a witness" state this file claims to forbid — so the
-// non-empty encoding is what actually CLOSES that no-escape-hatch, rather
-// than only relocating it.
+// The per-dimension descent fact is its STRUCTURAL POSITION, never a
+// stored value. This is why `DescentEvidence` is NOT a field here: a
+// stored `evidence: DescentEvidence` would re-admit a proof whose every
+// entry is non-strict / `DescentUnknown` — the convention-level (not
+// structural) witness the BLOCKING review rejected. Position-encoding
+// makes the witness structural: `Multiplicity::Unbounded`'s `step` now
+// carries a real strict-descent witness by construction.
 //
-// This is the TYPE-level guarantee: a `TerminationProof` always claims at
-// least one ranking dimension. Whether the claimed `DescentEvidence` is
-// strong enough — a lexicographic combination that yields well-
-// foundedness, vs. e.g. every dimension `DescentUnknown` — is the
-// SEMANTIC question the termination checker verifies, fail-closed, when
-// that pipeline stage lands (INVARIANTS:66 — checker, not discoverer).
-// The type fixes structural non-vacuity; the checker fixes sufficiency.
-// (`DescentUnknown` is deliberately still admissible in a `RankedDescent`:
-// a valid lexicographic proof may carry it on lower-priority dimensions;
-// rejecting an insufficient proof is the checker's act, not the type's.)
+// Whether the `strict` claim is TRUE — whether that named dimension
+// genuinely decreases in the loop — is unavoidably the checker's
+// verification against loop structure (T-6+); the type cannot inspect a
+// loop it is not given. The type guarantees a witness EXISTS and has the
+// right shape; the checker confirms it HOLDS.
 //
-// Single-recursive-call scope: this carries the descent at THE recursive
-// call (the brief's single self-recursive function shape). A loop with
-// recursive calls in multiple `Branch` arms generalises to a per-edge
-// collection — that lands when the `Loop` / `Branch` edge structure is
-// modeled (T-6+, node.dag's "NAMED OBLIGATION ON T-6+"); cost-of-change
-// = 1, no T-3 consumer needs it yet.
+// Single-recursive-call scope: this certifies the descent at THE
+// recursive call (the brief's single self-recursive function shape). A
+// loop with recursive calls in multiple `Branch` arms generalises to a
+// per-edge collection — that lands when the `Loop` / `Branch` edge
+// structure is modeled (T-6+, node.dag's "NAMED OBLIGATION ON T-6+");
+// cost-of-change = 1, no T-3 consumer needs it yet.
 type TerminationProof {
-  head: RankedDescent
-  tail: List<RankedDescent>
+  non_increasing: List<RankingDimension>
+  strict: RankingDimension
 }
 
 
@@ -208,10 +211,11 @@ type TerminationProof {
 // without-witness state is therefore structurally unrepresentable
 // (INVARIANTS P4): there is no way to name something unbounded without
 // exhibiting that its step is itself bounded. The witness cannot be
-// vacuous either — `TerminationProof` is structurally non-empty (a
-// mandatory `head`), so `Unbounded { step: { head, tail } }` always
-// carries at least one claimed ranking dimension; the empty-proof escape
-// hatch is closed at the type level, not merely by convention.
+// vacuous OR non-strict either — `TerminationProof` carries a mandatory
+// `strict` ranking dimension whose descent fact is its structural
+// position, so every `Unbounded`'s `step` contains a real strict-descent
+// witness by construction. The escape hatch is closed at the type level,
+// not by convention (operator BLOCKING review, PR #3163).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
