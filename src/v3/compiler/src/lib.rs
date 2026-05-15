@@ -4641,8 +4641,11 @@ pub mod lens_cost_symbolic {
     ///
     /// - [`ProducerLookup::Found`]: merges table lookup via [`generated::witness_from_symbolic_cost_lookup`]
     ///   (lawful `Violates { at }` on table **`Miss`** uses the resolved producer).
-    /// - [`ProducerLookup::NoProducer`]: **`Inhabits(UnknownCost("…"))`** (parameter / external binding —
-    ///   not substrate corruption and not a fake `Violates`).
+    /// - [`ProducerLookup::NoProducer`]: **INVARIANTS P2** — still consult the **same** `folded`
+    ///   [`generated::lookup_cost`] as `Found`. Table **`Hit`** (e.g. bind-parameter seeds from
+    ///   [`generated::seed_bind_params`]) flows forward as **`Inhabits`**. Only plain parameters /
+    ///   externals with **no** folded row (**`Miss`**) use **`Inhabits(UnknownCost("…"))`** — not
+    ///   substrate corruption and not a fake `Violates`.
     /// - Malformed variants: **`Violates { reason, at }`** — fail-closed, not lattice-top success.
     ///   [`ProducerLookup::BindCycle`] anchors `at` at **`dag.node(detected_at)`** (the Bind closing
     ///   the detected cycle — the most specific authoritative fact carried by the walker). Ports with
@@ -4675,13 +4678,16 @@ pub mod lens_cost_symbolic {
             ProducerLookup::Found(subject) => {
                 generated::witness_from_symbolic_cost_lookup(&folded, subject.clone())
             }
-            ProducerLookup::NoProducer => {
-                crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
-                    _0: String::from(
-                        "symbolic_cost_of: no producer for port (parameter or external binding)",
-                    ),
-                })
-            }
+            ProducerLookup::NoProducer => match folded {
+                SymbolicCostLookup::Hit(cost) => crate::dimension::Witness::Inhabits(cost),
+                SymbolicCostLookup::Miss => {
+                    crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
+                        _0: String::from(
+                            "symbolic_cost_of: no producer for port (parameter or external binding)",
+                        ),
+                    })
+                }
+            },
             ProducerLookup::MissingPort { port: missing } => crate::dimension::Witness::Violates {
                 reason: format!(
                     "symbolic_cost_of: malformed substrate — MissingPort {:?}",

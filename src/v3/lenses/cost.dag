@@ -25,8 +25,9 @@
 // emitted here**: the Rust host merges [`Dag::resolve_producer_lookup`] (typed producer walk —
 // discriminates **NoProducer** vs **MissingPort** / **MissingNode** / **BindCycle**) with
 // [`witness_from_symbolic_cost_lookup`] so malformed substrate fails closed per INVARIANTS P3.
-// Legitimate **NoProducer** (parameter / external binding) surfaces as
-// **`Inhabits(UnknownCost("…"))`** — not a fabricated `Violates { at }` on an unrelated node.
+// **NoProducer** ports: the Rust host still reads the folded table first (P2). Seeded rows (bind
+// params → `ConstantCost(0)`) surface as **`Inhabits`**; only table **`Miss`** (plain parameter /
+// external with no fold fact) is **`Inhabits(UnknownCost("…"))`** — not a fabricated `Violates { at }`.
 //
 // **`Lens.read` (`cost_lens_read`) vs `symbolic_cost_of`:** `cost_lens_read` is table-only
 // (`lookup_cost` + `witness_from_symbolic_cost_lookup` with **caller-supplied** `Behavior` `b`); it does
