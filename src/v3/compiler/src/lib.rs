@@ -4633,13 +4633,22 @@ pub mod lens_cost_symbolic {
     ///   (lawful `Violates { at }` on table **`Miss`** uses the resolved producer).
     /// - [`ProducerLookup::NoProducer`]: **`Inhabits(UnknownCost("…"))`** (parameter / external binding —
     ///   not substrate corruption and not a fake `Violates`).
-    /// - Malformed variants: **`Violates { reason, at }`** with `at =
-    ///   Dag::substrate_lens_read_diagnostic_anchor` — fail-closed, not lattice-top success.
+    /// - Malformed variants: **`Violates { reason, at }`** — fail-closed, not lattice-top success.
+    ///   [`ProducerLookup::BindCycle`] anchors `at` at **`dag.node(detected_at)`** (the Bind closing
+    ///   the detected cycle — the most specific authoritative fact carried by the walker). Ports with
+    ///   no resolving [`Behavior`] ([`ProducerLookup::MissingPort`], [`ProducerLookup::MissingNode`])
+    ///   fall back to [`Dag::substrate_lens_read_diagnostic_anchor`] only because there is no
+    ///   honest producer node at the witness boundary yet.
     ///
     /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
     ///
     /// [`ProducerLookup::Found`]: crate::dag::ProducerLookup::Found
     /// [`ProducerLookup::NoProducer`]: crate::dag::ProducerLookup::NoProducer
+    /// [`ProducerLookup::MissingPort`]: crate::dag::ProducerLookup::MissingPort
+    /// [`ProducerLookup::MissingNode`]: crate::dag::ProducerLookup::MissingNode
+    /// [`ProducerLookup::BindCycle`]: crate::dag::ProducerLookup::BindCycle
+    /// [`Dag::substrate_lens_read_diagnostic_anchor`]:
+    ///     crate::dag::Dag::substrate_lens_read_diagnostic_anchor
     /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
@@ -4678,7 +4687,7 @@ pub mod lens_cost_symbolic {
                     "symbolic_cost_of: malformed substrate — BindCycle at {:?}",
                     detected_at
                 ),
-                at: dag.substrate_lens_read_diagnostic_anchor(),
+                at: dag.node(detected_at).clone(),
             },
         }
     }
