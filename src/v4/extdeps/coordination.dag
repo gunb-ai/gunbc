@@ -38,7 +38,7 @@
 //   - extdeps/languages/*.dag (per-endpoint language)
 //   - extdeps/frameworks/*.dag (per-endpoint framework, optional)
 //
-// Status: scaffold — fill per TASKS.md T-4.7
+// Status: scaffold — fill per TASKS.md T-4.8
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).

@@ -1129,11 +1129,11 @@ To prevent R3-class debt from re-emerging:
 
 **Promise scope** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` §Mission + `design-r4-full-stack-omni-emission-canvas.md` §Two-ingest-directions): ingestion covers (a) other-language source code (C, C++, LLVM IR, TypeScript, etc.), (b) data formats (JSON, YAML, CSV, TOML, etc.), (c) schema formats (JSON Schema, OpenAPI, Protobuf, etc.).
 
-**v4 owner allocation** (SCAFFOLD-GAP — needs explicit ratification):
+**v4 owner allocation** (operator-ratified 2026-05-15 — no remaining gap):
 
-- Per-format parsers under `src/v4/extdeps/formats/` — one file per ingestible format, each anchored to its canonical spec
-- Per-language frontends under `src/v4/extdeps/languages/<lang>.dag` — extends current Rust/Python/Go target specs to be bidirectional (read AND emit)
-- Ingestion orchestrator: extends `src/v4/compiler/00_compile.dag` OR new `src/v4/compiler/00_ingest.dag` for the inverse path
+- Per-format models — `src/v4/extdeps/formats/*` (T-4.6), one file per format, each anchored to its canonical spec
+- Per-language frontends — `src/v4/extdeps/languages/<lang>.dag` (T-4), bidirectional: emit AND ingest are operations against the **same** language model (direction-agnostic, C5), not parallel specs
+- Ingestion orchestrator: **`src/v4/compiler/00_compile.dag` (T-10) — the single orchestrator for both directions.** Ingest is the inverse operation against the same model, NOT a separate subsystem. A new `00_ingest.dag` would be a substrate extension = STOP (zero-deferrals + P2 single-authority): there is exactly one orchestrator owner.
 
 **Probes**:
 
@@ -1265,7 +1265,7 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 Rationale: async / stream / pubsub are deployment patterns and effect-types, not behavior shapes. An HTTP call IS a `Bind` with an HTTP-effect type; a pubsub publish IS a `Bind` with a Queue-effect type; an async stream IS a `Bind` over a `Stream<T>` carrier. Substrate stays at 5 L1 behaviors (C1 stop-signal preserved per THESIS:202). Coordination concepts (`Endpoint`, `DeploymentUnit`, sync/async/stream/pubsub semantics) live as typed carriers in `extdeps/coordination.dag`.
 
 **Scaffold addition** (operator-ratified):
-- `extdeps/coordination.dag` — Anchor: this PR conversation + memory: feedback_construction_over_ratchets (substrate-extension caution); declares Endpoint/DeploymentUnit/sync/async/stream/pubsub semantics as effect-typed carriers over existing 5 behaviors.
+- `extdeps/coordination.dag` — Anchor (EXTERNAL, per STRUCTURE.md extdeps-anchor convention): Wikipedia Distributed computing + Messaging pattern + Inter-process communication. Design rationale (explicitly NOT the anchor): the IN-B decision (effect-typed, not a 6th L1 behavior). Declares Endpoint / DeploymentUnit + the closed `CoordinationSemantics` as effect-typed carriers over the existing 5 behaviors.
 
 ---
 
@@ -1300,7 +1300,7 @@ Rationale: async / stream / pubsub are deployment patterns and effect-types, not
 
 `PointKind = Magnitude | Instant | Rate` adds a third axis distinguishing duration-shaped from instant-shaped from rate-shaped quantities. `EpochMs` requires this.
 
-**v4 owner**: extends `src/v4/std/cardinality.dag` (or new `src/v4/std/measure.dag` if substrate-cohesion warrants).
+**v4 owner**: `src/v4/std/cardinality.dag` (T-3) — PointKind is an aspect axis on quantities, and `cardinality.dag` already owns the quantity axis, so it owns this. A new `std/measure.dag` would be a substrate extension = STOP (zero-deferrals + closed file tree), NOT a worker "if-substrate-cohesion-warrants" choice. Exactly one owner, decided up front.
 
 **Probes**:
 - [ ] Time arithmetic: subtracting two `Instant` values produces `Duration` (Magnitude). Is this enforced structurally?

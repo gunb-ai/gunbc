@@ -7,7 +7,12 @@
 // Owns:
 //   - TypeScript grammar (declarations, expressions, types, generics, interfaces, classes)
 //   - Structural type system (TS uses structural typing, not nominal)
-//   - Inhabitance: number -> Field, string -> FreeMonoid<char>, Array<T> -> List<T>
+//   - Inhabitance: number -> ApproximateField (TS `number` IS an IEEE-754
+//     double — NOT an exact Field: rounding breaks associativity and
+//     distributivity. Same grounding as std/algebra.dag `Float ->
+//     ApproximateField`; per MODELING.md M9, `number` IS the Float
+//     concept and must attach to that existing algebra, not a fresh
+//     exact-Field claim), string -> FreeMonoid<char>, Array<T> -> List<T>
 //   - Cost realization: per-operation cost on TypeScript / JavaScript targets
 //
 // Consumes:
