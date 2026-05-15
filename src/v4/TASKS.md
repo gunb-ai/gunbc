@@ -80,10 +80,13 @@ Phase 4 (serial — close the loop):
           (evidence read: A2 descent, algebra-homomorphism chain, cost,
           effects) ⊕ (B2-OMNI emit to a lean/coq language model). The
           prover KERNEL-CHECKS gunbc's exported witnesses (never
-          searches — no-engine + A2). No new file; framing in
-          STRUCTURE.md §7 + DECISIONS.md PROOF-1. Realized when the
-          lens framework + a lean/coq model land (composition, not a
-          new subsystem).
+          searches — no-engine + A2). Framing in STRUCTURE.md §7 +
+          DECISIONS.md PROOF-1 (no new file there). Prover model now
+          landed: `extdeps/languages/lean.dag` (B-2 / DECISIONS L-4,
+          operator-ratified) — Lean first, scoped to the termination
+          theorem class; Coq is the deferred second-prover probe.
+          PROOF-1 is realized when the lens framework composes with
+          that model (composition, not a new subsystem).
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
         + React/TS frontend + OpenAPI wire contract
         [needs T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-10, T-11]

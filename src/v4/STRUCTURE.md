@@ -43,6 +43,7 @@ src/v4/
       llvm_ir.dag        # LLVM IR (T-4.12 — B2-OMNI probe; down-the-stack SSA)
       machine_code.dag   # ISA-parameterized (T-4.13 — bottom of stack; disasm fail-closed)
       ptx.dag            # CUDA/PTX (T-4.14 — B2-OMNI+IN-B probe; SIMT data-parallel)
+      lean.dag           # Lean 4 (B-2 — PROOF-1 prover target; termination first; Coq deferred)
     frameworks/          # framework substrates (UI / server / data)
       react.dag          # React: Component/Hook/Effect (frontload per operator 2026-05-15)
     formats/             # data format models (direction-agnostic)
@@ -108,7 +109,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
+**Total: 64 .dag files + 5 docs + 5 .gitkeep = 74 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 −5 .dag 2026-05-15: work-direction meta-layer cut, operator-ratified.)

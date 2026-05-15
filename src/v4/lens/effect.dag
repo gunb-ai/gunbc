@@ -11,6 +11,25 @@
 // has created a second authority = STOP (same single-authority class as
 // the AssertKind/testgen reconciliation). One authority: the signature.
 //
+// B-5 (side-session 2026-05-15) — effect GRANULARITY is the
+// affected_set R1 usefulness contract (= #3153 Ex.R1, now encoded):
+//   - Effect is a per-`Arrow`-Node fact, derived from THAT node's
+//     signature shape (the B3 authority). It MUST NOT be aggregated to
+//     a coarser unit (one ambient `IO`, a per-module/file effect set).
+//     A coarse aggregate is exactly the parallel taxonomy B3 forbids
+//     (P2, second authority) AND it degrades affected_set R1: a coarse
+//     model ⇒ every effectful edit's re-exec cone = every effectful
+//     node ⇒ purity-skip becomes "re-run ~everything" (still CORRECT /
+//     fail-closed, but useless).
+//   - This is a GRANULARITY invariant, not effect-lens strength: per B3
+//     effects are READ off the signature (strong by construction); the
+//     only open risk is coarse modeling. So the contract is: keep the
+//     effect distinguishable per effect KIND on the signature (Stderr ≠
+//     Net ≠ FileWrite …), so affected_set R1's cone is "observers of
+//     THIS effect", not "all effectful code". Not a new field; the
+//     distinction already lives in the signature (B3) — this forbids
+//     collapsing it. Reciprocal contract: lens/affected_set.dag R1.
+//
 // Owns:
 //   - lens read: Node -> Witness<EffectMap>   (READS the type signature;
 //     the signature is the authority, this lens is the reader)

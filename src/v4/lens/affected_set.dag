@@ -31,8 +31,76 @@
 //     a local memo table equally; the backend (e.g. GHA `actions/cache`)
 //     is just an emission target of the hash.
 //
+// WORKED EXAMPLES — the T-21 design contract (SUBSUMED from #3153
+// "v4 affected-set: worked-example design contract", which had no
+// worker; superseded by this branch per operator 2026-05-15). NODE is
+// the ONE real granularity (operator-corrected): "file/module-affected"
+// is node granularity PROJECTED UP (files containing ≥1 affected node),
+// never a second tier. Diff is STRUCTURAL: a node is "changed" iff its
+// B1 content_hash differs from the prior pin — never a textual git diff.
+//
+//   Graph (→ = "depends on"; content_hash per node, B1):
+//     n_reason (a NamedReason variant set in std/diagnostic.dag)
+//        ← n_diag (Diagnostic{reason}) ← n_emitR (a Rust emit rule)
+//        ← n_diag                       ← n_evalD (eval's diag path)
+//     n_pure (a pure helper, independent of n_reason)
+//     n_log  (effectful Transform; signature carries the effect per B3,
+//             e.g. `-> Eff<Stderr> Unit`) ← n_evalD
+//
+//   Ex.1 add a NamedReason variant → content_hash(n_reason) changed →
+//     forward-closure frontier { n_reason, n_diag, n_emitR, n_evalD };
+//     n_pure SKIPPED (inputs unchanged ∧ pure ⇒ provably same output,
+//     THESIS:205-210).
+//   Ex.2 reformat a comment / rename a local → content_hash UNCHANGED
+//     (canonical-form + opaque Symbol, K-1/B1 α-equivalence) → Diff ∅ →
+//     frontier ∅, zero recompute. The payoff, BY the hash.
+//   Ex.3 change a node whose effect cannot be bounded → FAIL-CLOSED:
+//     include dependents, never optimistic skip (no-engine).
+//   Ex.4 change n_pure only → frontier { n_pure }; the rest SKIP.
+//     Minimal by construction (forward-closure = the affected cone).
+//
+//   ADVERSARIAL minimality stress (no-engine applied to the FEATURE —
+//   construct the edit that breaks minimality if the model is wrong):
+//   Ex.R1 effectful local edit: edit n_log's BODY only (reword its
+//     Stderr message); signature/effect UNCHANGED. Minimal frontier =
+//     { n_log, n_evalD } (the Stderr-cone ONLY) IFF effects are
+//     fine-grained — the effect-GRANULARITY contract, NOW ENCODED as
+//     lens/effect.dag B-5 (was "implied" in #3153): coarse effects ⇒
+//     cone = all effectful nodes ⇒ correct-but-useless.
+//   Ex.R2 widely-shared sub-node, partial change (the DOMINANT gate):
+//     n_reason consumed by 50+ sites; edit ONE variant only n_emitR
+//     matches → minimal frontier = { changed variant sub-Node, n_emitR,
+//     its dependents }; the sites on unchanged variants SKIP — IFF
+//     dependency edges are NODE-PRECISE (to the consumed sub-Node, not
+//     the declaration). NOW ENCODED as compiler/04_infer.dag B-4 (was
+//     "implied" in #3153) — the dominant minimality gate, > effects.
+//   Ex.R3 "what counts as changed" is safe BY CONSTRUCTION. Per B-3
+//     (the #3157 B1-CANON point-3 correction, drafted): child order is
+//     UNCONDITIONALLY list-order — the commutative-quotient is
+//     structurally foreclosed (no order on opaque Hash; algebra
+//     unreachable from the consumes-nothing root). So no
+//     "not-proven-commutative reorder" category exists: "changed" =
+//     list-order content_hash difference, full stop. The only unsafe
+//     direction (a hash collision = missed change) is foreclosed by the
+//     hash; cosmetic-reorder over-fire cannot even arise. (If #3157
+//     keeps the algebra-derived framing instead, the worst case
+//     degrades only to SAFE over-fire — no residual research risk.)
+//
+// DOGFOOD REALITY (v2 frozen seed; honest, verified 2026-05-15): v2 has
+// a `run` interpreter + emits a MODULE-level `dag-artifact.json`, NOT
+// the Node tree — and v2 is frozen (A3, cannot enrich its emission). So
+// there is NO node-granularity path through v2; node-granularity
+// arrives with the v4 pipeline at T-9. Earliest HONEST dogfood =
+// MODULE-granularity over `dag-artifact.json` via `v2-compiler run`,
+// once v4 files carry real import/declarations AND the v2-interpreter
+// pre-flight verifies `v2-compiler run` can execute this lens over the
+// artifact. A demo over edge-empty stubs would be theater (forbidden,
+// no-engine) — not built.
+//
 // Consumes:
 //   - std/node.dag (incl. the D1 Diff type), std/witness.dag
+//   - lens/effect.dag (B-5): per-Arrow-Node effect granularity is the
+//     R1 usefulness contract (Ex.R1) — coarse effects ⇒ useless cone
 //   - compiler/04_infer.dag: the typed dependency graph (Dag) — the
 //     use→def edges are NOT a stored field (IR-1 freezes InferredFacts
 //     at 4); per the 04_infer.dag B-4 contract they are DERIVED BY
