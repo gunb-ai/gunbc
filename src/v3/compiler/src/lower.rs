@@ -56,12 +56,15 @@ use crate::types::TypeShape;
 type CallableScope = HashMap<String, DeclarationId>;
 const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 
-/// Behavioral complexity lens + T-LAS carriers (`complexity_enforceable`, …). Kept **out**
-/// of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
-/// every `Lookup<ComplexitySummary>` edge; [`lower`] prepends this module before user
-/// lowering (`compile_to_dag`, gate #92).
+/// Behavioral lens authorities (`complexity_enforceable`, `parallelism_enforceable`, …). Kept
+/// **out** of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
+/// every lens carrier edge; [`lower_compile_module`] / [`crate::compile_to_dag`] prepend these DAGs before
+/// user lowering when surfaced imports imply them (`lenses.complexity`, `lenses.parallelism`).
 const COMPLEXITY_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/complexity.dag");
 const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
+
+const PARALLELISM_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/parallelism.dag");
+const PARALLELISM_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/parallelism.dag";
 
 fn append_complexity_lens_authority(dag: &mut Dag) {
     let tokens = crate::tokenize::tokenize(
@@ -77,6 +80,25 @@ fn append_complexity_lens_authority(dag: &mut Dag) {
         crate::parse::parse(&tokens, COMPLEXITY_LENS_AUTHORITY_FILE).unwrap_or_else(|diag| {
             panic!(
                 "complexity lens authority must parse ({COMPLEXITY_LENS_AUTHORITY_FILE}): {diag:?}"
+            )
+        });
+    lower_into(dag, &module);
+}
+
+fn append_parallelism_lens_authority(dag: &mut Dag) {
+    let tokens = crate::tokenize::tokenize(
+        PARALLELISM_LENS_AUTHORITY_DAG,
+        PARALLELISM_LENS_AUTHORITY_FILE,
+    )
+    .unwrap_or_else(|diag| {
+        panic!(
+            "parallelism lens authority must tokenize ({PARALLELISM_LENS_AUTHORITY_FILE}): {diag:?}"
+        )
+    });
+    let module =
+        crate::parse::parse(&tokens, PARALLELISM_LENS_AUTHORITY_FILE).unwrap_or_else(|diag| {
+            panic!(
+                "parallelism lens authority must parse ({PARALLELISM_LENS_AUTHORITY_FILE}): {diag:?}"
             )
         });
     lower_into(dag, &module);
@@ -178,21 +200,31 @@ struct LambdaLoweringContext<'a> {
 }
 
 pub fn lower(module: &SurfaceModule) -> Dag {
-    let mut dag = Dag::new();
-    let user_start = dag.declarations().len();
-    lower_into(&mut dag, module);
-    finalize_strict_user_lower_range(&mut dag, user_start);
-    dag
+    lower_compile_module(module, false, false)
 }
 
-/// Prepends `src/v3/lenses/complexity.dag` before lowering `module` (gate #92 T-LAS). Kept out of
-/// [`Dag::new`] and [`lower`] so emit tests that call [`crate::compile_to_dag`] on small programs
-/// without a `lenses.complexity` import do not load `Lookup<ComplexitySummary>` into the graph.
-pub(crate) fn lower_prepending_complexity_lens_authority(module: &SurfaceModule) -> Dag {
+/// Prepends lens authority subgraphs requested by surfaced imports (`lenses.complexity`,
+/// `lenses.parallelism`) ahead of lowering `module` — mirrors gate #92 (complexity). Kept **out**
+/// of [`Dag::new`] / [`lower`] defaults so callers that omit those imports avoid loading unrelated
+/// lens carriers.
+pub(crate) fn lower_compile_module(
+    module: &SurfaceModule,
+    prepend_complexity_lens_authority: bool,
+    prepend_parallelism_lens_authority: bool,
+) -> Dag {
     let mut dag = Dag::new();
-    append_complexity_lens_authority(&mut dag);
-    dag.seal_prepended_authority_fixture_range();
-    let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
+    if prepend_complexity_lens_authority {
+        append_complexity_lens_authority(&mut dag);
+    }
+    if prepend_parallelism_lens_authority {
+        append_parallelism_lens_authority(&mut dag);
+    }
+    let user_start = if prepend_complexity_lens_authority || prepend_parallelism_lens_authority {
+        dag.seal_prepended_authority_fixture_range();
+        dag.post_bootstrap_declaration_append_begin() as usize
+    } else {
+        dag.declarations().len()
+    };
     lower_into(&mut dag, module);
     finalize_strict_user_lower_range(&mut dag, user_start);
     dag

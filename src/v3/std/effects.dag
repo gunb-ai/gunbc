@@ -469,13 +469,14 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
   // The native Stage-2 bridge resolves imported std method anchors from the
   // host Dag before evaluating these cases and returns
   // `EffectClassificationFailed` if those anchors are missing or ambiguous.
-  // In the `.dag` body the imports below are already bound declarations, so
-  // unmatched callables intentionally fall through to transport facts until the
-  // bootstrapped evaluator can execute this body as the sole authority.
-  if op.callable.decl == append_method && method_is_post(op.endpoint.method) then
+  // In the `.dag` body the imports below are already bound declarations. Known
+  // callables are authoritative over transport metadata; unmatched callables
+  // fail closed through `classify_operation_effect` instead of deriving an
+  // effect kind from endpoint transport facts.
+  if op.callable.decl == append_method then
     IsBreaking(AppendEffect)
   else
-    if op.callable.decl == concat_method && method_is_post(op.endpoint.method) then
+    if op.callable.decl == concat_method then
       IsBreaking(CreateEffect { cause: PostAlways })
   else
     if op.callable.decl == get_method ||
@@ -485,44 +486,37 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
        op.callable.decl == map_has_method ||
        op.callable.decl == count_method ||
        op.callable.decl == length_method then
-      if method_is_read(op.endpoint.method) then
       IsIdempotent(ReadEffect)
-      else
-        transport_effect_shape(op)
     else
     if op.callable.decl == map_insert_method ||
        op.callable.decl == replace_method ||
        op.callable.decl == with_method then
-      if method_is_upsert(op.endpoint.method) then
-        match operation_resource_key(op) {
-          Some(key) =>
-            IsIdempotent(UpsertEffect {
-              key_source: PathParam { param: key }
-            })
-          None =>
-            IsBreaking(CreateEffect {
-              cause: KeylessFallback { method: op.endpoint.method }
-            })
-        }
-      else
-        transport_effect_shape(op)
+      match operation_resource_key(op) {
+        Some(key) =>
+          IsIdempotent(UpsertEffect {
+            key_source: PathParam { param: key }
+          })
+        None =>
+          IsBreaking(CreateEffect {
+            cause: KeylessFallback { method: op.endpoint.method }
+          })
+      }
     else
     if op.callable.decl == diff_method then
-      if method_is_delete(op.endpoint.method) then
-        match operation_resource_key(op) {
-          Some(key) =>
-            IsIdempotent(DeleteEffect {
-              key_source: PathParam { param: key }
-            })
-          None =>
-            IsBreaking(CreateEffect {
-              cause: KeylessFallback { method: op.endpoint.method }
-            })
-        }
-      else
-        transport_effect_shape(op)
+      match operation_resource_key(op) {
+        Some(key) =>
+          IsIdempotent(DeleteEffect {
+            key_source: PathParam { param: key }
+          })
+        None =>
+          IsBreaking(CreateEffect {
+            cause: KeylessFallback { method: op.endpoint.method }
+          })
+      }
     else
-      transport_effect_shape(op)
+      IsBreaking(CreateEffect {
+        cause: KeylessFallback { method: op.endpoint.method }
+      })
 }
 
 fn classify_operation_effect(op: Operation) -> EffectClassificationResult {
@@ -744,7 +738,8 @@ type ParallelismUnsupportedKind
   = NoWorkflowProjection
   | NotParallelEffectRoot
   | NonLinearParallelBranch
-  | PairwiseNonCommute
+  | PairwiseNonCommute { left: Operation, right: Operation }
+  | EffectClassificationUnavailable
   | LensSurfacePending
 
 type ParallelismUnsupportedDetail {

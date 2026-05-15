@@ -21,6 +21,7 @@ pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
 pub use enforced_lens_application::check_enforced_lens_applications;
+pub use enforced_lens_application::parallelism_iteration_opt_in_enforcement_violates;
 // Gate #58 integration receipts (`tests/integration/t_gate_58_apply_lens_self_application_test.rs`)
 // need the helpers below as **`pub`**: the consolidated integration test binary is a separate
 // crate that links this library and cannot call `pub(crate)` items on `v3_compiler`.
@@ -35,6 +36,7 @@ pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
 pub mod r3_gate_87_cementing_regen_runner_suites;
 mod regen_bootstrap_emit;
+pub mod regen_lens_driver;
 pub mod regen_tokenize;
 
 /// SG-0 producer-owned generated-file manifest.
@@ -65,7 +67,10 @@ pub mod realization_cost {
 
     use std::collections::HashMap;
 
-    use crate::dag::{literal_decimal_i64, Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+    use crate::dag::{
+        literal_decimal_i64, sequential, Dag, DeclarationId, FieldValue, LiteralBits, SymbolicCost,
+        ValueBody,
+    };
 
     /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
     /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
@@ -257,6 +262,17 @@ pub mod realization_cost {
         pub fn cost(&self, key: &RealizationCostKey) -> Option<RealizationCostAmount> {
             self.get(key).map(|entry| entry.cost)
         }
+    }
+
+    /// Compose the target-agnostic symbolic cost with target realization
+    /// costs read from a `LanguageSpec` row table.
+    pub fn compose_symbolic_cost_with_realization_costs(
+        algebra_cost: SymbolicCost,
+        costs: impl IntoIterator<Item = RealizationCostAmount>,
+    ) -> SymbolicCost {
+        costs.into_iter().fold(algebra_cost, |acc, cost| {
+            sequential(acc, SymbolicCost::ConstantCost { _0: cost.value() })
+        })
     }
 
     struct RealizationMetas {
@@ -3788,11 +3804,33 @@ pub mod lens_effect_enumeration {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        non_shorthand_field_patterns
     )]
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+
+        enum EffectClassificationResult {
+            EffectClassified {
+                shape: EffectShape,
+            },
+            EffectClassificationFailed {
+                failure: EffectClassificationFailure,
+            },
+        }
+
+        fn classify_operation_effect(op: &Operation) -> EffectClassificationResult {
+            match crate::dag::classify_operation_effect(&Dag::new(), op) {
+                Ok(shape) => EffectClassificationResult::EffectClassified { shape },
+                Err(failure) => EffectClassificationResult::EffectClassificationFailed { failure },
+            }
+        }
+
+        fn operation_effect_shape(op: &Operation) -> EffectShape {
+            crate::dag::operation_effect_shape(&Dag::new(), op)
+                .expect("std.effects operation anchors unavailable for generated adapter")
+        }
 
         include!("lens_effect_enumeration_generated.rs");
     }
@@ -3801,6 +3839,15 @@ pub mod lens_effect_enumeration {
         enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
         StructuralEffectShape, TransactionalPattern,
     };
+
+    pub fn operation_structural_effect_shape(op: &crate::dag::Operation) -> StructuralEffectShape {
+        match crate::dag::operation_effect_shape(&crate::dag::Dag::new(), op) {
+            Some(shape) => generated::effect_shape_to_structural(&shape),
+            None => StructuralEffectShape::UnknownEffect {
+                reason: "std.effects operation anchors unavailable".to_string(),
+            },
+        }
+    }
 }
 
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
@@ -4505,7 +4552,7 @@ pub mod lens_cost {
 
 /// Symbolic-cost lens (Lane 2 Stage 2d / DB-7). Authority lives in
 /// `src/v3/lenses/cost.dag`; the Rust projection is auto-emitted
-/// into `src/v3/compiler/src/lens_cost_symbolic_generated.rs` and
+/// into `src/v3/compiler/src/cost_symbolic_lens_generated.rs` and
 /// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
 ///
 /// The `SymbolicCost` + `SizeVariable` carriers live in
@@ -4523,13 +4570,18 @@ pub mod lens_cost_symbolic {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
-        clippy::deref_addrof
+        clippy::deref_addrof,
+        clippy::eq_op
     )]
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::{
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
+        };
+        use crate::Witness;
 
-        include!("lens_cost_symbolic_generated.rs");
+        include!("cost_symbolic_lens_generated.rs");
     }
 
     pub use generated::{
@@ -5205,6 +5257,8 @@ pub mod lens_parallelism {
     mod generated {
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::OptionalDiagnostic;
+        use crate::Witness;
 
         include!("lens_parallelism_generated.rs");
     }
@@ -5217,7 +5271,17 @@ pub mod lens_parallelism {
     ) -> i64 {
         generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
     }
+
+    pub(crate) fn parallelism_iteration_observed_mode(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> ParallelismMode {
+        generated::parallelism_iteration_observed_mode(dag, workflow_root)
+    }
+
+    pub(crate) use generated::ParallelismMode;
 }
+
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
@@ -5592,15 +5656,40 @@ fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> b
     })
 }
 
+fn is_lenses_parallelism_authority_module(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Module { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "parallelism"
+        )
+    })
+}
+
+fn needs_parallelism_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    if is_lenses_parallelism_authority_module(module) {
+        return false;
+    }
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "parallelism"
+        )
+    })
+}
+
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = if needs_complexity_lens_authority_prepended(&surface) {
-        lower::lower_prepending_complexity_lens_authority(&surface)
-    } else {
-        lower::lower(&surface)
-    };
+    let mut dag = lower::lower_compile_module(
+        &surface,
+        needs_complexity_lens_authority_prepended(&surface),
+        needs_parallelism_lens_authority_prepended(&surface),
+    );
     infer::infer(&mut dag);
     r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {

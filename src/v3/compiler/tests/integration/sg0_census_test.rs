@@ -41,6 +41,7 @@ use v3_compiler::generated_files::GENERATED_FILES;
 const CENSUS_ROOT: &str = "src/v3/compiler";
 const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
 const RETIRED_LENS_APPLY_RS: &str = "src/v3/compiler/src/lens_apply.rs";
+const RETIRED_REGEN_LENS_BIN_RS: &str = "src/v3/compiler/src/bin/regen_lens.rs";
 
 #[test]
 fn r3_gate_5_lens_apply_rs_stays_retired() {
@@ -65,6 +66,19 @@ fn r3_gate_6_lens_testgen_rs_stays_retired() {
          `{RETIRED_LENS_TESTGEN_RS}` to stay retired. Keep the stable \
          `v3_compiler::lens_testgen` API routed through `lens_declaration_apply.rs` \
          until PB-Runtime owns testgen end-to-end."
+    );
+}
+
+#[test]
+fn r3_gate_7_regen_lens_bin_rs_stays_retired() {
+    let retired_path = workspace_root().join(RETIRED_REGEN_LENS_BIN_RS);
+
+    assert!(
+        !retired_path.exists(),
+        "R3 gate #7 (`regen_lens_dot_rs_retired`) requires \
+         `{RETIRED_REGEN_LENS_BIN_RS}` to stay retired. The `regen_lens` \
+         Cargo bin delegates through `src/regen_lens_entry.rs` into \
+         `regen_lens_driver.rs` until PB-1 emits the shim from `.dag`."
     );
 }
 
@@ -114,9 +128,12 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
 // `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`)
 // and SG-4 prep's `regen_infer_helpers.rs` all folded into a single
-// `regen_lens.rs` shim driven by `src/v3/compiler/regen.dag`'s
+// unified `regen_lens` driver driven by `src/v3/compiler/regen.dag`'s
 // `LensRegistryEntry` records. Five retirements; one net-new entry
-// (`regen_lens.rs`). The new `sg6_hand_authored_census_test.rs`
+// at the time (`src/bin/regen_lens.rs`). **R3 gate #7** (`regen_lens_dot_rs_retired`,
+// 2026-05-14): that program-sized bin path retired; logic lives in
+// `regen_lens_driver.rs` with a thin `regen_lens_entry.rs` `[[bin]]` shell.
+// The new `sg6_hand_authored_census_test.rs`
 // pins the reduced bin census + full `(name, lens_file,
 // generated_file)` registry tuples + `--lens` singleton resolve +
 // end-to-end CLI smoke; it is hand-authored test infrastructure and
@@ -262,7 +279,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/gunbc_ci.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
-    "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_parse_tables.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
@@ -333,6 +349,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
     "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
+    "src/v3/compiler/src/regen_lens_driver.rs",
+    "src/v3/compiler/src/regen_lens_entry.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
@@ -410,8 +428,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Lane E-P per ROADMAP.md "Lane E-P — per-call descent-evidence provenance (M)" — see
     // INVARIANTS.md §P5 row for dissolution trigger (lens-consumer match-arm walker extension).
     "src/v3/compiler/tests/integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs",
+    // R3 gate #82: Operation-row consumer receipt for effect_enumeration COMPLETE.
+    "src/v3/compiler/tests/integration/cementing/effect_enumeration_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
+    // R3 §1.8 gate #95 (`opt_in_iteration_parallelism_via_lens_application_demonstrated`).
+    "src/v3/compiler/tests/integration/t_las_parallelism_iteration_gate95_demo_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
@@ -495,6 +517,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // R3 §1.8 gate #89 (`section_ref_substrate_landed`): `SectionRef` disjoint-sum substrate receipt.
+    "src/v3/compiler/tests/integration/lens_application_substrate_carrier_test.rs",
     // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
     // receipt for the four-lens parity snapshot while LensOutputEquals /
     // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
@@ -536,9 +560,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
     // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
-    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
-    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
-    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
@@ -601,6 +622,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
     "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
+    // R3 §1.8 gate #39 (`no_coercion_cost_dimension`, T-CostLens-Composition):
+    // `.dag` substrate ratchet — no parallel `CoercionCost` token outside comments.
+    "src/v3/compiler/tests/integration/no_coercion_cost_dimension_ratchet_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
     // `pb_method_template_projection` consumer hook. Stays hand-Rust
@@ -650,10 +674,28 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
     // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
+    // R3 gate #62 `substrate_gap_file_ingestion_closed` negative-bridge audit
+    // (supporting evidence; NOT a §Acceptance PASSING receipt — operator BLOCKING
+    // 2026-05-14T19:13:37Z held PASSING flip pending a positive
+    // ingestion-via-`FileAttachment` `.dag` demonstration). Pairs with the carrier
+    // ratchet `file_attachment_substrate_carrier_test.rs` + `gate_62_file_attachment_demo_record`
+    // (PR #2823) and the `FileAttachment` Refined-B-1 carrier in `src/v3/std/timing_lens.dag`.
+    // Hand-Rust because the predicate is over the workspace `.dag`/`.v3` file tree
+    // (filesystem walk + read) with comments / string literals stripped from each
+    // program body, distinct from grep-on-doc-comment textual-enforcement per
+    // `feedback_no_textual_enforcement_bridges`. T-PB-B deferral lane
+    // (`pb_rust_tests_outside_residual_zero`); dissolves when a `.dag` `TestClaim` /
+    // PB-B-1 runner can assert the file-tree audit fail-closed without a host-side
+    // filesystem walker, or when the gate flips PASSING via a positive ingestion
+    // demonstration and the carrier-reachability ratchets alone carry the audit.
+    "src/v3/compiler/tests/integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs",
     // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
     // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
     // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
     "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+    // R3 gate #90 (`lens_enforcement_carrier_landed`): bootstrap pins per-lens
+    // `LensEnforcement` / `EnforceableLens` substrate rows (T-LAS Slice B).
+    "src/v3/compiler/tests/integration/r3_gate_90_lens_enforcement_carrier_landed_test.rs",
     // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
     // that the `.dag` PB census claim executes through `TestRunner` and reports
     // the live lens-producer residual count while Row-4 / Item 4 retirement
@@ -664,6 +706,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #8 (`sg0_non_test_zero`): host receipt proving the combined
+    // `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS`
+    // state-check executes through `.dag` `TestRunner` claims while the live
+    // SG-0 residual counts remain nonzero.
+    "src/v3/compiler/tests/integration/r3_sg0_non_test_zero_test.rs",
     // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
     // non-canonical `.dag` residual-census receipt until the canonical
     // PB-Runtime reflection consumer lands. P5 test-subset deferral:
@@ -707,7 +754,19 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
+    // T-CostLens-Composition): mechanical ratchet pinning the executable
+    // dispatch arm + evaluator wiring in `test_runner.rs`, so accidental
+    // retirement back to the `NotYetImplemented` shell trips here. Wider
+    // pass/fail-closed receipts live in `m1_5_verification_test.rs`.
+    "src/v3/compiler/tests/integration/symbolic_cost_expr_equals_executable_ratchet_test.rs",
     "src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs",
+    // §1.8 gate #106 (`show_correct_code_diagnostic_coverage`): structural bootstrap locks on
+    // `Correction` / substrate `Diagnostic` + one live-correction roundtrip anchor (`compile_to_dag`
+    // → `apply_correction_and_reparse` → clean recompile). **P5 receipt:** matching INVARIANTS.md
+    // SG-0 integration-test table row + this census literal land in the same PR — see row for
+    // `t_gate_106_show_correct_code_diagnostic_coverage_test.rs`.
+    "src/v3/compiler/tests/integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs",
     // §1.8 gate #58 (`apply_lens_self_application_demonstrated`): Rust integration asserts the
     // PB-1 `generated_full_bootstrap_dag()` snapshot carries the std witness + zero bootstrap
     // diagnostics (timing `EnforcedApplication` row in `t_ci_workflow_as_data_demo.dag`).
@@ -814,6 +873,14 @@ const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
+
+pub(crate) fn expected_hand_authored_non_test_count() -> usize {
+    EXPECTED_HAND_AUTHORED_NON_TEST.len()
+}
+
+pub(crate) fn expected_hand_authored_fragments_count() -> usize {
+    EXPECTED_HAND_AUTHORED_FRAGMENTS.len()
+}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum TestsAsDataMigrationClass {

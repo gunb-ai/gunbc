@@ -62,6 +62,7 @@ type CensusListConstant {}
 
 data expected_hand_authored_non_test: CensusListConstant = {}
 data expected_hand_authored_test: CensusListConstant = {}
+data expected_hand_authored_fragments: CensusListConstant = {}
 
 // Closed PB subset predicates are declared values, not string labels, so
 // fixtures can only point at typed vocabulary entries.
@@ -225,7 +226,7 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   {
     lens_basename: "effect_enumeration.dag"
     structural: LensCapabilityStructuralTerminal
-    behavioral: LensCapabilityBehavioralPartial
+    behavioral: LensCapabilityBehavioralComplete
     v2_counterpart: LensCapabilityV2NoneV3Native
   },
   {
@@ -237,7 +238,7 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   {
     lens_basename: "parallelism.dag"
     structural: LensCapabilityStructuralTerminal
-    behavioral: LensCapabilityBehavioralPartial
+    behavioral: LensCapabilityBehavioralComplete
     v2_counterpart: LensCapabilityV2NoneV3Native
   },
   {

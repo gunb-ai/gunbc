@@ -69,6 +69,8 @@ mod e6_g1a_option3_static_lens_test;
 mod e_i_lane_induction_preflight_test;
 #[path = "integration/cementing/e_p_per_call_descent_lens_consumer_cementing.rs"]
 mod e_p_per_call_descent_lens_consumer_cementing;
+#[path = "integration/cementing/effect_enumeration_lens_behavioral_completion.rs"]
+mod effect_enumeration_lens_behavioral_completion;
 #[path = "integration/emission_provenance_lens_test.rs"]
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
@@ -99,6 +101,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lens_application_substrate_carrier_test.rs"]
+mod lens_application_substrate_carrier_test;
 #[path = "integration/lens_behavioral_parity_demonstration_test.rs"]
 mod lens_behavioral_parity_demonstration_test;
 #[path = "integration/lens_cost_target_realization_test.rs"]
@@ -187,12 +191,18 @@ mod r3_free_consequences_first_batch_test;
 mod r3_free_consequences_second_batch_test;
 #[path = "integration/r3_gate_60_phase2_width_nat_parser_test.rs"]
 mod r3_gate_60_phase2_width_nat_parser_test;
+#[path = "integration/r3_gate_62_file_ingestion_negative_bridge_audit_test.rs"]
+mod r3_gate_62_file_ingestion_negative_bridge_audit_test;
 #[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
 mod r3_gate_87_lens_cementing_regen_receipts_test;
+#[path = "integration/r3_gate_90_lens_enforcement_carrier_landed_test.rs"]
+mod r3_gate_90_lens_enforcement_carrier_landed_test;
 #[path = "integration/r3_lens_producer_retirement_executable_witness_test.rs"]
 mod r3_lens_producer_retirement_executable_witness_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
 mod r3_pb_runtime_evaluator_corpus_seed_test;
+#[path = "integration/r3_sg0_non_test_zero_test.rs"]
+mod r3_sg0_non_test_zero_test;
 #[path = "integration/r3_substrate_gap_reflection_closure_test.rs"]
 mod r3_substrate_gap_reflection_closure_test;
 #[path = "integration/r3_v3_self_host_demonstration_dag_test.rs"]
@@ -221,8 +231,12 @@ mod sg6_hand_authored_census_test;
 mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/shape_a_target_source_filtering_authority_test.rs"]
 mod shape_a_target_source_filtering_authority_test;
+#[path = "integration/symbolic_cost_expr_equals_executable_ratchet_test.rs"]
+mod symbolic_cost_expr_equals_executable_ratchet_test;
 #[path = "integration/t_ci_workflow_as_data_demo_test.rs"]
 mod t_ci_workflow_as_data_demo_test;
+#[path = "integration/t_gate_106_show_correct_code_diagnostic_coverage_test.rs"]
+mod t_gate_106_show_correct_code_diagnostic_coverage_test;
 #[path = "integration/t_gate_58_apply_lens_self_application_test.rs"]
 mod t_gate_58_apply_lens_self_application_test;
 #[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
@@ -231,6 +245,8 @@ mod t_impossiblebugs_unenumerated_effects_test;
 mod t_las_complexity_contract_compile_error_test;
 #[path = "integration/t_las_crdt_cost_basis_demo_test.rs"]
 mod t_las_crdt_cost_basis_demo_test;
+#[path = "integration/t_las_parallelism_iteration_gate95_demo_test.rs"]
+mod t_las_parallelism_iteration_gate95_demo_test;
 #[path = "integration/t_lens_application_carrier_test.rs"]
 mod t_lens_application_carrier_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]

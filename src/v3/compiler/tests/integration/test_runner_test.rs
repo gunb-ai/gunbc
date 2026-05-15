@@ -646,7 +646,7 @@ data suite: TestSuite = {
     );
     assert_fail_contains(
         "lens_producer_files_remaining",
-        "lens-producer subset observed 2",
+        "lens-producer subset observed 3",
     );
     assert_eq!(
         result_for("pb_self_compile_fixed_point"),
@@ -1286,13 +1286,8 @@ fn test_runner_runs_p0_host_sentinel_and_rest_gate() {
 }
 
 #[test]
-fn test_runner_quantified_suite_entry_reports_nyi_with_modeled_name() {
-    // Gate #85 happy-path regression: a structurally valid
-    // `Quantified(QuantifiedTestClaim)` suite entry passes the
-    // `validate_quantified_claim_shape` boundary and yields
-    // `NotYetImplemented`; `claim_name` is projected from the modeled
-    // `QuantifiedTestClaim.name` so runner and obligation-walk agree on the
-    // single-authority identity.
+fn test_runner_quantified_suite_entry_forall_empty_generator_passes() {
+    // Gate #85: vacuous ForAll over an empty generator family passes (predicate never runs).
     let source = r#"
 data smoke_generator_body: List<ProgramShape> = []
 
@@ -1309,7 +1304,7 @@ data suite_quantified: TestSuite = {
   claims: [Quantified(smoke_quantified_claim)]
 }
 "#;
-    let dag = compile_clean(source, "test_runner_quantified_nyi.dag");
+    let dag = compile_clean(source, "test_runner_quantified_forall_empty.dag");
     let results = TestRunner::new(&dag).run_suite("suite_quantified");
 
     assert_eq!(results.len(), 1);
@@ -1319,11 +1314,160 @@ data suite_quantified: TestSuite = {
         "claim_name must come from QuantifiedTestClaim.name (single-authority \
          identity matching obligation_for_quantified_claim), got {entry:?}",
     );
-    assert!(
-        matches!(entry.result, ClaimResult::NotYetImplemented(_)),
-        "Quantified suite entry with valid shape must yield NotYetImplemented \
-         (gate #85 substrate-only landing), got {entry:?}",
+    assert_eq!(
+        entry.result,
+        ClaimResult::Pass,
+        "vacuous ForAll must Pass, got {entry:?}",
     );
+}
+
+#[test]
+fn test_runner_quantified_suite_entry_exists_empty_generator_fails() {
+    let source = r#"
+data smoke_generator_body: List<ProgramShape> = []
+
+data smoke_quantified_claim: QuantifiedTestClaim = {
+  name: "exists_empty",
+  generator: { generator: smoke_generator_body },
+  quantifier: Exists,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_quantified: TestSuite = {
+  name: "runner_quantified_exists_empty",
+  claims: [Quantified(smoke_quantified_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_exists_empty.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_quantified");
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(results[0].result, ClaimResult::Fail(_)),
+        "Exists over empty family must Fail, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn test_runner_quantified_forall_single_compiles_passes() {
+    let source = r#"
+data gen_shapes: List<ProgramShape> = [
+  LiteralProgram { source: "let x: Int = 1", file_name: "qforall_one.v3" }
+]
+
+data q_claim: QuantifiedTestClaim = {
+  name: "q_forall_one",
+  generator: { generator: gen_shapes },
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_q: TestSuite = {
+  name: "suite_quantified_forall_one",
+  claims: [Quantified(q_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_forall_one.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_q");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass, "{:?}", results[0]);
+}
+
+#[test]
+fn test_runner_quantified_exists_first_failure_second_success_passes() {
+    let source = r#"
+data gen_shapes: List<ProgramShape> = [
+  LiteralProgram { source: "let x: Bool = 1", file_name: "qexists_bad.v3" },
+  LiteralProgram { source: "let x: Int = 1", file_name: "qexists_good.v3" }
+]
+
+data q_claim: QuantifiedTestClaim = {
+  name: "q_exists_skip_fail",
+  generator: { generator: gen_shapes },
+  quantifier: Exists,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_q: TestSuite = {
+  name: "suite_quantified_exists_skip_fail",
+  claims: [Quantified(q_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_exists_skip_fail.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_q");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass, "{:?}", results[0]);
+}
+
+#[test]
+fn test_runner_quantified_forall_first_failure_short_circuits() {
+    let source = r#"
+data gen_shapes: List<ProgramShape> = [
+  LiteralProgram { source: "let x: Bool = 1", file_name: "qforall_bad.v3" },
+  LiteralProgram { source: "let x: Int = 1", file_name: "qforall_good.v3" }
+]
+
+data q_claim: QuantifiedTestClaim = {
+  name: "q_forall_short",
+  generator: { generator: gen_shapes },
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_q: TestSuite = {
+  name: "suite_quantified_forall_short",
+  claims: [Quantified(q_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_forall_short.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_q");
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(results[0].result, ClaimResult::Fail(_)),
+        "ForAll must fail on first bad sample, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn test_runner_quantified_generator_field_rejects_raw_list_declaration_ref() {
+    // Substrate authority: `QuantifiedTestClaim.generator` inhabits `ProgramGenerator`, not
+    // `List<ProgramShape>`. Typed `.dag` rejects assigning a list declaration ref directly.
+    let source = r#"
+data shapes: List<ProgramShape> = []
+
+data bad_claim: QuantifiedTestClaim = {
+  name: "bad",
+  generator: shapes,
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_bad: TestSuite = {
+  name: "suite_quantified_bad_generator",
+  claims: [Quantified(bad_claim)]
+}
+"#;
+    match compile_to_dag(source, "quantified_generator_list_ref_typefail.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            let found_type_mismatch = dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diag)| matches!(diag, Diagnostic::TypeMismatch { .. }));
+            assert!(
+                found_type_mismatch,
+                "`generator` must be ProgramGenerator-carrier-shaped; raw List ref should yield TypeMismatch, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+        Ok(_) => panic!("QuantifiedTestClaim.generator: shapes should not type-check"),
+        Err(err) => panic!("unexpected compile error: {err:?}"),
+    }
 }
 
 #[test]
@@ -1332,9 +1476,8 @@ fn test_runner_quantified_suite_entry_fails_closed_on_wrong_shape() {
     // a non-`QuantifiedTestClaim` declaration is rejected at the type-checker
     // boundary (`TypeMismatch` on the variant argument) — the suite never
     // reaches the runner. This is the stronger of the two fail-closed postures
-    // (ill-shaped quantified entries cannot compile at all);
-    // `validate_quantified_claim_shape` handles the residual synthetic-dag
-    // case below the type-checker.
+    // (ill-shaped quantified entries cannot compile at all); runner-side shape
+    // parsing handles residual synthetic DAG cases below the type-checker.
     let source = r#"
 data not_quantified: Int = 7
 

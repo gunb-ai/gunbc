@@ -14,6 +14,18 @@ fn parallel_unsupported(
     })
 }
 
+fn pairwise_non_commute(
+    left: Operation,
+    right: Operation,
+    reason: impl Into<String>,
+) -> ParallelismUnsupportedDetail {
+    ParallelismUnsupportedDetail {
+        kind: ParallelismUnsupportedKind::PairwiseNonCommute { left, right },
+        downstream_stage: DOWNSTREAM.to_string(),
+        reason: reason.into(),
+    }
+}
+
 fn key_sources_equal(a: &KeySource, b: &KeySource) -> bool {
     match (a, b) {
         (KeySource::PathParam { param: pa }, KeySource::PathParam { param: pb }) => pa == pb,
@@ -77,16 +89,18 @@ fn pairwise_cross_branch_commutes(
                     match operations_commute(dag, oa, ob) {
                         Ok(true) => {}
                         Ok(false) => {
-                            return Err(ParallelismUnsupportedDetail {
-                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
-                                downstream_stage: DOWNSTREAM.to_string(),
-                                reason: "parallel branch operations do not commute under parallel scheduling"
-                                    .to_string(),
-                            });
+                            return Err(pairwise_non_commute(
+                                oa.clone(),
+                                ob.clone(),
+                                "parallel branch operations do not commute under parallel scheduling",
+                            ));
                         }
-                        Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+                        Err(
+                            EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                            | EffectClassificationFailure::UnknownOperationCallable,
+                        ) => {
                             return Err(ParallelismUnsupportedDetail {
-                                kind: ParallelismUnsupportedKind::PairwiseNonCommute,
+                                kind: ParallelismUnsupportedKind::EffectClassificationUnavailable,
                                 downstream_stage: DOWNSTREAM.to_string(),
                                 reason: "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism"
                                     .to_string(),
@@ -128,7 +142,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(CompositionVerdict::IdempotentComposition) => {}
         Err(_) => {
             return parallel_unsupported(
-                ParallelismUnsupportedKind::PairwiseNonCommute,
+                ParallelismUnsupportedKind::EffectClassificationUnavailable,
                 "std.effects method anchors are missing or ambiguous; operation effect classification cannot safely prove parallelism",
             );
         }
@@ -157,8 +171,87 @@ pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -
     for op in ops {
         match classify_operation_effect(p0, op) {
             Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect)) => {}
-            Ok(_) | Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => return 0,
+            Ok(_)
+            | Err(
+                EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                | EffectClassificationFailure::UnknownOperationCallable,
+            ) => return 0,
         }
     }
     1
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParallelismMode {
+    OptInIndependent,
+    Sequential,
+}
+
+fn behavior_parallelism_root(behavior: &Behavior) -> NodeId {
+    match behavior {
+        Behavior::Value(v) => v.id,
+        Behavior::Transform(t) => t.id,
+        Behavior::Branch(b) => b.id,
+        Behavior::Loop(l) => l.id,
+        Behavior::Bind(bind) => bind.id,
+    }
+}
+
+pub(super) fn parallelism_iteration_observed_mode(p0: &Dag, p1: NodeId) -> ParallelismMode {
+    if loop_iteration_parallel_emission_indicator(p0, p1) == 1 {
+        ParallelismMode::OptInIndependent
+    } else {
+        ParallelismMode::Sequential
+    }
+}
+
+pub(super) fn parallelism_lens_read(p0: &Dag, p1: &Behavior) -> Witness<ParallelismMode> {
+    Witness::Inhabits(parallelism_iteration_observed_mode(p0, behavior_parallelism_root(p1)))
+}
+
+pub(super) fn parallelism_lens_iterate(
+    body: ParallelismMode,
+    _bound: &LoopBound,
+) -> ParallelismMode {
+    body
+}
+
+pub(super) fn parallelism_lens_validate(
+    _p0: &Dag,
+    _p1: &ParallelismMode,
+) -> OptionalDiagnostic {
+    OptionalDiagnostic::NoDiagnostic
+}
+
+pub(super) fn parallelism_enforcement_project(m: ParallelismMode) -> ParallelismMode {
+    m
+}
+
+pub(super) fn parallelism_enforcement_violates(
+    observed: &ParallelismMode,
+    declared: &ParallelismMode,
+) -> bool {
+    match declared {
+        ParallelismMode::OptInIndependent => match observed {
+            ParallelismMode::Sequential => true,
+            ParallelismMode::OptInIndependent => false,
+        },
+        ParallelismMode::Sequential => match observed {
+            ParallelismMode::OptInIndependent => false,
+            ParallelismMode::Sequential => false,
+        },
+    }
+}
+
+pub(super) fn parallelism_lens_combine(
+    a: &ParallelismMode,
+    b: &ParallelismMode,
+) -> ParallelismMode {
+    match a {
+        ParallelismMode::Sequential => ParallelismMode::Sequential,
+        ParallelismMode::OptInIndependent => match b {
+            ParallelismMode::Sequential => ParallelismMode::Sequential,
+            ParallelismMode::OptInIndependent => ParallelismMode::OptInIndependent,
+        },
+    }
 }

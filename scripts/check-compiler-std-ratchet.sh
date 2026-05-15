@@ -48,6 +48,7 @@ POSITIVE_ROWS=(
   "src/v3/lenses/effect_enumeration.dag:EffectEnumerationAuthoritySite"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentBinding"
   "src/v3/lenses/parallelism.dag:LinearBranchesLookup"
+  "src/v3/lenses/parallelism.dag:ParallelismMode"
   "src/v3/lenses/provenance.dag:Origin"
   "src/v3/lenses/structural_resolution.dag:UnresolvedArrowBody"
   "src/v3/lenses/structural_resolution.dag:NameKeyedReference"

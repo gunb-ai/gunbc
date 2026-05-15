@@ -8,10 +8,11 @@
 //! `Commutativity`, and `Identity` operational witnesses on **honest additive vs multiplicative `Int`
 //! lenses** (`+` vs `*`). Canonical §1.8 gate **#10** `l7_algebraic_laws_witnessed` maps to the matrix
 //! lead row (`AlgebraicLaw::Associativity` on `Int` `+`). The L7 matrix suite locks claims whose **Int
-//! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); lattice /
-//! Boolean / free-monoid obligations and lattice meet/join law tags stay **out** of the passing
-//! matrix until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see
-//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Gate **#15**
+//! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); the
+//! normal (non-ignored) matrix ratchet is the §1.8 #10 consumer receipt for the current
+//! `AlgebraicLawKind` executable surface, not full §Acceptance closure. Lattice / Boolean /
+//! free-monoid obligations and non-enum laws remain substrate §P1 extensions, not fixture-local
+//! overclaims. Gate **#15**
 //! `l5_cross_target_consistency` (Rust / Python / Go `ForAllTargets` corpus) lives in
 //! `tests/boundary/l5_cross_target_consistency.rs` (via `tests/integration.rs`).
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
@@ -33,6 +34,7 @@ const L4_CLAIM: &str = "l4_emit_eval_match";
 const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 const L4_NESTED_CLAIM: &str = "r3_verification_l4_emit_eval_nested_branch";
 const L4_ADD_THEN_BRANCH_CLAIM: &str = "r3_verification_l4_emit_eval_add_then_branch";
+const L4_ARITHMETIC_CHAIN_CLAIM: &str = "r3_verification_l4_emit_eval_arithmetic_chain";
 
 const L4_MIXED_FIXTURE: &str =
     include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
@@ -151,23 +153,35 @@ fn r3_verification_l4_emit_eval_add_then_branch_passes_w1_emit_vs_eval() {
     );
 }
 
-/// Suite-wide shape: exactly four named W1 claims, each passing (complements per-claim
+#[test]
+fn r3_verification_l4_emit_eval_arithmetic_chain_passes_w1_emit_vs_eval() {
+    let evaluation = l4_run_named_claim(L4_ARITHMETIC_CHAIN_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_ARITHMETIC_CHAIN_CLAIM);
+    assert!(
+        matches!(evaluation.result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (call + repeated Int arithmetic + branch Int 10); got {:?}",
+        evaluation.result
+    );
+}
+
+/// Suite-wide shape: exactly five named W1 claims, each passing (complements per-claim
 /// `run_claim` tests without pinning suite result order).
 #[test]
-fn r3_verification_l4_l7_direct_suite_lists_four_l4_certification_seed_claims() {
+fn r3_verification_l4_l7_direct_suite_lists_five_l4_certification_seed_claims() {
     run_on_larger_stack(|| {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
         let results = TestRunner::new(dag).run_suite(L4_SUITE);
         assert_eq!(
             results.len(),
-            4,
-            "`{L4_SUITE}` should wire exactly four W1 row claims"
+            5,
+            "`{L4_SUITE}` should wire exactly five W1 row claims"
         );
         for name in [
             L4_CLAIM,
             L4_FALSE_CLAIM,
             L4_NESTED_CLAIM,
             L4_ADD_THEN_BRANCH_CLAIM,
+            L4_ARITHMETIC_CHAIN_CLAIM,
         ] {
             assert!(
                 results.iter().any(|r| r.claim_name == name),
@@ -249,13 +263,12 @@ fn l7_algebraic_laws_witnessed_passes_bounded_associativity_witness() {
     });
 }
 
-/// Bounded-runner receipt for [`L7_MATRIX_SUITE`] only — **not** exhaustive §Acceptance / ROADMAP coverage.
+/// §1.8 gate #10 consumer receipt for the current executable [`AlgebraicLawKind`] surface.
 ///
 /// One [`TestRunner::run_suite`] covers every [`L7_MATRIX_PASS_CLAIMS`] row (including semigroup
 /// associativity and commutative-monoid commutativity) plus embedded-source `a + b` / `a * b`
 /// checks — avoids duplicate full-suite passes that tripped the Phase-0 2s ratchet.
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     // Algebra-faithful Int lenses: additive obligations use `+`; multiplicative `Identity` uses `*`.

@@ -51,7 +51,7 @@ data lens_cost_entry: LensRegistryEntry = {
 data lens_cost_symbolic_entry: LensRegistryEntry = {
   name: "cost_symbolic"
   lens_file: "src/v3/lenses/cost.dag"
-  generated_file: "src/v3/compiler/src/lens_cost_symbolic_generated.rs"
+  generated_file: "src/v3/compiler/src/cost_symbolic_lens_generated.rs"
 }
 
 data lens_cost_target_realization_entry: LensRegistryEntry = {
