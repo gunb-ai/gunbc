@@ -169,7 +169,7 @@ impl ExponentialBase {
         self.0
     }
 
-    pub fn mul(self, other: Self) -> Self {
+    pub fn multiply(self, other: Self) -> Self {
         Self::new(self.0 * other.0).expect("product of exponential bases >= 2 remains >= 2")
     }
 }
@@ -410,7 +410,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     {
         if va == vb {
             return SymbolicCost::ExponentialCost {
-                base: ba.mul(*bb),
+                base: ba.multiply(*bb),
                 var: va.clone(),
             };
         }
