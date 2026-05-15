@@ -754,6 +754,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
+    // Path B Brief 2 (`std.formatting`): end-to-end Rust emission/execute
+    // receipt for `format(template, args)` plus `int_to_string`,
+    // `char_to_string`, and `bool_to_string` CallableRealization rows.
+    // P5 receipt: this is a bounded SG-0 integration harness while `.dag`
+    // `TestClaim` cannot yet directly execute target-emitted scalar
+    // conversion/formatting programs and assert stdout + fail-closed runtime
+    // status. Dissolves under ROADMAP.md T-PB-B /
+    // `pb_rust_tests_outside_residual_zero` when the same fixtures can be
+    // represented as `.dag` TestClaims or generated tests with no
+    // hand-authored Rust path.
+    "src/v3/compiler/tests/integration/string_templating_test.rs",
     // R3 §1.8 gate #40 (`symbolic_cost_expr_equals_executable`,
     // T-CostLens-Composition): mechanical ratchet pinning the executable
     // dispatch arm + evaluator wiring in `test_runner.rs`, so accidental
