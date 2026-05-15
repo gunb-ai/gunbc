@@ -3122,7 +3122,14 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         )));
     }
 
-    const RUST_V3_FORMAT_PRELUDE: &str = r#"fn __v3_format(template: String, args: Vec<String>) -> ::core::result::Result<String, FormatError> {
+    const RUST_V3_FORMAT_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum FormatError {
+    PlaceholderRequiresExplicitIndex,
+    PlaceholderMissingClosingBrace,
+    PlaceholderIndexOutOfBounds,
+}
+
+fn __v3_format(template: String, args: Vec<String>) -> ::core::result::Result<String, FormatError> {
     let mut out = String::new();
     let chars: Vec<char> = template.chars().collect();
     let mut i = 0usize;

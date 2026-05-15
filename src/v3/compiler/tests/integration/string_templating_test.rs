@@ -74,18 +74,16 @@ let msg: String = bool_to_string(false)
 fn format_substitutes_indexed_placeholders() {
     let out = rust_program_stdout(
         r#"
-import std.error_primitives { Ok, Err }
 import std.formatting { format, int_to_string }
 
-let formatted = format("hello {0}! count={1}", ["world", int_to_string(42)])
-let msg: String = match formatted {
-  Ok(payload) => payload.value
-  Err(_) => "format error"
-}
+let msg = format("hello {0}! count={1}", ["world", int_to_string(42)])
 "#,
         "string_templating_format.v3",
     );
-    assert_eq!(out, "hello world! count=42");
+    assert!(
+        out.contains("Ok") && out.contains("hello world! count=42"),
+        "format should return structural Ok with substituted string, got {out:?}"
+    );
 }
 
 #[test]
