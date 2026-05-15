@@ -24,7 +24,7 @@ src/v4/
     nat.dag              # Nat — natural numbers (Peano); numeric-tower base
     machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr
     integer.dag          # Int + fixed-width ints (Nat projected onto a width)
-    float.dag            # Float — IEEE-754 floating-point (opaque scalar)
+    float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
     text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
