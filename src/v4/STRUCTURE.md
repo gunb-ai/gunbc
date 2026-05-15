@@ -114,7 +114,9 @@ by six concept-located files, each anchored to a real external concept
 - `std/nat.dag` — `Nat`, natural numbers (Peano)
 - `std/machine.dag` — `Byte`/`Word*`/`MachineWidth`/`PointerWidth`, machine representation
 - `std/integer.dag` — `Int` + fixed-width ints (a `Nat` projected onto a machine width)
-- `std/float.dag` — `Float`, IEEE-754 (the one genuine opaque scalar)
+- `std/float.dag` — `Float`, IEEE-754 (a sign/exponent/mantissa bit-record
+  inhabiting a rounding-aware algebra — *not* an exact `Field`, and *not*
+  opaque: fully grounded, only its algebra is weakened)
 - `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
 
 Each declares its own inhabitance (the inhabiting type owns its grounding —

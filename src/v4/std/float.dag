@@ -1,23 +1,38 @@
 // src/v4/std/float.dag
 //
-// Scope: IEEE-754 binary floating-point — reals as the hardware defines
-//        them. Deliberately separate from integer: floating-point
-//        arithmetic is NOT a clean algebra (rounding breaks associativity;
-//        NaN breaks reflexive equality), so it is modeled honestly as the
-//        hardware artifact rather than grounded in the algebra roots.
+// Scope: IEEE-754 binary floating-point — the `Float` scalar. Separate
+//        from integer because its arithmetic is APPROXIMATE: rounding
+//        breaks associativity / distributivity and NaN breaks reflexive
+//        equality, so Float inhabits a weakened algebra rather than an
+//        exact `Field`. It is NOT opaque — it is a fully grounded,
+//        decomposable concept (bit-record structure + a rounding-aware
+//        algebra), consistent with epistemic stacking ("no concept is
+//        opaque"); only its *algebra* is weaker than exact arithmetic.
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
 //
 // Owns:
-//   - Float — IEEE-754 binary floating-point (Float32 / Float64). The one
-//     genuine opaque/irreducible scalar in this layer: it does not
-//     decompose into the algebra roots; its semantics are hardware-defined.
+//   - Float — IEEE-754 binary floating-point (Float32 / Float64). Its
+//     STRUCTURE decomposes: a sign / exponent / mantissa bit-record over
+//     std/machine.dag, with the non-finite values (NaN, ±Inf, signed
+//     zero) modeled as explicit structure. Every part is reachable —
+//     nothing opaque.
+//   - inhabitance: Float inhabits the rounding-aware ("approximate")
+//     algebra structure owned by std/algebra.dag — NOT an exact `Field`
+//     (rounding is non-associative). The std/extdeps typescript.dag
+//     header already anticipates this structure as `ApproximateField`;
+//     algebra.dag (T-2) owns its exact name and definition. Float's
+//     grounding is the IEEE-754 spec (the anchor) — a real external
+//     standard — composed with that weakened algebra; it is not an
+//     unreconciled exception to the minimal-primitive ontology.
 //   - Tier-2 totalization for the partial / non-total operations
 //     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
 //     commitment #2
 //
 // Consumes:
-//   - std/node.dag
-//   - std/machine.dag: the bit-width (Float32 / Float64)
+//   - std/node.dag: Conj (the sign/exponent/mantissa record),
+//     Disj (the finite | NaN | Inf cases)
+//   - std/machine.dag: the bit-widths (Float32 / Float64)
+//   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
 //
 // Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
