@@ -6433,12 +6433,10 @@ fn lower_rational_from_parts_field_value(
     let SurfaceExpr::Call { target, args, .. } = expr else {
         return None;
     };
-    let Some(&resolved) = symbols.get(target) else {
-        return None;
-    };
-    let Some(canonical) = dag.declaration_by_name("rational_from_parts").map(|d| d.id) else {
-        return None;
-    };
+    let &resolved = symbols.get(target)?;
+    let canonical = dag
+        .declaration_by_name("rational_from_parts")
+        .map(|d| d.id)?;
     if resolved != canonical {
         return None;
     }
