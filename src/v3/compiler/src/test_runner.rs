@@ -3409,11 +3409,11 @@ impl<'a> TestRunner<'a> {
             Err(msg) => return ClaimResult::Fail(msg),
         };
 
-        let computed = match symbolic_cost_of(&program_dag, &bind.value) {
+        let computed = match symbolic_cost_lookup(&program_dag, &bind.value) {
             SymbolicCostLookup::Hit(cost) => cost,
             SymbolicCostLookup::Miss => {
                 return ClaimResult::Fail(format!(
-                    "SymbolicCostExprEquals: `symbolic_cost_of` returned Miss for bind `{bind_name}` \
+                    "SymbolicCostExprEquals: `symbolic_cost_lookup` returned Miss for bind `{bind_name}` \
                      in `{}`",
                     claim.file_name
                 ));
