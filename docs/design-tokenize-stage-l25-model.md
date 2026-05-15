@@ -57,13 +57,22 @@ Per `feedback_lenses_not_passes`: tokenize is a fold over bytes with scanner-cla
 
 ## §3 Input types (declared in `.dag` substrate)
 
-### §3.1 `String` (source text)
+### §3.1 Source text + source identity (TWO inputs, not one)
 
-Plain UTF-8 source text. No structural pre-processing beyond byte access.
+> **Codex PR #3127 BLOCKING (sha 8e682eef) Finding 1 (fixed in PR #3140)**: an earlier draft modeled tokenize as `String → List<Token>` — a single bare-string input. That contradicts the live signature at `src/v3/compiler/src/tokenize_generated.rs:96`:
+>
+> ```
+> pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic>
+> ```
+>
+> The `file` parameter carries the source identity (file path or equivalent identifier). It is load-bearing because `SourceSpan` requires a file/source-id field for byte ranges to be attributable; without it the Token + Diagnostic span fields would have to fabricate a source-id at the pipeline boundary (P3 fail-closed violation). The L2.5 ratifies the live two-input shape rather than the single-string framing.
 
-**Substrate authority**: `String` is primitive per `src/v3/std/substrate.dag`. No new carrier needed.
+Tokenize consumes:
 
-**Lane dependency**: none upstream of tokenize — it's the pipeline entry point.
+- **`source: String`** — UTF-8 source text. Primitive per `src/v3/std/substrate.dag`. No new carrier needed for this input.
+- **`file: SourceFileId`** — source identity carrier. The live Rust uses `&str` for the file path; the Step 2 brief should ratify the appropriate `.dag` carrier shape (a `NonEmptyStr` newtype or a richer `SourceFileId` sum if multiple source-class kinds are expected). Either way, the file identity is a structural input — not implicit context — because every `SourceSpan` carries it.
+
+**Lane dependency**: none upstream of tokenize — it's the pipeline entry point. (Source-identity originates from the compile-driver / build system, not from a prior pipeline stage.)
 
 ### §3.2 No GrammarSpec / TokenizationSpec — substrate IS the spec
 
@@ -86,9 +95,14 @@ Per `src/v3/std/tokenize.dag` (live; Token + TokenKind closed-axis sum):
 
 **Substrate authority**: `src/v3/std/tokenize.dag` (LIVE at HEAD). PB-2 output type is stable.
 
-### §4.2 `TokenizeDiagnostic` (substrate extension per Decision 2.B / PR #3077 §12 Q7)
+### §4.2 `TokenizeDiagnostic` (PROPOSED — substrate extension per Decision 2.B / PR #3077 §12 Q7 — NOT yet live)
 
-Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants attach via whichever path PR #3077 §12 Q7 ratifies (carrier-field vs lane-local-sum).
+> **Codex PR #3127 BLOCKING (sha 8e682eef) Finding 2 (fixed in PR #3140)**: the prior §4.2 framing blurred the live carrier with the proposed per-stage carrier. Clarified here:
+>
+> - **Live carrier at HEAD**: `type Diagnostic { kind: AnyDiagnosticKind, span: SourceSpan, message: String, correction: Correction }` at `src/v3/std/diagnostics.dag:150`, with `type AnyDiagnosticKind = CompilerKind(CompilerDiagnosticKind) | LensInstanceKind(LensInstanceKindWitness)` at `diagnostics.dag:139-142`. Tokenize emits today via `Diagnostic::TokenizerError`-shaped construction sites in `tokenize_generated.rs:96`, all carrying `kind: CompilerKind(CompilerDiagnosticKind::*)`.
+> - **`TokenizeDiagnostic`**: PROPOSED per-stage refinement carrier. NOT a live `.dag` declaration. Its substrate-extension path (option (a) carrier-field on `Diagnostic` vs option (b) lane-local sum + mapping into `CompilerDiagnosticKind`) was ratified by **PR #3077 §12 Q7, merged 2026-05-15T00:21:19Z** (DONE — see §15 step 3 + §14 "Surfaces awaiting"). Director-tier per-stage variant authoring is the remaining work; the variants below are a starting set, not the live carrier.
+
+Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants attach via the path PR #3077 §12 Q7 ratified (carrier-field vs lane-local-sum; live status DONE).
 
 ```
 // Typed reference carrier (cross-stage discipline per openai-pro
