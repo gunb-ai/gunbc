@@ -76,9 +76,10 @@ module lenses.effect_enumeration
 import std.list { List, empty, fold, cons }
 import std.effects {
   BreakingShape,
+  EffectClassificationResult,
   EffectShape,
   IdempotentShape,
-  operation_effect_shape
+  classify_operation_effect
 }
 import v3.std.services { Operation }
 import v3.std.substrate {
@@ -168,7 +169,13 @@ fn enumerate_effects(d: Dag) -> EffectEnumerationReport =
   }
 
 fn operation_structural_effect_shape(op: Operation) -> StructuralEffectShape =
-  effect_shape_to_structural(operation_effect_shape(op))
+  match classify_operation_effect(op) {
+    EffectClassified { shape: shape } => effect_shape_to_structural(shape)
+    EffectClassificationFailed { failure: _ } =>
+      UnknownEffect {
+        reason: "operation effect classification failed"
+      }
+  }
 
 fn effect_shape_to_structural(shape: EffectShape) -> StructuralEffectShape =
   match shape {

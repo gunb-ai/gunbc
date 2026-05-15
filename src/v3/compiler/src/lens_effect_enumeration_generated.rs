@@ -50,7 +50,16 @@ pub fn enumerate_effects(p0: &Dag) -> EffectEnumerationReport {
     }
 }
 pub fn operation_structural_effect_shape(p0: &Operation) -> StructuralEffectShape {
-    effect_shape_to_structural(&(operation_effect_shape(p0)))
+    match &(classify_operation_effect(p0)) {
+        EffectClassificationResult::EffectClassified { shape: shape } => {
+            effect_shape_to_structural(shape)
+        }
+        EffectClassificationResult::EffectClassificationFailed { failure: _ } => {
+            StructuralEffectShape::UnknownEffect {
+                reason: String::from("operation effect classification failed"),
+            }
+        }
+    }
 }
 pub fn effect_shape_to_structural(p0: &EffectShape) -> StructuralEffectShape {
     match p0 {

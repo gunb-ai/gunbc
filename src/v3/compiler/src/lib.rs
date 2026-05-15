@@ -3810,6 +3810,22 @@ pub mod lens_effect_enumeration {
         use crate::dag::*;
         use crate::diagnostics::*;
 
+        enum EffectClassificationResult {
+            EffectClassified {
+                shape: EffectShape,
+            },
+            EffectClassificationFailed {
+                failure: EffectClassificationFailure,
+            },
+        }
+
+        fn classify_operation_effect(op: &Operation) -> EffectClassificationResult {
+            match crate::dag::classify_operation_effect(&Dag::new(), op) {
+                Ok(shape) => EffectClassificationResult::EffectClassified { shape },
+                Err(failure) => EffectClassificationResult::EffectClassificationFailed { failure },
+            }
+        }
+
         fn operation_effect_shape(op: &Operation) -> EffectShape {
             crate::dag::operation_effect_shape(&Dag::new(), op)
                 .expect("std.effects operation anchors unavailable for generated adapter")
