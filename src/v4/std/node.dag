@@ -7,6 +7,10 @@
 //   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
 //   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
 //   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
+//   - Symbol: opaque kernel identity (K-1, operator-ratified 2026-05-15)
+//   - Node / NodeKind / Edge: the one recursive type + its skeleton
+//   - the edge-discipline structural invariant (a connective fixes its
+//     edge shape; the illegal pairing is never silently constructible)
 //
 // A1 (operator-ratified 2026-05-15) — the recursion contract:
 //   - ONE recursive type: Node. Recursion lives SOLELY in Node children
@@ -61,14 +65,307 @@
 //     escalate (a modeling conversation, not a worker hack). Correct
 //     closure of a decidable system (INVARIANTS:31), not a defect.
 //
+// K-1 (operator-ratified 2026-05-15) — kernel identifiers are opaque:
+//   - `Symbol` is an opaque identity: equality-comparable and NOTHING
+//     else. The type exposes no content accessor — kernel and lens code
+//     physically cannot read or branch on an identifier's spelling.
+//   - This forecloses the v2 failure mode structurally, not by review:
+//     a readable kernel String became a heuristic-smuggling channel
+//     (`match name { "x" => ... }`, prefix checks; INVARIANTS:229,
+//     feedback_opaque_strings_attract_heuristics). With an opaque Symbol
+//     the heuristic is UNWRITABLE — the type won't yield content
+//     (feedback_no_textual_enforcement_bridges: structure, not a test).
+//   - The human-readable spelling lives in a boundary intern table,
+//     consulted ONLY at diagnostics rendering and emission — never by
+//     kernel/lens logic. Whether Symbol is backed by a hash or an intern
+//     index is hidden by the type (seed/runtime implementation detail).
+//   - Bonus consistency: with opaque Symbol the content-hash fold over an
+//     `Atom` is automatically rename-invariant — α-equivalent programs
+//     hash equal — because the fold cannot observe the spelling.
+//
+// T-1 scope dispositions (operator-ratified 2026-05-15):
+//   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
+//     typing (int/string/bool literal data) is std/primitive.dag (T-3) —
+//     a different concern from identifier identity.
+//   - Q2: this file owns the `Loop` behavior variant + the A2 discipline
+//     above; the descent-evidence carriers (RankingDimension /
+//     TerminationProof / DescentEvidence) belong to std/cardinality.dag
+//     (T-3, P4 decidability). The IMPLICIT descent case (recursion on a
+//     proper sub-Node child) needs no carrier — it is free from A1's
+//     children structure; only explicit non-structural ranking needs one.
+//   - `inhabits` is NOT a field of `Node`: A1 forbids non-`children`
+//     Node-recursion, and inhabitance is a cross-declaration relation
+//     expressed via name-reference `Atom`s (resolved through the
+//     namespace) — declared/owned by std/algebra.dag (T-2).
+//
 // Consumes:
 //   nothing — this is the substrate root
 //
-// Status: scaffold — fill per TASKS.md T-1
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-1 modeled 2026-05-15 (cool-boar-275). The I/O contract in
+// this header is immutable for downstream workers. Splitting this file
+// requires explicit operator ratification (substrate extension = stop
+// signal).
 
 
 module v4.std.node
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Symbol — opaque kernel identity (K-1).
+//
+// Body-less by design: an opaque type yields no content. Equality is the
+// only operation; there is deliberately no accessor that returns the
+// spelling. Symbol is substrate-ambient (declared at the substrate root,
+// like the kernel List/Int/Bool) — it is not "consumed" from another
+// file. See header K-1 for the full rationale.
+type Symbol
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Connective — the closed type-substrate classifier. Exactly six.
+//
+// `Atom` is terminal at the user-input boundary: it carries an opaque
+// `Symbol` identity (an identifier / type-parameter name) and decomposes
+// no further. The other five connectives are pure structural
+// discriminants whose entire content is their `children` edges.
+//
+// CLOSED (C1 stop-signal). A seventh connective is an edit to THIS
+// declaration — a visible diff routed to operator ratification (per
+// STRUCTURE.md A3: the substrate does not magically refuse it; the edit
+// is loud and un-missable). There is no `Other` / open-ended variant.
+type Connective
+  = Atom { identity: Symbol }
+  | Conj
+  | Disj
+  | Arrow
+  | Cardinality
+  | Instantiation
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Behavior — the closed computation-substrate classifier. Exactly five.
+//
+// Flat unit variants: a behavior carries no payload. All structure (a
+// Loop's body, a Branch's paths, a Transform's operands) lives in the
+// owning Node's `children`. This file owns the five-behavior ENUM and
+// the A2 `Loop`-is-bounded discipline; per-behavior edge wiring is built
+// by the pipeline-stage tasks (T-6+).
+//
+// CLOSED (C1 stop-signal). A sixth behavior is an edit to THIS
+// declaration — a visible diff routed to operator ratification.
+type Behavior
+  = Value
+  | Transform
+  | Branch
+  | Loop
+  | Bind
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NodeKind — which of the two coordinated substrates a Node lives in.
+//
+// Shape S (operator-confirmed 2026-05-15): a Node belongs to EXACTLY one
+// substrate. A type node has a connective; a computation node has a
+// behavior. It is NOT the case that one node carries both — that would
+// conflate the two independent C1 closures. The connective and behavior
+// enums stay orthogonal closed sets; `NodeKind` merely selects which
+// one applies (THESIS:198-203 — computation references type by edge, it
+// does not co-locate the two coordinates on one node).
+type NodeKind
+  = TypeNode { connective: Connective }
+  | ComputationNode { behavior: Behavior }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// EdgeLabel — how a child Node is addressed from its parent.
+//
+// `Named` (carrying an opaque `Symbol` per K-1 — never a readable string)
+// for the labeled-children connectives (Conj/Disj). `Positional` is a
+// bare marker for the positional-children connectives (Arrow/Cardinality/
+// Instantiation): a positional child's identity IS its 0-based position
+// in the parent's `children` list. That list order is the SINGLE
+// authority for positional order (CULTURE §8 — canonical, deterministic).
+//
+// There is deliberately NO stored index. A `Positional { index: Int }`
+// field would duplicate the list order — a second authority that can
+// disagree (INVARIANTS P2), and it is exactly that duplication that made
+// negative / gapped / duplicate / out-of-order indices representable.
+// With no index field those illegal states are STRUCTURALLY
+// UNREPRESENTABLE — not "rejected by a checker."
+type EdgeLabel
+  = Named { name: Symbol }
+  | Positional
+
+
+// Edge — a parent Node's reference to one child Node.
+type Edge {
+  label: EdgeLabel
+  target: Node
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Node — THE one recursive type (A1).
+//
+// Recursion lives SOLELY in `children`: each Edge's `target` is a Node,
+// reached only via the children list. There is no other self-reference —
+// no `inhabits: Node` slot, no parent pointer. Cross-declaration
+// references are name-reference `Atom`s resolved through the namespace
+// (A1), which keeps every Node tree finite and the content-hash fold
+// well-defined.
+type Node {
+  kind: NodeKind
+  children: List<Edge>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Edge-discipline invariant (operator directive D3, 2026-05-15).
+//
+// A connective FIXES its edge discipline: Conj/Disj address children by
+// name (`Named`), Arrow/Cardinality/Instantiation by position
+// (`Positional`), `Atom` is terminal with no children. The one illegal
+// state left to guard is a label-KIND mismatch — a `Named` edge under a
+// positional connective (or the reverse), or any edge under `Atom`.
+//
+// That mismatch is CHECK-enforced, not type-unrepresentable: making it
+// unrepresentable would require connective-specific child collections —
+// the per-connective redesign D3 explicitly declined ("keep one
+// `children: List<Edge>` list"). `node_well_formed` is therefore the
+// structural invariant consumers (parse / normalize) evaluate fail-closed
+// (INVARIANTS P3).
+//
+// This is deliberately NOT justified by the STRUCTURE.md A3 precedent.
+// A3 is checked-rather-than-unrepresentable because it guards an
+// unpreventable human edit (Trusting-Trust — editing the seed). A
+// malformed edge is an in-language VALUE — structurally preventable — so
+// INVARIANTS P2 would prefer type-unrepresentability; the only reason it
+// stays a check here is the D3 no-redesign call, not an A3-style
+// impossibility. (Contrast: the closed `Connective` enum below — a 7th
+// connective genuinely IS the A3 case, an edit to this file.)
+type EdgeDiscipline
+  = NoEdges
+  | LabeledEdges
+  | PositionalEdges
+
+
+// The discipline a connective fixes for its children.
+fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
+  match c {
+    Atom { identity: _ } => NoEdges
+    Conj => LabeledEdges
+    Disj => LabeledEdges
+    Arrow => PositionalEdges
+    Cardinality => PositionalEdges
+    Instantiation => PositionalEdges
+  }
+}
+
+
+// Is one edge addressed by name (`Named`) rather than by position?
+fn edge_is_named(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => true
+    Positional => false
+  }
+}
+
+// Is one edge a positional edge? (Its position is its index in the
+// parent's `children` list — there is nothing else to check.)
+fn edge_is_positional(e: Edge) -> Bool {
+  match e.label {
+    Named { name: _ } => false
+    Positional => true
+  }
+}
+
+fn all_edges_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_named(e: e)
+  })
+}
+
+fn all_edges_positional(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_positional(e: e)
+  })
+}
+
+// How many of `children` carry the Named key `name`?
+// (`Symbol` equality is the one operation K-1 grants the opaque type.)
+fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, e) {
+    match e.label {
+      Named { name: n } => if n == name { acc + 1 } else { acc }
+      Positional => acc
+    }
+  })
+}
+
+// Are all Named keys distinct? A `Named` edge is an ADDRESS — two
+// children sharing a key make "address a child by name" ambiguous, so a
+// labeled connective with a duplicate key is malformed. Checked here so
+// downstream consumers can treat a well-formed Conj/Disj's names as keys
+// without each re-verifying uniqueness (INVARIANTS P2 — one authority).
+fn all_names_distinct(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
+      Positional => acc
+    }
+  })
+}
+
+
+// Do all of a node's edges satisfy the connective's discipline?
+//   NoEdges          → the children list must be empty
+//   LabeledEdges     → every edge is addressed by name AND all names are
+//                      distinct (a name is an address — no duplicates)
+//   PositionalEdges  → every edge is positional (order = list order)
+fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
+  match d {
+    NoEdges => count(children) == 0
+    LabeledEdges =>
+      all_edges_named(children: children) && all_names_distinct(children: children)
+    PositionalEdges => all_edges_positional(children: children)
+  }
+}
+
+
+// The LOCAL edge discipline of a single node (its own `children` only).
+// A type node's connective fixes the discipline; a computation node has
+// no local edge constraint at this substrate-root layer (see below).
+fn node_locally_well_formed(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: c } =>
+      edges_conform(children: n.children, d: connective_edge_discipline(c: c))
+    ComputationNode { behavior: _ } => true
+  }
+}
+
+// node_well_formed — the checked structural invariant (D3), WHOLE-TREE.
+//
+// A node is well-formed iff its own local edge discipline holds AND every
+// child subtree is well-formed. This is ONE self-recursive function (not
+// a mutual pair) so the v2 seed's termination analyzer accepts it — it
+// recurses through `children` exactly the way v2's own recursive Node
+// walks do (e.g. `check_bare_containers` in `src/v2/03_normalize.dag`).
+// Termination is the A2 implicit case: each `e.target` is a proper
+// sub-Node, structurally smaller, so the descent is finite.
+//
+// One call to `node_well_formed(root)` means the ENTIRE Node tree is
+// well-formed — consumers (parse / normalize) do not traverse and
+// re-check; that is the single-authority promise (INVARIANTS P2/P3).
+//
+// NAMED OBLIGATION ON T-6+ (not optional): the computation-node arm of
+// `node_locally_well_formed` is an explicitly EMPTY local constraint —
+// NOT "computation nodes are unconstrained, forever". The pipeline-stage
+// tasks that build the computation substrate (T-6 tokenize … T-22 eval)
+// MUST extend that arm with each behavior's edge discipline as they
+// land. The whole-tree recursion here is already in force regardless.
+fn node_well_formed(n: Node) -> Bool {
+  node_locally_well_formed(n: n)
+    && fold(n.children, init: true, f: fn(acc, e) {
+         acc && node_well_formed(n: e.target)
+       })
+}
