@@ -29,7 +29,8 @@ src/v4/
     python.dag
     go.dag
 
-  compiler/              # pipeline stages (6 files, serial dependency)
+  compiler/              # pipeline orchestrator + 6 stages (7 files)
+    00_compile.dag       # orchestrator: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
     01_tokenize.dag      # FreeMonoid<Char> -> TokenStream
     02_parse.dag         # TokenStream -> ParseTree
     03_normalize.dag     # ParseTree -> NormalizedTree (sugar dissolution)
@@ -60,7 +61,33 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 28 .dag files + 3 docs + test directories = 31 files at scaffold time.**
+**Total: 29 .dag files + 3 docs + test directories = 32 files at scaffold time.**
+
+## Architectural commitments (ratified during PR #3147 review)
+
+These are substrate-level decisions that constrain every worker's modeling
+freedom. They are structural, not process-discipline. Per-task briefs
+reference this section when dispatching workers.
+
+1. **`TypeNode` and `Behavior` are CLOSED enums** (per C1 stop-signal,
+   THESIS:202). Adding a 7th type connective or 6th behavior requires
+   explicit operator ratification of substrate extension. The closure is
+   enforced in the substrate itself (Disj sum-type declaration in
+   `std/node.dag`), not by review process — the compiler reads the closed
+   enum and refuses to compile any program that synthesizes outside it.
+
+2. **Tier 2 partial-op totalization lives in `std/primitive.dag`** (per
+   THESIS:175-176). Each primitive's partial operations (divide, modulo,
+   indexed access, force-unwrap) declare their totalization shape
+   (`Result`-return / `Witness`-return / refinement-precondition) in the
+   same file as the primitive itself. No separate "totalization registry."
+
+3. **`Diagnostic` schema includes `suggested_correction`** (per THESIS:103-105
+   "show the correct code"). Schema:
+   `Diagnostic { reason: NamedReason, at: Locus, suggested_correction: Option<NodeFragment> }`.
+   The "show the correct code" promise is structural — every Diagnostic
+   site CAN carry a suggested fix. Lenses populate it where they have the
+   structural information; absent fix is `None`, not a missing field.
 
 ## The closed-system invariants
 

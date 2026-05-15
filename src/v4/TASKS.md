@@ -179,17 +179,20 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-10: compiler/05_emit.dag — orchestrator
+### T-10: compiler/05_emit.dag + compiler/00_compile.dag — emission + orchestrator
 
-**Estimate**: 4-6 days
-**I/O**: `(InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>`
+**Estimate**: 5-7 days (bundle — orchestrator is the trivial wiring of the stages)
+**I/O**:
+- `emit: (InferredTree, TargetSpec) -> Result<TargetSource, Diagnostic>`
+- `compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>` (orchestrator)
 
 **Modeling decisions**:
 - Target-agnostic IR shape
 - How target spec drives concrete emission (interpreter vs codegen)
+- Orchestrator: monadic `Result` chaining vs early-return pattern
 
 **Reference**:
-- v2: `src/v2/05_emit.dag`
+- v2: `src/v2/05_emit.dag`, `src/v2/compile.dag`
 - v3 L2.5 design: PB-emit model (`docs/r3-retirement-modeling-emit-rs.md`)
 
 ---
