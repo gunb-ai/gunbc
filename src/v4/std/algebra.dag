@@ -176,13 +176,24 @@ type OrderedRing<T> {
 }
 
 // Field — a CommutativeRing in which every nonzero element has a
-// multiplicative inverse. `reciprocal`'s nonzero precondition (and its
-// Tier-2 totalization) is the inhabitant's concern per STRUCTURE.md
-// architectural commitment #2 — the structure declares the operation,
-// not its totalization (Wikipedia "Field (mathematics)").
+// multiplicative inverse. That invertibility is the defining AXIOM,
+// carried as a grounded definition the same way Semigroup carries
+// associativity and CommutativeRing carries commutativity — NOT as a
+// stored operation field. There is deliberately no `reciprocal:
+// fn(T) -> T`: reciprocal is PARTIAL (undefined at the additive
+// identity), so a total `fn(T) -> T` signature would assert a totality
+// the operation does not have — the fail-open shape INVARIANTS P3 +
+// modeling-discipline.md Practice 2/6 forbid (the illegal state
+// "reciprocal(0)" must not be representable at this boundary). The
+// reciprocal operation falls out of the axiom; its realization carries
+// the nonzero precondition / Tier-2 totalization (Result / Witness /
+// refinement-precondition) at the inhabitant per STRUCTURE.md
+// architectural commitment #2 — that totalization substrate
+// (witness/cardinality) is not consumable from this node.dag-only
+// structures file, which is exactly why it is the inhabitant's, not a
+// mendacious total field here. Anchor: Wikipedia "Field (mathematics)".
 type Field<T> {
   commutative_ring: CommutativeRing<T>
-  reciprocal: fn(T) -> T
 }
 
 
