@@ -29,6 +29,7 @@ import v3.std.timing_lens {
   TimingMeasurement,
   timing_enforceable,
   timing_lens_behavior_span,
+  timing_lens_degenerate_empty_dag_span,
   timing_lens_scaffold_non_evidence_diagnostic,
   timing_lens_validate,
   timing_sequential_identity
@@ -188,11 +189,29 @@ fn report_inhabits_branch_tm(d: Dag, c: TimingMeasurement, od: OptionalDiagnosti
 fn dimension_report_tm_from_witness(d: Dag, w: Witness<TimingMeasurement>) -> DimensionReport<TimingMeasurement> =
   match w {
     Inhabits(c) => report_inhabits_branch_tm(d, c, timing_lens_validate(d, c))
-    Violates { reason: r, at: beh } =>
+    Violates { reason: r, subject: AtBehavior(beh) } =>
       report_dim_fail_tm(
         d,
         timing_sequential_identity(),
         timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_behavior_span(beh))
+      )
+    Violates {
+      reason: r,
+      subject: ProducerLookupMissingPort { port: _p },
+    } =>
+      report_dim_fail_tm(
+        d,
+        timing_sequential_identity(),
+        timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span()),
+      )
+    Violates {
+      reason: r,
+      subject: ProducerLookupMissingNode { producer: _q },
+    } =>
+      report_dim_fail_tm(
+        d,
+        timing_sequential_identity(),
+        timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span()),
       )
   }
 
