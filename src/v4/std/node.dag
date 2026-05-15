@@ -173,6 +173,11 @@ type Hash
 //      std/ algebra — they are the source other structure grounds in.
 //   4. Dimensional — FAILS: a node carries EXACTLY ONE connective;
 //      genuine alternatives, never simultaneous coordinates.
+//   5. Parameterized family — FAILS: the six are structurally
+//      heterogeneous (Atom carries a Symbol; Conj/Disj labeled;
+//      Arrow/Cardinality/Instantiation positional, distinct arities/
+//      semantics) — NOT one generic `F<X>` / projection over a source
+//      set X (Practice 7). No enumeration-to-projection collapse exists.
 // Terminal: the closed 6 type connectives; a 7th is the C1 stop-signal
 // (a visible ratified edit to this declaration, STRUCTURE.md
 // commitment #1). Irreducible substrate root.
@@ -209,6 +214,10 @@ type Connective
 //      substrate root (THESIS:202); no richer std/ source.
 //   4. Dimensional — FAILS: a computation node carries EXACTLY ONE
 //      behavior; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the five are distinct computation
+//      kinds (the typed-total-λ fragment — Transform=application,
+//      Bind=let, Branch=sums, Loop=bounded rec, Value) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7).
 // Terminal: the closed 5 L1 behaviors; a 6th is the C1 stop-signal
 // (STRUCTURE.md commitment #1). Irreducible substrate root.
 type Behavior
