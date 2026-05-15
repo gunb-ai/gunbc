@@ -27,8 +27,8 @@ pub struct MethodContract {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rational {
-    pub numerator: i64,
-    pub denominator: i64,
+    numerator: i64,
+    denominator: i64,
 }
 
 impl Rational {
@@ -78,6 +78,14 @@ impl Rational {
     pub fn raw(&self) -> i64 {
         self.numerator / self.denominator
     }
+
+    pub fn numerator(&self) -> i64 {
+        self.numerator
+    }
+
+    pub fn denominator(&self) -> i64 {
+        self.denominator
+    }
 }
 
 impl PartialOrd for Rational {
@@ -95,9 +103,76 @@ fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
     a.max(1)
 }
 
-pub type NonZeroRational = Rational;
-pub type PolyLogExponent = Rational;
-pub type ExponentialBase = i64;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub struct NonZeroRational(Rational);
+
+impl NonZeroRational {
+    pub const ONE: Self = Self(Rational::ONE);
+    pub const TWO: Self = Self(Rational::TWO);
+
+    pub fn new(value: Rational) -> Option<Self> {
+        (!value.is_zero()).then_some(Self(value))
+    }
+
+    pub fn from_i64(value: i64) -> Option<Self> {
+        Self::new(Rational::from_i64(value))
+    }
+
+    pub fn raw(&self) -> i64 {
+        self.0.raw()
+    }
+
+    pub fn as_rational(&self) -> &Rational {
+        &self.0
+    }
+
+    pub fn add(&self, other: &Self) -> Rational {
+        self.0.add(&other.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub struct PolyLogExponent(Rational);
+
+impl PolyLogExponent {
+    pub fn new(value: Rational) -> Option<Self> {
+        (value > Rational::ONE).then_some(Self(value))
+    }
+
+    pub fn from_i64(value: i64) -> Option<Self> {
+        Self::new(Rational::from_i64(value))
+    }
+
+    pub fn raw(&self) -> i64 {
+        self.0.raw()
+    }
+
+    pub fn as_rational(&self) -> &Rational {
+        &self.0
+    }
+
+    pub fn add(&self, other: &Self) -> Self {
+        Self::new(self.0.add(&other.0))
+            .expect("sum of two rational values greater than one remains greater than one")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExponentialBase(i64);
+
+impl ExponentialBase {
+    pub fn new(value: i64) -> Option<Self> {
+        (value >= 2).then_some(Self(value))
+    }
+
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+
+    pub fn mul(self, other: Self) -> Self {
+        Self::new(self.0 * other.0).expect("product of exponential bases >= 2 remains >= 2")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
@@ -305,7 +380,8 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
             return SymbolicCost::PolynomialCost {
                 var: va.clone(),
-                degree,
+                degree: NonZeroRational::new(degree)
+                    .expect("checked non-zero before constructing NonZeroRational"),
             };
         }
     }
@@ -334,7 +410,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     {
         if va == vb {
             return SymbolicCost::ExponentialCost {
-                base: ba * bb,
+                base: ba.mul(*bb),
                 var: va.clone(),
             };
         }
@@ -403,7 +479,9 @@ where
                 var: vb,
                 degree: kb,
             } => va == vb && ka >= kb,
-            SymbolicCost::PolyLogCost { var: vb, .. } => va == vb && ka.numerator > 0,
+            SymbolicCost::PolyLogCost { var: vb, .. } => {
+                va == vb && ka.as_rational().numerator() > 0
+            }
             _ => false,
         },
         SymbolicCost::PolyLogCost { var: va, exponent: ea } => match b {
@@ -448,12 +526,12 @@ where
         SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
         SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
         SymbolicCost::PolynomialCost { degree, .. } => {
-            if degree == &Rational::ONE {
+            if degree == &NonZeroRational::ONE {
                 AsymptoticClass::ClassLinear
-            } else if degree == &Rational::TWO {
+            } else if degree == &NonZeroRational::TWO {
                 AsymptoticClass::ClassQuadratic
             } else {
-                match positive_amount_from_i64(degree.numerator / degree.denominator) {
+                match positive_amount_from_i64(degree.raw()) {
                     Some(pos) => AsymptoticClass::ClassPolynomial { degree: pos },
                     None => AsymptoticClass::ClassUnknown,
                 }
@@ -471,6 +549,6 @@ where
 pub fn polynomial_linear(var: SizeVariable) -> SymbolicCost {
     SymbolicCost::PolynomialCost {
         var,
-        degree: Rational::ONE,
+        degree: NonZeroRational::ONE,
     }
 }

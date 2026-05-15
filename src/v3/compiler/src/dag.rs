@@ -1539,9 +1539,18 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
 
     match (terms.first.as_ref(), terms.second.as_ref()) {
         (
-            SymbolicCost::PolynomialCost { var: va, .. },
-            SymbolicCost::PolynomialCost { var: vb, .. },
+            SymbolicCost::PolynomialCost {
+                var: va,
+                degree: da,
+            },
+            SymbolicCost::PolynomialCost {
+                var: vb,
+                degree: db,
+            },
         ) => {
+            if da != &NonZeroRational::ONE || db != &NonZeroRational::ONE {
+                return cost;
+            }
             let non_param_port = if va.source_port == param && vb.source_port != param {
                 vb.source_port
             } else if vb.source_port == param && va.source_port != param {
