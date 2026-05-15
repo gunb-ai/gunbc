@@ -34,6 +34,8 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 
 **2026-05-12 — S4 (`#36` `bridge_retirement_ledger_zero`)**: RETRACTED from Substrate Wave-1 queue. Verification-owned per Director `zesty-bear-812` 2026-04-28 distribute-work-centralize-ledger discipline; bridge-retirement-ledger ratchets are Verification-tier, not Substrate-tier. **Caught**: codex BLOCKING #10431 on PR #2782 (same review as S2). Disposition: Substrate Mgr fix-forward removed S4 from queue; gate stays in Verification Mgr scope.
 
+**2026-05-15 — #100 (`project_github_actions_landed`)**: RETRACTED **CONSUMER_LANDED + PASSING** claim from §2 T-WAD snapshot bullet (authored against PR #2774 substrate land). Canonical `docs/r3-program-plan.md` §1.8 row #100 is **DECLARED + TEXT-RATCHETED**: declaration + pinned `YamlStatic` binding in `dsl/gunbc/ci_emission.dag`, receipt `gunbc_ci_emission_substrate_contract_is_present` (`src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs`) pins source text only — **not** a full-file v3 type-check nor `.dag`-authoritative emit-back consumer; full per-arm body + emit-back closure stays paired with #98 per §1.8. PR #2774 narrative correctly covers **#99** (`workflow_runtime_open_enum_landed`) **CONSUMER_LANDED + PASSING**, not a #100 PASSING promotion. **Caught**: gate #100 closure-shape audit vs §1.8 (see consumer-discipline block above). Disposition: align §2 bullet + sequencing note below to §1.8.
+
 ---
 
 **Companion docs**:
@@ -100,13 +102,13 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 
 **Status today**:
 - #99 `workflow_runtime_open_enum_landed` — **CONSUMER_LANDED + PASSING** (PR #2774 merged 2026-05-12; `WorkflowRuntime` declared at `dsl/gunbc/ci_emission.dag:27`; drift-guard consumer green). §1.8 row ratified 2026-05-13.
-- #100 `project_github_actions_landed` — **CONSUMER_LANDED + PASSING** (PR #2774; `project_github_actions` declared at `dsl/gunbc/ci_emission.dag:87` with pinned binding `gunbc_ci_yml_workflow` at :95). §1.8 row ratified 2026-05-13.
+- #100 `project_github_actions_landed` — **DECLARED + TEXT-RATCHETED** (canonical §1.8 at HEAD — **not** CONSUMER_LANDED / PASSING yet): `project_github_actions` + pinned `gunbc_ci_yml_workflow` binding at `dsl/gunbc/ci_emission.dag:87,:95`; text-only receipt `gunbc_ci_emission_substrate_contract_is_present` in `t_ci_workflow_as_data_demo_test.rs`. Full-file type-check + `.dag`-authoritative emit-back / per-arm completion remain **#98** / Slice 4–5 follow-on per §1.8 (PR #2774 landed adjacent substrate for **#99**, not a #100 PASSING flip — see §retractions).
 - #101 `test_cost_dimension_landed` — **CONSUMER_LANDED + PASSING** (PR #2761; `TestNodeCostDimension` at `src/v3/std/verification.dag:578` + `dsl/std/verification.dag:75`; P5 receipt `test_cost_dimension_landed_on_test_node`). §1.8 row ratified 2026-05-13.
 - #102 `slow_test_exemptions_dissolved` — **DECLARED** (pass target: `TestNodeCostDimension` timing facts; interim warn-token bridge in flight — not GREEN)
 - #98 `ci_yml_hand_authority_dissolved` — IN-FLIGHT/OPEN
-- #103 `ci_uses_affected_set_selection` — OPEN (Slice 7; cool-crab-565 canvas at PR #2766)
+- #103 `ci_uses_affected_set_selection` — **CONSUMER_LANDED + PASSING** (canonical §1.8 at HEAD — Layer 1 affected-set + Layer 2 path-regex receipts per `docs/r3-program-plan.md` §1.8 row #103; PR #2798 + PR #3033 stack). Slice 7 canvas landed — grep §1.8 before treating this row as OPEN.
 
-**Sequencing**: Slice 4 (#100 substrate / Slice 5 (#98 actual ci.yml swap) / Slice 7 (#103 affected-set) / Slice 8 (substrate completion). Slice 4 in flight (PR #2774); rest cascade.
+**Sequencing**: Slice 4 (#100 substrate declaration + text ratchet / Slice 5 (#98 actual ci.yml swap + emit-back receipts) / Slice 7 (#103 affected-set) / Slice 8 (substrate completion). PR #2774 landed **`WorkflowRuntime` (#99)** + `ci_emission.dag` scaffolding; **#100** stays DECLARED+TEXT-RATCHETED per §1.8 until #98-scope emit-back closes the ledger row; rest cascade.
 
 ---
 
