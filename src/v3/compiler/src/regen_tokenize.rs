@@ -6,9 +6,10 @@
 //! `dsl/extdeps/languages/dag/syntax.dag`. Shared operators still use the
 //! bounded raw-source bridge until `dag_operators` lowers structurally.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 use crate::compile_to_dag;
 use crate::dag::{
