@@ -120,6 +120,22 @@ type ParseDiagnostic {
   // Optional: additional context fields per Step 2 brief enumeration
 }
 
+// 🟡 SCAFFOLD coproduct at PROPOSED stage. Per modeling-discipline Practice 4
+// (Coproduct dissolution) + `feedback_coproduct_dissolution` + codex PR #3138
+// BLOCKING sha 887c69671 Finding 2 (fixed in PR #3138):
+//
+// **Dissolution trigger**: when Step 2 worker brief enumerates the full
+// variant set against `src/v3/compiler/src/parse_generated.rs:138`
+// `Diagnostic::*` construction sites (parse-stage only — not cross-stage),
+// promote to 🟢 TERMINAL at the per-stage diagnostic-variant scope. The
+// listed variants below are a starting set; Step 2 brief authoring closes
+// the enumeration. PR #3077 §12 Q7 ratification (DONE 2026-05-15T00:21:19Z
+// per §15 step 4) determines whether this stays per-stage sum (option b)
+// or extends shared Diagnostic (option a).
+//
+// **Anti-bridge**: per Q6.5 anti-bridge invariant at diagnostics.dag:135-141,
+// ParseDiagnosticKind does NOT collapse into CompilerDiagnosticKind without
+// substrate-extension ratification.
 type ParseDiagnosticKind
   = UnexpectedToken { found: TokenKindRef, expected: List<TokenKindRef>, context: SyntaxFormRef }
   | UnterminatedConstruct { construct: SyntaxFormRef, opener_span: SourceSpan }   // additional opener_span here; ParseDiagnostic.span is the unterminated-end position
@@ -416,6 +432,6 @@ Subsequent L2.5 model (PB-2 tokenize) follows same sequence with its own substra
 
 **Surfaces awaiting**:
 - Operator/PM ratification on §12 Q1–Q6
-- PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)
+- ~~PR #3077 §12 Q7 ratification (cross-stage Decision 2.B extension path)~~ — DONE 2026-05-15T00:21:19Z (PR #3077 merged carrying Q7 ratification; see §15 step 4)
 - Substrate-capability landing (recursive list-body emission per Q1 + SELF_HOSTING.md §6 Phase 4a)
 - PM Phase 2 close plan + §1.8 amendments citing this doc
