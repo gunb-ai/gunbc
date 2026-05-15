@@ -130,7 +130,7 @@ Phase 4 (serial — close the loop):
 flat — dispatch in waves):
 - `diagnostic`, `cardinality` need only `node.dag`.
 - `logic`, `nat`, `collection`, `witness`, `verification` need `algebra.dag` (T-2) or `diagnostic`.
-- `machine` needs `logic` + `nat`; `text` needs `nat`; `integer` needs `nat` + `machine`; `float` needs `machine`.
+- `machine` needs `logic` + `nat`; `text` needs `nat` + `algebra.dag` (T-2, FreeMonoid); `integer` needs `nat` + `machine` + `algebra.dag` (T-2, OrderedRing/AbelianGroup); `float` needs `machine` + `algebra.dag` (T-2, ApproximateField). Every scalar file except `machine` consumes `algebra.dag` — none of the scalar/numeric cluster is dispatchable before T-2.
 
 **Modeling decisions per file** (see file headers for specifics).
 
