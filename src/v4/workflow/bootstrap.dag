@@ -48,6 +48,17 @@
 //   - A4 corollary: a 7th connective / 6th behavior is the SAME machine —
 //     it changes the reproduction → conspicuous signal → STOP → human
 //     judgment. Not "the substrate refuses by construction."
+//   - PROOF-1 (operator-ratified 2026-05-15) — the EXTERNAL trust-
+//     discharge: gunbc's structural evidence (A2 descent, the algebra-
+//     homomorphism chain, cost, effects) is emitted as a machine-
+//     checkable proof term an external Lean/Coq KERNEL checks. Converts
+//     the seed-trust NAMED AXIOM above into an INTERSUBJECTIVE check
+//     against an anchor gunbc does not own — does NOT make it
+//     un-gameable (the external kernel + evidence-faithfulness are the
+//     new named axioms; trust MOVED, not eliminated). The lens exports
+//     witnesses already held; the prover only kernel-checks, never
+//     searches (no-engine + A2). Full framing: STRUCTURE.md §7 +
+//     DECISIONS.md PROOF-1.
 //
 // Discipline:
 //   - This file is the ONLY bootstrap authority. No build.rs, no bootstrap.sh.
