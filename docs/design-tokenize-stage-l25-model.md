@@ -19,7 +19,15 @@ This document is the **Step 1 model review** per `src/v3/SELF_HOSTING.md` §2.2 
 - `src/v3/compiler/tokenize.dag` (154 lines; tokenizer implementation in `.dag`)
 - `src/v3/compiler/src/tokenize_generated.rs` (362 lines; AUTO-GENERATED via `regen_tokenize` codegen-driver from `tokenize.dag`)
 
-PB-2 migration is mostly about VERIFYING the substrate is complete + RETIRING residual hand-Rust scaffolding around the generated body, NOT about new substrate authoring (cf. PB-3/4/5/6 which all required new `.dag` substrate creation).
+PB-2 migration is FURTHER ALONG than other pipeline stages BUT NOT complete (per codex BLOCKING #3127 — corrected understanding). Substrate authority exists in `.dag` AND has documented open scaffolds requiring substantive retirement work:
+
+1. **SG-1a tracked scaffold** (`src/v3/compiler/tokenize.dag:16-22`): `regen_tokenize` currently parses raw source text for `dag_keyword_set` / `dag_operators` because those shared-syntax bodies lower as `ValueBody::Unparsed`. Named dissolution trigger: once those bodies lower structurally under `compile_to_dag`, delete the raw-text extractor + derive directly from lowered Dag in same PR. PB-2 Step 4 carries this scaffold-retirement scope.
+
+2. **Character-level under-consumption scaffold** (`tokenize.dag:23-30+`): scan phases slice ASCII/Unicode codepoint space in parallel forms NOT consuming `dsl/std/` character authorities. `StringEscapeSpec` / `LocalPunctSpec.pattern` / `string_literal_delimiter` treated as opaque Strings; hidden Rust character predicates (`byte.is_ascii_digit()` / `byte.is_ascii_lowercase()` etc. at `tokenize_generated.rs:15-22`) emitted into codegen rather than driven by `.dag`. PB-2 Step 4 carries this scaffold-retirement scope too.
+
+3. **Residual hand-Rust**: NOT just the codegen artifact `tokenize_generated.rs`. The actual residual includes (a) `regen_tokenize` codegen-driver logic (per Q1 PB-Bootstrap-Process lane), (b) SG-1a raw-text extractor scaffold, (c) character-predicate scaffold leaking through codegen.
+
+So PB-2 is "substrate-driven by `.dag` AT scanner-state-machine level but NOT at character-predicate level"; the doc's earlier "mostly verification" framing UNDERSTATED the substantive scaffold-retirement work.
 
 **This doc does NOT**:
 - Re-author the tokenize substrate (already live in `tokenize.dag`)
@@ -43,7 +51,7 @@ The substrate authority is structured as:
 
 Per `feedback_lenses_not_passes`: tokenize is a fold over bytes with scanner-class dispatch — substrate-driven, NOT decision engine. The class definitions IN tokenize.dag ARE the rule book; no separate "TokenizationSpec" carrier needed (substrate IS the spec, same pattern as PB-5 infer per PR #3085 §3.2).
 
-**Failure shape**: fail-closed (per `feedback_fail_closed_discipline` + INVARIANTS C-8). Tokenize failures produce typed `TokenizeDiagnostic` variants with structural source-span attribution (unterminated string literal / invalid character / etc.).
+**Failure shape**: fail-closed (per `feedback_fail_closed_discipline` + INVARIANTS C-8). Live state at `tokenize_generated.rs:96`: `fn tokenize(...) -> Result<Vec<Token>, Diagnostic>` returns generic `Diagnostic::TokenizerError { message, span, correction }` (per `src/v3/std/diagnostics.dag` Diagnostic carrier). PROPOSED extension (NOT currently live): typed `TokenizeDiagnostic` variants (unterminated string literal / invalid character / numeric literal overflow / etc.) per §4.2 — same shape as PB-3/4/5 per-stage diagnostic extension per PR #3077 §12 Q7 ratification path.
 
 ---
 
@@ -159,7 +167,7 @@ Walker dispatch is **mechanical**: match on byte class → look up the recogniti
 | Codegen pipeline | `regen_tokenize` codegen-driver → `tokenize_generated.rs` | PB-Bootstrap-Process lane | LIVE at HEAD; codegen-driver retirement is PB-Bootstrap-Process scope (NOT PB-2 scope) |
 | TokenizeDiagnostic substrate extension | extension of `src/v3/std/diagnostics.dag:150` per PR #3077 §12 Q7 | PB-Substrate + Director-tier per-stage authoring | Carrier LIVE; per-stage variant authoring NEW per Q7 ratification |
 
-**Critical observation**: PB-2 tokenize has the LIGHTEST substrate prereq surface of any pipeline-stage L2.5. The substrate is already live; PB-2 migration is mostly verification + retirement of residual hand-Rust scaffolding.
+**Critical observation**: PB-2 tokenize has LIGHTER prereq surface than other pipeline stages — substrate-driven at scanner-state-machine level. BUT substantive residual work remains (per codex BLOCKING #3127 corrected): SG-1a raw-text-extractor scaffold + character-level under-consumption scaffold + regen_tokenize codegen-driver retirement (per Q1 PB-Bootstrap-Process). Earlier "mostly verification" framing was understated.
 
 ---
 
@@ -196,7 +204,7 @@ Tokenize is target-agnostic byte-scanning; Shape A/B disambiguation lives at emi
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-tokenize-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> TokenizedSource` declared in compiler.dag with `ExternalRealization` body. Output is the `TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }` wrapper carrier per §4.3 (proposed substrate extension; resolved per §12 Q6). Note: since `tokenize.dag` already exists as substrate implementation, Step 2's "ExternalRealization" is actually pointing at the `.dag` substrate (not at hand-Rust); the residual hand-Rust is the codegen artifact `tokenize_generated.rs`, not the implementation. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
+| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> TokenizedSource` declared in compiler.dag with `ExternalRealization` body. Output is the `TokenizedSource { tokens: List<Token>, diagnostics: List<TokenizeDiagnostic> }` wrapper carrier per §4.3 (proposed substrate extension; resolved per §12 Q6). Note: `tokenize.dag` exists as scanner-state-machine substrate, BUT residual hand-Rust includes (a) `regen_tokenize` codegen-driver logic, (b) SG-1a raw-text-extractor scaffold for `dag_keyword_set`/`dag_operators` per `tokenize.dag:16-22`, (c) character-predicate scaffold (`byte.is_ascii_digit()` etc. at `tokenize_generated.rs:15-22`) leaking through codegen. Step 4 carries scaffold-retirement scope, NOT just codegen-artifact retirement. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | compiler.dag refinement |
 | **Step 3: Verify substrate completeness** | Audit `src/v3/compiler/tokenize.dag` vs `tokenize_generated.rs` — confirm `.dag` is the complete authority (no hand-Rust logic in `tokenize_generated.rs` beyond mechanical codegen artifacts); identify any residual hand-Rust scaffolding that needs retirement. Per `feedback_paper_shrink_variants` discipline: verify tokenize.dag is NOT V1 template-relocation (hand-Rust scanner logic relocated to `.dag` text without substrate-substance growth). | R3 Substrate Mgr — worker dispatched against Director-authored Step 3 brief | tokenize.dag audit |
 | **Step 4: Retire residual hand-Rust + codegen-driver decoupling** | If Step 3 reveals residual hand-Rust scaffolding: retire it. If `regen_tokenize` codegen-driver retirement is needed in PB-2 scope (vs PB-Bootstrap-Process): coordinate the cross-lane handoff. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by whatever residual lands. | R3 Substrate Mgr + coordination with PB-Bootstrap-Process lane | residual hand-Rust deletion |
 
