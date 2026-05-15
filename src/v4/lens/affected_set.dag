@@ -11,6 +11,12 @@
 //   - affected_set: (Dag, Diff) -> Witness<ReExecFrontier>
 //     (the minimal node set that must re-run; everything else is
 //     incrementally skippable because pure + unchanged)
+//     (`Diff` is the std/node.dag D1 type — EdgeSelector/Path/Edit/Diff;
+//      this lens CONSUMES it, it does not own it. The frontier seed is
+//      the set of changed Paths; "unchanged" is `content_hash` (B1)
+//      equality — the structural-caching dual already stated below.
+//      The D1 OPERATION `apply_diff` lives in lens/application.dag,
+//      not here: affected_set only reads the Diff, never applies it.)
 //   - composes with compiler/05_eval.dag (skip unchanged pure subgraphs)
 //   - composes with workflow/ci.dag (gate/job selection — replaces the
 //     interim scripts/detect-affected-components.sh shell bridge)
@@ -26,7 +32,7 @@
 //     is just an emission target of the hash.
 //
 // Consumes:
-//   - std/node.dag, std/witness.dag
+//   - std/node.dag (incl. the D1 Diff type), std/witness.dag
 //   - compiler/04_infer.dag: the typed dependency graph (Dag)
 //
 // Status: scaffold — fill per TASKS.md T-21
