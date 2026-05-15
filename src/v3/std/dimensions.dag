@@ -17,7 +17,7 @@
 module v3.std.dimensions
 
 import std.list { List }
-import std.substrate { Dag, Behavior }
+import std.substrate { Dag, Behavior, NodeId, PortId }
 import std.algebra { OrderedRing, Monoid }
 import v3.std.diagnostics { Diagnostic }
 
@@ -26,15 +26,21 @@ import v3.std.diagnostics { Diagnostic }
 //
 //   - `Inhabits(c)`  — this behavior is an ok member of the
 //                      dimension's algebra; compose absorbs `c`.
-//   - `Violates {..}` — this behavior breaks the dimension; a
-//                       diagnostic fires and composition stalls.
+//   - `Violates {..}` — dimension / substrate policy failure; diagnostics
+//                       fire from `subject` (real `Behavior` boundary or typed
+//                       malformed-producer residue — gate #104 / INVARIANTS P3).
 //
 // The coproduct is authored at the witness level, not above it in
 // an `Option<Witness>` shape, so "no evidence" and "evidence of
 // violation" cannot masquerade as each other (DB-3 §Rationale).
+type ViolatesSubject
+  = AtBehavior(Behavior)
+  | ProducerLookupMissingPort { port: PortId }
+  | ProducerLookupMissingNode { producer: NodeId }
+
 type Witness<Carrier>
   = Inhabits(Carrier)
-  | Violates { reason: String, at: Behavior }
+  | Violates { reason: String, subject: ViolatesSubject }
 
 // Optional break channel for `break_diagnostic` — replaces `Diagnostic?`
 // until optional return types are uniform on staged function declarations.

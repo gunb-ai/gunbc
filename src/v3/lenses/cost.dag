@@ -492,7 +492,7 @@ fn witness_from_symbolic_cost_lookup(s: Lookup<SymbolicCost>, at: Behavior) -> W
     Miss =>
       Violates {
         reason: "symbolic_cost_of: missing SymbolicCost for behavior result port"
-        at: at
+        subject: AtBehavior(at)
       }
   }
 

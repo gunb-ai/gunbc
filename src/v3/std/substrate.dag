@@ -684,13 +684,6 @@ fn workflow_root_port(d: Dag) -> WorkflowRoot {
   host workflow_root_port
 }
 
-// Gate #104: lawful `Witness::Violates { at }` anchor when resolver paths
-// cannot pick a producer `Behavior`. Rust realization is `Dag::substrate_lens_read_diagnostic_anchor`;
-// empty `Dag.nodes` violates substrate staging invariants — the method panics instead of synthesizing fiction.
-fn substrate_lens_read_diagnostic_anchor(d: Dag) -> Behavior {
-  host substrate_lens_read_diagnostic_anchor
-}
-
 // `Lookup<DeclarationId>` monomorphized constructors (same shim story as
 // `miss_int_lookup` in `v3.std.lookup` and `miss_symbolic_cost_lookup` in
 // `std.algebra`). Lives here so `infer_helpers.dag` can call them via
