@@ -3122,6 +3122,40 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         )));
     }
 
+    const RUST_V3_FORMAT_PRELUDE: &str = r#"fn __v3_format(template: String, args: Vec<String>) -> String {
+    let mut out = String::new();
+    let bytes = template.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end == start {
+                panic!("format placeholder must use an explicit numeric index");
+            }
+            if end >= bytes.len() || bytes[end] != b'}' {
+                panic!("format placeholder is missing closing brace");
+            }
+            let idx: usize = template[start..end]
+                .parse()
+                .expect("format placeholder index must be decimal");
+            let Some(arg) = args.get(idx) else {
+                panic!("format placeholder index out of bounds");
+            };
+            out.push_str(arg);
+            i = end + 1;
+        } else {
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+"#;
+
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
     // `rust_source_filtering`); the division helper must still compile, so the
     // v3 error enum + `__v3_int_div` are emitted as a small prelude. Names
@@ -3147,6 +3181,9 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     let mut sections: Vec<String> = Vec::new();
     if needs_int_div_prelude {
         sections.push(RUST_V3_INT_OP_PRELUDE.to_string());
+    }
+    if dag_uses_any_callable(dag, &["format"]) {
+        sections.push(RUST_V3_FORMAT_PRELUDE.to_string());
     }
     if !type_defs.is_empty() {
         sections.push(type_defs);
@@ -4866,9 +4903,7 @@ impl<'a> Ctx<'a> {
                     InputSlot::Positional(1),
                     locals,
                 )?;
-                Ok(format!(
-                    "{{ let mut __v3_format_out = {template}; for (__v3_format_i, __v3_format_arg) in ({args}).iter().enumerate() {{ __v3_format_out = __v3_format_out.replace(&::std::format!(\"{{{{{{}}}}}}\", __v3_format_i), __v3_format_arg); }} __v3_format_out }}"
-                ))
+                Ok(format!("__v3_format({template}, {args})"))
             }
             RustCallableStrategyBinding::IntToString => {
                 if consumer.inputs.len() != 1 {
@@ -6132,6 +6167,26 @@ fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<Te
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }
+}
+
+fn dag_uses_any_callable(dag: &Dag, names: &[&str]) -> bool {
+    names.iter().any(|name| dag_uses_callable(dag, name))
+}
+
+fn dag_uses_callable(dag: &Dag, name: &str) -> bool {
+    let Some(target) = dag.declaration_by_name(name).map(|decl| decl.id) else {
+        return false;
+    };
+    dag.nodes().iter().any(|node| {
+        let Behavior::Transform(transform) = node else {
+            return false;
+        };
+        let TransformTarget::Callable(callable) = transform.target else {
+            return false;
+        };
+        let (template, _) = callable_template(callable, dag);
+        template == target
+    })
 }
 
 fn bound_callable_argument(

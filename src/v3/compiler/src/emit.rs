@@ -1331,6 +1331,11 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if dag_uses_any_callable(dag, &["format"]) {
         sections.push("import \"strings\"".to_string());
     }
+    if dag_uses_any_callable(dag, &["format"]) {
+        sections.push(
+            "func __v3Format(template string, args []string) string {\n  var out strings.Builder\n  for i := 0; i < len(template); {\n    if template[i] != '{' { out.WriteByte(template[i]); i++; continue }\n    start := i + 1\n    end := start\n    for end < len(template) && template[end] >= '0' && template[end] <= '9' { end++ }\n    if end == start { panic(\"format placeholder must use an explicit numeric index\") }\n    if end >= len(template) || template[end] != '}' { panic(\"format placeholder is missing closing brace\") }\n    idx, err := strconv.Atoi(template[start:end])\n    if err != nil { panic(\"format placeholder index must be decimal\") }\n    if idx < 0 || idx >= len(args) { panic(\"format placeholder index out of bounds\") }\n    out.WriteString(args[idx])\n    i = end + 1\n  }\n  return out.String()\n}\n".to_string(),
+        );
+    }
     let needs_int_div_prelude =
         dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);
     let needs_result_prelude = needs_int_div_prelude
@@ -2014,9 +2019,7 @@ impl<'a> Ctx<'a> {
                 };
                 let template = self.render_port(*template_port, locals)?;
                 let args = self.render_port(*args_port, locals)?;
-                Ok(format!(
-                    "func() string {{ __v3FormatOut := {template}; for __v3FormatI, __v3FormatArg := range {args} {{ __v3FormatOut = strings.ReplaceAll(__v3FormatOut, \"{{\" + strconv.Itoa(__v3FormatI) + \"}}\", __v3FormatArg) }}; return __v3FormatOut }}()"
-                ))
+                Ok(format!("__v3Format({template}, {args})"))
             }
             CallableStrategyBinding::IntToString => {
                 let [value_port] = inputs else {
