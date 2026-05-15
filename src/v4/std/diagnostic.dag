@@ -270,4 +270,3 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
-
