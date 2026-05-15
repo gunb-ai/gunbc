@@ -1,18 +1,21 @@
-# src/v4/workflow/retirement.dag
-#
-# Scope: structural Retirement predicate — 'X is dissolved' is a substrate fact, not a list-length.
-# Anchor: memory: feedback_paper_shrink_variants + Witness-based retirement (no list-length gaming)
-#
-# Owns:
-#   - retired: HandResidual -> Witness<RetirementProof>
-#   - RetirementProof { dissolved_by: SubstrateFact, equivalence_demonstrated: TestClaim }
-#   - the SG-0 ratchet reads this predicate; no count gaming possible
-#
-# Consumes:
-#   - std/node.dag, std/witness.dag, std/verification.dag
-#
-# Status: scaffold — fill per TASKS.md T-5
-# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-# contract for the worker. Splitting this file requires explicit operator
-# ratification (substrate extension = stop signal).
+// src/v4/workflow/retirement.dag
+//
+// Scope: structural Retirement predicate — 'X is dissolved' is a substrate fact, not a list-length.
+// Anchor: memory: feedback_paper_shrink_variants + Witness-based retirement (no list-length gaming)
+//
+// Owns:
+//   - retired: HandResidual -> Witness<RetirementProof>
+//   - RetirementProof { dissolved_by: SubstrateFact, equivalence_demonstrated: TestClaim }
+//   - the SG-0 ratchet reads this predicate; no count gaming possible
+//
+// Consumes:
+//   - std/node.dag, std/witness.dag, std/verification.dag
+//
+// Status: scaffold — fill per TASKS.md T-5
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.workflow.retirement
 

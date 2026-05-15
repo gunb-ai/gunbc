@@ -48,6 +48,7 @@ jobs:
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
       v3: ${{ steps.detect.outputs.v3 }}
+      v4: ${{ steps.detect.outputs.v4 }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -174,6 +175,46 @@ jobs:
       run: |
         set -euo pipefail
         cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
+  # v4 bootstrap viability — verifies v2's compiled binary can still parse
+  # every v4 .dag file. v4 stage0 must stay in v2-syntax-compatible subset
+  # (per src/v4/STRUCTURE.md "Bootstrap chain") until v4 self-compiles.
+  # This gate catches any v4 change that introduces syntax v2 can't parse.
+  v4:
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
+    needs: [affected]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Cache Cargo (v4 — shares with v2 since we build v2 binary)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
+        restore-keys: |
+          cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v2-${{ runner.os }}-
+    - name: Build v2 compiler (bootstrap stage minus one)
+      run: cargo build -p v2-compiler --release
+    - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
+      run: |
+        set -euo pipefail
+        rm -rf /tmp/v4-stage1
+        mkdir -p /tmp/v4-stage1
+        target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag
+        echo "Bootstrap viability OK — v2 indexed and resolved all v4 modules."
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).

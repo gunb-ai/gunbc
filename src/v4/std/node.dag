@@ -1,18 +1,21 @@
-# src/v4/std/node.dag
-#
-# Scope: foundational substrate — type connectives + L1 behaviors. THE root of the epistemic chain.
-# Anchor: THESIS.md "Substrate shape" §198-203 + MODELING.md
-#
-# Owns:
-#   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
-#   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
-#   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
-#
-# Consumes:
-#   nothing — this is the substrate root
-#
-# Status: scaffold — fill per TASKS.md T-1
-# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-# contract for the worker. Splitting this file requires explicit operator
-# ratification (substrate extension = stop signal).
+// src/v4/std/node.dag
+//
+// Scope: foundational substrate — type connectives + L1 behaviors. THE root of the epistemic chain.
+// Anchor: THESIS.md "Substrate shape" §198-203 + MODELING.md
+//
+// Owns:
+//   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
+//   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
+//   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
+//
+// Consumes:
+//   nothing — this is the substrate root
+//
+// Status: scaffold — fill per TASKS.md T-1
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.node
 

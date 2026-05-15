@@ -1,17 +1,20 @@
-# src/v4/lens/idempotency.dag
-#
-# Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally.
-# Anchor: https://en.wikipedia.org/wiki/Idempotence
-#
-# Owns:
-#   - lens read: Node -> Witness<IdempotencyClaim>
-#   - composes with std/algebra.dag for law-derived simplification
-#
-# Consumes:
-#   - std/node.dag, std/algebra.dag, std/witness.dag
-#
-# Status: scaffold — fill per TASKS.md T-13
-# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-# contract for the worker. Splitting this file requires explicit operator
-# ratification (substrate extension = stop signal).
+// src/v4/lens/idempotency.dag
+//
+// Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally.
+// Anchor: https://en.wikipedia.org/wiki/Idempotence
+//
+// Owns:
+//   - lens read: Node -> Witness<IdempotencyClaim>
+//   - composes with std/algebra.dag for law-derived simplification
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/witness.dag
+//
+// Status: scaffold — fill per TASKS.md T-13
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.lens.idempotency
 

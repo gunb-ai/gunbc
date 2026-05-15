@@ -13,11 +13,14 @@
 #
 # Writes:
 #   v2=true|false  — true if src/v2/ or workspace deps (Cargo.toml/lock) changed
-#                    (v2 binary is frozen-buildable; deps changes can break the build)
+#                    (v2 binary is frozen-buildable + the v4 bootstrap stage;
+#                    deps changes can break the build)
 #   v3=true|false  — true if src/v3/ or dsl/ changed
 #                    (v3 is FROZEN — workspace dep changes do NOT trigger v3 CI;
 #                    we don't care if v3 incidentally breaks because v3 is abandoned;
 #                    if v3 is ever revived, the first src/v3/ PR catches latent breakage)
+#   v4=true|false  — true if src/v4/ or workspace deps changed
+#                    (triggers v2→v4 bootstrap viability test)
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
@@ -79,8 +82,20 @@ else
   echo "v3 affected: no (skipping v3 CI per freeze 2026-05-15)" >&2
 fi
 
+# v4 affected: src/v4/ touched OR workspace deps changed (deps can break v2 build,
+# which v4 depends on for bootstrap). Triggers the bootstrap viability test:
+# v2 binary compiles every v4 .dag file (proves v4 stays in v2-syntax-compatible subset).
+if echo "$changed" | grep -qE '^src/v4/|^Cargo\.(toml|lock)$'; then
+  v4_state="true"
+  echo "v4 affected: yes (running v2→v4 bootstrap viability test)" >&2
+else
+  v4_state="false"
+  echo "v4 affected: no (skipping v4 bootstrap test)" >&2
+fi
+
 # Emit GitHub Actions outputs (or stdout if no output file given)
 {
   echo "v2=$v2_state"
   echo "v3=$v3_state"
+  echo "v4=$v4_state"
 } >> "$output_file"
