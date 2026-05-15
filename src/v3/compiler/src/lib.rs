@@ -4651,7 +4651,7 @@ pub mod lens_cost_symbolic {
 
     /// Table-only [`Lookup`] for one port—the same folded [`compute_symbolic_costs`] facts
     /// [`symbolic_cost_of`] inspects—but **without** producer resolution /
-    /// [`Witness`] packaging (algebra-level consumers; dimensional spine).
+    /// [`Witness`](crate::dimension::Witness) packaging (algebra-level consumers; dimensional spine).
     #[inline]
     pub fn symbolic_cost_lookup(
         dag: &crate::dag::Dag,
@@ -4672,8 +4672,7 @@ pub mod lens_cost_symbolic {
         generated::lookup_cost(table, port)
     }
 
-    /// Alias for [`Lookup`] at [`SymbolicCost`] — structural [`Hit`](Lookup::Hit) /
-    /// [`Miss`](crate::dag::Lookup::Miss) projections from the folded cost table.
+    /// Alias for [`Lookup`] at [`SymbolicCost`] (`Hit` / `Miss`) over [`compute_symbolic_costs`] rows.
     ///
     /// [`SymbolicCost`]: crate::dag::SymbolicCost
     /// [`Lookup`]: crate::dag::Lookup
