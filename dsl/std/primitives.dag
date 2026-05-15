@@ -158,6 +158,46 @@ data to_string_contract: PrimitiveContract = {
   notes: "Depends on value structure; n = serialized size"
 }
 
+// int_to_string(value: Int) -> String
+// Convert an integer to its canonical base-10 string representation.
+data int_to_string_contract: PrimitiveContract = {
+  name: "int_to_string",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  notes: "Canonical decimal representation; n = number of decimal digits"
+}
+
+// char_to_string(value: Char) -> String
+// Convert a Unicode scalar value to a single-character string.
+data char_to_string_contract: PrimitiveContract = {
+  name: "char_to_string",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  notes: "Char is already constrained to Unicode scalar values"
+}
+
+// bool_to_string(value: Bool) -> String
+// Convert a Boolean to `true` or `false`.
+data bool_to_string_contract: PrimitiveContract = {
+  name: "bool_to_string",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  notes: "Canonical lowercase Boolean spelling"
+}
+
+// format(template: String, args: List<String>) -> String
+// Substitute indexed placeholders (`{0}`, `{1}`, ...) from args.
+data format_contract: PrimitiveContract = {
+  name: "format",
+  work: "n + k",
+  output_size: "n + k",
+  certainty: Proven,
+  notes: "Single pass over template plus copied argument bytes; out-of-bounds placeholders fail closed"
+}
+
 // parse_int(s: String) -> Int
 // Parse a string as an integer.
 data parse_int_contract: PrimitiveContract = {

@@ -64,6 +64,10 @@ enum CallableStrategyBinding {
     Map,
     Filter,
     Contains,
+    StringFormat,
+    IntToString,
+    CharToString,
+    BoolToString,
 }
 
 #[derive(Debug, Clone)]
@@ -757,6 +761,7 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
+        "def __v3_format(template: str, args: list[str]) -> str:\n    out = []\n    i = 0\n    while i < len(template):\n        if template[i] != '{':\n            out.append(template[i])\n            i += 1\n            continue\n        start = i + 1\n        end = start\n        while end < len(template) and template[end].isdigit():\n            end += 1\n        if end == start:\n            raise IndexError('format placeholder must use an explicit numeric index')\n        if end >= len(template) or template[end] != '}':\n            raise IndexError('format placeholder is missing closing brace')\n        idx = int(template[start:end])\n        if idx < 0 or idx >= len(args):\n            raise IndexError('format placeholder index out of bounds')\n        out.append(args[idx])\n        i = end + 1\n    return ''.join(out)".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
@@ -1298,6 +1303,23 @@ impl<'a> Ctx<'a> {
                     &[("recv", &recv), ("item", &item)],
                 ))
             }
+            CallableStrategyBinding::StringFormat => {
+                let template = self.render_port(inputs[0], locals)?;
+                let args = self.render_port(inputs[1], locals)?;
+                Ok(format!("__v3_format({template}, {args})"))
+            }
+            CallableStrategyBinding::IntToString => {
+                let value = self.render_port(inputs[0], locals)?;
+                Ok(format!("str({value})"))
+            }
+            CallableStrategyBinding::CharToString => {
+                let value = self.render_port(inputs[0], locals)?;
+                Ok(format!("chr({value})"))
+            }
+            CallableStrategyBinding::BoolToString => {
+                let value = self.render_port(inputs[0], locals)?;
+                Ok(format!("str({value}).lower()"))
+            }
         }
     }
 
@@ -1751,6 +1773,10 @@ fn parse_callable_strategy(
         (variants.list_map, CallableStrategyBinding::Map),
         (variants.list_filter, CallableStrategyBinding::Filter),
         (variants.list_contains, CallableStrategyBinding::Contains),
+        (variants.string_format, CallableStrategyBinding::StringFormat),
+        (variants.int_to_string, CallableStrategyBinding::IntToString),
+        (variants.char_to_string, CallableStrategyBinding::CharToString),
+        (variants.bool_to_string, CallableStrategyBinding::BoolToString),
     ];
     for (variant_id, strategy) in strategies {
         let Some(variant_id) = variant_id else {
