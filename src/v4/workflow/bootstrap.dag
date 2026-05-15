@@ -1,0 +1,49 @@
+// src/v4/workflow/bootstrap.dag
+//
+// Scope: bootstrap orchestration AS DATA — the seed-once → self-host →
+//        fixed-point chain expressed as a .dag workflow, NOT a build.rs
+//        or shell script. v2's interpreter (`v2-compiler run`) executes
+//        this workflow; every step is data, so the bootstrap orchestration
+//        carries zero editable Rust authority.
+// Anchor: THESIS:223-226 (meta-process: "Bootstrap, CI, build orchestration
+//         ... modeled as .dag workflows") + docs/design-pure-bootstrap-zero.md
+//         §"N=0 runtime boundary" (seed is external-to-v4; here in-repo as
+//         frozen src/v2/, not in src/v4/)
+//
+// Owns:
+//   - BootstrapPlan: the ordered step sequence
+//     - Step seed:   v2-compiler compile --source-root src/v4 → emit Rust
+//                    to build-dir → rustc → v4-stage0 binary  (v2 = seed,
+//                    touched EXACTLY ONCE; v2's Rust lives in src/v2/,
+//                    outside src/v4/, and is frozen/CI-gated)
+//     - Step self0:  v4-stage0 compile src/v4 → emit Rust (v4's OWN
+//                    emission style) → rustc → v4-stage1
+//     - Step self1:  v4-stage1 compile src/v4 → emit Rust → rustc → v4-stage2
+//     - Step fixpt:  assert stage1-emitted == stage2-emitted (BitIdentical);
+//                    fixed point is stage1==stage2 (NOT stage0==stage1 —
+//                    stage0 is v2-emission-style, stage1+ is v4-style)
+//   - artifact pinning: v4-stage-final binary is content-addressed; its
+//     hash is the anti-regression anchor (T-15 BitIdentical TestClaim)
+//
+// Discipline:
+//   - This file is the ONLY bootstrap authority. No build.rs, no bootstrap.sh.
+//     A worker reaching for shell/build.rs orchestration has reintroduced
+//     editable Rust authority = STOP signal (the v3 regression door).
+//   - v2 interprets this (`v2-compiler run workflow/bootstrap.dag`) — v2 is
+//     never compiled INTO v4; it is the external frozen seed.
+//   - Emitted Rust is transient (build-dir; option (a)); never committed,
+//     never editable authority. .dag is sole authority.
+//
+// Consumes:
+//   - extdeps/process.dag: spawn v2-compiler / rustc / v4-stage-N subprocesses
+//   - extdeps/file_system.dag: read src/v4/*.dag, write build-dir Rust
+//   - std/diagnostic.dag: fail-closed on any step
+//   - std/verification.dag: BitIdentical TestClaim for the fixed-point assert
+//
+// Status: scaffold — fill per TASKS.md T-20 (scaffold early; full self-host
+// content lands incrementally as the pipeline matures; T-15 consumes this
+// for fixed-point validation)
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.workflow.bootstrap
+

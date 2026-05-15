@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-23 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+24 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -18,12 +18,19 @@ Phase 1 (parallel — substrate foundation):
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
 
-Phase 1.5 (test substrate — early, before compiler stages):
+Phase 1.5 (test + bootstrap substrate — early, before compiler stages):
   T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
         Produces TestClaim corpus from substrate; manual TestClaims in
         test/claim/manual/ serve as anti-regression contract until
         T-19 implementation lands. Every Phase 2+ task benefits from
         testgen-derived test coverage instead of hand-authoring.
+  T-20  workflow/bootstrap.dag           [needs T-1; grows incrementally]
+        Bootstrap orchestration AS DATA (seed-once → self-host →
+        fixed-point). v2 interprets it. Scaffold-early (the parse-
+        viability step is the existing CI gate); full self-host
+        content lands as the pipeline matures. T-15 consumes it for
+        fixed-point validation. NOT a build.rs/shell (that = the v3
+        regression door).
 
 Phase 2 (serial — pipeline stages):
   T-6   compiler/01_tokenize.dag         [needs T-3]
@@ -280,14 +287,17 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-15: bin/main.dag + bootstrap glue + self-host validation
+### T-15: bin/main.dag + self-host fixed-point validation (the anti-regression gate)
 
 **Why last**: validates the whole stack. v4 compiles itself, produces bit-identical output, ships.
 
+**Reframe (operator 2026-05-15)**: T-15's `BitIdentical` assertion is not just a self-host check — it IS the structural anti-regression guarantee. The v4 binary is a content-addressed release artifact; its fixed-point hash is pinned; any change rebuilds and must reproduce the exact hash or CI goes red. "Off Rust" is cashed here: the only editable authority is `.dag`; Rust cannot regress because none is authored and the binary hash is structurally locked. Consumes `workflow/bootstrap.dag` (T-20) for the orchestration.
+
 **Modeling decisions**:
-- main.rs trampoline shape (1-line `include!()`)
-- Bootstrap-stage progression (v2 binary -> v4 first compile -> v4 self-compile)
-- Self-host fixed-point check
+- `bin/main.dag` trampoline shape (1-line `include!()`; 0-floor per design-pure-bootstrap-zero.md:210)
+- Fixed-point check: stage1-emitted == stage2-emitted (NOT stage0==stage1 — stage0 is v2-emission-style)
+- Content-addressing scheme for the pinned binary hash
+- CI gate shape: rebuild-from-.dag-via-frozen-seed must reproduce pinned hash
 
 **Falsification probe — what "bit-identical self-host failure" looks like as TestClaim**:
 
@@ -445,6 +455,29 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+### T-20: workflow/bootstrap.dag — bootstrap orchestration AS DATA
+
+**File**: `src/v4/workflow/bootstrap.dag` (operator-ratified 2026-05-15: the "off Rust, can't regress" load-bearing file)
+**Why early (Phase 1.5)**: the parse-viability step (v2 indexes src/v4) is needed from day 1 — it's the existing CI gate. The full self-host chain content grows incrementally as the pipeline matures. T-15 consumes the completed file for fixed-point validation.
+**Why solo**: bootstrap orchestration is its own concern — it's the file that makes "compiler as data" structurally true rather than aspirational.
+
+**Modeling decisions**:
+- BootstrapPlan step sequence: seed (v2→stage0) / self0 (stage0→stage1) / self1 (stage1→stage2) / fixpt (assert stage1==stage2 BitIdentical)
+- How v2's `run` interpreter executes this (the workflow is data v2 interprets, not Rust v2 compiles)
+- Content-addressing of the pinned v4-stage-final binary
+- Fail-closed on any step (compose with std/diagnostic.dag)
+
+**Scope**: L (large — load-bearing for the entire anti-regression guarantee)
+
+**The non-negotiable discipline**: this file is the ONLY bootstrap authority. A worker reaching for `build.rs` or `bootstrap.sh` has reintroduced editable Rust/script authority = the v3 regression door = STOP signal. v2 interprets this `.dag`; v2 is the frozen external seed (in `src/v2/`, outside `src/v4/`), touched exactly once per fresh bootstrap.
+
+**Reference**:
+- THESIS.md §223-226 — meta-process modeling ("Bootstrap ... modeled as .dag workflows")
+- `docs/design-pure-bootstrap-zero.md` §"N=0 runtime boundary"
+- STRUCTURE.md §"Bootstrap chain" + closed-system invariant 7
+
+---
+
 ### T-18: lens/coverage.dag — meta-lens for coverage discipline
 
 **File**: `src/v4/lens/coverage.dag` (operator-ratified 2026-05-15: structural coverage enforcement, not exhaustive fixtures)
@@ -468,7 +501,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ## Summary
 
-23 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+24 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 

@@ -67,12 +67,14 @@ src/v4/
     coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
     testgen.dag          # producer side — reads substrate, emits TestClaim corpus (Phase 1.5)
 
-  workflow/              # recursive-flex — work-direction in .dag (5 files)
+  workflow/              # recursive-flex — work-direction in .dag (6 files)
     brief.dag            # typed Brief schema
     worker_output.dag    # WorkerOutput { dissolves: Set<HandResidual>, cited_anchor }
     doc_anchor.dag       # typed DocAnchor pointers into authority docs
     retirement.dag       # structural Retirement predicate (no list-length gaming)
     cycle.dag            # work cycle as data, lens-readable
+    bootstrap.dag        # bootstrap orchestration AS DATA (seed-once → self-host
+                         # → fixed-point); v2 interprets it; no build.rs/shell
 
   bin/
     main.dag             # emits main.rs trampoline (0-floor compliant)
@@ -82,7 +84,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 52 .dag files + 3 docs + 5 .gitkeep = 60 files at scaffold time.**
+**Total: 53 .dag files + 3 docs + 5 .gitkeep = 61 files at scaffold time.**
 
 ## Anchor convention
 
@@ -214,12 +216,54 @@ These are non-negotiable across all v4 work:
 4. **Cost-of-change = 1.** Adding a new type/expression/transport edits exactly one file. If a change ripples, the substrate is wrong.
 5. **Tests are TestClaim data.** Zero hand-Rust tests. Test surface lives in `test/claim/`.
 6. **Workflow substrate first.** `workflow/*.dag` is implemented BEFORE any compiler work, so worker outputs are typed Brief/WorkerOutput/Retirement instances from day 1. The recursive-flex move is structural, not aspirational.
+7. **`.dag` is the sole editable authority; Rust is never authority.**
+   "Off Rust" means: no Rust is editable authority — not "no Rust exists
+   anywhere" (the CPU always has a host; the seed is always *some*
+   compiler). Three sub-invariants make this structural: (a) zero
+   hand-Rust in `src/v4/` — closed file tree forbids adding it, .dag-only
+   scaffold means none exists to regress; (b) emitted Rust is transient
+   build-dir output, never committed; (c) bootstrap orchestration is
+   `workflow/bootstrap.dag` (data, interpreted by frozen v2), never a
+   `build.rs`/shell. The v4 binary is a content-addressed artifact
+   reproducible from `.dag` via the frozen seed; its fixed-point hash is
+   pinned. **The only way to change v4 behavior is editing `.dag`.** Rust
+   cannot regress because none is authored and the binary hash is
+   structurally locked (T-15 `BitIdentical`). This guarantee is in force
+   from scaffold time — it does not wait for the 23 tasks; the tasks fill
+   in behavior *under* an already-committed anti-regression structure.
 
 ## Bootstrap chain
 
-- **Stage minus one**: v2's compiled binary (proven self-hosted at 1-residual). Used to compile v4's first .dag pass.
-- **Language constraint**: v4 .dag is written in v2-syntax-compatible subset until v4 self-compiles. New syntax additions land only after v4 can compile itself.
-- **Self-host fixed point**: v4 compiles `compiler/*.dag` end-to-end and produces bit-identical output to its prior self-build.
+The chain IS a file: `workflow/bootstrap.dag` (orchestration as data; v2
+interprets it via `v2-compiler run`). NOT a `build.rs` or shell script —
+those would reintroduce editable Rust authority (the v3 regression door).
+
+```
+stage −1  v2 binary (from src/v2/'s committed 1-residual Rust — the SEED,
+            outside src/v4/, frozen + CI-gated, touched EXACTLY ONCE)
+              compiles src/v4/*.dag → Rust (v2 emission style)
+                                    → rustc → v4-stage0 binary
+stage 0   v4-stage0 compiles src/v4/*.dag → Rust (v4's OWN emission style)
+                                    → rustc → v4-stage1 binary
+stage 1   v4-stage1 compiles src/v4/*.dag → Rust → rustc → v4-stage2 binary
+fixpt     assert stage1-emitted == stage2-emitted  (BitIdentical)
+          — fixed point is stage1==stage2, NOT stage0==stage1
+            (stage0 is v2-emission-style; stage1+ is v4-style)
+```
+
+- **Seed used once**: v2 produces v4-stage0 from a Rust-only environment.
+  After stage0 exists, v4 compiles itself; v2 is never in the loop again.
+  Identical to gcc-needs-a-C-compiler-once / rustc-was-seeded-via-OCaml.
+- **Language constraint**: v4 .dag stays in v2-syntax-compatible subset
+  until v4 self-compiles. New syntax lands only after fixed point.
+- **Emitted Rust is transient** (option (a)): build-dir only, never
+  committed, never editable authority. `.dag` is sole authority.
+- **The v4 binary is a content-addressed release artifact**: pinned at
+  the fixed-point hash. Day-to-day, people edit `.dag` and run the
+  shipped binary — zero Rust touched. Reproducibility = rebuild from
+  `.dag` via frozen v2 seed, must reproduce the exact pinned hash.
+  T-15's `BitIdentical` TestClaim IS the anti-regression mechanism: a
+  drift = hash mismatch = CI red.
 
 ## Relationship to v2 and v3
 
