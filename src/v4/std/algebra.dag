@@ -8,7 +8,9 @@
 //   - Monoid
 //   - BooleanAlgebra (classical logic)
 //   - FreeMonoid<T> (free constructions)
-//   - inhabitance declarations for std/primitive.dag types
+//   - the algebra STRUCTURES only. A concrete type declares its OWN
+//     inhabitance in its own file (std/integer.dag, std/logic.dag, …);
+//     algebra.dag owns what gets inhabited, never the instances (P2).
 //
 // U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
 //   - ONE carrier: a structure-preserving map between algebras, WITH its
@@ -33,7 +35,9 @@
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj, Arrow for algebraic structure
-//   - std/diagnostic.dag: the helpful Diagnostic an empty search surfaces
+//   (the U1 no-engine "empty search → helpful Diagnostic" is surfaced by
+//   the consuming lens in its own file — algebra.dag declares structures
+//   only and references no Diagnostic)
 //
 // Status: scaffold — fill per TASKS.md T-2
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

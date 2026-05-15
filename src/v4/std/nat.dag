@@ -1,0 +1,26 @@
+// src/v4/std/nat.dag
+//
+// Scope: natural numbers — the Peano-inductive non-negative integers; the
+//        base of the numeric tower (integer widths and code points build
+//        on it).
+// Anchor: https://en.wikipedia.org/wiki/Natural_number (Peano axioms)
+//
+// Owns:
+//   - Nat — Peano inductive: Zero | Succ { prev: Nat } (a recursive `Disj`,
+//     recursion via Node children per A1 — not a self-referential type)
+//   - inhabitance: Nat inhabits `Monoid` (under +) / `Semiring`
+//     (std/algebra.dag) — arithmetic falls out of the algebra
+//
+// Consumes:
+//   - std/node.dag: Disj
+//   - std/algebra.dag: Monoid, Semiring
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.nat

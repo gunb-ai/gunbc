@@ -8,6 +8,8 @@
 //   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
 //   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
 //   - Symbol: opaque kernel identity (K-1, operator-ratified 2026-05-15)
+//   - Hash: opaque content-address digest (B1, operator-ratified
+//     2026-05-15; re-homed from the deleted std/primitive.dag)
 //   - Node / NodeKind / Edge: the one recursive type + its skeleton
 //   - the edge-discipline structural invariant (a connective fixes its
 //     edge shape; the illegal pairing is never silently constructible)
@@ -85,8 +87,9 @@
 //
 // T-1 scope dispositions (operator-ratified 2026-05-15):
 //   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
-//     typing (int/string/bool literal data) is std/primitive.dag (T-3) —
-//     a different concern from identifier identity.
+//     typing (int/string/bool literal data) is owned by the scalar/numeric
+//     files — std/integer.dag, std/text.dag, std/logic.dag (T-3) — a
+//     different concern from identifier identity.
 //   - Q2: this file owns the `Loop` behavior variant + the A2 discipline
 //     above; the descent-evidence carriers (RankingDimension /
 //     TerminationProof / DescentEvidence) belong to std/cardinality.dag
@@ -119,6 +122,23 @@ module v4.std.node
 // like the kernel List/Int/Bool) — it is not "consumed" from another
 // file. See header K-1 for the full rationale.
 type Symbol
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Hash — opaque content-address digest (B1, operator-ratified 2026-05-15).
+//
+// Body-less and opaque, exactly like `Symbol` (the K-1 discipline):
+// equality only, no content accessor. `Hash` is the content-addressing
+// carrier — the result of `content_hash : Node -> Hash`, a Merkle
+// catamorphism over the canonical-form clause. That fold and the
+// canonical-form clause are the T-1 closeout (B1: "T-1 worker encodes
+// the clause + fold per relay"); THIS is the carrier type they produce.
+// One scheme — consumed by T-15 (fixed point) / T-20 (pinned binary) /
+// T-21 (affected-set + structural caching) / the A3 reproduction check /
+// C5 RoundTrips. (Re-homed here from the deleted std/primitive.dag —
+// `Hash` is a content identity, not a scalar; see STRUCTURE.md
+// §"Scalar/numeric concept decomposition".)
+type Hash
 
 
 // ─────────────────────────────────────────────────────────────────────

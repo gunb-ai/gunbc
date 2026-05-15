@@ -16,13 +16,18 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (8 files)
+  std/                   # substrate primitives (14 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
-    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid + inhabitance
+    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
     witness.dag          # Witness<C> — fail-closed lens reads, no Option::None
-    diagnostic.dag       # structural Diagnostic { reason, at }
-    primitive.dag        # Int/Float/String/Char/Bool with inhabitance
+    diagnostic.dag       # structural Diagnostic { reason, at, correction }
+    logic.dag            # Bool — classical two-valued logic (Boolean algebra)
+    nat.dag              # Nat — natural numbers (Peano); numeric-tower base
+    machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr
+    integer.dag          # Int + fixed-width ints (Nat projected onto a width)
+    float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
+    text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
@@ -103,9 +108,50 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
+**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition.)
+
+## Scalar/numeric concept decomposition
+
+`std/primitive.dag` is **deleted.** It lumped five unrelated concepts
+(`Int`/`Float`/`String`/`Char`/`Bool`) under the label "primitive" — but per
+THESIS epistemic stacking the genuine primitives are the six connectives
+(`node.dag`) and the algebra roots (`algebra.dag`); `Int`/`Bool`/`String`/`Char`
+are *compositions* that attach by inhabitance, not primitives. It is replaced
+by six concept-located files, each anchored to a real external concept
+(Wikipedia / spec) — the same anchored-concept discipline `extdeps/` uses:
+
+- `std/logic.dag` — `Bool`, classical two-valued logic
+- `std/nat.dag` — `Nat`, natural numbers (Peano)
+- `std/machine.dag` — `Byte`/`Word*`/`MachineWidth`/`PointerWidth`, machine representation
+- `std/integer.dag` — `Int` + fixed-width ints (a `Nat` projected onto a machine width)
+- `std/float.dag` — `Float`, IEEE-754 (a sign/exponent/mantissa bit-record
+  inhabiting a rounding-aware algebra — *not* an exact `Field`, and *not*
+  opaque: fully grounded, only its algebra is weakened)
+- `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
+
+Each declares its own inhabitance (the inhabiting type owns its grounding —
+INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
+
+**`Hash` re-homing.** PR #3150's B1 entry slated the `Hash` content-address
+digest for `std/primitive.dag`. With that file deleted, `Hash` — which is
+not a scalar — re-homes to `std/node.dag`: this PR declares the opaque
+`Hash` type there (beside `Symbol`, the other K-1-opaque substrate-root
+identity) and updates `DECISIONS.md` B1's "Encoded in" column to
+`node.dag`. The `content_hash` fold and the canonical-form clause stay
+the T-1 closeout, exactly as B1 already states.
+
+**Kernel-ambient types.** `String`, `Int`, `Bool`, `Char`, `List`, `Map` are
+provided by the v2 seed and are usable in any `.dag` file *without an import*.
+This relaxes only the import edge — not single-authority: the v4 substrate
+file that *models* each type (`text.dag` for `String`/`Char`, `integer.dag`
+for `Int`, `logic.dag` for `Bool`, `collection.dag` for `List`/`Map`) remains
+its sole authority. A file's header `Consumes` line lists a scalar file only
+when it needs that type's *modeled* facts (algebra, inhabitance, totalization)
+— not when it merely needs the raw kernel value (e.g. a `String` message
+label). This is why several headers note "String … is kernel-ambient — no
+import".
 
 ## Anchor convention
 
@@ -174,11 +220,13 @@ reference this section when dispatching workers.
    `std/node.dag`), not by review process — the compiler reads the closed
    enum and refuses to compile any program that synthesizes outside it.
 
-2. **Tier 2 partial-op totalization lives in `std/primitive.dag`** (per
-   THESIS:175-176). Each primitive's partial operations (divide, modulo,
-   indexed access, force-unwrap) declare their totalization shape
-   (`Result`-return / `Witness`-return / refinement-precondition) in the
-   same file as the primitive itself. No separate "totalization registry."
+2. **Tier 2 partial-op totalization lives with each scalar type, in its
+   own file** (per THESIS:175-176). A scalar's partial operations declare
+   their totalization shape (`Result`-return / `Witness`-return /
+   refinement-precondition) in the same file as the type itself: integer
+   divide / modulo in `std/integer.dag`, NaN-producing ops in
+   `std/float.dag`, indexed access / force-unwrap where the indexed type
+   lives. No separate "totalization registry."
 
 3. **`Diagnostic` schema carries a typed `correction`** (per THESIS:103-105
    "show the correct code"). Schema:

@@ -11,7 +11,7 @@
 //   - Cost realization: per-operation cost on C++ targets
 //
 // Consumes:
-//   - std/node.dag, std/algebra.dag, std/primitive.dag
+//   - std/node.dag, std/algebra.dag; the std/ scalar files (integer/float/text/logic)
 //
 // Status: scaffold — fill per TASKS.md T-4
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
