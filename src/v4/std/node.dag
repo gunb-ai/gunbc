@@ -332,23 +332,41 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 }
 
 
+// Are all of a node's child SUBTREES well-formed? Recurses through each
+// `Edge.target`. Termination is the A2 implicit case: every `target` is
+// a proper sub-Node, structurally smaller, so the descent is finite.
+fn all_subtrees_well_formed(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && node_well_formed(n: e.target)
+  })
+}
+
 // node_well_formed — the checked structural invariant (D3).
 //
-// For a type node, the connective fixes the discipline and every edge
-// must conform. For a computation node this returns `true` — NOT because
+// WHOLE-TREE: a node is well-formed iff its own edge discipline holds
+// AND every child subtree is well-formed (recursively). One call to
+// `node_well_formed(root)` therefore means the entire Node tree is
+// well-formed — consumers (parse / normalize) do not have to traverse
+// and re-check; that is the single-authority promise (INVARIANTS P2/P3).
+//
+// For a type node, the connective fixes the local edge discipline. For a
+// computation node the LOCAL discipline is `true` — NOT because
 // computation nodes are unconstrained, but because their per-behavior
-// edge wiring is not yet modeled at this substrate-root layer.
+// edge wiring is not yet modeled at this substrate-root layer; the
+// recursion into its children still applies.
 //
 // NAMED OBLIGATION ON T-6+ (not optional): the pipeline-stage tasks that
 // build the computation substrate (T-6 tokenize … T-22 eval) MUST extend
-// this predicate with each behavior's edge discipline as they land. A
-// future reader must not read this `true` as "computation nodes are
-// unconstrained, forever" — it is an explicitly EMPTY constraint
-// awaiting T-6+, recorded here as their entry obligation.
+// the LOCAL computation-node discipline below as they land. A future
+// reader must not read the computation-node `true` as "computation nodes
+// are unconstrained, forever" — it is an explicitly EMPTY local
+// constraint awaiting T-6+ (the whole-tree recursion is already in force).
 fn node_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-    ComputationNode { behavior: _ } => true
+        && all_subtrees_well_formed(children: n.children)
+    ComputationNode { behavior: _ } =>
+      all_subtrees_well_formed(children: n.children)
   }
 }
