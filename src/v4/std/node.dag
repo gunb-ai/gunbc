@@ -332,41 +332,40 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 }
 
 
-// Are all of a node's child SUBTREES well-formed? Recurses through each
-// `Edge.target`. Termination is the A2 implicit case: every `target` is
-// a proper sub-Node, structurally smaller, so the descent is finite.
-fn all_subtrees_well_formed(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    acc && node_well_formed(n: e.target)
-  })
-}
-
-// node_well_formed — the checked structural invariant (D3).
-//
-// WHOLE-TREE: a node is well-formed iff its own edge discipline holds
-// AND every child subtree is well-formed (recursively). One call to
-// `node_well_formed(root)` therefore means the entire Node tree is
-// well-formed — consumers (parse / normalize) do not have to traverse
-// and re-check; that is the single-authority promise (INVARIANTS P2/P3).
-//
-// For a type node, the connective fixes the local edge discipline. For a
-// computation node the LOCAL discipline is `true` — NOT because
-// computation nodes are unconstrained, but because their per-behavior
-// edge wiring is not yet modeled at this substrate-root layer; the
-// recursion into its children still applies.
-//
-// NAMED OBLIGATION ON T-6+ (not optional): the pipeline-stage tasks that
-// build the computation substrate (T-6 tokenize … T-22 eval) MUST extend
-// the LOCAL computation-node discipline below as they land. A future
-// reader must not read the computation-node `true` as "computation nodes
-// are unconstrained, forever" — it is an explicitly EMPTY local
-// constraint awaiting T-6+ (the whole-tree recursion is already in force).
-fn node_well_formed(n: Node) -> Bool {
+// The LOCAL edge discipline of a single node (its own `children` only).
+// A type node's connective fixes the discipline; a computation node has
+// no local edge constraint at this substrate-root layer (see below).
+fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: c } =>
       edges_conform(children: n.children, d: connective_edge_discipline(c: c))
-        && all_subtrees_well_formed(children: n.children)
-    ComputationNode { behavior: _ } =>
-      all_subtrees_well_formed(children: n.children)
+    ComputationNode { behavior: _ } => true
   }
+}
+
+// node_well_formed — the checked structural invariant (D3), WHOLE-TREE.
+//
+// A node is well-formed iff its own local edge discipline holds AND every
+// child subtree is well-formed. This is ONE self-recursive function (not
+// a mutual pair) so the v2 seed's termination analyzer accepts it — it
+// recurses through `children` exactly the way v2's own recursive Node
+// walks do (e.g. `check_bare_containers` in `src/v2/03_normalize.dag`).
+// Termination is the A2 implicit case: each `e.target` is a proper
+// sub-Node, structurally smaller, so the descent is finite.
+//
+// One call to `node_well_formed(root)` means the ENTIRE Node tree is
+// well-formed — consumers (parse / normalize) do not traverse and
+// re-check; that is the single-authority promise (INVARIANTS P2/P3).
+//
+// NAMED OBLIGATION ON T-6+ (not optional): the computation-node arm of
+// `node_locally_well_formed` is an explicitly EMPTY local constraint —
+// NOT "computation nodes are unconstrained, forever". The pipeline-stage
+// tasks that build the computation substrate (T-6 tokenize … T-22 eval)
+// MUST extend that arm with each behavior's edge discipline as they
+// land. The whole-tree recursion here is already in force regardless.
+fn node_well_formed(n: Node) -> Bool {
+  node_locally_well_formed(n: n)
+    && fold(n.children, init: true, f: fn(acc, e) {
+         acc && node_well_formed(n: e.target)
+       })
 }
