@@ -5600,7 +5600,7 @@ pub use lens_parallelism::{analyze_parallelism, loop_iteration_parallel_emission
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
 pub use dimension::{
     analyze_complexity, analyze_symbolic_cost_dimension, behavior_spine_in_node_order,
-    DimensionReport, ViolatesSubject, Witness,
+    violates_subject_diagnostic_span, DimensionReport, ViolatesSubject, Witness,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

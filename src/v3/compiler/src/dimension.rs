@@ -41,13 +41,51 @@ fn behavior_span(at: &Behavior) -> SourceSpan {
     }
 }
 
-fn diagnostic_span_for_violates_subject(subject: &ViolatesSubject) -> SourceSpan {
+fn diagnostic_anchor_from_symbolic_cost_query_port(
+    d: &Dag,
+    query_port: &PortId,
+) -> Option<SourceSpan> {
+    let port_ref = d.port_opt(query_port)?;
+    let producer = port_ref.produced_by?;
+    d.node_opt(&producer).map(behavior_span)
+}
+
+/// Hint for malformed-producer lookups when emitting [`Diagnostic`] rows from witnesses that only carry
+/// [`ViolatesSubject::AtBehavior`] today: the offending behavior's own result [`PortId`] keyed the cost table
+/// miss. [`ProducerLookupMissing*`](ViolatesSubject) witnesses have no authoritative query port baked into
+/// the substrate residue — callers of [`violates_subject_diagnostic_span`] must pass **`Some(port)`** from
+/// the same keyed query as [`lens_cost_symbolic::symbolic_cost_of`](crate::lens_cost_symbolic::symbolic_cost_of).
+fn producer_lookup_anchor_hint(subject: &ViolatesSubject) -> Option<PortId> {
+    match subject {
+        ViolatesSubject::AtBehavior(b) => Some(behavior_result_port(b)),
+        ViolatesSubject::ProducerLookupMissingPort { .. }
+        | ViolatesSubject::ProducerLookupMissingNode { .. } => None,
+    }
+}
+
+/// IDE-/diagnostic-facing span for [`Witness::Violates`] when reporting
+/// [`ViolatesSubject::ProducerLookupMissingPort`] /
+/// [`ViolatesSubject::ProducerLookupMissingNode`].
+///
+/// Substrate residues name only offending [`PortId`] / [`NodeId`] handles —
+/// carrying no source location. [`lens_cost_symbolic::symbolic_cost_of`](crate::lens_cost_symbolic::symbolic_cost_of)
+/// is **port-keyed**; pass the **same `port`** it was called with here so diagnostics can anchor at the
+/// consumer port's declaring [`Behavior`] (parity with [`ViolatesSubject::AtBehavior`]), instead of the
+/// placeholder `malformed_substrate_producer_walk` sentinel used when **`lookup_port`** is unavailable.
+///
+/// [`ViolatesSubject::AtBehavior`]: ignores **`lookup_port`** and always attributes the offending behavior span.
+#[must_use]
+pub fn violates_subject_diagnostic_span(
+    d: &Dag,
+    lookup_port: Option<&PortId>,
+    subject: &ViolatesSubject,
+) -> SourceSpan {
     match subject {
         ViolatesSubject::AtBehavior(b) => behavior_span(b),
         ViolatesSubject::ProducerLookupMissingPort { .. }
-        | ViolatesSubject::ProducerLookupMissingNode { .. } => {
-            SourceSpan::new("malformed_substrate_producer_walk", 0, 0)
-        }
+        | ViolatesSubject::ProducerLookupMissingNode { .. } => lookup_port
+            .and_then(|p| diagnostic_anchor_from_symbolic_cost_query_port(d, p))
+            .unwrap_or_else(|| SourceSpan::new("malformed_substrate_producer_walk", 0, 0)),
     }
 }
 
@@ -227,7 +265,11 @@ pub fn analyze_symbolic_cost_dimension(
             };
             Some(Diagnostic::ParseError {
                 message: format!("symbolic_cost dimension: {reason}"),
-                span: diagnostic_span_for_violates_subject(subject),
+                span: violates_subject_diagnostic_span(
+                    d,
+                    producer_lookup_anchor_hint(subject).as_ref(),
+                    subject,
+                ),
                 correction: Correction::deferred_for_diagnostic_class(
                     "SymbolicCostDimensionDiagnostic",
                 ),
