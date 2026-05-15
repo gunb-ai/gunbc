@@ -201,13 +201,13 @@ fn dimension_report_tm_from_witness(d: Dag, w: Witness<TimingMeasurement>) -> Di
           report_dim_fail_tm(
             d,
             timing_sequential_identity(),
-            timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span()),
+            timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span())
           )
         ProducerLookupMissingNode { producer: _q } =>
           report_dim_fail_tm(
             d,
             timing_sequential_identity(),
-            timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span()),
+            timing_lens_scaffold_non_evidence_diagnostic(r, timing_lens_degenerate_empty_dag_span())
           )
       }
   }
