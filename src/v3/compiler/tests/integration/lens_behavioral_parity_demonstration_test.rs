@@ -32,7 +32,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::ComplexitySummary;
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::lens_effect_enumeration::{
     enumerate_effects, EffectEnumerationReport, StructuralEffectShape, TransactionalPattern,
 };
@@ -80,7 +80,7 @@ fn countdown_symbolic_cost() -> (SymbolicCost, PortId) {
     COUNTDOWN_SYMBOLIC_COST
         .get_or_init(|| {
             let (dag, countdown, parameter) = countdown_fixture();
-            let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
+            let symbolic_cost = match symbolic_cost_lookup(&dag, &countdown.value) {
                 SymbolicCostLookup::Hit(cost) => cost,
                 SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
             };

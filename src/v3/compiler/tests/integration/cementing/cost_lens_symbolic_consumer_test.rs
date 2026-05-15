@@ -27,7 +27,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Witness};
 
 use crate::common::assert_recursive_countdown_linear_semantics;

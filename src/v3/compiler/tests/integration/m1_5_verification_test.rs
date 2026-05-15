@@ -6,7 +6,7 @@ use v3_compiler::dag::{
     ValueBody,
 };
 use v3_compiler::generated_full_bootstrap_dag;
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 

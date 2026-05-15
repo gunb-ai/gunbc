@@ -22,7 +22,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::lens_cost_target_realization::{
     behavior_realization_meta, callable_realization_meta, operator_realization_meta,
     pattern_realization_meta, type_instantiation_realization_meta, type_realization_meta,
@@ -179,9 +179,9 @@ fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
         let user = compile_to_dag("let lit: Int = 7", "r3_gate37_cost_lens.v3")
             .expect("literal program compiles");
         let lit = find_bind_value(&user, "lit");
-        let algebra_cost = match symbolic_cost_of(&user, &lit) {
+        let algebra_cost = match symbolic_cost_lookup(&user, &lit) {
             SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `lit`"),
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup Miss for `lit`"),
         };
         assert!(
             matches!(algebra_cost, SymbolicCost::ConstantCost { _0: 0 }),
@@ -363,9 +363,9 @@ let demo: Int = countdown(3) + 1
         );
 
         let countdown = find_bind_value(&user, "countdown");
-        let algebra_cost = match symbolic_cost_of(&user, &countdown) {
+        let algebra_cost = match symbolic_cost_lookup(&user, &countdown) {
             SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup Miss for `countdown`"),
         };
         assert_recursive_countdown_linear_semantics(&algebra_cost);
 

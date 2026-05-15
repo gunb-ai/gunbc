@@ -63,7 +63,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup, ComplexitySummary};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 
 /// Named blocker shared across all `#[ignore]`'d ratchets in this file.
 /// Single source of truth so the follow-on lens-consumer-walker PR drops

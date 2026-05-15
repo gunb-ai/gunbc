@@ -173,7 +173,7 @@ let demo: Int = countdown(3) + 1
     let countdown = find_bind_value(&user, "countdown");
     let algebra_cost = match symbolic_cost_lookup(&user, &countdown) {
         SymbolicCostLookup::Hit(cost) => cost,
-        SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
+        SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup Miss for `countdown`"),
     };
 
     let realized_rows = realized_primitive_rows_from_program(&boot, &user, int_decl);
@@ -236,7 +236,7 @@ fn coercion_cost_equals_complexity_by_construction() {
         let demo_port = find_bind_value(&user, "demo");
         let via_cost = match symbolic_cost_lookup(&user, &demo_port) {
             SymbolicCostLookup::Hit(cost) => cost,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `demo`"),
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup Miss for `demo`"),
         };
         let via_complexity = match complexity_of(&user, &demo_port) {
             ComplexityLookup::Hit(summary) => summary,
