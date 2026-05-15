@@ -44,6 +44,7 @@ import v3.std.clean_emission {
 import std.algebra { BooleanAlgebra }
 import std.list { List }
 import std.formatting { format, int_to_string, char_to_string, bool_to_string }
+import std.types { Char }
 import std.integer { Int, Int32 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -109,6 +110,15 @@ data go_bool: TypeRealization = {
   language: go_language
   target: Bool
   carrier: "bool"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_char: TypeRealization = {
+  language: go_language
+  target: Char
+  carrier: "int64"
   is_copy: true
   fields: []
   cost: 1

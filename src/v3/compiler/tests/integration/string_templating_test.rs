@@ -94,10 +94,8 @@ fn format_missing_argument_fails_closed_at_runtime_boundary() {
     let status = rust_program_status(
         r#"
 import std.formatting { format }
-import std.types { List, String }
 
-let args: List<String> = []
-let msg: String = format("{0}", args)
+let msg: String = format("{1}", ["world"])
 "#,
         "string_templating_format_oob.v3",
     );

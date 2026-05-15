@@ -39,6 +39,7 @@ import v3.std.python_method_template_contracts {
   python_all_method_template_contract
 }
 import std.integer { Int }
+import std.types { Char }
 import v3.std.clean_emission {
   CleanEmissionContract,
   TargetCleanEmissionBinding,
@@ -212,6 +213,15 @@ data python_bool: TypeRealization = {
   language: python_language
   target: Bool
   carrier: "bool"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data python_char: TypeRealization = {
+  language: python_language
+  target: Char
+  carrier: "int"
   is_copy: true
   fields: []
   cost: 1

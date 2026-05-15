@@ -1773,10 +1773,19 @@ fn parse_callable_strategy(
         (variants.list_map, CallableStrategyBinding::Map),
         (variants.list_filter, CallableStrategyBinding::Filter),
         (variants.list_contains, CallableStrategyBinding::Contains),
-        (variants.string_format, CallableStrategyBinding::StringFormat),
+        (
+            variants.string_format,
+            CallableStrategyBinding::StringFormat,
+        ),
         (variants.int_to_string, CallableStrategyBinding::IntToString),
-        (variants.char_to_string, CallableStrategyBinding::CharToString),
-        (variants.bool_to_string, CallableStrategyBinding::BoolToString),
+        (
+            variants.char_to_string,
+            CallableStrategyBinding::CharToString,
+        ),
+        (
+            variants.bool_to_string,
+            CallableStrategyBinding::BoolToString,
+        ),
     ];
     for (variant_id, strategy) in strategies {
         let Some(variant_id) = variant_id else {

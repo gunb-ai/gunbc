@@ -3124,22 +3124,23 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
 
     const RUST_V3_FORMAT_PRELUDE: &str = r#"fn __v3_format(template: String, args: Vec<String>) -> String {
     let mut out = String::new();
-    let bytes = template.as_bytes();
+    let chars: Vec<char> = template.chars().collect();
     let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'{' {
+    while i < chars.len() {
+        if chars[i] == '{' {
             let start = i + 1;
             let mut end = start;
-            while end < bytes.len() && bytes[end].is_ascii_digit() {
+            while end < chars.len() && chars[end].is_ascii_digit() {
                 end += 1;
             }
             if end == start {
                 panic!("format placeholder must use an explicit numeric index");
             }
-            if end >= bytes.len() || bytes[end] != b'}' {
+            if end >= chars.len() || chars[end] != '}' {
                 panic!("format placeholder is missing closing brace");
             }
-            let idx: usize = template[start..end]
+            let idx_text: String = chars[start..end].iter().collect();
+            let idx: usize = idx_text
                 .parse()
                 .expect("format placeholder index must be decimal");
             let Some(arg) = args.get(idx) else {
@@ -3148,7 +3149,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             out.push_str(arg);
             i = end + 1;
         } else {
-            out.push(bytes[i] as char);
+            out.push(chars[i]);
             i += 1;
         }
     }

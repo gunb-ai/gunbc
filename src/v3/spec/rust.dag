@@ -69,6 +69,7 @@ import v3.std.emit_model {
 }
 import std.methods { concat_method, fold_method, is_empty_method, length_method, map_method }
 import std.formatting { format, int_to_string, char_to_string, bool_to_string }
+import std.types { Char }
 import v3.std.rust_method_template_contracts {
   rust_filter_method_template_contract,
   rust_flat_map_method_template_contract,
@@ -314,6 +315,15 @@ data rust_bool: TypeRealization = {
   language: rust_language
   target: Bool
   carrier: "bool"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_char: TypeRealization = {
+  language: rust_language
+  target: Char
+  carrier: "i64"
   is_copy: true
   fields: []
   cost: 1

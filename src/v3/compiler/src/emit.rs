@@ -1333,7 +1333,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
     if dag_uses_any_callable(dag, &["format"]) {
         sections.push(
-            "func __v3Format(template string, args []string) string {\n  var out strings.Builder\n  for i := 0; i < len(template); {\n    if template[i] != '{' { out.WriteByte(template[i]); i++; continue }\n    start := i + 1\n    end := start\n    for end < len(template) && template[end] >= '0' && template[end] <= '9' { end++ }\n    if end == start { panic(\"format placeholder must use an explicit numeric index\") }\n    if end >= len(template) || template[end] != '}' { panic(\"format placeholder is missing closing brace\") }\n    idx, err := strconv.Atoi(template[start:end])\n    if err != nil { panic(\"format placeholder index must be decimal\") }\n    if idx < 0 || idx >= len(args) { panic(\"format placeholder index out of bounds\") }\n    out.WriteString(args[idx])\n    i = end + 1\n  }\n  return out.String()\n}\n".to_string(),
+            "func __v3Format(template string, args []string) string {\n  var out strings.Builder\n  runes := []rune(template)\n  for i := 0; i < len(runes); {\n    if runes[i] != '{' { out.WriteRune(runes[i]); i++; continue }\n    start := i + 1\n    end := start\n    for end < len(runes) && runes[end] >= '0' && runes[end] <= '9' { end++ }\n    if end == start { panic(\"format placeholder must use an explicit numeric index\") }\n    if end >= len(runes) || runes[end] != '}' { panic(\"format placeholder is missing closing brace\") }\n    idx, err := strconv.Atoi(string(runes[start:end]))\n    if err != nil { panic(\"format placeholder index must be decimal\") }\n    if idx < 0 || idx >= len(args) { panic(\"format placeholder index out of bounds\") }\n    out.WriteString(args[idx])\n    i = end + 1\n  }\n  return out.String()\n}\n".to_string(),
         );
     }
     let needs_int_div_prelude =
@@ -2869,10 +2869,19 @@ fn require_callable_strategy(
             variants.list_contains,
             CallableStrategyBinding::ListContains,
         ),
-        (variants.string_format, CallableStrategyBinding::StringFormat),
+        (
+            variants.string_format,
+            CallableStrategyBinding::StringFormat,
+        ),
         (variants.int_to_string, CallableStrategyBinding::IntToString),
-        (variants.char_to_string, CallableStrategyBinding::CharToString),
-        (variants.bool_to_string, CallableStrategyBinding::BoolToString),
+        (
+            variants.char_to_string,
+            CallableStrategyBinding::CharToString,
+        ),
+        (
+            variants.bool_to_string,
+            CallableStrategyBinding::BoolToString,
+        ),
     ];
     for (variant_id, binding) in strategies {
         let Some(variant_id) = variant_id else {
