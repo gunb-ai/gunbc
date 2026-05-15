@@ -224,7 +224,7 @@ So: ordering (substrate-stability) IS satisfied (live); independence (migration-
 
 PB-4 lower consumes `SurfaceModule` from parse (per PR #3077 §3.1). The carrier is LIVE at parse_surface.dag; downstream stages don't depend on parse's migration timing.
 
-Per Decision 2.B discriminated-union diagnostics: parse's diagnostics are discriminable by source via whichever substrate-extension path PR #3077 §12 Q7 ratifies. **PR #3077 §12 Q7 must ratify before any Step 2 worker brief authoring** (cross-stage authority for Decision 2.B extension path).
+Per Decision 2.B discriminated-union diagnostics: parse's diagnostics are discriminable by source via the substrate-extension path PR #3077 §12 Q7 ratified. **Gate satisfied 2026-05-15T00:21:19Z** when PR #3077 merged; Step 2 worker brief authoring is unblocked at HEAD per §15 step 4. The contradiction cursor PR #3126 BLOCKING line:119 flagged (§6 unblocking claims vs §7.2 gate claim) is now resolved by the Q7 ratification merging rather than by retracting either statement.
 
 ### §7.3 Sibling-stage coordination
 
@@ -372,7 +372,7 @@ Post-ratification: this doc becomes substrate authority for Step 2 + Step 3a wor
 1. **Operator / PM-delegate ratifies §12 Q1–Q6** (per 2026-05-14 directive)
 2. **PM amends close plan** to route through PB-X lanes + cite this doc as PB-3 L2.5 substrate
 3. **PM amends §1.8** with PB-3 gate row citing this doc
-4. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path) — affects PB-3 ParseDiagnostic shape
+4. **PR #3077 §12 Q7 ratifies** (cross-stage Decision 2.B extension path) — affects PB-3 ParseDiagnostic shape. **DONE 2026-05-15T00:21:19Z** when PR #3077 (PB-4 lower L2.5) merged; Q7 ratification carried in that merge. The §6 / §7.2 "Step 2 must wait on Q7" gate is therefore now satisfied — Step 2 brief authoring is genuinely unblocked, not just procedurally listed as the next step.
 5. **Director authors PB-3 Step 2 worker brief** (pipeline-slot ExternalRealization PR scope)
 6. **R3 Substrate Mgr (warm-wolf-698)** dispatches Step 2 worker
 7. **Director ratifies Step 2 PR + admin-merges** when CI clears
