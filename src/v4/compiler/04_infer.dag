@@ -2,6 +2,12 @@
 //
 // Scope: pipeline stage 4 — type inference + checking. Single-file discipline; split = stop signal.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference (Hindley–Milner family + algebra-homomorphism search per THESIS:173)
+// Primary: this file (+ lens/* + std/algebra.dag grounding) is the
+//   compiler's LOAD-BEARING work — validating the epistemic chain. Per
+//   THESIS:13 + :196: the compiler is a causal/algebra engine first;
+//   emission is mechanical translation downstream. Algebra-homomorphism
+//   search here IS the enforcement; an ungroundable concept is a
+//   Diagnostic, never a downstream emitter special-case.
 //
 // Owns:
 //   - InferredTree type (with full type/algebra/cardinality info)

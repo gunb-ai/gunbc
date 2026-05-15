@@ -188,6 +188,22 @@ reference this section when dispatching workers.
      owned by `lens/idempotency.dag`. Three named runtime concerns are ONE
      mechanism; no `lens/cancellation.dag` or `lens/redundancy.dag`.
 
+6. **Emission is mechanical; algebra-enforcement is the primary job**
+   (per THESIS:13 "causal engine ... before emission becomes a mechanical
+   translation" + THESIS:196 "the epistemic chain IS the emission algorithm;
+   every emitter special case is evidence of an ungrounded concept upstream"
+   + THESIS:441 "Emits ... as mechanical translation").
+   The compiler's LOAD-BEARING work is validating the epistemic chain:
+   `compiler/04_infer.dag` algebra-homomorphism search + `lens/*` +
+   `std/algebra.dag` grounding. `compiler/05_emit.dag` is mechanical
+   projection of that validated chain. An emitter special-case is a STOP
+   signal — it means a concept is ungrounded upstream; fix the grounding
+   in `std/algebra.dag` or the epistemic chain (`04_infer.dag`), NOT the
+   emitter. A worker on T-10 writing `if target == X` special-cases has
+   found an upstream grounding gap; escalate. Declared via `// Primary:`
+   header field in `04_infer.dag` (owns enforcement) and `05_emit.dag`
+   (mechanical projection).
+
 ## The closed-system invariants
 
 These are non-negotiable across all v4 work:
