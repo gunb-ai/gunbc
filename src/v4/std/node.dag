@@ -159,6 +159,28 @@ type Hash
 // declaration — a visible diff routed to operator ratification (per
 // STRUCTURE.md A3: the substrate does not magically refuse it; the edit
 // is loud and un-missable). There is no `Other` / open-ended variant.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every pipeline stage (parse/normalize/
+//      infer/emit) dispatches on the connective; it is the shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the six are structurally distinct
+//      (Atom carries a Symbol; Conj/Disj labeled; Arrow/Cardinality/
+//      Instantiation positional) — no uniform label space to fold.
+//   3. Algebraic form — N/A by construction: this IS the type-substrate
+//      root (THESIS:202); the connectives do not trace to a richer
+//      std/ algebra — they are the source other structure grounds in.
+//   4. Dimensional — FAILS: a node carries EXACTLY ONE connective;
+//      genuine alternatives, never simultaneous coordinates.
+//   5. Parameterized family — FAILS: the six are structurally
+//      heterogeneous (Atom carries a Symbol; Conj/Disj labeled;
+//      Arrow/Cardinality/Instantiation positional, distinct arities/
+//      semantics) — NOT one generic `F<X>` / projection over a source
+//      set X (Practice 7). No enumeration-to-projection collapse exists.
+// Terminal: the closed 6 type connectives; a 7th is the C1 stop-signal
+// (a visible ratified edit to this declaration, STRUCTURE.md
+// commitment #1). Irreducible substrate root.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -179,6 +201,25 @@ type Connective
 //
 // CLOSED (C1 stop-signal). A sixth behavior is an edit to THIS
 // declaration — a visible diff routed to operator ratification.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every computation-substrate consumer
+//      dispatches on the behavior; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: the five are distinct computation
+//      kinds (the typed-total-λ fragment per INVARIANTS — Transform=
+//      application, Bind=let, Branch=sums, Loop=bounded rec, Value);
+//      no uniform label space.
+//   3. Algebraic form — N/A by construction: this IS the computation-
+//      substrate root (THESIS:202); no richer std/ source.
+//   4. Dimensional — FAILS: a computation node carries EXACTLY ONE
+//      behavior; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the five are distinct computation
+//      kinds (the typed-total-λ fragment — Transform=application,
+//      Bind=let, Branch=sums, Loop=bounded rec, Value) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7).
+// Terminal: the closed 5 L1 behaviors; a 6th is the C1 stop-signal
+// (STRUCTURE.md commitment #1). Irreducible substrate root.
 type Behavior
   = Value
   | Transform
@@ -197,6 +238,25 @@ type Behavior
 // enums stay orthogonal closed sets; `NodeKind` merely selects which
 // one applies (THESIS:198-203 — computation references type by edge, it
 // does not co-locate the two coordinates on one node).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Node consumer branches on kind
+//      to know which substrate it is in; shared, not scattered.
+//   2. Variant-is-data — FAILS: TypeNode carries a Connective,
+//      ComputationNode a Behavior — disjoint payloads, no uniform
+//      label space.
+//   3. Algebraic form — N/A by construction: the two-coordinated-
+//      substrate split IS the substrate shape (THESIS:198-203); no
+//      richer source.
+//   4. Dimensional — FAILS: Shape S — a Node is in EXACTLY ONE
+//      substrate, never both; alternatives, not coordinates (co-
+//      locating both would conflate the two independent C1 closures).
+//   5. Parameterized family — FAILS: TypeNode/ComputationNode carry
+//      disjoint payloads (Connective vs Behavior) — not one generic
+//      `F<X>` / projection over a source set (Practice 7); it is the
+//      irreducible two-coordinated-substrate selector.
+// Terminal: the binary type/computation substrate split; irreducible.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
@@ -218,6 +278,26 @@ type NodeKind
 // negative / gapped / duplicate / out-of-order indices representable.
 // With no index field those illegal states are STRUCTURALLY
 // UNREPRESENTABLE — not "rejected by a checker."
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every edge consumer branches on the
+//      label kind uniformly; shared, not scattered.
+//   2. Variant-is-data — FAILS: `Named` carries a Symbol; `Positional`
+//      is a bare marker whose identity IS list position. Folding to a
+//      uniform record means a stored index — the INVARIANTS P2
+//      duplicate-authority anti-pattern this type exists to forbid.
+//   3. Algebraic form — N/A by construction: the two child-addressing
+//      modes are the edge-discipline primitive; no richer std/ source.
+//   4. Dimensional — FAILS: an edge is EITHER named OR positional,
+//      never both; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: `Named` carries a Symbol,
+//      `Positional` is a bare marker (identity = list position) —
+//      heterogeneous, NOT one generic `F<X>` / projection over a
+//      source set (Practice 7).
+// Terminal: the two child-addressing modes; the no-stored-index design
+// makes illegal index states unrepresentable — this IS already the
+// dissolved form, not a compression of one.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -269,6 +349,27 @@ type Node {
 // stays a check here is the D3 no-redesign call, not an A3-style
 // impossibility. (Contrast: the closed `Connective` enum below — a 7th
 // connective genuinely IS the A3 case, an edit to this file.)
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: derived uniformly from the connective
+//      via `connective_edge_discipline` and consumed by
+//      `node_well_formed`; single authority, not scattered.
+//   2. Variant-is-data — FAILS: the three are distinct structural
+//      rules (no edges / labeled+distinct / positional), not a uniform
+//      label space.
+//   3. Algebraic form — N/A by construction: it is the projection of
+//      the closed `Connective` set's edge rule; it IS the rule, no
+//      richer source.
+//   4. Dimensional — FAILS: a connective fixes EXACTLY ONE discipline;
+//      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the three are distinct structural
+//      rules (no edges / labeled+distinct / positional) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7);
+//      it is the irreducible projection OF the closed `Connective` set
+//      onto its edge rule, already in dissolved form.
+// Terminal: the three connective edge-disciplines; a closed classifier
+// over the closed `Connective` set — irreducible with it.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
