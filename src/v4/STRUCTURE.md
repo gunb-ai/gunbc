@@ -11,8 +11,10 @@ v2 proved 1-residual hand-Rust is achievable but had modeling gaps. v3 had riche
 ```
 src/v4/
   STRUCTURE.md           # this file
+  CULTURE.md             # the working agreement + reading map (read first)
   BRIEF_TEMPLATE.md      # the worker brief shape (immutable across tasks)
-  TASKS.md               # 15 XL tasks defining "v4 done"
+  TASKS.md               # the XL task plan (count drift-proof; see T-15)
+  DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
   std/                   # substrate primitives (8 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
@@ -25,13 +27,14 @@ src/v4/
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
-  extdeps/               # external system contracts (15 files)
+  extdeps/               # external system contracts (17 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
       rust.dag
       python.dag
       go.dag
       cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
       typescript.dag     # TypeScript + ECMAScript
+      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI falsification probe; IN-B concurrency)
     frameworks/          # framework substrates (UI / server / data)
       react.dag          # React: Component/Hook/Effect (frontload per operator 2026-05-15)
     formats/             # data format models (direction-agnostic)
@@ -41,6 +44,7 @@ src/v4/
       toml.dag
       json_schema.dag
       openapi.dag
+      spice.dag          # SPICE netlist (T-4.10 — B2-OMNI probe; Shape B, no control flow)
     process.dag          # OS process model (POSIX/SUS)
     file_system.dag      # OS file system model (POSIX file/directory operations)
     coordination.dag     # multi-program: Endpoint/DeploymentUnit/sync/async/stream/pubsub
@@ -87,10 +91,18 @@ src/v4/
 
   test/
     claim/               # TestClaim data — no hand-Rust tests
+      impossible_bug/    # the R1+ impossible-bug class demos
+      diagnostic_correction/
+      algebra_laws/
+      manual/            # hand-authored anti-regression anchors (Phase 1.5)
+      boundary/          # boundary-honesty probes
+        english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 57 .dag files + 3 docs + 5 .gitkeep = 65 files at scaffold time.**
+**Total: 60 .dag files + 5 docs + 5 .gitkeep = 70 files.** (Per invariant
+#1 the enumeration above — not the count — is authoritative; the count is
+a checksum, updated on every operator-ratified file addition.)
 
 ## Anchor convention
 
