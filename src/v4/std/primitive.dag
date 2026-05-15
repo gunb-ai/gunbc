@@ -11,9 +11,11 @@
 //     Equality only; NO content accessor (same opacity discipline as the
 //     K-1 `Symbol`). This is the content-address carrier. The fold that
 //     produces it — `content_hash : Node -> Hash`, a Merkle catamorphism
-//     over the A1-canonical Node — is declared in `std/node.dag` (the T-1
-//     worker encodes it per relay; it belongs with the canonical-form
-//     clause). ONE scheme, consumed by T-15 (fixed point) / T-20 (pin) /
+//     over the `std/node.dag` **canonical-form clause** (a SEPARATE
+//     node.dag authority — NOT subsumed by A1, which covers only
+//     recursion/axis-closure/generics/termination; B1) — is declared in
+//     `std/node.dag` (the T-1 worker encodes both the clause and the
+//     fold per relay). ONE scheme, consumed by T-15 (fixed point) / T-20 (pin) /
 //     T-21 (unchanged-subgraph) / the A3 reproduction check / C5
 //     RoundTrips. Not workflow-level — workflow consumes it; substrate
 //     defines identity.

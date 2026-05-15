@@ -3,7 +3,9 @@
 // Scope: Verilog HDL model — direction-agnostic. Hardware description:
 //        modules, ports, wire/reg, continuous assignment, always-blocks,
 //        module instantiation.
-// Anchor: https://en.wikipedia.org/wiki/Verilog (IEEE 1364 Verilog HDL)
+// Anchor: IEEE 1364-2005 (IEEE Standard for Verilog HDL) — the versioned
+//         fidelity authority the worker models against (NOT Wikipedia).
+//         https://en.wikipedia.org/wiki/Verilog is accessible context only.
 // Stress (T-4.9 — a B2-OMNI falsification probe): hardware CONCURRENCY vs
 //   the 5 L1 behaviors. `always @(posedge clk)` and continuous assignment
 //   are concurrent dataflow, NOT sequential control flow. The IN-B

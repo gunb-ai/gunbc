@@ -13,7 +13,10 @@
 // B2-OMNI (operator-ratified 2026-05-15): emit is the PARAMETERIZED emit
 // boundary — the inverse direction of `ingest` over the SAME bidirectional
 // model (C5). It is the U1 *Realize* phase. `TargetModel` is declarative
-// data (extdeps/languages|formats/*), never a per-target `if` here. The
+// data from `extdeps/languages/*` **ONLY** (Shape A — programming-language
+// targets); `extdeps/formats/*` is Shape B (user `.dag` programs walking
+// typed values), NOT a compiler emit parameter — see 00_compile.dag's
+// Shape-A-vs-B block. No per-target `if` here. The
 // "target-agnostic IR" is exactly InferredTree (IR-1: Node + the frozen
 // flat InferredFacts coordinate — NOT a separate IR type). emit ∘ core ∘
 // ingest = compile; the Node pivot is what makes it O(N+M).

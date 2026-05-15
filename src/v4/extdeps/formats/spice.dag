@@ -3,7 +3,12 @@
 // Scope: SPICE netlist model — direction-agnostic. Analog circuit
 //        description: components, nodes, .model cards, directives. A flat
 //        component + connection graph — NO control flow.
-// Anchor: https://en.wikipedia.org/wiki/SPICE (Berkeley SPICE; netlist format)
+// Anchor: "SPICE3 Version 3f5 User's Guide" (Quarles et al., UC Berkeley
+//         ERL, 1993) — the canonical versioned netlist-format spec the
+//         worker models against; the ngspice User's Manual (pin a
+//         concrete release, e.g. ngspice-44) is the maintained versioned
+//         reference. NOT Wikipedia — https://en.wikipedia.org/wiki/SPICE
+//         is accessible context only.
 // Stress (T-4.10 — a B2-OMNI falsification probe): is the format /
 //   LanguageModel abstraction ACTUALLY general, or secretly
 //   programming-language-shaped? A netlist has no control flow — it is
