@@ -12,7 +12,8 @@ v2 proved 1-residual hand-Rust is achievable but had modeling gaps. v3 had riche
 src/v4/
   STRUCTURE.md           # this file
   BRIEF_TEMPLATE.md      # the worker brief shape (immutable across tasks)
-  TASKS.md               # 15 XL tasks defining "v4 done"
+  TASKS.md               # the XL tasks defining "v4 done"
+  CULTURE.md             # how we work — the why behind the discipline
 
   std/                   # substrate primitives (14 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
@@ -95,7 +96,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 62 .dag files + 3 docs + 5 .gitkeep = 70 files at scaffold time.**
+**Total: 62 .dag files + 4 docs + 5 .gitkeep = 71 files at scaffold time.**
 (Was 57; the deleted `std/primitive.dag` is replaced by six concept-anchored
 scalar files — see §"Scalar/numeric concept decomposition" below. Composes
 additively with PR #3150's `verilog`/`spice`/`english` additions.)
