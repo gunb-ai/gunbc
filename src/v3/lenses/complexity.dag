@@ -30,6 +30,7 @@ import std.algebra {
   AsymptoticClass,
   Monoid,
   unnamed_size_variable,
+  polynomial_linear,
   classify_symbolic_cost,
   asymptotic_dominates,
   dominates,
@@ -37,11 +38,13 @@ import std.algebra {
   iterate,
   max_path,
   ConstantCost,
-  LinearCost,
   PolynomialCost,
+  PolyLogCost,
   ProductCost,
   SumCost,
   LogCost,
+  ExponentialCost,
+  FactorialCost,
   UnknownCost,
   miss_symbolic_cost_lookup,
   hit_symbolic_cost_lookup
@@ -262,19 +265,19 @@ fn recursive_transform_summary(
 fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
       hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
     ChildAccessorCall { accessor: accessor } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     FoldBodyCall { outer_collection: outer_collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     ParserAdvanceCall { witness: witness } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     WorklistDrainCall { element: element } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     SameArgumentCall =>
       miss_symbolic_cost_lookup()
   }
@@ -288,15 +291,19 @@ fn summary_from_iter_bound(bound: Lookup<SymbolicCost>) -> Lookup<ComplexitySumm
           hit_complexity_summary_lookup(conservative_unknown_summary(reason))
         ConstantCost(_) =>
           hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
-        LinearCost(_) =>
-          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
         PolynomialCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        PolyLogCost(_) =>
           hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
         ProductCost(_) =>
           hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
         SumCost(_) =>
           hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
         LogCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        ExponentialCost(_) =>
+          hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
+        FactorialCost(_) =>
           hit_complexity_summary_lookup(summary_from_costs(cost, cost, Proven, Proven))
       }
   }
@@ -310,8 +317,8 @@ fn loop_summary(
     combine_sequential(lookup_summary(acc, l.source), lookup_summary(acc, l.init)),
     combine_iterate(
       hit_complexity_summary_lookup(summary_from_costs(
-        LinearCost(unnamed_size_variable(l.source)),
-        LinearCost(unnamed_size_variable(l.source)),
+        polynomial_linear(unnamed_size_variable(l.source)),
+        polynomial_linear(unnamed_size_variable(l.source)),
         Proven,
         Proven
       )),
@@ -526,8 +533,8 @@ fn complexity_lens_iterate_op(body: ComplexitySummary, bound: LoopBound) -> Comp
     Cardinality(payload) =>
       compose_summary_iterate(
         summary_from_costs(
-          LinearCost(unnamed_size_variable(payload.count)),
-          LinearCost(unnamed_size_variable(payload.count)),
+          polynomial_linear(unnamed_size_variable(payload.count)),
+          polynomial_linear(unnamed_size_variable(payload.count)),
           Proven,
           Proven
         ),
@@ -536,8 +543,8 @@ fn complexity_lens_iterate_op(body: ComplexitySummary, bound: LoopBound) -> Comp
     Descent(payload) =>
       compose_summary_iterate(
         summary_from_costs(
-          LinearCost(unnamed_size_variable(payload.measure)),
-          LinearCost(unnamed_size_variable(payload.measure)),
+          polynomial_linear(unnamed_size_variable(payload.measure)),
+          polynomial_linear(unnamed_size_variable(payload.measure)),
           Proven,
           Proven
         ),

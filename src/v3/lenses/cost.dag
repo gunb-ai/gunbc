@@ -68,6 +68,7 @@ import std.algebra {
   SymbolicCost,
   dominates,
   unnamed_size_variable,
+  polynomial_linear,
   sequential,
   iterate,
   max_path,
@@ -92,6 +93,25 @@ import v3.std.substrate { SourceSpan }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
 import v3.std.lens_application { SectionRef, LensEnforcement, EnforceableLens }
+import std.rational { Rational }
+
+fn rational_lt(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) == Less
+
+fn rational_le(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) == Less || rational.compare(a, b) == Equal
+
+fn rational_gt(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) == Greater
+
+fn rational_ge(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) == Greater || rational.compare(a, b) == Equal
+
+fn rational_eq(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) == Equal
+
+fn rational_ne(a: Rational, b: Rational) -> Bool =
+  rational.compare(a, b) != Equal
 
 // Cost-lens-owned user cost basis (T-User-Authored-Cost-Basis-Discipline audit:
 // `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`).
@@ -274,19 +294,19 @@ fn recursive_transform_cost(
 fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
       hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
     ChildAccessorCall { accessor: accessor } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     FoldBodyCall { outer_collection: outer_collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     ParserAdvanceCall { witness: witness } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     WorklistDrainCall { element: element } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(arg_port)))
     SameArgumentCall =>
       miss_symbolic_cost_lookup()
   }
@@ -343,7 +363,7 @@ fn behavior_result_port(b: Behavior) -> PortId =
   }
 
 fn linear_at(port_id: PortId) -> Lookup<SymbolicCost> =
-  hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(port_id)))
+  hit_symbolic_cost_lookup(polynomial_linear(unnamed_size_variable(port_id)))
 
 fn combine_iterate(
   bound: Lookup<SymbolicCost>,
@@ -525,12 +545,12 @@ fn cost_lens_iterate_op(body: SymbolicCost, bound: LoopBound) -> SymbolicCost =
   match bound {
     Cardinality(payload) =>
       iterate(
-        LinearCost(unnamed_size_variable(payload.count)),
+        polynomial_linear(unnamed_size_variable(payload.count)),
         body
       )
     Descent(payload) =>
       iterate(
-        LinearCost(unnamed_size_variable(payload.measure)),
+        polynomial_linear(unnamed_size_variable(payload.measure)),
         body
       )
   }
