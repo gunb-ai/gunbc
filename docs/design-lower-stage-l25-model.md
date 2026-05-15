@@ -189,9 +189,16 @@ lower composes from these substrate facts via 2-pass walk:
 
 Per `lower.rs:3-7` top-comment: "Pass 1 walks all top-level items and allocates placeholder Declarations for each named type/fn, populating a symbol table (name → DeclarationId)."
 
-Pass 1 is purely structural: SurfaceItem variants map 1:1 to Declaration placeholders. No resolution happens; identifiers are not yet bound. Output: symbol table (name → DeclarationId) + `PreInferDag` with placeholder declarations.
+Pass 1 is purely structural: **NAMED-DECLARATION SurfaceItem variants** map to Declaration placeholders. Per live `lower.rs:2950-2958` (verified per cursor BLOCKING #3077):
 
-Per Modeling Practice 4 (Coproduct dissolution): each `SurfaceItem` variant has exactly one Declaration shape it maps to (per `lower.rs` top-comment + the 4-pattern dissolution receipt at the Declaration sum-variant level). The mapping is mechanical.
+- **Allocate declaration**: `SurfaceItem::Fn` / `FnExternalBody` / `Data` / `TypeAtom` / `TypeRecord` (named type / fn / data declarations get top-level Declaration placeholders)
+- **Skip allocation** (continue in collect_symbols): `SurfaceItem::Let { .. }` / `SurfaceItem::Module { .. }` / `SurfaceItem::Import { .. }` — these are parsed facts that flow forward but have NO top-level Declaration at M1(2.7). Let-bodies lower to Bind expressions in Pass 2; Module/Import items are parsed-facts preserved but un-declared.
+
+No resolution happens in Pass 1; identifiers are not yet bound. Output: symbol table (name → DeclarationId) + `PreInferDag` with placeholder declarations for named-declaration variants only.
+
+Per Modeling Practice 4 (Coproduct dissolution): SurfaceItem variants split into **DeclarationAllocating** (Fn/FnExternalBody/Data/TypeAtom/TypeRecord/etc.) + **NonDeclarationAllocating** (Let/Module/Import). The mapping is mechanical per variant kind, NOT uniform "1:1 to Declaration" across all SurfaceItem.
+
+Earlier draft "every SurfaceItem variant maps 1:1 to a Declaration placeholder" was wrong — overstated. Per cursor INLINE BLOCKING PR #3077 line:130: Let/Module/Import are skipped in collect_symbols; they're parsed facts that flow forward to Pass 2 (for Let bodies) or are preserved-but-undeclared (Module/Import).
 
 ### §5.2 Pass 2 — Connective + behavior body lowering
 
