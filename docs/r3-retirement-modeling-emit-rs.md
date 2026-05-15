@@ -108,131 +108,112 @@ After Layers 1-5 are migrated, `emit.rs` is empty (or just module re-exports). R
 **Two new carriers in `src/v3/std/emit_model.dag`** (extending the existing 534-line file; no new file needed):
 
 ```dag
-// New 🟢 TERMINAL carrier — closed sum of supported emission targets.
-// Replaces the hand-Rust `pub enum EmitTarget { Go, Rust, Python }` at
-// src/v3/compiler/src/emit.rs:1060. Discriminator authority for the
-// emit dispatcher.
+// **Per briansrls INLINE BLOCKING PR #3139 2026-05-15 at modeling-emit-rs.md:125**:
+// the prior draft proposed `type EmitTarget = Go | Rust | Python` as a closed
+// sum. That REINTRODUCED a target roster which the live `emit_model.dag`
+// already dissolves via LanguageSpec references — adding a new shared target
+// is supposed to be "drop a `<target>.dag` with a LanguageSpec data item"
+// (per emit_model.dag header comment lines 8-16). A closed enum reverses
+// that dissolution. RETRACTED.
 //
-// Coproduct classification per `feedback_coproduct_dissolution`:
-//   Pattern = STRUCTURE (each variant identifies a distinct target
-//   runtime). Dissolution attempts walked: (1) String tag REJECTED
-//   (opaque-strings-attract-heuristics); (2) Refinement<Target>
-//   REJECTED (no refinement relation between Go/Rust/Python); (3)
-//   Single Target type with field discriminator REJECTED (admits
-//   illegal target/spec mismatches). Variant per supported runtime
-//   is structurally appropriate.
-// TERMINAL: new targets land as new variants; vocabulary stable.
-type EmitTarget = Go | Rust | Python
+// Open-registry replacement: dispatch reads the live `LanguageSpec`
+// declarations at `src/v3/spec/{rust,python,go}.dag` directly. Each spec
+// file already declares a `data <language>: LanguageSpec` row; the
+// dispatcher discovers these structurally (e.g., via lens-fold walk over
+// declarations carrying `LanguageSpec` type) rather than via a hardcoded
+// enum roster.
+//
+// Adding a new target = pure spec-file change. No compiler enum to edit.
 
 // New 🟢 TERMINAL carrier — emit mode (full program vs library module).
 // Replaces hand-Rust `pub enum EmitMode { Program, Module }` at
-// src/v3/compiler/src/emit.rs:1067. Distinguishes whether the emitted
-// source is a top-level executable program or a library module.
+// src/v3/compiler/src/emit.rs:1067. This stays as a closed sum because
+// emit-mode is structurally bounded (program vs module is exhaustive for
+// the v3 emit framework's intent — not analogous to target roster which is
+// extensible per LanguageSpec registry).
 type EmitMode = Program | Module
 
 // New 🟢 TERMINAL carrier — successful emission output. Replaces
 // hand-Rust `pub struct EmittedSource { text, target, mode }` at
 // src/v3/compiler/src/emit.rs:1073.
+//
+// `language` field replaces the prior `target: EmitTarget` enum draft —
+// it's a DeclarationRef pointing at the live LanguageSpec row that drove
+// this emission (e.g., `rust_language` at `src/v3/spec/rust.dag`). Matches
+// the `TypeRealization.language: DeclarationRef` pattern at
+// `src/v3/std/emit_model.dag:18`.
 type EmittedSource {
   text: String
-  target: EmitTarget
+  language: DeclarationRef    // points at LanguageSpec row (open registry per spec/<target>.dag)
   mode: EmitMode
 }
 
-// New 🟡 SCAFFOLD carrier — dispatch row mapping a target to its
-// per-target emit declaration. The dispatch table is a List of these
-// rows. SCAFFOLD until the per-target emit `.dag` declarations exist
-// (currently the per-target emit logic is still hand-Rust at
-// rust_target.rs / python_target.rs / inline Go in emit.rs; Layers 4-5
-// retire those, at which point this carrier becomes 🟢 TERMINAL).
-//
-// Naming: `emit_decl` rather than `emit_fn` because the value-position
-// is a DeclarationRef pointing at a `data` row (or a future `fn`
-// declaration) in src/v3/spec/{rust,python,go}.dag. Resolved at lower
-// time per the typed-DeclarationRef discipline established in
-// `src/v3/spec/rust.dag` (cf. the M1(2.7) name-bridge unwind cited at
-// `emit.rs:1-30`).
-type EmitTargetDispatchRow {
-  target: EmitTarget
-  emit_decl: DeclarationRef    // points at per-target emit declaration
-}
+// Dispatch reads LanguageSpec rows directly — no separate `EmitTargetDispatchRow`
+// roster carrier needed. Per the open-registry shape, the dispatcher walks the
+// declaration namespace for `data X: LanguageSpec` rows and invokes the
+// `<X>_emit` declaration (or analogous lookup) on each. Concrete dispatch
+// implementation deferred to substrate-Mgr canvas during Brief 7 codegen-driver
+// authoring (post-Phase-0 substrate-language work).
 ```
 
 ### §4.2 Data values (dispatch table)
 
-**In `src/v3/std/emit_model.dag`** (or, if we want to keep target-specific bindings in the per-target spec files: split into `src/v3/spec/{rust,python,go}.dag` with one row each):
+**Dispatch reads the open LanguageSpec registry directly** (no `EmitTargetDispatchRow` table). Each `src/v3/spec/<target>.dag` already declares `data <target>_language: LanguageSpec`; dispatch walks the declaration namespace for `data X: LanguageSpec` rows and discovers targets structurally. The "dispatch table" is the existing LanguageSpec registry itself.
 
-```dag
-// Dispatch table: ordered list of (target → emit-declaration) rows.
-// One row per supported EmitTarget variant. Order is structurally
-// irrelevant (dispatcher matches on target variant) but conventionally
-// matches declaration order in src/v3/spec/ for diff readability.
-data emit_target_dispatch_table: List<EmitTargetDispatchRow> = [
-  { target: Go,     emit_decl: rust_path_to_go_emit_decl },     // points at src/v3/spec/go.dag::emit_go_module
-  { target: Rust,   emit_decl: rust_path_to_rust_emit_decl },   // points at src/v3/spec/rust.dag::emit_rust_module
-  { target: Python, emit_decl: rust_path_to_python_emit_decl }  // points at src/v3/spec/python.dag::emit_python_module
-]
-```
-
-(The exact DeclarationRef values resolve at lower time; the `rust_path_to_*_emit_decl` symbols are placeholders pending Layer 4-5 authoring of the per-target emit declarations themselves. For Layer 1 alone, the dispatch table can land with stub DeclarationRefs pointing at TODO-decls; the dispatcher's match-arm dispatch logic is independent of what the per-target emit declarations DO.)
+Worker authoring Brief 7 (codegen driver) must verify the substrate-language capability to walk-declarations-by-type-tag works in `.dag`. If it doesn't, that's a substrate-language gap that surfaces as a sibling brief (similar shape to the Brief 1 sibling-gap pattern).
 
 ### §4.3 Pure dispatch function
 
-**Also in `src/v3/std/emit_model.dag`**:
+**In `src/v3/std/emit_model.dag`**:
 
 ```dag
-// Dispatcher: look up the dispatch row for a target, invoke its
-// emit_decl with (dag, mode), wrap result in EmittedSource.
+// Dispatcher: walk LanguageSpec declarations in the namespace, invoke
+// the per-language emit function for the requested language, wrap result
+// in EmittedSource. No closed-enum target roster — the LanguageSpec
+// registry IS the roster.
 //
-// Match-arm enumeration follows the EmitTarget variants directly. The
-// dispatch table at §4.2 is the SINGLE AUTHORITY for which targets are
-// supported; this function reads it.
+// `language` parameter is a DeclarationRef to a specific LanguageSpec
+// row (e.g., `rust_language` at src/v3/spec/rust.dag). Caller is
+// responsible for resolving the DeclarationRef from its program scope.
 //
-// Error handling: each per-target emit may fail with target-specific
-// errors. The dispatcher returns a sum (EmitDispatchError) discriminating
-// by which target produced the error.
-fn emit_with_mode(dag: Dag, target: EmitTarget, mode: EmitMode)
+// `invoke_language_emit` is the lookup-and-invoke helper that walks the
+// declaration namespace for the per-language `<language>_emit` function
+// (or analogous lookup pattern; see Brief 7 substrate-Mgr canvas).
+fn emit_with_mode(dag: Dag, language: DeclarationRef, mode: EmitMode)
   -> Result<EmittedSource, EmitDispatchError> =
-  match target {
-    Go     => invoke_target_emit(dag, mode, Go,     emit_target_dispatch_table)
-    Rust   => invoke_target_emit(dag, mode, Rust,   emit_target_dispatch_table)
-    Python => invoke_target_emit(dag, mode, Python, emit_target_dispatch_table)
-  }
+  invoke_language_emit(dag, language, mode)
 
-fn emit(dag: Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> =
-  emit_with_mode(dag, target, Program)
+fn emit(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, EmitDispatchError> =
+  emit_with_mode(dag, language, Program)
 
-fn emit_module(dag: Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> =
-  emit_with_mode(dag, target, Module)
+fn emit_module(dag: Dag, language: DeclarationRef) -> Result<EmittedSource, EmitDispatchError> =
+  emit_with_mode(dag, language, Module)
 ```
 
-(The `invoke_target_emit` helper looks up the row matching `target` in the dispatch table, invokes the referenced declaration with `(dag, mode)`, and wraps. The exact shape of `invoke_target_emit` depends on whether `.dag` can express "invoke a DeclarationRef as a function" at compile time — this is the SAME pattern `regen_lens` uses to invoke generated lens declarations, so the capability is present in the codegen-driver context if not in pure `.dag`.)
-
-**EmitDispatchError** is also a sum carrier — one variant per target's error type. Layers 4-5 will define the per-target error sum; Layer 1 can declare the dispatcher-side sum-variant shape:
+**EmitDispatchError** stays a sum, but per-variant inner type is opaque pending per-language emit declarations:
 
 ```dag
-// Sum discriminating which target's emit produced the error.
-// Per-variant inner type lands when each per-target emit declares its
-// own error carrier (Layers 4-5).
-type EmitDispatchError
-  = GoEmitFailed(GoEmitError)         // GoEmitError TBD post-Layer-4
-  | RustEmitFailed(RustEmitError)     // RustEmitError TBD post-Layer-5
-  | PythonEmitFailed(PythonEmitError) // PythonEmitError TBD post-Layer-5
+// Sum discriminating WHICH LanguageSpec produced the error — but the
+// variant tag is the LanguageSpec declaration itself (open registry),
+// not a closed Go|Rust|Python enum.
+//
+// 🟡 SCAFFOLD until Brief 7+ per-language emit declarations land — at
+// which point the error-shape is per-LanguageSpec and discovered
+// structurally just like the success path.
+type EmitDispatchError {
+  language: DeclarationRef     // the LanguageSpec row that produced the error
+  detail: String                // 🟡 SCAFFOLD — typed per-language error carriers TBD post-Brief-7
+}
 ```
 
 ### §4.4 Codegen driver outline
 
 A new codegen driver `src/v3/compiler/src/regen_emit_dispatcher.rs` (or extension of an existing regen driver) reads:
-- The new carriers in `emit_model.dag` (EmitTarget, EmitMode, EmittedSource, EmitTargetDispatchRow)
-- The data value `emit_target_dispatch_table`
+- The new carriers in `emit_model.dag` (EmitMode, EmittedSource, EmitDispatchError)
 - The functions `emit_with_mode`, `emit`, `emit_module`
+- The LanguageSpec declarations at `src/v3/spec/*.dag` (already live substrate; no carrier change needed)
 
-…and produces a generated file `src/v3/compiler/src/emit_dispatcher_generated.rs` containing:
-- `pub enum EmitTarget { Go, Rust, Python }` (from the EmitTarget variant declaration)
-- `pub enum EmitMode { Program, Module }`
-- `pub struct EmittedSource { text, target, mode }`
-- `pub fn emit_with_mode(dag, target, mode) -> Result<EmittedSource, EmitDispatchError>` with match arms generated from the dispatch table
-- `pub fn emit(...)` and `pub fn emit_module(...)` thin wrappers
+…and produces a generated file `src/v3/compiler/src/emit_dispatcher_generated.rs`. Crucially, the GENERATED Rust uses the OPEN-REGISTRY pattern too — no hardcoded `match EmitTarget { Go => ..., Rust => ..., Python => ... }` in the emitted code. Instead, the emitted Rust dispatches via `DeclarationId` lookup against the live LanguageSpec registry the runtime already maintains. Per `emit.rs:1-30` M1(2.7) name-bridge unwind framing — typed `DeclarationRef` field references resolved at lower time, no name strings cross the substrate/emitter boundary.
 
 The driver follows the established codegen pattern (see `regen_tokenize.rs` for prior art at 1,186 lines for tokenize). For the dispatcher specifically, the driver is small — probably ~100-200 lines — because the substrate is also small.
 
@@ -242,9 +223,9 @@ Per §"Anti-paper-shrink check" in the catalogue: the parity invariant must be S
 
 Specifically: the existing test suite already exercises `emit(dag, EmitTarget::Rust)` via `tests/integration/m1_3_emit_rust_test.rs`, `emit(dag, EmitTarget::Python)` via `m1_4_emit_python_test.rs`, `emit(dag, EmitTarget::Go)` via `m1_3_emit_go_test.rs`, etc. These tests assert specific OUTPUT TEXT for given input DAGs (the per-target emission rules). Semantic parity = these tests pass unchanged when emit.rs's dispatcher is replaced by the generated counterpart.
 
-Determinism (D-1) is preserved automatically because the generated dispatcher is a pure match on `EmitTarget` — no map/set iteration, no timestamps, no `file!()`/`line!()`. Same `(dag, target, mode)` → same dispatch → same per-target call → same output.
+Determinism (D-1) is preserved automatically because the generated dispatcher is a pure DeclarationRef lookup + invocation — no map/set iteration with non-deterministic ordering, no timestamps, no `file!()`/`line!()`. Same `(dag, language, mode)` → same lookup → same per-language call → same output. The LanguageSpec registry's declaration-walk must be deterministic (likely guaranteed by the substrate's declaration-id ordering — verify during Brief 7 authoring).
 
-**Anti-paper-shrink discriminator**: the retirement PR must include diff hunks ADDING the `EmitTarget`, `EmitMode`, `EmittedSource`, `EmitTargetDispatchRow` types to `emit_model.dag` AND the dispatch table data row + the three pure functions. The Rust counterparts in `emit.rs` (lines 1060-1163) are DELETED. The generated file appears at `src/v3/compiler/src/emit_dispatcher_generated.rs`. If the retirement PR instead moves `emit.rs` content to `tools/emit_dispatcher.rs.in` without growing `emit_model.dag`, the substrate-growth check fails (no new carriers added) — paper-shrink caught.
+**Anti-paper-shrink discriminator**: the retirement PR must include diff hunks ADDING the `EmitMode`, `EmittedSource`, `EmitDispatchError` carriers to `emit_model.dag` AND the three pure functions (`emit_with_mode`, `emit`, `emit_module`). The Rust counterparts in `emit.rs` (lines 1060-1163) are DELETED. The generated file appears at `src/v3/compiler/src/emit_dispatcher_generated.rs`. If the retirement PR instead moves `emit.rs` content to `tools/emit_dispatcher.rs.in` without growing `emit_model.dag`, the substrate-growth check fails (no new carriers added) — paper-shrink caught. Also: the retirement PR must NOT reintroduce a closed `enum EmitTarget` in the generated Rust — the open-registry LanguageSpec discipline applies to both substrate AND emitted Rust.
 
 ---
 
@@ -280,7 +261,7 @@ After Layers 1-5: `emit.rs` is empty except for `pub use` re-exports. Delete the
 ## §6 Open questions before authoring substrate
 
 1. **DeclarationRef-as-function-invocation in `.dag`**: does `.dag` currently support `decl_ref(args)` syntax where `decl_ref` is a `DeclarationRef` value resolved at lower time? `regen_*` drivers do this in Rust, but if `.dag` itself can't express it, the dispatcher needs codegen-side glue. Spot-checking suggests this works per the pattern in `pipeline.dag::PipelineStageBinding`.
-2. **Variant-arm match exhaustiveness check in `.dag`**: the dispatcher's `match target { Go => ..., Rust => ..., Python => ... }` MUST be exhaustive over `EmitTarget`'s variants. Does the `.dag` lower verify exhaustiveness, or is this a Layer-1 gap?
+2. **Declaration-namespace walk by type-tag**: the dispatcher walks the namespace for `data X: LanguageSpec` rows. Does `.dag` support walk-declarations-by-type-tag at compile time? If not, that's a substrate-language gap (sibling-gap brief shape — non-blocking, document as future work).
 3. **Result<T, E> sum-carrier dispatch**: the dispatcher returns `Result<EmittedSource, EmitDispatchError>`. Both `Result` and the per-target wrapping (`GoEmitFailed(GoEmitError)`) need to be expressible. `Result` is standard library (`std.result` per other `.dag` files); per-target wrapping needs `EmitDispatchError` declared (this doc proposes it).
 4. **Codegen driver placement**: extend an existing regen driver, or author a new `regen_emit_dispatcher.rs`? Recommendation: new driver, named for its single responsibility, matching `regen_tokenize.rs` pattern.
 
@@ -288,9 +269,9 @@ After Layers 1-5: `emit.rs` is empty except for `pub use` re-exports. Delete the
 
 ## §7 Substantive retirement risks
 
-1. **Paper-shrink via dispatcher template-clone**: naive shape = `mv emit.rs::{EmitTarget, EmitMode, EmittedSource, emit_with_mode, ...} → tools/emit_dispatcher.rs.in`, codegen-driver copies through, `emit.rs` lines 1060-1163 deleted. Anti-discriminator: substrate-growth check on `emit_model.dag` (must add the 4 new carriers + dispatch table + 3 fns).
+1. **Paper-shrink via dispatcher template-clone**: naive shape = `mv emit.rs::{EmitMode, EmittedSource, emit_with_mode, ...} → tools/emit_dispatcher.rs.in`, codegen-driver copies through, `emit.rs` lines 1060-1163 deleted. Anti-discriminator: substrate-growth check on `emit_model.dag` (must add the 3 new carriers + 3 fns) + open-registry preservation (no closed `enum EmitTarget` in generated Rust).
 2. **EmitDispatchError carrier coupling to Layer 4-5**: the dispatcher's error sum references per-target error types that don't exist as `.dag` substrate yet. Until Layers 4-5 author them, the dispatcher's `EmitDispatchError` must either (a) carry a placeholder generic error, or (b) the dispatcher itself defers retirement until per-target error types exist. Recommendation: (b) — Layer 1 retires together with the per-target error sum-variants declared as SCAFFOLD pending Layer 4-5.
-3. **Cross-target convenience wrappers** (`emit_rust_text`, `emit_go_module_text`, etc.) need their own dispatch entries or can be expressed as generic `extract_text(emit(dag, T)) for T in EmitTarget`. The 6 wrappers in `emit.rs:1105-1163` collapse to 1 generic function if `.dag` supports this; otherwise stay as 6 declarations.
+3. **Cross-target convenience wrappers** (`emit_rust_text`, `emit_go_module_text`, etc.) need replacement under the open-registry shape. The 6 wrappers in `emit.rs:1105-1163` collapse to ONE function `emit_text(dag: Dag, language: DeclarationRef) -> Result<String, ...>` that callers parameterize on the LanguageSpec they want. Callers update at the same time as the dispatcher retires.
 4. **Tests import from `crate::emit::*`**: the retirement PR will break test imports unless the generated file is re-exported from `crate::emit` (i.e., a thin `mod emit { pub use crate::emit_dispatcher_generated::*; }` shim survives until Phase 2 test-harness dissolution).
 
 ---

@@ -28,7 +28,14 @@ Per the operator discussion 2026-05-15 — replace the SG-0 file-path ratchet wi
 
 5. **Phase 5 — Pipeline-stage retirement** (meta-circular bootstrap): the remaining ~12-15 files (`infer.rs`, `lower.rs`, `emit.rs` + variants, `bootstrap*.rs`, `regen_*.rs`, `pipeline_authority.rs`, `post_emit_verifier.rs`, etc.). Retires when `.dag`-authored stages compile to byte-identical Rust through SELF_HOSTING.md §7 fixed point. Requires resolving Decision 3.A + 3.B + 3.C substrate prereqs.
 
-**End state** (after Phase 5): irreducible hand-Rust seed of ~10-15 files. Everything else is generated or `.dag`-native.
+**End state target**: **zero hand-authored Rust in `src/v3/` source tree.** Per the live authority `docs/design-pure-bootstrap-zero.md` (LIVE 2026-04-25 cascade promotion):
+- Line 41: "Goal: zero hand-authored files in v3's source tree. Better than v2's 1-residual."
+- Line 95: "the in-tree floor target is 0 regardless of which N=0 resolution lands."
+- Line 191: "If first-time bootstrap (N=0) resolution requires hand-Rust in v3's source tree — STOP. The resolution is supposed to live outside v3's source tree (install script, gunbc-runtime crate, or rustc macro)."
+
+Files that LOOK irreducible (bootstrap drivers, the rustc-handoff seed, etc.) retire by **moving OUTSIDE v3's source tree** (per design-pure-bootstrap-zero.md's N=0 resolution paths — install script, gunbc-runtime crate, or rustc macro), NOT by accepting a permanent in-tree residual. Per Phase 5 trajectory: all `src/v3/**` hand-authored Rust dissolves; what's left is either (a) generated from `.dag`, (b) emitted by the substrate-driven pipeline, or (c) moved to an out-of-tree resolution.
+
+**Per codex BLOCKING PR #3139 2026-05-15**: this catalogue earlier described an "irreducible hand-Rust seed of ~10-15 files" — that framing CONTRADICTED `docs/design-pure-bootstrap-zero.md`'s 0-floor target and is RETRACTED. The catalogue's planning artifact-status does not have authority to redefine the canonical target away from 0.
 
 ---
 
@@ -49,10 +56,12 @@ Per the operator discussion 2026-05-15 — replace the SG-0 file-path ratchet wi
 
 **Existing `.dag` substrate**: <links to relevant `.dag` types that already model the input/output domain>
 
-**Retirement target** (one of):
+**Retirement target** (one of — all converge on 0-floor per `docs/design-pure-bootstrap-zero.md`):
 - Generated from `.dag` substrate (existing or planned carrier at `src/v3/std/<file>.dag:<line>`)
 - Dissolved entirely (semantic absorbed by another `.dag` carrier; file unnecessary)
-- Irreducible bootstrap seed (cannot retire; document why)
+- Moved out-of-tree (per design-pure-bootstrap-zero.md N=0 resolution: install script, gunbc-runtime crate, or rustc macro — documented WHICH out-of-tree home is the target)
+
+**(N.B.)** No "irreducible in-tree seed" option. Per codex BLOCKING PR #3139 2026-05-15 + `docs/design-pure-bootstrap-zero.md` line 191: if a file genuinely cannot retire in-tree, its retirement target is "move out-of-tree" — NOT "permanent residual." A planning artifact does not have authority to introduce a permanent in-tree carve-out against the live 0-floor design.
 
 **Replacement plan**:
 - **(R1)** `.dag` substrate that owns the semantic: <path:line, or NEW with proposed shape>
