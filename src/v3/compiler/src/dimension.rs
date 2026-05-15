@@ -607,3 +607,61 @@ mod fail_closed_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod violates_subject_diagnostic_span_tests {
+    use super::*;
+    use crate::dag::{literal_bits_int, Dag, PortId};
+
+    #[test]
+    fn producer_lookup_residue_prefers_consumer_behavior_span_when_keyed_port_given() {
+        let mut dag = Dag::new();
+        let anchored = SourceSpan::new("fixture_cost_port.dag", 11, 19);
+        let value_out = dag.push_value(literal_bits_int(42), anchored.clone());
+        let subject = ViolatesSubject::ProducerLookupMissingPort {
+            port: PortId::test_raw(999),
+        };
+
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, Some(&value_out), &subject),
+            anchored
+        );
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, None, &subject),
+            SourceSpan::new("malformed_substrate_producer_walk", 0, 0),
+        );
+
+        let node_miss = ViolatesSubject::ProducerLookupMissingNode {
+            producer: crate::dag::NodeId::from_table_index(424242),
+        };
+        assert_eq!(
+            violates_subject_diagnostic_span(&dag, Some(&value_out), &node_miss),
+            anchored
+        );
+    }
+
+    #[test]
+    fn at_behavior_always_anchors_the_subject_even_if_lookup_hint_differs() {
+        let mut dag = Dag::new();
+        let s1 = SourceSpan::new("subject_behavior.dag", 1, 4);
+        let s2 = SourceSpan::new("other_port_noise.dag", 77, 88);
+        let p_subj = dag.push_value(literal_bits_int(11), s1.clone());
+        let p_other = dag.push_value(literal_bits_int(22), s2.clone());
+        let nid = dag
+            .port_opt(&p_subj)
+            .expect("literal port wired")
+            .produced_by
+            .expect("value node should produce output port");
+        let b_subj = dag.node(nid).clone();
+
+        assert_eq!(
+            violates_subject_diagnostic_span(
+                &dag,
+                Some(&p_other),
+                &ViolatesSubject::AtBehavior(b_subj),
+            ),
+            s1,
+            "hint must not override declared subject behavior attribution",
+        );
+    }
+}

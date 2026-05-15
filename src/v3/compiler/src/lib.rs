@@ -4654,7 +4654,8 @@ pub mod lens_cost_symbolic {
     /// - Malformed substrate: **`Violates { reason, subject }`** ([`ViolatesSubject`]) —
     ///   **no fabricated unrelated [`Behavior`].** **`BindCycle`** uses **`AtBehavior(dag.node(detected_at))`**
     ///   (detected Bind). **`MissingPort`** / **`MissingNode`** carry only the offending [`PortId`] /
-    ///   [`NodeId`] residue from the walker.
+    ///   [`NodeId`] residue from the walker. When projecting to IDE diagnostics from this **port-keyed**
+    ///   query, compose spans with **`Some(port)`** via [`crate::violates_subject_diagnostic_span`] so producer-walk residues can anchor like [`ViolatesSubject::AtBehavior`] when the keyed port declares a lawful producer.
     ///
     /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
     ///
