@@ -18,11 +18,10 @@
 //   separate recursive `InferredNode` is THE bounded-kernel violation
 //   that split v2 infer into 12 files = STOP, not a worker choice.
 //
-//   InferredFacts (flat, per-node; the FROZEN payload — a 6th field is a
+//   InferredFacts (flat, per-node; the FROZEN payload — a 5th field is a
 //   substrate-extension STOP→escalate, never an inline add):
 //     - resolved_type : Node          (the node's type — itself a Node in
 //                                       the type substrate, Shape S)
-//     - cardinality   : Cardinality   (the Cardinality-connective fact)
 //     - inhabits      : AlgebraRef    (which algebra — the U1 homomorphism
 //                                       carrier; grounds cost AND codegen)
 //     - cost          : SymbolicCost  (the U1 carrier; termination ∧
@@ -31,9 +30,13 @@
 //     - descent       : DescentEvidence  (A2: Implicit(sub-Node descent —
 //                                       free, no carrier) | Explicit(
 //                                       RankingDimensionRef → T-3 cardinality.dag))
-//   - effects are deliberately NOT a field: per B3 the type signature is
-//     the single effect authority; caching effects here would create a
-//     second authority. Effects are read from `resolved_type`.
+//   - NOT fields (single-authority, P2 — they are already carried by
+//     `resolved_type`'s Node structure; caching = a second authority):
+//       * cardinality — the Cardinality connective IS one of the 6 (A1);
+//         it is read from `resolved_type`, never stored (correction
+//         3248488135).
+//       * effects — per B3 the type signature is the single effect
+//         authority; read from `resolved_type`, never stored.
 //
 // C1 (operator-ratified 2026-05-15) — infer is the bounded *Find* phase
 //   of the one U1 homomorphism. The algebra-homomorphism search is

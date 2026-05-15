@@ -32,10 +32,10 @@ through — and moves to Part 1.
 | **C4** | On-disk emitted artifacts (`ci.yml`, trampoline) are committed==emit(source) checked projections, not editable authority (same machine as A3) | `workflow/ci.dag` + `STRUCTURE.md` + `workflow/bootstrap.dag` |
 | **C5** | Ingest = emit⁻¹ on each model's lossless core; outside ⇒ fail-closed Diagnostic. Guaranteed ASAP via testgen `bidirectional_roundtrip` (Phase-1.5, gated per-PR via the B1 hash from first language-model commit) | `extdeps/languages/*` + `lens/testgen.dag` + C5 note |
 | **K-1** | Kernel identifiers are OPAQUE `Symbol`s (equality only, no content accessor); spelling lives in a boundary table, never kernel/lens-readable — structurally forecloses the v2 string-heuristic channel | `std/node.dag` header (T-1 worker encodes) |
-| **IR-1** | `InferredTree` is NOT a new type — it is `Node` + a FROZEN flat `InferredFacts` coordinate (resolved_type, cardinality, inhabits, cost, descent; effects NOT a field per B3); a 6th field is a STOP; modeled up front, not emergent | `compiler/04_infer.dag` header |
+| **IR-1** | `InferredTree` is NOT a new type — it is `Node` + a FROZEN flat `InferredFacts` coordinate (resolved_type, inhabits, cost, descent); **cardinality and effects are NOT fields** — both already carried by `resolved_type`'s Node structure (the Cardinality connective / the signature), caching = second authority P2; a 5th field is a STOP; modeled up front, not emergent | `compiler/04_infer.dag` header |
 | **B2-OMNI** | parse is one ingestion instance; `ingest`/`emit` are parameterized boundaries over declarative LanguageModels; Node is the universal pivot ⇒ O(N+M) not O(N×M); `.dag` is language #1, never hardcoded | `compiler/00_compile.dag` + `01_tokenize`/`02_parse`/`05_emit` headers |
 | **L-1** | Verilog/SPICE/English added as **parallel B2-OMNI falsification probes** (T-4.9/4.10/4.11), maximally diverse on purpose. Forks resolved: English = boundary-honesty probe (Shape B emit + fail-closed ingest TestClaim), **not** a language model; SPICE = `extdeps/formats/` (netlist is a data format); Verilog = the IN-B concurrency validation (a needed 6th behavior = C1 escalation, by design caught early) | `TASKS.md` T-4.9/4.10/4.11 + `extdeps/languages/verilog.dag`, `extdeps/formats/spice.dag`, `test/claim/boundary/english_ingest_fail_closed.dag` |
-| **B1** | One content-addressing scheme: a `std`-level Merkle catamorphism `content_hash : Node -> Hash` over the A1-canonical Node; `Hash` is an opaque digest (no content accessor, K-1-style). One scheme consumed by T-15/T-20/T-21 + the A3 reproduction check + C5. NOT workflow-level (substrate defines identity; workflow consumes) | `std/primitive.dag` (`Hash`); `std/node.dag` (`content_hash` fold — T-1 worker encodes per relay, with the canonical-form clause) |
+| **B1** | One content-addressing scheme: a `std`-level Merkle catamorphism `content_hash : Node -> Hash` over the **canonical-form clause** (a SEPARATE explicit node.dag authority — NOT subsumed by A1, which only covers recursion/axis-closure/generics/termination). `Hash` is an opaque digest (no content accessor, K-1-style). One scheme consumed by T-15/T-20/T-21 + A3 + C5. NOT workflow-level | `std/primitive.dag` (`Hash`); `std/node.dag` (canonical-form clause + `content_hash` fold — T-1 worker encodes per relay) |
 
 ---
 
@@ -96,23 +96,29 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 > **Status 2026-05-15 — Part 3 CLOSED.** All open forks ratified and
 > encoded (see Part 1): B1 (std-level fold — operator confirmed),
 > B2→B2-OMNI, B3, B4→IR-1, C4, C5. The per-header encoding pass is
-> complete; `content_hash` is the one item the T-1 worker encodes into
-> `std/node.dag` per relay (it owns that file), alongside K-1. Nothing
-> in Part 3 remains PROPOSED. Detailed rationale retained below as record.
+> complete. **THREE** node.dag-contract items the T-1 worker encodes per
+> relay (it owns that file): **K-1** (opaque Symbol), the **canonical-form
+> clause** (total deterministic normal form — a SEPARATE authority, NOT
+> subsumed by A1; B1 depends on it), and **`content_hash`** (the Merkle
+> fold over that form). Nothing in Part 3 remains PROPOSED.
 
 ### B1 — One content-addressing scheme (ELEVATED: load-bearing for A3)
 
 - **Tension:** T-15 fixed-point hash, T-20 pinned bootstrap binary, T-21
   unchanged-subgraph detection, **and the A3 reproduction/surfacing
   check** all need content-addressing. Three schemes = drift.
-- **Recommended:** a single canonical content-hash over the *canonical*
-  Node structure (A1 already mandates Node is canonical/deterministic, so
-  the hash is well-defined as a pure fold). Defined **once**, consumed by
-  T-15/T-20/T-21 and the A3 check.
-- **Tradeoff / your call:** *where it lives* — recommend a `std`-level
-  canonical-hash operation over Node (it is a pure fold over the
-  A1-canonical structure), not a `workflow`-level one. This is the one
-  genuine pick I want from you.
+- **Recommended:** a single canonical content-hash over the canonical
+  Node structure. **Correction (3248138046):** A1 does NOT make Node
+  canonical — A1 ratifies recursion / axis-closure / generics /
+  termination only. Canonical form is a SEPARATE explicit node.dag
+  authority — the **canonical-form clause** — which the T-1 worker
+  encodes alongside K-1 and `content_hash`. B1 *depends on* that clause;
+  it is not subsumed by A1. The clause must define a total deterministic
+  normal form (structural child order; opaque-Symbol identity per K-1; no
+  incidental ordering) so the fold is well-defined. Defined **once**,
+  consumed by T-15/T-20/T-21 + the A3 check.
+- **Tradeoff / settled:** *where it lives* — `std`-level: a pure fold
+  over the canonical Node, not `workflow`-level (operator-confirmed).
 - **Encodes into:** `std/node.dag` (canonical-form clause) + the chosen
   hash-operation owner header + cross-refs in T-15/T-20/T-21.
 
@@ -205,9 +211,13 @@ or defer to the task.
   load-bearing per C5).
 - **T-4.7 Server/Client Components** — recommend **effect-typed, not a
   structural distinction** (consistent with B3; SC/CC differ by effect).
-- **T-4.8 effect-type-set closure** — recommend `HttpEffect/QueueEffect/…`
-  is a **closed enum** like `CoordinationSemantics` (same closed-axis
-  discipline; no "...").
+- **T-4.8 effect-type-set** — **the question dissolves under B3
+  (correction, 3248138059).** B3 made the type signature the *single*
+  effect authority; a closed `HttpEffect | QueueEffect | …` enum would be
+  exactly the parallel effect taxonomy B3 forbids (P2). So there is NO
+  effect-type enum to "close": `HttpEffect`/`QueueEffect` are typed
+  CARRIERS read from the signature by `lens/effect.dag`, not an
+  enumerated axis. Non-default; resolved by B3.
 - **T-18 bounded-coverage** — coverage is over the **finite substrate
   cross-product**; infinite inhabitant domains are sampled by declared
   generators, never enumerated (keeps coverage decidable).
