@@ -14,7 +14,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    polynomial_linear, Behavior, BindNode, Rational, SizeVariable, SymbolicCost,
+    polynomial_linear, Behavior, BindNode, NonZeroRational, SizeVariable, SymbolicCost,
 };
 use v3_compiler::memory_peak_cost::{compose_branch_memory_peak, memory_peak_enforcement_violates};
 
@@ -62,7 +62,7 @@ fn memory_peak_cost_basis_demo_function_models_branch_peak_exceeding_linear_budg
         // memory peak for the conditional is max(O(n²), O(1)).
         let arm_heavy = SymbolicCost::PolynomialCost {
             var: n.clone(),
-            degree: Rational::TWO,
+            degree: NonZeroRational::TWO,
         };
         let arm_light = SymbolicCost::ConstantCost { _0: 0 };
         let observed_peak = compose_branch_memory_peak(arm_heavy, arm_light);

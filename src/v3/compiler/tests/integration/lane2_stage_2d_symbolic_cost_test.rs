@@ -18,8 +18,8 @@ use v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates;
 use v3_compiler::dag::{
     classify_symbolic_cost, dominates, iterate, max_path, normalize, polynomial_linear,
     positive_descent_count, sequential, ArithmeticOp, AsymptoticClass, Behavior, Dag, Lookup,
-    NonSingletonList, OperatorKind, PortId, Rational, SizeVariable, SymbolicCost, TransformTarget,
-    TypeConnective,
+    NonSingletonList, NonZeroRational, OperatorKind, PortId, SizeVariable, SymbolicCost,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{
@@ -118,7 +118,7 @@ fn linear(port: PortId) -> SymbolicCost {
 fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
     SymbolicCost::PolynomialCost {
         var: size_var(port),
-        degree: Rational::from_i64(degree),
+        degree: NonZeroRational::from_i64(degree).expect("test polynomial degree must be non-zero"),
     }
 }
 
@@ -901,15 +901,15 @@ fn classify_symbolic_cost_polynomial_degree_orders_like_enforcement_lattice() {
 
     let p2 = SymbolicCost::PolynomialCost {
         var: v.clone(),
-        degree: Rational::TWO,
+        degree: NonZeroRational::TWO,
     };
     let p3 = SymbolicCost::PolynomialCost {
         var: v.clone(),
-        degree: Rational::from_i64(3),
+        degree: NonZeroRational::from_i64(3).expect("non-zero degree"),
     };
     let p5 = SymbolicCost::PolynomialCost {
         var: v,
-        degree: Rational::from_i64(5),
+        degree: NonZeroRational::from_i64(5).expect("non-zero degree"),
     };
 
     let c2 = classify_symbolic_cost(&p2);

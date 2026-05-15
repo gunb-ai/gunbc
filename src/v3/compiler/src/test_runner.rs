@@ -5995,6 +5995,17 @@ enum SymbolicCostEqPattern {
         source_port: SymbolicCostPortPattern,
         degree_raw: i64,
     },
+    PolyLog {
+        source_port: SymbolicCostPortPattern,
+        exponent_raw: i64,
+    },
+    Exponential {
+        source_port: SymbolicCostPortPattern,
+        base_raw: i64,
+    },
+    Factorial {
+        source_port: SymbolicCostPortPattern,
+    },
     Product(Vec<SymbolicCostEqPattern>),
     Sum(Vec<SymbolicCostEqPattern>),
     Unknown(String),
@@ -6014,18 +6025,19 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            degree_raw: degree.numerator / degree.denominator,
+            degree_raw: degree.raw(),
         },
-        SymbolicCost::PolyLogCost { var, exponent } => SymbolicCostEqPattern::Polynomial {
+        SymbolicCost::PolyLogCost { var, exponent } => SymbolicCostEqPattern::PolyLog {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            degree_raw: exponent.numerator / exponent.denominator,
+            exponent_raw: exponent.raw(),
         },
-        SymbolicCost::ExponentialCost { var, .. } | SymbolicCost::FactorialCost { var } => {
-            SymbolicCostEqPattern::Polynomial {
-                source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-                degree_raw: 1,
-            }
-        }
+        SymbolicCost::ExponentialCost { base, var } => SymbolicCostEqPattern::Exponential {
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
+            base_raw: base.raw(),
+        },
+        SymbolicCost::FactorialCost { var } => SymbolicCostEqPattern::Factorial {
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
+        },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
             list.iter()
                 .map(|boxed| symbolic_cost_to_eq_pattern(boxed.as_ref()))
@@ -6079,6 +6091,23 @@ fn resolve_symbolic_cost_param_refs_for_bind(
         } => SymbolicCostEqPattern::Polynomial {
             source_port: resolve(source_port, bind, expected_param_index)?,
             degree_raw,
+        },
+        SymbolicCostEqPattern::PolyLog {
+            source_port,
+            exponent_raw,
+        } => SymbolicCostEqPattern::PolyLog {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+            exponent_raw,
+        },
+        SymbolicCostEqPattern::Exponential {
+            source_port,
+            base_raw,
+        } => SymbolicCostEqPattern::Exponential {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+            base_raw,
+        },
+        SymbolicCostEqPattern::Factorial { source_port } => SymbolicCostEqPattern::Factorial {
+            source_port: resolve(source_port, bind, expected_param_index)?,
         },
         SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
             terms
@@ -6187,6 +6216,65 @@ fn field_value_to_symbolic_cost_eq_pattern(
                         source_port,
                         degree_raw,
                     })
+                }
+                "PolyLogCost" => {
+                    let record = single_payload(payload)?;
+                    let fields = record_fields(record).ok_or_else(|| {
+                        format!(
+                            "SymbolicCostExprEquals: PolyLogCost payload must be a record, got {:?}",
+                            record
+                        )
+                    })?;
+                    let var = field(fields, "var").ok_or_else(|| {
+                        "SymbolicCostExprEquals: PolyLogCost missing `var` field".to_string()
+                    })?;
+                    let exponent = field(fields, "exponent").ok_or_else(|| {
+                        "SymbolicCostExprEquals: PolyLogCost missing `exponent` field".to_string()
+                    })?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    let exponent_raw = degree_raw_from_rational_like_field_value(dag, exponent)?;
+                    Ok(SymbolicCostEqPattern::PolyLog {
+                        source_port,
+                        exponent_raw,
+                    })
+                }
+                "ExponentialCost" => {
+                    let record = single_payload(payload)?;
+                    let fields = record_fields(record).ok_or_else(|| {
+                        format!(
+                            "SymbolicCostExprEquals: ExponentialCost payload must be a record, got {:?}",
+                            record
+                        )
+                    })?;
+                    let base = field(fields, "base").ok_or_else(|| {
+                        "SymbolicCostExprEquals: ExponentialCost missing `base` field".to_string()
+                    })?;
+                    let var = field(fields, "var").ok_or_else(|| {
+                        "SymbolicCostExprEquals: ExponentialCost missing `var` field".to_string()
+                    })?;
+                    let base_raw = one_int_field_value(base)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    Ok(SymbolicCostEqPattern::Exponential {
+                        source_port,
+                        base_raw,
+                    })
+                }
+                "FactorialCost" => {
+                    let record = single_payload(payload)?;
+                    let fields = record_fields(record).ok_or_else(|| {
+                        format!(
+                            "SymbolicCostExprEquals: FactorialCost payload must be a record, got {:?}",
+                            record
+                        )
+                    })?;
+                    let var = field(fields, "var").ok_or_else(|| {
+                        "SymbolicCostExprEquals: FactorialCost missing `var` field".to_string()
+                    })?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    Ok(SymbolicCostEqPattern::Factorial { source_port })
                 }
                 "ProductCost" => {
                     let inner = single_payload(payload)?;
@@ -6338,7 +6426,11 @@ fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
 }
 
 fn one_int_payload(payload: &[FieldValue]) -> Result<i64, String> {
-    match single_payload(payload)? {
+    one_int_field_value(single_payload(payload)?)
+}
+
+fn one_int_field_value(fv: &FieldValue) -> Result<i64, String> {
+    match fv {
         FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
             "SymbolicCostExprEquals: Int literal payload is not a valid i64".to_string()
         }),

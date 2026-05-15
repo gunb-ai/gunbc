@@ -9,7 +9,7 @@
 //! memory-dimension folds in `v3.std.algebra` and until the `EnforcedApplication` fold consumes
 //! `apply_lens(cost, …)` sites end-to-end (`docs/r3-program-plan.md` gate #91 consumer).
 
-use crate::dag::{dominates, max_path, SymbolicCost};
+use crate::dag::{dominates, max_path, NonZeroRational, SymbolicCost};
 
 /// Peak memory across **alternative** control-flow possibilities (typically **branch arms**):
 /// asymptotic **`max`/dominance** of the modeled arm peaks—the same **`dominant` → `max_path`**
@@ -114,7 +114,7 @@ mod tests {
         let n = var(p);
         let q = SymbolicCost::PolynomialCost {
             var: n.clone(),
-            degree: Rational::TWO,
+            degree: NonZeroRational::TWO,
         };
         let peak_branch = compose_branch_memory_peak(q.clone(), q);
         assert!(
