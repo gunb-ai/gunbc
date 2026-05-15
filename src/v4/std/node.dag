@@ -161,7 +161,7 @@ type Hash
 // is loud and un-missable). There is no `Other` / open-ended variant.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — four patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every pipeline stage (parse/normalize/
 //      infer/emit) dispatches on the connective; it is the shared
 //      classifier, not a per-consumer scattered fact.
@@ -203,7 +203,7 @@ type Connective
 // declaration — a visible diff routed to operator ratification.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — four patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every computation-substrate consumer
 //      dispatches on the behavior; shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: the five are distinct computation
@@ -240,7 +240,7 @@ type Behavior
 // does not co-locate the two coordinates on one node).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — four patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every Node consumer branches on kind
 //      to know which substrate it is in; shared, not scattered.
 //   2. Variant-is-data — FAILS: TypeNode carries a Connective,
@@ -280,7 +280,7 @@ type NodeKind
 // UNREPRESENTABLE — not "rejected by a checker."
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — four patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every edge consumer branches on the
 //      label kind uniformly; shared, not scattered.
 //   2. Variant-is-data — FAILS: `Named` carries a Symbol; `Positional`
@@ -351,7 +351,7 @@ type Node {
 // connective genuinely IS the A3 case, an edit to this file.)
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — four patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: derived uniformly from the connective
 //      via `connective_edge_discipline` and consumed by
 //      `node_well_formed`; single authority, not scattered.
