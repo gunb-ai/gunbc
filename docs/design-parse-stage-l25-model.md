@@ -278,7 +278,7 @@ Per Step 3b brief authoring (post-substrate-capability landing): use structural 
 Per `feedback_fail_closed_discipline` C-8 + parser hygiene:
 
 - **No silent token-skipping**: every consumed token contributes to a Surface variant OR triggers a ParseDiagnostic.
-- **Source-span provenance**: every Surface variant + every ParseDiagnostic carries `SourceSpan`. No fabricated spans.
+- **Source-span provenance** (corrected per cursor PR #3126 BLOCKING line:151): **most** Surface variants carry `SourceSpan` directly, but per live `src/v3/std/parse_surface.dag`: SurfaceItem::Let (line ~33) has fields `{ name, type_ann, expr }` with NO direct span; SurfaceLiteral variants `Int(String) | Bool(Bool) | String(String)` are plain-tuple variants with NO direct span. These cases acquire span via their enclosing carrier (Let-item inherits container span; SurfaceLiteral always wraps within `Literal { value, span }` per parse_surface.dag:150). Step 2 PR scope SHOULD audit whether the Let + SurfaceLiteral exceptions are structural-honest (acceptable per enclosing-carrier-provides-span) OR substrate-extension-required (add span directly to those variants). Earlier "every Surface variant carries SourceSpan" claim was incorrect; corrected to "every parse output structurally has source-span provenance via direct field OR enclosing carrier". Every ParseDiagnostic carries `SourceSpan` directly per §4.2.
 - **Recursive depth bounded**: parser body uses bounded recursion per grammar rules; no fixed-point iteration.
 - **Anti-bridge invariant** (per `feedback_no_textual_enforcement_bridges`): grammar tables are the SINGLE authority on token-to-syntactic-form mapping; no fallback hand-Rust heuristics.
 
