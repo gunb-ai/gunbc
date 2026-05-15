@@ -147,9 +147,14 @@ type AlgebraAxis
 // substrate coproducts require 🟢/🟡/🔴 classification + dissolution trigger.
 //
 // **Dissolution trigger**: when Step 2 worker brief enumerates the full
-// variant set against `parse_generated.rs` Diagnostic::ParseError, lower.rs
-// Diagnostic construction sites, and infer.rs Dag::mark_unresolved emission
-// sites — promote to 🟢 TERMINAL at the per-stage diagnostic-variant scope.
+// variant set against `src/v3/compiler/src/infer.rs` Diagnostic construction
+// sites + `Dag::mark_unresolved` emission sites (infer-stage only) — promote
+// to 🟢 TERMINAL at the per-stage diagnostic-variant scope. Parse-stage and
+// lower-stage coverage are NOT part of this trigger: they live in their own
+// per-stage carriers (`ParseDiagnostic` per PR #3138 PB-3 parse L2.5 §4.2,
+// lower-stage diagnostics per PB-4 lower L2.5 §4.2) and their own Q7 mapping
+// (codex PR #3138 BLOCKING sha 887c69671 Finding 1 fixed in PR #3138 —
+// earlier draft conflated cross-stage trigger surface).
 // PR #3077 §12 Q7 ratification on Decision 2.B extension path determines
 // whether this stays per-stage sum (option b) or extends shared Diagnostic
 // (option a).
