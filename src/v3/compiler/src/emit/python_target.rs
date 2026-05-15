@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use super::{
     algebra_field_for_operator_shared,
     collection_ops_method_contract::require_method_template_contract_dag_method,
-    dag_needs_div_error_prelude, div_prelude_reserved_name_collision,
+    dag_needs_div_error_prelude, dag_uses_callable, div_prelude_reserved_name_collision,
     method_emit_template_variant_label, optional_match_variant_roles, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    prelude_reserved_name_collision, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -748,6 +748,27 @@ pub(crate) fn emit_python_with_mode(
         bound_names: &bound_names,
     };
 
+    let needs_format_prelude = dag_uses_callable(dag, "format");
+    if let (true, Some(name)) = (
+        needs_format_prelude,
+        prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            &[
+                "FormatError",
+                "FormatError_PlaceholderRequiresExplicitIndex",
+                "FormatError_PlaceholderMissingClosingBrace",
+                "FormatError_PlaceholderIndexOutOfBounds",
+            ],
+            &["__v3_format"],
+        ),
+    ) {
+        return Err(EmitPythonError::Unsupported(format!(
+            "Python format prelude would collide with user-defined `{name}`"
+        )));
+    }
+
     let mut sections = vec![
         "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
@@ -761,9 +782,13 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
-        "class FormatError:\n    pass\n@dataclass\nclass FormatError_PlaceholderRequiresExplicitIndex(FormatError):\n    pass\n@dataclass\nclass FormatError_PlaceholderMissingClosingBrace(FormatError):\n    pass\n@dataclass\nclass FormatError_PlaceholderIndexOutOfBounds(FormatError):\n    pass\n\ndef __v3_format(template: str, args: list[str]) -> typing.Union[typing.Tuple[typing.Literal['Ok'], str], typing.Tuple[typing.Literal['Err'], FormatError]]:\n    out = []\n    i = 0\n    while i < len(template):\n        if template[i] != '{':\n            out.append(template[i])\n            i += 1\n            continue\n        start = i + 1\n        end = start\n        while end < len(template) and '0' <= template[end] <= '9':\n            end += 1\n        if end == start:\n            return ('Err', FormatError_PlaceholderRequiresExplicitIndex())\n        if end >= len(template) or template[end] != '}':\n            return ('Err', FormatError_PlaceholderMissingClosingBrace())\n        idx = int(template[start:end])\n        if idx < 0 or idx >= len(args):\n            return ('Err', FormatError_PlaceholderIndexOutOfBounds())\n        out.append(args[idx])\n        i = end + 1\n    return ('Ok', ''.join(out))".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
+    if needs_format_prelude {
+        sections.push(
+            "class FormatError:\n    pass\n@dataclass\nclass FormatError_PlaceholderRequiresExplicitIndex(FormatError):\n    pass\n@dataclass\nclass FormatError_PlaceholderMissingClosingBrace(FormatError):\n    pass\n@dataclass\nclass FormatError_PlaceholderIndexOutOfBounds(FormatError):\n    pass\n\ndef __v3_format(template: str, args: list[str]) -> typing.Union[typing.Tuple[typing.Literal['Ok'], str], typing.Tuple[typing.Literal['Err'], FormatError]]:\n    out = []\n    i = 0\n    while i < len(template):\n        if template[i] != '{':\n            out.append(template[i])\n            i += 1\n            continue\n        start = i + 1\n        end = start\n        while end < len(template) and '0' <= template[end] <= '9':\n            end += 1\n        if end == start:\n            return ('Err', FormatError_PlaceholderRequiresExplicitIndex())\n        if end >= len(template) or template[end] != '}':\n            return ('Err', FormatError_PlaceholderMissingClosingBrace())\n        idx = int(template[start:end])\n        if idx < 0 or idx >= len(args):\n            return ('Err', FormatError_PlaceholderIndexOutOfBounds())\n        out.append(args[idx])\n        i = end + 1\n    return ('Ok', ''.join(out))".to_string(),
+        );
+    }
 
     let needs_int_div_prelude =
         dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);

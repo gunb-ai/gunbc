@@ -1356,10 +1356,11 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if dag_uses_any_callable(dag, &["format", "int_to_string", "bool_to_string"]) {
         sections.push("import \"strconv\"".to_string());
     }
-    if dag_uses_any_callable(dag, &["format"]) {
+    let needs_format_prelude = dag_uses_any_callable(dag, &["format"]);
+    if needs_format_prelude {
         sections.push("import \"strings\"".to_string());
     }
-    if dag_uses_any_callable(dag, &["format"]) {
+    if needs_format_prelude {
         sections.push(
             "type FormatError interface { isFormatError() }\ntype PlaceholderRequiresExplicitIndex struct{}\ntype PlaceholderMissingClosingBrace struct{}\ntype PlaceholderIndexOutOfBounds struct{}\nfunc (PlaceholderRequiresExplicitIndex) isFormatError() {}\nfunc (PlaceholderMissingClosingBrace) isFormatError() {}\nfunc (PlaceholderIndexOutOfBounds) isFormatError() {}\n\nfunc __v3Format(template string, args []string) v3Result[string, FormatError] {\n  var out strings.Builder\n  runes := []rune(template)\n  for i := 0; i < len(runes); {\n    if runes[i] != '{' { out.WriteRune(runes[i]); i++; continue }\n    start := i + 1\n    end := start\n    for end < len(runes) && runes[end] >= '0' && runes[end] <= '9' { end++ }\n    if end == start { return v3Err[string, FormatError]{Value: PlaceholderRequiresExplicitIndex{}} }\n    if end >= len(runes) || runes[end] != '}' { return v3Err[string, FormatError]{Value: PlaceholderMissingClosingBrace{}} }\n    idx, err := strconv.Atoi(string(runes[start:end]))\n    if err != nil { return v3Err[string, FormatError]{Value: PlaceholderRequiresExplicitIndex{}} }\n    if idx < 0 || idx >= len(args) { return v3Err[string, FormatError]{Value: PlaceholderIndexOutOfBounds{}} }\n    out.WriteString(args[idx])\n    i = end + 1\n  }\n  return v3Ok[string, FormatError]{Value: out.String()}\n}\n".to_string(),
         );
@@ -1380,6 +1381,25 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     ) {
         return Err(EmitError::UnsupportedBehavior(format!(
             "Go checked-division prelude would collide with user-defined `{name}`"
+        )));
+    }
+    if let (true, Some(name)) = (
+        needs_format_prelude,
+        prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            &[
+                "FormatError",
+                "PlaceholderRequiresExplicitIndex",
+                "PlaceholderMissingClosingBrace",
+                "PlaceholderIndexOutOfBounds",
+            ],
+            &["__v3Format"],
+        ),
+    ) {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "Go format prelude would collide with user-defined `{name}`"
         )));
     }
     if needs_result_prelude {
@@ -3489,7 +3509,7 @@ fn dag_uses_any_callable(dag: &Dag, names: &[&str]) -> bool {
     names.iter().any(|name| dag_uses_callable(dag, name))
 }
 
-fn dag_uses_callable(dag: &Dag, name: &str) -> bool {
+pub(crate) fn dag_uses_callable(dag: &Dag, name: &str) -> bool {
     let Some(target) = dag.declaration_by_name(name).map(|decl| decl.id) else {
         return false;
     };
