@@ -21,10 +21,21 @@
 // extractor and derive directly from the lowered Dag in the same PR.
 //
 // **Character classes.** Scanner precedence is `ascii_scan_order: List<CharClass>`;
-// membership semantics live in substrate `dsl/std/unicode.dag` (`char_in_class`).
-// Deferred (ROADMAP / class-5 program): opaque `String` spellings here and in
-// shared syntax (`suffix`, `pattern`, delimiters, keyword/operator symbols) →
-// `Char` / `List<Char>`. See docs/briefs/substrate-language-gaps/.
+// canonical membership predicates live in `dsl/std/unicode.dag` (`char_in_class`).
+// Structural consumption receipt: **`tokenizer_char_class_membership`** delegates to it (do not
+// delete while `ascii_scan_order` imports `CharClass` / `char_in_class`).
+//
+// **Tracked scaffold — ASCII codegen mirror (P5 / CHARACTER-LEVEL row):** `tokenize_generated.rs`
+// still carries hand-emitted predicates from `regen_tokenize.rs::ascii_scan_class_predicate`; they
+// must stay mechanically aligned with **`char_in_class`** (see ROADMAP + integration parity test).
+//
+// **Named dissolution trigger (copy-stable — not a vague deferral):** `ROADMAP.md` subsection
+// **`char_in_class` interpreter parity (tokenizer bridge finish, PR #693)** — evaluator parity vs
+// `byte_matches`, then retire the mirror predicates; **same migration gate** as re-wiring
+// `regen_tokenize` per **Character-level under-consumption …** §steps (2)–(3). Class-5 Gap 3
+// (`top-level ValueBody`, `Char` / `List<Char>` spelling in tokenizer `data`) remains the blocker
+// for `.dag`-native emission of class bodies. Supporting briefs:
+// `docs/briefs/substrate-language-gaps/`.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: signed unary `-` merged into a following decimal `IntLit` when the
@@ -46,14 +57,20 @@ import v3.std.tokenize {
   TokenKind
 }
 
+import v3.std.types { Char }
+
 import v3.std.unicode {
   CharClass,
   char_in_class,
 }
 
-// Scanner precedence (`ascii_scan_order`) is tokenizer-owned substrate; bytecode
-// class checks follow `dsl/std/unicode.dag` (`char_in_class` — imported nominal
-// anchor for reviewers + `compile_to_dag` resolution).
+// Delegates tokenizer membership to **`std.unicode::char_in_class`** (substrate-canonical ASCII
+// rules). `regen_tokenize` codegen still mirrors these predicates separately until the scaffold
+// above dissolves (`ROADMAP.md` parity row — see header).
+fn tokenizer_char_class_membership(c: Char, class: CharClass) -> Bool = char_in_class(c, class)
+
+// Scanner precedence (`ascii_scan_order`) is tokenizer-owned substrate; codegen `byte_matches`
+// mirrors this order (`regen_tokenize`) until structural read replaces the mirror predicates.
 data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]
 
 // `TokenKind` variant labels (`src/v3/std/tokenize.dag`): when the **previous** token

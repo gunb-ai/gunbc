@@ -258,14 +258,14 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
 
     let mut out = String::new();
     out.push_str("\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
-    out.push_str("pub(crate) enum ScannerCharClass {\n");
+    out.push_str("pub enum ScannerCharClass {\n");
     for class in scan_order {
         out.push_str(&format!("    {class},\n"));
     }
     out.push_str("}\n\n");
 
     out.push_str("#[inline]\n");
-    out.push_str("pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
+    out.push_str("pub fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
     out.push_str("    match class {\n");
     for class in scan_order {
         let expr = ascii_scan_class_predicate(class);
@@ -277,9 +277,14 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
 }
 
 fn ascii_scan_class_predicate(class_name: &str) -> &'static str {
-    // Interim bridge: `ascii_scan_order` supplies structural scanner order, but
-    // class predicate bodies remain here until `std.unicode::char_in_class` is
-    // structurally consumable by the tokenizer generator.
+    // TRACKED SCAFFOLD (see `tokenize.dag` header — P5 / CHARACTER-LEVEL row):
+    // Hand-Rust codegen mirror of **`dsl/std/unicode.dag::char_in_class`** predicates.
+    //
+    // **Dissolution pointer (explicit ROADMAP row + next step):**
+    // `ROADMAP.md` **Post-merge debt** → **`char_in_class` interpreter parity (tokenizer bridge
+    // finish, PR #693)** — parity harness vs evaluator, then retire this mirror alongside
+    // structural `tokenize.dag` read (same migration gate as **Character-level
+    // under-consumption …** §step (3)).
     match class_name {
         "Whitespace" => "matches!(byte, b'\\t' | b'\\n' | b'\\x0c' | b'\\r' | b' ')",
         "Digit" => "byte.is_ascii_digit()",
