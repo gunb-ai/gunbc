@@ -38,8 +38,30 @@ jobs:
         rustflags: ''
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
+  # Affected-set detection — drives gating of v2/v3 jobs (frozen components
+  # only run their heavy CI when their source is touched, or on push-to-main
+  # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
+  affected:
+    if: github.event.pull_request.draft != true
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      v2: ${{ steps.detect.outputs.v2 }}
+      v3: ${{ steps.detect.outputs.v3 }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Fetch main for diff base
+      if: github.event_name == 'pull_request'
+      run: git fetch origin main:refs/remotes/origin/main
+    - name: Detect affected components
+      id: detect
+      run: bash scripts/detect-affected-components.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
   ci:
     if: github.event.pull_request.draft != true
+    needs: [affected]
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
@@ -107,16 +129,57 @@ jobs:
           cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-ci-${{ runner.os }}-
     - name: v3 bootstrap snapshot freshness gate (--verify)
+      if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
     - name: 'Gate #103 — path-regex inventory ratchet (canvas §5)'
+      if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: bash scripts/check-workflow-path-regex-inventory.sh
     - name: 'Gate #103 — Layer 1 selection + workflow YAML policy (integration)'
+      if: needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: |
         set -euo pipefail
         cargo test -p v3-compiler --test integration ci_uses_affected_set_selection -- --quiet
         cargo test -p v3-compiler --test integration workflow_no_path_regex_policy_ci_yml -- --quiet
+  # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
+  # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
+  # that any modification to v2 preserves the self-host fixed-point property.
+  v2:
+    if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
+    needs: [affected]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Cache Cargo (v2)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/**') }}
+        restore-keys: |
+          cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+          cargo-v2-${{ runner.os }}-
+    - name: v2 fixed-point (bootstrap_fixed_point, --ignored)
+      run: |
+        set -euo pipefail
+        cargo test -p v2-compiler-tests --release bootstrap_fixed_point -- --ignored --exact
+  # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
+  # is affected (or on push-to-main for trunk verification). v3 is no longer
+  # the active compiler; v4 program supersedes it (see PR #3147).
   v3:
-    if: github.event.pull_request.draft != true
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    needs: [affected]
     runs-on: ubicloud-standard-8
     timeout-minutes: 120
     steps:
@@ -306,16 +369,23 @@ jobs:
     - name: Banked-dissolutions ratchet
       run: scripts/check-banked-dissolutions.sh
   self_host_ratchet:
-    if: ${{ always() && github.event.pull_request.draft != true }}
+    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: ubicloud-standard-8
     timeout-minutes: 60
     needs:
+    - affected
     - v3
     continue-on-error: true
     steps:
-    - name: Validate gate evidence (fail-closed under v3 failure)
+    - name: Validate gate evidence (fail-closed under v3 failure; tolerates v3 skipped)
       run: |
         echo "Gate evidence: v3.result=${{ needs.v3.result }}"
+        # Under v3-freeze (2026-05-15), v3 job is skipped on PRs that don't touch v3.
+        # 'skipped' is acceptable here — means v3 was correctly not run.
+        if [ "${{ needs.v3.result }}" = "skipped" ]; then
+          echo "::notice::v3 job skipped (v3 not affected by this PR); self_host_ratchet has nothing to validate."
+          exit 0
+        fi
         if [ "${{ needs.v3.result }}" = "failure" ] || [ "${{ needs.v3.result }}" = "cancelled" ]; then
           echo "::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green."
           exit 1
