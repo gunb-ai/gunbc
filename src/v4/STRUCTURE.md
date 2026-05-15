@@ -27,14 +27,17 @@ src/v4/
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
-  extdeps/               # external system contracts (17 files)
+  extdeps/               # external system contracts (20 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
       rust.dag
       python.dag
       go.dag
       cpp.dag            # C++ (subsumes C subset); ISO/IEC 14882
       typescript.dag     # TypeScript + ECMAScript
-      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI falsification probe; IN-B concurrency)
+      verilog.dag        # Verilog HDL (T-4.9 — B2-OMNI probe; IN-B concurrency)
+      llvm_ir.dag        # LLVM IR (T-4.12 — B2-OMNI probe; down-the-stack SSA)
+      machine_code.dag   # ISA-parameterized (T-4.13 — bottom of stack; disasm fail-closed)
+      ptx.dag            # CUDA/PTX (T-4.14 — B2-OMNI+IN-B probe; SIMT data-parallel)
     frameworks/          # framework substrates (UI / server / data)
       react.dag          # React: Component/Hook/Effect (frontload per operator 2026-05-15)
     formats/             # data format models (direction-agnostic)
@@ -100,7 +103,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 60 .dag files + 5 docs + 5 .gitkeep = 70 files.** (Per invariant
+**Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition.)
 
