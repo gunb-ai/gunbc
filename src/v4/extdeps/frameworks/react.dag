@@ -26,7 +26,7 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - extdeps/languages/typescript.dag (React is hosted in TS)
 //
-// Status: scaffold — fill per TASKS.md T-4.6
+// Status: scaffold — fill per TASKS.md T-4.7
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).

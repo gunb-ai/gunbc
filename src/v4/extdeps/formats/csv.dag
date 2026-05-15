@@ -4,8 +4,16 @@
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180 (RFC 4180)
 //
 // Owns:
-//   - CsvDocument { header: Option<List<String>>, rows: List<List<String>> }
+//   - CsvDocument { width: PositiveInt, header: Option<Row>, records: List<Row> }
+//   - Row = a field sequence whose length is STRUCTURALLY == width
+//     (rectangularity is an invariant of the type, not a convention —
+//     RFC 4180 §1: "each line should contain the same number of fields".
+//     `List<List<String>>` is rejected: it admits ragged records and
+//     header-width drift, an illegal state. Ragged input is a parse
+//     Diagnostic, never a representable CsvDocument — fail-closed.)
 //   - parse(String, Dialect) -> Result<CsvDocument, Diagnostic>
+//     (width fixed by header if present, else by the first record; any
+//     record whose arity != width is a Diagnostic, not a truncation/pad)
 //   - emit(CsvDocument, Dialect) -> String
 //   - Dialect { delimiter: Char, quote: Char, escape: Option<Char>, line_terminator: String }
 //

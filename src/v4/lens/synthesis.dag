@@ -1,10 +1,15 @@
 // src/v4/lens/synthesis.dag
 //
-// Scope: cross-algorithm complexity lens — prove a DIFFERENT program achieves
-//        better complexity than user's, for the same I/O relation. Distinct
-//        from lens/complexity.dag (same-algorithm tightness via semantics-
-//        preserving rewrites); synthesis reasons ACROSS program shapes (e.g.,
-//        bubble-sort → merge-sort, naive-matmul → Strassen).
+// Scope: cross-algorithm complexity lens — surface that the user's
+//        realization's lens-DERIVED cost EXCEEDS the declared I/O
+//        relation's structurally-derived complexity LOWER BOUND (a
+//        provable GAP to the optimum). It does NOT construct, name, or
+//        prove the existence of a specific faster program — the optimal
+//        realization can be unknown (e.g. matmul ω) and fabricating one
+//        would violate feedback_no_engine. Distinct from
+//        lens/complexity.dag (same-algorithm tightness); synthesis
+//        compares derived cost against the relation's lower bound via the
+//        closed LowerBoundTechnique set (see Owns; C2 reframe 2026-05-15).
 // Anchor: https://en.wikipedia.org/wiki/Program_synthesis +
 //         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
