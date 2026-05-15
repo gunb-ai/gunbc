@@ -209,7 +209,7 @@ type BoundedLattice<T> {
 // algebra classical-logic carriers inhabit (Wikipedia "Boolean
 // algebra (structure)").
 type BooleanAlgebra<T> {
-  bounded: BoundedLattice<T>
+  bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
 
