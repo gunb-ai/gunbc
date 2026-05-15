@@ -420,7 +420,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     {
         if va == vb {
             return SymbolicCost::UnknownCost {
-                _0: "(v!)² exceeds Tier 1 — pending R4 named-variant canvas".to_string(),
+                _0: "(v!)^2 exceeds Tier 1 - pending R4 named-variant canvas".to_string(),
             };
         }
     }
