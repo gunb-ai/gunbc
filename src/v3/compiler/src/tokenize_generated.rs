@@ -4,7 +4,7 @@
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ScannerCharClass {
+pub enum ScannerCharClass {
     Whitespace,
     Digit,
     IdentStart,
@@ -12,7 +12,7 @@ pub(crate) enum ScannerCharClass {
 }
 
 #[inline]
-pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
+pub fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
     match class {
         ScannerCharClass::Whitespace => matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' '),
         ScannerCharClass::Digit => byte.is_ascii_digit(),

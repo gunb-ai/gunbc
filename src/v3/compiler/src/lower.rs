@@ -2180,6 +2180,19 @@ fn scalar_literal_must_reject_for_refinement(
     false
 }
 
+/// Infer-facing counterpart to [`scalar_literal_must_reject_for_refinement`]:
+/// structural equivalence can unify a callee refined alias carrier with canonical
+/// `Int` **before** the argument port nominally [`Decision::Set`]s — scalar
+/// literals that pass the same gate-20 static discharge as lowering narrow the port.
+pub(crate) fn int_literal_bigint_statically_discharges_refinement_chain(
+    dag: &Dag,
+    literal: &BigInt,
+    expected_type: DeclarationId,
+) -> bool {
+    let bits = LiteralBits::Int(literal.to_string());
+    !scalar_literal_must_reject_for_refinement(dag, &bits, expected_type)
+}
+
 fn literal_statically_satisfies_refinement_predicate(
     dag: &Dag,
     literal: &LiteralBits,
@@ -8549,6 +8562,10 @@ fn lower_field_path_expr(
             if let Some(port) = resolve_data_path(dag, &value_body, rest, span) {
                 return port;
             }
+            return unresolved_port(
+                dag,
+                data_field_path_diagnostic(dag, decl_id, &value_body, rest, span),
+            );
         }
     }
     unresolved_port(
@@ -8562,6 +8579,49 @@ fn lower_field_path_expr(
         correction: crate::diagnostics::Correction::deferred_for_diagnostic_class("LoweringDiagnostic"),
         },
     )
+}
+
+fn data_declared_type_display_name(dag: &Dag, decl_id: DeclarationId) -> String {
+    dag.declaration(decl_id)
+        .meta_tag
+        .map(|ty| declaration_display_name(dag, ty))
+        .unwrap_or_else(|| declaration_display_name(dag, decl_id))
+}
+
+fn data_field_path_diagnostic(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+    span: &SourceSpan,
+) -> Diagnostic {
+    let type_name = data_declared_type_display_name(dag, decl_id);
+    let field = segments.first().map_or("<empty>", String::as_str);
+    let name = match value_body {
+        crate::dag::ValueBody::Scalar(_) => format!("{type_name} has no field {field}"),
+        crate::dag::ValueBody::Structural { .. } => {
+            format!(
+                "{type_name} has no compile-time scalar field path `{}`",
+                segments.join(".")
+            )
+        }
+        crate::dag::ValueBody::Unparsed(_) => {
+            format!("{type_name} data value body is not lowered to a compile-time field value")
+        }
+        crate::dag::ValueBody::List(_) | crate::dag::ValueBody::Map(_) => {
+            format!(
+                "{type_name} data value does not support dotted field path `{}`",
+                segments.join(".")
+            )
+        }
+    };
+    Diagnostic::ResolveError {
+        name,
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
 }
 
 /// DB-10 (3a.2): walk a sequence of field segments through a data

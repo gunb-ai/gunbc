@@ -13,6 +13,8 @@ use v3_compiler::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId,
     LiteralBits, LogicalOp, OperatorKind, PortId, TransformNode, TransformTarget, TypeConnective,
 };
+use v3_compiler::emit::{emit_go_text, emit_python_text};
+use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
 use v3_compiler::tokenize_for_test;
@@ -230,6 +232,25 @@ fn diagnostic_summary(dag: &Dag) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn assert_no_field_project(dag: &Dag, field: &str) {
+    let has_field_project = dag.nodes().iter().any(|n| {
+        matches!(
+            n,
+            v3_compiler::dag::Behavior::Transform(t)
+            if matches!(
+                &t.target,
+                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label }
+                    | v3_compiler::dag::TransformTarget::ResolvedFieldProject { field_label }
+                    if field_label == field
+            )
+        )
+    });
+    assert!(
+        !has_field_project,
+        "data-resolved `{field}` access must not lower to a FieldProject Transform"
+    );
 }
 
 #[test]
@@ -808,21 +829,80 @@ fn test_3a2_data_field_access_resolves_statically() {
     // Must NOT contain a FieldProject<host> Transform — that would
     // indicate runtime field access on a data value, defeating the
     // lowering-time inlining.
-    let has_field_project_host = dag.nodes().iter().any(|n| {
-        matches!(
-            n,
-            v3_compiler::dag::Behavior::Transform(t)
-            if matches!(
-                &t.target,
-                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label } if field_label == "host"
-            )
+    assert_no_field_project(&dag, "host");
+}
+
+fn emit_all_targets(dag: &Dag, case: &str) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "Rust",
+            emit_rust(dag).unwrap_or_else(|err| panic!("Rust emits {case}: {err:?}")),
+        ),
+        (
+            "Python",
+            emit_python_text(dag).unwrap_or_else(|err| panic!("Python emits {case}: {err:?}")),
+        ),
+        (
+            "Go",
+            emit_go_text(dag).unwrap_or_else(|err| panic!("Go emits {case}: {err:?}")),
+        ),
+    ]
+}
+
+mod db_10_data_value_inline_demo {
+    use super::*;
+
+    #[test]
+    fn scalar_data_inlines_across_emitters() {
+        let scalar_src = "data answer: Int = 42\n\
+                          fn f() -> Int = answer + 1\n\
+                          let result: Int = f()";
+        let scalar = cached_compile_to_dag(scalar_src, "db_10_scalar_inline_demo.v3");
+        for (target, emitted) in emit_all_targets(&scalar, "scalar data inline demo") {
+            assert!(
+                emitted.contains("42 + 1"),
+                "{target} output must inline `answer` in `f` as `42 + 1`; got:\n{emitted}"
+            );
+        }
+    }
+
+    #[test]
+    fn record_field_inlines_across_emitters_without_field_project() {
+        let record_src = "type Config { host: String, port: Int }\n\
+                          data config: Config = { host: \"h\", port: 8080 }\n\
+                          fn host() -> String = config.host\n\
+                          let result: String = host()";
+        let record = cached_compile_to_dag(record_src, "db_10_record_inline_demo.v3");
+        assert_no_field_project(&record, "host");
+        for (target, emitted) in emit_all_targets(&record, "record data inline demo") {
+            assert!(
+                emitted.contains("\"h\""),
+                "{target} output must inline `config.host` as string literal `\"h\"`; got:\n{emitted}"
+            );
+        }
+    }
+
+    #[test]
+    fn scalar_data_field_access_rejects_with_declared_type_diagnostic() {
+        let err = compile_to_dag(
+            "data x: Int = 42\nfn bad() -> Int = x.foo",
+            "db_10_scalar_data_field_rejects.v3",
         )
-    });
-    assert!(
-        !has_field_project_host,
-        "`cfg.host` on a data declaration must NOT lower to a runtime \
-         FieldProject<host> Transform; the literal must be inlined at compile time"
-    );
+        .expect_err("scalar data dotted field access must fail closed");
+        let CompileError::Semantic(dag) = err else {
+            panic!("expected semantic diagnostic for scalar data field access, got {err:?}");
+        };
+        let joined = dag
+            .diagnostics()
+            .iter()
+            .map(|(_, d)| d.message())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Int has no field foo"),
+            "scalar data field diagnostic should name the declared type and field; got:\n{joined}"
+        );
+    }
 }
 
 // =================================================================

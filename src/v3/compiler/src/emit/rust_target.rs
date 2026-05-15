@@ -3340,7 +3340,7 @@ fn gate60_realized_named_compose_peer(
     types: &HashMap<DeclarationId, TypeRealizationBinding>,
     declaration: DeclarationId,
 ) -> Option<DeclarationId> {
-    let compose = dag.declaration_by_name("Compose")?.id;
+    let compose = crate::int_literal_ranges::compose_carrier_template_declaration_id(dag)?;
     let peeled =
         crate::int_literal_ranges::peel_decl_head_for_integral_float_seed(dag, declaration);
     let d = dag.declaration(peeled);
