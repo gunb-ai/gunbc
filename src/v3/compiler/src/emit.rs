@@ -123,6 +123,34 @@ pub(crate) fn div_prelude_reserved_name_collision<'a>(
         })
 }
 
+pub(crate) fn prelude_reserved_name_collision<'a>(
+    type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    top_level_binds: impl IntoIterator<Item = &'a &'a BindNode>,
+    type_names: &[&'static str],
+    helper_names: &[&'static str],
+) -> Option<&'static str> {
+    let type_decls: Vec<_> = type_decls.into_iter().collect();
+    let function_decls: Vec<_> = function_decls.into_iter().collect();
+    let top_level_binds: Vec<_> = top_level_binds.into_iter().collect();
+    type_names
+        .iter()
+        .copied()
+        .find(|name| {
+            type_decls
+                .iter()
+                .any(|decl| decl.name.as_deref() == Some(*name))
+        })
+        .or_else(|| {
+            helper_names.iter().copied().find(|name| {
+                function_decls
+                    .iter()
+                    .any(|decl| decl.name.as_deref() == Some(*name))
+                    || top_level_binds.iter().any(|bind| bind.name == *name)
+            })
+        })
+}
+
 pub(crate) fn decl_uses_substrate_result_or_div_error(
     dag: &Dag,
     declaration: DeclarationId,

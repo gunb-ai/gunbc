@@ -51,8 +51,8 @@ use super::{
         method_template_contract_decl_emit_template, MethodTemplateContractEmitTemplate,
     },
     dag_needs_div_error_prelude, div_prelude_reserved_name_collision, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    prelude_reserved_name_collision, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -3121,6 +3121,21 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             "Rust checked-division prelude would collide with user-defined `{name}`"
         )));
     }
+    let needs_format_prelude = dag_uses_any_callable(dag, &["format"]);
+    if let (true, Some(name)) = (
+        needs_format_prelude,
+        prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            &["FormatError"],
+            &["__v3_format"],
+        ),
+    ) {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "Rust format prelude would collide with user-defined `{name}`"
+        )));
+    }
 
     const RUST_V3_FORMAT_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum FormatError {
@@ -3190,7 +3205,7 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     if needs_int_div_prelude {
         sections.push(RUST_V3_INT_OP_PRELUDE.to_string());
     }
-    if dag_uses_any_callable(dag, &["format"]) {
+    if needs_format_prelude {
         sections.push(RUST_V3_FORMAT_PRELUDE.to_string());
     }
     if !type_defs.is_empty() {
