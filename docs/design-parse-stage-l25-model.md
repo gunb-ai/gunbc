@@ -78,7 +78,9 @@ These 6 table-families ARE the GrammarSpec content. The build system reads `pars
 
 Per `src/v3/std/parse_surface.dag:29` (verified live): `SurfaceModule` is the top-level parse output carrying `List<SurfaceItem>` + module-level metadata.
 
-**Construction-time invariant**: every Token consumed produces either a SurfaceItem/SurfaceExpr/SurfacePattern/SurfaceType/SurfaceLiteral variant in the output tree (parser advanced) OR a ParseDiagnostic in the diagnostic stream (parser failed-closed at that position). No tokens silently dropped; no surface forms fabricated without source-span provenance.
+**Live failure boundary** (per `parse_generated.rs:138`): parse returns `Result<SurfaceModule, Diagnostic>` (fail-closed; aborts on first parse error). NO diagnostic-stream coupling in live state.
+
+**Construction-time invariant** (live + ratified shape per §4.3 Result-sum framing): every Token consumed produces either a SurfaceItem/SurfaceExpr/SurfacePattern/SurfaceType/SurfaceLiteral variant in the Ok-arm output tree (parser advanced) OR triggers Err-arm with a typed `ParseDiagnostic` (parser failed-closed at first error position). No tokens silently dropped; no surface forms fabricated without source-span provenance; no partial-parse SurfaceModule with embedded diagnostics (per codex BLOCKING #3126 fail-closed correction).
 
 **Substrate authority**: `src/v3/std/parse_surface.dag:29` (live; closed-axis SurfaceModule + SurfaceItem at :257 + SurfaceExpr at :149 + SurfacePattern at :123 + SurfaceType at :67 + SurfaceLiteral at :143). PB-3 parse output type is stable across the migration.
 
@@ -394,7 +396,7 @@ Subsequent L2.5 model (PB-2 tokenize) follows same sequence with its own substra
 
 **Memory disciplines applied**:
 - `feedback_lenses_not_passes` (parse = substrate-table-driven dispatch, NOT decision engine)
-- `feedback_fail_closed_discipline` C-8 (ParseDiagnostic coupled INTO SurfaceModule)
+- `feedback_fail_closed_discipline` C-8 (parse returns `Result<SurfaceModule, ParseDiagnostic>` per §4.3 + live `parse_generated.rs:138` — fail-closed Result-sum, NOT typed-state-with-coupled-diagnostics; distinct from lower/infer pattern per cross-stage discriminator at §4.3)
 - `feedback_state_space_vs_behavioral_invariants` (typed-state SurfaceModule at output)
 - `feedback_target_agnostic_ir` (parse output carries no target-specific facts)
 - `feedback_paper_shrink_variants` (Step 4 parity = genuine deletion, not relocation)
