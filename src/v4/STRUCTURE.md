@@ -122,6 +122,17 @@ by six concept-located files, each anchored to a real external concept
 Each declares its own inhabitance (the inhabiting type owns its grounding —
 INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
 
+**Kernel-ambient types.** `String`, `Int`, `Bool`, `Char`, `List`, `Map` are
+provided by the v2 seed and are usable in any `.dag` file *without an import*.
+This relaxes only the import edge — not single-authority: the v4 substrate
+file that *models* each type (`text.dag` for `String`/`Char`, `integer.dag`
+for `Int`, `logic.dag` for `Bool`, `collection.dag` for `List`/`Map`) remains
+its sole authority. A file's header `Consumes` line lists a scalar file only
+when it needs that type's *modeled* facts (algebra, inhabitance, totalization)
+— not when it merely needs the raw kernel value (e.g. a `String` message
+label). This is why several headers note "String … is kernel-ambient — no
+import".
+
 ## Anchor convention
 
 Every v4 `.dag` file carries an `# Anchor:` line in its header. The anchor is
