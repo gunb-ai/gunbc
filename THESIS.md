@@ -223,7 +223,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, build orchestration, dev process modeled as .dag workflows.
+- Bootstrap, CI, and build orchestration modeled as .dag workflows (`workflow/bootstrap.dag`, `workflow/ci.dag`). (The "dev/work-direction process modeled as .dag" claim was retracted 2026-05-15, operator-ratified — see facet 4 below; the project does not model its own work-direction.)
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
@@ -257,20 +257,27 @@ Self-hosting is not one capability; it's four. All four are targets.
    declarations. Everything ports to `.dag`. **Pure Bootstrap's secondary
    deliverable, couples to testgen.**
 
-4. **Recursive-flex / self-application** (NEW 2026-05-04; per Director
-   ratification at [gunbc#828 inbox-4374342708](https://github.com/gunb-ai/gunbc/issues/828)).
-   gunbc applies its own correctness/cost/parallelism/timing lenses to
-   its own build pipeline. The compiler that compiles gunbc programs
-   validates the workflow that produces gunbc itself. The same lens
-   framework users get for their own programs applies recursively to
-   gunbc's own runtime behavior — modeling its CI workflow as `.dag`
-   data, applying typed lenses for cost / complexity / parallelism /
-   timing, surfacing dependency-tracking and observation-driven
-   validation as structural facts. **R3 deliverable** (T-Workflow-As-Data
-   substrate + T-Lens-Self-Application demonstration; per `r3-structure.md`
-   §T-Workflow-As-Data + §T-Lens-Self-Application). Distinguishes
-   gunbc from compilers that don't validate their own production
-   pipeline — observation-driven lens-shape class is sui-generis.
+4. **Recursive-flex / self-application** (NEW 2026-05-04; **narrowed
+   2026-05-15, operator-ratified**). gunbc applies its own correctness/
+   cost/parallelism/timing lenses to its own **build/CI pipeline**, which
+   is modeled as `.dag` data (`workflow/bootstrap.dag`,
+   `workflow/ci.dag`). The same lens framework users get for their own
+   programs applies recursively to gunbc's own build/CI behavior —
+   typed lenses for cost / complexity / parallelism / timing over the
+   pipeline that produces gunbc itself. This distinguishes gunbc from
+   compilers that don't validate their own production pipeline.
+
+   **Retracted (2026-05-15, operator-ratified):** the original
+   "T-Workflow-As-Data substrate" sub-claim — modeling gunbc's *own
+   work-direction* (briefs / worker-outputs / cycles / retirement /
+   doc-anchors) as `.dag` data. The project does not model its own
+   work-direction; the compiler model self-justifies (rationale
+   emergent from composition), so there is no meta-layer to narrate it.
+   Honest framing per this thesis's own no-fabrication discipline: this
+   facet now claims only lens self-application to the build/CI pipeline
+   (which survives via `bootstrap.dag`/`ci.dag`), not process-self-
+   modeling. The `workflow/` substrate is correspondingly `{ bootstrap,
+   ci }` only (STRUCTURE.md invariant 6).
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at

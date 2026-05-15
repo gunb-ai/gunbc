@@ -83,12 +83,12 @@ src/v4/
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
 
-  workflow/              # recursive-flex — work-direction in .dag (7 files)
-    brief.dag            # typed Brief schema
-    worker_output.dag    # WorkerOutput { dissolves: Set<HandResidual>, cited_anchor }
-    doc_anchor.dag       # typed DocAnchor pointers into authority docs
-    retirement.dag       # structural Retirement predicate (no list-length gaming)
-    cycle.dag            # work cycle as data, lens-readable
+  workflow/              # meta-process as data (2 files; the v3-derived
+                         # work-direction substrate — brief/worker_output/
+                         # cycle/retirement/doc_anchor — was cut
+                         # 2026-05-15, operator-ratified: the project does
+                         # not model its own work-direction; the compiler
+                         # model self-justifies, no meta-layer narrates it)
     bootstrap.dag        # bootstrap orchestration AS DATA (seed-once → self-host
                          # → fixed-point); v2 interprets it; no build.rs/shell
     ci.dag               # CI pipeline AS DATA; .github/workflows/ci.yml is derived
@@ -108,9 +108,10 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
+**Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
-a checksum, updated on every operator-ratified file addition.)
+a checksum, updated on every operator-ratified file addition/removal.
+−5 .dag 2026-05-15: work-direction meta-layer cut, operator-ratified.)
 
 ## Scalar/numeric concept decomposition
 
@@ -289,7 +290,7 @@ These are non-negotiable across all v4 work:
 3. **No file-splitting without operator ratification.** Each file is a typed pure function. If a worker thinks `04_infer.dag` should be five files, that's a substrate-design question, not a worker decision.
 4. **Cost-of-change = 1.** Adding a new type/expression/transport edits exactly one file. If a change ripples, the substrate is wrong.
 5. **Tests are TestClaim data.** Zero hand-Rust tests. Test surface lives in `test/claim/`.
-6. **Workflow substrate first.** `workflow/*.dag` is implemented BEFORE any compiler work, so worker outputs are typed Brief/WorkerOutput/Retirement instances from day 1. The recursive-flex move is structural, not aspirational.
+6. **Meta-process as data (narrowed 2026-05-15, operator-ratified).** `workflow/` is now exactly `bootstrap.dag` (the bootstrap chain — load-bearing per invariant 7) and `ci.dag` (CI pipeline) — both `.dag` data, never `build.rs`/shell/hand-authored YAML. The v3-derived **work-direction substrate** (briefs / worker-outputs / cycles / retirement / doc-anchors modeled as data — the original "recursive-flex implement-before-compiler" claim) is **retracted**: the project does not model its own work-direction, and the compiler model self-justifies (rationale emergent from composition), so no meta-layer narrates it. Lens self-application to gunbc's own build/CI pipeline survives via `bootstrap.dag`/`ci.dag`; modeling our own *process* does not.
 7. **`.dag` is the sole editable authority; Rust is never authority.**
    "Off Rust" means: no Rust is editable authority — not "no Rust exists
    anywhere" (the CPU always has a host; the seed is always *some*

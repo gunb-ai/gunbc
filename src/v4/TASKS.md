@@ -22,7 +22,8 @@ Phase 1 (parallel — substrate foundation):
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-1; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
-  T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
+  T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
+        cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
 
 Phase 1.5 (test + bootstrap substrate — early, before compiler stages):
   T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
@@ -177,20 +178,24 @@ flat — dispatch in waves):
 
 ---
 
-### T-5: workflow/* — recursive-flex (FIRST IN EXECUTION ORDER)
+### T-5: REMOVED — work-direction meta-layer cut (operator-ratified 2026-05-15)
 
-**File**: 5 files in `src/v4/workflow/`
-**Why FIRST**: this IS the structural fix to v3's hierarchy/gaming failure. Implement workflow substrate before any compiler work, so every subsequent task's WorkerOutput is a typed instance.
+T-5 ("workflow/* — recursive-flex": `brief.dag`, `worker_output.dag`,
+`cycle.dag`, `retirement.dag`, `doc_anchor.dag`) is **deleted**. Rationale
+(operator-ratified): modeling gunbc's *own work-direction* as `.dag` data
+is not used by the project; the compiler model self-justifies (rationale
+emergent from composition), so no meta-layer is needed to narrate it.
+Tombstone retained (not silently dropped) so the decision is on record.
 
-**Modeling decisions**:
-- Brief contract shape (what fields are mandatory?)
-- Retirement predicate (A3, operator-ratified 2026-05-15): `retired` is a REPRODUCTION, never a count. `retired ⟺ rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash ∧ the seed's own hash matches its pin`. `HandResidual` = the Rust the .dag-rebuild cannot reproduce — empty by reproduction, not by count (defeats paper-shrink: relocation/inlining is non-seed Rust, removed by the test). NOT un-gameable (Trusting-Trust — pin/CI/seed are editable); its job is early/loud surfacing per-PR on the affected set so gaming is un-missable + operator-routed. Seed trust = named axiom, not proof. Enforcement = operator-ratification + STOP-culture; structure makes defection conspicuous, not impossible. Typed workflow substrate, NOT a CI grep (feedback_no_textual_enforcement_bridges).
-- Cycle data: lens-readable progression vs prose status
+What survives in `workflow/`, as standalone tasks — these are *compiler
+build infrastructure*, not the work-direction meta-layer:
+- **`workflow/bootstrap.dag` → T-20** (the bootstrap chain; load-bearing
+  for the anti-regression guarantee, STRUCTURE.md invariant 7).
+- **`workflow/ci.dag` → T-24** (CI pipeline as data).
 
-**Reference**:
-- This conversation (the failure mode that motivated this substrate)
-- `feedback_doc_authority_must_propagate_to_execution_authority` (memory)
-- `feedback_paper_shrink_variants` (memory) — the failure modes to refuse
+THESIS facet 4 / STRUCTURE.md invariant 6 narrowed correspondingly.
+The 5 deleted files were never filled (scaffolds only); nothing in the
+substrate imported them, so the cut is a pure scope reduction.
 
 ---
 
