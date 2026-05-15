@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (c) follow-up dispatch remains tracked by docs/briefs/t-pb-b-1.md / ROADMAP.md T-PB-B `pb_rust_tests_outside_residual_zero`; this PR adds one bounded `EXPECTED_HAND_AUTHORED_TEST` integration harness for Path B Brief 2 string formatting primitives, with the same-path P5 receipt in `sg0_census_test.rs`, until `.dag` TestClaim/generated coverage can execute the formatting/conversion stdout and fail-closed runtime checks without hand-authored Rust.
