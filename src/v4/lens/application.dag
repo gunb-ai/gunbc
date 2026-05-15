@@ -11,6 +11,20 @@
 //   - THE single advisory→fail-closed bridge: Enforce { } converts a lens's
 //     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
 //     no other path from advisory to blocking exists
+//   - D1 OPERATIONS over the std/node.dag structural-delta types
+//     (EdgeSelector/Path/Edit/Diff — the DATA lives in std/node.dag):
+//       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
+//         — the subtree at a Path (term-rewriting `t|p`); a Path that
+//         does not resolve ⇒ fail-closed Diagnostic, never a guess
+//       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
+//         — apply a well-formed Diff (`t[s]p` per Edit); all-or-nothing
+//         (any unresolved Path / not-well-formed ⇒ one Diagnostic, no
+//         partial application); consumer = CLI / test harness / user
+//         application code (NOT a meta-work dispatcher)
+//       - paths_independent(p: Path, q: Path) -> Bool and
+//         diff_well_formed(d: Diff) -> Bool — D1 well-formedness
+//         (Paths pairwise-independent / "parallel positions"); a Diff
+//         failing diff_well_formed is rejected before apply_diff
 //
 // QRY-1 (operator-corrected 2026-05-15) — there is NO "query" concept
 // and NO user-vs-kernel distinction. The earlier "query = user-defined
@@ -37,8 +51,22 @@
 // Node-pivot "one read, all ingested languages" property still holds —
 // it is a property of LENSES (any lens over Node), not of a "query".
 //
+// D1 (operator-ratified 2026-05-15) — this file is the OPERATION home
+// for the structural-delta vocabulary whose DATA TYPES
+// (EdgeSelector/Path/Edit/Diff) live in std/node.dag. The split is
+// FORCED, not stylistic: std/diagnostic.dag already `Consumes
+// std/node.dag` (`Correction = Suggested(Node)`), so a node.dag
+// operation returning `Result<_, Diagnostic>` would be a substrate
+// cycle. subterm_at/apply_diff are exactly the "consumers evaluate
+// fail-closed and raise the Diagnostic" discipline std/node.dag states
+// for `node_well_formed`. The Diff well-formedness INVARIANT is named
+// in std/node.dag (one authority); the PREDICATE that decides it lives
+// here. apply_diff/subterm_at + the predicates are part of this file's
+// T-23 fill; the I/O contract in this header is immutable.
+//
 // Consumes:
-//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
+//   - std/node.dag (incl. the D1 EdgeSelector/Path/Edit/Diff types),
+//     std/witness.dag, std/diagnostic.dag, std/report.dag
 //   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
 //
 // Status: scaffold — fill per TASKS.md T-23
