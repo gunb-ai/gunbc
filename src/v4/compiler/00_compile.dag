@@ -13,6 +13,9 @@
 //     walker over LanguageModel's declarative grammar (B2) — NOT
 //     .dag-specific. Self-parse is just `ingest(src, dag_model)`; Rust is
 //     `ingest(src, rust_model)`. `.dag` is language #1, never hardcoded.
+//     A non-text agent's structural Node Diff is ALSO just one more
+//     `Source` here — the write path of the AGENT-SURFACE contract
+//     (see lens/application.dag; DECISIONS.md AGENT-1). No special case.
 //
 //   core   : Node -> Result<InferredTree, Diagnostic>
 //     Language-agnostic: normalize (C3 — dissolve the 4 sugar forms)

@@ -37,6 +37,39 @@
 // Node-pivot "one read, all ingested languages" property still holds —
 // it is a property of LENSES (any lens over Node), not of a "query".
 //
+// AGENT-SURFACE (operator-ratified 2026-05-15) — designed early so it
+// has a structural PLACE, not bolted on later; "a very important /
+// exclusive feature" but a NATURAL CONSEQUENCE of already-ratified
+// pieces, NOT a new subsystem (and NOT the north star — included,
+// designed properly, placed). A non-text client (an LLM/agent)
+// interacts with the program AS DATA, never as files/text:
+//   READ  — it does not grep/read files; it READS LENSES at a scope:
+//           `apply_lens(lens, SectionRef, Introspect)` (this file) +
+//           the affected-set lens `affected_set(dag, diff)` (T-21,
+//           lens/affected_set.dag). The affected lens IS what replaces
+//           file-reading exploration ("what is even relevant here").
+//   WRITE — it does not emit a text patch; a change is a STRUCTURAL
+//           Node Diff, which is just an INGEST (B2-OMNI,
+//           compiler/00_compile.dag: a structured edit is one more
+//           `Source`). Content-addressed by B1 `content_hash` — the
+//           Diff is identity over structure, not lines.
+//   BACK  — it gets `Witness<ReExecFrontier>` (from affected_set: the
+//           minimal re-execution cone of its change) + a FAITHFUL
+//           re-emit (C5 ingest = emit⁻¹ on the modeled core; C4
+//           committed == emit) — no lossy text round-trip.
+//   GATE  — gated like any other change: the relevant lenses run and
+//           `apply_lens(_, Enforce)` (the single advisory→fail-closed
+//           bridge above) blocks fail-closed. The agent earns no
+//           special trust; structure gates it.
+// BOUNDARY: this is a CLIENT of (apply_lens here) + (affected_set T-21)
+// + (B2-OMNI ingest/emit) + (C5/C4). It introduces NO new authority,
+// noun, or query subsystem (consistent with QRY-1 above +
+// feedback_closed_system_design). It is the ratified COMPOSITION named
+// and given a home, so it is a contract T-23 is accountable to — not an
+// accident waiting to be true. Honest status: this is the DESIGN; the
+// surface is realized only when T-23 composes T-21 + B2-OMNI + C5/C4
+// (all scaffold today — nothing runs yet).
+//
 // Consumes:
 //   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
 //   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
