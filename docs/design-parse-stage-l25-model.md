@@ -133,30 +133,17 @@ type ParseDiagnosticKind
 
 **Lane dependency**: PR #3077 §12 Q7 ratification (cross-stage); Director-tier per-stage variant authoring.
 
-### §4.3 No separate `ParseResult` sum-variant — diagnostics couple via SurfaceModule extension (PROPOSED)
+### §4.3 Parse output is `Result<SurfaceModule, ParseDiagnostic>` — NO SurfaceModule diagnostics-extension
 
-**Live substrate state at HEAD** (verified via `grep -n "^type SurfaceModule" src/v3/std/parse_surface.dag`): `type SurfaceModule { items: List<SurfaceItem> }` — single field, NO existing diagnostic-table or diagnostic-stream field. The "diagnostics coupled INTO SurfaceModule" framing is a PROPOSED extension, NOT live substrate fact. Per codex INLINE BLOCKING #3126: this needs explicit "proposed-not-live" marking + parallel-substrate-extension authoring scope.
+> **Codex PR #3138 BLOCKING (sha cd6e8d15) revision (fixed at HEAD of PR #3138)**: this section previously proposed an `items + diagnostics` extension to `SurfaceModule` modeled on PB-4 lower's PreInferDag / PB-5 infer's InferredDag. That model is REJECTED for parse. The corrected Decision (per codex BLOCKING PR #3126 ratified into §6 Step 2 + §4.2) is that parse uses **Result-sum** (fail-fast first-error abort), like PB-6 emit and unlike PB-4 lower / PB-5 infer. The earlier-draft SurfaceModule extension is superseded; no `diagnostics` field is being added to `parse_surface.dag`.
 
-**Proposed extension** (NEW substrate authoring, parallel to PR #3077 §12 Q7 Decision 2.B extension path):
+**Live substrate state at HEAD** (verified via `grep -n "^type SurfaceModule" src/v3/std/parse_surface.dag`): `type SurfaceModule { items: List<SurfaceItem> }` — single field, NO diagnostic field, and no extension is now proposed. Parse-stage diagnostics live OUTSIDE SurfaceModule, on the Err branch of `Result<SurfaceModule, ParseDiagnostic>`.
 
-Same pattern as PB-4 lower's PreInferDag + PB-5 infer's InferredDag (per PR #3077 §4.3 + PR #3085 §4.3) — output IS the typed-state carrier with diagnostics coupled structurally. For SurfaceModule, the extension is:
+**Cross-stage discriminator** (the rule that places parse with emit, not with lower/infer):
+- **Result-sum** (PB-3 parse + PB-6 emit): fail-fast output domain — a partial parse tree or a partial target-byte buffer is not a valid intermediate; the stage either produces the complete artifact or fails with the first diagnostic.
+- **Typed-state-with-coupled-diagnostics** (PB-4 lower + PB-5 infer): structural output domain — Unresolved ports / pre-inferred Dag are valid intermediates consumed downstream, so the diagnostics couple structurally into the carrier.
 
-```
-// Proposed extension to src/v3/std/parse_surface.dag SurfaceModule:
-type SurfaceModule {
-  items: List<SurfaceItem>         // existing
-  diagnostics: List<ParseDiagnostic>  // PROPOSED extension per this L2.5
-}
-```
-
-Where the diagnostic-list is indexed by source-span (the natural key for parse-stage failures since pre-substrate positions don't yet have ports).
-
-**Step 2 worker brief must include** the parse_surface.dag SurfaceModule extension as part of the pipeline-slot PR scope — not separately deferrable. Without this, Step 2 has the carrier-mismatch problem codex flagged.
-
-**Cross-stage consistency**:
-- PB-3 parse + PB-4 lower + PB-5 infer: output IS typed-state carrier with diagnostics coupled structurally (each requires its own carrier extension if not already live; SurfaceModule extension is PB-3-specific)
-- PB-6 emit: uses EmissionResult sum because emit produces target-language bytes (different output domain)
-- Discriminator: when output is a STRUCTURAL value (Dag-shape or Surface-tree), partial-failure couples structurally; when output is FINAL ARTIFACT (target source bytes), partial-failure couples via Result sum.
+Live parser at `src/v3/compiler/src/parse_generated.rs:138` matches this: `pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic>`. The Step 2 contract refines that to `fn parse(tokens: List<Token>) -> Result<SurfaceModule, ParseDiagnostic>` per §6.
 
 Signature: `fn parse(tokens: List<Token>) -> Result<SurfaceModule, ParseDiagnostic>` per live `parse_generated.rs:138` shape (Result<SurfaceModule, Diagnostic>; ParseDiagnostic is per-stage refinement per §4.2).
 
@@ -425,7 +412,7 @@ Subsequent L2.5 model (PB-2 tokenize) follows same sequence with its own substra
 **Memory disciplines applied**:
 - `feedback_lenses_not_passes` (parse = substrate-table-driven dispatch, NOT decision engine)
 - `feedback_fail_closed_discipline` C-8 (parse returns `Result<SurfaceModule, ParseDiagnostic>` per §4.3 + live `parse_generated.rs:138` — fail-closed Result-sum, NOT typed-state-with-coupled-diagnostics; distinct from lower/infer pattern per cross-stage discriminator at §4.3)
-- `feedback_state_space_vs_behavioral_invariants` (typed-state SurfaceModule at output)
+- `feedback_state_space_vs_behavioral_invariants` (parse output is `Result<SurfaceModule, ParseDiagnostic>` — the type rules out partial-parse states by construction; SurfaceModule itself carries no diagnostic field per §4.3)
 - `feedback_target_agnostic_ir` (parse output carries no target-specific facts)
 - `feedback_paper_shrink_variants` (Step 4 parity = genuine deletion, not relocation)
 - `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id` (Gap-tier anchors)
