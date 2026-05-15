@@ -515,7 +515,9 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
           })
       }
     else
-      transport_effect_shape(op)
+      IsBreaking(CreateEffect {
+        cause: KeylessFallback { method: op.endpoint.method }
+      })
 }
 
 fn classify_operation_effect(op: Operation) -> EffectClassificationResult {

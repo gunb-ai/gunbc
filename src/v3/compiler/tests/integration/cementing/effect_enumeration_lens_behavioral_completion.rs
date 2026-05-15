@@ -11,8 +11,8 @@
 use std::collections::BTreeMap;
 
 use v3_compiler::dag::{
-    CallableRef, HttpMethodScalar, InputField, Operation, PathTemplate, RestEndpointBinding,
-    UrlPathToken,
+    operation_effect_shape, BreakingShape, CallableRef, CreateCause, EffectShape, HttpMethodScalar,
+    IdempotentShape, InputField, Operation, PathTemplate, RestEndpointBinding, UrlPathToken,
 };
 use v3_compiler::lens_effect_enumeration::{
     operation_structural_effect_shape, StructuralEffectShape,
@@ -35,6 +35,31 @@ fn op(
             UrlPathToken::ParamToken { name } => Some((name.clone(), InputField {})),
             UrlPathToken::LiteralToken { .. } => None,
         })
+        .collect::<BTreeMap<_, _>>();
+    Operation {
+        callable: CallableRef { decl: callable },
+        inputs,
+        endpoint: RestEndpointBinding {
+            method,
+            path: PathTemplate { tokens },
+        },
+    }
+}
+
+fn op_with_inputs(
+    dag: &Dag,
+    callable_name: &str,
+    method: HttpMethodScalar,
+    tokens: Vec<UrlPathToken>,
+    input_names: &[&str],
+) -> Operation {
+    let callable = dag
+        .declaration_by_name(callable_name)
+        .unwrap_or_else(|| panic!("missing callable declaration `{callable_name}`"))
+        .id;
+    let inputs = input_names
+        .iter()
+        .map(|name| ((*name).to_string(), InputField {}))
         .collect::<BTreeMap<_, _>>();
     Operation {
         callable: CallableRef { decl: callable },
@@ -116,5 +141,70 @@ fn effect_enumeration_lens_behaviorally_complete_uses_callable_authority_over_tr
     assert!(matches!(
         operation_structural_effect_shape(&breaking_over_get),
         StructuralEffectShape::WriteShaped
+    ));
+}
+
+#[test]
+fn effect_enumeration_lens_behaviorally_complete_fails_closed_for_unknown_callable() {
+    let dag = Dag::new();
+    let unknown = op(&dag, "Int", HttpMethodScalar::Get, vec![]);
+
+    assert!(matches!(
+        operation_structural_effect_shape(&unknown),
+        StructuralEffectShape::UnknownEffect { .. }
+    ));
+    assert!(operation_effect_shape(&dag, &unknown).is_none());
+}
+
+#[test]
+fn effect_enumeration_lens_behaviorally_complete_does_not_use_path_without_input_authority() {
+    let dag = Dag::new();
+    let path_only_key = op_with_inputs(
+        &dag,
+        "map_insert_method",
+        HttpMethodScalar::Put,
+        vec![UrlPathToken::ParamToken {
+            name: "id".to_string(),
+        }],
+        &[],
+    );
+    let input_only_key = op_with_inputs(
+        &dag,
+        "map_insert_method",
+        HttpMethodScalar::Put,
+        vec![],
+        &["id"],
+    );
+
+    assert!(matches!(
+        operation_effect_shape(&dag, &path_only_key),
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        }))
+    ));
+    assert!(matches!(
+        operation_effect_shape(&dag, &input_only_key),
+        Some(EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::KeylessFallback {
+                method: HttpMethodScalar::Put
+            }
+        }))
+    ));
+
+    let coupled_key = op(
+        &dag,
+        "map_insert_method",
+        HttpMethodScalar::Put,
+        vec![UrlPathToken::ParamToken {
+            name: "id".to_string(),
+        }],
+    );
+    assert!(matches!(
+        operation_effect_shape(&dag, &coupled_key),
+        Some(EffectShape::IsIdempotent(
+            IdempotentShape::UpsertEffect { .. }
+        ))
     ));
 }

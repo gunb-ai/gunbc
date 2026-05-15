@@ -354,19 +354,6 @@ fn unique_decl_id(dag: &Dag, name: &str) -> Option<DeclarationId> {
     Some(first)
 }
 
-fn transport_effect_shape(effect: &Operation) -> EffectShape {
-    match effect.endpoint.method {
-        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-        }
-        HttpMethodScalar::Put | HttpMethodScalar::Patch => keyed_upsert_or_keyless_break(effect),
-        HttpMethodScalar::Delete => keyed_delete_or_keyless_break(effect),
-        HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::PostAlways,
-        }),
-    }
-}
-
 fn keyed_upsert_or_keyless_break(effect: &Operation) -> EffectShape {
     match operation_resource_key(effect) {
         Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
