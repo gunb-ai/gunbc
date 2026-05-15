@@ -237,11 +237,28 @@ These are non-negotiable across all v4 work:
    `workflow/bootstrap.dag` (data, interpreted by frozen v2), never a
    `build.rs`/shell. The v4 binary is a content-addressed artifact
    reproducible from `.dag` via the frozen seed; its fixed-point hash is
-   pinned. **The only way to change v4 behavior is editing `.dag`.** Rust
-   cannot regress because none is authored and the binary hash is
-   structurally locked (T-15 `BitIdentical`). This guarantee is in force
-   from scaffold time — it does not wait for the 23 tasks; the tasks fill
-   in behavior *under* an already-committed anti-regression structure.
+   pinned.
+
+   **A3 (operator-ratified 2026-05-15) — honest framing of this guarantee.**
+   This is NOT un-gameable. Any in-repo enforcement artifact (the pin, CI,
+   the seed) is editable by whoever can commit; there is no structural
+   bottom (Ken Thompson, "Trusting Trust" — you cannot prove from inside
+   the system that the seed is honest). The guarantee is therefore
+   *un-hideable*, not *impossible-to-violate*: the reproduce-from-`.dag`-
+   through-frozen-seed check is an **early-surfacing amplifier** — run
+   per-PR on the affected set (T-21/T-24), it makes any divergence (extra
+   Rust authority, an edited/grown seed, a 7th connective) **loud,
+   immediate, and impossible to do by accident**, routing it to operator
+   ratification the same commit. The seed's trust is a **named axiom**
+   (built in the open, pinned at a known-good point), not a proof —
+   stating it honestly is `feedback_no_engine` applied to our own claims.
+   Actual enforcement is the operator-ratification spine + the STOP-and-
+   escalate culture + removing the incentive to game (large honest tasks,
+   no proxy ratchet); structure makes defection conspicuous, not
+   impossible. (A4 — "what refuses a 7th connective" — is the SAME machine:
+   deviation changes the reproduction → conspicuous signal → STOP → human
+   judgment. Not "the substrate refuses.") This surfacing structure is in
+   force from scaffold time; the tasks fill behavior *under* it.
 
 ## Bootstrap chain
 

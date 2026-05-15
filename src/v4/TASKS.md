@@ -165,7 +165,7 @@ Phase 4 (serial — close the loop):
 
 **Modeling decisions**:
 - Brief contract shape (what fields are mandatory?)
-- Retirement predicate: how does `retired(HandResidual)` cash structurally?
+- Retirement predicate (A3, operator-ratified 2026-05-15): `retired` is a REPRODUCTION, never a count. `retired ⟺ rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash ∧ the seed's own hash matches its pin`. `HandResidual` = the Rust the .dag-rebuild cannot reproduce — empty by reproduction, not by count (defeats paper-shrink: relocation/inlining is non-seed Rust, removed by the test). NOT un-gameable (Trusting-Trust — pin/CI/seed are editable); its job is early/loud surfacing per-PR on the affected set so gaming is un-missable + operator-routed. Seed trust = named axiom, not proof. Enforcement = operator-ratification + STOP-culture; structure makes defection conspicuous, not impossible. Typed workflow substrate, NOT a CI grep (feedback_no_textual_enforcement_bridges).
 - Cycle data: lens-readable progression vs prose status
 
 **Reference**:
@@ -347,7 +347,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - v4 emits Rust source that compiles to a binary
 - That binary, run on `src/v4/compiler/*.dag`, produces bit-identical output
 - TestClaim suite passes
-- Hand-authored Rust count = **0** (excluding the machine-emitted trampoline)
+- Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi)
 

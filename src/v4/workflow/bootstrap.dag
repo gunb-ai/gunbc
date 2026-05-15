@@ -25,6 +25,30 @@
 //   - artifact pinning: v4-stage-final binary is content-addressed; its
 //     hash is the anti-regression anchor (T-15 BitIdentical TestClaim)
 //
+// A3 (operator-ratified 2026-05-15) — the retirement predicate, honestly:
+//   - `retired` is NOT a count of hand-Rust files (v3's gameable proxy —
+//     defeated by paper-shrink: template-relocation, module-relocation).
+//     It is a REPRODUCTION: rebuild from (.dag + frozen-pinned seed) ONLY
+//     reproduces the pinned hash AND the seed's own hash matches its pin.
+//     `HandResidual` = the Rust the .dag-rebuild cannot reproduce —
+//     empty BY REPRODUCTION, never BY COUNT.
+//   - This is NOT un-gameable (no structural mechanism is — Trusting-Trust;
+//     the pin/CI/seed are all editable by whoever commits). Its job is
+//     EARLY, LOUD SURFACING: run per-PR on the affected set (T-21/T-24) so
+//     a gaming attempt (un-pin/edit seed, relocate Rust authority, add a
+//     7th connective) is un-missable and routes to operator ratification
+//     the same commit — not silent drift found months later.
+//   - Seed trust is a NAMED AXIOM (built in the open, pinned at a known-
+//     good point), not a proof — stated honestly per feedback_no_engine.
+//     Any edit to / growth of src/v2/ is the maximally-conspicuous signal
+//     = STOP (INVARIANTS:136 bounded seed), routed to the operator.
+//   - Actual enforcement = operator-ratification spine + STOP-and-escalate
+//     culture + no proxy ratchet to game. Structure makes defection
+//     conspicuous, not impossible.
+//   - A4 corollary: a 7th connective / 6th behavior is the SAME machine —
+//     it changes the reproduction → conspicuous signal → STOP → human
+//     judgment. Not "the substrate refuses by construction."
+//
 // Discipline:
 //   - This file is the ONLY bootstrap authority. No build.rs, no bootstrap.sh.
 //     A worker reaching for shell/build.rs orchestration has reintroduced
