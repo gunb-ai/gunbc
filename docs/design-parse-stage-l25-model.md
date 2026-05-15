@@ -188,7 +188,7 @@ Per `parse_tables.dag:13-22` STOP-AND-ESCALATE bullet:
 
 > "SG-2c proper (parser authority proper — retiring `parse_parser_body.txt` as parse logic) is blocked on a named substrate capability: recursive list-body emission over `List<Token>` with cursor threading. See `src/v3/std/list.dag:13-15` (...) and SELF_HOSTING.md §6 Phase 4a. Until that lands, any full `.dag` parser port routes through a hidden Rust host layer, which SG-2c's STOP-AND-ESCALATE bullet forbids."
 
-**Implication for PB-3 migration**: Step 3 (`.dag` implementation of parser body) BLOCKED on substrate-capability landing. Step 2 (pipeline-slot declaration) + Step 3a (extend grammar tables in `parse_tables.dag`) are unblocked.
+**Implication for PB-3 migration**: Step 3 (`.dag` implementation of parser body) BLOCKED on substrate-capability landing. Step 2 (pipeline-slot declaration) + Step 3a (extend grammar tables in `parse_tables.dag`) are unblocked at HEAD — **gate**: PR #3077 §12 Q7 ratification was a hard precondition on Step 2 brief authoring (§7.2) and merged 2026-05-15T00:21:19Z, so the gate is satisfied. Step 2 must NOT be brief-authored before that merge timestamp; at HEAD it has been.
 
 ---
 
@@ -204,7 +204,7 @@ Per `feedback_anchor_mgr_lane_synthesis_on_gap_tier_not_session_id`.
 | Substrate-capability: recursive list-body emission | `src/v3/std/list.dag` capability + SELF_HOSTING.md §6 Phase 4a | PB-Substrate + R3 Grounding Mgr lane | BLOCKER for full Step 3; per parse_tables.dag:13-22 STOP-AND-ESCALATE |
 | ParseDiagnostic substrate extension | extension of `src/v3/std/diagnostics.dag:150` per Decision 2.B per PR #3077 §12 Q7 | PB-Substrate + Director-tier per-stage authoring | Carrier LIVE; per-stage variant authoring NEW per Q7 ratification |
 
-**Critical observation**: PB-3 parse has a HARD DEPENDENCY on substrate-capability landing (recursive list-body emission) for Step 3 full implementation. Step 2 + grammar-table extensions are unblocked. This makes PB-3 migration HARDER than PB-4/PB-5 — the substrate-capability gap is real, not just an L2.5 ratification question.
+**Critical observation**: PB-3 parse has a HARD DEPENDENCY on substrate-capability landing (recursive list-body emission) for Step 3 full implementation. Step 2 + grammar-table extensions are unblocked at HEAD — **the additional Step 2 gate is PR #3077 §12 Q7 ratification** (§7.2 / §15 step 4), which merged 2026-05-15T00:21:19Z; without that merge timestamp in repo history Step 2 brief authoring is structurally blocked (P3 failure shape would land unfixed). This makes PB-3 migration HARDER than PB-4/PB-5 — the substrate-capability gap is real, not just an L2.5 ratification question.
 
 ---
 
@@ -305,7 +305,7 @@ Decision 3.B operator-overrode my rec to (b) compile-time parser tables. Existin
 If Director-recommend (b) in Q1 holds: PB-3 Step 3b waits for substrate-capability. What CAN PB-3 do BEFORE substrate-capability lands?
 
 **Director-recommend**:
-- Step 2 (pipeline-slot in `src/v3/compiler/pipeline.dag`) — unblocked
+- Step 2 (pipeline-slot in `src/v3/compiler/pipeline.dag`) — unblocked at HEAD; gate was PR #3077 §12 Q7 (per §7.2 + §15 step 4), satisfied 2026-05-15T00:21:19Z
 - Step 3a (grammar table extension in parse_tables.dag) — unblocked
 - Step 3b (full parser body `.dag` migration) — blocked on substrate-capability
 
