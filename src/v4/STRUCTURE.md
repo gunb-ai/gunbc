@@ -56,14 +56,15 @@ src/v4/
     04_infer.dag         # ResolvedTree -> InferredTree (types/algebra/cardinality)
     05_emit.dag          # InferredTree + TargetSpec -> TargetSource
 
-  lens/                  # dimensions (7 files, parallel after compiler)
+  lens/                  # dimensions (8 files, parallel after compiler)
     complexity.dag
-    cost.dag
+    cost.dag             # Tier 1 + Tier 2 textbook (α(n)/log*/log log/sub-exp); UnknownCost floor
     parallelism.dag
     effect.dag
     ownership.dag
     idempotency.dag
     synthesis.dag        # cross-algorithm complexity (C7; advisory via Report carrier)
+    coverage.dag         # meta-lens — L6/L7/impossible-bug/testgen coverage discipline (structural)
 
   workflow/              # recursive-flex — work-direction in .dag (5 files)
     brief.dag            # typed Brief schema
@@ -80,7 +81,7 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 44 .dag files + 3 docs + 2 .gitkeep = 49 files at scaffold time.**
+**Total: 51 .dag files + 3 docs + 4 .gitkeep = 58 files at scaffold time.**
 
 ## Anchor convention
 

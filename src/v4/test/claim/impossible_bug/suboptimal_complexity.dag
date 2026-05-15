@@ -1,0 +1,22 @@
+// src/v4/test/claim/impossible_bug/suboptimal_complexity.dag
+//
+// Scope: TestClaim — suboptimal-complexity contract violation impossible-bug class (R1). A function annotated complexity ≤ O(n log n) whose actual structure has complexity O(n²) MUST error at compile time, not at review time.
+// Anchor: THESIS.md "Enumerable impossible-bug classes" §374-376 R1 + lens/complexity.dag (the lens that catches it)
+//
+// Owns:
+//   - test_suboptimal_complexity_violates: TestClaim
+//     - input: .dag program with complexity ≤ O(n log n) annotation + O(n²) body
+//     - expected: Diagnostic { reason: SuboptimalComplexityViolation, suggested_correction: <relax-bound or refactor-body>, at: <annotation-site> }
+//   - test_no_annotation_no_violation: TestClaim
+//     - input: same body without annotation → compiles (annotation is the assertion)
+//   - test_lying_annotation_caught: TestClaim
+//     - input: complexity: O(1) on O(n) body → Diagnostic
+//
+// Consumes:
+//   - std/verification.dag (TestClaim), std/diagnostic.dag, lens/complexity.dag
+//
+// Status: scaffold — fill per TASKS.md T-14
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.test.claim.impossible_bug.suboptimal_complexity
+

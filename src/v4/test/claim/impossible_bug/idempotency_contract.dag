@@ -1,0 +1,20 @@
+// src/v4/test/claim/impossible_bug/idempotency_contract.dag
+//
+// Scope: TestClaim — idempotency-contract violation impossible-bug class (R1). A function marked @idempotent whose structure admits non-idempotent composition MUST error at compile time.
+// Anchor: THESIS.md "Enumerable impossible-bug classes" §377-378 R1 + lens/idempotency.dag
+//
+// Owns:
+//   - test_idempotent_with_side_effect_caught: TestClaim
+//     - input: function annotated @idempotent that mutates external state
+//     - expected: Diagnostic { reason: IdempotencyViolation, suggested_correction, at }
+//   - test_idempotent_pure_passes: TestClaim
+//     - input: function annotated @idempotent that's actually pure → compiles
+//
+// Consumes:
+//   - std/verification.dag, std/diagnostic.dag, lens/idempotency.dag
+//
+// Status: scaffold — fill per TASKS.md T-14
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.test.claim.impossible_bug.idempotency_contract
+

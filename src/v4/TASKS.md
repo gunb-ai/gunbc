@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-20 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+21 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -31,6 +31,9 @@ Phase 3 (parallel — lens dimensions):
   T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
          XL scope, research-tier risk)              [needs T-12 for current-complexity input]
+  T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
+         discipline; STRUCTURAL not exhaustive-fixture per TESTING.md)
+                                                    [needs T-3, T-4, T-12, T-13]
 
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
@@ -244,7 +247,20 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-14: test/claim/* + test/fixture/*
+### T-14: test/claim/* + test/fixture/* — TestClaim corpus
+
+**Files**: `src/v4/test/claim/*` directories (6 impossible_bug + algebra_laws + diagnostic_correction + future categories) + `src/v4/test/fixture/*`
+**Operator-ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
+
+**Why bundled**: TestClaim corpus is one cohesive workstream; the coverage lens (T-18) enforces completeness structurally.
+
+**Modeling decisions**:
+- TestClaim shape per concern (input/expected/falsification triple)
+- Demonstration vs verification — impossible-bug TestClaims are demos for the thesis claim; algebra-laws are testgen-derived; diagnostic_correction is end-to-end demos
+- Fixture corpus shape (per-stage vs end-to-end?)
+
+**Reference**:
+- v3 TestClaim demonstration: `src/v3/compiler/tests/dag/t_r3_tests_as_data_demonstration.dag`
 
 **Why**: test infra port + fixture authoring. TestClaim data lives here.
 
@@ -377,9 +393,30 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
+### T-18: lens/coverage.dag — meta-lens for coverage discipline
+
+**File**: `src/v4/lens/coverage.dag` (operator-ratified 2026-05-15: structural coverage enforcement, not exhaustive fixtures)
+**Why solo**: coverage discipline is its own concern — meta over the other lenses. One file owns the unified mechanism.
+
+**Modeling decisions**:
+- Coverage<C> generic carrier shape — one lens, parameterized over coverage concern (L6 form×target / L7 algebra×law×inhabitant / impossible-bug class enum / testgen type×inhabitant)
+- Substrate read for each concern: derive EXPECTED set from substrate authority (not hand-enumerated)
+- Comparison shape: actual TestClaim corpus vs expected derived set; emit Diagnostic per missing
+- Composition with testgen: testgen produces TestClaims; coverage lens checks they cover the expected combinatorics
+- Per operator: "make the target clear so we cannot bypass it this time" — the coverage lens MUST be structurally derived from substrate; cannot be opted-out, cannot be narrowed without substrate change
+
+**Scope**: L (large — substrate-meta lens; multiple coverage concerns)
+
+**Reference**:
+- TESTING.md hermetic + behavior-driven discipline
+- THESIS L6 §181 + L7 §182 + impossible-bug §370-413
+- memory: feedback_no_textual_enforcement_bridges (coverage is structural, not grep-enforced)
+
+---
+
 ## Summary
 
-20 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+21 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 

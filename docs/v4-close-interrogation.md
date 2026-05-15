@@ -79,7 +79,7 @@ A ship-eligible v4 has every item PROVEN, NOT-IN-V4 (with named reason), or NOT-
 - [ ] Show me a polylog algorithm (e.g., repeated binary search log² n). Cost-lens output should be `PolyLogCost { exponent: 2 }`, NOT `UnknownCost`.
 - [ ] Show me a matrix-multiplication cost program (n^2.373 Coppersmith-Winograd). Cost-lens output should be `PolynomialCost { degree: 2.373 }`, NOT `UnknownCost`.
 
-**Tier 2 boundary probes** (R4-deferred per Director ratification):
+**Tier 2 boundary probes** (operator-ratified 2026-05-15: **IN** — textbook Tier 2 is a bounded set; named variants land in v4 substrate; UnknownCost-with-reason floor only for research-tier exotica):
 
 - [ ] Show me a union-find program (α(n) inverse Ackermann). Currently expected: `UnknownCost("Tier 2 — pending R4 named-variant canvas")` OR `ConstantCost-with-named-reason` per Director rationale; NOT a Tier-1-coverable bound being squelched.
 - [ ] Show me a vEB-trees program (log log n). Same expectation; nested-log structure may compose via PolyLogCost — canvas surfaces if yes.
@@ -240,7 +240,7 @@ The claim is sharp on some bug classes and softer on others. This section interr
 
 **§2.5.A Probes — What "impossible" actually means**:
 
-- [ ] Enumerate the bug classes the architecture claims are impossible **against canonical authority** (THESIS.md:370-413 "Enumerable impossible-bug classes" + ROADMAP.md:93 T-Demo R1/R2+ split — NOT a PM-fabricated count). At HEAD, THESIS commits to: **[R1]** Suboptimal-complexity contract violation + Idempotency-contract violation + Transport/type drift; **[R2+]** Nested-optional flatten + Unenumerated effects + Unhandled diagnostic paths. R3 close audit MUST verify against the canonical THESIS enumeration, NOT a session-author guess. For each [R1] class: cite the substrate fact that prevents it + the demo fixture (per ROADMAP T-Demo). For each [R2+] class: confirm R4-DEFERRED disposition per §0 vocabulary with operator-recorded acceptance. **Anti-pattern**: hard-coding a candidate list at audit-author time rather than deferring to THESIS authority — `feedback_thesis_gate_state_drift`-class miss; classes may have been added/removed in THESIS since the audit was written.
+- [ ] Enumerate the bug classes the architecture claims are impossible **against canonical authority** (THESIS.md:370-413 "Enumerable impossible-bug classes" + ROADMAP.md:93 T-Demo R1/R2+ split — NOT a PM-fabricated count). At HEAD, THESIS commits to: **[R1]** Suboptimal-complexity contract violation + Idempotency-contract violation + Transport/type drift; **[R2+]** Nested-optional flatten + Unenumerated effects + Unhandled diagnostic paths. R3 close audit MUST verify against the canonical THESIS enumeration, NOT a session-author guess. For each [R1] class: cite the substrate fact that prevents it + the demo fixture (per ROADMAP T-Demo). For each [R2+] class: confirm V4-IN-SCOPE per operator ratification 2026-05-15 ("Please frontload R2 into v4 — and any other impossible-bug classes"); each R2+ class has a TestClaim scaffold in `src/v4/test/claim/impossible_bug/`. **Anti-pattern**: hard-coding a candidate list at audit-author time rather than deferring to THESIS authority — `feedback_thesis_gate_state_drift`-class miss; classes may have been added/removed in THESIS since the audit was written.
 - [ ] For each: write a `.dag` program that ATTEMPTS the bug-class. Does the compiler refuse to compile? Show the diagnostic.
 - [ ] **Discrimination probe**: is "impossible" actually "(a) impossible to express in surface vocabulary" OR "(b) caught at compile time by lens"? They differ. (a) means the bug-shape has no syntactic form. (b) means the bug compiles syntactically but fails a check. Both prevent the bug at user-visible level; only (a) prevents the bug-shape from existing in the substrate at all.
 - [ ] **Compiler-correctness gating probe**: if the prevention is "caught at compile" (b-shape), what happens if the compiler itself has a bug? Is the prevention then defective? How is the compiler's correctness gated? (R3 close pointer: PB-self-compile fixed point + lens self-application.)
@@ -621,7 +621,7 @@ This is the **completeness** claim distinct from L5 (consistency between targets
 - [ ] **Falsification probe**: pick a structural form whose emit is implemented for one target but stubbed for another. Does the compiler fail-closed when targeting the stubbed lang, or silently emit broken code?
 - [ ] **L6 vs L5 distinction probe**: a form that emits to all 3 targets BUT produces semantically-divergent output is an L5 failure. A form that fails to emit at all on one target is an L6 failure. R3-close: zero of either?
 
-**R3-close honest framing**: L6 completeness is the strong-form omni-emission claim. R3 close MUST cite the form-by-form L6 matrix or explicitly defer to R4 with a named gap-class enumeration.
+**v4 ship framing** (operator-ratified 2026-05-15): **IN STRUCTURAL** verification per TESTING.md hermetic discipline ("heavy integration tests are exception, not the rule"). L6 completeness is verified by `lens/coverage.dag` — a meta-lens that reads `extdeps/languages/*.dag` emit rules and the (6 connectives × 5 behaviors) structural-form space, derives expected coverage, fails closed on gaps. NOT 150 hand-authored fixtures. Niche cases that genuinely need integration testing are explicit + minimal per TESTING.md §1 hermeticity.
 
 ### §3.6 L7 — operations obey declared algebraic laws
 
@@ -637,7 +637,7 @@ The compiler reads algebra declarations (`Monoid`, `Group`, `Field`, `OrderedRin
 - [ ] **Cross-target consistency**: do algebra-law tests pass on Rust + Python + Go independently? Or only Rust?
 - [ ] **Falsification probe**: introduce a `.dag` Monoid declaration whose emit deliberately violates associativity (e.g., a free-monoid with a non-associative concat). Does the L7 test surface catch it?
 
-**R3-close honest framing**: L7 is the algebraic-correctness anchor. If algebra-law tests are sparse or non-existent, "operations obey laws" is a claim without receipts. R3 close framing must either cite the per-axiom coverage or explicitly disposition this as R4-deferred.
+**v4 ship framing** (operator-ratified 2026-05-15): **IN with structural enforcement** — `lens/coverage.dag` reads `std/algebra.dag` declarations × declared law set × inhabited types, derives expected per-axiom TestClaim coverage, and fails closed on missing entries. Testgen produces the TestClaim corpus from substrate (per TESTING.md "testgen is downstream of code"); the coverage lens enforces the target structurally so workers cannot bypass it (per operator: "make the target clear so we cannot bypass it this time"). TestClaim files land in `src/v4/test/claim/algebra_laws/`.
 
 ### §3.7 The verification-machinery promises (testgen / integration / mocks / dry-run)
 
@@ -966,7 +966,7 @@ PM-recommended answer-shape for R3 close:
 
 - [ ] Find a recent compile error. Does the diagnostic point to the correct alternative, or just say "this is wrong"?
 - [ ] Pick 5 diagnostic message types. For each, does it satisfy the "show the correct code" criterion?
-- [ ] If diagnostic just says "X is wrong" without "Y would be right": is that a GAP for R3 close, or R4-deferred?
+- [ ] If diagnostic just says "X is wrong" without "Y would be right": GAP per operator-ratified 2026-05-15 — discipline rule requires every Diagnostic emit site to populate `suggested_correction`. None only when correction is genuinely undeterminable (e.g., user-input-boundary diagnostics) — and that None must carry a named reason. Working demos: complexity-violation diagnostic shows correct alternative; synthesis Report shows alternative algorithm. Demo TestClaims land in `src/v4/test/claim/diagnostic_correction/`.
 - [ ] **Falsification probe**: write a program with a known structural error. Read the diagnostic. Could a user act on it without reading source code?
 
 ### §6.2 Audience duality / opt-in depth
