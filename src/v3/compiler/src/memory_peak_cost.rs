@@ -9,7 +9,7 @@
 //! memory-dimension folds in `v3.std.algebra` and until the `EnforcedApplication` fold consumes
 //! `apply_lens(cost, …)` sites end-to-end (`docs/r3-program-plan.md` gate #91 consumer).
 
-use crate::dag::{dominates, max_path, NonZeroRational, SymbolicCost};
+use crate::dag::{dominates, max_path, SymbolicCost};
 
 /// Peak memory across **alternative** control-flow possibilities (typically **branch arms**):
 /// asymptotic **`max`/dominance** of the modeled arm peaks—the same **`dominant` → `max_path`**
@@ -45,7 +45,7 @@ pub fn memory_peak_enforcement_violates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{max_path, polynomial_linear, PortId, Rational, SizeVariable};
+    use crate::dag::{max_path, polynomial_linear, NonZeroRational, PortId, SizeVariable};
 
     fn var(p: PortId) -> SizeVariable {
         // Mirrors `unnamed_size_variable` / absent `display_name`; substrate lists BOTH fields at
