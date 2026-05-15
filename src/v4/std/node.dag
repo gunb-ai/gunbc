@@ -107,9 +107,11 @@
 //     spelling read) — K-1-clean, NOT K-1-exempt.
 //   - NO positional / ordinal selector (P2 finding 1). An `Int` ordinal
 //     admits negative / out-of-range values — EXACTLY the
-//     representable-illegal-state this file DESIGNED OUT at `EdgeLabel`
-//     (the `Positional` variant carries no index, lines ~221-230). It
-//     is NOT reintroduced. Positional-connective children
+//     representable-illegal-state this file DESIGNED OUT at the
+//     `EdgeLabel`/`EdgeDiscipline` block (the `Positional` variant
+//     carries no index — see `type EdgeLabel`, ~284, and its
+//     "deliberately NO stored index" rationale, ~278). It is NOT
+//     reintroduced. Positional-connective children
 //     (Arrow/Cardinality/Instantiation) are therefore NOT individually
 //     addressed: an Edit replaces the nearest enclosing `Named` subtree
 //     (coarser granularity = the safe over-fire #3157 point 3 blesses).
