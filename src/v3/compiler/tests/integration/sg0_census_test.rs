@@ -496,6 +496,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
     "src/v3/compiler/tests/integration/file_attachment_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // Path B Brief 1 (PR #3142): non-endomorphic `map<A, B>` and
+    // accumulator-polymorphic `fold<T, U>` compile + emit through the
+    // top-level std.list function surface while receiver-method generic
+    // syntax remains a documented substrate-language ergonomics gap.
+    "src/v3/compiler/tests/integration/generic_method_type_params_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
     // wait for generic function-valued data-field matching, while imported
