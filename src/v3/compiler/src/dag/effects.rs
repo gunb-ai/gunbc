@@ -76,6 +76,7 @@ pub enum EffectShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectClassificationFailure {
     StdMethodAnchorResolutionFailed,
+    UnknownOperationCallable,
 }
 
 /// 🟢 **TERMINAL.** Path token used by `Operation.endpoint.path`; mirrors the
@@ -305,7 +306,7 @@ pub(crate) fn classify_operation_effect(
     if callable == methods.delete {
         return Ok(keyed_delete_or_keyless_break(effect));
     }
-    Ok(transport_effect_shape(effect))
+    Err(EffectClassificationFailure::UnknownOperationCallable)
 }
 
 struct StdEffectMethodAnchors {
@@ -455,7 +456,10 @@ pub(crate) fn project_workflow_idempotency_report(
         WorkflowEffect::LinearEffect { ops } => match compose_operation_effects(dag, ops.as_slice())
         {
             Ok(verdict) => WorkflowIdempotencyReport::WorkflowCompositionVerdict(verdict),
-            Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+            Err(
+                EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                | EffectClassificationFailure::UnknownOperationCallable,
+            ) => {
                 WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
                     variant_name: "LinearEffect".to_string(),
                     downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
