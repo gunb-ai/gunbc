@@ -85,8 +85,9 @@
 //
 // T-1 scope dispositions (operator-ratified 2026-05-15):
 //   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
-//     typing (int/string/bool literal data) is std/primitive.dag (T-3) —
-//     a different concern from identifier identity.
+//     typing (int/string/bool literal data) is owned by the scalar/numeric
+//     files — std/integer.dag, std/text.dag, std/logic.dag (T-3) — a
+//     different concern from identifier identity.
 //   - Q2: this file owns the `Loop` behavior variant + the A2 discipline
 //     above; the descent-evidence carriers (RankingDimension /
 //     TerminationProof / DescentEvidence) belong to std/cardinality.dag

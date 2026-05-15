@@ -1,0 +1,33 @@
+// src/v4/std/integer.dag
+//
+// Scope: integers — the abstract signed whole numbers and their fixed-
+//        width machine projections. This is the projection site: a
+//        machine integer is a natural number projected onto a machine
+//        width (the v3 `Int64 = Compose<Int, MachineWidth<Word64>>`
+//        direction).
+// Anchor: https://en.wikipedia.org/wiki/Integer
+//
+// Owns:
+//   - Int — abstract signed integer, constructed from `Nat`
+//     (the v3 `AbelianGroup<GroupCompletion<Nat>>` construction chain)
+//   - Int8 … Int128, UInt8 … UInt128 — Int / Nat projected onto a
+//     std/machine.dag `MachineWidth`
+//   - inhabitance: Int inhabits `OrderedRing` / `AbelianGroup`
+//   - Tier-2 partial-op totalization for integer divide / modulo
+//     (Result-return / refinement-precondition — STRUCTURE.md commitment #2)
+//
+// Consumes:
+//   - std/node.dag: Instantiation
+//   - std/nat.dag: Nat
+//   - std/machine.dag: MachineWidth
+//   - std/algebra.dag: OrderedRing, AbelianGroup
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.integer

@@ -29,7 +29,7 @@
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
-//   - std/primitive.dag: Int, String + their totalizations
+//   - std/integer.dag: Int (and its Tier-2 totalizations); String kernel-ambient
 //   - std/collection.dag: List, Map
 //   - extdeps/file_system.dag: AbsolutePath (for Command.program)
 //

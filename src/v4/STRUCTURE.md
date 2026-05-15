@@ -14,13 +14,18 @@ src/v4/
   BRIEF_TEMPLATE.md      # the worker brief shape (immutable across tasks)
   TASKS.md               # 15 XL tasks defining "v4 done"
 
-  std/                   # substrate primitives (8 files)
+  std/                   # substrate primitives (14 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
-    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid + inhabitance
+    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
     witness.dag          # Witness<C> — fail-closed lens reads, no Option::None
-    diagnostic.dag       # structural Diagnostic { reason, at }
-    primitive.dag        # Int/Float/String/Char/Bool with inhabitance
+    diagnostic.dag       # structural Diagnostic { reason, at, correction }
+    logic.dag            # Bool — classical two-valued logic (Boolean algebra)
+    nat.dag              # Nat — natural numbers (Peano); numeric-tower base
+    machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr
+    integer.dag          # Int + fixed-width ints (Nat projected onto a width)
+    float.dag            # Float — IEEE-754 floating-point (opaque scalar)
+    text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
@@ -90,7 +95,30 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-**Total: 57 .dag files + 3 docs + 5 .gitkeep = 65 files at scaffold time.**
+**Total: 62 .dag files + 3 docs + 5 .gitkeep = 70 files at scaffold time.**
+(Was 57; the deleted `std/primitive.dag` is replaced by six concept-anchored
+scalar files — see §"Scalar/numeric concept decomposition" below. Composes
+additively with PR #3150's `verilog`/`spice`/`english` additions.)
+
+## Scalar/numeric concept decomposition
+
+`std/primitive.dag` is **deleted.** It lumped five unrelated concepts
+(`Int`/`Float`/`String`/`Char`/`Bool`) under the label "primitive" — but per
+THESIS epistemic stacking the genuine primitives are the six connectives
+(`node.dag`) and the algebra roots (`algebra.dag`); `Int`/`Bool`/`String`/`Char`
+are *compositions* that attach by inhabitance, not primitives. It is replaced
+by six concept-located files, each anchored to a real external concept
+(Wikipedia / spec) — the same anchored-concept discipline `extdeps/` uses:
+
+- `std/logic.dag` — `Bool`, classical two-valued logic
+- `std/nat.dag` — `Nat`, natural numbers (Peano)
+- `std/machine.dag` — `Byte`/`Word*`/`MachineWidth`/`PointerWidth`, machine representation
+- `std/integer.dag` — `Int` + fixed-width ints (a `Nat` projected onto a machine width)
+- `std/float.dag` — `Float`, IEEE-754 (the one genuine opaque scalar)
+- `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
+
+Each declares its own inhabitance (the inhabiting type owns its grounding —
+INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
 
 ## Anchor convention
 
@@ -159,11 +187,13 @@ reference this section when dispatching workers.
    `std/node.dag`), not by review process — the compiler reads the closed
    enum and refuses to compile any program that synthesizes outside it.
 
-2. **Tier 2 partial-op totalization lives in `std/primitive.dag`** (per
-   THESIS:175-176). Each primitive's partial operations (divide, modulo,
-   indexed access, force-unwrap) declare their totalization shape
-   (`Result`-return / `Witness`-return / refinement-precondition) in the
-   same file as the primitive itself. No separate "totalization registry."
+2. **Tier 2 partial-op totalization lives with each scalar type, in its
+   own file** (per THESIS:175-176). A scalar's partial operations declare
+   their totalization shape (`Result`-return / `Witness`-return /
+   refinement-precondition) in the same file as the type itself: integer
+   divide / modulo in `std/integer.dag`, NaN-producing ops in
+   `std/float.dag`, indexed access / force-unwrap where the indexed type
+   lives. No separate "totalization registry."
 
 3. **`Diagnostic` schema carries a typed `correction`** (per THESIS:103-105
    "show the correct code"). Schema:

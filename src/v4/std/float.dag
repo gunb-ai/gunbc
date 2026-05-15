@@ -1,0 +1,30 @@
+// src/v4/std/float.dag
+//
+// Scope: IEEE-754 binary floating-point — reals as the hardware defines
+//        them. Deliberately separate from integer: floating-point
+//        arithmetic is NOT a clean algebra (rounding breaks associativity;
+//        NaN breaks reflexive equality), so it is modeled honestly as the
+//        hardware artifact rather than grounded in the algebra roots.
+// Anchor: https://en.wikipedia.org/wiki/IEEE_754
+//
+// Owns:
+//   - Float — IEEE-754 binary floating-point (Float32 / Float64). The one
+//     genuine opaque/irreducible scalar in this layer: it does not
+//     decompose into the algebra roots; its semantics are hardware-defined.
+//   - Tier-2 totalization for the partial / non-total operations
+//     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
+//     commitment #2
+//
+// Consumes:
+//   - std/node.dag
+//   - std/machine.dag: the bit-width (Float32 / Float64)
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.float
