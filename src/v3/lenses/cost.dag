@@ -58,7 +58,7 @@ import std.list { List, empty, fold, cons }
 import std.substrate {
   Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node,
   TransformNode, TransformTarget, OperatorKind, ArithmeticOp,
-  resolve_producer, substrate_lens_read_diagnostic_anchor
+  resolve_producer
 }
 import std.algebra {
   MethodContract,
@@ -199,13 +199,13 @@ fn witness_combine_sequential(
     Inhabits(ax) =>
       match wb {
         Inhabits(bx) => wc_inhabits(sequential(ax, bx))
-        Violates(reason = rbody, at = abody) =>
+        Violates { reason: rbody, at: abody } =>
           Violates {
             reason: rbody
             at: abody
           }
       }
-    Violates(reason = rax, at = aax) =>
+    Violates { reason: rax, at: aax } =>
       Violates {
         reason: rax
         at: aax
@@ -220,13 +220,13 @@ fn witness_combine_iterate(
     Inhabits(b) =>
       match body_w {
         Inhabits(y) => wc_inhabits(iterate(b, y))
-        Violates(reason = ry, at = ay) =>
+        Violates { reason: ry, at: ay } =>
           Violates {
             reason: ry
             at: ay
           }
       }
-    Violates(reason = rx, at = ax) =>
+    Violates { reason: rx, at: ax } =>
       Violates {
         reason: rx
         at: ax
@@ -241,13 +241,13 @@ fn witness_combine_max(
     Inhabits(ax) =>
       match wb {
         Inhabits(bx) => wc_inhabits(dominant(ax, bx))
-        Violates(reason = r2, at = a2) =>
+        Violates { reason: r2, at: a2 } =>
           Violates {
             reason: r2
             at: a2
           }
       }
-    Violates(reason = r1, at = a1) =>
+    Violates { reason: r1, at: a1 } =>
       Violates {
         reason: r1
         at: a1
@@ -278,16 +278,16 @@ fn params_of(behavior: Behavior) -> List<SymbolicCostEntry> =
     Transform(t) => empty()
     Branch(b) => empty()
     Loop(l) => empty()
-    Bind(bind) => param_entries(bind.params)
+    Bind(bind) => param_entries(bind.params, behavior)
   }
 
-fn param_entries(params: List<PortId>) -> List<SymbolicCostEntry> =
+fn param_entries(params: List<PortId>, subject: Behavior) -> List<SymbolicCostEntry> =
   match params {
     Empty => empty()
     Cons(payload) =>
       cons(
-        { port: payload.head, cost: hit_symbolic_cost_lookup(ConstantCost(0)) },
-        param_entries(payload.tail)
+        { port: payload.head, cost: wc_inhabits(ConstantCost(0)) },
+        param_entries(payload.tail, subject)
       )
   }
 
@@ -307,123 +307,134 @@ fn entry_for(
 ) -> SymbolicCostEntry =
   match behavior {
     Value(v) =>
-      { port: v.result_port, cost: hit_symbolic_cost_lookup(ConstantCost(0)) }
+      { port: v.result_port, cost: wc_inhabits(ConstantCost(0)) }
     Transform(t) =>
       match per_call_pattern_at(d, t.id) {
         None =>
-          { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+          {
+            port: t.result_port,
+            cost: transform_cost_for_target(acc, t.target, t.inputs, behavior)
+          }
         Some(pattern) =>
           match per_call_descent_operand_port(d, t.id) {
             None =>
-              { port: t.result_port, cost: miss_symbolic_cost_lookup() }
+              {
+                port: t.result_port,
+                cost: Violates {
+                  reason: "symbolic_cost_of: recurrence descent operand unavailable for call pattern"
+                  at: behavior
+                }
+              }
             Some(descent_port) =>
               {
                 port: t.result_port,
-                cost: recursive_transform_cost(acc, pattern, descent_port, t.inputs)
+                cost: recursive_transform_cost(
+                  acc,
+                  pattern,
+                  descent_port,
+                  t.inputs,
+                  behavior
+                )
               }
           }
       }
     Branch(b) =>
-      { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
+      {
+        port: b.result_port,
+        cost: branch_cost(acc, b.input, b.paths, behavior)
+      }
     Loop(l) =>
-      { port: l.result_port, cost: loop_cost(d, acc, l) }
+      {
+        port: l.result_port,
+        cost: loop_cost(d, acc, l, behavior)
+      }
     Bind(bind) =>
-      { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+      {
+        port: bind.result_port,
+        cost: lookup_cost_with_subject(acc, bind.result_port, behavior)
+      }
   }
 
 // Recurrence iteration bound × operand spine from `inputs`, keyed by the same
 // `per_call_pattern_at` projection over `SubValueRelation` evidence.
 //
-// **`pattern_to_iter_bound(pattern, descent_port)`** supplies only the **iterate
-// dimension** (recurrence measure keyed on `descent_port`), not the sequential cost of
-// **evaluating** the argument subgraph on that wire — mirror `complexity.dag`
-// `recursive_transform_summary`: compose `lookup_cost(acc, descent_port)` inside the
-// iterate body, then fold **remaining** inputs while skipping `descent_port` so we never
-// charge `lookup_cost` twice for the same wire or stack `sum_costs` on top of the bound's
-// same-port linear factor (unary tail recursion still surfaces benign `ProductCost`
-// shells until alias-aware folding / host collapse).
-// `SameArgumentCall` has no recurrence bound → `pattern_to_iter_bound` is `Miss` (P3).
+// Gate #104: recurrence body composes `Witness<SymbolicCost>` only (no `Lookup<>`).
 fn recursive_transform_cost(
   acc: List<SymbolicCostEntry>,
   pattern: CallPattern,
   descent_port: PortId,
-  inputs: List<PortId>
-) -> Lookup<SymbolicCost> =
+  inputs: List<PortId>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
   match inputs {
-    Empty => miss_symbolic_cost_lookup()
+    Empty =>
+      Violates {
+        reason: "symbolic_cost_of: recursive callable transform expects operand ports"
+        at: subject
+      }
     Cons(_) =>
-      combine_iterate(
-        pattern_to_iter_bound(pattern, descent_port),
-        combine_sequential(
-          lookup_cost(acc, descent_port),
-          sum_costs_excluding_descent_operand(acc, inputs, descent_port)
+      witness_combine_iterate(
+        pattern_to_iter_bound(pattern, descent_port, subject),
+        witness_combine_sequential(
+          lookup_cost_with_subject(acc, descent_port, subject),
+          sum_costs_excluding_descent_operand(acc, inputs, descent_port, subject)
         )
       )
   }
 
-// Recurrence **bound** for `combine_iterate` / `iterate`. `SameArgumentCall` is a
-// no-descent self-call (not a well-founded recurrence dimension here) — **Miss**, not
-// a successful `UnknownCost` shell (P3 / INVARIANTS.md; design: same-arg is not recurrence).
-fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
+// `SameArgumentCall` has no recurrence bound here — `Witness::Violates` (not `UnknownCost`).
+fn pattern_to_iter_bound(
+  pattern: CallPattern,
+  arg_port: PortId,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
-      hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LogCost(unnamed_size_variable(arg_port)))
     ChildAccessorCall { accessor: accessor } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     FoldBodyCall { outer_collection: outer_collection } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     ParserAdvanceCall { witness: witness } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     WorklistDrainCall { element: element } =>
-      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+      wc_inhabits(LinearCost(unnamed_size_variable(arg_port)))
     SameArgumentCall =>
-      miss_symbolic_cost_lookup()
+      Violates {
+        reason: "symbolic_cost_of: SameArgumentCall has no iterative recurrence bound"
+        at: subject
+      }
   }
 
-// `loop_cost` composes iteration: bound × body.
-//
-// - Bound: `LinearCost(size_var_of(l.source))` — the runtime value
-//   the Loop descends upon. This is the live DB-3 / DB-7 analysis path:
-//   `AnalysisDimension.witness_of(d, behavior)` receives the whole
-//   `Behavior`, so a Loop witness can read both `LoopNode.source` and
-//   `LoopNode.bound`. Do not use this comment as an argument that a
-//   future generic `Lens<C>.iterate` may drop or rederive the source;
-//   the current authority stays at the Behavior / LoopNode boundary.
-// - Body: the already-lowered cost of `l.body`'s result port. The
-//   forward-fold contract guarantees the body's `entry_for` ran
-//   earlier in the walk (producers precede consumers in
-//   `d.nodes`), so its cost is already in `acc`.
-//
-// PR #537 reviewer call-out (briansrls, BLOCKING): the earlier
-// shape `loop_cost(acc, l.source)` passed only the source port
-// and then looked that same port up as "body cost" — so
-// recursive-body work silently contributed zero, violating Facts
-// Flow Forward. Now `l.body: NodeId` is resolved through the
-// `node(d, NodeId) -> Behavior?` substrate accessor to recover
-// the body's result port, and THAT port's cost is the honest
-// body cost.
 fn loop_cost(
   d: Dag,
   acc: List<SymbolicCostEntry>,
-  l: LoopNode
-) -> Lookup<SymbolicCost> =
-  combine_iterate(
+  l: LoopNode,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  witness_combine_iterate(
     linear_at(l.source),
-    body_cost(d, acc, l.body)
+    body_cost(d, acc, l.body, subject)
   )
 
 fn body_cost(
   d: Dag,
   acc: List<SymbolicCostEntry>,
-  body_id: NodeId
-) -> Lookup<SymbolicCost> =
+  body_id: NodeId,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
   match node(d, body_id) {
-    None => miss_symbolic_cost_lookup()
-    Some(body_behavior) => lookup_cost(acc, behavior_result_port(body_behavior))
+    None =>
+      Violates {
+        reason: "symbolic_cost_of: loop body node missing from Dag"
+        at: subject
+      }
+    Some(body_behavior) =>
+      lookup_cost_with_subject(acc, behavior_result_port(body_behavior), subject)
   }
 
 fn behavior_result_port(b: Behavior) -> PortId =
@@ -435,178 +446,122 @@ fn behavior_result_port(b: Behavior) -> PortId =
     Bind(bind) => bind.result_port
   }
 
-fn linear_at(port_id: PortId) -> Lookup<SymbolicCost> =
-  hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(port_id)))
-
-fn combine_iterate(
-  bound: Lookup<SymbolicCost>,
-  body: Lookup<SymbolicCost>
-) -> Lookup<SymbolicCost> =
-  match bound {
-    Miss => miss_symbolic_cost_lookup()
-    Hit(b) =>
-      match body {
-        Miss => miss_symbolic_cost_lookup()
-        Hit(y) => hit_symbolic_cost_lookup(iterate(b, y))
-      }
-  }
+fn linear_at(port_id: PortId) -> Witness<SymbolicCost> =
+  wc_inhabits(LinearCost(unnamed_size_variable(port_id)))
 
 fn branch_cost(
   acc: List<SymbolicCostEntry>,
   input: PortId,
-  paths: List<BranchPath>
-) -> Lookup<SymbolicCost> =
-  combine_sequential(
-    hit_symbolic_cost_lookup(ConstantCost(1)),
-    combine_sequential(
-      lookup_cost(acc, input),
-      max_of_paths(acc, paths)
+  paths: List<BranchPath>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  witness_combine_sequential(
+    wc_inhabits(ConstantCost(1)),
+    witness_combine_sequential(
+      lookup_cost_with_subject(acc, input, subject),
+      max_of_paths(acc, paths, subject)
     )
   )
 
 fn max_of_paths(
   acc: List<SymbolicCostEntry>,
-  paths: List<BranchPath>
-) -> Lookup<SymbolicCost> =
-  fold(paths, hit_symbolic_cost_lookup(ConstantCost(0)), |running, path|
-    combine_max(running, lookup_cost(acc, path.result_port))
+  paths: List<BranchPath>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  fold(paths, wc_inhabits(ConstantCost(0)), |running, path|
+    witness_combine_max(
+      running,
+      lookup_cost_with_subject(acc, path.result_port, subject)
+    )
   )
 
-fn combine_max(
-  a: Lookup<SymbolicCost>,
-  b: Lookup<SymbolicCost>
-) -> Lookup<SymbolicCost> =
-  match a {
-    Miss => miss_symbolic_cost_lookup()
-    Hit(ax) =>
-      match b {
-        Miss => miss_symbolic_cost_lookup()
-        Hit(bx) => hit_symbolic_cost_lookup(dominant(ax, bx))
-      }
-  }
-// **Gate #94 (memory_peak_cost_basis_demonstrated):** the same dominance-max
-// lattice models **branch-arm peak bounds** (`compose_branch_memory_peak` —
-// `src/v3/compiler/src/memory_peak_cost.rs`). Work along a path uses `combine_sequential`
-// elsewhere; alternative arm peaks compose here via this `max_path` step (`dominant`).
+// **Gate #94 (memory_peak_cost_basis_demonstrated):** same dominance-max lattice ...
 
 fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   max_path(cons(a, cons(b, empty())))
 
-// Integer divide (E-P): preserve operand costs via `transform_cost(acc, inputs)` (Constant(1)
-// + per-input lookups), then **sequentially** charge **`LogCost(dividend_port)`** for the divide
-// itself (dividend is `Cons` head). Omitting `transform_cost` would under-approximate when
-// operands are expensive (PR #2299 / openai-pro).
 fn transform_cost_for_target(
   acc: List<SymbolicCostEntry>,
   target: TransformTarget,
-  inputs: List<PortId>
-) -> Lookup<SymbolicCost> =
+  inputs: List<PortId>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
   match target {
-    Callable(_) => transform_cost(acc, inputs)
-    UnresolvedFieldProject { field_label: l } => transform_cost(acc, inputs)
-    ResolvedFieldProject { field_label: f } => transform_cost(acc, inputs)
+    Callable(_) => transform_cost(acc, inputs, subject)
+    UnresolvedFieldProject { field_label: l } => transform_cost(acc, inputs, subject)
+    ResolvedFieldProject { field_label: f } => transform_cost(acc, inputs, subject)
     Operator(op) =>
       match op {
         Arithmetic(arith) =>
           match arith {
             Div =>
               match inputs {
-                // `inputs` is `Transform` operand port list in lowering order: **head = dividend**,
-                // tail = divisor(s). Matches checked-Int divide / `Operator(Arithmetic(Div))` wiring
-                // (same convention as `CallPattern::ArithmeticDivideCall` commentary above).
                 Cons(payload) =>
-                  combine_sequential(
-                    transform_cost(acc, inputs),
-                    hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(payload.head)))
+                  witness_combine_sequential(
+                    transform_cost(acc, inputs, subject),
+                    wc_inhabits(LogCost(unnamed_size_variable(payload.head)))
                   )
-                // No dividend port list — malformed `Operator(Arithmetic(Div))`; fail closed
-                // (not `transform_cost`, which would pretend a well-formed zero-ary divide).
-                Empty => miss_symbolic_cost_lookup()
+                Empty =>
+                  Violates {
+                    reason: "symbolic_cost_of: divide transform missing dividend port"
+                    at: subject
+                  }
               }
-            Add => transform_cost(acc, inputs)
-            Sub => transform_cost(acc, inputs)
-            Mul => transform_cost(acc, inputs)
+            Add => transform_cost(acc, inputs, subject)
+            Sub => transform_cost(acc, inputs, subject)
+            Mul => transform_cost(acc, inputs, subject)
           }
-        Comparison(_) => transform_cost(acc, inputs)
-        Logical(_) => transform_cost(acc, inputs)
+        Comparison(_) => transform_cost(acc, inputs, subject)
+        Logical(_) => transform_cost(acc, inputs, subject)
       }
   }
 
 fn transform_cost(
   acc: List<SymbolicCostEntry>,
-  inputs: List<PortId>
-) -> Lookup<SymbolicCost> =
-  combine_sequential(
-    hit_symbolic_cost_lookup(ConstantCost(1)),
-    sum_costs(acc, inputs)
+  inputs: List<PortId>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  witness_combine_sequential(
+    wc_inhabits(ConstantCost(1)),
+    sum_costs(acc, inputs, subject)
   )
 
 fn sum_costs(
   acc: List<SymbolicCostEntry>,
-  ports: List<PortId>
-) -> Lookup<SymbolicCost> =
-  fold(ports, hit_symbolic_cost_lookup(ConstantCost(0)), |running, port_id|
-    combine_sequential(running, lookup_cost(acc, port_id))
+  ports: List<PortId>,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  fold(ports, wc_inhabits(ConstantCost(0)), |running, port_id|
+    witness_combine_sequential(
+      running,
+      lookup_cost_with_subject(acc, port_id, subject)
+    )
   )
 
-// Sum operand-port costs for recursive Callable transforms, **excluding** the port
-// identified by `per_call_descent_operand_port` — `recursive_transform_cost` composes
-// `lookup_cost(acc, descent_port)` once in the iterate body; this fold covers **other**
-// operands only (see `recursive_transform_cost` commentary).
 fn sum_costs_excluding_descent_operand(
   acc: List<SymbolicCostEntry>,
   ports: List<PortId>,
-  descent_port: PortId
-) -> Lookup<SymbolicCost> =
-  fold(ports, hit_symbolic_cost_lookup(ConstantCost(0)), |running, port_id|
+  descent_port: PortId,
+  subject: Behavior
+) -> Witness<SymbolicCost> =
+  fold(ports, wc_inhabits(ConstantCost(0)), |running, port_id|
     if port_id == descent_port then
       running
     else
-      combine_sequential(running, lookup_cost(acc, port_id))
+      witness_combine_sequential(
+        running,
+        lookup_cost_with_subject(acc, port_id, subject)
+      )
   )
 
-fn combine_sequential(
-  a: Lookup<SymbolicCost>,
-  b: Lookup<SymbolicCost>
-) -> Lookup<SymbolicCost> =
-  match a {
-    Miss => miss_symbolic_cost_lookup()
-    Hit(ax) =>
-      match b {
-        Miss => miss_symbolic_cost_lookup()
-        Hit(bx) => hit_symbolic_cost_lookup(sequential(ax, bx))
-      }
-  }
-
-fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<SymbolicCost> =
-  match acc {
-    Empty => miss_symbolic_cost_lookup()
-    Cons(payload) =>
-      if payload.head.port == port_id then
-        payload.head.cost
-      else
-        lookup_cost(payload.tail, port_id)
-  }
-
 // ── T-LAS Slice B — `Lens<SymbolicCost>` + canonical enforcement (gate #90) ──
-//
-// Thin substrate packaging over the existing `symbolic_cost_of` /
-// `compute_symbolic_costs` authority — **no parallel cost algebra**. Composition
-// hooks reuse `std.algebra::{sequential,iterate}` / local `dominant` exactly as
-// the Behavior fold does; Q-Lens-Target-Context / LoopBound-measure refinements
-// remain tracked under gunbc#2175 without blocking enforcement landing.
-fn witness_from_symbolic_cost_lookup(s: Lookup<SymbolicCost>, at: Behavior) -> Witness<SymbolicCost> =
-  match s {
-    Hit(c) => Inhabits(c)
-    Miss =>
-      Violates {
-        reason: "symbolic_cost_of: missing SymbolicCost for behavior result port"
-        at: at
-      }
-  }
 
 fn cost_lens_read(d: Dag, b: Behavior) -> Witness<SymbolicCost> =
-  witness_from_symbolic_cost_lookup(symbolic_cost_of(d, behavior_result_port(b)), b)
+  lookup_cost_with_subject(
+    compute_symbolic_costs(d),
+    behavior_result_port(b),
+    b
+  )
 
 fn cost_lens_sequential_op(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   sequential(a, b)
