@@ -3804,7 +3804,8 @@ pub mod lens_effect_enumeration {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        non_shorthand_field_patterns
     )]
     mod generated {
         use crate::dag::*;
