@@ -18,6 +18,8 @@
 
 module v4.std.cardinality
 
+import v4.std.node { Symbol }
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
@@ -30,13 +32,14 @@ module v4.std.cardinality
 //   - the MULTIPLICITY refinement — `Multiplicity` — the type-level
 //     bounded/unbounded distinction, with no escape hatch (P4).
 //
-// node.dag ONLY. Every type below references nothing but the substrate-
-// ambient kernel types (`Symbol` — opaque kernel identity per node.dag
-// K-1; `List`). There is no `import`: this file is self-contained, exactly
-// as std/algebra.dag is. "Consumes std/node.dag: the Cardinality
-// connective" (header) is the CONCEPTUAL grounding — `Multiplicity`
-// refines the meaning of node.dag's `Cardinality` connective — not a
-// symbol import.
+// node.dag ONLY. The sole import is `Symbol` (opaque kernel identity,
+// node.dag K-1). node.dag's header frames `Symbol` as substrate-ambient,
+// but the v2 bootstrap seed resolves it only as a node.dag export, so it
+// is imported explicitly — node.dag is this file's permitted substrate,
+// so consuming it is in scope. `List` is genuinely kernel-ambient (no
+// import). "Consumes std/node.dag: the Cardinality connective" (header)
+// is the additional CONCEPTUAL grounding — `Multiplicity` refines the
+// meaning of node.dag's `Cardinality` connective.
 //
 // CHECKER, NOT DISCOVERER (INVARIANTS:66 / node.dag A2 / feedback_no_
 // engine). A `TerminationProof` is a CLAIM: it carries, per ranking
