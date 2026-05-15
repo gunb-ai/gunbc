@@ -880,10 +880,8 @@ mod e7_analyze_complexity_integration {
             // string-parsed by this test.
             match witness {
                 v3_compiler::Witness::Inhabits(_) => {}
-                v3_compiler::Witness::Violates { at, .. } => {
-                    // Only structural assertions on `at`; never on
-                    // `reason`.
-                    let _ = at;
+                v3_compiler::Witness::Violates { subject, .. } => {
+                    let _ = subject;
                 }
             }
         }

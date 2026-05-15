@@ -102,7 +102,7 @@ fn dimension_fail_closed() -> DimensionReport<Int> =
 fn dimension_report_from_witness(d: Dag, w: Witness<Int>) -> DimensionReport<Int> =
   match w {
     Inhabits(c) => report_inhabits_branch(d, c, mini_lens.validate(d, c))
-    Violates { reason: _r, at: _beh } => dimension_fail_closed()
+    Violates { reason: _r, subject: AtBehavior(_beh) } => dimension_fail_closed()
   }
 
 fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =

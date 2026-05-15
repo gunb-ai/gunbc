@@ -4191,6 +4191,7 @@ pub mod lens_cost {
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
         };
+        use crate::ViolatesSubject;
         use crate::Witness;
 
         include!("complexity_lens_generated.rs");
@@ -4591,6 +4592,7 @@ pub mod lens_cost_symbolic {
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
         };
+        use crate::ViolatesSubject;
         use crate::Witness;
 
         include!("cost_symbolic_lens_generated.rs");
