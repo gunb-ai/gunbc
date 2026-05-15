@@ -81,6 +81,17 @@ module v4.std.algebra
 // alone (cost-of-change = 1). This is the deliberate v4 departure from
 // v3's flat re-listing of `op` in every record.
 //
+// The coherent pattern, stated once: nesting applies along a
+// REFINEMENT CHAIN (a structure strengthens a weaker one — Semigroup→
+// Monoid→Group…, so it nests that weaker carrier). A ROOT structure has
+// no weaker structure to nest, so it declares its primitive operations
+// directly as fields: `Magma { op }`, `Lattice { meet, join }`. Lattice
+// is a root (meet/join are its two primitive operations, not a
+// refinement of anything), which is why it is bare — same rule as
+// `Magma`, not an exception. Ring-like structures are the third shape:
+// a composition of TWO sub-algebras (`add`/`mul`), each itself nesting
+// its own refinement chain.
+//
 // LAWS ARE GROUNDED DEFINITIONS, NOT FIELDS OR FLAGS. Associativity,
 // identity, commutativity, distributivity ARE the definitions of the
 // named structures (anchor: Wikipedia "Algebraic structure") — math
