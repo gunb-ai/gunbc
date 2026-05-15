@@ -129,7 +129,10 @@ type Diagnostic {
 // stringifying a closed-axis variant boundary would be a typed-carrier
 // regression. `reason: String` is intentional human display detail only.
 //
-// Typed surface-form reference for unsupported-form diagnostic:
+// 🟢 TERMINAL at the surface-form-reference scope. Closed-axis sum over
+// live Surface* carriers (parse_surface.dag); no further dissolution.
+// Each variant wraps a typed substrate carrier directly. Per cursor +
+// codex PR #3077 PR #3085 Practice 4 discipline (Coproduct dissolution).
 type SurfaceFormRef
   = ExprForm(SurfaceExpr)
   | ItemForm(SurfaceItem)
@@ -137,12 +140,21 @@ type SurfaceFormRef
   | TypeForm(SurfaceType)
   | LiteralForm(SurfaceLiteral)
 
-// Typed identifier reference for resolve errors (identifier-as-typed-fact,
-// not stringified). PR #3077 BLOCKING applies same discipline.
+// 🟡 SCAFFOLD at PROPOSED stage. Dissolution trigger: Step 2 brief
+// enumerates the full identifier-kind set against lower.rs identifier-
+// resolution sites; promote to 🟢 TERMINAL when SurfaceVarRef +
+// TypePathRef + ModulePathRef cover the actual axes. Adjacent live
+// substrate: none (this is a NEW carrier).
 type IdentifierRef
   = SurfaceVarRef { name: NonEmptyStr, span: SourceSpan }
   // Future: TypePathRef, ModulePathRef per Step 2 brief authoring
 
+// 🟡 SCAFFOLD at PROPOSED stage. Dissolution trigger: Step 2 brief
+// enumerates the full variant set against lower.rs Diagnostic emission
+// sites; promote to 🟢 TERMINAL at per-stage diagnostic-variant scope.
+// Anti-bridge per Q6.5 (diagnostics.dag:135-141): does NOT collapse
+// into CompilerDiagnosticKind without PR #3077 §12 Q7 ratification on
+// Decision 2.B extension path.
 type LowerDiagnostic
   = ResolveError { identifier: IdentifierRef, scope_chain: List<DeclarationId> }
   | UnsupportedSurfaceForm { form: SurfaceFormRef, reason: String }  // form is typed; reason is human display
@@ -166,7 +178,12 @@ Earlier draft proposed `LowerResult = Either<PreInferDag, List<LowerDiagnostic>>
 **Corrected diagnostic-anchor model** (typed at the same level as diagnostic variants):
 
 ```
-// Typed diagnostic anchor — closed-axis sum over anchor kinds:
+// 🟢 TERMINAL at the diagnostic-anchor scope. Closed-axis sum
+// covering all lowering-stage diagnostic anchor kinds (port-level /
+// declaration-level / field-level / surface-form-level). No further
+// dissolution — each variant carries a typed reference to the
+// associated substrate object. Per cursor + codex PR #3077 Practice 4
+// discipline (Coproduct dissolution).
 type DiagnosticAnchor
   = PortAnchor { port_id: PortId }
   | DeclarationAnchor { declaration_id: DeclarationId }
