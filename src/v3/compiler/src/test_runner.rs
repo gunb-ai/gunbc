@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
-    ValueBody, WorkflowParallelismReport,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, Rational, SymbolicCost,
+    TypeConnective, ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -5993,11 +5993,11 @@ enum SymbolicCostEqPattern {
     },
     Polynomial {
         source_port: SymbolicCostPortPattern,
-        degree_raw: i64,
+        degree: Rational,
     },
     PolyLog {
         source_port: SymbolicCostPortPattern,
-        exponent_raw: i64,
+        exponent: Rational,
     },
     Exponential {
         source_port: SymbolicCostPortPattern,
@@ -6025,11 +6025,11 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            degree_raw: degree.raw(),
+            degree: degree.as_rational().clone(),
         },
         SymbolicCost::PolyLogCost { var, exponent } => SymbolicCostEqPattern::PolyLog {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
-            exponent_raw: exponent.raw(),
+            exponent: exponent.as_rational().clone(),
         },
         SymbolicCost::ExponentialCost { base, var } => SymbolicCostEqPattern::Exponential {
             source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
@@ -6087,17 +6087,17 @@ fn resolve_symbolic_cost_param_refs_for_bind(
         },
         SymbolicCostEqPattern::Polynomial {
             source_port,
-            degree_raw,
+            degree,
         } => SymbolicCostEqPattern::Polynomial {
             source_port: resolve(source_port, bind, expected_param_index)?,
-            degree_raw,
+            degree,
         },
         SymbolicCostEqPattern::PolyLog {
             source_port,
-            exponent_raw,
+            exponent,
         } => SymbolicCostEqPattern::PolyLog {
             source_port: resolve(source_port, bind, expected_param_index)?,
-            exponent_raw,
+            exponent,
         },
         SymbolicCostEqPattern::Exponential {
             source_port,
@@ -6185,7 +6185,10 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let inner = single_payload(payload)?;
                     let source_port =
                         parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
-                    Ok(SymbolicCostEqPattern::Polynomial { source_port, degree_raw: 1 })
+                    Ok(SymbolicCostEqPattern::Polynomial {
+                        source_port,
+                        degree: Rational::ONE,
+                    })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
@@ -6211,10 +6214,10 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     })?;
                     let source_port =
                         parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
-                    let degree_raw = degree_raw_from_rational_like_field_value(dag, degree)?;
+                    let degree = rational_from_rational_like_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
                         source_port,
-                        degree_raw,
+                        degree,
                     })
                 }
                 "PolyLogCost" => {
@@ -6233,10 +6236,10 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     })?;
                     let source_port =
                         parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
-                    let exponent_raw = degree_raw_from_rational_like_field_value(dag, exponent)?;
+                    let exponent = rational_from_rational_like_field_value(dag, exponent)?;
                     Ok(SymbolicCostEqPattern::PolyLog {
                         source_port,
-                        exponent_raw,
+                        exponent,
                     })
                 }
                 "ExponentialCost" => {
@@ -6634,11 +6637,12 @@ fn is_display_name_optional_absent_constructor(dag: &Dag, ctor: DeclarationId) -
     size_variable_display_name_optional_none_constructor_id(dag) == Some(ctor)
 }
 
-fn degree_raw_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Result<i64, String> {
+fn rational_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Result<Rational, String> {
     if let FieldValue::Literal(LiteralBits::Int(n)) = fv {
-        return n.parse::<i64>().map_err(|err| {
-            format!("SymbolicCostExprEquals: Rational/degree literal `{n}` is not i64: {err}")
-        });
+        let raw = n.parse::<i64>().map_err(|err| {
+            format!("SymbolicCostExprEquals: Rational literal `{n}` is not i64: {err}")
+        })?;
+        return Ok(Rational::from_i64(raw));
     }
     let FieldValue::Variant {
         constructor,
@@ -6658,7 +6662,7 @@ fn degree_raw_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Resu
             "SymbolicCostExprEquals: anonymous DegreeAtLeastTwo constructor".to_string()
         })?;
     match label {
-        "DegreeTwo" => Ok(2),
+        "DegreeTwo" => Ok(Rational::TWO),
         "DegreeSuccessor" => {
             let record = single_payload(payload)?;
             let fields = record_fields(record).ok_or_else(|| {
@@ -6670,8 +6674,8 @@ fn degree_raw_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Resu
             let prev = field(fields, "previous").ok_or_else(|| {
                 "SymbolicCostExprEquals: DegreeSuccessor missing `previous`".to_string()
             })?;
-            let prev_raw = degree_raw_from_rational_like_field_value(dag, prev)?;
-            Ok(prev_raw + 1)
+            let prev = rational_from_rational_like_field_value(dag, prev)?;
+            Ok(prev.add(&Rational::ONE))
         }
         other => Err(format!(
             "SymbolicCostExprEquals: unknown DegreeAtLeastTwo variant `{other}`"

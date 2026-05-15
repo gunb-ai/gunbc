@@ -38,7 +38,17 @@ pub fn escape_v3_string_literal_content(s: &str) -> String {
 }
 
 fn rational_v3(d: &Rational) -> String {
-    d.raw().to_string()
+    if d.denominator() == 1 {
+        d.numerator().to_string()
+    } else {
+        panic!(
+            "symbolic_cost_as_v3_data_initializer cannot serialize non-integer Rational {}/{} \
+             without losing facts; v3 Rational is the opaque Field<FieldOfFractions<Int>> carrier, \
+             not a numerator/denominator record",
+            d.numerator(),
+            d.denominator()
+        );
+    }
 }
 
 fn symbolic_cost_list_tail_v3(terms: &[SymbolicCost]) -> String {
