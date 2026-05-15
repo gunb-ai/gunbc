@@ -61,8 +61,11 @@ pub enum Witness<C> {
     },
 }
 
-/// Malformed substrate boundary for [`Witness`] — avoids fabricating unrelated
-/// [`Behavior`] `at` when the typed producer walk stalls (gate #104 / INVARIANTS P3).
+/// 🟢 TERMINAL coproduct (**Practice 4** / `docs/modeling-discipline.md` §4):
+/// hand mirror of `ViolatesSubject` in `src/v3/std/dimensions.dag`. Variants are the discriminated outcomes
+/// of the producer walk ([`crate::dag::ProducerLookup`]) paired with lawful `Behavior` attribution — not a
+/// decomposable record without collapsing P3 fail-closed residue. **Ledger:** dissolution patterns 1–4 in §4
+/// do not apply; substrate + `Witness::Violates.subject` already name the single authority (gate #104).
 #[derive(Debug, Clone)]
 pub enum ViolatesSubject {
     AtBehavior(Behavior),
