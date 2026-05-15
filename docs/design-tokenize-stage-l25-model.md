@@ -42,7 +42,7 @@ So PB-2 is "substrate-driven by `.dag` AT scanner-state-machine level but NOT at
 
 Per the live substrate at `src/v3/std/tokenize.dag:1-15`:
 
-**Tokenize is a substrate-driven scanner: `String → List<Token>`, dispatching on byte character class (Whitespace / Digit / IdentStart / IdentContinue) per `tokenize.dag` declarations. Token taxonomy + scanner logic both live in `.dag` substrate; `tokenize_generated.rs` is the codegen artifact from `regen_tokenize`.**
+**Tokenize is a substrate-driven scanner: `(String, FilePath) → Result<List<Token>, TokenizeDiagnostic>` (two inputs per §3.1 source-identity discipline; fail-fast Result-sum per §4.3 cross-stage discriminator), dispatching on byte character class (Whitespace / Digit / IdentStart / IdentContinue) per `tokenize.dag` declarations. Token taxonomy + scanner logic both live in `.dag` substrate; `tokenize_generated.rs` is the codegen artifact from `regen_tokenize`.**
 
 The substrate authority is structured as:
 1. **Token taxonomy** in `src/v3/std/tokenize.dag` (shared vocabulary for compiler + future user-space tooling)
@@ -57,13 +57,22 @@ Per `feedback_lenses_not_passes`: tokenize is a fold over bytes with scanner-cla
 
 ## §3 Input types (declared in `.dag` substrate)
 
-### §3.1 `String` (source text)
+### §3.1 Source text + source identity (TWO inputs, not one)
 
-Plain UTF-8 source text. No structural pre-processing beyond byte access.
+> **Codex PR #3127 BLOCKING (sha 8e682eef) Finding 1 (fixed in PR #3140)**: an earlier draft modeled tokenize as `String → List<Token>` — a single bare-string input. That contradicts the live signature at `src/v3/compiler/src/tokenize_generated.rs:96`:
+>
+> ```
+> pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic>
+> ```
+>
+> The `file` parameter carries the source identity (file path or equivalent identifier). It is load-bearing because `SourceSpan` requires a file/source-id field for byte ranges to be attributable; without it the Token + Diagnostic span fields would have to fabricate a source-id at the pipeline boundary (P3 fail-closed violation). The L2.5 ratifies the live two-input shape rather than the single-string framing.
 
-**Substrate authority**: `String` is primitive per `src/v3/std/substrate.dag`. No new carrier needed.
+Tokenize consumes:
 
-**Lane dependency**: none upstream of tokenize — it's the pipeline entry point.
+- **`source: String`** — UTF-8 source text. Primitive per `src/v3/std/substrate.dag`. No new carrier needed for this input.
+- **`file: FilePath`** — source identity carrier. **Live carrier already exists** at `dsl/std/types.dag:276`: `type FilePath = String where non_empty`. This is the same carrier `type SourceSpan { file: FilePath, start: Int, end: Int }` references at `dsl/std/types.dag:293`, so source identity flows forward through every Token + Diagnostic span field without rebinding. No new carrier authoring is needed at Step 2 — the live `FilePath` IS the single substrate authority. (Per cursor PR #3141 INLINE BLOCKING line:73 sha c3acdcbc9 fixed in PR #3141: an earlier draft invented a fictional `SourceFileId` without a substrate declaration; corrected to live `FilePath` per `feedback_grep_substrate_before_naming_ratification`.)
+
+**Lane dependency**: none upstream of tokenize — it's the pipeline entry point. (Source-identity originates from the compile-driver / build system, not from a prior pipeline stage.)
 
 ### §3.2 No GrammarSpec / TokenizationSpec — substrate IS the spec
 
@@ -86,9 +95,14 @@ Per `src/v3/std/tokenize.dag` (live; Token + TokenKind closed-axis sum):
 
 **Substrate authority**: `src/v3/std/tokenize.dag` (LIVE at HEAD). PB-2 output type is stable.
 
-### §4.2 `TokenizeDiagnostic` (substrate extension per Decision 2.B / PR #3077 §12 Q7)
+### §4.2 `TokenizeDiagnostic` (PROPOSED — substrate extension per Decision 2.B / PR #3077 §12 Q7 — NOT yet live)
 
-Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants attach via whichever path PR #3077 §12 Q7 ratifies (carrier-field vs lane-local-sum).
+> **Codex PR #3127 BLOCKING (sha 8e682eef) Finding 2 (fixed in PR #3140)**: the prior §4.2 framing blurred the live carrier with the proposed per-stage carrier. Clarified here:
+>
+> - **Live carrier at HEAD**: `type Diagnostic { kind: AnyDiagnosticKind, span: SourceSpan, message: String, correction: Correction }` at `src/v3/std/diagnostics.dag:150`, with `type AnyDiagnosticKind = CompilerKind(CompilerDiagnosticKind) | LensInstanceKind(LensInstanceKindWitness)` at `diagnostics.dag:139-142`. Tokenize emits today via `Diagnostic::TokenizerError`-shaped construction sites in `tokenize_generated.rs:96`, all carrying `kind: CompilerKind(CompilerDiagnosticKind::*)`.
+> - **`TokenizeDiagnostic`**: PROPOSED per-stage refinement carrier. NOT a live `.dag` declaration. Its substrate-extension path (option (a) carrier-field on `Diagnostic` vs option (b) lane-local sum + mapping into `CompilerDiagnosticKind`) was ratified by **PR #3077 §12 Q7, merged 2026-05-15T00:21:19Z** (DONE — see §15 step 3 + §14 "Surfaces awaiting"). Director-tier per-stage variant authoring is the remaining work; the variants below are a starting set, not the live carrier.
+
+Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants attach via the path PR #3077 §12 Q7 ratified (carrier-field vs lane-local-sum; live status DONE).
 
 ```
 // Typed reference carrier (cross-stage discipline per openai-pro
@@ -134,7 +148,7 @@ type TokenizeDiagnostic
 
 **Live state matches**: `tokenize_generated.rs:96` already returns `pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic>`. The L2.5 ratifies this shape rather than replacing it.
 
-Step 2 signature: `fn tokenize(source: String) -> Result<List<Token>, TokenizeDiagnostic>` — `List<Token>` is the Ok-branch payload, `TokenizeDiagnostic` (§4.2 substrate extension) is the Err-branch variant. This is the **single canonical boundary carrier** between PB-2 tokenize and PB-3 parse: `List<Token>` on the Ok branch, no parallel `TokenizedSource`.
+Step 2 signature: `fn tokenize(source: String, file: FilePath) -> Result<List<Token>, TokenizeDiagnostic>` — two inputs per §3.1 source-identity discipline (live `tokenize_generated.rs:96`). `List<Token>` is the Ok-branch payload, `TokenizeDiagnostic` (§4.2 substrate extension) is the Err-branch variant. This is the **single canonical boundary carrier** between PB-2 tokenize and PB-3 parse: `List<Token>` on the Ok branch, no parallel `TokenizedSource`.
 
 **Cross-stage discriminator** (consistent with PR #3138 parse L2.5 §4.3):
 - **Result-sum** (PB-2 tokenize + PB-3 parse + PB-6 emit): fail-fast output domain — partial token/parse/emit output is not a valid intermediate.
@@ -179,7 +193,7 @@ Walker dispatch is **mechanical**: match on byte class → look up the recogniti
 | Token + TokenKind taxonomy | `src/v3/std/tokenize.dag` (Token + TokenKind closed-axis sum) | PB-Substrate | LIVE at HEAD; complete |
 | Tokenizer implementation | `src/v3/compiler/tokenize.dag` (scanner-class + recognition tables) | PB-Substrate | LIVE at HEAD; 154 lines |
 | Codegen pipeline | `regen_tokenize` codegen-driver → `tokenize_generated.rs` | PB-Bootstrap-Process lane | LIVE at HEAD; codegen-driver retirement is PB-Bootstrap-Process scope (NOT PB-2 scope) |
-| TokenizeDiagnostic substrate extension | extension of `src/v3/std/diagnostics.dag:150` per PR #3077 §12 Q7 | PB-Substrate + Director-tier per-stage authoring | Carrier LIVE; per-stage variant authoring NEW per Q7 ratification |
+| TokenizeDiagnostic substrate extension (PROPOSED — no `type TokenizeDiagnostic` exists yet) | live underlying carrier is `type Diagnostic` at `src/v3/std/diagnostics.dag:150` with `kind: AnyDiagnosticKind` (sum at `:139-142`); PROPOSED per-stage refinement via PR #3077 §12 Q7 ratified extension path (DONE 2026-05-15T00:21:19Z) | PB-Substrate + Director-tier per-stage authoring | Underlying `Diagnostic` carrier LIVE at HEAD; per-stage `TokenizeDiagnostic` variant authoring is NEW work, NOT live substrate (per cursor PR #3127 INLINE BLOCKING line:166 sha 8e682eef — earlier "Carrier LIVE" wording read ambiguously as TokenizeDiagnostic-itself-live; reframed in PR #3140) |
 
 **Critical observation**: PB-2 tokenize has LIGHTER prereq surface than other pipeline stages — substrate-driven at scanner-state-machine level. BUT substantive residual work remains (per codex BLOCKING #3127 corrected): SG-1a raw-text-extractor scaffold + character-level under-consumption scaffold + regen_tokenize codegen-driver retirement (per Q1 PB-Bootstrap-Process). Earlier "mostly verification" framing was understated.
 
@@ -218,7 +232,7 @@ Tokenize is target-agnostic byte-scanning; Shape A/B disambiguation lives at emi
 | Step | Deliverable | Owner | Substrate |
 |---|---|---|---|
 | **Step 1: Model review** | THIS DOC | Director (zesty-bear-812) | docs/design-tokenize-stage-l25-model.md (this doc) |
-| **Step 2: Pipeline slot** | `fn tokenize(source: String) -> Result<List<Token>, TokenizeDiagnostic>` declared in `src/v3/compiler/pipeline.dag` (per dsl/gunbc/compiler.dag:24 — internal pipeline lives in pipeline.dag, NOT generic compiler.dag) with `ExternalRealization` body. **Single canonical boundary carrier**: `List<Token>` on the Ok branch — no parallel `TokenizedSource` wrapper, no `diagnostics` field added to tokenize output (§4.3 Result-sum disposition; §12 Q6 resolved REJECTED). Matches live `tokenize_generated.rs:96` `Result<Vec<Token>, Diagnostic>` shape; only refinement is per-stage `TokenizeDiagnostic` variant typing (§4.2). Note: `tokenize.dag` exists as scanner-state-machine substrate, BUT residual hand-Rust includes (a) `regen_tokenize` codegen-driver logic (P5 deferral receipt: `docs/design-pure-bootstrap-zero.md:116` PB-Bootstrap-Process lane + ROADMAP.md:467 character-level row), (b) SG-1a raw-text-extractor scaffold for `dag_keyword_set`/`dag_operators` per `tokenize.dag:16-22`, (c) character-predicate scaffold (`byte.is_ascii_digit()` etc. at `tokenize_generated.rs:15-22`) leaking through codegen (P5 receipt: ROADMAP.md:467 phase-2 retype, gated on Class 5 Gap 3 + std.unicode bootstrap/load-set decision). Step 4 carries scaffold-retirement scope, NOT just codegen-artifact retirement. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | pipeline.dag refinement |
+| **Step 2: Pipeline slot** | `fn tokenize(source: String, file: FilePath) -> Result<List<Token>, TokenizeDiagnostic>` declared in `src/v3/compiler/pipeline.dag` (per dsl/gunbc/compiler.dag:24 — internal pipeline lives in pipeline.dag, NOT generic compiler.dag) with `ExternalRealization` body. **Single canonical boundary carrier**: `List<Token>` on the Ok branch — no parallel `TokenizedSource` wrapper, no `diagnostics` field added to tokenize output (§4.3 Result-sum disposition; §12 Q6 resolved REJECTED). Matches live `tokenize_generated.rs:96` `Result<Vec<Token>, Diagnostic>` shape; only refinement is per-stage `TokenizeDiagnostic` variant typing (§4.2). Note: `tokenize.dag` exists as scanner-state-machine substrate, BUT residual hand-Rust includes (a) `regen_tokenize` codegen-driver logic (P5 deferral receipt: `docs/design-pure-bootstrap-zero.md:116` PB-Bootstrap-Process lane + ROADMAP.md:467 character-level row), (b) SG-1a raw-text-extractor scaffold for `dag_keyword_set`/`dag_operators` per `tokenize.dag:16-22`, (c) character-predicate scaffold (`byte.is_ascii_digit()` etc. at `tokenize_generated.rs:15-22`) leaking through codegen (P5 receipt: ROADMAP.md:467 phase-2 retype, gated on Class 5 Gap 3 + std.unicode bootstrap/load-set decision). Step 4 carries scaffold-retirement scope, NOT just codegen-artifact retirement. | R3 Substrate Mgr (warm-wolf-698) — worker dispatched against Director-authored Step 2 brief | pipeline.dag refinement |
 | **Step 3: Verify substrate completeness** | Audit `src/v3/compiler/tokenize.dag` vs `tokenize_generated.rs` — confirm `.dag` is the complete authority (no hand-Rust logic in `tokenize_generated.rs` beyond mechanical codegen artifacts); identify any residual hand-Rust scaffolding that needs retirement. Per `feedback_paper_shrink_variants` discipline: verify tokenize.dag is NOT V1 template-relocation (hand-Rust scanner logic relocated to `.dag` text without substrate-substance growth). | R3 Substrate Mgr — worker dispatched against Director-authored Step 3 brief | tokenize.dag audit |
 | **Step 4: Retire residual hand-Rust + codegen-driver decoupling** | If Step 3 reveals residual hand-Rust scaffolding: retire it. `regen_tokenize` codegen-driver retirement is **NOT** in PB-2 scope — it routes to the PB-Bootstrap-Process lane at `docs/design-pure-bootstrap-zero.md:116` (author `bootstrap.dag` + generated trampoline; sized M; verification gates per `docs/design-pure-bootstrap-zero.md:118-123`). Phase-2 char-class retype (`Char` / `List<Char>` / `CharClass`) routes to ROADMAP.md:467 ("Character-level under-consumption in tokenize + syntax authorities"), gated on **Class 5 Gap 3** (top-level `ValueBody` boundary at ROADMAP.md:416) plus the std.unicode bootstrap/load-set decision. Overall non-test census reaches 0 per ROADMAP.md:53 T-PB-A. PB-2 Step 4 retires only what closes in-lane; the named cross-lane receipts above are the P5 deferral. EXPECTED_HAND_AUTHORED_NON_TEST shrinks by whatever residual lands. | R3 Substrate Mgr + coordination with PB-Bootstrap-Process lane | residual hand-Rust deletion |
 
