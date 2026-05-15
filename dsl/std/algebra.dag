@@ -382,10 +382,12 @@ type BooleanAlgebra<T> {
 //   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
 //     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
 //     in std/primitives.dag, not a partial algebra field.
-//   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
-//   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
-//   (Those two stay on T because executable authority here cannot yet name
-//     per-method result/accumulator type parameters — same emitter gap as lattice lifting above.)
+//   map/fold are parametrically typed by the method-template rows below:
+//     map: fn(T) -> U -> FreeMonoid<U>
+//     fold: init Acc plus step fn(Acc, T) -> Acc -> Acc
+//   The record field spellings below remain the abstract receiver-shaped
+//   surface. Executable std.list exposes the same facts as generic functions
+//   (`map<A, B>`, `fold<T, U>`) until dotted method-call syntax exists.
 //   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
   // Monoid operations
