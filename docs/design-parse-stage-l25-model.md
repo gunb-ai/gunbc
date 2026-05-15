@@ -46,7 +46,7 @@ Two input types feed parse (`List<Token>` from tokenize + `GrammarSpec` per Deci
 
 The token stream produced by PB-2 tokenize. Each `Token` carries a `TokenKind` discriminant + lexeme + source-span.
 
-**Substrate authority**: `Token` type at `src/v3/compiler/src/tokenize.rs` (current hand-Rust); will migrate to `src/v3/std/tokenize.dag` per PB-2 tokenize L2.5 (sibling doc in flight). The carrier shape is stable across the Rust/`.dag` boundary; PB-3 parse migration is independent of PB-2 tokenize migration status.
+**Substrate authority** (corrected per cursor PR #3126 BLOCKING line:29 — earlier draft cited non-existent `tokenize.rs`): `Token` type lives in LIVE `.dag` substrate at `src/v3/std/tokenize.dag:65-67` (the shared taxonomy authority). Tokenizer implementation also lives in `.dag` at `src/v3/compiler/tokenize.dag` (154 lines). Codegen artifact at `src/v3/compiler/src/tokenize_generated.rs` (362 lines, auto-generated from tokenize.dag via `regen_tokenize`). The hand-Rust file `src/v3/compiler/src/tokenize.rs` does NOT exist — that was an earlier-draft phantom reference. Per `design-pure-bootstrap.md` §"PB-2 — tokenize retire" (line ~134), PB-2 has already substantially landed at substrate level (residual scaffold-retirement scope per PB-2 L2.5 PR #3127). The Token carrier shape is stable; PB-3 parse migration is independent of PB-2's residual-retirement timing per §7.1 axis split.
 
 **Lane dependency**: PB-2 tokenize (provides Token carrier + List<Token> output).
 
