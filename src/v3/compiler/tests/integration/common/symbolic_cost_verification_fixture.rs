@@ -120,7 +120,9 @@ pub fn symbolic_cost_as_v3_data_initializer(cost: &SymbolicCost) -> String {
 #[cfg(test)]
 mod symbolic_cost_verification_fixture_tests {
     use super::*;
-    use v3_compiler::dag::{Dag, NonSingletonList, SizeVariable, SymbolicCost};
+    use v3_compiler::dag::{
+        Dag, NonSingletonList, NonZeroRational, Rational, SizeVariable, SymbolicCost,
+    };
 
     #[test]
     fn list_tail_two_terms_emits_two_terms_call() {
@@ -153,6 +155,29 @@ mod symbolic_cost_verification_fixture_tests {
         };
         let expected = format!(
             "PolynomialCost {{ var: unnamed_size_variable(PortId({})), degree: 1 }}",
+            p.raw()
+        );
+        assert_eq!(symbolic_cost_as_v3_data_initializer(&c), expected);
+    }
+
+    #[test]
+    fn fractional_polynomial_emits_rational_constructor() {
+        let dag = Dag::new();
+        let p = dag
+            .ports()
+            .first()
+            .expect("empty dag should still allocate ports")
+            .id();
+        let c = SymbolicCost::PolynomialCost {
+            var: SizeVariable {
+                source_port: p,
+                display_name: None,
+            },
+            degree: NonZeroRational::new(Rational::new(3, 2).expect("non-zero denominator"))
+                .expect("non-zero rational"),
+        };
+        let expected = format!(
+            "PolynomialCost {{ var: unnamed_size_variable(PortId({})), degree: rational_from_parts(numerator: 3, denominator: 2) }}",
             p.raw()
         );
         assert_eq!(symbolic_cost_as_v3_data_initializer(&c), expected);

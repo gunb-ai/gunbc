@@ -6650,7 +6650,7 @@ fn rational_from_rational_like_field_value(dag: &Dag, fv: &FieldValue) -> Result
                 "SymbolicCostExprEquals: rational_from_parts bridge missing denominator".to_string()
             })
             .and_then(one_int_field_value)?;
-        return Rational::new(numerator, denominator).map_err(|_| {
+        return Rational::new(numerator, denominator).ok_or_else(|| {
             "SymbolicCostExprEquals: rational_from_parts denominator must be non-zero".to_string()
         });
     }

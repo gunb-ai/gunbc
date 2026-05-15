@@ -882,7 +882,8 @@ import std.algebra {{
   two_terms,
   many_terms,
   DegreeTwo,
-  DegreeSuccessor
+  DegreeSuccessor,
+  rational_from_parts
 }}
 import std.substrate {{ PortId }}
 import std.list {{ cons, empty }}
