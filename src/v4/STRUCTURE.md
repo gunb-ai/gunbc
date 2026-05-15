@@ -165,12 +165,17 @@ reference this section when dispatching workers.
    (`Result`-return / `Witness`-return / refinement-precondition) in the
    same file as the primitive itself. No separate "totalization registry."
 
-3. **`Diagnostic` schema includes `suggested_correction`** (per THESIS:103-105
+3. **`Diagnostic` schema carries a typed `correction`** (per THESIS:103-105
    "show the correct code"). Schema:
-   `Diagnostic { reason: NamedReason, at: Locus, suggested_correction: Option<NodeFragment> }`.
+   `Diagnostic { reason: NamedReason, at: Locus, correction: Correction }`
+   where `Correction = Suggested(Node) | Unavailable(NoCorrectionReason)`.
    The "show the correct code" promise is structural — every Diagnostic
-   site CAN carry a suggested fix. Lenses populate it where they have the
-   structural information; absent fix is `None`, not a missing field.
+   site answers the fix question, and answers it with a type, not a
+   convention. "No fix" is the `Unavailable` case carrying a structural
+   `NoCorrectionReason`, never a bare `None`. The suggested fix is a `Node`
+   (the bounded kernel's only recursive type — a subtree of Nodes IS a
+   Node; no separate `NodeFragment` alias). WHERE it applies is the
+   Diagnostic's own `at: Locus`, not a field of the fix.
 
 4. **Every TestClaim slots into one (Tier × Layer) cell** (per THESIS §168-182
    correctness tiers + TESTING.md §141 test layers — two orthogonal axes).

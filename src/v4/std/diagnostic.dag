@@ -11,14 +11,19 @@
 //   - Diagnostic { reason: NamedReason, at: Locus, correction: Correction }
 //   - NamedReason enum (structural; never opaque string)
 //   - Locus = port|node|file|span
-//   - Correction = Suggested(NodeFragment) | Unavailable(NoCorrectionReason)
-//     (typed sum — NOT Option<NodeFragment>. "no correction available" is
+//   - Correction = Suggested(Node) | Unavailable(NoCorrectionReason)
+//     (typed sum — NOT Option<Node>. "no correction available" is
 //     a structural Unavailable case carrying a NoCorrectionReason, never a
 //     bare None enforced by convention. Type-enforced per INVARIANTS P2,
 //     not API-enforced.)
+//     The suggested correction is a Node — the bounded kernel says Node is
+//     the ONLY recursive type, so a subtree of Nodes IS a Node (no separate
+//     "NodeFragment": that would be a decorative alias the compiler sees
+//     through, per feedback_nodes_are_nodes + feedback_naming_is_aliasing).
+//     WHERE the correction applies is not carried by the fragment — it is
+//     the Diagnostic's own `at: Locus`.
 //   - NoCorrectionReason = closed enum (UserInputBoundary | AmbiguousIntent
 //     | ExternalContractUnknown | ...) — every "no fix" answers WHY structurally
-//   - NodeFragment (the structurally-correct alternative the diagnostic points to)
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj
