@@ -36,10 +36,15 @@ This is structurally distinct from PB-4 lower:
 
 Per the live `infer.rs:5-15` rules:
 - `Arrow { inputs, output, body }` → direct signature inference from input/output declarations
-- `Atom(Identifier { name, resolved })` → follow resolved link OR look up name in declaration table (§8.9 inhabitance walk)
+- `Atom(AtomPayload)` per LIVE substrate.dag:87 5-variant sum (per codex PR #3085 BLOCKING finding 1 — earlier "Atom(Identifier { name, resolved })" was stale; infer.rs:10 top-comment drifted vs live substrate):
+  - `Literal(LiteralBits)` → literal-typed port; no resolution needed
+  - `UnresolvedIdentifier(String)` → fail-closed Unresolved + diagnostic at this port
+  - `ResolvedByStructure(DeclarationId)` → follow chain to declaration
+  - `ResolvedByName(DeclarationId)` → follow chain to declaration (§8.9 inhabitance walk)
+  - `TypeParam(String)` → type-parameter (post-instantiation resolved or unresolved)
 - Other TypeConnective variants → not callable; produce Unresolved + diagnostic
 
-**Fail-closed (INVARIANTS C-8)**: every detectable problem routes through `Dag::mark_unresolved` (current Rust API) or equivalent `.dag` substrate operation. Post-infer invariant: `state != Uninferred for all ports` AND `state == Unresolved iff diagnostics.contains(port_id)`.
+**Fail-closed (INVARIANTS C-8)**: every detectable problem routes through `Dag::mark_unresolved` (current Rust API) or equivalent `.dag` substrate operation. Post-infer invariant: `state != Uninferred for all ports` AND `state == Unresolved iff diagnostics.contains(port_id)` — where the diagnostic-table is a PROPOSED substrate extension to `Dag` carrier (live `Dag { declarations, nodes, ports, clusters }` at substrate.dag:525 has NO diagnostics field per codex PR #3085 BLOCKING finding 2). Step 2 PR scope includes `diagnostics: Map<PortId, Diagnostic>` field extension to Dag, OR PB-Substrate prereq adds it before PB-5 dispatch.
 
 **Typed-state carrier per Decision 3.A operator-ratified shape** (sum-variant `Dag = PreInferDag | InferredDag` per `feedback_coproduct_dissolution` Practice 4): infer's signature is `fn infer(d: PreInferDag) -> InferredDag` — the variant transition IS the structural invariant of inference completion. Pre-infer state cannot exist in `InferredDag` by construction.
 
