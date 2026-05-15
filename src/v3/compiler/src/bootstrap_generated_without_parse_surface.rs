@@ -12645,7 +12645,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17472, 18434),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17884, 18908),
         });
         declarations.push(Declaration {
             id: DeclarationId(48),
@@ -12659,7 +12659,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17472, 18434),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17884, 18908),
         });
         declarations.push(Declaration {
             id: DeclarationId(49),
@@ -12716,7 +12716,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18949, 19288),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19423, 19762),
         });
         declarations.push(Declaration {
             id: DeclarationId(50),
@@ -12730,7 +12730,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18949, 19288),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19423, 19762),
         });
         declarations.push(Declaration {
             id: DeclarationId(51),
@@ -12744,7 +12744,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18949, 19288),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19423, 19762),
         });
         declarations.push(Declaration {
             id: DeclarationId(52),
@@ -12773,7 +12773,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19489, 19527),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19963, 20001),
         });
         declarations.push(Declaration {
             id: DeclarationId(53),
@@ -12818,7 +12818,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21612, 21831),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22086, 22305),
         });
         declarations.push(Declaration {
             id: DeclarationId(54),
@@ -12843,7 +12843,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21833, 21899),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22307, 22373),
         });
         declarations.push(Declaration {
             id: DeclarationId(55),
@@ -12900,7 +12900,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21901, 22349),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22375, 22823),
         });
         declarations.push(Declaration {
             id: DeclarationId(56),
@@ -12929,7 +12929,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22565, 22742),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23039, 23216),
         });
         declarations.push(Declaration {
             id: DeclarationId(57),
@@ -12962,7 +12962,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23200, 23385),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23674, 23859),
         });
         declarations.push(Declaration {
             id: DeclarationId(58),
@@ -13003,7 +13003,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23410, 23841),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23884, 24315),
         });
         declarations.push(Declaration {
             id: DeclarationId(59),
@@ -13082,7 +13082,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             )),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23843, 24153),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24317, 24627),
         });
         declarations.push(Declaration {
             id: DeclarationId(60),
@@ -13090,7 +13090,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(322),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 24213, 25355)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 24687, 25829)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13100,7 +13100,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 24155, 25355),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24629, 25829),
         });
         declarations.push(Declaration {
             id: DeclarationId(61),
@@ -13108,7 +13108,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(323),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 25420, 26514)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 25894, 26988)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13118,7 +13118,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 25357, 26514),
+            span: SourceSpan::new("dsl/std/algebra.dag", 25831, 26988),
         });
         declarations.push(Declaration {
             id: DeclarationId(62),
@@ -13126,7 +13126,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(324),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 26577, 27338)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 27051, 27812)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13136,7 +13136,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 26516, 27338),
+            span: SourceSpan::new("dsl/std/algebra.dag", 26990, 27812),
         });
         declarations.push(Declaration {
             id: DeclarationId(63),
@@ -13144,7 +13144,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(325),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 27703, 31048)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 28177, 31522)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13154,7 +13154,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 27631, 31048),
+            span: SourceSpan::new("dsl/std/algebra.dag", 28105, 31522),
         });
         declarations.push(Declaration {
             id: DeclarationId(64),
@@ -13162,7 +13162,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(326),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 31114, 34351)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 31588, 34825)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13172,7 +13172,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 31050, 34351),
+            span: SourceSpan::new("dsl/std/algebra.dag", 31524, 34825),
         });
         declarations.push(Declaration {
             id: DeclarationId(65),
@@ -13180,7 +13180,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(327),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 34421, 39686)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 34895, 40160)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13190,7 +13190,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 34353, 39686),
+            span: SourceSpan::new("dsl/std/algebra.dag", 34827, 40160),
         });
         declarations.push(Declaration {
             id: DeclarationId(66),
@@ -13198,7 +13198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![],
                 output: DeclarationId(328),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 39750, 42574)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 40224, 43048)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13208,7 +13208,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 39688, 42574),
+            span: SourceSpan::new("dsl/std/algebra.dag", 40162, 43048),
         });
         declarations.push(Declaration {
             id: DeclarationId(67),
@@ -13216,7 +13216,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(53)],
                 output: DeclarationId(329),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 42664, 43127)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 43138, 43601)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13226,7 +13226,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 42576, 43127),
+            span: SourceSpan::new("dsl/std/algebra.dag", 43050, 43601),
         });
         declarations.push(Declaration {
             id: DeclarationId(68),
@@ -13234,7 +13234,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(53)],
                 output: DeclarationId(330),
-                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 43469, 43750)),
+                body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 43943, 44224)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -13244,7 +13244,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 43400, 43750),
+            span: SourceSpan::new("dsl/std/algebra.dag", 43874, 44224),
         });
         declarations.push(Declaration {
             id: DeclarationId(69),
@@ -19460,7 +19460,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 24186, 24212),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24660, 24686),
         });
         declarations.push(Declaration {
             id: DeclarationId(323),
@@ -19480,7 +19480,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 25393, 25419),
+            span: SourceSpan::new("dsl/std/algebra.dag", 25867, 25893),
         });
         declarations.push(Declaration {
             id: DeclarationId(324),
@@ -19500,7 +19500,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 26550, 26576),
+            span: SourceSpan::new("dsl/std/algebra.dag", 27024, 27050),
         });
         declarations.push(Declaration {
             id: DeclarationId(325),
@@ -19520,7 +19520,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 27676, 27702),
+            span: SourceSpan::new("dsl/std/algebra.dag", 28150, 28176),
         });
         declarations.push(Declaration {
             id: DeclarationId(326),
@@ -19540,7 +19540,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 31087, 31113),
+            span: SourceSpan::new("dsl/std/algebra.dag", 31561, 31587),
         });
         declarations.push(Declaration {
             id: DeclarationId(327),
@@ -19560,7 +19560,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 34394, 34420),
+            span: SourceSpan::new("dsl/std/algebra.dag", 34868, 34894),
         });
         declarations.push(Declaration {
             id: DeclarationId(328),
@@ -19580,7 +19580,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 39723, 39749),
+            span: SourceSpan::new("dsl/std/algebra.dag", 40197, 40223),
         });
         declarations.push(Declaration {
             id: DeclarationId(329),
@@ -19600,7 +19600,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 42637, 42663),
+            span: SourceSpan::new("dsl/std/algebra.dag", 43111, 43137),
         });
         declarations.push(Declaration {
             id: DeclarationId(330),
@@ -19620,7 +19620,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 43456, 43468),
+            span: SourceSpan::new("dsl/std/algebra.dag", 43930, 43942),
         });
         declarations.push(Declaration {
             id: DeclarationId(331),
@@ -20368,7 +20368,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17529, 17542),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17941, 17954),
         });
         declarations.push(Declaration {
             id: DeclarationId(372),
@@ -20388,7 +20388,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17544, 17557),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17956, 17969),
         });
         declarations.push(Declaration {
             id: DeclarationId(373),
@@ -20408,7 +20408,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17562, 17575),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17974, 17987),
         });
         declarations.push(Declaration {
             id: DeclarationId(374),
@@ -20426,7 +20426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17526, 17575),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17938, 17987),
         });
         declarations.push(Declaration {
             id: DeclarationId(375),
@@ -20446,7 +20446,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17585, 17598),
+            span: SourceSpan::new("dsl/std/algebra.dag", 17997, 18010),
         });
         declarations.push(Declaration {
             id: DeclarationId(376),
@@ -20466,7 +20466,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17618, 17631),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18030, 18043),
         });
         declarations.push(Declaration {
             id: DeclarationId(377),
@@ -20484,7 +20484,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17609, 17631),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18021, 18043),
         });
         declarations.push(Declaration {
             id: DeclarationId(378),
@@ -20504,7 +20504,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17733, 17746),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18145, 18158),
         });
         declarations.push(Declaration {
             id: DeclarationId(379),
@@ -20522,7 +20522,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17717, 17746),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18129, 18158),
         });
         declarations.push(Declaration {
             id: DeclarationId(380),
@@ -20540,7 +20540,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17757, 17768),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18169, 18180),
         });
         declarations.push(Declaration {
             id: DeclarationId(381),
@@ -20558,7 +20558,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17781, 17793),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18193, 18205),
         });
         declarations.push(Declaration {
             id: DeclarationId(382),
@@ -20576,7 +20576,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17803, 17814),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18215, 18226),
         });
         declarations.push(Declaration {
             id: DeclarationId(383),
@@ -20595,7 +20595,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18244, 18246),
         });
         declarations.push(Declaration {
             id: DeclarationId(384),
@@ -20613,7 +20613,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17824, 17834),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18236, 18246),
         });
         declarations.push(Declaration {
             id: DeclarationId(385),
@@ -20632,7 +20632,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18263, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(386),
@@ -20650,7 +20650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17843, 17853),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18255, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(387),
@@ -20668,7 +20668,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17951, 17961),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18425, 18435),
         });
         declarations.push(Declaration {
             id: DeclarationId(388),
@@ -20688,7 +20688,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17966, 17979),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18440, 18453),
         });
         declarations.push(Declaration {
             id: DeclarationId(389),
@@ -20706,7 +20706,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17948, 17979),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18422, 18453),
         });
         declarations.push(Declaration {
             id: DeclarationId(390),
@@ -20724,7 +20724,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17993, 18006),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18467, 18480),
         });
         declarations.push(Declaration {
             id: DeclarationId(391),
@@ -20744,7 +20744,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18011, 18024),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18485, 18498),
         });
         declarations.push(Declaration {
             id: DeclarationId(392),
@@ -20762,7 +20762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17990, 18024),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18464, 18498),
         });
         declarations.push(Declaration {
             id: DeclarationId(393),
@@ -20780,7 +20780,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18039, 18052),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18513, 18526),
         });
         declarations.push(Declaration {
             id: DeclarationId(394),
@@ -20798,7 +20798,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18033, 18058),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18507, 18532),
         });
         declarations.push(Declaration {
             id: DeclarationId(395),
@@ -20818,7 +20818,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18083, 18096),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18557, 18570),
         });
         declarations.push(Declaration {
             id: DeclarationId(396),
@@ -20836,7 +20836,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18074, 18096),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18548, 18570),
         });
         declarations.push(Declaration {
             id: DeclarationId(397),
@@ -20856,7 +20856,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18101, 18114),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18575, 18588),
         });
         declarations.push(Declaration {
             id: DeclarationId(398),
@@ -20874,7 +20874,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18071, 18114),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18545, 18588),
         });
         declarations.push(Declaration {
             id: DeclarationId(399),
@@ -20892,7 +20892,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18125, 18138),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18599, 18612),
         });
         declarations.push(Declaration {
             id: DeclarationId(400),
@@ -20910,7 +20910,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18122, 18147),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18596, 18621),
         });
         declarations.push(Declaration {
             id: DeclarationId(401),
@@ -20928,7 +20928,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18158, 18171),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18632, 18645),
         });
         declarations.push(Declaration {
             id: DeclarationId(402),
@@ -20946,7 +20946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18155, 18180),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18629, 18654),
         });
         declarations.push(Declaration {
             id: DeclarationId(403),
@@ -20962,7 +20962,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18245, 18258),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18719, 18732),
         });
         declarations.push(Declaration {
             id: DeclarationId(404),
@@ -20979,7 +20979,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18245, 18258),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18719, 18732),
         });
         declarations.push(Declaration {
             id: DeclarationId(405),
@@ -20999,7 +20999,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18234, 18259),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18708, 18733),
         });
         declarations.push(Declaration {
             id: DeclarationId(406),
@@ -21017,7 +21017,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18226, 18259),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18700, 18733),
         });
         declarations.push(Declaration {
             id: DeclarationId(407),
@@ -21037,7 +21037,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18279, 18292),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18753, 18766),
         });
         declarations.push(Declaration {
             id: DeclarationId(408),
@@ -21055,7 +21055,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18271, 18292),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18745, 18766),
         });
         declarations.push(Declaration {
             id: DeclarationId(409),
@@ -21075,7 +21075,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18312, 18325),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18786, 18799),
         });
         declarations.push(Declaration {
             id: DeclarationId(410),
@@ -21093,7 +21093,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18301, 18325),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18775, 18799),
         });
         declarations.push(Declaration {
             id: DeclarationId(411),
@@ -21113,7 +21113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18345, 18358),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18819, 18832),
         });
         declarations.push(Declaration {
             id: DeclarationId(412),
@@ -21131,7 +21131,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18334, 18358),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18808, 18832),
         });
         declarations.push(Declaration {
             id: DeclarationId(413),
@@ -21149,7 +21149,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18373, 18388),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18847, 18862),
         });
         declarations.push(Declaration {
             id: DeclarationId(414),
@@ -21169,7 +21169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18393, 18406),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18867, 18880),
         });
         declarations.push(Declaration {
             id: DeclarationId(415),
@@ -21187,7 +21187,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18370, 18406),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18844, 18880),
         });
         declarations.push(Declaration {
             id: DeclarationId(416),
@@ -21205,7 +21205,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18419, 18432),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18893, 18906),
         });
         declarations.push(Declaration {
             id: DeclarationId(417),
@@ -21224,7 +21224,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19471, 19473),
         });
         declarations.push(Declaration {
             id: DeclarationId(418),
@@ -21242,7 +21242,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18988, 18999),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19462, 19473),
         });
         declarations.push(Declaration {
             id: DeclarationId(419),
@@ -21268,7 +21268,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19009, 19030),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19483, 19504),
         });
         declarations.push(Declaration {
             id: DeclarationId(420),
@@ -21287,7 +21287,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19521, 19523),
         });
         declarations.push(Declaration {
             id: DeclarationId(421),
@@ -21305,7 +21305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19038, 19049),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19512, 19523),
         });
         declarations.push(Declaration {
             id: DeclarationId(422),
@@ -21331,7 +21331,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19072, 19093),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19546, 19567),
         });
         declarations.push(Declaration {
             id: DeclarationId(423),
@@ -21349,7 +21349,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19060, 19093),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19534, 19567),
         });
         declarations.push(Declaration {
             id: DeclarationId(424),
@@ -21375,7 +21375,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19106, 19127),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19580, 19601),
         });
         declarations.push(Declaration {
             id: DeclarationId(425),
@@ -21401,7 +21401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19132, 19153),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19606, 19627),
         });
         declarations.push(Declaration {
             id: DeclarationId(426),
@@ -21419,7 +21419,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19103, 19153),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19577, 19627),
         });
         declarations.push(Declaration {
             id: DeclarationId(427),
@@ -21439,7 +21439,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19170, 19183),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19644, 19657),
         });
         declarations.push(Declaration {
             id: DeclarationId(428),
@@ -21457,7 +21457,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19162, 19183),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19636, 19657),
         });
         declarations.push(Declaration {
             id: DeclarationId(429),
@@ -21477,7 +21477,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19202, 19215),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19676, 19689),
         });
         declarations.push(Declaration {
             id: DeclarationId(430),
@@ -21495,7 +21495,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19194, 19215),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19668, 19689),
         });
         declarations.push(Declaration {
             id: DeclarationId(431),
@@ -21513,7 +21513,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19223, 19236),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19697, 19710),
         });
         declarations.push(Declaration {
             id: DeclarationId(432),
@@ -21531,7 +21531,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19253, 19266),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19727, 19740),
         });
         declarations.push(Declaration {
             id: DeclarationId(433),
@@ -21549,7 +21549,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19275, 19286),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19749, 19760),
         });
         declarations.push(Declaration {
             id: DeclarationId(434),
@@ -21563,7 +21563,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19505, 19509),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19979, 19983),
         });
         declarations.push(Declaration {
             id: DeclarationId(435),
@@ -21577,7 +21577,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19512, 19517),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19986, 19991),
         });
         declarations.push(Declaration {
             id: DeclarationId(436),
@@ -21591,7 +21591,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19520, 19527),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19994, 20001),
         });
         declarations.push(Declaration {
             id: DeclarationId(437),
@@ -21605,7 +21605,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21636, 21654),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22110, 22128),
         });
         declarations.push(Declaration {
             id: DeclarationId(438),
@@ -21619,7 +21619,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21659, 21682),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22133, 22156),
         });
         declarations.push(Declaration {
             id: DeclarationId(439),
@@ -21633,7 +21633,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21687, 21708),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22161, 22182),
         });
         declarations.push(Declaration {
             id: DeclarationId(440),
@@ -21647,7 +21647,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21713, 21744),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22187, 22218),
         });
         declarations.push(Declaration {
             id: DeclarationId(441),
@@ -21661,7 +21661,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21749, 21772),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22223, 22246),
         });
         declarations.push(Declaration {
             id: DeclarationId(442),
@@ -21675,7 +21675,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21777, 21804),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22251, 22278),
         });
         declarations.push(Declaration {
             id: DeclarationId(443),
@@ -21689,7 +21689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21809, 21831),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22283, 22305),
         });
         declarations.push(Declaration {
             id: DeclarationId(444),
@@ -21703,7 +21703,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21858, 21872),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22332, 22346),
         });
         declarations.push(Declaration {
             id: DeclarationId(445),
@@ -21722,7 +21722,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21877, 21899),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22351, 22373),
         });
         declarations.push(Declaration {
             id: DeclarationId(446),
@@ -21736,7 +21736,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21930, 21942),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22404, 22416),
         });
         declarations.push(Declaration {
             id: DeclarationId(447),
@@ -21750,7 +21750,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21947, 21962),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22421, 22436),
         });
         declarations.push(Declaration {
             id: DeclarationId(448),
@@ -21764,7 +21764,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21967, 21978),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22441, 22452),
         });
         declarations.push(Declaration {
             id: DeclarationId(449),
@@ -21778,7 +21778,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 21983, 21996),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22457, 22470),
         });
         declarations.push(Declaration {
             id: DeclarationId(450),
@@ -21797,7 +21797,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22001, 22031),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22475, 22505),
         });
         declarations.push(Declaration {
             id: DeclarationId(451),
@@ -21822,7 +21822,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22036, 22105),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22510, 22579),
         });
         declarations.push(Declaration {
             id: DeclarationId(452),
@@ -21841,7 +21841,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22110, 22151),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22584, 22625),
         });
         declarations.push(Declaration {
             id: DeclarationId(453),
@@ -21866,7 +21866,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22156, 22223),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22630, 22697),
         });
         declarations.push(Declaration {
             id: DeclarationId(454),
@@ -21886,7 +21886,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22249, 22274),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22723, 22748),
         });
         declarations.push(Declaration {
             id: DeclarationId(455),
@@ -21911,7 +21911,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22228, 22310),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22702, 22784),
         });
         declarations.push(Declaration {
             id: DeclarationId(456),
@@ -21930,7 +21930,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22315, 22349),
+            span: SourceSpan::new("dsl/std/algebra.dag", 22789, 22823),
         });
         declarations.push(Declaration {
             id: DeclarationId(457),
@@ -21944,7 +21944,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22595, 22607),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23069, 23081),
         });
         declarations.push(Declaration {
             id: DeclarationId(458),
@@ -21958,7 +21958,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22665, 22681),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23139, 23155),
         });
         declarations.push(Declaration {
             id: DeclarationId(459),
@@ -21972,7 +21972,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 22728, 22742),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23202, 23216),
         });
         declarations.push(Declaration {
             id: DeclarationId(460),
@@ -21986,7 +21986,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23219, 23232),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23693, 23706),
         });
         declarations.push(Declaration {
             id: DeclarationId(461),
@@ -22000,7 +22000,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23248, 23263),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23722, 23737),
         });
         declarations.push(Declaration {
             id: DeclarationId(462),
@@ -22014,7 +22014,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23309, 23325),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23783, 23799),
         });
         declarations.push(Declaration {
             id: DeclarationId(463),
@@ -22028,7 +22028,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23372, 23385),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23846, 23859),
         });
         declarations.push(Declaration {
             id: DeclarationId(464),
@@ -22048,7 +22048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23468, 23493),
+            span: SourceSpan::new("dsl/std/algebra.dag", 23942, 23967),
         });
         declarations.push(Declaration {
             id: DeclarationId(465),
@@ -22067,7 +22067,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24018, 24039),
         });
         declarations.push(Declaration {
             id: DeclarationId(466),
@@ -22086,7 +22086,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24054, 24064),
         });
         declarations.push(Declaration {
             id: DeclarationId(467),
@@ -22105,7 +22105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24309, 24313),
         });
         declarations.push(Declaration {
             id: DeclarationId(468),
@@ -22131,7 +22131,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23872, 23899),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24346, 24373),
         });
         declarations.push(Declaration {
             id: DeclarationId(469),
@@ -67996,7 +67996,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18244, 18246),
         });
         declarations.push(Declaration {
             id: DeclarationId(2512),
@@ -68010,7 +68010,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18244, 18246),
         });
         declarations.push(Declaration {
             id: DeclarationId(2513),
@@ -68035,7 +68035,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18244, 18246),
         });
         declarations.push(Declaration {
             id: DeclarationId(2514),
@@ -68054,7 +68054,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18263, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(2515),
@@ -68068,7 +68068,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18263, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(2516),
@@ -68093,7 +68093,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
+            span: SourceSpan::new("dsl/std/algebra.dag", 18263, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(2517),
@@ -68112,7 +68112,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19471, 19473),
         });
         declarations.push(Declaration {
             id: DeclarationId(2518),
@@ -68126,7 +68126,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19471, 19473),
         });
         declarations.push(Declaration {
             id: DeclarationId(2519),
@@ -68151,7 +68151,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19471, 19473),
         });
         declarations.push(Declaration {
             id: DeclarationId(2520),
@@ -68170,7 +68170,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19521, 19523),
         });
         declarations.push(Declaration {
             id: DeclarationId(2521),
@@ -68184,7 +68184,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19521, 19523),
         });
         declarations.push(Declaration {
             id: DeclarationId(2522),
@@ -68209,7 +68209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
+            span: SourceSpan::new("dsl/std/algebra.dag", 19521, 19523),
         });
         declarations.push(Declaration {
             id: DeclarationId(2523),
@@ -68228,7 +68228,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24018, 24039),
         });
         declarations.push(Declaration {
             id: DeclarationId(2524),
@@ -68242,7 +68242,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24018, 24039),
         });
         declarations.push(Declaration {
             id: DeclarationId(2525),
@@ -68267,7 +68267,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24018, 24039),
         });
         declarations.push(Declaration {
             id: DeclarationId(2526),
@@ -68286,7 +68286,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24054, 24064),
         });
         declarations.push(Declaration {
             id: DeclarationId(2527),
@@ -68300,7 +68300,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24054, 24064),
         });
         declarations.push(Declaration {
             id: DeclarationId(2528),
@@ -68325,7 +68325,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24054, 24064),
         });
         declarations.push(Declaration {
             id: DeclarationId(2529),
@@ -68344,7 +68344,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24309, 24313),
         });
         declarations.push(Declaration {
             id: DeclarationId(2530),
@@ -68358,7 +68358,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24309, 24313),
         });
         declarations.push(Declaration {
             id: DeclarationId(2531),
@@ -68383,7 +68383,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+            span: SourceSpan::new("dsl/std/algebra.dag", 24309, 24313),
         });
         declarations.push(Declaration {
             id: DeclarationId(2532),
