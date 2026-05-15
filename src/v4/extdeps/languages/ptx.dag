@@ -1,0 +1,43 @@
+// src/v4/extdeps/languages/ptx.dag
+//
+// Scope: CUDA model — direction-agnostic. Modeled at the PTX ISA layer
+//        (recommended fork — see below): the SIMT execution model
+//        (grid / block / thread / warp), the memory hierarchy
+//        (global/shared/local/register), kernels and barriers.
+// Anchor: NVIDIA "Parallel Thread Execution ISA" specification — pin a
+//         version (e.g. PTX ISA 8.x) as the versioned fidelity authority
+//         (L-2); the "CUDA C++ Programming Guide" documents the SIMT
+//         execution model the spec encodes.
+// Stress (T-4.14 — a B2-OMNI + IN-B falsification probe): the SIMT
+//   data-parallel execution model. CUDA's grid/block/thread is massive
+//   data-parallelism — does it fit the 5 L1 behaviors as effect-typed
+//   Bind composition (the IN-B bet, like Verilog's concurrency), or does
+//   it tempt a 6th `Parallel`/`Kernel` behavior? If it cannot be modeled
+//   without one, that is a C1 stop-signal escalation — and catching it
+//   early is exactly why this is added up front.
+// Clear win: `.dag → PTX` (GPU kernels from one source, same Node as a
+//   CPU backend), demonstrating omni-emission reaches the GPU.
+//
+// Fork (PROPOSED — operator confirm): model PTX (the spec'd IR — clean,
+//   most general, captures SIMT directly, parallel to llvm_ir.dag —
+//   recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled with
+//   cpp.dag; the C++ surface is not where the stress is). Recommend PTX.
+//
+// Owns:
+//   - PTX grammar as declarative bidirectional data (B2-OMNI):
+//     kernel / thread-hierarchy / memory-space / barrier / instruction
+//   - SIMT parallelism as effect-typed Bind composition per IN-B — NOT a
+//     new behavior (a 6th behavior here = C1 STOP, escalate)
+//   - Inhabitance: PTX register/vector types per std/algebra.dag
+//   - Cost realization: per-instruction + occupancy cost on a PTX target
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/primitive.dag
+//   - extdeps/coordination.dag (SIMT via effect-typed Bind — IN-B)
+//
+// Status: scaffold — fill per TASKS.md T-4.14
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.languages.ptx

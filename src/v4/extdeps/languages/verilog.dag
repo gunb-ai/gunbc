@@ -1,0 +1,37 @@
+// src/v4/extdeps/languages/verilog.dag
+//
+// Scope: Verilog HDL model — direction-agnostic. Hardware description:
+//        modules, ports, wire/reg, continuous assignment, always-blocks,
+//        module instantiation.
+// Anchor: IEEE 1364-2005 (IEEE Standard for Verilog HDL) — the versioned
+//         fidelity authority the worker models against (NOT Wikipedia).
+//         https://en.wikipedia.org/wiki/Verilog is accessible context only.
+// Stress (T-4.9 — a B2-OMNI falsification probe): hardware CONCURRENCY vs
+//   the 5 L1 behaviors. `always @(posedge clk)` and continuous assignment
+//   are concurrent dataflow, NOT sequential control flow. The IN-B
+//   decision (concurrency = Bind composition + effect typing, NO 6th L1
+//   behavior — coordination.dag) is VALIDATED here: if Verilog cannot be
+//   modeled without a 6th `Concurrent` behavior, that is a C1 stop-signal
+//   escalation. Catching that now — before the substrate is load-bearing
+//   — is precisely the point of adding this early.
+// Clear win: ONE `.dag` FSM → simulable Verilog + a Rust reference model,
+//   same Node, zero translator (hardware + software from one source).
+//
+// Owns:
+//   - Verilog grammar (module / port / wire / reg / assign / always /
+//     instantiation) as declarative data (B2 — generic walker, not code)
+//   - Concurrency expressed as effect-typed Bind composition (per IN-B;
+//     NOT a new behavior — that would be a C1 STOP)
+//   - Inhabitance: bit-vectors (wire/reg [N:0]) per std/algebra.dag
+//   - Cost realization: per-construct cost on a Verilog target
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/primitive.dag
+//   - extdeps/coordination.dag (concurrency via effect-typed Bind — IN-B)
+//
+// Status: scaffold — fill per TASKS.md T-4.9
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.languages.verilog

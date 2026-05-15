@@ -1,0 +1,38 @@
+// src/v4/extdeps/languages/llvm_ir.dag
+//
+// Scope: LLVM IR model — direction-agnostic. Typed SSA intermediate
+//        representation: modules, functions, basic blocks, SSA values,
+//        instructions, types. A LOWER-level language than rust/py/ts.
+// Anchor: LLVM Language Reference Manual — pin a concrete release
+//         (e.g. LLVM 18 LangRef) as the versioned fidelity authority
+//         (L-2: model the spec, not a library; the spec IS the anchor).
+// Stress (T-4.12 — a B2-OMNI falsification probe): does the Node
+//   substrate + B2-OMNI generalize DOWN the abstraction stack, not just
+//   across surface languages? SSA form (every value defined once;
+//   phi nodes; dominance) is a structural shape unlike source ASTs. If
+//   LLVM IR cannot be a plain `LanguageModel` without core/pipeline
+//   changes, B2-OMNI is leaking — surfaced now, before load-bearing.
+// Clear win: `.dag → LLVM IR` (then LLVM lowers to machine code), AND
+//   `LLVM IR → Node` ingest — the down-stack half of O(N+M).
+// C5-fidelity note: F here is essentially all-structural — LLVM IR has
+//   negligible cosmetic surface, so `emit∘ingest` is ~identity (no
+//   trivia to normalize). Contrast source models where F may include
+//   comments/formatting by intent.
+//
+// Owns:
+//   - LLVM IR grammar as declarative bidirectional data (B2-OMNI):
+//     module / function / basic-block / instruction / SSA value / type
+//   - SSA + dominance modeled structurally (NOT a 6th behavior — the
+//     value graph is Node edges; phi is a Node, per IN-B discipline)
+//   - Inhabitance: LLVM integer/float/vector/pointer types per std/algebra.dag
+//   - Cost realization: per-instruction cost on an LLVM target
+//
+// Consumes:
+//   - std/node.dag, std/algebra.dag, std/primitive.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.12
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.languages.llvm_ir

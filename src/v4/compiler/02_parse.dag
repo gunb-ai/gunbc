@@ -3,9 +3,43 @@
 // Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 //
+// B2-OMNI (operator-ratified 2026-05-15): parse is NOT a .dag parser. It
+// is the GENERIC walker over a `LanguageModel`'s declarative grammar
+// (B2). Parsing .dag is `parse(tokens, dag_model.grammar)` — `.dag` is
+// language #1, never hardcoded/special-cased. The same generic walker
+// ingests other **Shape A languages** (Rust/Python/…) via their models.
+// Shape B data formats (JSON, SPICE netlists) are NOT LanguageModels and
+// do NOT pass through this compiler-language parser — they ingest via
+// the formats data-model path (THESIS Shape A / Shape B is a hard
+// boundary; conflating them here re-blurs the ingest boundary = STOP).
+// This is the load-bearing enabler of the O(N+M) pivot (see
+// 00_compile.dag B2-OMNI). A `.dag`-specific production hardcoded here =
+// the N×M trap creeping back = STOP.
+//
+// PARSE-1 (operator-ratified 2026-05-15): the `.dag` LanguageModel
+// grammar MUST admit a BODILESS SIGNATURE declaration as a first-class
+// production (an `fn name(args) -> T` with NO body — the
+// contract-as-checked-signature surface). This graduates the "immutable
+// I/O contract for the worker" (the scaffold-header convention) from
+// comment-prose into compiler-enforced structure: a later filled body
+// must conform to the frozen signature, divergence = a fail-closed type
+// error (structural, per no-annotations). NOT a v2-bridge feature —
+// verified: frozen v2's parser REJECTS bodiless `fn` (`expected LBrace`)
+// while cleanly parsing the full ratified kernel shape WITH bodies
+// (40k-line src/v2 corpus + constructive kernel probe, zero syntax
+// errors). So bridge-era substrate contracts stay comment-prose (current
+// scaffold form) and the fail-closed parse-class gate is safe (v2 is
+// never asked to parse bodiless fn); the bodiless-signature production
+// is a v4-self-parser-era surface only. This is the conditional that
+// makes the bridge-era deferral acceptable — supportable by construction
+// (it is v4's own grammar; nothing external constrains it). Per B2-OMNI
+// this is a grammar-DATA production in the `.dag` model, not a
+// production hardcoded in this generic walker.
+//
 // Owns:
 //   - ParseTree type
-//   - parse: TokenStream -> Result<ParseTree, Diagnostic>
+//   - parse: (TokenStream, Grammar) -> Result<ParseTree, Diagnostic>
+//     (Grammar is declarative data from the LanguageModel, not code here)
 //   - grammar productions as Node trees
 //
 // Consumes:
