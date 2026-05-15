@@ -91,6 +91,35 @@ The discipline:
   joined on one line; the file represents one cohesive concept and should
   have one canonical anchor for that concept.
 
+## Zero-deferrals discipline (operator directive 2026-05-15)
+
+v4 has NO deferrals. Any decision that would require a workaround, or
+push the decision to a follow-up phase, is a **HARD STOP — escalate
+to operator**.
+
+This applies at every tier:
+- **Worker tier**: hitting an unmodelable case, ambiguous substrate, or
+  "I'll just do this for now" temptation → STOP, file an inbox message
+  to operator with the decision shape, do not work around. The brief's
+  ESCALATION TRIGGERS section is binding.
+- **Audit tier**: every disposition is PROVEN, NOT-IN-V4 (with named
+  reason), or OPERATOR-DECISION-REQUIRED. There is no R4-DEFERRED,
+  no fast-follow, no canvas-blocked. See [`docs/v4-close-interrogation.md`](../../docs/v4-close-interrogation.md)
+  §0 disposition vocabulary.
+- **Substrate tier**: if a substrate decision is ambiguous, the file
+  is NOT scaffolded until the operator decides. No "we'll figure out
+  the modeling during the worker task."
+
+There is no "v5 / v6 / R5". v4 is the shipping version. If something
+is needed but not in v4, it goes through a fresh operator
+scope-expansion decision (a v4 amendment) — not a deferral to a
+future phase that doesn't exist.
+
+The discipline exists because v3 failed exactly here: deferrals
+created drift, drift created gaming, gaming required operator
+intervention to catch. Zero-deferrals removes the drift surface at
+its source.
+
 ## Architectural commitments (ratified during PR #3147 review)
 
 These are substrate-level decisions that constrain every worker's modeling

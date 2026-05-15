@@ -11,6 +11,8 @@
 - Gate-number references (`#1`, `#82`, `#103`, etc.) anchor to `r3-program-plan.md §1.8`. For v4, the same predicates apply but gates are tracked in `src/v4/TASKS.md` per-XL-task; mapping is intentional-not-mechanical.
 - Disposition updates: every `R4-DEFERRED` disposition in §1-§12 is **superseded** by `V4-IN-SCOPE` — see specific R4 section at §13+ for which v4 file owns each formerly-deferred item.
 
+**Zero-deferrals policy** (operator directive 2026-05-15): v4 has NO deferrals. Any decision that would require a workaround, or push the decision to a follow-up phase, is a HARD STOP — escalate to operator. Either a thing is IN v4 (operator commits scope NOW; v4 ship blocks on it) or it is OUT of v4 (operator commits exclusion NOW; explicitly NOT-IN-V4 with a named reason). No "fix later," no "post-canvas," no "fast-follow." This applies retroactively: every R4-DEFERRED disposition throughout this doc is now an operator-decision-required item.
+
 **Stance**: this is an ADVERSARIAL audit, not a checklist. Predicates being green is necessary but not sufficient — a gate can pass its predicate while the feature it gates is still broken. For every promise v4 makes, this sheet demands the receipt:
 
 1. **The promise** — verbatim quote from a doc, with citation
@@ -31,10 +33,11 @@ v4 ships when every promise has all four. Predicates and counts are evidence; th
 | **WEAK-EVIDENCE** | Promise + delivery cited but example is single-fixture, narrow, or non-end-to-end. Blocker for v4 ship |
 | **GAP** | Promise exists; delivery absent OR demo doesn't run OR example doesn't reproduce |
 | **V4-IN-SCOPE** | Was R4-DEFERRED in original R3 framing; under v4 = R3+R4 one-phase, now in-scope. See §13+ for the v4 file/task that owns it |
-| **SCAFFOLD-GAP** | v4-specific: the v4 scaffold doesn't yet allocate responsibility for this claim. Decision needed |
+| **OPERATOR-DECISION-REQUIRED** | A hard substrate-design or scope decision the operator must commit on NOW. Per zero-deferrals: no work proceeds until decided. Decision shapes are: IN (operator commits scope; v4 substrate accommodates) or OUT (operator commits explicit NOT-IN-V4 exclusion; named reason recorded) |
+| **NOT-IN-V4** | Operator-committed exclusion. NOT a deferral — there is no "v5 / R5 / fast-follow" where this lands. If the thing is needed, it goes through a fresh operator scope-expansion decision (v4 amendment) |
 | **NOT-PROMISED** | The "expected" behavior was never promised; out of v4 scope |
 
-A ship-eligible v4 has every item PROVEN. Zero GAP. Zero WEAK-EVIDENCE. V4-IN-SCOPE items become PROVEN through the v4 XL-task plan.
+A ship-eligible v4 has every item PROVEN, NOT-IN-V4 (with named reason), or NOT-PROMISED. Zero GAP. Zero WEAK-EVIDENCE. Zero OPERATOR-DECISION-REQUIRED. V4-IN-SCOPE items become PROVEN through the v4 XL-task plan.
 
 ---
 
@@ -1195,7 +1198,12 @@ New directory: `src/v4/extdeps/frameworks/`. Per-framework files:
 - `extdeps/frameworks/react.dag` (initial framework)
 - Extension to TASKS.md: new T-4.6 for framework substrates
 
-**Disposition**: deferred-within-v4 to post-canvas-ratification. The framework-substrate shape is itself a Director-tier design question (5-Q canvas pending per `design-r4-full-stack-omni-emission-canvas.md`). v4 substrate scaffold reserves the directory but doesn't pre-allocate file scopes until the canvas resolves.
+**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). Two valid shapes:
+
+- **IN**: operator commits to React-as-framework-substrate scope NOW. v4 ship blocks on the framework substrate landing. The 5-Q canvas at `design-r4-full-stack-omni-emission-canvas.md` is resolved by operator decision (not deferred to a future canvas-ratification ceremony). v4 scaffolds `extdeps/frameworks/react.dag` immediately and a worker is dispatched per the resolved canvas.
+- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "framework substrates require their own modeling phase; v4 ships with language-target omni-emission only; framework support is a v4-amendment for after v4 ships"). React/framework substrate is removed from this audit doc as out-of-scope.
+
+There is no third option (deferred to canvas, fast-follow, etc.). Operator decides IN or OUT now.
 
 ---
 
@@ -1223,14 +1231,13 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 - [ ] Cross-endpoint dimension propagation: does affected-set lens extend across deployment-unit boundaries?
 - [ ] **Falsification probe**: design a 2-endpoint distributed program. Demonstrate end-to-end emission per Shape-A + the wire contract per Shape-B + coordination behavior captured structurally.
 
-**Scaffold additions needed**:
+**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). The most consequential v4 substrate decision because it can trigger C1 stop-signal (substrate extension). Three valid shapes:
 
-This is the area where v4 substrate decisions are most consequential (could trigger C1 stop-signal). Recommendation:
+- **IN-A: 6th L1 behavior** — operator ratifies a `Coordinate` behavior for sync/async/stream/pubsub. The C1 stop-signal four-dissolution-attempt protocol is run IMMEDIATELY (not deferred); operator-witnessed. If dissolutions all fail with structural arguments, substrate extension lands. v4 ship blocks on this.
+- **IN-B: Bind composition + Effect annotation** — operator commits coordination is library-level over existing 5 behaviors. `extdeps/coordination.dag` is scaffolded NOW with the substrate types (`Endpoint`, `DeploymentUnit`, etc.) and a worker is dispatched. v4 ship blocks on the multi-program demo.
+- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "multi-program coordination is the next omni-emission expansion; v4 ships with single-program omni-emission only"). Multi-program is removed from this audit as out-of-scope.
 
-- Defer scaffold-allocation to post-Director-design-canvas. The 6th-behavior question is a substrate-extension question that the dissolution-protocol must address first.
-- In v4 STRUCTURE.md, reserve `extdeps/coordination.dag` as a placeholder name, but don't scaffold the file until the canvas resolves.
-
-**Disposition**: SCAFFOLD-GAP with explicit Director-canvas dependency. v4 substrate-decision pending; v4 ship would be acceptable without multi-program coordination IF this is explicitly framed as "v4-extension follow-on" rather than carrying it as silent gap.
+Operator decides IN-A, IN-B, or OUT now.
 
 ---
 
@@ -1277,7 +1284,12 @@ Compiler proves a DIFFERENT algorithm with equivalent semantics achieves better 
 
 **v4 owner**: extends `src/v4/lens/complexity.dag` (or new `src/v4/lens/synthesis.dag` if substrate-cohesion warrants).
 
-**Disposition**: V4-IN-SCOPE per "one giant development phase" but **highest research-tier risk**. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Honest framing for v4 ship: this may require its own canvas + Director-ratified scope before any worker can be dispatched. If v4 ship deadline is tight, recommend explicit acknowledgement that C7 lands in a fast-follow rather than blocking ship.
+**Disposition**: OPERATOR-DECISION-REQUIRED (zero-deferrals). Highest research-tier risk in v4 scope. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Two valid shapes:
+
+- **IN**: operator commits cross-algorithm complexity to v4 scope. v4 ship blocks on the synthesis-lens substrate. Acknowledged: this likely doubles or triples v4 timeline because algorithm synthesis is research-tier. Operator commits the time/scope cost.
+- **OUT**: operator commits explicit NOT-IN-V4 exclusion. Reason recorded (e.g., "cross-algorithm synthesis is research-tier and not viable in v4 ship timeline; v4 ships with same-algorithm tightness only; cross-algorithm requires fresh scope-expansion decision after v4 ships"). C7 removed from v4 scope.
+
+Operator decides IN or OUT now. There is no "fast-follow" or "deadline-tight escape" — that's a deferral, which the zero-deferrals policy refuses.
 
 ---
 

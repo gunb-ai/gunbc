@@ -54,14 +54,40 @@ YOUR DECISIONS (the actual modeling work):
   - <decision point 3>
   When trade-offs are non-obvious: surface to operator BEFORE deciding
 
-ESCALATION TRIGGERS (stop and surface, do NOT work around):
+STOP TRIGGERS (binding — do NOT work around; zero-deferrals policy):
   - You need a new file
   - You need a new std/* concept
   - You need to split this file into multiple
   - The declared I/O contract is wrong
   - Substrate you may use is insufficient
   - You hit a substrate-design ambiguity that affects the modeling
+  - You are tempted to "just do this for now" / "fix later" / "we can
+    refactor when we have time" — these are deferrals; deferrals are
+    forbidden in v4
+  - You hit a case the substrate doesn't model, and you would need to
+    introduce a workaround to make progress — STOP, escalate
+  - You can't decide between two structural shapes and would otherwise
+    flip a coin — operator decides, not you
+  - The brief's CONTRACT or DISCIPLINE section is wrong / incomplete —
+    surface immediately; do not interpret-around it
+
+How to escalate: write inbox message to operator with the decision
+shape (what choice is needed, what options exist, what you recommend
+and why). Do not proceed until operator commits a decision.
 ```
+
+## Why STOP TRIGGERS are non-negotiable
+
+Per `STRUCTURE.md` "Zero-deferrals discipline" — the v4 program exists
+because v3 failed at exactly this surface. v3 workers hit hard
+decisions, made local choices to keep moving, and the local choices
+accumulated into substrate drift that took operator intervention to
+catch. v4's discipline removes the drift surface at its source: every
+hard decision is operator-tier or it doesn't get made.
+
+Stopping is not a failure mode for a worker. It is the correct
+behavior when the brief or substrate is insufficient. The failure
+mode is *working around* a hard decision.
 
 ## Why this shape
 
