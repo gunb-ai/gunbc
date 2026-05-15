@@ -10,7 +10,7 @@ The XL tasks below define "v4 done" (the count is intentionally NOT stated — i
 Phase 1 (parallel — substrate foundation):
   T-1   std/node.dag                     [BLOCKS: all]
   T-2   std/algebra.dag                  [needs T-1]
-  T-3   std/* supporting (6 files)       [needs T-1]
+  T-3   std/* supporting (11 files)      [needs T-1, T-2; diagnostic/cardinality are T-1-only, the scalar/numeric stack needs T-2 (algebra) — ordered cluster, see T-3 detail]
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag   [needs T-1, T-2]
   T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
   T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
@@ -118,10 +118,19 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-3: std/* supporting (cardinality, witness, diagnostic, primitive, collection, verification)
+### T-3: std/* supporting (cardinality, witness, diagnostic, collection, verification + the scalar/numeric stack)
 
-**File**: 6 files in `src/v4/std/`
+**File**: 11 files in `src/v4/std/` — `cardinality`, `witness`, `diagnostic`,
+`collection`, `verification`, plus the **scalar/numeric stack** (`logic`,
+`nat`, `machine`, `integer`, `float`, `text`) that replaced the deleted
+`primitive.dag` — see `STRUCTURE.md` §"Scalar/numeric concept decomposition".
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
+
+**Dependency order within T-3** (the scalar/numeric stack is a cluster, not
+flat — dispatch in waves):
+- `diagnostic`, `cardinality` need only `node.dag`.
+- `logic`, `nat`, `collection`, `witness`, `verification` need `algebra.dag` (T-2) or `diagnostic`.
+- `machine` needs `logic` + `nat`; `text` needs `nat`; `integer` needs `nat` + `machine`; `float` needs `machine`.
 
 **Modeling decisions per file** (see file headers for specifics).
 

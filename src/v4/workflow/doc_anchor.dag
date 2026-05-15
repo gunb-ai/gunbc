@@ -8,7 +8,7 @@
 //   - replaces opaque-string citations with structural references
 //
 // Consumes:
-//   - std/node.dag, std/primitive.dag
+//   - std/node.dag  (String is kernel-ambient — no import)
 //
 // Status: scaffold — fill per TASKS.md T-5
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

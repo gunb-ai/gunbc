@@ -33,7 +33,7 @@
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj
-//   - std/primitive.dag: String for messages
+//   (String for messages is the kernel-ambient String — no import)
 //
 // Status: scaffold — fill per TASKS.md T-3
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

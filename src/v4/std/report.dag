@@ -33,7 +33,7 @@
 //     the single, explicit, user-authored bridge — never implicit.
 //
 // Consumes:
-//   - std/node.dag, std/primitive.dag (String for messages)
+//   - std/node.dag  (String for messages is kernel-ambient — no import)
 //   - std/diagnostic.dag: Locus (shared structural reference for "where in
 //     the program"; Report and Diagnostic share Locus but diverge on
 //     reason/severity semantics)

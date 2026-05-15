@@ -18,7 +18,7 @@
 //   - Dialect { delimiter: Char, quote: Char, escape: Option<Char>, line_terminator: String }
 //
 // Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/primitive.dag
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 //
 // Status: scaffold — fill per TASKS.md T-4.6
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

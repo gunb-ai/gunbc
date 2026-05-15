@@ -1,0 +1,27 @@
+// src/v4/std/machine.dag
+//
+// Scope: machine representation constraints — fixed-width words, bytes,
+//        pointer width. The physical axis abstract numeric types project
+//        onto (a 64-bit Int is the abstract Int composed with a machine
+//        width).
+// Anchor: https://en.wikipedia.org/wiki/Word_(computer_architecture)
+//
+// Owns:
+//   - Byte; Word8 / Word16 / Word32 / Word64 / Word128
+//   - MachineWidth — the width axis numeric refinements compose against
+//   - PointerWidth — the platform-dependent address width
+//
+// Consumes:
+//   - std/node.dag: Conj, Cardinality
+//   - std/logic.dag: Bool (a byte is a fixed-cardinality group of bits)
+//   - std/nat.dag: Nat (a width is a count)
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.machine
