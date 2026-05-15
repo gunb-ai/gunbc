@@ -586,6 +586,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Diff representation (file-set? node-set? structural-delta over the Dag?)
 - Purity-aware skipping: an unchanged pure subgraph is incrementally skippable; what makes a subgraph "unchanged" structurally?
 - Composition with `compiler/05_eval.dag` (skip) and `workflow/ci.dag` (job selection)
+- Structural caching is the **dual** of the affected set — the same mechanism. A build/exec artifact's cache key is `content_hash` (B1) of its input subgraph: the affected set names what re-runs, a cache restores what doesn't. Caching is not a separate system. The cache backend (GHA `actions/cache`, a remote build cache, a local memo table) is just an emission target of the hash.
 
 **Scope**: L (large — load-bearing for incremental execution + CI dissolution)
 
