@@ -15,12 +15,24 @@
 //     Report must not overload it. Empty set = no advice; non-empty =
 //     advisory observations, never blocking unless user opts in via
 //     apply_lens(synthesis, Enforce { ... }))
-//   - semantic-equivalence relation (when do two programs compute the same
-//     input→output relation? structural, not behavioral)
-//   - pattern-recognition substrate (match user program against algorithm-
-//     class templates: sort / search / matmul / graph-traverse / etc.)
-//   - transformation rule library (algorithm-class rewrites)
-//   - cross-algorithm cost comparison (composes with lens/complexity.dag)
+//   - the user's DECLARED I/O relation (the function's contract/type —
+//     DECLARED, never inferred). There is NO program-to-program
+//     equivalence: general I/O equivalence is Rice-undecidable, and
+//     feedback_decidability_invariant forbids it. The collision is
+//     dissolved by reading the declared relation, not proving equivalence.
+//   - LowerBoundTechnique = CLOSED set (operator-ratified 2026-05-15, C2):
+//       DecisionTree | AlgebraicRank | AdversaryCommunication
+//       | InformationTheoretic | ReductionConditional
+//     Each is a GENERAL algebraic property over a relation CLASS, encoded
+//     ONCE. This is NOT a (naive→better) rule library — that is
+//     engine-shaped and unbounded (feedback_no_engine). Adding the Nth
+//     algorithm adds ZERO entries; the decision-tree theorem already
+//     covers every comparison-decided relation, etc.
+//   - compare(cost-lens-derived cost of the user's realization, the
+//     declared relation's lower bound derived via the technique set)
+//   - NO applicable technique for a relation class ⇒ a helpful Diagnostic
+//     (feedback_no_engine — surfaced honestly with what is unmodeled;
+//     NEVER a fabricated suggestion, NEVER a silent empty set)
 //
 // Discipline (per INVARIANTS C-8 + r4-carve-out-routing.md C7):
 //   - The LENS itself is advisory (emits Report, not Diagnostic) — algorithm
@@ -35,10 +47,14 @@
 //   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)
 //
 // Status: scaffold — fill per TASKS.md T-17
-// Brief: see BRIEF_TEMPLATE.md. T-17 is XL scope, research-tier risk —
-// substrate additions WILL surface that may trigger operator escalation
-// (e.g., semantic-equivalence shape, pattern-recognition substrate
-// shape). STOP-and-escalate discipline applies fully.
+// Brief: see BRIEF_TEMPLATE.md. C2 reframe (operator-ratified 2026-05-15)
+// COLLAPSES the prior research-tier risk: no undecidable equivalence
+// engine, no unbounded rule library. Risk is now bounded to encoding the
+// CLOSED LowerBoundTechnique set (≈5, fundamental) + authoring a few
+// honest worked examples (sort: decision-tree; matmul: algebraic-rank;
+// string-match: information-theoretic — see TASKS.md T-17). STOP-and-
+// escalate still applies if a relation class needs a 6th technique
+// (substrate extension = stop signal).
 
 module v4.lens.synthesis
 

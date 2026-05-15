@@ -435,14 +435,17 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **File**: 2 files (operator-ratified 2026-05-15 IN: cross-algorithm complexity synthesis lens)
 **Why bundled**: the synthesis lens is the consumer of the Report advisory carrier; both must land together for the lens to have anything to emit.
 
-**Scope**: **XL, research-tier risk** — substrate additions cascade; semantic-equivalence representation, pattern-recognition substrate, transformation-rule library are all substrate-design decisions individually. STOP-and-escalate discipline applies fully.
+**Scope**: **XL** — research-tier risk **collapsed by the C2 reframe** (operator-ratified 2026-05-15). No undecidable equivalence engine, no unbounded rule library. Bounded to encoding the closed `LowerBoundTechnique` set + a few honest worked examples. STOP-and-escalate still applies if a relation class demands a 6th technique.
 
-**Modeling decisions**:
-- Semantic equivalence: how is "two programs compute the same I/O relation" represented structurally? Pure-function input/output specifications? Algebraic-axiom-preserving rewrites? Tree-rewriting under a typed equivalence?
-- Pattern-recognition substrate: how does the lens match user program against algorithm-class templates? (Template matching? Constraint solving? Structural unification?)
-- Transformation rule library: bubble-sort → merge-sort, naive-matmul → Strassen, naive-string-match → KMP, etc. — encoded as algebraic rewrites OR (input-shape → output-shape) pairs OR named patterns
-- Report carrier shape (`std/report.dag`): closed-enum `ReportReason` disjoint from Diagnostic's `NamedReason`; advisory by construction; opt-in fail-closed via `apply_lens(synthesis, Enforce { ... })`
-- Composition with lens/complexity.dag: synthesis reads current program's complexity (via complexity lens), produces Report with proposed-algorithm-complexity for comparison
+**Modeling decisions** (C2-reframed):
+- **No semantic equivalence, no pattern library.** Synthesis reads the user's **declared** I/O relation (its contract/type — declared, never inferred; this dissolves the Rice-undecidability collision). It does NOT prove two programs equivalent and does NOT match against a `(naive→better)` catalogue (engine-shaped + unbounded — `feedback_no_engine`).
+- **`LowerBoundTechnique` = closed set, enumerated up front**: `DecisionTree | AlgebraicRank | AdversaryCommunication | InformationTheoretic | ReductionConditional`. Each is a *general algebraic property over a relation class*, encoded once; adding the Nth algorithm adds ZERO entries.
+- Synthesis = `compare(cost-lens-derived cost of the user's realization, the declared relation's lower bound derived via the technique set)`. No applicable technique ⇒ helpful Diagnostic (honest, never fabricated — `feedback_no_engine`).
+- Report carrier shape (`std/report.dag`): closed-enum `ReportReason` disjoint from Diagnostic's `NamedReason`; advisory by construction; opt-in fail-closed via `apply_lens(synthesis, Enforce { ... })`.
+- **Honest worked examples (for the worker later — illustrations of the technique→relation→lower-bound→compare flow, NOT a rule catalogue):**
+  - *Sorting* — relation: "ordered permutation under a comparison oracle". Technique: `DecisionTree` ⇒ ≥ n! leaves ⇒ Θ(n log n). User Θ(n²) ⇒ Report the gap. (Merge-sort never named — the provable gap to optimum is surfaced, not a fix.)
+  - *Matrix multiply* — relation: bilinear form. Technique: `AlgebraicRank` ⇒ naive n³ is rank-suboptimal vs n^ω. (Strassen never named; ω is open — the model surfaces structural suboptimality, refuses to fabricate an optimal.)
+  - *Substring search* — relation: match positions over an n-length input. Technique: `InformationTheoretic` ⇒ Ω(n) (input must be read once); naive re-reads ⇒ Report the unforced re-scan. (KMP never named.)
 
 **Reference**:
 - `docs/r4-carve-out-routing.md` C7 — Director-tier design scope spec
