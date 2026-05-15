@@ -91,13 +91,21 @@ Per `src/v3/std/tokenize.dag` (live; Token + TokenKind closed-axis sum):
 Same cross-stage Decision 2.B framing as PB-3/4/5: per-stage diagnostic variants attach via whichever path PR #3077 §12 Q7 ratifies (carrier-field vs lane-local-sum).
 
 ```
-// Typed reference carriers (cross-stage discipline per openai-pro
-// PR #3077 BLOCKING + INVARIANTS P2/P3):
-type ScannerClassRef = ScannerCharClass   // closed-axis sum from tokenize.dag
+// Typed reference carrier (cross-stage discipline per openai-pro
+// PR #3077 BLOCKING + INVARIANTS P2/P3) — bound to the live .dag
+// character-class authority `dsl/std/unicode.dag:62`:
+//     type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+// consumed at `src/v3/compiler/tokenize.dag:103`:
+//     data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]
+// There is NO `ScannerCharClass` declaration in any .dag file; an
+// earlier draft of this section invented that name from the generated
+// Rust enum spelling (codex PR #3138 BLOCKING sha f08b9525 Finding 1
+// fixed in PR #3138). TokenizeDiagnostic references the live `CharClass`
+// directly.
 
 type TokenizeDiagnostic
   = UnterminatedStringLiteral { opener_span: SourceSpan }
-  | InvalidCharacter { byte: Nat, span: SourceSpan, expected_class: ScannerClassRef }
+  | InvalidCharacter { byte: Nat, span: SourceSpan, expected_class: CharClass }
   | NumericLiteralOverflow { lexeme: NonEmptyStr, span: SourceSpan }
   | (additional variants per Step 2 worker brief authoring against tokenize_generated.rs)
 ```
@@ -122,17 +130,17 @@ Step 2 signature: `fn tokenize(source: String) -> Result<List<Token>, TokenizeDi
 
 Per `tokenize_generated.rs:6-25` + `tokenize.dag` declarations:
 
-### §5.1 Byte → ScannerCharClass dispatch
+### §5.1 Byte → `CharClass` dispatch
 
-Each byte maps to one of 4 scanner classes:
+Each byte maps to one of the four `CharClass` variants declared at `dsl/std/unicode.dag:62` (`type CharClass = Whitespace | Digit | IdentStart | IdentContinue`) and consumed at `src/v3/compiler/tokenize.dag:103` (`data ascii_scan_order: List<CharClass>`):
 - `Whitespace` (tab/newline/form-feed/carriage-return/space)
 - `Digit` (ascii digit)
 - `IdentStart` (ascii letter or underscore)
 - `IdentContinue` (alphanumeric or underscore)
 
-This dispatch is purely structural — a byte-class lookup function. Live at `tokenize_generated.rs:13-25` (regenerated from tokenize.dag).
+This dispatch is purely structural — a byte-class lookup function. Live at `tokenize_generated.rs:13-25` (regenerated from tokenize.dag). The substrate authority is the `CharClass` declaration in `unicode.dag`, NOT a `ScannerCharClass` (no such .dag type exists; that name appears only in the generated Rust enum spelling).
 
-### §5.2 ScannerCharClass → token-recognition state machine
+### §5.2 `CharClass` → token-recognition state machine
 
 Per `tokenize.dag` declarations: byte sequences matching specific patterns produce specific TokenKind variants. The state machine is small + declarative:
 - Whitespace sequences: skipped (no token emitted)
