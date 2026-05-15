@@ -19,8 +19,19 @@ pub struct SymbolicCostEntry {
     pub port: PortId,
     pub cost: Lookup<SymbolicCost>,
 }
-pub fn symbolic_cost_of(p0: &Dag, p1: &PortId) -> Lookup<SymbolicCost> {
-    lookup_cost(&(compute_symbolic_costs(p0)), p1)
+pub fn symbolic_cost_of(p0: &Dag, p1: &PortId) -> Witness<SymbolicCost> {
+    match &((p0).resolve_producer_opt(p1).cloned()) {
+        Some(subject) => witness_from_symbolic_cost_lookup(
+            &(lookup_cost(&(compute_symbolic_costs(p0)), p1)),
+            (subject).clone(),
+        ),
+        None => Witness::Inhabits(
+            (SymbolicCost::UnknownCost {
+                _0: String::from("symbolic_cost_of: unresolved producer for port"),
+            })
+            .clone(),
+        ),
+    }
 }
 pub fn method_contract_cost_shape(p0: &MethodContract) -> Option<CostShape> {
     ((p0).cost_shape).clone()
@@ -369,7 +380,7 @@ pub fn witness_from_symbolic_cost_lookup(
 }
 pub fn cost_lens_read(p0: &Dag, p1: Behavior) -> Witness<SymbolicCost> {
     witness_from_symbolic_cost_lookup(
-        &(symbolic_cost_of(p0, &(behavior_result_port(&p1)))),
+        &(lookup_cost(&(compute_symbolic_costs(p0)), &(behavior_result_port(&p1)))),
         (p1).clone(),
     )
 }

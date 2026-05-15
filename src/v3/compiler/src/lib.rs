@@ -4597,8 +4597,9 @@ pub mod lens_cost_symbolic {
     /// earlier in the fold; applying collapse only after the full vector would leave those lookups
     /// observing uncollapsed `ProductCost` shells (facts-forward / single-authority for composed
     /// rows).
-    /// **Single public authority** for symbolic-cost facts: [`symbolic_cost_of`] is just
-    /// [`generated::lookup_cost`] over this table — no parallel uncollapsed export (P2).
+    ///
+    /// **Single public folded table.** [`compute_symbolic_costs`] is the normalization authority
+    /// (P2): [`generated::compute_symbolic_costs`] plus the collapse pass above.
     pub fn compute_symbolic_costs(dag: &crate::dag::Dag) -> Vec<SymbolicCostEntry> {
         use crate::dag::Lookup;
 
@@ -4621,19 +4622,48 @@ pub mod lens_cost_symbolic {
             })
     }
 
-    /// [`generated::lookup_cost`] over [`compute_symbolic_costs`] — the normalized lens surface (see
-    /// module docs on [`compute_symbolic_costs`]).
+    /// Port-only **[`Witness`]\<[SymbolicCost]>** (R3 §1.8 gate #104): resolves the port's producer
+    /// via [`crate::dag::Dag::resolve_producer_opt`]; on table miss attaches
+    /// [`Witness::Violates`](crate::dimension::Witness::Violates) with **`at`** that producer—never
+    /// an unrelated caller. When **no producer** exists on the queried port,
+    /// returns [`Witness::Inhabits`](crate::dimension::Witness::Inhabits) with
+    /// [`SymbolicCost::UnknownCost`] (conservative lattice top — **not**
+    /// a fabricated `Violates`).
+    ///
+    /// Uses normalized [`compute_symbolic_costs`], then [`generated::witness_from_symbolic_cost_lookup`].
+    ///
+    /// [SymbolicCost]: crate::dag::SymbolicCost
+    /// [`Witness`]: crate::dimension::Witness
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
-    ) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
+    ) -> crate::dimension::Witness<crate::dag::SymbolicCost> {
+        match dag.resolve_producer_opt(port).cloned() {
+            Some(subject) => generated::witness_from_symbolic_cost_lookup(
+                &generated::lookup_cost(&compute_symbolic_costs(dag), port),
+                subject,
+            ),
+            None => crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
+                _0: String::from("symbolic_cost_of: unresolved producer for port"),
+            }),
+        }
+    }
+
+    /// Table-only [`Lookup`] for one port—the same folded [`compute_symbolic_costs`] facts
+    /// [`symbolic_cost_of`] inspects—but **without** producer resolution /
+    /// [`Witness`] packaging (algebra-level consumers; dimensional spine).
+    #[inline]
+    pub fn symbolic_cost_lookup(
+        dag: &crate::dag::Dag,
+        port: &crate::dag::PortId,
+    ) -> SymbolicCostLookup {
         generated::lookup_cost(&compute_symbolic_costs(dag), port)
     }
 
     /// Scan a single port against a table from [`compute_symbolic_costs`].
     ///
     /// Callers that need many ports should compute once and use this instead of
-    /// [`symbolic_cost_of`], which rebuilds the full table on every lookup.
+    /// [`symbolic_cost_lookup`], which rebuilds the full table on every lookup.
     #[inline]
     pub fn lookup_symbolic_cost(
         table: &[SymbolicCostEntry],
@@ -4642,10 +4672,10 @@ pub mod lens_cost_symbolic {
         generated::lookup_cost(table, port)
     }
 
-    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
-    /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
-    /// returns `Lookup<SymbolicCost>` directly; this name stays for
-    /// embedder stability, mirroring `lens_cost::CostLookup`.
+    /// Rust projection of [`v3_std_lookup::Lookup`](crate::dag::Lookup) at [`SymbolicCost`].
+    /// Alias keeps embedder-stable naming alongside [`lens_cost::CostLookup`](crate::lens_cost).
+    ///
+    /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
