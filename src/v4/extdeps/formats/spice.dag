@@ -1,0 +1,32 @@
+// src/v4/extdeps/formats/spice.dag
+//
+// Scope: SPICE netlist model — direction-agnostic. Analog circuit
+//        description: components, nodes, .model cards, directives. A flat
+//        component + connection graph — NO control flow.
+// Anchor: https://en.wikipedia.org/wiki/SPICE (Berkeley SPICE; netlist format)
+// Stress (T-4.10 — a B2-OMNI falsification probe): is the format /
+//   LanguageModel abstraction ACTUALLY general, or secretly
+//   programming-language-shaped? A netlist has no control flow — it is
+//   components plus a connection graph. If the abstraction cannot model a
+//   netlist without contortion, that is a substrate-design signal to
+//   surface NOW (STOP-and-escalate), not after it is load-bearing.
+// Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
+//   simulates (omni-emission reaches analog hardware).
+//
+// Owns:
+//   - SpiceNetlist { components, nodes, models, directives } — well-formed
+//     by construction; malformed input is a Diagnostic, never a partial
+//     parse (same fail-closed discipline as csv.dag's rectangularity)
+//   - parse(String) -> Result<SpiceNetlist, Diagnostic>
+//   - emit(SpiceNetlist) -> String   (Shape B: a `.dag` program walks
+//     typed values to produce the netlist; not a compiler render target)
+//
+// Consumes:
+//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/primitive.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.10
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.formats.spice
