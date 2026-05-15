@@ -25,6 +25,39 @@
 //
 //   Does it depend on the emission target?  FACT: no.  REALIZATION: yes.
 //
+// USER-FACING CONTRACT — how a person actually uses this (operator-
+// ratified 2026-05-15: "it must be well understood by the user"):
+//
+//   It is NOT a "parallelize my code please" command. That framing is
+//   forbidden — a magic auto-parallelize transform is engine-shaped from
+//   the user's seat. It is a LENS the user READS, same UX category as
+//   complexity/cost: "what is independent, and WHY" — answered
+//   structurally ("disjoint pure inputs" / "⊕ is a Monoid" / "shares
+//   Write(file)"), or a precise fail-closed Diagnostic when not (e.g.
+//   "not a parallel-reduce: ⊕ does not inhabit a Monoid"). Never silent,
+//   never a guess.
+//
+//   The user's CONTROL SURFACE is structure, not a knob: you make work
+//   parallel by writing it independent + pure (the language already
+//   requires this); the lens confirms it or explains why-not. There is
+//   NO `@parallel` annotation; the user is never surprised.
+//
+//   Default = introspective/advisory: the fact is readable; the compiler
+//   realizes parallelism at the target ONLY where the cost model says it
+//   wins, and that realize-decision is itself derived + INSPECTABLE per
+//   target (the user can ask "will this parallelize for Rust?" and get
+//   the cost reasoning; for CPython it answers "no — GIL, no win",
+//   derived, never silent magic).
+//
+//   Guarantee = `apply_lens(parallelism, Enforce { ... })` (T-23, the
+//   uniform opt-in-depth bridge — same pattern as complexity/effects/
+//   synthesis, nothing new to learn): turns the structural fact into a
+//   fail-closed contract — e.g. "this MUST remain a parallel-reduce" →
+//   a later edit that breaks `⊕`'s associativity is a COMPILE ERROR, not
+//   a silent perf regression. (This opt-in contract is orthogonal to the
+//   lens read being a fail-closed `Witness` — the FACT is always
+//   derivable; Enforce is the user asserting a contract OVER it.)
+//
 // WORKED EXAMPLES (design contract — the worker fills to satisfy these):
 //
 //   A. Pure independence (the fact). `x=f(a); y=g(b); z=h(x,y)`, a/b
