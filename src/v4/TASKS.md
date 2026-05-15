@@ -76,6 +76,14 @@ Phase 3 (parallel — lens dimensions):
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
+        + PROOF-1: the external trust-discharge for A3 — a lens =
+          (evidence read: A2 descent, algebra-homomorphism chain, cost,
+          effects) ⊕ (B2-OMNI emit to a lean/coq language model). The
+          prover KERNEL-CHECKS gunbc's exported witnesses (never
+          searches — no-engine + A2). No new file; framing in
+          STRUCTURE.md §7 + DECISIONS.md PROOF-1. Realized when the
+          lens framework + a lean/coq model land (composition, not a
+          new subsystem).
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
         + React/TS frontend + OpenAPI wire contract
         [needs T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-10, T-11]
