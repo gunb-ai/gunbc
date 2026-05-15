@@ -282,6 +282,25 @@ Phase 4 (serial — close the loop):
 - Bootstrap-stage progression (v2 binary -> v4 first compile -> v4 self-compile)
 - Self-host fixed-point check
 
+**Falsification probe — what "bit-identical self-host failure" looks like as TestClaim**:
+
+```
+data t_15_self_host_fixed_point: TestClaim {
+  kind: BitIdentical,
+  label: "v4 compiler is a fixed point — iteration N matches iteration N+1",
+  input: compile(src/v4/compiler/*.dag, target=Rust),  // iteration N+1
+  expected: <committed v4 stage binary bytes>          // iteration N
+}
+```
+
+Failure modes the probe MUST catch (each enumerable, each testable):
+- **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations
+- **Hidden state**: global/static/ambient capability used in compiler logic → bytes vary with build environment
+- **Test-double leakage**: mock or test scaffold loaded at compile-time → bytes differ when test toolchain absent
+- **Substrate drift**: worker silently changed a substrate type without ratification → bytes differ from N to N+1
+
+Once T-15 lands and stays green, all four failure modes are impossible-by-construction. A CI gate runs `cargo test t_15_self_host_fixed_point` per-PR on the v4 affected-set.
+
 **Definition of v4-done**:
 - All 14 prior tasks complete
 - v4 compiles `src/v4/compiler/*.dag` end-to-end
