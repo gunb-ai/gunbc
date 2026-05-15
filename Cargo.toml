@@ -2,7 +2,15 @@
 resolver = "2"
 exclude = [".stage1"]
 members = [
-    # v3 compiler — M0: hand-written substrate skeleton
+    # v2 compiler — RESTORED 2026-05-15 as comparison artifact + v4 bootstrap
+    # source. v2 retired with 1-residual hand-Rust; v4 will use v2's compiled
+    # binary as stage minus one. CI runs v2 fixed-point only when src/v2/ is
+    # affected (frozen-buildable: workspace member, but not tested per-PR
+    # unless touched). See PR #3147 for v4 program context.
+    "src/v2/stage0",
+    "src/v2/tests",
+    # v3 compiler — FROZEN 2026-05-15 pending v4 program. CI for v3 runs only
+    # when src/v3/ is affected (frozen-buildable; same gating as v2).
     "src/v3/compiler",
     # T-WAD Slice 4 — regenerate `dsl/gunbc/ci_github_actions_workflow.dag` from `.github/workflows/ci.yml`
     "tools/gen_gunbc_ci_workflow_dag",
@@ -56,6 +64,15 @@ num-bigint = { version = "0.4", default-features = false }
 # avoids the linker OOM / SIGBUS failures we saw on CI runners.
 [profile.dev]
 debug = 0
+
+# Stage0 generated code uses debug_assert!(Rc::strong_count(...) == 1) to
+# verify ownership for in-place mutation. These fire on shared Rc (expected
+# in interpreter paths); the fallback clone is correct. This suppresses ALL
+# debug_assert! in v2-compiler, not just ownership checks — acceptable
+# because stage0 is generated code with no hand-written debug assertions.
+[profile.dev.package.v2-compiler]
+debug-assertions = false
+opt-level = 2
 
 [profile.release]
 debug = 0
