@@ -25,10 +25,25 @@ through — and moves to Part 1.
 | **A4** | Folded into A3 — a 7th connective is the same machine: deviation changes the reproduction → conspicuous signal → STOP. Not "the substrate refuses by construction" | `STRUCTURE.md` §7, `workflow/bootstrap.dag` |
 | **U1** | One homomorphism-with-cost carrier; the back half is five phases (Find/Realize/Measure/Compare) not five engines; no-engine discipline (empty search → helpful Diagnostic, never fabrication) | `std/algebra.dag` header |
 | **C2** | Synthesis = compare(derived cost, the relation's structurally-derived lower bound) via a closed `LowerBoundTechnique` set; NOT a (naive→better) rule library; honest worked examples preserved | `lens/synthesis.dag`, `TASKS.md` T-17 |
+| **U2** | `complexity.dag` *consumes* `cost.dag`'s `SymbolicCost`, never re-derives; **cost is TOTAL over the closed kernel** — no per-feature opt-in, so a future addition cannot bypass cost (the no-eternal-maintenance property) | `lens/cost.dag` + `lens/complexity.dag` headers |
+| **C3** | `normalize` dissolves exactly the 4 bounded sugar forms (`service/fn/type/operation`) into Node; not identity, not open-ended; new sugar = STOP | `compiler/03_normalize.dag` + `TASKS.md` T-8 |
+| **C1** | `infer` is the bounded *Find* phase — bounded structural unification over the finite (A1/A2) space; empty ⇒ Diagnostic, never fabricated coercion | `compiler/04_infer.dag` header |
+| **B3** | The type signature is the single effect authority; the effect lens reads it; coordination effect-types are carriers over it, not a parallel taxonomy | `lens/effect.dag` + `extdeps/coordination.dag` |
+| **C4** | On-disk emitted artifacts (`ci.yml`, trampoline) are committed==emit(source) checked projections, not editable authority (same machine as A3) | `workflow/ci.dag` + `STRUCTURE.md` + `workflow/bootstrap.dag` |
+| **C5** | Ingest = emit⁻¹ on each model's lossless core; outside ⇒ fail-closed Diagnostic. Guaranteed ASAP via testgen `bidirectional_roundtrip` (Phase-1.5, gated per-PR via the B1 hash from first language-model commit) | `extdeps/languages/*` + `lens/testgen.dag` + C5 note |
+| **K-1** | Kernel identifiers are OPAQUE `Symbol`s (equality only, no content accessor); spelling lives in a boundary table, never kernel/lens-readable — structurally forecloses the v2 string-heuristic channel | `std/node.dag` header (T-1 worker encodes) |
+| **IR-1** | `InferredTree` is NOT a new type — it is `Node` + a FROZEN flat `InferredFacts` coordinate (resolved_type, cardinality, inhabits, cost, descent; effects NOT a field per B3); a 6th field is a STOP; modeled up front, not emergent | `compiler/04_infer.dag` header |
+| **B2-OMNI** | parse is one ingestion instance; `ingest`/`emit` are parameterized boundaries over declarative LanguageModels; Node is the universal pivot ⇒ O(N+M) not O(N×M); `.dag` is language #1, never hardcoded | `compiler/00_compile.dag` + `01_tokenize`/`02_parse`/`05_emit` headers |
 
 ---
 
-## Part 2 — PROPOSED: quick confirms (cascade-closures)
+## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
+
+> **All three (U2, C3, C1) were ratified and are encoded — see Part 1.**
+> The detailed rationale is retained below as the decision record.
+> U2 carries the operator sharpening: cost/complexity is **total over
+> the closed kernel** — a future language addition *cannot* bypass it
+> (no per-feature opt-in); that is the no-eternal-maintenance property.
 
 These are not new decisions — they are the logical closure of a RATIFIED
 parent. Each is confirm-or-redirect, not a fresh fork.
@@ -74,7 +89,15 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 
 ---
 
-## Part 3 — PROPOSED: open forks (genuine decisions)
+## Part 3 — open forks
+
+> **Status 2026-05-15:** **B3, C4, C5 ratified** (see Part 1). **B2 →
+> ratified as B2-OMNI and authored** (`00_compile.dag` + boundary files).
+> **B4 → ratified as IR-1 and authored** (`04_infer.dag`). **Only B1
+> remains PROPOSED** — the modeling was shown; the one outstanding pick
+> is *where the content-hash lives* (recommendation: `std`-level fold
+> over the A1-canonical Node, in `std/node.dag` + `Hash` in
+> `std/primitive.dag`). Confirm the home and B1 is done.
 
 ### B1 — One content-addressing scheme (ELEVATED: load-bearing for A3)
 

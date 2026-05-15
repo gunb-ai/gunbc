@@ -3,9 +3,18 @@
 // Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 //
+// B2-OMNI (operator-ratified 2026-05-15): parse is NOT a .dag parser. It
+// is the GENERIC walker over a `LanguageModel`'s declarative grammar
+// (B2). Parsing .dag is `parse(tokens, dag_model.grammar)` — `.dag` is
+// language #1, never hardcoded/special-cased. The same generic walker
+// ingests Rust/JSON/… via their models. This is the load-bearing enabler
+// of the O(N+M) pivot (see 00_compile.dag B2-OMNI). A `.dag`-specific
+// production hardcoded here = the N×M trap creeping back = STOP.
+//
 // Owns:
 //   - ParseTree type
-//   - parse: TokenStream -> Result<ParseTree, Diagnostic>
+//   - parse: (TokenStream, Grammar) -> Result<ParseTree, Diagnostic>
+//     (Grammar is declarative data from the LanguageModel, not code here)
 //   - grammar productions as Node trees
 //
 // Consumes:

@@ -1,18 +1,50 @@
 // src/v4/compiler/00_compile.dag
 //
-// Scope: pipeline orchestrator — wires tokenize → parse → normalize → resolve → infer → emit
-// Anchor: https://en.wikipedia.org/wiki/Compiler (general phase architecture)
-//        into a single compile() entry point. Called by bin/main.dag and by
-//        every end-to-end TestClaim.
+// Scope: pipeline orchestrator — the OMNI pivot architecture.
+// Anchor: https://en.wikipedia.org/wiki/Compiler +
+//         THESIS:215-221 omni-emission (Shape A: O(1)/target, O(N+M) not O(N×M))
+//
+// B2-OMNI (operator-ratified 2026-05-15) — parse is NOT special; it is
+// ONE instance of ingestion. The pipeline is three parts: two
+// PARAMETERIZED BOUNDARIES and a language-agnostic core:
+//
+//   ingest : (Source, LanguageModel) -> Result<Node, Diagnostic>
+//     The ingest boundary. tokenize (T-6) + parse (T-7) are the GENERIC
+//     walker over LanguageModel's declarative grammar (B2) — NOT
+//     .dag-specific. Self-parse is just `ingest(src, dag_model)`; Rust is
+//     `ingest(src, rust_model)`. `.dag` is language #1, never hardcoded.
+//
+//   core   : Node -> Result<InferredTree, Diagnostic>
+//     Language-agnostic: normalize (C3 — dissolve the 4 sugar forms)
+//     ∘ resolve (bind opaque Symbols, K-1) ∘ infer (U1 Find → IR-1).
+//
+//   emit   : (InferredTree, TargetModel) -> Result<Source, Diagnostic>
+//     The emit boundary, parameterized by target (U1 Realize phase).
+//   eval   : (InferredTree, Inputs)      -> Result<Value, Diagnostic>
+//     The primary execution path (THESIS:225); sibling of emit.
+//
+//   compile = emit ∘ core ∘ ingest        run = eval ∘ core ∘ ingest
+//
+//   O(N+M), structurally: N bidirectional language models + M target
+//   models. Adding model #k is O(1) — it instantly ingests to all M and
+//   is a target for all N. N×M capabilities from N+M models because Node
+//   is the universal pivot. `ingest(Rust) ∘ emit(Python)` translates
+//   Rust→Python with NO Rust→Python translator ever written — the
+//   visceral cash of the O(N+M) promise. Per C5, ingest = emit⁻¹ on each
+//   model's lossless core; outside it, a fail-closed Diagnostic (never a
+//   lossy guess — feedback_no_engine).
 //
 // Owns:
-//   - compile: (Source, TargetSpec) -> Result<TargetSource, Diagnostic>
-//     (the top-level entry; fail-fast on any stage's Diagnostic)
+//   - ingest:  (Source, LanguageModel)    -> Result<Node, Diagnostic>
+//   - emit:    (InferredTree, TargetModel) -> Result<Source, Diagnostic>
+//   - compile = emit ∘ core ∘ ingest ; run = eval ∘ core ∘ ingest
+//     (top-level entries; fail-closed on any stage's Diagnostic)
 //
 // Consumes:
-//   - compiler/01_tokenize.dag → 05_emit.dag (every stage)
+//   - compiler/01_tokenize.dag → 05_emit.dag + 05_eval.dag (core + boundaries)
 //   - std/diagnostic.dag for error propagation
-//   - extdeps/languages/*.dag for TargetSpec
+//   - extdeps/languages/*.dag + extdeps/formats/*.dag — the bidirectional
+//     LanguageModel / TargetModel parameters (one model, two directions)
 //
 // Status: scaffold — fill per TASKS.md T-10 (paired with emit implementation;
 //         orchestrator is the consumer of every prior stage)
