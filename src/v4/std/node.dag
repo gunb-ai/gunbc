@@ -13,11 +13,12 @@
 //   - Node / NodeKind / Edge: the one recursive type + its skeleton
 //   - the edge-discipline structural invariant (a connective fixes its
 //     edge shape; the illegal pairing is never silently constructible)
-//   - D1 Diff family, DATA ONLY: EdgeSelector / Path / Edit / Diff —
-//     the structural-delta vocabulary over Node (operator-ratified
-//     2026-05-15). The operations (subterm_at / apply_diff /
-//     paths_independent / diff_well_formed) deliberately do NOT live
-//     here — see the D1 block below for the forced split.
+//   - D1 Diff family, DATA ONLY: Path / Edit / Diff — the
+//     structural-delta vocabulary over Node (operator-ratified
+//     2026-05-15; shape refined per a P2 review finding, PR #3162 —
+//     see the D1 block below). The operations (subterm_at /
+//     apply_diff) live in lens/application.dag, not here (forced
+//     split — see the D1 block).
 //
 // A1 (operator-ratified 2026-05-15) — the recursion contract:
 //   - ONE recursive type: Node. Recursion lives SOLELY in Node children
@@ -90,55 +91,62 @@
 //     `Atom` is automatically rename-invariant — α-equivalent programs
 //     hash equal — because the fold cannot observe the spelling.
 //
-// D1 (operator-ratified 2026-05-15) — the structural-delta vocabulary:
-//   - A `Diff` is a set of `Edit`s; an `Edit` replaces the subtree at a
-//     `Path` with a replacement `Node` (the term-rewriting `t[s]p`; the
-//     anchor term for a Path is a *position* / *occurrence*, the
-//     practitioner form a JSON Pointer, RFC 6901). The TYPE is named
-//     `Path` (the route), not `Position` (operator pick: a position is
-//     a coordinate, a path is how you get there).
-//   - A `Path` is a flat finite `List<EdgeSelector>`; `Edit`/`Diff` are
-//     flat records. NOT a new recursive type — `Node` stays the SOLE
-//     recursion (A1). An `EdgeSelector` mirrors `EdgeLabel`: `ByName`
-//     for the name-addressed connectives (Conj/Disj), `ByPosition` for
-//     the positional ones (Arrow/Cardinality/Instantiation).
-//   - `ByPosition { index }` is a NAVIGATION QUERY resolved against the
-//     parent's LIVE `children` order — it is NOT the stored-index
-//     anti-pattern this file rejects at `EdgeLabel` (the `Positional`
-//     variant carries no index precisely so no second authority exists,
-//     lines ~221-230). A Path selector never lives on the tree; it is a
-//     transient query evaluated against the single authority (list
-//     order), so it reintroduces no second authority (P2 — a distinct
-//     concern from the stored-edge-index one).
-//   - Resolving a Path needs only `Symbol` EQUALITY (`ByName`) — K-1
-//     grants exactly that; addressing reads no spelling, so a Path is
-//     K-1-clean, NOT K-1-exempt like the diagnostics renderer.
+// D1 (operator-ratified 2026-05-15; shape refined 2026-05-15 per a P2
+// review finding on PR #3162 — codex REQUEST_CHANGES; the refinement is
+// for operator confirm) — the structural-delta vocabulary:
+//   - An `Edit` replaces the subtree at a `Path` with a replacement
+//     `Node` (the term-rewriting `t[s]p`; the anchor term for a Path is
+//     a *position* / *occurrence*, the practitioner form a JSON Pointer,
+//     RFC 6901 — here restricted to member-name tokens, see below). The
+//     TYPE is named `Path` (the route), not `Position` (operator pick:
+//     a position is a coordinate, a path is how you get there).
+//   - A `Path` is `List<Symbol>`: each step descends the `Named` edge
+//     keyed by that opaque `Symbol`. Flat & finite — NOT a new
+//     recursive type (A1: `Node` stays the SOLE recursion). Resolution
+//     needs only `Symbol` EQUALITY (K-1 grants exactly that; no
+//     spelling read) — K-1-clean, NOT K-1-exempt.
+//   - NO positional / ordinal selector (P2 finding 1). An `Int` ordinal
+//     admits negative / out-of-range values — EXACTLY the
+//     representable-illegal-state this file DESIGNED OUT at `EdgeLabel`
+//     (the `Positional` variant carries no index, lines ~221-230). It
+//     is NOT reintroduced. Positional-connective children
+//     (Arrow/Cardinality/Instantiation) are therefore NOT individually
+//     addressed: an Edit replaces the nearest enclosing `Named` subtree
+//     (coarser granularity = the safe over-fire #3157 point 3 blesses).
+//     Surgical positional addressing is a future operator-ratified
+//     substrate extension, deliberately omitted — it would need an
+//     ordinal primitive the consumes-nothing root cannot have (no
+//     kernel `Nat`; a recursive Peano nat = A1 STOP). The omission is
+//     structural honesty, not a deferral: the capability is reachable
+//     today via enclosing-subtree replacement; any future surgical
+//     need is an explicit ratification, never a silent TODO.
+//   - NO well-formedness predicate (P2 finding 2). A `Diff` is an
+//     ORDERED `List<Edit>` applied as SEQUENTIAL rewrites
+//     (`root |> apply(e1) |> apply(e2) |> …`). There is NO "set /
+//     pairwise-independent / parallel-positions" invariant: ANY
+//     `List<Edit>` is a valid rewrite program, so no illegal state is
+//     representable and there is nothing for an external predicate to
+//     recover (the prior set+`diff_well_formed` shape was exactly the
+//     illegal-states-representable anti-pattern the rubric blocks). An
+//     Edit whose Path no longer resolves after earlier Edits ⇒ a
+//     fail-closed Diagnostic at apply time (legitimate operational
+//     behavior, NOT a type-level illegal state). `apply_diff` is a
+//     fold; all-or-nothing — any failing step makes the whole result
+//     that one Diagnostic.
 //   - DATA-ONLY here. The operations — `subterm_at`/`apply_diff`
-//     (`-> Result<Node, Diagnostic>`) and the well-formedness
-//     predicates `paths_independent`/`diff_well_formed` — live in
-//     `lens/application.dag`, NOT here. FORCED, not stylistic:
-//     `std/diagnostic.dag` already `Consumes std/node.dag`
-//     (`Correction = Suggested(Node)`), so a node.dag operation
-//     returning `Result<_, Diagnostic>` would make node.dag depend
-//     back on Diagnostic = a substrate cycle. This is exactly the
-//     discipline already stated for `node_well_formed` below: the
-//     substrate root declares the structural data + the named
-//     invariant; CONSUMERS evaluate fail-closed and raise the
-//     Diagnostic.
+//     (`-> Result<Node, Diagnostic>`) — live in `lens/application.dag`,
+//     NOT here. FORCED, not stylistic: `std/diagnostic.dag` already
+//     `Consumes std/node.dag` (`Correction = Suggested(Node)`), so a
+//     node.dag operation returning `Result<_, Diagnostic>` would make
+//     node.dag depend back on Diagnostic = a substrate cycle. This is
+//     exactly the discipline already stated for `node_well_formed`
+//     below: the substrate root declares the structural data; CONSUMERS
+//     evaluate fail-closed and raise the Diagnostic.
 //   - Single authority for the Diff TYPES is here, by the B1/`Hash`
 //     precedent: a structural delta over `Node` is substrate-tier, not
 //     a lens's private type. Consumed by `lens/affected_set.dag` (T-21
 //     `(Dag, Diff)` parameter), `lens/application.dag` (T-23
 //     `apply_diff`), incremental eval, and structural caching.
-//   - A `Diff` is WELL-FORMED iff its Edits' Paths are pairwise
-//     INDEPENDENT (no Path a prefix of another — the term-rewriting
-//     "parallel positions" condition). Independence makes set order
-//     irrelevant (hence "set" though carried as a `List`) and makes
-//     `apply_diff` a deterministic total function or a fail-closed
-//     Diagnostic. The predicate is in application.dag
-//     (consumer-fail-closes); the INVARIANT is named here so there is
-//     ONE authority for "what a well-formed Diff is", parallel to
-//     `node_well_formed` for `Node`.
 //
 // T-1 scope dispositions (operator-ratified 2026-05-15):
 //   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
