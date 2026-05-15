@@ -35,6 +35,7 @@ through — and moves to Part 1.
 | **IR-1** | `InferredTree` is NOT a new type — it is `Node` + a FROZEN flat `InferredFacts` coordinate (resolved_type, cardinality, inhabits, cost, descent; effects NOT a field per B3); a 6th field is a STOP; modeled up front, not emergent | `compiler/04_infer.dag` header |
 | **B2-OMNI** | parse is one ingestion instance; `ingest`/`emit` are parameterized boundaries over declarative LanguageModels; Node is the universal pivot ⇒ O(N+M) not O(N×M); `.dag` is language #1, never hardcoded | `compiler/00_compile.dag` + `01_tokenize`/`02_parse`/`05_emit` headers |
 | **L-1** | Verilog/SPICE/English added as **parallel B2-OMNI falsification probes** (T-4.9/4.10/4.11), maximally diverse on purpose. Forks resolved: English = boundary-honesty probe (Shape B emit + fail-closed ingest TestClaim), **not** a language model; SPICE = `extdeps/formats/` (netlist is a data format); Verilog = the IN-B concurrency validation (a needed 6th behavior = C1 escalation, by design caught early) | `TASKS.md` T-4.9/4.10/4.11 + `extdeps/languages/verilog.dag`, `extdeps/formats/spice.dag`, `test/claim/boundary/english_ingest_fail_closed.dag` |
+| **B1** | One content-addressing scheme: a `std`-level Merkle catamorphism `content_hash : Node -> Hash` over the A1-canonical Node; `Hash` is an opaque digest (no content accessor, K-1-style). One scheme consumed by T-15/T-20/T-21 + the A3 reproduction check + C5. NOT workflow-level (substrate defines identity; workflow consumes) | `std/primitive.dag` (`Hash`); `std/node.dag` (`content_hash` fold — T-1 worker encodes per relay, with the canonical-form clause) |
 
 ---
 
@@ -92,13 +93,12 @@ parent. Each is confirm-or-redirect, not a fresh fork.
 
 ## Part 3 — open forks
 
-> **Status 2026-05-15:** **B3, C4, C5 ratified** (see Part 1). **B2 →
-> ratified as B2-OMNI and authored** (`00_compile.dag` + boundary files).
-> **B4 → ratified as IR-1 and authored** (`04_infer.dag`). **Only B1
-> remains PROPOSED** — the modeling was shown; the one outstanding pick
-> is *where the content-hash lives* (recommendation: `std`-level fold
-> over the A1-canonical Node, in `std/node.dag` + `Hash` in
-> `std/primitive.dag`). Confirm the home and B1 is done.
+> **Status 2026-05-15 — Part 3 CLOSED.** All open forks ratified and
+> encoded (see Part 1): B1 (std-level fold — operator confirmed),
+> B2→B2-OMNI, B3, B4→IR-1, C4, C5. The per-header encoding pass is
+> complete; `content_hash` is the one item the T-1 worker encodes into
+> `std/node.dag` per relay (it owns that file), alongside K-1. Nothing
+> in Part 3 remains PROPOSED. Detailed rationale retained below as record.
 
 ### B1 — One content-addressing scheme (ELEVATED: load-bearing for A3)
 

@@ -7,6 +7,16 @@
 //   - Int, Float, String, Char, Bool
 //   - inhabitance: Int -> OrderedRing, String -> FreeMonoid<Char>, etc.
 //   - target-side mapping is structural homomorphism, not name-keyed table
+//   - Hash — opaque fixed-width digest (B1, operator-ratified 2026-05-15).
+//     Equality only; NO content accessor (same opacity discipline as the
+//     K-1 `Symbol`). This is the content-address carrier. The fold that
+//     produces it — `content_hash : Node -> Hash`, a Merkle catamorphism
+//     over the A1-canonical Node — is declared in `std/node.dag` (the T-1
+//     worker encodes it per relay; it belongs with the canonical-form
+//     clause). ONE scheme, consumed by T-15 (fixed point) / T-20 (pin) /
+//     T-21 (unchanged-subgraph) / the A3 reproduction check / C5
+//     RoundTrips. Not workflow-level — workflow consumes it; substrate
+//     defines identity.
 //
 // Consumes:
 //   - std/node.dag: Atom
