@@ -9,14 +9,16 @@
 // concrete consumers demand them, same policy as
 // `src/v3/std/effects.dag` Stage 2a.
 //
-// **SymbolicCost coproduct (seven variants per DB-7
-// `docs/design-symbolic-cost-algebra.md`):**
+// **SymbolicCost coproduct (nine variants per gate #105 / PR #2828
+// `docs/briefs/r3-substrate-gate-105-symbolic-cost-tier1-canvas.md`):**
 //   - `ConstantCost(Int)`          — O(1) bounds
-//   - `LinearCost(SizeVariable)`   — O(n) over a named size
-//   - `PolynomialCost { var, degree }` — O(n^k)
+//   - `PolynomialCost { var, degree }` — O(n^k), including k=1 and signed k≠0
 //   - `ProductCost(List<SymbolicCost>)` — O(n·m) product
 //   - `SumCost(List<SymbolicCost>)` — O(n + m) sum, dominated terms drop
 //   - `LogCost(SizeVariable)`      — O(log n)
+//   - `PolyLogCost { var, exponent }` — O(log^k n), k > 1
+//   - `ExponentialCost { base, var }` — O(c^n), c >= 2
+//   - `FactorialCost { var }`      — O(n!)
 //   - `UnknownCost(String)`        — top of the dominance lattice
 //
 // **`UnknownCost` role — algebra element, not failure channel.**
@@ -66,10 +68,16 @@
 //     generates all seven — LinearCost's payload is a SizeVariable,
 //     ProductCost's is a list, ConstantCost's is an Int.
 //
-// STOP SIGNAL: wanting an eighth variant. Pause and escalate rather
-// than extending; the thesis claim is that seven covers the
-// asymptotic surface, and any new variant should carry its own
-// dissolution receipt.
+// STOP SIGNAL: wanting a 10th variant (or 11th if Tier-2
+// IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
+// escalate. Tier-1 textbook coverage (gate #105 carrier-extension
+// 2026-05-13, PR #2828 canvas; composite ratification msg_d86a5987
+// reconciled by msg_676ad4e7) lands 9 variants covering ConstantCost /
+// PolynomialCost { degree: NonZeroRational } / PolyLogCost { exponent:
+// PolyLogExponent } / LogCost / ProductCost / SumCost /
+// ExponentialCost { base: ExponentialBase } / FactorialCost /
+// UnknownCost. UnknownCost remains algebra-top, but reviewer-tier STOP
+// fires if a Tier-1-coverable bound is collapsed to Unknown.
 
 module v3.std.algebra
 
@@ -79,6 +87,7 @@ import std.substrate { NonSingletonList, PortId, DeclarationId }
 import std.termination {
   AdditionalStep, OneStep, PositiveDescentAmount, positive_descent_count
 }
+import std.rational { Rational }
 import v3.std.lookup { Lookup }
 
 // 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
@@ -172,6 +181,10 @@ type DegreeAtLeastTwo
   = DegreeTwo
   | DegreeSuccessor { previous: DegreeAtLeastTwo }
 
+type ExponentialBase = Int where range(min: 2)
+type PolyLogExponent = Rational where gt_one
+type NonZeroRational = Rational where nonzero
+
 // 🟢 TERMINAL at Stage 2d scope. The asymptotic-bound coproduct
 // DB-7 locks. See the module-level receipt for dissolution-pattern
 // evidence. The `Semiring<SymbolicCost>` inhabitance edge is the
@@ -189,11 +202,13 @@ type DegreeAtLeastTwo
 // same PR.
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
-  | LinearCost(SizeVariable)
-  | PolynomialCost { var: SizeVariable, degree: DegreeAtLeastTwo }
+  | PolynomialCost { var: SizeVariable, degree: NonZeroRational }
+  | PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
   | LogCost(SizeVariable)
+  | ExponentialCost { base: ExponentialBase, var: SizeVariable }
+  | FactorialCost { var: SizeVariable }
   | UnknownCost(String)
 
 // Scan state for composite `dominates` / `drop_dominated_step`.

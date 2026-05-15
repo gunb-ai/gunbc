@@ -887,6 +887,16 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
         allowed_carriers: &["Nat", "Int"],
         arg_shape: PredicateArgShape::Bare,
     },
+    PredicateSpec {
+        name: "gt_one",
+        allowed_carriers: &["Rational", "Int"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+    PredicateSpec {
+        name: "nonzero",
+        allowed_carriers: &["Rational"],
+        arg_shape: PredicateArgShape::Bare,
+    },
     // Unicode scalar value over `Int`: U+0000..U+D7FF ∪ U+E000..U+10FFFF
     // (excludes surrogate pair code units U+D800..U+DFFF). Single-interval
     // `range(max: 0x10FFFF)` is intentionally **not** used — it admits
