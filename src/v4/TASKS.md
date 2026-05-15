@@ -371,11 +371,11 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 **Why solo**: framework substrates are conceptually rich (Component / Hook / Effect / Lifecycle); React is the load-bearing first.
 
 **Modeling decisions**:
-- Hook-as-substrate: HookKind closed enum (UseState | UseEffect | UseMemo | UseRef | UseContext | ...)
+- Hook-as-substrate: `HookKind = Builtin(BuiltinHook) | Custom(Node)`; `BuiltinHook` = the COMPLETE react.dev built-in set (no "..." — see react.dag header); custom hooks are Node composition per Rules-of-Hooks, not a new kind
 - Effect lifecycle modeling (Mount / Unmount / DependencyChange / EveryRender)
 - Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals — surface as Diagnostic)
 - Component composition (props-down, events-up; structural propagation through Node tree)
-- Server Components vs Client Components distinction (or unified with Effect annotation)
+- Server Components vs Client Components distinction (or unified via effect typing — effects intrinsic to the type signature, not an annotation)
 
 **Scope**: L (large — substrate decisions cascade across full-stack demo T-16)
 
@@ -387,7 +387,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 ### T-4.8: extdeps/coordination.dag
 
-**File**: `src/v4/extdeps/coordination.dag` (operator-ratified 2026-05-15 IN-B: Bind composition + Effect annotation; NO 6th L1 behavior)
+**File**: `src/v4/extdeps/coordination.dag` (operator-ratified 2026-05-15 IN-B: Bind composition + effect typing — effects intrinsic to the type signature, NOT an annotation layer; NO 6th L1 behavior)
 **Why solo**: multi-program coordination is the most consequential effect-typing in v4 — discipline matters.
 
 **Modeling decisions**:
@@ -565,7 +565,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - `EnforcedApplication<Output, Budget>` vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: two separate carriers, NOT a sum — per r3-structure.md:40)
 - `SectionRef = DeclarationScope | NodeScope` (where a lens attaches)
 - The advisory→fail-closed conversion: how `Enforce { }` turns a lens's `Set<Report>` into fail-closed Diagnostics (the single explicit bridge per `std/report.dag` discipline)
-- Default policy: unannotated functions get synthesized Introspect-only (no implicit Enforce) per THESIS:307-321 opt-in depth
+- Default policy: a function with no `apply_lens(<lens>, Enforce { ... })` declaration gets synthesized Introspect-only (no implicit Enforce) per THESIS:307-321 opt-in depth. `apply_lens` is a first-class declaration (a Node), not an annotation — absence of the declaration, not absence of a tag, is the default trigger.
 
 **Scope**: L (large — connective tissue for three thesis claims)
 

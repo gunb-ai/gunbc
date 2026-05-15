@@ -76,8 +76,8 @@ This section is the single source of truth for v4-scaffold-vs-questionnaire stat
 - [ ] Compile it. What is the verbatim error message? (`Diagnostic` with `reason` + `at`, not `panic!` or silent skip.)
 - [ ] Show me a SECOND example with a different complexity class (linear/quadratic/exponential).
 - [ ] Where is the test that pins the error message? Cite `<file>:<line>`.
-- [ ] If I REMOVE the contract annotation, does the program still compile? (It should — the contract is the assertion.)
-- [ ] If I add a LYING annotation (`complexity: O(1)` on an O(n) body), does the compiler catch the lie? Show me the diagnostic.
+- [ ] There must be NO complexity annotation/tag anywhere (feedback_no_annotations). Show that the bound is a STRUCTURAL requirement — propagated from the consuming position / algebra inhabitance — not a `@complexity`-style tag. If a tag exists, that is the violation.
+- [ ] Can I write a structure whose lens-DERIVED complexity contradicts the bound its structural context requires? Show the diagnostic. (There is no annotation to "lie" — the bug is structural inconsistency between derived cost and the position that demands the bound.)
 - [ ] Is there a demonstration `.dag` program that exercises Complexity end-to-end via the v3 evaluator? Cite path.
 - [ ] Run the demonstration on clean checkout. What does stdout/stderr say?
 - [ ] **Falsification probe**: write a program whose complexity is wrong in a way the lens hasn't been tested against. Does the lens catch it? Or did we only test the cases we already knew worked?
@@ -285,7 +285,7 @@ The claim is sharp on some bug classes and softer on others. This section interr
 This is the "wrong specification" class. The compiler can verify a `.dag` program against ITS contracts (lenses, types, algebra), but the contracts themselves are user-authored.
 
 - [ ] **Intent vs. spec**: write a `.dag` program that compiles cleanly + satisfies ALL lens contracts + does something the user obviously didn't intend (e.g., `sort_descending` named but body is `sort_ascending`; both type-correct). How many "impossible bug" classes does this hit?
-- [ ] **Wrong contract**: if the user's CONTRACT (Lens enforcement budget, complexity annotation, effect declaration) is wrong, the compiler accepts compliance with the wrong contract. How is the CONTRACT'S correctness checked? Or is that meta-level out-of-scope by design?
+- [ ] **Wrong contract**: if the user's CONTRACT (Lens enforcement budget, structural cost bound, algebra/effect inhabitance — all compositional, no annotations) is wrong, the compiler accepts compliance with the wrong contract. How is the CONTRACT'S correctness checked? Or is that meta-level out-of-scope by design?
 - [ ] **Empty program**: an always-correct but useless program (`fn main = unit`). Does the system distinguish "no work" from "intended no work"? Or is "user wrote what they meant" axiomatic?
 - [ ] **Spec-as-program collapse**: when spec and implementation are the same artifact (.dag), is the user error "wrote wrong spec" identical to "wrote wrong program"? Does the architecture's "no parallel authority" discipline mean user-error is single-point-of-failure rather than divergence-detectable?
 - [ ] **Falsification probe**: enumerate 3 concrete user-error classes the architecture can NEVER catch by construction. Confirm that "impossible bugs by construction" is shorthand for "structurally-defined bug classes are impossible", not "all user errors are impossible".
@@ -760,14 +760,14 @@ The structural claim: every effectful operation takes its effect-source as a typ
 - [ ] **Multi-program shape**: how does `.dag` express "this fragment runs on machine A, this on machine B"? Is it a Cluster F lens reading a "deployment-target" dimension, OR substrate-level partitioning (carriers for `DeploymentUnit` / `Endpoint`)?
 - [ ] **Wire derivation extension**: does extending gate #28 `omni_layers_share_one_node_tree` to "share one Dag across deployment units" hold, OR does cross-deployment need a new invariant gate?
 - [ ] **Coordination semantics modeling**: are sync / async / stream / pub-sub first-class behaviors (a 6th L1 behavior or beyond? — would trigger C1 stop-signal per §2.6) OR compositions over existing 5 behaviors (Bind composition + effect-typed parameters)?
-- [ ] **Failure-at-boundary**: is "partial failure" a lens read, an effect annotation, or a substrate variant? How does it compose with effect-enumeration lens (§1.4)?
+- [ ] **Failure-at-boundary**: is "partial failure" a lens read or a substrate variant? (NOT an "effect annotation" — effects are type-intrinsic, no annotation layer.) How does it compose with effect-enumeration lens (§1.4)?
 - [ ] **Idempotency at endpoint**: composes with existing idempotency lens (per THESIS:188 "idempotency + cancellation + redundancy = algebraic simplification" + R1 demo class per THESIS:378-380)?
 - [ ] **Cross-endpoint dimension propagation**: does the affected-set lens (§2.5.F) extend across deployment-unit boundaries? When endpoint A's cost dimension changes, are endpoint B's consumers reading A's wire-contract dimension flagged?
 - [ ] **Falsification probe**: design a 2-endpoint distributed program in `.dag`. Demonstrate end-to-end emission: each endpoint emits its own backend (per Shape-A) + the wire contract between them (per Shape-B) + coordination behavior captured structurally. Or: identify the gap class.
 
 **Open questions for R4 canvas authoring**:
 
-- Does multi-program coordination warrant a NEW L1 behavior (6th: e.g., `Coordinate` for sync/async/stream/pubsub), OR is Bind composition + Effect annotation sufficient? Note: a 6th behavior would trigger C1 stop-signal per §2.6 (the four dissolution patterns must fail first).
+- Does multi-program coordination warrant a NEW L1 behavior (6th: e.g., `Coordinate` for sync/async/stream/pubsub), OR is Bind composition + effect typing (effects intrinsic to the type signature, not an annotation) sufficient? Note: a 6th behavior would trigger C1 stop-signal per §2.6 (the four dissolution patterns must fail first).
 - Are "machine A" / "machine B" addresses substrate-level carriers (concrete `Endpoint` type) or lens-readable dimension (deployment-target dimension reads)?
 - How does failure-recovery compose with `feedback_fail_closed_discipline` (C-8)? Distributed systems force "retry-able failure" semantics; gunbc's fail-closed posture must extend coherently.
 
@@ -957,8 +957,8 @@ PM-recommended answer-shape for R3 close:
 
 **Automatic memoization probes**:
 
-- [ ] Find the memoization mechanism. Cite the lens / decorator / substrate carrier.
-- [ ] Is memoization opt-in (annotation) or by-construction (compiler reads purity + cost and applies it automatically)?
+- [ ] Find the memoization mechanism. Cite the lens / substrate carrier.
+- [ ] Memoization MUST be by-construction (compiler derives purity + cost and applies it automatically). Confirm there is NO opt-in/annotation form — if memoization requires a `@memoize`-style tag, that is the violation (feedback_no_annotations).
 - [ ] Show me a `.dag` program that should benefit from memoization. Compile + run. Was memoization applied? How is "was applied" verifiable (cost-lens output? execution-trace lens? cache-hit metric)?
 - [ ] **Falsification probe**: a pure function with high cost is called twice with the same args. Does the compiler emit code that memoizes, or naive double-execution?
 
@@ -1247,7 +1247,7 @@ This extends omni-emission from "one .dag → N representations of one program" 
 Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design questions per §3.8 §Open-questions-for-R4-canvas-authoring:
 
 - 6th L1 behavior (`Coordinate` for sync/async/stream/pubsub) → would trigger C1 stop-signal per §2.6 (substrate extension requires four-dissolution-attempt protocol)
-- OR Bind composition + Effect annotation sufficient → no substrate extension; coordination is library-level pattern over existing 5 behaviors
+- OR Bind composition + effect typing sufficient → no substrate extension; coordination is library-level pattern over existing 5 behaviors
 - "Machine A" / "Machine B" addresses: substrate carriers (concrete `Endpoint` type) or lens-readable dimension (deployment-target dimension)
 
 **Probes** (§3.8 Probes copied for completeness):
@@ -1260,7 +1260,7 @@ Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design q
 - [ ] Cross-endpoint dimension propagation: does affected-set lens extend across deployment-unit boundaries?
 - [ ] **Falsification probe**: design a 2-endpoint distributed program. Demonstrate end-to-end emission per Shape-A + the wire contract per Shape-B + coordination behavior captured structurally.
 
-**Disposition** (operator-ratified 2026-05-15): **IN-B** (Bind composition + Effect annotation; no 6th L1 behavior). Coupled with §15: pipeline emission is the demonstrative driver.
+**Disposition** (operator-ratified 2026-05-15): **IN-B** (Bind composition + effect typing — effects intrinsic to the type signature, NOT an annotation layer; no 6th L1 behavior). Coupled with §15: pipeline emission is the demonstrative driver.
 
 Rationale: async / stream / pubsub are deployment patterns and effect-types, not behavior shapes. An HTTP call IS a `Bind` with an HTTP-effect type; a pubsub publish IS a `Bind` with a Queue-effect type; an async stream IS a `Bind` over a `Stream<T>` carrier. Substrate stays at 5 L1 behaviors (C1 stop-signal preserved per THESIS:202). Coordination concepts (`Endpoint`, `DeploymentUnit`, sync/async/stream/pubsub semantics) live as typed carriers in `extdeps/coordination.dag`.
 

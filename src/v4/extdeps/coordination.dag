@@ -16,7 +16,10 @@
 //   - WireContract { from: Endpoint, to: Endpoint, semantics: CoordinationSemantics }
 //   - CoordinationSemantics = Sync | Async | Stream | PubSub | EventuallyConsistent (closed enum)
 //   - These are TYPED CARRIERS over existing 5 L1 behaviors (per IN-B decision);
-//     NO 6th behavior introduced — coordination is Bind composition + Effect annotation
+//     NO 6th behavior introduced — coordination is Bind composition over
+//     effect-TYPED operations (effects intrinsic to the type signature, NOT
+//     an annotation layer — same stance as unenumerated_effects.dag; consistent
+//     with this file's line 8 "effect-typed not behavior-typed")
 //   - Effect types per coordination kind (HttpEffect / QueueEffect / StreamEffect / etc.)
 //
 // Consumes:

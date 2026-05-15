@@ -1,17 +1,32 @@
 // src/v4/test/claim/impossible_bug/idempotency_contract.dag
 //
-// Scope: TestClaim — idempotency-contract violation impossible-bug class (R1). A function marked @idempotent whose structure admits non-idempotent composition MUST error at compile time.
-// Anchor: THESIS.md "Enumerable impossible-bug classes" §377-378 R1 + lens/idempotency.dag
+// Scope: TestClaim — idempotency-contract violation impossible-bug class
+//        (R1). There is NO @idempotent annotation: idempotence is a DERIVED
+//        algebraic property. An operation whose structural position requires
+//        idempotence (it inhabits an idempotent algebraic structure per
+//        std/algebra.dag) but whose composition lens/idempotency.dag derives
+//        as non-idempotent (Witness::Violates) MUST error at compile time.
+//        The requirement is inhabitance; the violation is lens-derived;
+//        neither is a tag (feedback_no_annotations — compositional only).
+// Anchor: THESIS.md "Enumerable impossible-bug classes" §377-378 R1 — the
+//         CLASS only; THESIS's "marked @idempotent" wording is annotation
+//         shorthand, the modeled mechanism is algebra-inhabitance + lens
+//         derivation (the lens reads Node structure, never a tag). Also
+//         lens/idempotency.dag.
 //
 // Owns:
-//   - test_idempotent_with_side_effect_caught: TestClaim
-//     - input: function annotated @idempotent that mutates external state
-//     - expected: Diagnostic { reason: IdempotencyViolation, suggested_correction, at }
-//   - test_idempotent_pure_passes: TestClaim
-//     - input: function annotated @idempotent that's actually pure → compiles
+//   - test_nonidempotent_in_idempotent_position_caught: TestClaim
+//     - input: an operation declared to inhabit an idempotent algebraic
+//       structure (std/algebra.dag) whose body composes a non-idempotent
+//       effect (e.g. external-state mutation)
+//     - expected: Diagnostic { reason: IdempotencyViolation,
+//       correction: Correction, at: <inhabitance / non-idempotent-compose> }
+//   - test_idempotent_inhabitant_passes: TestClaim
+//     - input: an operation in the same idempotent-algebra position whose
+//       structure lens/idempotency.dag derives as idempotent → compiles
 //
 // Consumes:
-//   - std/verification.dag, std/diagnostic.dag, lens/idempotency.dag
+//   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/idempotency.dag
 //
 // Status: scaffold — fill per TASKS.md T-14
 // Brief: see BRIEF_TEMPLATE.md.

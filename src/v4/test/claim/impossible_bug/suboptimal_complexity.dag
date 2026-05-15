@@ -1,19 +1,36 @@
 // src/v4/test/claim/impossible_bug/suboptimal_complexity.dag
 //
-// Scope: TestClaim — suboptimal-complexity contract violation impossible-bug class (R1). A function annotated complexity ≤ O(n log n) whose actual structure has complexity O(n²) MUST error at compile time, not at review time.
-// Anchor: THESIS.md "Enumerable impossible-bug classes" §374-376 R1 + lens/complexity.dag (the lens that catches it)
+// Scope: TestClaim — suboptimal-complexity contract violation impossible-bug
+//        class (R1). There is NO `complexity ≤ O(...)` annotation: complexity
+//        IS coercion-cost (THESIS:187 unification), DERIVED by
+//        lens/complexity.dag from Node structure. An operation whose
+//        structural context bounds its cost (the bound its consuming
+//        position / algebra inhabitance permits) but whose lens-derived
+//        complexity exceeds that bound MUST error at compile time, not
+//        review time. Bound = structural requirement; cost = lens-derived;
+//        neither is a tag (feedback_no_annotations — compositional only).
+// Anchor: THESIS.md "Enumerable impossible-bug classes" §374-376 R1 — the
+//         CLASS only; THESIS's "annotated complexity ≤ O(n log n)" wording
+//         is annotation shorthand, the modeled mechanism is a structural
+//         cost bound + lens derivation. Also lens/complexity.dag.
 //
 // Owns:
-//   - test_suboptimal_complexity_violates: TestClaim
-//     - input: .dag program with complexity ≤ O(n log n) annotation + O(n²) body
-//     - expected: Diagnostic { reason: SuboptimalComplexityViolation, suggested_correction: <relax-bound or refactor-body>, at: <annotation-site> }
-//   - test_no_annotation_no_violation: TestClaim
-//     - input: same body without annotation → compiles (annotation is the assertion)
-//   - test_lying_annotation_caught: TestClaim
-//     - input: complexity: O(1) on O(n) body → Diagnostic
+//   - test_overcost_against_structural_bound_violates: TestClaim
+//     - input: an operation at a position whose structural cost bound is
+//       ≤ O(n log n) (propagated from its consumer / algebra inhabitance)
+//       whose body lens/complexity.dag derives as O(n²)
+//     - expected: Diagnostic { reason: SuboptimalComplexityViolation,
+//       correction: Correction, at: <cost-violating composition> }
+//   - test_within_structural_bound_passes: TestClaim
+//     - input: the same body where no consuming position imposes a tighter
+//       bound → compiles (the requirement is structural context, not a tag)
+//   - test_cost_contradicts_inhabitance_caught: TestClaim
+//     - input: an operation whose lens-derived cost contradicts the cost
+//       class its algebra inhabitance fixes (e.g. a "constant-cost" monoid
+//       op that composes a linear scan) → Diagnostic
 //
 // Consumes:
-//   - std/verification.dag (TestClaim), std/diagnostic.dag, lens/complexity.dag
+//   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/complexity.dag
 //
 // Status: scaffold — fill per TASKS.md T-14
 // Brief: see BRIEF_TEMPLATE.md.
