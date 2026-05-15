@@ -467,6 +467,46 @@ fn node_well_formed(n: Node) -> Bool {
 // lens/application.dag, NOT here — see the D1 header block above for
 // the forced-by-cycle rationale (std/diagnostic.dag already depends on
 // std/node.dag).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (DISSOLVED-AWAY,
+// terminal). A prior shape carried a Path step as a sum
+// `EdgeSelector = ByName { name: Symbol } | ByPosition { index: Int }`.
+// That sum is dissolved, not retained; this receipt is the required
+// substrate-shape artifact for that decision (PR #3162 BLOCKING — a
+// D1 sum needs the ledger or it is not landable). Ledger — the four
+// patterns attempted against "must a positional/ordinal selector
+// variant exist":
+//   1. Fact placement — DISSOLVES it. The "address a positional child"
+//      fact has no independent consumer: every D1 consumer (affected_set
+//      frontier seed, apply_diff, incremental eval, structural caching)
+//      acts on edits expressible at NAMED-declaration granularity. A
+//      positional-connective child (Arrow/Cardinality/Instantiation
+//      param/result) is never the REQUIRED unit of an edit — any change
+//      to it is expressible by replacing its enclosing `Named`
+//      declaration's subtree wholesale (the replacement is a full Node
+//      the caller rebuilds). The fact factors entirely through the
+//      `ByName` step.
+//   2. Variant-is-data — N/A once (1) removes the second variant: a
+//      one-variant sum IS its payload, so `Path = List<Symbol>` — no
+//      sum, no coproduct; the receipt obligation discharges itself.
+//   3. Algebraic form — N/A: a Path step is not an algebraic structure;
+//      it is a `Named`-edge key (`Symbol`), already owned by this file.
+//      No richer std/ source to ground in.
+//   4. Dimensional — FAILS as a reason to KEEP a positional variant:
+//      addressing is never "by-name AND by-position" simultaneously;
+//      positional internals are reached THROUGH the enclosing `ByName`
+//      step, so there is exactly one addressing coordinate, not two.
+// Terminal: positional addressing is structurally SUBSUMED by
+// enclosing-`Named`-subtree replacement — coarser granularity #3157
+// point 3 ratifies as safe over-fire, not lossy. This is NOT a deferred
+// gap: the capability is reachable today; any future surgical/minimal-
+// diff positional addressing is an explicit operator-ratified substrate
+// extension (it would need an ordinal primitive the consumes-nothing
+// root cannot host — no kernel `Nat`; a recursive Peano = A1 STOP),
+// never a silent TODO. (An `Int` ordinal was rejected outright: it
+// admits negative / out-of-range values — the representable-illegal-
+// state this file designed out at `EdgeLabel`.)
 
 
 // Path — the route from a root Node to a descendant: the ordered list
@@ -474,18 +514,10 @@ fn node_well_formed(n: Node) -> Bool {
 // type (A1: `Node` stays the sole recursion). The empty `steps` list
 // denotes the root itself. Each step descends the `Named` edge keyed
 // by that opaque `Symbol` (resolution = `Symbol` equality, K-1-clean).
-//
-// There is deliberately NO positional/ordinal step: a stored `Int`
-// ordinal would admit negative / out-of-range values — the
-// representable-illegal-state this file designed out at `EdgeLabel`
-// (P2 finding 1, PR #3162). Positional-connective children
-// (Arrow/Cardinality/Instantiation) are reached by replacing the
-// nearest enclosing `Named` subtree (the safe over-fire #3157 blesses);
-// surgical positional addressing is a future operator-ratified
-// extension, omitted because the consumes-nothing root has no ordinal
-// primitive (no kernel `Nat`; a recursive Peano = A1 STOP). Anchor
-// term: a term-rewriting *position* / *occurrence*; the practitioner
-// form is a JSON Pointer (RFC 6901) restricted to member-name tokens.
+// No positional/ordinal step — see the Practice-4 dissolution receipt
+// above. Anchor term: a term-rewriting *position* / *occurrence*; the
+// practitioner form is a JSON Pointer (RFC 6901) restricted to
+// member-name tokens.
 type Path {
   steps: List<Symbol>
 }
