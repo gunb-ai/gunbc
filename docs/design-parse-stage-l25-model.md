@@ -30,7 +30,7 @@ Per the live `src/v3/compiler/src/parse_generated.rs:1-3` top-comment + `parse_t
 
 **Parse is a substrate-driven recursive-descent function: `List<Token> → SurfaceModule`, dispatching on token kind per compile-time-generated grammar tables. Surface carriers (`SurfaceModule`, `SurfaceItem`, `SurfaceExpr`, `SurfacePattern`, `SurfaceType`) are declared in `.dag` substrate; parser dispatch tables are declared in `.dag` substrate; parser BODY is the residual hand-Rust SG-2c surface still requiring substrate capability to retire.**
 
-Per Decision 3.B operator-ratified (b) compile-time parser tables: the 6 SG-2c table-families in `parse_tables.dag` (conceptually called "GrammarSpec", though there is no `type GrammarSpec` carrier — see §3.2) are codegenned to parser dispatch tables at build time. The parser engine reads compile-time-generated tables; no runtime grammar interpretation, no runtime grammar input. This is more thesis-accurate than runtime data-driven (option a) — substrate authority all the way down.
+Per Decision 3.B operator-ratified (b) compile-time parser tables: the table-families authored in `src/v3/compiler/parse_tables.dag` (conceptually called "GrammarSpec", though there is no `type GrammarSpec` carrier — see §3.2; the complete enumerated set lives in `parse_tables.dag` itself, not in this doc) are codegenned to parser dispatch tables at build time. The parser engine reads compile-time-generated tables; no runtime grammar interpretation, no runtime grammar input. This is more thesis-accurate than runtime data-driven (option a) — substrate authority all the way down.
 
 Per `feedback_lenses_not_passes`: parse dispatch decisions are substrate facts (token-to-operator mapping; bracket-role membership; type-rhs-boundary; primary-prefix dispatch). Anything parse "decides" is a grammar table that should be declared in `.dag`, not encoded in parser body logic.
 
@@ -42,7 +42,7 @@ Per `feedback_lenses_not_passes`: parse dispatch decisions are substrate facts (
 
 **One** input type feeds parse at the API boundary: `List<Token>` from tokenize. Parser-dispatch tables (the conceptual "GrammarSpec" per Decision 3.B (b)) are NOT a runtime input — they are compile-time substrate at `parse_tables.dag`, codegenned into the parser body, and have no `type GrammarSpec` carrier.
 
-> **Cursor PR #3126 INLINE BLOCKING line:32 correction (2026-05-14T23:30:04Z, fixed in PR #3138)**: earlier draft framed `GrammarSpec` as a second declared `.dag` input type. Verified via `grep -rn "^type GrammarSpec\b" src/v3/ dsl/` — empty. No `type GrammarSpec` carrier exists in the repo. "GrammarSpec" in this doc is a concept-level grouping for the 6 SG-2c table-families in `parse_tables.dag` (§3.2 below); it is not a substrate type and never appears in the Step-2 `fn parse` signature.
+> **Cursor PR #3126 INLINE BLOCKING line:32 correction (2026-05-14T23:30:04Z, fixed in PR #3138)**: earlier draft framed `GrammarSpec` as a second declared `.dag` input type. Verified via `grep -rn "^type GrammarSpec\b" src/v3/ dsl/` — empty. No `type GrammarSpec` carrier exists in the repo. "GrammarSpec" in this doc is a concept-level grouping for the live table-families declared in `parse_tables.dag` (§3.2 enumerates them by `type` declaration with line anchors); it is not a substrate type and never appears in the Step-2 `fn parse` signature.
 
 ### §3.1 `List<Token>` (output of tokenize stage)
 
@@ -54,21 +54,24 @@ The token stream produced by PB-2 tokenize. Each `Token` carries a `TokenKind` d
 
 ### §3.2 Compile-time parser tables per Decision 3.B (b) — concept "GrammarSpec", NOT a carrier
 
-Per Decision 3.B operator-overrode my rec to (b) compile-time parser tables: "GrammarSpec" names the **conceptual** grouping of 6 SG-2c table-families authored in `parse_tables.dag` and codegenned into the parser body. There is no `type GrammarSpec` declaration; the name is shorthand for those 6 table-families taken collectively, not a substrate carrier or runtime input.
+Per Decision 3.B operator-overrode my rec to (b) compile-time parser tables: "GrammarSpec" names the **conceptual** grouping of the live table-families authored in `parse_tables.dag` (enumerated below by `type` declaration line-anchor) and codegenned into the parser body. There is no `type GrammarSpec` declaration; the name is shorthand for those table-families taken collectively, not a substrate carrier or runtime input.
 
-**Live substrate precedent** at `src/v3/compiler/parse_tables.dag:1-30` (verified):
-- Binary operator token-to-semantics mapping (SG-2c-1)
-- Top-level item keyword → parse_item dispatch class (SG-2c-2)
-- Type-RHS boundary keyword membership (SG-2c-3)
-- Bracket opener/closer role membership (SG-2c-4)
-- Primary-expression prefix openers (SG-2c-6)
-- Primary-expression atomic tail tokens (SG-2c-7)
+**Live substrate authority**: `src/v3/compiler/parse_tables.dag` (517 lines at HEAD). The complete enumerated set of table-families lives there — this doc DOES NOT maintain a parallel count. Live `type` declarations at HEAD (verified `grep -nE '^type [A-Z]' src/v3/compiler/parse_tables.dag`):
 
-These 6 table-families ARE what "GrammarSpec" names. The build system reads `parse_tables.dag` + emits `parse_tables_generated.rs` (compile-time codegen); the parser body consumes the generated tables via `binary_op_at_level`, `top_level_item_dispatch`, `is_type_rhs_boundary_keyword`, `bracket_role`, `primary_prefix_dispatch`, `primary_atom_class`. None of these is reached through a `GrammarSpec` carrier; they are direct table lookups inside the parser body.
+- `BinaryOpRow` at `parse_tables.dag:167` (SG-2c-1)
+- `TopLevelItemKwRow` at `parse_tables.dag:289` (SG-2c-2 + projection SG-2c-3 `is_type_rhs_boundary_keyword`)
+- `SoftKeywordIdentRow` at `parse_tables.dag:334` (soft-keyword identifier dispatch; no SG-2c-N number)
+- `BracketRow` at `parse_tables.dag:385` (SG-2c-4)
+- `PrimaryPrefixRow` at `parse_tables.dag:449` (SG-2c-6)
+- `PrimaryAtomRow` at `parse_tables.dag:486` (SG-2c-7)
+
+Plus the supporting enum `BinaryOpLevel` at `parse_tables.dag:133`. The build system reads `parse_tables.dag` + emits `parse_tables_generated.rs` (compile-time codegen); the parser body consumes the generated tables via `binary_op_at_level`, `top_level_item_dispatch`, `is_type_rhs_boundary_keyword`, `bracket_role`, `primary_prefix_dispatch`, `primary_atom_class`, and the soft-keyword-ident lookup. None of these is reached through a `GrammarSpec` carrier; they are direct table lookups inside the parser body.
+
+> **Codex PR #3126 BLOCKING (sha 5619afac) revision (fixed at HEAD of PR #3138)**: an earlier draft of this enumeration listed only six SG-2c-numbered table-families, copying the prose summary at `parse_tables.dag:23-29` rather than the live `type` declarations — `SoftKeywordIdentRow` (line 334) was missed because it lacks an SG-2c-N number in the prose summary. Per `feedback_parallel_representation_debt`: the doc now treats `parse_tables.dag` as the single enumerated authority. Hand-counts ("6 table-families") are dropped wherever they appeared; readers should grep the file for `^type [A-Z]` to see the live set.
 
 **Per Decision 3.B (b) "harder/more correct"**: compile-time table generation IS substrate authority all-the-way-down. Runtime grammar interpretation (option a my-original-rec) would require a generic parser engine reading a runtime spec — more flexible but introduces runtime authority that compile-time tables don't have. (b) preserves the property that the grammar is data-known-at-compile-time, not data-fetched-at-runtime, and therefore needs no runtime carrier.
 
-**Substrate authority**: `src/v3/compiler/parse_tables.dag` is LIVE at HEAD (517 lines; 6 table-families). PB-3 migration extends this with the full SG-2c parser body authority via the substrate capability dependency in §6 (recursive list-body emission per SELF_HOSTING.md §6 Phase 4a).
+**Substrate authority**: `src/v3/compiler/parse_tables.dag` is LIVE at HEAD (517 lines). The current table-family set is enumerated in §3.2 above by `type`-declaration line-anchor; this doc does NOT maintain a parallel count. PB-3 migration extends this with the full SG-2c parser body authority via the substrate capability dependency in §6 (recursive list-body emission per SELF_HOSTING.md §6 Phase 4a).
 
 **Lane dependency**: PB-Substrate (substrate-capability for recursive list-body emission — REQUIRED for SG-2c full parser body migration per `parse_tables.dag:18-22` STOP-AND-ESCALATE bullet).
 
@@ -165,16 +168,7 @@ parse's structure is **recursive-descent dispatching on compile-time-generated g
 
 ### §5.1 Compile-time table generation
 
-Per Decision 3.B (b) operator-ratified: the parser-dispatch tables (concept "GrammarSpec"; no `type GrammarSpec` carrier — see §3.2) are `.dag` substrate compiled at build time. Live precedent at `parse_tables.dag` + `parse_tables_generated.rs`. The 6 table-families:
-
-1. Binary-operator precedence table (SG-2c-1)
-2. Top-level item keyword dispatch (SG-2c-2)
-3. Type-RHS boundary keyword membership (SG-2c-3)
-4. Bracket opener/closer role (SG-2c-4)
-5. Primary-prefix dispatch (SG-2c-6)
-6. Primary-atom class (SG-2c-7)
-
-Step 3 of PB-3 migration extends this with the full parser-body authority once the substrate capability dependency lands (§6).
+Per Decision 3.B (b) operator-ratified: the parser-dispatch tables (concept "GrammarSpec"; no `type GrammarSpec` carrier — see §3.2) are `.dag` substrate compiled at build time. Live precedent at `parse_tables.dag` + `parse_tables_generated.rs`. The complete table-family set is enumerated by `type` declaration in §3.2 above (with line anchors); this section does NOT maintain a parallel enumeration. Step 3a of PB-3 migration extends `parse_tables.dag` with additional table-families as new grammar productions get table-driven; Step 3b/4 extends the full parser-body authority once the substrate capability dependency lands (§6).
 
 ### §5.2 Recursive-descent parser body
 
@@ -295,7 +289,7 @@ Per `parse_tables.dag:13-22` + SELF_HOSTING.md §6 Phase 4a: SG-2c full parser-b
 
 Decision 3.B operator-overrode my rec to (b) compile-time parser tables. Existing precedent at `parse_tables.dag` + `parse_tables_generated.rs`. Step 3a extends this.
 
-**Open question**: does Step 3a extension introduce any axis NOT currently in the 6 table-families? (e.g., custom-operator definitions, module-imports syntax, where-clause refinement syntax). Director-recommend: Step 3a worker brief enumerates the FULL grammar table set by grepping `parse_generated.rs` for remaining open-coded TokenKind dispatch sites; each is a candidate new table-family.
+**Open question**: does Step 3a extension introduce any axis NOT currently in the `parse_tables.dag` table-family set (enumerated in §3.2 above by `type` declaration with line anchors)? Examples of likely-new axes: custom-operator definitions, module-imports syntax, where-clause refinement syntax. Director-recommend: Step 3a worker brief enumerates the FULL grammar table set by grepping `parse_generated.rs` for remaining open-coded TokenKind dispatch sites; each is a candidate new table-family.
 
 ### Q3: ParseDiagnostic variant exhaustiveness
 
@@ -331,7 +325,7 @@ This phases naturally with the substrate-capability landing as the trigger for S
 
 PB-3 parse's input is `List<Token>` from tokenize (PB-2). **Does PB-3 parse migration block on PB-2 tokenize migration completing?**
 
-**Director-recommend: NO — PB-3 parse migrates independently of PB-2 tokenize status**, same shape as PB-4 lower per PR #3077 §12 Q6 + PB-5 infer per PR #3085 §12 Q6. Token carrier shape is stable; PB-3 parse migrates when its substrate (`parse_tables.dag` 6 table-families + substrate-capability for Step 3b recursive list-body emission) is at HEAD.
+**Director-recommend: NO — PB-3 parse migrates independently of PB-2 tokenize status**, same shape as PB-4 lower per PR #3077 §12 Q6 + PB-5 infer per PR #3085 §12 Q6. Token carrier shape is stable; PB-3 parse migrates when its substrate (`parse_tables.dag` table-families per §3.2 enumeration + substrate-capability for Step 3b recursive list-body emission) is at HEAD.
 
 ---
 
