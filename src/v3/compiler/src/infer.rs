@@ -59,7 +59,10 @@ use crate::int_literal_ranges::{
     integer_range_for_decl, literal_bigint_at, magnitude_out_of_range_for_interval,
     IntegerRangeLookup,
 };
-use crate::lower::{clone_predicate_body, outer_predicate_slots};
+use crate::lower::{
+    clone_predicate_body, int_literal_bigint_statically_discharges_refinement_chain,
+    outer_predicate_slots,
+};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 

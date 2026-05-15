@@ -2180,6 +2180,19 @@ fn scalar_literal_must_reject_for_refinement(
     false
 }
 
+/// Infer-facing counterpart to [`scalar_literal_must_reject_for_refinement`]:
+/// structural equivalence can unify a callee refined alias carrier with canonical
+/// `Int` **before** the argument port nominally [`Decision::Set`]s — scalar
+/// literals that pass the same gate-20 static discharge as lowering narrow the port.
+pub(crate) fn int_literal_bigint_statically_discharges_refinement_chain(
+    dag: &Dag,
+    literal: &BigInt,
+    expected_type: DeclarationId,
+) -> bool {
+    let bits = LiteralBits::Int(literal.to_string());
+    !scalar_literal_must_reject_for_refinement(dag, &bits, expected_type)
+}
+
 fn literal_statically_satisfies_refinement_predicate(
     dag: &Dag,
     literal: &LiteralBits,
