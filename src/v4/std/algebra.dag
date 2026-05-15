@@ -43,3 +43,226 @@
 
 module v4.std.algebra
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// SCOPE (operator-ratified 2026-05-15): this file owns algebra
+// STRUCTURES ONLY. Inhabitance — which concrete type grounds in which
+// algebra — is NOT here; the inhabiting type owns its own grounding in
+// its own concept file. There is no inhabitance carrier, no instance,
+// no concrete-type reference. This file consumes std/node.dag ONLY
+// (every `type` below is surface sugar over node.dag's Conj/Disj/Arrow;
+// no other module is named).
+//
+// REFINEMENT IS STRUCTURAL NESTING, not field duplication. A stronger
+// algebra CONTAINS the weaker one as a child (Conj composition):
+// `Monoid` carries a `semigroup: Semigroup<T>` child plus the
+// `identity` it adds — exactly "Monoid<T> is Magma plus an identity
+// child" (docs/thesis/epistemic-stacking.md). One authority per
+// operation (INVARIANTS P2); changing `op`'s shape touches `Magma`
+// alone (cost-of-change = 1). This is the deliberate v4 departure from
+// v3's flat re-listing of `op` in every record.
+//
+// LAWS ARE GROUNDED DEFINITIONS, NOT FIELDS OR FLAGS. Associativity,
+// identity, commutativity, distributivity ARE the definitions of the
+// named structures (anchor: Wikipedia "Algebraic structure") — math
+// consensus, cited per structure below. They are not stored as a flag
+// (feedback_no_annotations) and not hand-built equation ASTs here (the
+// expression substrate is pipeline-built; a Node data literal would
+// need a Symbol the declaration layer cannot mint). The L7 algebra-law
+// surface (lens/coverage.dag T-18 + lens/testgen.dag T-19) derives the
+// per-axiom TestClaim corpus from each structure's cited definition —
+// that derivation is those lenses' concern, not a parallel table here.
+//
+// NO ENGINE / NO BRIDGE (U1 header discipline). v3's
+// `kernel_algebra_profile: Map<String, AlgebraProfile>` and the
+// `AlgebraProfile` / `AlgebraFieldTemplate` template tables were a
+// string-keyed parallel representation of these structures. They are
+// deliberately absent: a name-keyed lookup disjoint from the structure
+// it mirrors is exactly the engine debt U1 forbids
+// (docs/v4-close-interrogation.md:161 — "not a name-keyed table
+// lookup").
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Magma — a carrier with one closed binary operation. The weakest
+// structure; the only axiom is closure (the `op` signature returning T
+// IS the closure statement — there is nothing to assert separately).
+// Anchor: Wikipedia "Magma (algebra)".
+type Magma<T> {
+  op: fn(T, T) -> T
+}
+
+// Semigroup — an associative Magma. Adds the associativity axiom
+// (op(op(a,b),c) == op(a,op(b,c))); it adds no operation, so it is
+// structurally a Magma. The distinct type carries the proven-associative
+// concept (Wikipedia "Semigroup").
+type Semigroup<T> {
+  magma: Magma<T>
+}
+
+// Monoid — a Semigroup with a two-sided identity element.
+// Anchor: Wikipedia "Monoid".
+type Monoid<T> {
+  semigroup: Semigroup<T>
+  identity: T
+}
+
+// CommutativeMonoid — a Monoid whose op commutes (op(a,b)==op(b,a)).
+// Adds only the commutativity axiom (Wikipedia "Monoid#Commutative
+// monoid").
+type CommutativeMonoid<T> {
+  monoid: Monoid<T>
+}
+
+// Group — a Monoid in which every element has a two-sided inverse.
+// Anchor: Wikipedia "Group (mathematics)".
+type Group<T> {
+  monoid: Monoid<T>
+  inverse: fn(T) -> T
+}
+
+// AbelianGroup — a commutative Group. Adds the commutativity axiom
+// (Wikipedia "Abelian group").
+type AbelianGroup<T> {
+  group: Group<T>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Ring-like structures: two interacting operations (additive +
+// multiplicative) joined by distributivity + annihilation axioms.
+// Modeled as the textbook two-sub-algebra composition (Wikipedia
+// "Ring (mathematics)" / "Semiring"): `add` and `mul` are named child
+// algebras, so `add.identity` is the zero and `mul.identity` is the
+// one — no separate zero/one fields to keep in sync.
+
+// Semiring — additive CommutativeMonoid + multiplicative Monoid, with
+// mul distributing over add and the additive identity annihilating
+// (distributivity + annihilation are the defining axioms; Wikipedia
+// "Semiring").
+type Semiring<T> {
+  add: CommutativeMonoid<T>
+  mul: Monoid<T>
+}
+
+// CommutativeSemiring — a Semiring whose multiplication commutes.
+type CommutativeSemiring<T> {
+  semiring: Semiring<T>
+}
+
+// Ring — a Semiring whose additive structure is an AbelianGroup (i.e.
+// addition has inverses; `add.group.inverse` is negation).
+type Ring<T> {
+  add: AbelianGroup<T>
+  mul: Monoid<T>
+}
+
+// CommutativeRing — a Ring whose multiplication commutes.
+type CommutativeRing<T> {
+  ring: Ring<T>
+}
+
+// OrderedRing — a Ring with a total order compatible with its
+// operations. `compare` is the total-order witness; the
+// order-compatibility axioms are the definition (Wikipedia "Ordered
+// ring").
+type OrderedRing<T> {
+  ring: Ring<T>
+  compare: fn(T, T) -> Ordering
+}
+
+// Field — a CommutativeRing in which every nonzero element has a
+// multiplicative inverse. `reciprocal`'s nonzero precondition (and its
+// Tier-2 totalization) is the inhabitant's concern per STRUCTURE.md
+// architectural commitment #2 — the structure declares the operation,
+// not its totalization (Wikipedia "Field (mathematics)").
+type Field<T> {
+  commutative_ring: CommutativeRing<T>
+  reciprocal: fn(T) -> T
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Lattice structures: two idempotent, commutative, associative
+// operations linked by absorption. Anchor: Wikipedia "Lattice (order)".
+
+// Lattice — meet and join with the absorption axioms
+// (meet(a,join(a,b))==a, join(a,meet(a,b))==a).
+type Lattice<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+}
+
+// BoundedLattice — a Lattice with greatest (top) and least (bottom)
+// elements (identities for meet and join respectively).
+type BoundedLattice<T> {
+  lattice: Lattice<T>
+  top: T
+  bottom: T
+}
+
+// BooleanAlgebra — a complemented distributive BoundedLattice. Adds
+// `complement` with the complement axioms (meet(a,complement(a))==
+// bottom, join(a,complement(a))==top) plus distributivity. This is the
+// algebra classical-logic carriers inhabit (Wikipedia "Boolean
+// algebra (structure)").
+type BooleanAlgebra<T> {
+  bounded: BoundedLattice<T>
+  complement: fn(T) -> T
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FreeMonoid<T> — the free monoid over T: finite sequences of T under
+// concatenation, with no relations beyond the monoid axioms. Unlike the
+// structures above (operation-records imposed on an existing carrier),
+// a free construction IS a canonical carrier — THESIS:194 names it a
+// root primitive precisely for this reason, so it is declared directly
+// as its recursive shape rather than derived from Monoid. Concrete
+// sequence types ground by aliasing onto it (e.g. a text type onto
+// FreeMonoid over a char type) — that aliasing is the inhabitant's
+// concern, not this file's. Anchor: Wikipedia "Free monoid".
+type FreeMonoid<T>
+  = Empty
+  | Cons { head: T, tail: FreeMonoid<T> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Ordering — the result of a total-order comparison. A closed sum
+// (M4); consumed by OrderedRing.compare. Anchor: order theory
+// (trichotomy: exactly one of <, =, > holds).
+type Ordering
+  = Less
+  | Equal
+  | Greater
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Homomorphism<Source, Target> — THE single carrier (U1, header).
+//
+// A structure-preserving map between two algebra carriers. The carrier
+// IS the map: "structure-preserving" is the LAW it asserts (each
+// operation/constant is preserved), the same way Semigroup asserts
+// associativity — verified by the L7 algebra-law surface, never stored
+// as a flag (feedback_no_annotations). WHICH algebra's structure is
+// preserved is bound by the context that constructs the homomorphism
+// (the Find phase, compiler/04_infer.dag T-9), not duplicated here; a
+// fully-general "homomorphism over any algebra class" would need a
+// higher-kinded parameter the v2 seed cannot express, and pinning a
+// source/target algebra field here would be that parallel duplication.
+//
+// "WITH its realization cost" (U1): this is the ONE object all five
+// phases read — Find (04_infer) binds it, Realize (05_emit / 05_eval)
+// projects it to a target, Measure (lens/cost → lens/complexity) folds
+// its cost FROM `map`'s own Node structure, Compare (lens/synthesis)
+// reads that. There is deliberately NO cost field: a stored cost would
+// be a representation parallel to the map it measures — the engine debt
+// U1 forbids (THESIS:185-186 coercion = emission, coercion cost =
+// complexity: one object, many lens projections). Anchor: Wikipedia
+// "Homomorphism".
+type Homomorphism<Source, Target> {
+  map: fn(Source) -> Target
+}
+
