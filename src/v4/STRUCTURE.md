@@ -13,13 +13,8 @@ src/v4/
   STRUCTURE.md           # this file
   CULTURE.md             # the working agreement + reading map (read first)
   BRIEF_TEMPLATE.md      # the worker brief shape (immutable across tasks)
-<<<<<<< HEAD
-  TASKS.md               # the XL tasks defining "v4 done"
-  CULTURE.md             # how we work — the why behind the discipline
-=======
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
->>>>>>> origin/main
 
   std/                   # substrate primitives (14 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
@@ -113,11 +108,9 @@ src/v4/
     fixture/             # canonical input programs
 ```
 
-<<<<<<< HEAD
-**Total: 62 .dag files + 4 docs + 5 .gitkeep = 71 files at scaffold time.**
-(Was 57; the deleted `std/primitive.dag` is replaced by six concept-anchored
-scalar files — see §"Scalar/numeric concept decomposition" below. Composes
-additively with PR #3150's `verilog`/`spice`/`english` additions.)
+**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
+#1 the enumeration above — not the count — is authoritative; the count is
+a checksum, updated on every operator-ratified file addition.)
 
 ## Scalar/numeric concept decomposition
 
@@ -141,6 +134,13 @@ by six concept-located files, each anchored to a real external concept
 Each declares its own inhabitance (the inhabiting type owns its grounding —
 INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
 
+**`Hash` re-homing.** PR #3150's B1 entry slated the `Hash` content-address
+digest for `std/primitive.dag`. With that file deleted, `Hash` — which is
+not a scalar — re-homes to `std/node.dag`, alongside the `content_hash`
+fold and the canonical-form clause that B1 already places there (the T-1
+closeout). `DECISIONS.md` B1's "Hash → primitive.dag" line should be
+updated to `node.dag` accordingly.
+
 **Kernel-ambient types.** `String`, `Int`, `Bool`, `Char`, `List`, `Map` are
 provided by the v2 seed and are usable in any `.dag` file *without an import*.
 This relaxes only the import edge — not single-authority: the v4 substrate
@@ -151,11 +151,6 @@ when it needs that type's *modeled* facts (algebra, inhabitance, totalization)
 — not when it merely needs the raw kernel value (e.g. a `String` message
 label). This is why several headers note "String … is kernel-ambient — no
 import".
-=======
-**Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
-#1 the enumeration above — not the count — is authoritative; the count is
-a checksum, updated on every operator-ratified file addition.)
->>>>>>> origin/main
 
 ## Anchor convention
 
