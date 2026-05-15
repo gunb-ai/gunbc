@@ -41,11 +41,33 @@ fn behavior_span(at: &Behavior) -> SourceSpan {
     }
 }
 
+fn diagnostic_span_for_violates_subject(subject: &ViolatesSubject) -> SourceSpan {
+    match subject {
+        ViolatesSubject::AtBehavior(b) => behavior_span(b),
+        ViolatesSubject::ProducerLookupMissingPort { .. }
+        | ViolatesSubject::ProducerLookupMissingNode { .. } => {
+            SourceSpan::new("malformed_substrate_producer_walk", 0, 0)
+        }
+    }
+}
+
 /// Evidence partition — mirrors `Witness<Carrier>` in `std/dimensions.dag`.
 #[derive(Debug, Clone)]
 pub enum Witness<C> {
     Inhabits(C),
-    Violates { reason: String, at: Behavior },
+    Violates {
+        reason: String,
+        subject: ViolatesSubject,
+    },
+}
+
+/// Malformed substrate boundary for [`Witness`] — avoids fabricating unrelated
+/// [`Behavior`] `at` when the typed producer walk stalls (gate #104 / INVARIANTS P3).
+#[derive(Debug, Clone)]
+pub enum ViolatesSubject {
+    AtBehavior(Behavior),
+    ProducerLookupMissingPort { port: PortId },
+    ProducerLookupMissingNode { producer: NodeId },
 }
 
 /// Report carrier — mirrors `DimensionReport<Carrier>` in `std/dimensions.dag`.
@@ -171,7 +193,7 @@ pub fn analyze_symbolic_cost_dimension(
         match lookup_symbolic_cost(&cost_table, &port) {
             SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
                 reason: "missing symbolic cost for behavior result port".into(),
-                at: behavior.clone(),
+                subject: ViolatesSubject::AtBehavior(behavior.clone()),
             }),
             SymbolicCostLookup::Hit(cost) => witnesses.push(Witness::Inhabits(cost)),
         }
@@ -197,12 +219,12 @@ pub fn analyze_symbolic_cost_dimension(
     let mut violations: Vec<Diagnostic> = witnesses
         .iter()
         .filter_map(|w| {
-            let Witness::Violates { reason, at } = w else {
+            let Witness::Violates { reason, subject } = w else {
                 return None;
             };
             Some(Diagnostic::ParseError {
                 message: format!("symbolic_cost dimension: {reason}"),
-                span: behavior_span(at),
+                span: diagnostic_span_for_violates_subject(subject),
                 correction: Correction::deferred_for_diagnostic_class(
                     "SymbolicCostDimensionDiagnostic",
                 ),
