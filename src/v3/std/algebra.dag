@@ -287,6 +287,29 @@ fn rational_two() -> NonZeroRational {
   host rational_two
 }
 
+fn rational_ge(a: Rational, b: Rational) -> Bool {
+  host rational_ge
+}
+
+fn rational_gt_zero(a: Rational) -> Bool {
+  host rational_gt_zero
+}
+
+fn rational_add_is_zero(a: Rational, b: Rational) -> Bool {
+  host rational_add_is_zero
+}
+
+fn rational_add_nonzero(a: Rational, b: Rational) -> NonZeroRational {
+  host rational_add_nonzero
+}
+
+fn exponential_base_ge(a: ExponentialBase, b: ExponentialBase) -> Bool =
+  a >= b
+
+fn exponential_base_mul(a: ExponentialBase, b: ExponentialBase) -> ExponentialBase {
+  host exponential_base_mul
+}
+
 fn polynomial_linear(v: SizeVariable) -> SymbolicCost =
   PolynomialCost { var: v, degree: rational_one() }
 
@@ -376,10 +399,10 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         LogCost(_) => True
         PolynomialCost(pb) =>
           if same_size_variable(pa.var, pb.var) then
-            True
+            rational_ge(pa.degree, pb.degree)
           else
             False
-        PolyLogCost(pb) => same_size_variable(pa.var, pb.var)
+        PolyLogCost(pb) => same_size_variable(pa.var, pb.var) && rational_gt_zero(pa.degree)
         UnknownCost(_) => False
         ProductCost(_) => False
         SumCost(_) => False
@@ -390,7 +413,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       match b {
         ConstantCost(_) => True
         LogCost(vb) => same_size_variable(pa.var, vb)
-        PolyLogCost(pb) => same_size_variable(pa.var, pb.var)
+        PolyLogCost(pb) => same_size_variable(pa.var, pb.var) && rational_ge(pa.exponent, pb.exponent)
         PolynomialCost(_) => False
         ProductCost(_) => False
         SumCost(_) => False
@@ -404,7 +427,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         LogCost(vb) => same_size_variable(pa.var, vb)
         PolyLogCost(pb) => same_size_variable(pa.var, pb.var)
         PolynomialCost(pb) => same_size_variable(pa.var, pb.var)
-        ExponentialCost(pb) => same_size_variable(pa.var, pb.var)
+        ExponentialCost(pb) => same_size_variable(pa.var, pb.var) && exponential_base_ge(pa.base, pb.base)
         FactorialCost(_) => False
         ProductCost(_) => False
         SumCost(_) => False
@@ -724,17 +747,23 @@ fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
       }
   }
 
-// Binary product special-case: two degree-1 PolynomialCosts over the same port
-// collapse to PolynomialCost with degree 2. Other shapes stay as
-// a two-element ProductCost.
+// Binary product special-cases mirror the Rust carrier:
+//   - PolynomialCost(v, a) x PolynomialCost(v, b) -> PolynomialCost(v, a+b)
+//     unless a+b = 0, in which case it collapses to ConstantCost(1).
+//   - PolyLogCost(v, a) x PolyLogCost(v, b) -> PolyLogCost(v, a+b).
+//   - ExponentialCost(c1, v) x ExponentialCost(c2, v) ->
+//     ExponentialCost(c1*c2, v).
+//   - FactorialCost(v) x FactorialCost(v) exceeds Tier 1 and becomes
+//     UnknownCost with the gate #105 reason.
+// Other shapes stay as a two-element ProductCost.
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   match a {
     ConstantCost(_) => product_pair(a, b)
     PolynomialCost(pa) => combine_polynomial_with(pa, a, b)
-    PolyLogCost(_) => product_pair(a, b)
+    PolyLogCost(pa) => combine_polylog_with(pa, a, b)
     LogCost(_) => product_pair(a, b)
-    ExponentialCost(_) => product_pair(a, b)
-    FactorialCost(_) => product_pair(a, b)
+    ExponentialCost(pa) => combine_exponential_with(pa, a, b)
+    FactorialCost(pa) => combine_factorial_with(pa, a, b)
     SumCost(_) => product_pair(a, b)
     ProductCost(_) => product_pair(a, b)
     UnknownCost(_) => product_pair(a, b)
@@ -743,7 +772,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
 fn combine_polynomial_with(pa: { var: SizeVariable, degree: NonZeroRational }, a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   match b {
     ConstantCost(_) => product_pair(a, b)
-    PolynomialCost(pb) => collapse_polynomial_square(pa.var, pb.var, a, b)
+    PolynomialCost(pb) => combine_polynomial_pair(pa, pb, a, b)
     PolyLogCost(_) => product_pair(a, b)
     LogCost(_) => product_pair(a, b)
     ExponentialCost(_) => product_pair(a, b)
@@ -753,20 +782,91 @@ fn combine_polynomial_with(pa: { var: SizeVariable, degree: NonZeroRational }, a
     UnknownCost(_) => product_pair(a, b)
   }
 
-fn collapse_polynomial_square(
-  va: SizeVariable,
-  vb: SizeVariable,
+fn combine_polynomial_pair(
+  pa: { var: SizeVariable, degree: NonZeroRational },
+  pb: { var: SizeVariable, degree: NonZeroRational },
   a: SymbolicCost,
   b: SymbolicCost
 ) -> SymbolicCost =
-  if same_size_variable(va, vb) then
-    polynomial_square(va)
+  if same_size_variable(pa.var, pb.var) then
+    if rational_add_is_zero(pa.degree, pb.degree) then
+      ConstantCost(1)
+    else
+      PolynomialCost { var: pa.var, degree: rational_add_nonzero(pa.degree, pb.degree) }
   else
     product_pair(a, b)
 
-fn polynomial_square(v: SizeVariable) -> SymbolicCost {
-  PolynomialCost { var: v, degree: rational_two() }
-}
+fn combine_polylog_with(pa: { var: SizeVariable, exponent: PolyLogExponent }, a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  match b {
+    PolyLogCost(pb) => combine_polylog_pair(pa, pb, a, b)
+    ConstantCost(_) => product_pair(a, b)
+    PolynomialCost(_) => product_pair(a, b)
+    LogCost(_) => product_pair(a, b)
+    ExponentialCost(_) => product_pair(a, b)
+    FactorialCost(_) => product_pair(a, b)
+    SumCost(_) => product_pair(a, b)
+    ProductCost(_) => product_pair(a, b)
+    UnknownCost(_) => product_pair(a, b)
+  }
+
+fn combine_polylog_pair(
+  pa: { var: SizeVariable, exponent: PolyLogExponent },
+  pb: { var: SizeVariable, exponent: PolyLogExponent },
+  a: SymbolicCost,
+  b: SymbolicCost
+) -> SymbolicCost =
+  if same_size_variable(pa.var, pb.var) then
+    PolyLogCost { var: pa.var, exponent: rational_add_nonzero(pa.exponent, pb.exponent) }
+  else
+    product_pair(a, b)
+
+fn combine_exponential_with(pa: { base: ExponentialBase, var: SizeVariable }, a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  match b {
+    ExponentialCost(pb) => combine_exponential_pair(pa, pb, a, b)
+    ConstantCost(_) => product_pair(a, b)
+    PolynomialCost(_) => product_pair(a, b)
+    PolyLogCost(_) => product_pair(a, b)
+    LogCost(_) => product_pair(a, b)
+    FactorialCost(_) => product_pair(a, b)
+    SumCost(_) => product_pair(a, b)
+    ProductCost(_) => product_pair(a, b)
+    UnknownCost(_) => product_pair(a, b)
+  }
+
+fn combine_exponential_pair(
+  pa: { base: ExponentialBase, var: SizeVariable },
+  pb: { base: ExponentialBase, var: SizeVariable },
+  a: SymbolicCost,
+  b: SymbolicCost
+) -> SymbolicCost =
+  if same_size_variable(pa.var, pb.var) then
+    ExponentialCost { base: exponential_base_mul(pa.base, pb.base), var: pa.var }
+  else
+    product_pair(a, b)
+
+fn combine_factorial_with(pa: { var: SizeVariable }, a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  match b {
+    FactorialCost(pb) => combine_factorial_pair(pa, pb, a, b)
+    ConstantCost(_) => product_pair(a, b)
+    PolynomialCost(_) => product_pair(a, b)
+    PolyLogCost(_) => product_pair(a, b)
+    LogCost(_) => product_pair(a, b)
+    ExponentialCost(_) => product_pair(a, b)
+    SumCost(_) => product_pair(a, b)
+    ProductCost(_) => product_pair(a, b)
+    UnknownCost(_) => product_pair(a, b)
+  }
+
+fn combine_factorial_pair(
+  pa: { var: SizeVariable },
+  pb: { var: SizeVariable },
+  a: SymbolicCost,
+  b: SymbolicCost
+) -> SymbolicCost =
+  if same_size_variable(pa.var, pb.var) then
+    UnknownCost("(v!)^2 exceeds Tier 1 - pending R4 named-variant canvas")
+  else
+    product_pair(a, b)
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   ProductCost(two_terms(a, b))
