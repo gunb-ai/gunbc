@@ -303,6 +303,10 @@ fn rational_add_nonzero(a: Rational, b: Rational) -> NonZeroRational {
   host rational_add_nonzero
 }
 
+fn rational_add_polylog_exponent(a: Rational, b: Rational) -> PolyLogExponent {
+  host rational_add_polylog_exponent
+}
+
 fn exponential_base_ge(a: Int, b: Int) -> Bool =
   a >= b
 
@@ -782,7 +786,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
       match b {
         PolyLogCost(pb) =>
           if same_size_variable(pa.var, pb.var) then
-            PolyLogCost { var: pa.var, exponent: rational_add_nonzero(pa.exponent, pb.exponent) }
+            PolyLogCost { var: pa.var, exponent: rational_add_polylog_exponent(pa.exponent, pb.exponent) }
           else
             product_pair(a, b)
         ConstantCost(_) => product_pair(a, b)
