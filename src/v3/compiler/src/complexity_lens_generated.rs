@@ -580,7 +580,7 @@ pub fn witness_from_complexity_lookup(
             reason: String::from(
                 "complexity_of: missing ComplexitySummary for behavior result port",
             ),
-            at: (p1).clone(),
+            subject: ViolatesSubject::AtBehavior((p1).clone()),
         },
     }
 }

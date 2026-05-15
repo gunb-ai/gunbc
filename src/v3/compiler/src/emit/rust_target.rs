@@ -4369,6 +4369,21 @@ impl<'a> Ctx<'a> {
                 &[("name", qualified_name), ("binding", rendered_binding)],
             ));
         }
+        // `ViolatesSubject::AtBehavior` is a Rust tuple variant (gate #104 / `dimensions.dag`
+        // mirrors `ViolatesSubject`); without this arm, emit renders named-field `_0:` patterns for
+        // the single-payload disj stub. Same dissolution trigger as `Lookup`/`Hit` above: positional
+        // vs struct payloads are not modeled structurally on the Disj emission surface yet.
+        let is_violates_subject_at_behavior = field_name == "_0"
+            && matches!(
+                qualified_name.split("::").collect::<Vec<_>>().as_slice(),
+                [a, b] if *a == "ViolatesSubject" && *b == "AtBehavior"
+            );
+        if is_violates_subject_at_behavior {
+            return Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            ));
+        }
         let bindings = render_named_template(
             &self.indexes.syntax.patterns.field_binding,
             &[("field", field_name), ("binding", rendered_binding)],
@@ -5068,6 +5083,7 @@ impl<'a> Ctx<'a> {
         // Dissolution: same "tuple `Hit` for `v3.std.lookup` only" bridge as
         // `render_single_field_variant_pattern` (pattern side); see long comment
         // there. Until variant payload positionality is DAG-carried, keep narrow.
+        // `ViolatesSubject::AtBehavior` tuple emission matches `dimension.rs`.
         if children.len() == 1
             && children[0].label == "_0"
             && enum_name == "Witness"
@@ -5105,6 +5121,26 @@ impl<'a> Ctx<'a> {
                 format!("{qualified_name}({value})")
             };
             return Ok(Some(out));
+        }
+        // `ViolatesSubject::AtBehavior(Behavior)` is a Rust **tuple** variant in
+        // `dimension.rs` (`std/dimensions.dag` unary payload). Default emit would render
+        // `{ _0: … }` struct init and fail against the hand mirror tuple shape.
+        if children.len() == 1
+            && children[0].label == "_0"
+            && enum_name == "ViolatesSubject"
+            && variant_name == "AtBehavior"
+        {
+            let value = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(consumer),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            let payload = if value.contains(".clone()") {
+                value
+            } else {
+                format!("({value}).clone()")
+            };
+            return Ok(Some(format!("{qualified_name}({payload})")));
         }
         let fields = children
             .iter()

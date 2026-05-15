@@ -27,7 +27,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Witness};
 
 use crate::common::assert_recursive_countdown_linear_semantics;
@@ -58,10 +58,10 @@ fn find_bind_node(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::
 /// Generated `symbolic_cost_of` lookup; see module docs for the frozen v2 projection scope.
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
-    match symbolic_cost_of(dag, &port) {
+    match symbolic_cost_lookup(dag, &port) {
         SymbolicCostLookup::Hit(cost) => cost,
         SymbolicCostLookup::Miss => {
-            panic!("symbolic_cost_of returned Miss for bind `{bind_name}`")
+            panic!("symbolic_cost_lookup returned Miss for bind `{bind_name}`")
         }
     }
 }

@@ -63,7 +63,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup, ComplexitySummary};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 
 /// Named blocker shared across all `#[ignore]`'d ratchets in this file.
 /// Single source of truth so the follow-on lens-consumer-walker PR drops
@@ -93,10 +93,10 @@ fn expect_summary(dag: &v3_compiler::dag::Dag, bind_name: &str) -> ComplexitySum
 
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
-    match symbolic_cost_of(dag, &port) {
+    match symbolic_cost_lookup(dag, &port) {
         SymbolicCostLookup::Hit(cost) => cost,
         SymbolicCostLookup::Miss => {
-            panic!("symbolic_cost_of returned Miss for bind `{bind_name}`")
+            panic!("symbolic_cost_lookup returned Miss for bind `{bind_name}`")
         }
     }
 }
@@ -290,7 +290,7 @@ fn ep_count_acc_e(xs: EpListE, acc: Int, limit: Int) -> Int =
     });
 }
 
-/// Cost-lens sibling: `symbolic_cost_of` on the multi-arg accumulator fixture
+/// Cost-lens sibling: `symbolic_cost_lookup` on the multi-arg accumulator fixture
 /// must collapse to the descending-parameter `LinearCost`, not multiply across
 /// the preserved / accumulator arguments. See module doc for the
 /// lens-consumer match-arm walker blocker.

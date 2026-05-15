@@ -6,7 +6,7 @@ use v3_compiler::dag::{
     ValueBody,
 };
 use v3_compiler::generated_full_bootstrap_dag;
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_lookup, SymbolicCostLookup};
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
@@ -847,16 +847,18 @@ fn symbolic_cost_expr_equals_countdown_demo_suite_passes() {
         // not derived from the `SymbolicCostExprEquals` roundtrip below — pins unary tail-recursion
         // `LinearCost` normalization before we self-oracle `demo` through serialize→lower→runner.
         let countdown_port = find_bind_value_port(&program, "countdown");
-        let countdown_cost = match symbolic_cost_of(&program, &countdown_port) {
+        let countdown_cost = match symbolic_cost_lookup(&program, &countdown_port) {
             SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of returned Miss for `countdown`"),
+            SymbolicCostLookup::Miss => {
+                panic!("symbolic_cost_lookup returned Miss for `countdown`")
+            }
         };
         assert_recursive_countdown_linear_semantics(&countdown_cost);
 
         let demo_port = find_bind_value_port(&program, "demo");
-        let demo_cost = match symbolic_cost_of(&program, &demo_port) {
+        let demo_cost = match symbolic_cost_lookup(&program, &demo_port) {
             SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of returned Miss for `demo`"),
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_lookup returned Miss for `demo`"),
         };
         let cost_init = symbolic_cost_as_v3_data_initializer(&demo_cost);
         let escaped_src =
