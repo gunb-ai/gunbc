@@ -478,6 +478,10 @@ enum CallableStrategyBinding {
     ListMap,
     ListFilter,
     ListContains,
+    StringFormat,
+    IntToString,
+    CharToString,
+    BoolToString,
 }
 
 #[derive(Debug, Clone)]
@@ -1321,6 +1325,12 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
+    if dag_uses_any_callable(dag, &["format", "int_to_string", "bool_to_string"]) {
+        sections.push("import \"strconv\"".to_string());
+    }
+    if dag_uses_any_callable(dag, &["format"]) {
+        sections.push("import \"strings\"".to_string());
+    }
     let needs_int_div_prelude =
         dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);
     let needs_result_prelude = needs_int_div_prelude
@@ -1995,6 +2005,45 @@ impl<'a> Ctx<'a> {
                 Ok(format!(
                     "func() bool {{ for _, __item := range {list} {{ if __item == {item} {{ return true }} }}; return false }}()"
                 ))
+            }
+            CallableStrategyBinding::StringFormat => {
+                let [template_port, args_port] = inputs else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "format expects [template, args]".to_string(),
+                    ));
+                };
+                let template = self.render_port(*template_port, locals)?;
+                let args = self.render_port(*args_port, locals)?;
+                Ok(format!(
+                    "func() string {{ __v3FormatOut := {template}; for __v3FormatI, __v3FormatArg := range {args} {{ __v3FormatOut = strings.ReplaceAll(__v3FormatOut, \"{{\" + strconv.Itoa(__v3FormatI) + \"}}\", __v3FormatArg) }}; return __v3FormatOut }}()"
+                ))
+            }
+            CallableStrategyBinding::IntToString => {
+                let [value_port] = inputs else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "int_to_string expects [value]".to_string(),
+                    ));
+                };
+                let value = self.render_port(*value_port, locals)?;
+                Ok(format!("strconv.FormatInt({value}, 10)"))
+            }
+            CallableStrategyBinding::CharToString => {
+                let [value_port] = inputs else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "char_to_string expects [value]".to_string(),
+                    ));
+                };
+                let value = self.render_port(*value_port, locals)?;
+                Ok(format!("string(rune({value}))"))
+            }
+            CallableStrategyBinding::BoolToString => {
+                let [value_port] = inputs else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "bool_to_string expects [value]".to_string(),
+                    ));
+                };
+                let value = self.render_port(*value_port, locals)?;
+                Ok(format!("strconv.FormatBool({value})"))
             }
         }
     }
