@@ -2,6 +2,7 @@
 //
 // Scope: complexity lens — structural fact carried by data model, not behavioral test.
 // Anchor: https://en.wikipedia.org/wiki/Computational_complexity_theory + https://en.wikipedia.org/wiki/Big_O_notation
+// Unifies: (per THESIS:187) coercion cost = complexity. The cost of converting between representations IS a complexity-lens read; no parallel CoercionCost carrier. A worker computing coercion cost reads via this lens.
 //
 // Owns:
 //   - Complexity dimension type

@@ -2,6 +2,7 @@
 //
 // Scope: TypeScript language model — direction-agnostic. Includes ES (ECMAScript) base.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html (TypeScript Handbook) + https://tc39.es/ecma262/ (ECMAScript spec)
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
 //
 // Owns:
 //   - TypeScript grammar (declarations, expressions, types, generics, interfaces, classes)

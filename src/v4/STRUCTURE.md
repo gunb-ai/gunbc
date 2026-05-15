@@ -172,6 +172,22 @@ reference this section when dispatching workers.
    across the (Tier × Layer × Substrate) cross-product. Workers writing
    manual TestClaims declare both axes in the claim metadata.
 
+5. **Concept unifications are structurally enforced** (per THESIS §184-188).
+   THESIS commits to four named unifications. Each lives in a single substrate
+   file declared via the `// Unifies:` header field. Adding a parallel carrier
+   for any unified concept is a substrate extension = STOP signal. The four:
+   - **`coercion = emission`** — owned by `compiler/05_emit.dag`. No separate
+     coercion engine; coercion logic lives in emission rules.
+   - **`coercion cost = complexity`** — owned by `lens/complexity.dag`. The
+     cost of converting between representations IS a complexity-lens read;
+     no `CoercionCost` carrier.
+   - **`language spec = transport spec = interpreter runtime`** — owned by
+     `extdeps/languages/*.dag`. ONE substrate carrier per language for all
+     three roles; different lenses read different facts from the same data.
+   - **`idempotency + cancellation + redundancy = algebraic simplification`** —
+     owned by `lens/idempotency.dag`. Three named runtime concerns are ONE
+     mechanism; no `lens/cancellation.dag` or `lens/redundancy.dag`.
+
 ## The closed-system invariants
 
 These are non-negotiable across all v4 work:

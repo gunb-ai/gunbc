@@ -2,6 +2,7 @@
 //
 // Scope: Go target language spec — primitives, syntax, codegen rules.
 // Anchor: https://go.dev/ref/spec (Go Programming Language Specification)
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
 //
 // Owns:
 //   - Go primitives
