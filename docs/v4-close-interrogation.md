@@ -1,15 +1,24 @@
-# R3 Close Interrogation — Adversarial Audit
+# v4 Ship Interrogation — Adversarial Audit (was: R3 Close Interrogation)
 
-**Authoring status**: PM-authored draft per operator directive 2026-05-13 ("come up with the final list of questions/interrogation as a sheet where we can check things off to close R3"; refinement directive 2026-05-13: "i want the doc to be antagonistic — we have to go over all the work that was done, acceptance criteria — what was promised, what was delivered"). Director ratification pending.
+**Authoring status**: originally PM-authored 2026-05-13 as R3-close audit. Migrated 2026-05-15 to v4 framing per operator directive ("we already have a doc for R3 — also put R4 stuff in it now; one giant development phase"). §1-§12 are the original R3 promise audit (still load-bearing for v4 since v4 inherits all R3 thesis claims); §13-§17 are NEW for the R4 capabilities folded into v4 scope. R4 is no longer a separate phase — v4 = R3 + R4 in one program.
 
-**Stance**: this is an ADVERSARIAL audit, not a checklist. Predicates being green is necessary but not sufficient — a gate can pass its predicate while the feature it gates is still broken. For every promise R3 made, this sheet demands the receipt:
+**v4 applicability mapping**:
+- Substrate file references (`src/v3/std/...`, `src/v3/compiler/...`) historically document v3 state. The same probes apply to v4 with paths translated:
+  - `src/v3/std/*.dag` → `src/v4/std/*.dag`
+  - `src/v3/spec/*.dag` → `src/v4/extdeps/languages/*.dag`
+  - `src/v3/compiler/src/*.rs` → does not exist in v4; v4 has zero hand-Rust per 0-floor target (compiler emits its own Rust trampoline only)
+  - `dsl/std/*.dag`, `dsl/extdeps/*.dag` → `src/v4/std/*.dag`, `src/v4/extdeps/*.dag`
+- Gate-number references (`#1`, `#82`, `#103`, etc.) anchor to `r3-program-plan.md §1.8`. For v4, the same predicates apply but gates are tracked in `src/v4/TASKS.md` per-XL-task; mapping is intentional-not-mechanical.
+- Disposition updates: every `R4-DEFERRED` disposition in §1-§12 is **superseded** by `V4-IN-SCOPE` — see specific R4 section at §13+ for which v4 file owns each formerly-deferred item.
+
+**Stance**: this is an ADVERSARIAL audit, not a checklist. Predicates being green is necessary but not sufficient — a gate can pass its predicate while the feature it gates is still broken. For every promise v4 makes, this sheet demands the receipt:
 
 1. **The promise** — verbatim quote from a doc, with citation
 2. **The delivery** — code, test, or demo that satisfies it
 3. **A concrete example** — real input → real output, end-to-end
 4. **Falsification probe** — what could disprove "delivered"; has it been attempted
 
-R3 closes when every promise has all four. Predicates and counts are evidence; they are not the verdict.
+v4 ships when every promise has all four. Predicates and counts are evidence; they are not the verdict.
 
 ---
 
@@ -19,12 +28,13 @@ R3 closes when every promise has all four. Predicates and counts are evidence; t
 |---|---|
 | **NOT-CHECKED** | The question hasn't been asked at HEAD yet |
 | **PROVEN** | Promise verbatim cited + delivery cited + concrete example reproducible + falsification probe attempted and survived |
-| **WEAK-EVIDENCE** | Promise + delivery cited but example is single-fixture, narrow, or non-end-to-end. Acceptable for R4-deferred items; blocker for R3 close |
+| **WEAK-EVIDENCE** | Promise + delivery cited but example is single-fixture, narrow, or non-end-to-end. Blocker for v4 ship |
 | **GAP** | Promise exists; delivery absent OR demo doesn't run OR example doesn't reproduce |
-| **R4-DEFERRED** | Promise explicitly deferred to R4 with operator acceptance recorded |
-| **NOT-PROMISED** | The "expected" behavior was never promised; out of R3 scope |
+| **V4-IN-SCOPE** | Was R4-DEFERRED in original R3 framing; under v4 = R3+R4 one-phase, now in-scope. See §13+ for the v4 file/task that owns it |
+| **SCAFFOLD-GAP** | v4-specific: the v4 scaffold doesn't yet allocate responsibility for this claim. Decision needed |
+| **NOT-PROMISED** | The "expected" behavior was never promised; out of v4 scope |
 
-A close-eligible R3 has every item PROVEN or R4-DEFERRED with operator-recorded acceptance. Zero GAP. Zero WEAK-EVIDENCE.
+A ship-eligible v4 has every item PROVEN. Zero GAP. Zero WEAK-EVIDENCE. V4-IN-SCOPE items become PROVEN through the v4 XL-task plan.
 
 ---
 
@@ -1082,4 +1092,199 @@ To prevent R3-class debt from re-emerging:
 ## §12. Authoring history
 
 - **2026-05-13 v0** — PM-authored structural meta-acceptance checklist (12 categories, predicate-execution focus). Insufficient: structural, not adversarial.
-- **2026-05-13 v1** (this version) — restructured per operator directive ("antagonistic"). Promise-vs-delivery interrogation with falsification probes. Awaits Director ratification on Q1-Q6 + cross-Mgr refinement before R3-close ceremony.
+- **2026-05-13 v1** — restructured per operator directive ("antagonistic"). Promise-vs-delivery interrogation with falsification probes. Awaited Director ratification on Q1-Q6.
+- **2026-05-15 v2** (this version) — migrated to v4 framing per operator directive "we already have a doc for R3 — also put R4 stuff in it now; one giant development phase". Renamed `r3-close-interrogation.md` → `v4-close-interrogation.md` (git mv preserves history). Added §13-§17 for R4 capabilities now in v4 scope. R4-DEFERRED dispositions in §1-§12 superseded by V4-IN-SCOPE; specific R4 sections name the v4 file/task that owns each formerly-deferred item.
+
+---
+
+## §13. Arbitrary ingestion — bidirectional substrate (NEW for v4, was R4)
+
+**Promise** (THESIS.md:215-221 omni-emission Shape A/B + operator directive 2026-05-15 "design v4 up front for the r4 stuff i wanted (arbitrary ingestion)"): gunbc reads external code/data formats and produces typed `.dag` values — the inverse of Shape B emission. This makes the substrate the integration surface for arbitrary external systems (existing programming languages, data formats, schema specifications, configuration files). Not just a feature; load-bearing for the adoption story (existing systems integrate via ingestion, not via rewrite).
+
+**Promise scope** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` §Mission + `design-r4-full-stack-omni-emission-canvas.md` §Two-ingest-directions): ingestion covers (a) other-language source code (C, C++, LLVM IR, TypeScript, etc.), (b) data formats (JSON, YAML, CSV, TOML, etc.), (c) schema formats (JSON Schema, OpenAPI, Protobuf, etc.).
+
+**v4 owner allocation** (SCAFFOLD-GAP — needs explicit ratification):
+
+- Per-format parsers under `src/v4/extdeps/formats/` — one file per ingestible format, each anchored to its canonical spec
+- Per-language frontends under `src/v4/extdeps/languages/<lang>.dag` — extends current Rust/Python/Go target specs to be bidirectional (read AND emit)
+- Ingestion orchestrator: extends `src/v4/compiler/00_compile.dag` OR new `src/v4/compiler/00_ingest.dag` for the inverse path
+
+**Probes**:
+
+- [ ] Can a user write `.dag` code that reads an arbitrary JSON file and produces a typed `.dag` value? Show the program. Is the ingestion logic in `.dag` (per closed-system discipline) or in hand-Rust?
+- [ ] Same for YAML, CSV, TOML.
+- [ ] Can the compiler ingest a Rust source file (a subset of Rust grammar) and produce typed `.dag` representation? Same for Python, Go.
+- [ ] Schema-driven ingestion: given an OpenAPI spec, can the compiler produce corresponding `.dag` types AND validate incoming JSON against them?
+- [ ] **Bidirectionality**: for each Shape A target (Rust/Python/Go), is the language spec in `extdeps/languages/<lang>.dag` used for BOTH emission and ingestion, OR are these separate substrates? Per concept-unification claim (THESIS:185-188), they should be ONE substrate.
+- [ ] **Falsification probe**: write an ingestion target for a format never tested (e.g., XML). Does the substrate accommodate it without new connectives or behaviors? Or does ingestion require a dedicated 6th L1 behavior (would trigger C1 stop-signal per §2.6)?
+
+**Falsification probes (deeper)**:
+
+- [ ] Roundtrip: ingest a Rust source file → produce typed `.dag` → emit Rust. Is the emitted Rust byte-equivalent to the input (modulo whitespace/comments)? If not, the ingestion lost information — gap.
+- [ ] Coverage: enumerate the 6 connectives × 5 behaviors structural form space. For each, does the v4 ingestion path support it for all anchored formats? L6-style completeness for ingestion.
+- [ ] Effect-model preservation: ingest a Python source file with side effects. Are the effects classifiable via the effect lens (§1.4) post-ingestion? Or does ingestion produce opaque blobs the lens can't read?
+
+**Critical decision needed (SCAFFOLD-GAP)**:
+
+The v4 scaffold currently has `extdeps/languages/{rust,python,go}.dag` framed as **target specs (emission only)**. For ingestion to be substantive, these need to be **bidirectional** — the same anchored language reference produces both ingestion and emission rules. Three options:
+
+1. **Bidirectional unified**: each `extdeps/languages/<lang>.dag` declares both emission AND ingestion. Per concept-unification (one substrate carrier reads multiple lenses). Cleanest.
+2. **Split per direction**: `extdeps/languages/<lang>/emit.dag` + `extdeps/languages/<lang>/ingest.dag`. Adds files (substrate inflation risk per `feedback_construction_over_ratchets`). Not recommended.
+3. **Unified language file + format files**: `extdeps/languages/*.dag` stays language-target spec; new `extdeps/formats/*.dag` for non-code formats (JSON/YAML/etc.). Hybrid. Recommended.
+
+PM recommendation: **option 3** — language ingestion is a property of the language spec (each language file already needs to model its grammar for emission; ingestion uses the same grammar in reverse), data-format ingestion is a separate substrate (JSON ≠ a programming language).
+
+**Scaffold additions needed** (pending operator ratification):
+- `extdeps/formats/json.dag` — Anchor: ECMA-404 / RFC 8259
+- `extdeps/formats/yaml.dag` — Anchor: YAML 1.2 spec
+- `extdeps/formats/csv.dag` — Anchor: RFC 4180
+- `extdeps/formats/toml.dag` — Anchor: TOML v1.0 spec
+- `extdeps/formats/json_schema.dag` — Anchor: JSON Schema spec (Draft 2020-12)
+- `extdeps/formats/openapi.dag` — Anchor: OpenAPI Specification 3.1
+- (decision: protobuf, xml — defer or include?)
+
+Plus extending `extdeps/languages/<lang>.dag` headers to declare bidirectional grammar (parser + emitter from same spec).
+
+---
+
+## §14. Additional Shape A languages — C, C++, LLVM IR, TypeScript (NEW for v4, was R4.A/R4.C)
+
+**Promise** (per `r4-c-compiler-and-llvm-in-dag-program-plan.md` + `design-r4-full-stack-omni-emission-canvas.md`): v4 supports additional Shape A target languages beyond Rust/Python/Go. C/C++ enable production-compiler-infrastructure demonstration; LLVM IR enables backend-portability; TypeScript enables frontend-stack omni-emission.
+
+**v4 owner allocation** (SCAFFOLD-GAP):
+
+Currently `src/v4/extdeps/languages/` has 3 files: `rust.dag`, `python.dag`, `go.dag`. R4 adds:
+- `c.dag` — Anchor: ISO/IEC 9899 (C standard) + Kaleidoscope-Ch8 subset for first delivery
+- `cpp.dag` — Anchor: ISO/IEC 14882 (C++ standard) + xlscc-subset (per pin in r4-c-compiler doc)
+- `llvm_ir.dag` — Anchor: https://llvm.org/docs/LangRef.html
+- `typescript.dag` — Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html (TypeScript Handbook + ES standard)
+
+**Probes**:
+
+- [ ] Per language: can v4 emit a non-trivial program to it? (Same probes as §3.1 for Rust/Python/Go, replicated.)
+- [ ] Per language: can v4 ingest source files written in it? (Per §13 ingestion claim.)
+- [ ] **L5 cross-target consistency**: same `.dag` program emitted to ALL targets (Rust/Python/Go/C/C++/LLVM IR/TypeScript) produces equivalent behavior. Test surface scales by target count — is the test framework substrate (`src/v4/test/claim/`) per-target-parameterized or per-target-duplicated?
+- [ ] **L6 form completeness**: do all 6 connectives × 5 behaviors emit to every target? Per §3.5 L6 matrix.
+- [ ] **Falsification probe**: pick a `.dag` form that emits cleanly to Rust but cannot emit to LLVM IR (e.g., something Rust's borrow checker accepts but LLVM IR's SSA form rejects). Does v4 fail-closed when LLVM IR is targeted, or silently emit broken IR?
+
+**Scaffold additions needed**:
+- 4 new files in `src/v4/extdeps/languages/`: `c.dag`, `cpp.dag`, `llvm_ir.dag`, `typescript.dag`
+- TASKS.md: extend T-4 (extdeps languages bundle) from 3 files to 7
+
+---
+
+## §15. Framework substrates — React, future UI/server frameworks (NEW for v4, was R4 canvas)
+
+**Promise** (per `design-r4-full-stack-omni-emission-canvas.md` §React-as-framework-substrate): full-stack omni-emission requires not just language targets (TypeScript) but **framework substrates** — UI frameworks (React, Vue, Svelte), server frameworks (Express, Axum, FastAPI), data layer frameworks (ORMs). Each framework has its own carriers (Component, Hook, Effect for React; Route, Middleware, Handler for Express; etc.).
+
+**v4 owner allocation** (SCAFFOLD-GAP):
+
+New directory: `src/v4/extdeps/frameworks/`. Per-framework files:
+- `extdeps/frameworks/react.dag` — Anchor: https://react.dev/reference/react (React docs)
+- (future) `extdeps/frameworks/express.dag`, `extdeps/frameworks/vue.dag`, etc.
+
+**Probes**:
+
+- [ ] Per framework: are its carriers structurally modeled (Component, Hook, etc.) or just stringly-named?
+- [ ] **Cross-language consistency**: React substrate emits to TypeScript (typed React) and to JavaScript (untyped). Does the substrate distinguish meta-typing (the framework's structural rules) from target-language-typing? 
+- [ ] **Bidirectional**: can v4 ingest existing React components (per design-r4-canvas §Q3-b "TS class → Component") AND emit them?
+- [ ] **Falsification probe**: introduce a framework-specific anti-pattern (e.g., a React Hook called inside a conditional). Does the React-substrate lens catch it at compile-time?
+
+**Scaffold additions needed** (R4 canvas-blocked — Director ratification of canvas at PR #2847 is upstream):
+- New directory `src/v4/extdeps/frameworks/`
+- `extdeps/frameworks/react.dag` (initial framework)
+- Extension to TASKS.md: new T-4.6 for framework substrates
+
+**Disposition**: deferred-within-v4 to post-canvas-ratification. The framework-substrate shape is itself a Director-tier design question (5-Q canvas pending per `design-r4-full-stack-omni-emission-canvas.md`). v4 substrate scaffold reserves the directory but doesn't pre-allocate file scopes until the canvas resolves.
+
+---
+
+## §16. Multi-program / network coordination (NEW for v4, was §3.8 forward-pointer)
+
+**Promise** (THESIS.md omni-emission extension + §3.8 of this doc + operator framing "one giant development phase"): v4 supports multi-program emission — one `.dag` program produces N cooperating distributed programs with derived wire interfaces. The same structural facts (cost / complexity / effect / parallelism) apply across the system, not just per-endpoint.
+
+This extends omni-emission from "one .dag → N representations of one program" to "one .dag → N cooperating programs at distinct deployment endpoints."
+
+**v4 owner allocation** (SCAFFOLD-GAP):
+
+Currently no v4 file owns "deployment unit" or "endpoint" concept. Open design questions per §3.8 §Open-questions-for-R4-canvas-authoring:
+
+- 6th L1 behavior (`Coordinate` for sync/async/stream/pubsub) → would trigger C1 stop-signal per §2.6 (substrate extension requires four-dissolution-attempt protocol)
+- OR Bind composition + Effect annotation sufficient → no substrate extension; coordination is library-level pattern over existing 5 behaviors
+- "Machine A" / "Machine B" addresses: substrate carriers (concrete `Endpoint` type) or lens-readable dimension (deployment-target dimension)
+
+**Probes** (§3.8 Probes copied for completeness):
+
+- [ ] Multi-program shape: how does `.dag` express "this fragment runs on machine A, this on machine B"?
+- [ ] Wire derivation extension: does extending gate #28 `omni_layers_share_one_node_tree` to "share one Dag across deployment units" hold?
+- [ ] Coordination semantics: are sync/async/stream/pub-sub first-class behaviors OR compositions over existing 5 behaviors?
+- [ ] Failure-at-boundary: how does "partial failure" compose with effect-enumeration (§1.4)?
+- [ ] Idempotency at endpoint: composes with idempotency lens (THESIS:188 + §3.6)?
+- [ ] Cross-endpoint dimension propagation: does affected-set lens extend across deployment-unit boundaries?
+- [ ] **Falsification probe**: design a 2-endpoint distributed program. Demonstrate end-to-end emission per Shape-A + the wire contract per Shape-B + coordination behavior captured structurally.
+
+**Scaffold additions needed**:
+
+This is the area where v4 substrate decisions are most consequential (could trigger C1 stop-signal). Recommendation:
+
+- Defer scaffold-allocation to post-Director-design-canvas. The 6th-behavior question is a substrate-extension question that the dissolution-protocol must address first.
+- In v4 STRUCTURE.md, reserve `extdeps/coordination.dag` as a placeholder name, but don't scaffold the file until the canvas resolves.
+
+**Disposition**: SCAFFOLD-GAP with explicit Director-canvas dependency. v4 substrate-decision pending; v4 ship would be acceptable without multi-program coordination IF this is explicitly framed as "v4-extension follow-on" rather than carrying it as silent gap.
+
+---
+
+## §17. Substrate axis extensions — C4-C7 from R4 carve-out routing
+
+**Promise** (per `docs/r4-carve-out-routing.md` §Carved-out-items C4-C7): v4 absorbs the substrate-axis extensions that were carved out of R3 for consumer-demand-driven landing.
+
+### §17.1 C4 — Additional MachineConstraint axes
+
+- `RegisterClass<R>` (int / float / vector register classes)
+- `EndianMode<E>` (Little / Big)
+- `Alignment<bytes>` (Nat-valued phantom)
+
+**v4 owner**: extends `src/v4/extdeps/languages/<lang>.dag` per-target — each target declares the machine constraints relevant to its emission.
+
+**Probes**:
+- [ ] Per target: are RegisterClass / EndianMode / Alignment declared structurally (typed carriers) or string-keyed?
+- [ ] Cross-target consistency: emit same `.dag` program to two targets with different EndianMode. Do the emitted serializations agree (modulo endian)?
+- [ ] Falsification: write a `.dag` program that depends on EndianMode being Big. Emit to a Little-endian target. Does the compiler fail-closed or silently emit broken serialization?
+
+### §17.2 C5 — Rounding-mode product-shape extension
+
+`AlgebraMachineRoundingProduct` (3-axis: algebra × machine × rounding-mode) extends the existing `AlgebraMachineProduct`.
+
+**v4 owner**: extends `src/v4/std/algebra.dag` (algebra inhabitance) + `src/v4/extdeps/languages/<lang>.dag` (per-target rounding rules).
+
+**Probes**:
+- [ ] Float arithmetic: does v4 model rounding-mode as a structural axis or assume IEEE-754 default?
+- [ ] Cross-language: Rust's `f64::round` vs Python's `round()` vs Go's `math.Round` — do their semantics agree at the v4 substrate level?
+
+### §17.3 C6 — Aspect-axis (PointKind) for instant/duration/rate
+
+`PointKind = Magnitude | Instant | Rate` adds a third axis distinguishing duration-shaped from instant-shaped from rate-shaped quantities. `EpochMs` requires this.
+
+**v4 owner**: extends `src/v4/std/cardinality.dag` (or new `src/v4/std/measure.dag` if substrate-cohesion warrants).
+
+**Probes**:
+- [ ] Time arithmetic: subtracting two `Instant` values produces `Duration` (Magnitude). Is this enforced structurally?
+- [ ] Type errors: adding two `Instant` values (semantically nonsensical) should fail at compile time. Demo.
+
+### §17.4 C7 — Cross-algorithm complexity optimality (algorithm synthesis)
+
+Compiler proves a DIFFERENT algorithm with equivalent semantics achieves better complexity (e.g., bubble sort → merge sort). Research-tier feature.
+
+**v4 owner**: extends `src/v4/lens/complexity.dag` (or new `src/v4/lens/synthesis.dag` if substrate-cohesion warrants).
+
+**Disposition**: V4-IN-SCOPE per "one giant development phase" but **highest research-tier risk**. Per `r4-carve-out-routing.md` C7: requires "algorithm synthesis or pattern-recognition + semantic-equivalence-tier transformation library; major research-tier feature beyond lens-tier scope." Honest framing for v4 ship: this may require its own canvas + Director-ratified scope before any worker can be dispatched. If v4 ship deadline is tight, recommend explicit acknowledgement that C7 lands in a fast-follow rather than blocking ship.
+
+---
+
+## §18. R4 program plans — auxiliary (deferred from v4 substrate scope)
+
+**Status**: NOT-IN-V4-SUBSTRATE-SCOPE.
+
+The R4 program plans at `docs/r4-c-compiler-and-llvm-in-dag-program-plan.md` and `docs/r4-ctrl-dag-migration-project-plan.md` describe **applications** of v4 substrate (a C compiler in .dag; ctrl/ migrated to .dag) rather than v4 substrate itself. These are downstream consumers — they don't require v4 substrate changes beyond what §13-§17 cover.
+
+Acknowledged for tracking; not v4 ship blockers. Mentioned here so reviewers know they're known-and-routed, not forgotten.
