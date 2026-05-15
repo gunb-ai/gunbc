@@ -14,7 +14,25 @@ If R2 answers "Rust template", the retirement is paper-shrink and **does not cou
 
 ---
 
-## Format spec (per entry)
+## 5-phase plan (canonical authority for Phase enum referenced below)
+
+Per the operator discussion 2026-05-15 — replace the SG-0 file-path ratchet with this catalogue + a hand-Rust monotonicity invariant. Phases ordered cheapest-first (largest retirement count first).
+
+1. **Phase 1 — Hand-Rust monotonicity invariant** (new P-rule): every PR's net `src/v3/compiler/src/` hand-authored Rust delta ≤ 0. Forecloses the growth pattern where gate-closure PRs add Rust escorts (tests + cementing receipts + lens-as-Rust). After this lands, every PR must either retire ≥1 Rust file or land purely in `.dag`.
+
+2. **Phase 2 — Test harness layer dissolution**: 122 of 177 hand-Rust entries are `tests/integration/*.rs` files asserting one structural claim each. Replacement: `.dag` fixture programs + `TestClaim` literals consumed by ONE Rust test runner. Net retirement: ~120 files. Depends on Gap 11 TestClaim infrastructure (partially landed per gate #85).
+
+3. **Phase 3 — Lens-as-Rust dissolution**: ~7-10 Rust files implement lenses (`complexity_lattice.rs`, `lens_declaration_apply.rs`, `lens_t_las_carrier.rs`, `enforced_lens_application.rs`, etc.). Replacement: `data lens_X: Lens<C>` declarations per the live `Lens<C>` substrate at `src/v3/std/lens.dag:70`, consumed via `fold_lens<C>`. Net retirement: -7 to -10 files. The complexity-tightness-lens PR #3067 was preparing this shape.
+
+4. **Phase 4 — Substrate-mirror generation**: ~5-8 Rust files are parallel-representations of `src/v3/std/substrate.dag` types (`dag.rs`, `dag/{builder,cardinality_payload,effects,ports}.rs`, possibly `diagnostics.rs`, `dimension.rs`, `complexity_lattice.rs`). Replacement: regen pipeline reads `substrate.dag` + generates these files byte-identically; hand-editing forbidden. Per `feedback_isomorphism_or_generation_for_mirrors`.
+
+5. **Phase 5 — Pipeline-stage retirement** (meta-circular bootstrap): the remaining ~12-15 files (`infer.rs`, `lower.rs`, `emit.rs` + variants, `bootstrap*.rs`, `regen_*.rs`, `pipeline_authority.rs`, `post_emit_verifier.rs`, etc.). Retires when `.dag`-authored stages compile to byte-identical Rust through SELF_HOSTING.md §7 fixed point. Requires resolving Decision 3.A + 3.B + 3.C substrate prereqs.
+
+**End state** (after Phase 5): irreducible hand-Rust seed of ~10-15 files. Everything else is generated or `.dag`-native.
+
+---
+
+## Format spec (per entry — references Phase numbers from §"5-phase plan" above)
 
 ```
 ### `<path>` (<lines> lines, <bytes> bytes)
@@ -43,12 +61,7 @@ If R2 answers "Rust template", the retirement is paper-shrink and **does not cou
 
 **Anti-paper-shrink check**: <explicit assertion that the replacement plan does not template-clone this file's contents into `tools/*.rs.in`. If risk exists, name the discriminator that catches it.>
 
-**Phase** (per `docs/r3-rust-retirement-catalogue.md` §"5-phase plan"):
-- Phase 1: hand-Rust growth monotonicity (foreclose growth)
-- Phase 2: test harness layer dissolution (→ `.dag` TestClaim fixtures)
-- Phase 3: lens-as-Rust dissolution (→ `data lens_X: Lens<C>`)
-- Phase 4: substrate-mirror generation (→ regen pipeline reads `src/v3/std/*.dag`)
-- Phase 5: pipeline-stage retirement (→ meta-circular bootstrap, SELF_HOSTING.md §7)
+**Phase**: one of Phase 1–5 per §"5-phase plan" above. (Definitions are NOT duplicated here — the §"5-phase plan" section is the single authority.)
 
 **Substantive retirement risks**: <name the specific things that could go wrong>
 ```
@@ -129,24 +142,6 @@ If R2 answers "Rust template", the retirement is paper-shrink and **does not cou
 *Entry pending format ratification.*
 
 [... 174 more files ...]
-
----
-
-## 5-phase plan (cross-reference)
-
-Per the operator discussion 2026-05-15 — replace the SG-0 file-path ratchet with this catalogue + a hand-Rust monotonicity invariant. Phases ordered cheapest-first (largest retirement count first).
-
-1. **Phase 1 — Hand-Rust monotonicity invariant** (new P-rule): every PR's net `src/v3/compiler/src/` hand-authored Rust delta ≤ 0. Forecloses the growth pattern where gate-closure PRs add Rust escorts (tests + cementing receipts + lens-as-Rust). After this lands, every PR must either retire ≥1 Rust file or land purely in `.dag`.
-
-2. **Phase 2 — Test harness layer dissolution**: 122 of 177 hand-Rust entries are `tests/integration/*.rs` files asserting one structural claim each. Replacement: `.dag` fixture programs + `TestClaim` literals consumed by ONE Rust test runner. Net retirement: ~120 files. Depends on Gap 11 TestClaim infrastructure (partially landed per gate #85).
-
-3. **Phase 3 — Lens-as-Rust dissolution**: ~7-10 Rust files implement lenses (`complexity_lattice.rs`, `lens_declaration_apply.rs`, `lens_t_las_carrier.rs`, `enforced_lens_application.rs`, etc.). Replacement: `data lens_X: Lens<C>` declarations per the live `Lens<C>` substrate at `src/v3/std/lens.dag:70`, consumed via `fold_lens<C>`. Net retirement: -7 to -10 files. The complexity-tightness-lens PR #3067 was preparing this shape.
-
-4. **Phase 4 — Substrate-mirror generation**: ~5-8 Rust files are parallel-representations of `src/v3/std/substrate.dag` types (`dag.rs`, `dag/{builder,cardinality_payload,effects,ports}.rs`, possibly `diagnostics.rs`, `dimension.rs`, `complexity_lattice.rs`). Replacement: regen pipeline reads `substrate.dag` + generates these files byte-identically; hand-editing forbidden. Per `feedback_isomorphism_or_generation_for_mirrors`.
-
-5. **Phase 5 — Pipeline-stage retirement** (meta-circular bootstrap): the remaining ~12-15 files (`infer.rs`, `lower.rs`, `emit.rs` + variants, `bootstrap*.rs`, `regen_*.rs`, `pipeline_authority.rs`, `post_emit_verifier.rs`, etc.). Retires when `.dag`-authored stages compile to byte-identical Rust through SELF_HOSTING.md §7 fixed point. Requires resolving Decision 3.A + 3.B + 3.C substrate prereqs.
-
-**End state** (after Phase 5): irreducible hand-Rust seed of ~10-15 files. Everything else is generated or `.dag`-native.
 
 ---
 
