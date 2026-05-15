@@ -1,0 +1,17 @@
+# src/v4/workflow/brief.dag
+#
+# Scope: typed Brief schema — work-direction substrate. Every brief cites doc anchors.
+#
+# Owns:
+#   - Brief { task_id, file_path, contract: TypedContract, cites: Set<DocAnchor>, decisions: Set<DecisionPoint> }
+#   - structural; no prose-only briefs admissible
+#
+# Consumes:
+#   - std/node.dag, std/collection.dag
+#   - workflow/doc_anchor.dag: DocAnchor
+#
+# Status: scaffold — fill per TASKS.md T-5
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

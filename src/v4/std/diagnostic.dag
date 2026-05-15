@@ -1,0 +1,18 @@
+# src/v4/std/diagnostic.dag
+#
+# Scope: fail-closed Diagnostic schema with structural reason+at.
+#
+# Owns:
+#   - Diagnostic { reason: NamedReason, at: Locus }
+#   - NamedReason enum (structural; never opaque string)
+#   - Locus = port|node|file|span
+#
+# Consumes:
+#   - std/node.dag: Conj, Disj
+#   - std/primitive.dag: String for messages
+#
+# Status: scaffold — fill per TASKS.md T-3
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

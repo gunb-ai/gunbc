@@ -1,0 +1,17 @@
+# src/v4/lens/effect.dag
+#
+# Scope: effect lens — effects derived from type-signature shape, no parallel taxonomy.
+#
+# Owns:
+#   - lens read: Node -> Witness<EffectMap>
+#   - returned-modified-resource = write; returned-derived-value = read
+#   - 5-behavior compositional fold; no OperationEffect taxonomy
+#
+# Consumes:
+#   - std/node.dag, std/witness.dag
+#
+# Status: scaffold — fill per TASKS.md T-13
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

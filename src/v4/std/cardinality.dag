@@ -1,0 +1,16 @@
+# src/v4/std/cardinality.dag
+#
+# Scope: cardinality refinement substrate — bounded/unbounded distinctions, no escape.
+#
+# Owns:
+#   - Cardinality refinement types
+#   - bounded-iteration discipline (P4 decidability)
+#
+# Consumes:
+#   - std/node.dag: Cardinality connective
+#
+# Status: scaffold — fill per TASKS.md T-3
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

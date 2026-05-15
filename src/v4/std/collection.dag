@@ -1,0 +1,17 @@
+# src/v4/std/collection.dag
+#
+# Scope: bounded containers — every collection carries cardinality and element type.
+#
+# Owns:
+#   - List<T, n: Cardinality>, Set<T, n>, Map<K, V, n>
+#   - operations defined as algebra-instance, not enumerated
+#
+# Consumes:
+#   - std/node.dag: Cardinality, Instantiation
+#   - std/algebra.dag: Monoid for fold operations
+#
+# Status: scaffold — fill per TASKS.md T-3
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,0 +1,16 @@
+# src/v4/lens/parallelism.dag
+#
+# Scope: parallelism lens — independence visible in dependency graph structure.
+#
+# Owns:
+#   - lens read: Node -> Witness<ParallelismMap>
+#   - independent subgraphs identified structurally; no scheduling heuristic
+#
+# Consumes:
+#   - std/node.dag, std/witness.dag
+#
+# Status: scaffold — fill per TASKS.md T-13
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

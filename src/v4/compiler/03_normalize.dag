@@ -1,0 +1,18 @@
+# src/v4/compiler/03_normalize.dag
+#
+# Scope: pipeline stage 3a — ParseTree to NormalizedTree. Surface sugar dissolution.
+#
+# Owns:
+#   - NormalizedTree type
+#   - normalize: ParseTree -> Result<NormalizedTree, Diagnostic>
+#   - service/fn/type sugar -> Node tree (per MODELING.md composition layer)
+#
+# Consumes:
+#   - std/node.dag, std/diagnostic.dag
+#   - compiler/02_parse.dag: ParseTree
+#
+# Status: scaffold — fill per TASKS.md T-8
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,0 +1,18 @@
+# src/v4/extdeps/languages/rust.dag
+#
+# Scope: Rust target language spec — primitives, syntax, codegen rules.
+#
+# Owns:
+#   - Rust primitives (i32, String, Vec<T>, ...) with algebra inhabitance
+#   - emission rules: .dag Node -> Rust source
+#   - cost realization: Rust-specific bounds for compositional cost lens
+#
+# Consumes:
+#   - std/node.dag: all connectives + behaviors (this is target SPEC)
+#   - std/algebra.dag: inhabitance declarations
+#
+# Status: scaffold — fill per TASKS.md T-4
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

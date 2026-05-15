@@ -1,0 +1,18 @@
+# src/v4/compiler/02_parse.dag
+#
+# Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
+#
+# Owns:
+#   - ParseTree type
+#   - parse: TokenStream -> Result<ParseTree, Diagnostic>
+#   - grammar productions as Node trees
+#
+# Consumes:
+#   - std/node.dag, std/diagnostic.dag, std/witness.dag
+#   - compiler/01_tokenize.dag: TokenStream
+#
+# Status: scaffold — fill per TASKS.md T-7
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

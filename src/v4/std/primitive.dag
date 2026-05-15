@@ -1,0 +1,18 @@
+# src/v4/std/primitive.dag
+#
+# Scope: target-grounded primitives with declared algebra inhabitance.
+#
+# Owns:
+#   - Int, Float, String, Char, Bool
+#   - inhabitance: Int -> OrderedRing, String -> FreeMonoid<Char>, etc.
+#   - target-side mapping is structural homomorphism, not name-keyed table
+#
+# Consumes:
+#   - std/node.dag: Atom
+#   - std/algebra.dag: OrderedRing, FreeMonoid
+#
+# Status: scaffold — fill per TASKS.md T-3
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

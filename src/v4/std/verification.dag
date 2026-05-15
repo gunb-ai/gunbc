@@ -1,0 +1,19 @@
+# src/v4/std/verification.dag
+#
+# Scope: TestClaim schema — tests are data, not code. Imported design from v3.
+#
+# Owns:
+#   - TestClaim { kind: AssertKind, label: String, input, expected }
+#   - AssertKind = Equals | Diagnostic | Compiles | RoundTrips | ...
+#   - no hand-Rust tests; every test predicate IS a TestClaim instance
+#
+# Consumes:
+#   - std/node.dag: Conj, Disj for claim shape
+#   - std/diagnostic.dag: Diagnostic for failure mode
+#   - std/primitive.dag: String for label
+#
+# Status: scaffold — fill per TASKS.md T-3
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,0 +1,17 @@
+# src/v4/lens/complexity.dag
+#
+# Scope: complexity lens — structural fact carried by data model, not behavioral test.
+#
+# Owns:
+#   - Complexity dimension type
+#   - lens read: Node -> Witness<ComplexityBound>
+#   - reads program structure; no heuristic, no escape
+#
+# Consumes:
+#   - std/node.dag, std/witness.dag, std/diagnostic.dag
+#
+# Status: scaffold — fill per TASKS.md T-12
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,0 +1,18 @@
+# src/v4/compiler/03_resolve.dag
+#
+# Scope: pipeline stage 3b — symbol resolution. Identifier to declaration binding.
+#
+# Owns:
+#   - ResolvedTree type
+#   - resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>
+#   - identifier binding to declarations
+#
+# Consumes:
+#   - std/node.dag, std/diagnostic.dag
+#   - compiler/03_normalize.dag: NormalizedTree
+#
+# Status: scaffold — fill per TASKS.md T-8
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

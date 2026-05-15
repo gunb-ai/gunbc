@@ -1,0 +1,19 @@
+# src/v4/std/algebra.dag
+#
+# Scope: algebraic primitives that ground every concrete type via inhabitance.
+#
+# Owns:
+#   - Magma (closure)
+#   - Monoid
+#   - BooleanAlgebra (classical logic)
+#   - FreeMonoid<T> (free constructions)
+#   - inhabitance declarations for std/primitive.dag types
+#
+# Consumes:
+#   - std/node.dag: Conj, Disj, Arrow for algebraic structure
+#
+# Status: scaffold — fill per TASKS.md T-2
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

@@ -1,0 +1,17 @@
+# src/v4/extdeps/languages/go.dag
+#
+# Scope: Go target language spec — primitives, syntax, codegen rules.
+#
+# Owns:
+#   - Go primitives
+#   - emission rules
+#   - cost realization for Go
+#
+# Consumes:
+#   - std/node.dag, std/algebra.dag (same as rust.dag)
+#
+# Status: scaffold — fill per TASKS.md T-4
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

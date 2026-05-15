@@ -1,0 +1,17 @@
+# src/v4/extdeps/languages/python.dag
+#
+# Scope: Python target language spec — primitives, syntax, codegen rules.
+#
+# Owns:
+#   - Python primitives + data model
+#   - emission rules
+#   - cost realization for Python
+#
+# Consumes:
+#   - std/node.dag, std/algebra.dag (same as rust.dag)
+#
+# Status: scaffold — fill per TASKS.md T-4
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

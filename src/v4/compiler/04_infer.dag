@@ -1,0 +1,18 @@
+# src/v4/compiler/04_infer.dag
+#
+# Scope: pipeline stage 4 — type inference + checking. Single-file discipline; split = stop signal.
+#
+# Owns:
+#   - InferredTree type (with full type/algebra/cardinality info)
+#   - infer: ResolvedTree -> Result<InferredTree, Diagnostic>
+#   - algebra-homomorphism search for target-grounding
+#
+# Consumes:
+#   - std/node.dag, std/algebra.dag, std/cardinality.dag, std/diagnostic.dag
+#   - compiler/03_resolve.dag: ResolvedTree
+#
+# Status: scaffold — fill per TASKS.md T-9
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+

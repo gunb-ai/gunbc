@@ -1,0 +1,17 @@
+# src/v4/workflow/cycle.dag
+#
+# Scope: work cycle as data — cycle progression is lens-readable, not prose status updates.
+#
+# Owns:
+#   - Cycle { briefs: Set<Brief>, outputs: Set<WorkerOutput>, retirements: Set<Retirement> }
+#   - cycle-level lens reads: did this cycle substantively retire X% of named residuals?
+#
+# Consumes:
+#   - std/node.dag, std/collection.dag
+#   - workflow/brief.dag, workflow/worker_output.dag, workflow/retirement.dag
+#
+# Status: scaffold — fill per TASKS.md T-5
+# Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+# contract for the worker. Splitting this file requires explicit operator
+# ratification (substrate extension = stop signal).
+
