@@ -252,6 +252,10 @@ type Behavior
 //   4. Dimensional — FAILS: Shape S — a Node is in EXACTLY ONE
 //      substrate, never both; alternatives, not coordinates (co-
 //      locating both would conflate the two independent C1 closures).
+//   5. Parameterized family — FAILS: TypeNode/ComputationNode carry
+//      disjoint payloads (Connective vs Behavior) — not one generic
+//      `F<X>` / projection over a source set (Practice 7); it is the
+//      irreducible two-coordinated-substrate selector.
 // Terminal: the binary type/computation substrate split; irreducible.
 type NodeKind
   = TypeNode { connective: Connective }
@@ -287,6 +291,10 @@ type NodeKind
 //      modes are the edge-discipline primitive; no richer std/ source.
 //   4. Dimensional — FAILS: an edge is EITHER named OR positional,
 //      never both; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: `Named` carries a Symbol,
+//      `Positional` is a bare marker (identity = list position) —
+//      heterogeneous, NOT one generic `F<X>` / projection over a
+//      source set (Practice 7).
 // Terminal: the two child-addressing modes; the no-stored-index design
 // makes illegal index states unrepresentable — this IS already the
 // dissolved form, not a compression of one.
@@ -355,6 +363,11 @@ type Node {
 //      richer source.
 //   4. Dimensional — FAILS: a connective fixes EXACTLY ONE discipline;
 //      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the three are distinct structural
+//      rules (no edges / labeled+distinct / positional) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7);
+//      it is the irreducible projection OF the closed `Connective` set
+//      onto its edge rule, already in dissolved form.
 // Terminal: the three connective edge-disciplines; a closed classifier
 // over the closed `Connective` set — irreducible with it.
 type EdgeDiscipline
