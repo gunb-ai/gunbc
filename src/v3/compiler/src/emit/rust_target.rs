@@ -296,6 +296,10 @@ enum RustCallableStrategyBinding {
     ListMap,
     ListFilter,
     ListContains,
+    StringFormat,
+    IntToString,
+    CharToString,
+    BoolToString,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2045,6 +2049,22 @@ fn require_callable_strategy(
             variants.list_contains,
             RustCallableStrategyBinding::ListContains,
         ),
+        (
+            variants.string_format,
+            RustCallableStrategyBinding::StringFormat,
+        ),
+        (
+            variants.int_to_string,
+            RustCallableStrategyBinding::IntToString,
+        ),
+        (
+            variants.char_to_string,
+            RustCallableStrategyBinding::CharToString,
+        ),
+        (
+            variants.bool_to_string,
+            RustCallableStrategyBinding::BoolToString,
+        ),
     ];
     for (variant_id, binding) in strategies {
         let Some(variant_id) = variant_id else {
@@ -2060,7 +2080,7 @@ fn require_callable_strategy(
     Err(EmitError::MalformedRealization {
         declaration,
         detail:
-            "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
+            "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains/StringFormat/IntToString/CharToString/BoolToString",
     })
 }
 
@@ -4828,6 +4848,71 @@ impl<'a> Ctx<'a> {
                     &self.indexes.syntax.collection_ops.contains,
                     &[("recv", &list), ("item", &item)],
                 ))
+            }
+            RustCallableStrategyBinding::StringFormat => {
+                if consumer.inputs.len() != 2 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "format runtime arity {} is not supported; expected [template, args]",
+                        consumer.inputs.len()
+                    )));
+                }
+                let template = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let args = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(1),
+                    locals,
+                )?;
+                Ok(format!(
+                    "{{ let mut __v3_format_out = {template}; for (__v3_format_i, __v3_format_arg) in ({args}).iter().enumerate() {{ __v3_format_out = __v3_format_out.replace(&::std::format!(\"{{{{{{}}}}}}\", __v3_format_i), __v3_format_arg); }} __v3_format_out }}"
+                ))
+            }
+            RustCallableStrategyBinding::IntToString => {
+                if consumer.inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "int_to_string runtime arity {} is not supported; expected [value]",
+                        consumer.inputs.len()
+                    )));
+                }
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                Ok(format!("({value}).to_string()"))
+            }
+            RustCallableStrategyBinding::CharToString => {
+                if consumer.inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "char_to_string runtime arity {} is not supported; expected [value]",
+                        consumer.inputs.len()
+                    )));
+                }
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                Ok(format!(
+                    "::core::char::from_u32(({value}) as u32).unwrap().to_string()"
+                ))
+            }
+            RustCallableStrategyBinding::BoolToString => {
+                if consumer.inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "bool_to_string runtime arity {} is not supported; expected [value]",
+                        consumer.inputs.len()
+                    )));
+                }
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                Ok(format!("({value}).to_string()"))
             }
         }
     }
