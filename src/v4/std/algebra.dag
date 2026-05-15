@@ -10,8 +10,30 @@
 //   - FreeMonoid<T> (free constructions)
 //   - inhabitance declarations for std/primitive.dag types
 //
+// U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
+//   - ONE carrier: a structure-preserving map between algebras, WITH its
+//     realization cost. THESIS:185-186 identities make this one object:
+//     coercion = emission; coercion cost = complexity. The back half of
+//     the plan is FIVE PHASES over this one carrier, never five engines:
+//       Find    = compiler/04_infer.dag (T-9)
+//       Realize = compiler/05_emit.dag + 05_eval.dag (T-10/11/22)
+//       Measure = lens/cost.dag → lens/complexity.dag (T-12; one
+//                 mechanism, two projections — complexity CONSUMES cost,
+//                 never re-derives it)
+//       Compare = lens/synthesis.dag (T-17)
+//   - NO ENGINE discipline (operator 2026-05-15, THESIS no-fallback):
+//     every phase is a FAIL-CLOSED lens-read over this carrier. A search
+//     that comes up empty (no homomorphism / no inhabitance / no
+//     lower-bound model) is a STRUCTURAL ERROR surfaced as a *helpful*
+//     Diagnostic (reason + at + Correction) — NEVER fabricated, defaulted,
+//     or filled by a fallback. "An engine returns a result when it should
+//     return an error" — v4 has lenses, not engines. A standalone cost
+//     engine / emit IR / equivalence engine disjoint from this carrier is
+//     parallel-representation debt = STOP.
+//
 // Consumes:
 //   - std/node.dag: Conj, Disj, Arrow for algebraic structure
+//   - std/diagnostic.dag: the helpful Diagnostic an empty search surfaces
 //
 // Status: scaffold — fill per TASKS.md T-2
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
