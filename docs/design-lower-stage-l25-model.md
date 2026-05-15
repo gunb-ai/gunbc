@@ -461,7 +461,7 @@ Subsequent L2.5 models (PB-5 infer / PB-3 parse / PB-2 tokenize) follow same Dir
 
 **Memory disciplines applied**:
 - `feedback_lenses_not_passes` (lower = structural elaboration, not decision engine)
-- `feedback_fail_closed_discipline` C-8 (diagnostics coupled INTO PreInferDag via biconditional; partial-failure represented structurally, not via Result sum-variant)
+- `feedback_fail_closed_discipline` C-8 (diagnostics coupled INTO PreInferDag via **anchor-typed** diagnostic table per §4.3; biconditional applies ONLY to PortAnchor-anchored diagnostics; other anchor kinds (DeclarationAnchor / RecordFieldAnchor / SurfaceFormAnchor) couple without port-state coupling; partial-failure represented structurally across anchor kinds, not via Result sum-variant)
 - `feedback_state_space_vs_behavioral_invariants` (typed-state PreInferDag at output)
 - `feedback_coproduct_dissolution` Practice 4 (sum-variant Dag per Decision 3.A)
 - `feedback_no_textual_enforcement_bridges` (no decision-logic in lower; ElaborationSpec facts)
