@@ -35,11 +35,239 @@
 //   - std/node.dag: Conj, Disj
 //   (String for messages is the kernel-ambient String — no import)
 //
-// Status: scaffold — fill per TASKS.md T-3
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-3 modeled 2026-05-15 (smart-eagle-570). The I/O contract in
+// this header is immutable for downstream workers. Splitting this file
+// requires explicit operator ratification (substrate extension = stop
+// signal).
 
 
 module v4.std.diagnostic
+
+
+import v4.std.node { Node }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// SCHEMA FILE. diagnostic.dag declares the fail-closed `Diagnostic`
+// type and its three structural carriers — it owns no producer logic.
+// The pipeline stages (T-6 tokenize … T-22 eval) and the lens reads
+// CONSTRUCT `Diagnostic` values; this file is the shape they construct
+// to (INVARIANTS P3 — every failure path is a typed Diagnostic, never a
+// panic, never a silent `None`).
+//
+// NO MESSAGE STRING. A `Diagnostic` carries `reason: NamedReason`, not a
+// free-text `message: String`. The reason is a STRUCTURAL code; its
+// human-readable rendering lives in a boundary table consulted only at
+// diagnostic-render time — exactly the std/node.dag K-1 discipline that
+// keeps an opaque `Symbol`'s spelling out of kernel/lens logic. A
+// `String` message would be the opaque-string heuristic-smuggling
+// channel K-1 forecloses (feedback_opaque_strings_attract_heuristics),
+// and is the brief's explicit STOP ("string-typed reason").
+//
+// NAMEDREASON IS THE std/node.dag-`Connective` PATTERN (operator-
+// ratified 2026-05-15). It is a CLOSED central enum: a new reason is an
+// edit to THIS declaration — a visible diff routed to operator
+// ratification (STRUCTURE.md A3) — never an open `Other` variant and
+// never a `String` escape. It is SEEDED here with only the reasons the
+// substrate built so far (std/node.dag) can justify; the pipeline-stage
+// and extdeps tasks add their own reasons by that same ratified-diff
+// mechanism (e.g. T-4.5 file_system.dag read-failure modes) as they
+// land — the growth mechanism of `Connective`/`Behavior`.
+//
+// Every coproduct below carries the full Practice-4 🟢/🟡/🔴
+// classification + 4-pattern ledger (modeling-discipline.md §4 —
+// operator-ratified binding 2026-05-15). The `Diagnostic` record is a
+// Conj, not a coproduct, so no ledger applies to it.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NamedReason — the closed, structural classifier of WHY a Diagnostic
+// fired. Never an opaque `String` (header + brief STOP). WHERE the fault
+// is lives in the Diagnostic's own `at: Locus`; WHAT to do about it in
+// `correction: Correction` — so a reason variant is a bare structural
+// tag carrying no payload.
+//
+// Seeded (per the node.dag-`Connective` pattern, modeling notes above)
+// with exactly the node-well-formedness faults std/node.dag's
+// `node_well_formed` whole-tree check distinguishes:
+//   - EdgeLabelKindMismatch — an `Edge`'s label KIND is wrong for its
+//     parent connective's discipline: a `Named` edge under a positional
+//     connective (Arrow/Cardinality/Instantiation), a `Positional` edge
+//     under a labeled connective (Conj/Disj), or any edge under `Atom`.
+//     This is the single illegal state std/node.dag's edge-discipline
+//     invariant (its `EdgeDiscipline` block) names "label-KIND
+//     mismatch" — the violation `edges_conform` rejects.
+//   - DuplicateEdgeName — a labeled connective (Conj/Disj) has two
+//     children sharing one `Named` key. A `Named` edge is an ADDRESS; a
+//     duplicate key makes "address a child by name" ambiguous. This is
+//     the violation std/node.dag's `all_names_distinct` rejects.
+//
+// CLOSED. A third reason is an edit to THIS declaration — a visible diff
+// routed to operator ratification (STRUCTURE.md A3); there is no `Other`.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: a reason is consumed UNIFORMLY — every
+//      Diagnostic renderer and every diagnostic-exhaustiveness TestClaim
+//      branches over the whole reason set; it is not a per-consumer fact
+//      to scatter to distinct DAG locations.
+//   2. Variant-is-data — FAILS: the only "data" form is a `reason:
+//      String`, which is precisely the opaque-string heuristic-
+//      smuggling channel K-1 forecloses and the brief's explicit STOP.
+//      A closed structural enum is the faithful form (M4 — a closed set
+//      is an enum, not a stringly proxy).
+//   3. Algebraic form — N/A: a diagnostic reason is not an algebra
+//      carrier; the variants are the structural-failure codomain of
+//      std/node.dag's `node_well_formed`, which is their richest source
+//      — pointing elsewhere would be circular.
+//   4. Dimensional — FAILS: a Diagnostic fires for EXACTLY ONE reason;
+//      the variants are mutually-exclusive alternatives, never
+//      simultaneous coordinates of one value.
+// Terminal: an irreducible closed classifier of structural-failure
+// kinds — the std/node.dag-`Connective` pattern (closed; growth = a
+// ratified diff to this declaration).
+type NamedReason
+  = EdgeLabelKindMismatch
+  | DuplicateEdgeName
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Locus — WHERE a Diagnostic points. A Diagnostic carries exactly one
+// `Locus` (`at`); the four variants are GRANULARITY alternatives — the
+// fault is located at one of a pipeline port, a substrate `Node`, a
+// source file, or a source span.
+//
+// node-only (brief): every payload is built from std/node.dag substrate
+// types or the kernel-ambient `Int` —
+//   - PortLocus / FileLocus carry an opaque `Symbol` identity (K-1 — a
+//     port name / file path is an identifier, never a readable `String`
+//     the kernel can branch on).
+//   - NodeLocus carries the offending `Node` itself.
+//   - SpanLocus carries a half-open `[start, end)` offset pair over the
+//     kernel-ambient `Int` — the minimal source-range representation,
+//     needing no source-text substrate (none exists at T-3).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: the locus is consumed uniformly by the
+//      diagnostic renderer; it is not a per-consumer fact.
+//   2. Variant-is-data — FAILS: the four variants carry DIFFERENT
+//      payload shapes (a `Symbol`; a `Node`; an `Int` pair). Collapsing
+//      to a flat `{ kind, symbol?, node?, start?, end? }` record makes
+//      illegal combinations representable (a `NodeLocus` carrying a
+//      span) — the inverse of P2 (illegal states unrepresentable).
+//   3. Algebraic form — N/A: a source locus is not an algebra carrier;
+//      there is no richer std/ structure it traces to.
+//   4. Dimensional — FAILS: a Diagnostic points at EXACTLY ONE locus
+//      granularity — the variants are alternatives, not simultaneous
+//      coordinates (a fault is reported at the port OR node OR file OR
+//      span, the most specific the producer knows).
+// Terminal: an irreducible set of source-location granularities at the
+// diagnostic boundary.
+type Locus
+  = PortLocus { port: Symbol }
+  | NodeLocus { node: Node }
+  | FileLocus { file: Symbol }
+  | SpanLocus { start: Int, end: Int }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NoCorrectionReason — the exhaustive partition of WHY a fix cannot be
+// mechanically derived. Carried by `Correction.Unavailable` so that "no
+// fix" is itself a structural answer, never a bare absence.
+//
+// Two root causes, three cells (header):
+//   - intent the compiler cannot KNOW:
+//       UserInputBoundary — one missing user choice; the fix is a
+//         single decision only the author can make.
+//       AmbiguousIntent — many valid candidate fixes; the compiler
+//         will not pick one (picking = fabrication, the no-engine STOP).
+//   - information the compiler cannot SEE:
+//       ExternalContractUnknown — the fix lies behind an external
+//         contract (an extdeps boundary) the compiler cannot inspect.
+//
+// CLOSED — no "…". A fourth "why no fix" is a substrate-extension STOP
+// (header), an edit to this declaration routed to operator ratification.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: consumed uniformly by the renderer that
+//      explains why no fix is offered; not a per-consumer fact.
+//   2. Variant-is-data — FAILS: the only "data" form is a `String`
+//      reason — the opaque-string STOP again; the closed three-way
+//      partition is the faithful form.
+//   3. Algebraic form — N/A: not an algebra carrier; the variants are
+//      the partition of an epistemic boundary, with no richer std/
+//      source.
+//   4. Dimensional — FAILS: a "no fix" answers EXACTLY ONE why — the
+//      two root causes (can't-know / can't-see) are disjoint and the
+//      three cells mutually exclusive; never simultaneous coordinates.
+// Terminal: the exhaustive, irreducible partition of "why can't the fix
+// be mechanically derived" — every no-fix case answers structurally.
+type NoCorrectionReason
+  = UserInputBoundary
+  | AmbiguousIntent
+  | ExternalContractUnknown
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Correction — the structural answer to "show the correct code"
+// (THESIS §103-105, STRUCTURE.md architectural commitment #3). Every
+// Diagnostic carries one; the schema makes the fix obligation type-
+// enforced, not a convention.
+//
+//   - Suggested carries the fix as a `Node` — the bounded kernel's one
+//     recursive type, so a subtree of Nodes IS a Node; there is no
+//     separate `NodeFragment` alias (the header's nodes-are-nodes
+//     point). WHERE the fix applies is NOT carried here — it is the
+//     Diagnostic's own `at: Locus`.
+//   - Unavailable carries a `NoCorrectionReason`. "No fix" is a
+//     structural case that answers WHY, never a bare `None` — this is
+//     the brief's explicit STOP ("Option<Node>") and INVARIANTS P2
+//     (type-enforced, not API-enforced).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// four patterns attempted:
+//   1. Fact placement — FAILS: every Diagnostic consumer that surfaces
+//      the fix handles BOTH arms (render the suggested `Node`, or render
+//      the no-fix reason); it is not a per-consumer fact.
+//   2. Variant-is-data — FAILS: the arms carry DIFFERENT shapes (a
+//      `Node`; a `NoCorrectionReason`). Collapsing to `{ has_fix: Bool,
+//      node?, reason? }` ratifies exactly the bare-`None` illegal state
+//      the header forbids — `has_fix: true` with no `node` becomes
+//      representable (the inverse of P2).
+//   3. Algebraic form — N/A: a correction is not an algebra carrier;
+//      there is no richer std/ structure it traces to.
+//   4. Dimensional — FAILS: a Diagnostic either HAS a mechanically-
+//      derivable fix OR does not — disjoint alternatives, never
+//      simultaneous coordinates.
+// Terminal: the irreducible two-case answer to the "show the correct
+// code" obligation — a typed sum, never `Option<Node>`.
+type Correction
+  = Suggested { node: Node }
+  | Unavailable { reason: NoCorrectionReason }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Diagnostic — the fail-closed typed error (INVARIANTS P3). Every
+// failure path in the pipeline and every empty lens read surfaces as a
+// `Diagnostic` value; there is no panic and no silent `None`.
+//
+// Three structural fields, no free-text message (modeling notes):
+//   reason      — WHY it fired (a structural `NamedReason`, not String)
+//   at          — WHERE it points (a `Locus`)
+//   correction  — the "show the correct code" answer (a `Correction`)
+//
+// This is a record (Conj), not a coproduct — no Practice-4 ledger.
+type Diagnostic {
+  reason: NamedReason
+  at: Locus
+  correction: Correction
+}
 
