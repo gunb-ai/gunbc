@@ -105,7 +105,7 @@ import v4.std.node { Symbol }
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: a per-edge descent observation is consumed
 //      uniformly (the termination checker dispatches on all three to fold
 //      a proof); it is not a scattered per-consumer fact.
@@ -121,6 +121,12 @@ import v4.std.node { Symbol }
 //      under a well-founded relation. No richer std/ source.
 //   4. Dimensional — FAILS: one call edge yields EXACTLY ONE of the three
 //      — mutually exclusive alternatives, never simultaneous coordinates.
+//   5. Parameterized family — FAILS: Strict / NonIncreasing /
+//      DescentUnknown are the fixed, irreducible per-edge descent-
+//      trichotomy outcomes (the codomain of a well-founded relation),
+//      not N mechanically-repeated `F<X>` variants enumerating a
+//      separately-declared set — there is no source set to project over
+//      (Practice 7). No generic / projection collapses them.
 // Terminal: the irreducible per-edge descent trichotomy. `DescentUnknown`
 // is the fail-closed bottom — the conservative default a checker assigns
 // when descent cannot be certified (INVARIANTS P3; never a fabricated
@@ -219,7 +225,7 @@ type TerminationProof {
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: a multiplicity refinement is consumed
 //      uniformly by the P4 decidability check; not a scattered per-
 //      consumer fact.
@@ -235,6 +241,11 @@ type TerminationProof {
 //   4. Dimensional — FAILS: an extent is EITHER bounded OR unbounded —
 //      genuine, mutually-exclusive alternatives (no value is both), not
 //      simultaneous coordinates.
+//   5. Parameterized family — FAILS: `Bounded` and `Unbounded` are not a
+//      mechanical `F<X>` shape repeated over a separately-declared set
+//      (they have different arities — nullary vs. payload-carrying);
+//      there is no generic / projection (Practice 7) that replaces the
+//      two-way finite/infinite distinction.
 // Terminal: the irreducible finite/infinite extent dichotomy, grounded in
 // cardinality theory. (INVARIANTS P1 names `BoundDeclaration =
 // ExactBound | AnyBound | … ` as a correct alternatives-sum of the same
