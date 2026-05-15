@@ -4,7 +4,13 @@
 
 **Design blockers:** DB-10 (data value semantics), DB-11 (`where` refinement), DB-12 (surface generics), DB-13 (Disj dotted-path)
 **Consumers:** Lane 3 Stage 3a.2 / 3a.3 / 3a.4 / 3a.5
-**Status:** Design ready for implementer review.
+**Status:** ~~Design ready for implementer review~~ → **3 of 4 LANDED** (verified 2026-05-15):
+- **DB-10 — LANDED** per gentle-bat-24 Brief 4 Phase A 2026-05-15 (`Dag::data_value_at` at `dag.rs:4310`; `lower.rs:8489+/8642+/9125+`; `m2_feature_parity_test.rs:771` test passing).
+- **DB-11** — HEAD landed-state NOT YET AUDITED; design ready, may also be landed silently per the DB-10/12/13 pattern.
+- **DB-12 — LANDED** per PR #496 status amendment + verified 2026-05-15 (`parse_generated.rs:927`; tests at `m2_feature_parity_test.rs:90-156`). Emission test coverage gap (3-target render) is the only residual.
+- **DB-13 — LANDED** per PR #496 status amendment + verified 2026-05-15 (`lower.rs:3375` arm scope extension; tests at `m2_feature_parity_test.rs:163-208`). Emission test coverage gap (3-target render) is the only residual.
+
+The "Design ready for implementer review" framing above is STALE for DB-10/12/13. Per `docs/r3-m2-class-5-deferral-survey.md` retraction 2026-05-15: workers attacking M2 items should first AUDIT HEAD state via grep-verify before assuming implementation work remains. DB-9 (separate doc) also unaudited.
 **Companion:** [DB-9](./design-mutual-recursion-lowering.md) covers 3a.1 mutual recursion (the L of this set).
 
 ---
