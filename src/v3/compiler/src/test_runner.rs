@@ -5985,9 +5985,6 @@ fn field_value_for_symbolic_cost_expected(
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
-    Linear {
-        source_port: SymbolicCostPortPattern,
-    },
     Log {
         source_port: SymbolicCostPortPattern,
     },
@@ -6079,9 +6076,6 @@ fn resolve_symbolic_cost_param_refs_for_bind(
         }
     }
     Ok(match pattern {
-        SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
-            source_port: resolve(source_port, bind, expected_param_index)?,
-        },
         SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
             source_port: resolve(source_port, bind, expected_param_index)?,
         },
