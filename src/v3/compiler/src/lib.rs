@@ -4622,29 +4622,67 @@ pub mod lens_cost_symbolic {
             })
     }
 
-    /// Port-only [`Witness`](crate::dimension::Witness) over [`SymbolicCost`] (R3 §1.8 gate #104):
-    /// resolves the port's producer via [`crate::dag::Dag::resolve_producer_opt`]; on table miss
-    /// attaches [`Witness::Violates`](crate::dimension::Witness::Violates) with **`at`** set to that
-    /// producer—never an unrelated caller. When **no producer** exists on the queried port, returns
-    /// [`Witness::Inhabits`](crate::dimension::Witness::Inhabits) with
-    /// [`SymbolicCost::UnknownCost`](crate::dag::SymbolicCost::UnknownCost) (conservative lattice
-    /// top—not a fabricated `Violates`).
+    /// Port-only [`Witness`](crate::dimension::Witness) over [`SymbolicCost`] (R3 §1.8 gate #104).
     ///
-    /// Uses normalized [`compute_symbolic_costs`], then [`generated::witness_from_symbolic_cost_lookup`].
+    /// Uses [`crate::dag::Dag::resolve_producer_lookup`] (typed walk) — **not**
+    /// [`crate::dag::Dag::resolve_producer_opt`], which merges legitimate `NoProducer` with malformed
+    /// substrate (`MissingPort` / `MissingNode` / `BindCycle`) into `None` (INVARIANTS P3 forbids that
+    /// collapse here).
     ///
+    /// - [`ProducerLookup::Found`]: merges table lookup via [`generated::witness_from_symbolic_cost_lookup`]
+    ///   (lawful `Violates { at }` on table **`Miss`** uses the resolved producer).
+    /// - [`ProducerLookup::NoProducer`]: **`Inhabits(UnknownCost("…"))`** (parameter / external binding —
+    ///   not substrate corruption and not a fake `Violates`).
+    /// - Malformed variants: **`Violates { reason, at }`** with `at =
+    ///   Dag::substrate_lens_read_diagnostic_anchor` — fail-closed, not lattice-top success.
+    ///
+    /// Uses normalized [`compute_symbolic_costs`] for [`generated::lookup_cost`].
+    ///
+    /// [`ProducerLookup::Found`]: crate::dag::ProducerLookup::Found
+    /// [`ProducerLookup::NoProducer`]: crate::dag::ProducerLookup::NoProducer
     /// [`SymbolicCost`]: crate::dag::SymbolicCost
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
     ) -> crate::dimension::Witness<crate::dag::SymbolicCost> {
-        match dag.resolve_producer_opt(port).cloned() {
-            Some(subject) => generated::witness_from_symbolic_cost_lookup(
-                &generated::lookup_cost(&compute_symbolic_costs(dag), port),
-                subject,
+        use crate::dag::ProducerLookup;
+
+        let folded = generated::lookup_cost(&compute_symbolic_costs(dag), port);
+        match dag.resolve_producer_lookup(port) {
+            ProducerLookup::Found(subject) => generated::witness_from_symbolic_cost_lookup(
+                &folded,
+                subject.clone(),
             ),
-            None => crate::dimension::Witness::Inhabits(crate::dag::SymbolicCost::UnknownCost {
-                _0: String::from("symbolic_cost_of: unresolved producer for port"),
-            }),
+            ProducerLookup::NoProducer => crate::dimension::Witness::Inhabits(
+                crate::dag::SymbolicCost::UnknownCost {
+                    _0: String::from(
+                        "symbolic_cost_of: no producer for port (parameter or external binding)",
+                    ),
+                },
+            ),
+            ProducerLookup::MissingPort { port: missing } => {
+                crate::dimension::Witness::Violates {
+                    reason: format!(
+                        "symbolic_cost_of: malformed substrate — MissingPort {:?}",
+                        missing
+                    ),
+                    at: dag.substrate_lens_read_diagnostic_anchor(),
+                }
+            }
+            ProducerLookup::MissingNode { producer } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — MissingNode {:?}",
+                    producer
+                ),
+                at: dag.substrate_lens_read_diagnostic_anchor(),
+            },
+            ProducerLookup::BindCycle { detected_at } => crate::dimension::Witness::Violates {
+                reason: format!(
+                    "symbolic_cost_of: malformed substrate — BindCycle at {:?}",
+                    detected_at
+                ),
+                at: dag.substrate_lens_read_diagnostic_anchor(),
+            },
         }
     }
 
