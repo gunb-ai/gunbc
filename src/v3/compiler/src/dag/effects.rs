@@ -76,6 +76,7 @@ pub enum EffectShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectClassificationFailure {
     StdMethodAnchorResolutionFailed,
+    UnknownOperationCallable,
 }
 
 /// 🟢 **TERMINAL.** Path token used by `Operation.endpoint.path`; mirrors the
@@ -288,24 +289,24 @@ pub(crate) fn classify_operation_effect(
     let Some(methods) = StdEffectMethodAnchors::resolve(dag) else {
         return Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed);
     };
-    if callable == methods.append && effect.endpoint.method == HttpMethodScalar::Post {
+    if callable == methods.append {
         return Ok(EffectShape::IsBreaking(BreakingShape::AppendEffect));
     }
-    if callable == methods.concat && effect.endpoint.method == HttpMethodScalar::Post {
+    if callable == methods.concat {
         return Ok(EffectShape::IsBreaking(BreakingShape::CreateEffect {
             cause: CreateCause::PostAlways,
         }));
     }
-    if methods.reads.contains(&callable) && method_is_read(effect.endpoint.method) {
+    if methods.reads.contains(&callable) {
         return Ok(EffectShape::IsIdempotent(IdempotentShape::ReadEffect));
     }
-    if methods.upserts.contains(&callable) && method_is_upsert(effect.endpoint.method) {
+    if methods.upserts.contains(&callable) {
         return Ok(keyed_upsert_or_keyless_break(effect));
     }
-    if callable == methods.delete && effect.endpoint.method == HttpMethodScalar::Delete {
+    if callable == methods.delete {
         return Ok(keyed_delete_or_keyless_break(effect));
     }
-    Ok(transport_effect_shape(effect))
+    Err(EffectClassificationFailure::UnknownOperationCallable)
 }
 
 struct StdEffectMethodAnchors {
@@ -353,19 +354,6 @@ fn unique_decl_id(dag: &Dag, name: &str) -> Option<DeclarationId> {
     Some(first)
 }
 
-fn transport_effect_shape(effect: &Operation) -> EffectShape {
-    match effect.endpoint.method {
-        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
-            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
-        }
-        HttpMethodScalar::Put | HttpMethodScalar::Patch => keyed_upsert_or_keyless_break(effect),
-        HttpMethodScalar::Delete => keyed_delete_or_keyless_break(effect),
-        HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::PostAlways,
-        }),
-    }
-}
-
 fn keyed_upsert_or_keyless_break(effect: &Operation) -> EffectShape {
     match operation_resource_key(effect) {
         Some(param) => EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
@@ -390,17 +378,6 @@ fn keyless_break(effect: &Operation) -> EffectShape {
             method: effect.endpoint.method,
         },
     })
-}
-
-fn method_is_read(method: HttpMethodScalar) -> bool {
-    matches!(
-        method,
-        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options
-    )
-}
-
-fn method_is_upsert(method: HttpMethodScalar) -> bool {
-    matches!(method, HttpMethodScalar::Put | HttpMethodScalar::Patch)
 }
 
 fn operation_resource_key(effect: &Operation) -> Option<String> {
@@ -466,7 +443,10 @@ pub(crate) fn project_workflow_idempotency_report(
         WorkflowEffect::LinearEffect { ops } => match compose_operation_effects(dag, ops.as_slice())
         {
             Ok(verdict) => WorkflowIdempotencyReport::WorkflowCompositionVerdict(verdict),
-            Err(EffectClassificationFailure::StdMethodAnchorResolutionFailed) => {
+            Err(
+                EffectClassificationFailure::StdMethodAnchorResolutionFailed
+                | EffectClassificationFailure::UnknownOperationCallable,
+            ) => {
                 WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
                     variant_name: "LinearEffect".to_string(),
                     downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
