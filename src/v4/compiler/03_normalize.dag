@@ -3,10 +3,19 @@
 // Scope: pipeline stage 3a — ParseTree to NormalizedTree. Surface sugar dissolution.
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 //
+// C3 (operator-ratified 2026-05-15): normalize dissolves EXACTLY the 4
+// bounded surface-sugar forms THESIS:198-203 names — `service`, `fn`,
+// `type`, `operation` — into Node trees. It is NOT identity and NOT
+// open-ended. There is no 5th sugar form; a new one is a substrate
+// extension = STOP, not an inline add. (This closes the "what does
+// normalize do in a no-sugar language" tension — there IS bounded sugar,
+// exactly these 4; cascade-closure of A1.)
+//
 // Owns:
 //   - NormalizedTree type
 //   - normalize: ParseTree -> Result<NormalizedTree, Diagnostic>
-//   - service/fn/type sugar -> Node tree (per MODELING.md composition layer)
+//   - dissolves the 4 sugar forms { service, fn, type, operation } -> Node
+//     tree (per MODELING.md composition layer); exactly 4, closed
 //
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag

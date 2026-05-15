@@ -1,0 +1,45 @@
+// src/v4/extdeps/languages/machine_code.dag
+//
+// Scope: machine code model — direction-agnostic, the BOTTOM of the
+//        abstraction stack. emit: Node -> encoded instructions; ingest:
+//        bytes -> Node (disassembly). PARAMETERIZED BY AN ISA model
+//        (recommended fork — see below): one machine_code model, the ISA
+//        is the parameter, exactly as `LanguageModel` parameterizes the
+//        B2-OMNI boundary (fractal/consistent; O(N+M), not one file per
+//        ISA).
+// Anchor: the ISA specification is the (parameterized) versioned fidelity
+//         authority (L-2) — Intel 64 & IA-32 Architectures SDM /
+//         Arm Architecture Reference Manual (Arm ARM); pin a revision.
+// Stress (T-4.13 — a B2-OMNI falsification probe): the extreme of every
+//   boundary. (a) No cosmetic surface at all — F is purely instruction
+//   encoding; the strongest test that C5-fidelity holds at the limit.
+//   (b) Disassembly is ingest-is-harder taken to the extreme: MOST byte
+//   sequences are not valid/meaningful instructions → the fail-closed
+//   boundary is enormous. A disassembler that "guesses" is the no-engine
+//   violation made visible — this probe forces fail-closed honesty.
+// Clear win: `.dag → machine code` (we don't *necessarily* output a
+//   binary — we CAN), and `bytes → Node` disassembly, both via one
+//   ISA-parameterized model.
+//
+// Fork (PROPOSED — operator confirm): ONE `machine_code.dag`
+//   parameterized by an `Isa` model (recommended — parameterize, don't
+//   enumerate per-ISA files; matches B2-OMNI + O(N+M)) vs per-ISA files
+//   (`x86_64.dag`, `arm64.dag`, …). Recommend the parameterized form.
+//
+// Owns:
+//   - machine_code grammar parameterized by `Isa` (declarative,
+//     bidirectional): instruction encoding/decoding, registers, operands
+//   - disassembly ingest is fail-closed: a byte run that does not decode
+//     to a valid instruction is a Diagnostic, NEVER a fabricated/"best
+//     effort" instruction (no-engine, C5)
+//   - Cost realization: per-instruction cost on the parameterized ISA
+//
+// Consumes:
+//   - std/node.dag, std/primitive.dag, std/diagnostic.dag
+//
+// Status: scaffold — fill per TASKS.md T-4.13
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+module v4.extdeps.languages.machine_code

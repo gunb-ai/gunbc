@@ -9,10 +9,47 @@
 //   search here IS the enforcement; an ungroundable concept is a
 //   Diagnostic, never a downstream emitter special-case.
 //
+// IR-1 (operator-ratified 2026-05-15) — the InferredTree contract,
+// FROZEN now (not emergent — "this time we model the IR up front"):
+//
+//   InferredTree is NOT a new type. Per A1 it is the SAME `Node` tree
+//   with one extra FLAT per-node coordinate populated — `InferredFacts`
+//   — exactly as connective/behavior are flat coordinates. Modeling a
+//   separate recursive `InferredNode` is THE bounded-kernel violation
+//   that split v2 infer into 12 files = STOP, not a worker choice.
+//
+//   InferredFacts (flat, per-node; the FROZEN payload — a 5th field is a
+//   substrate-extension STOP→escalate, never an inline add):
+//     - resolved_type : Node          (the node's type — itself a Node in
+//                                       the type substrate, Shape S)
+//     - inhabits      : AlgebraRef    (which algebra — the U1 homomorphism
+//                                       carrier; grounds cost AND codegen)
+//     - cost          : SymbolicCost  (the U1 carrier; termination ∧
+//                                       complexity are ONE datum — A2/U2,
+//                                       consumed from cost.dag, not re-derived)
+//     - descent       : DescentEvidence  (A2: Implicit(sub-Node descent —
+//                                       free, no carrier) | Explicit(
+//                                       RankingDimensionRef → T-3 cardinality.dag))
+//   - NOT fields (single-authority, P2 — they are already carried by
+//     `resolved_type`'s Node structure; caching = a second authority):
+//       * cardinality — the Cardinality connective IS one of the 6 (A1);
+//         it is read from `resolved_type`, never stored (correction
+//         3248488135).
+//       * effects — per B3 the type signature is the single effect
+//         authority; read from `resolved_type`, never stored.
+//
+// C1 (operator-ratified 2026-05-15) — infer is the bounded *Find* phase
+//   of the one U1 homomorphism. The algebra-homomorphism search is
+//   BOUNDED STRUCTURAL UNIFICATION over the finite (by A1/A2) candidate
+//   space — never an open search. An empty result is a helpful
+//   Diagnostic (feedback_no_engine), NEVER a fabricated coercion. The v2
+//   12-file split cannot recur (its cause — a separate recursive inferred
+//   type — is structurally gone via IR-1/A1).
+//
 // Owns:
-//   - InferredTree type (with full type/algebra/cardinality info)
+//   - InferredTree = Node + the frozen flat `InferredFacts` coordinate
 //   - infer: ResolvedTree -> Result<InferredTree, Diagnostic>
-//   - algebra-homomorphism search for target-grounding
+//   - bounded algebra-homomorphism search (the U1 Find phase; C1)
 //
 // Consumes:
 //   - std/node.dag, std/algebra.dag, std/cardinality.dag, std/diagnostic.dag

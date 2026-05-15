@@ -12,6 +12,31 @@
 //     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
 //     no other path from advisory to blocking exists
 //
+// QRY-1 (operator-corrected 2026-05-15) — there is NO "query" concept
+// and NO user-vs-kernel distinction. The earlier "query = user-defined
+// lens" framing is RETRACTED: user-authored vs kernel-shipped is
+// PROVENANCE, not a structural distinction — the compiler sees through
+// who wrote a lens (feedback_naming_is_aliasing). A lens is a lens. A
+// name distinguished only by who-authored-it is decorative ⇒ it must not
+// exist (operator: "a real distinction, or not exist").
+//
+// The REAL axis the operator surfaced ("a filter on a lens") is
+// SCOPE / PARAMETERIZATION — and it is already modeled, two ways, with
+// NO new noun:
+//   1. SectionRef = DeclarationScope | NodeScope (below) — applying a
+//      lens AT a scope (a sub-Node) IS a scoped read. "ask <lens> about
+//      <this section>" is `apply_lens(lens, NodeScope(x), Introspect)`.
+//   2. A lens signature may TAKE a parameter. The archetype is the
+//      affected-set lens (T-21): `affected_set:(Dag,Diff)->Witness<
+//      ReExecFrontier>`. "the affected set of THIS change" is exactly
+//      `affected_set(dag, diff)` — a lens whose answer is relative to a
+//      parameter, not absolute. Already first-class, not a query system.
+// So: lenses, read at scopes and/or parameterized. No `query.dag`, no
+// query subsystem, no authorship split — those would be the decorative
+// parallel authority the closed system forbids (STOP). The B2-OMNI
+// Node-pivot "one read, all ingested languages" property still holds —
+// it is a property of LENSES (any lens over Node), not of a "query".
+//
 // Consumes:
 //   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
 //   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)

@@ -1,6 +1,6 @@
 # v4 — XL Task Plan
 
-28 XL tasks define "v4 done." Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
+The XL tasks below define "v4 done" (the count is intentionally NOT stated — it drifts as scope is ratified; the close gate is "every task in this plan," never a hardcoded number — see T-15). Each task is a bounded modeling unit; each produces a typed pure function in declared files; each is honestly hard to game because the work IS the decisions.
 
 **Sizing discipline** (per operator directive 2026-05-15): all tasks are XL by default. Relative sizing (S / M / L / XL within the XL bracket) is used only when conveying scope-risk explicitly. **No timelines, no day estimates** — discuss only technical decisions.
 
@@ -16,6 +16,12 @@ Phase 1 (parallel — substrate foundation):
   T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
+  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
+  T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
+  T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-1; boundary-honesty probe — fail-closed ingest, no fabrication]
+  T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
+  T-4.13 extdeps/languages/machine_code.dag  [needs T-1; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
+  T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
   T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
 
 Phase 1.5 (test + bootstrap substrate — early, before compiler stages):
@@ -130,10 +136,14 @@ Phase 4 (serial — close the loop):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
+**Authoring contract (operator-ratified 2026-05-15):**
+- **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
+- **Declare every surface feature's disposition (C5-fidelity).** For each feature: `Modeled` (∈ F, Node-bearing, round-trips both ways — e.g. Python indentation IS block structure) | `Declared-normalized` (deliberately not in F; `emit∘ingest` canonicalizes — Go/C++ insignificant whitespace; a *declared*, reviewable loss, never silent) | `Fail-closed` (encountered but neither → Diagnostic, no-engine). F = the spec's own meaning-vs-lexical distinction, not worker judgment. Round-trip fidelity = declared model completeness.
+
 **Modeling decisions**:
 - Per-language primitive inhabitance (i32 -> OrderedRing, std::vector<T> -> List<T>, etc.)
 - Per-language realization cost shape
-- Grammar encoding (declarative production rules vs procedural recognizer)
+- Grammar encoding: declarative production data — the **bidirectional relation** (concrete syntax ⟷ Node), read as ingest (partial, many→one, fail-closed off F) and emit (the chosen canonical section); NOT a procedural recognizer. The ingest reading MUST be unambiguous, or ambiguity ⇒ Diagnostic (never "parser picks one" = fabrication). Syntax needing semantic feedback to parse (C++ most-vexing-parse, `<` template-vs-less-than) is a STOP/escalation, not silently absorbed.
 - Type system: nominal (Rust, Java) vs structural (TypeScript, Go), or both (C++)
 
 **Reference**:
@@ -405,6 +415,47 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 ---
 
+### T-4.9 … T-4.14 — architecture stress probes (operator-ratified 2026-05-15)
+
+**Parallel** tasks (need only T-1 + the B2-OMNI `LanguageModel` contract; independent of each other and of T-4). Their value is that they are **maximally diverse on purpose** — each is a *falsification probe* for the B2-OMNI O(N+M) claim. If adding one is genuinely O(1) (one declarative model, instantly cross-composing through the Node pivot), B2-OMNI is empirically validated; if any forces a core/pipeline change, B2-OMNI is leaking — surfaced now, before it is load-bearing. T-4.9-4.11 span the *upper* stack (HDL / netlist / NL boundary); T-4.12-4.14 span *down* the stack (IR / machine code / GPU) — together they validate the model across the **full target spectrum**: source (F may include cosmetics by intent) → IR (F structural) → machine code (F = encoding, no cosmetics). Long-held v2 intent, de-deferred per the frontload-the-hard-cases discipline.
+
+#### T-4.9: `extdeps/languages/verilog.dag`
+- **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
+- **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
+- **Scope**: L (substrate-validating; concurrency model is the risk).
+
+#### T-4.10: `extdeps/formats/spice.dag`
+- **Stress axis**: is the format/`LanguageModel` abstraction *actually* general, or secretly programming-language-shaped? A SPICE netlist has **no control flow** — components + a connection graph.
+- **Clear win**: one `.dag` circuit declaration → a SPICE netlist that simulates (omni-emission reaches analog hardware).
+- **Placement (operator-ratified fork)**: `extdeps/formats/` — a netlist is a data format, not a programming language (sibling of csv/json), Shape B.
+- **Scope**: M-L.
+
+#### T-4.11: `test/claim/boundary/english_ingest_fail_closed.dag`
+- **Framing (operator-ratified fork)**: English is **NOT a language model** (no formal grammar). It is a **boundary-honesty probe**, not `extdeps/languages/english.dag`.
+- **Stress axis**: the C5 lossless-core boundary at its extreme, and the no-engine thesis made visible.
+- **Clear win**: (a) Shape B emit — `.dag` → English docs (≈ T-16's existing Markdown artifact, no new substrate); (b) the honest win — `ingest(English prose)` → a precise Diagnostic, **never a fabricated parse**. The architecture refusing to lie *is* the demonstrable result.
+- **Scope**: M (the substrate it needs already exists; the claim is the work).
+
+#### T-4.12: `extdeps/languages/llvm_ir.dag`
+- **Stress axis**: does the model generalize **down** the abstraction stack? SSA form / dominance / phi is structurally unlike a source AST. F is ~all-structural (LLVM IR has negligible cosmetic surface — the clean contrast point for C5-fidelity).
+- **Clear win**: `.dag → LLVM IR` (LLVM lowers to machine code) + `LLVM IR → Node` ingest — the down-stack half of O(N+M).
+- **Anchor**: LLVM Language Reference Manual, pinned release (L-2).
+- **Scope**: L.
+
+#### T-4.13: `extdeps/languages/machine_code.dag`
+- **Stress axis**: the **bottom of the stack** — no cosmetic surface at all (the limit test for C5-fidelity), and **disassembly is the extreme fail-closed case** (most byte runs are not valid instructions; a disassembler that guesses = the no-engine violation made visible).
+- **Fork (PROPOSED — confirm)**: ONE `machine_code.dag` parameterized by an `Isa` model (recommended — parameterize, don't enumerate per-ISA; matches B2-OMNI/O(N+M)) vs per-ISA files.
+- **Anchor**: the ISA spec (Intel 64 SDM / Arm ARM), pinned revision (L-2).
+- **Scope**: L.
+
+#### T-4.14: `extdeps/languages/ptx.dag` (CUDA)
+- **Stress axis**: the **SIMT data-parallel execution model** vs the 5 L1 behaviors — the IN-B bet again (like Verilog's concurrency, but data-parallel). A needed 6th `Parallel`/`Kernel` behavior = C1 escalation, by design caught early.
+- **Fork (PROPOSED — confirm)**: model **PTX** (the spec'd IR — clean, general, captures SIMT directly, parallel to llvm_ir; recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled; the C++ surface is not where the stress is).
+- **Anchor**: NVIDIA PTX ISA spec, pinned version (L-2).
+- **Scope**: L.
+
+---
+
 ### T-16: Full-stack omni-emission demo
 
 **Output**: ONE `.dag` program → multi-language multi-endpoint application
@@ -595,7 +646,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ## Summary
 
-28 XL tasks. Every task is a bounded, modeling-load-bearing pure function. Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
+Every task in this plan is a bounded, modeling-load-bearing pure function (the count is intentionally unstated — it drifts as scope is ratified; see T-15's drift-proof close gate). Gaming surface is structurally bounded because adding files / splitting files / reaching outside declared substrate all require operator escalation. Per zero-deferrals: "I'll just do this for now" is forbidden — STOP and escalate.
 
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 

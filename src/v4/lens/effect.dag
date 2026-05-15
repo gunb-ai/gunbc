@@ -3,8 +3,17 @@
 // Scope: effect lens — effects derived from type-signature shape, no parallel taxonomy.
 // Anchor: https://en.wikipedia.org/wiki/Effect_system
 //
+// B3 (operator-ratified 2026-05-15): the TYPE SIGNATURE is the single
+// effect authority. This lens READS effects from the signature shape; it
+// does not own a taxonomy. `coordination.dag`'s HttpEffect/QueueEffect/…
+// are typed CARRIERS over the signature, NOT a parallel effect
+// taxonomy/enum — a worker tempted to enumerate effects here or there
+// has created a second authority = STOP (same single-authority class as
+// the AssertKind/testgen reconciliation). One authority: the signature.
+//
 // Owns:
-//   - lens read: Node -> Witness<EffectMap>
+//   - lens read: Node -> Witness<EffectMap>   (READS the type signature;
+//     the signature is the authority, this lens is the reader)
 //   - returned-modified-resource = write; returned-derived-value = read
 //   - 5-behavior compositional fold; no OperationEffect taxonomy
 //
