@@ -16,13 +16,17 @@ Quantitative scope:
 
 ## M2 Feature Parity items (per docs/design-m2-feature-parity.md)
 
-| DB | Title | Stage | Size | Design status |
+| DB | Title | Stage | Size | Actual status at HEAD (verified 2026-05-15) |
 |---|---|---|---|---|
-| DB-9 | Mutual recursion lowering | 3a.1 | L | Design ready (separate doc `design-mutual-recursion-lowering.md`) |
-| **DB-10** | **`data` value semantics** | **3a.2** | **S** | **Design ready** (substrate carrier already exists; downstream consumers missing) |
-| DB-11 | `where` refinement predicates | 3a.3 | M | Design ready |
-| DB-12 | Surface generics | 3a.4 | S | Design ready |
-| DB-13 | `Disj` dotted-path | 3a.5 | S | Design ready |
+| DB-9 | Mutual recursion lowering | 3a.1 | L | Design ready (separate doc `design-mutual-recursion-lowering.md`); HEAD landed-state **not yet audited** — may be partially or fully landed per the DB-10/12/13 pattern below |
+| **DB-10** | **`data` value semantics** | **3a.2** | **S** | **LANDED** (per gentle-bat-24 Phase A 2026-05-15): `Dag::data_value_at` at `dag.rs:4310`; `SurfaceExpr::Var` scalar inlining at `lower.rs:9125+`; `lower_field_path_expr` data walking at `lower.rs:8489+`; `resolve_data_path` at `lower.rs:8642+`; test `test_3a2_data_field_access_resolves_statically` at `m2_feature_parity_test.rs:771` passing. Brief 4 closes with acceptance-coverage PR. |
+| DB-11 | `where` refinement predicates | 3a.3 | M | Design ready (M2 doc §DB-11); HEAD landed-state **not yet audited** |
+| DB-12 | Surface generics | 3a.4 | S | **LANDED** (per design doc PR #496 amendment + verified 2026-05-15): `parse_optional_type_params` at `parse_generated.rs:927`; tests `test_3a4_bare_generic_fn_compiles` + `test_3a4_multi_param_generic_fn_compiles` + `test_3a4_bounded_form_rejected_at_parse` at `m2_feature_parity_test.rs:90-156` passing. Emission test coverage gap (3-target render not asserted) is the only residual. |
+| DB-13 | `Disj` dotted-path | 3a.5 | S | **LANDED** (per design doc PR #496 amendment + verified 2026-05-15): match-arm `arm_scope` extension at `lower.rs:3375`; `lower_field_path_expr` consults arm-scoped binding; tests `test_3a5_match_arm_dotted_path_compiles` + `test_3a5_nested_match_arm_dotted_path_compiles` at `m2_feature_parity_test.rs:163-208` passing. Emission test coverage gap (3-target render not asserted) is the only residual. |
+
+**Per gentle-bat-24 Brief 4 Phase A finding + 2026-05-15 verification**: prior claim that "no DB item has landed yet" is RETRACTED. DB-10, DB-12, DB-13 are all substantively LANDED at HEAD — the design-m2-feature-parity.md "Design ready for implementer review" status is STALE for these three. DB-9 and DB-11 HEAD-state remain unaudited (could be similarly landed; needs verification).
+
+The "active deferral pits" frame for M2 DB items thus shrinks to: **DB-9 + DB-11, pending HEAD audit, may shrink further**. Emission-test-coverage residuals on DB-12 + DB-13 are tiny follow-ups, not pit-shaped.
 
 ## Class-5 grammar gaps (the substrate-language sub-program)
 
