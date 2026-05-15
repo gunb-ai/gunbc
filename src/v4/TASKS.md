@@ -54,7 +54,10 @@ Phase 4 (serial — close the loop):
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
         + React/TS frontend + OpenAPI wire contract
-        [needs T-4, T-4.5, T-4.6, T-4.7, T-10, T-11]
+        [needs T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-10, T-11]
+        (T-4.8 coordination.dag is load-bearing — T-16 uses it for
+        endpoint partitioning; facts must flow forward from the
+        coordination substrate into the flagship demo)
 ```
 
 ## Task definitions

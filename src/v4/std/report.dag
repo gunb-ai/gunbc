@@ -18,12 +18,19 @@
 //     parallel to Diagnostic.suggested_correction but with non-blocking
 //     semantics)
 //
-// Discipline:
-//   - Report has NO Witness::Violates pairing. A lens emits Witness<Report>;
-//     Holds means "no advisory observation," Violates means "advisory
-//     observation present" — but Violates here is informational, not blocking
-//   - Per opt-in-depth: a Report becomes blocking only via user-authored
-//     apply_lens(<lens>, Enforce { ... }) declaration (THESIS:307-321)
+// Discipline (Witness separation — per INVARIANTS P3/C-8):
+//   - Report NEVER routes through Witness<C>. Witness is STRICTLY the
+//     fail-closed carrier: Holds | Violates(reason), where Violates is
+//     blocking. Overloading Witness with advisory-non-blocking semantics
+//     would break the fail-closed guarantee P3/C-8 depends on.
+//   - Advisory lenses return `Set<Report>` DIRECTLY: empty set = no
+//     advisory observation; non-empty = advisory observations present
+//     (informational, never blocking on its own). No Witness wrapper.
+//   - The ONLY advisory→blocking path is explicit user opt-in: a
+//     `apply_lens(<lens>, Enforce { ... })` declaration converts the
+//     advisory Set<Report> into fail-closed Diagnostics per the user's
+//     policy choice (THESIS:307-321 opt-in depth). That conversion is
+//     the single, explicit, user-authored bridge — never implicit.
 //
 // Consumes:
 //   - std/node.dag, std/primitive.dag (String for messages)

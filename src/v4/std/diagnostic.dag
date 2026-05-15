@@ -1,12 +1,20 @@
 // src/v4/std/diagnostic.dag
 //
-// Scope: fail-closed Diagnostic schema with structural reason+at.
+// Scope: fail-closed Diagnostic schema with structural reason+at+correction.
+//        Per STRUCTURE.md architectural commitment #3, the schema CARRIES
+//        the suggested-correction obligation — the substrate must be able
+//        to enforce THESIS:103-105 "show the correct code", so the field
+//        is part of the type, not optional bolt-on.
 // Anchor: THESIS.md "Show the correct code" §103-105 + INVARIANTS P3
 //
 // Owns:
-//   - Diagnostic { reason: NamedReason, at: Locus }
+//   - Diagnostic { reason: NamedReason, at: Locus, suggested_correction: Option<NodeFragment> }
 //   - NamedReason enum (structural; never opaque string)
 //   - Locus = port|node|file|span
+//   - NodeFragment (the structurally-correct alternative the diagnostic
+//     points to; Option because some user-input-boundary diagnostics
+//     genuinely cannot determine a correction — but absent must carry a
+//     named reason, never a silent None)
 //
 // Consumes:
 //   - std/node.dag: Conj, Disj

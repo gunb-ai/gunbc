@@ -10,7 +10,11 @@
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
 // Owns:
-//   - lens read: Node -> Witness<Report>  (Report carrier, NOT Diagnostic)
+//   - lens read: Node -> Set<Report>  (advisory carrier, NEVER Witness —
+//     Witness is strictly fail-closed per INVARIANTS P3/C-8; advisory
+//     Report must not overload it. Empty set = no advice; non-empty =
+//     advisory observations, never blocking unless user opts in via
+//     apply_lens(synthesis, Enforce { ... }))
 //   - semantic-equivalence relation (when do two programs compute the same
 //     input→output relation? structural, not behavioral)
 //   - pattern-recognition substrate (match user program against algorithm-
