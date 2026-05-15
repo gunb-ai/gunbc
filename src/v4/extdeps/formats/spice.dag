@@ -9,12 +9,15 @@
 //         concrete release, e.g. ngspice-44) is the maintained versioned
 //         reference. NOT Wikipedia — https://en.wikipedia.org/wiki/SPICE
 //         is accessible context only.
-// Stress (T-4.10 — a B2-OMNI falsification probe): is the format /
-//   LanguageModel abstraction ACTUALLY general, or secretly
-//   programming-language-shaped? A netlist has no control flow — it is
-//   components plus a connection graph. If the abstraction cannot model a
-//   netlist without contortion, that is a substrate-design signal to
-//   surface NOW (STOP-and-escalate), not after it is load-bearing.
+// Stress (T-4.10 — a B2-OMNI falsification probe): SPICE is **Shape B**
+//   (a data format, per L-1) — it is NOT a `LanguageModel` and never
+//   touches the compiler-language (Shape A) ingest boundary. The probe
+//   tests the **Shape B format data-model** abstraction only: is it
+//   ACTUALLY general, or secretly programming-language-shaped? A netlist
+//   has no control flow — it is components plus a connection graph. If
+//   the format data-model cannot represent a netlist without contortion,
+//   that is a substrate-design signal to surface NOW
+//   (STOP-and-escalate), not after it is load-bearing.
 // Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
 //   simulates (omni-emission reaches analog hardware).
 //
