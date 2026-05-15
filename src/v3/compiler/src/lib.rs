@@ -5303,6 +5303,11 @@ mod regen_parse_tables_emit;
 #[path = "tokenize_generated.rs"]
 mod tokenize;
 
+/// Integration-parity hooks: keep `dsl/std/unicode::char_in_class` mechanically aligned with
+/// `tokenize_generated::byte_matches` (ROADMAP `char_in_class` interpreter parity row).
+#[doc(hidden)]
+pub use tokenize::{byte_matches, ScannerCharClass};
+
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
     render_parse_tables_generated_rs, RenderParseTablesGeneratedError,

@@ -61,7 +61,7 @@ import v3.std.types { Char }
 
 import v3.std.unicode {
   CharClass,
-  char_in_class,
+  char_in_class
 }
 
 // Delegates tokenizer membership to **`std.unicode::char_in_class`** (substrate-canonical ASCII

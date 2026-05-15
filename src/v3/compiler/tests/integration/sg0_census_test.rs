@@ -701,6 +701,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the live lens-producer residual count while Row-4 / Item 4 retirement
     // preconditions remain open.
     "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
+    // PATH X / Brief 3 + ROADMAP `char_in_class` interpreter parity row (ASCII codegen vs evaluator).
+    "src/v3/compiler/tests/integration/r3_path_b_brief3_char_in_class_execution_test.rs",
     // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
     // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /

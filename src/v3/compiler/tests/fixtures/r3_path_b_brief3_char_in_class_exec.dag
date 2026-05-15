@@ -5,7 +5,14 @@
 
 module test.r3_path_b_brief3_char_in_class_exec
 
+import std.types { Char }
 import std.unicode { CharClass, char_in_class }
+
+// Unary wrappers for evaluator parity vs `tokenize_generated::byte_matches` (ROADMAP parity row).
+fn brief3_membership_whitespace(c: Char) -> Bool = char_in_class(c, Whitespace)
+fn brief3_membership_digit(c: Char) -> Bool = char_in_class(c, Digit)
+fn brief3_membership_ident_start(c: Char) -> Bool = char_in_class(c, IdentStart)
+fn brief3_membership_ident_continue(c: Char) -> Bool = char_in_class(c, IdentContinue)
 
 fn receipt_letter_is_ident_start() -> Bool = char_in_class(97, IdentStart)
 
