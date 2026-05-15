@@ -4,8 +4,6 @@
 //! conversions. The fixtures compile through `.dag`, emit through the normal
 //! Rust target, and run as standalone programs.
 
-use std::process::Command;
-
 use crate::common::{HarnessLinkMode, RustcHarness};
 use v3_compiler::{compile_to_dag, emit_rust::emit_rust};
 
@@ -17,12 +15,8 @@ fn rust_program_stdout(source: &str, file: &str) -> String {
     RustcHarness::run(&bin, &[])
 }
 
-fn rust_program_status(source: &str, file: &str) -> std::process::ExitStatus {
-    let dag = compile_to_dag(source, file).expect("fixture compiles");
-    let rust = emit_rust(&dag).expect("fixture emits to Rust");
-    let harness = RustcHarness::new("string_templating_fail");
-    let bin = harness.compile(&rust, "string_templating_fail", HarnessLinkMode::Standalone);
-    Command::new(bin).status().expect("run emitted fixture")
+fn rust_program_raw_stdout(source: &str, file: &str) -> String {
+    rust_program_stdout(source, file)
 }
 
 #[test]
@@ -80,9 +74,14 @@ let msg: String = bool_to_string(false)
 fn format_substitutes_indexed_placeholders() {
     let out = rust_program_stdout(
         r#"
+import std.error_primitives { Ok, Err }
 import std.formatting { format, int_to_string }
 
-let msg: String = format("hello {0}! count={1}", ["world", int_to_string(42)])
+let formatted = format("hello {0}! count={1}", ["world", int_to_string(42)])
+let msg: String = match formatted {
+  Ok(payload) => payload.value
+  Err(_) => "format error"
+}
 "#,
         "string_templating_format.v3",
     );
@@ -90,17 +89,17 @@ let msg: String = format("hello {0}! count={1}", ["world", int_to_string(42)])
 }
 
 #[test]
-fn format_missing_argument_fails_closed_at_runtime_boundary() {
-    let status = rust_program_status(
+fn format_missing_argument_returns_structural_error() {
+    let out = rust_program_raw_stdout(
         r#"
 import std.formatting { format }
 
-let msg: String = format("{1}", ["world"])
+let msg = format("{1}", ["world"])
 "#,
         "string_templating_format_oob.v3",
     );
     assert!(
-        !status.success(),
-        "out-of-bounds format placeholder must fail closed"
+        out.contains("Err") && out.contains("PlaceholderIndexOutOfBounds"),
+        "out-of-bounds format placeholder must return a structural error, got {out:?}"
     );
 }

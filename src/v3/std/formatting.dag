@@ -8,11 +8,22 @@ module std.formatting
 
 import std.list { List }
 import std.types { Int, Char, Bool }
+import std.error_primitives { Result }
+
+// Closed error carrier for indexed template substitution. The grammar is
+// shared across target realizations: a placeholder starts with ASCII `{`,
+// contains one or more ASCII decimal digits `0` through `9`, and ends with
+// ASCII `}`. Every other character, including non-ASCII text, is copied as a
+// literal string character.
+type FormatError
+  = PlaceholderRequiresExplicitIndex
+  | PlaceholderMissingClosingBrace
+  | PlaceholderIndexOutOfBounds
 
 // Indexed templating over string arguments. Placeholders use the closed
 // decimal index shape `{0}`, `{1}`, ... so the function's arity is carried by
 // the `args` list rather than by a target-language macro.
-fn format(template: String, args: List<String>) -> String {
+fn format(template: String, args: List<String>) -> Result<String, FormatError> {
   host format
 }
 

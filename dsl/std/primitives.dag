@@ -188,14 +188,14 @@ data bool_to_string_contract: PrimitiveContract = {
   notes: "Canonical lowercase Boolean spelling"
 }
 
-// format(template: String, args: List<String>) -> String
+// format(template: String, args: List<String>) -> Result<String, FormatError>
 // Substitute indexed placeholders (`{0}`, `{1}`, ...) from args.
 data format_contract: PrimitiveContract = {
   name: "format",
   work: "n + k",
   output_size: "n + k",
   certainty: Proven,
-  notes: "Single pass over template plus copied argument bytes; out-of-bounds placeholders fail closed"
+  notes: "Single pass over template plus copied argument bytes; placeholders use only ASCII decimal digits; malformed or out-of-bounds placeholders return FormatError"
 }
 
 // parse_int(s: String) -> Int

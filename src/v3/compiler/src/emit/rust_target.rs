@@ -3122,7 +3122,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         )));
     }
 
-    const RUST_V3_FORMAT_PRELUDE: &str = r#"fn __v3_format(template: String, args: Vec<String>) -> String {
+    const RUST_V3_FORMAT_PRELUDE: &str = r#"fn __v3_format(template: String, args: Vec<String>) -> ::core::result::Result<String, FormatError> {
     let mut out = String::new();
     let chars: Vec<char> = template.chars().collect();
     let mut i = 0usize;
@@ -3134,17 +3134,17 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
                 end += 1;
             }
             if end == start {
-                panic!("format placeholder must use an explicit numeric index");
+                return ::core::result::Result::Err(FormatError::PlaceholderRequiresExplicitIndex);
             }
             if end >= chars.len() || chars[end] != '}' {
-                panic!("format placeholder is missing closing brace");
+                return ::core::result::Result::Err(FormatError::PlaceholderMissingClosingBrace);
             }
             let idx_text: String = chars[start..end].iter().collect();
             let idx: usize = idx_text
                 .parse()
                 .expect("format placeholder index must be decimal");
             let Some(arg) = args.get(idx) else {
-                panic!("format placeholder index out of bounds");
+                return ::core::result::Result::Err(FormatError::PlaceholderIndexOutOfBounds);
             };
             out.push_str(arg);
             i = end + 1;
@@ -3153,7 +3153,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             i += 1;
         }
     }
-    out
+    ::core::result::Result::Ok(out)
 }
 "#;
 
