@@ -62,7 +62,12 @@
 //
 // Consumes:
 //   - std/diagnostic.dag — the fail-closed Diagnostic carrier for
-//     malformed input.
+//     malformed input (cited in prose only at this layer, matching
+//     sibling format scaffolds — `json.dag`, `csv.dag`, etc. —
+//     because parse/emit fn bodies are pipeline-stage work (T-6/T-7)
+//     and do not live in this format-model file; the actual
+//     `import v4.std.diagnostic { Diagnostic }` lands when those
+//     bodies do).
 //   (Symbol is substrate-ambient per std/node.dag K-1; String, Int,
 //   List are kernel-ambient per STRUCTURE.md — none is imported. Node
 //   is deliberately NOT imported: this is a Shape-B data format, not a
@@ -88,9 +93,6 @@
 
 
 module v4.extdeps.formats.spice
-
-
-import v4.std.diagnostic { Diagnostic }
 
 
 // ─────────────────────────────────────────────────────────────────────
