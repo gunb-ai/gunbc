@@ -2416,9 +2416,9 @@ type GateInstantiation {
 //
 //   - udp_name         the UDP identifier (K-1-opaque Symbol;
 //                      resolves through the namespace to the
-//                      matching top-level UDP definition — UDP
-//                      definitions themselves are a file-level
-//                      concern, separate from module body items)
+//                      matching file-level UdpDefinition — see
+//                      below; the UDP and Module sibling design-
+//                      elements share the same name-space).
 //   - instance_name    this instance's local name (K-1-opaque Symbol)
 //   - body_lexeme      port list + drive strength + delay as a
 //                      verbatim lexeme (sub-grammar deferred to the
@@ -2426,6 +2426,47 @@ type GateInstantiation {
 type UdpInstantiation {
   udp_name: Symbol
   instance_name: Symbol
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// UdpDefinition — a Verilog user-defined-primitive definition
+// (`primitive XorPrim (out, a, b); output out; input a, b; table … endtable
+// endprimitive`). IEEE 1364-2005 §8 + §A.5. UDP definitions are
+// FILE-LEVEL design elements (sibling of `module`/`macromodule`/
+// `config`), NOT module-body items — codex BLOCKING on PR #3176
+// 2026-05-16 surfaced the gap that the prior model referenced UDP
+// definitions from UdpInstantiation but did not declare a carrier
+// for them.
+//
+// Conj record (no Practice-4 ledger).
+//
+//   - name           the UDP identifier (K-1-opaque Symbol;
+//                    cross-referenced by UdpInstantiation.udp_name)
+//   - body_lexeme    the entire `primitive ... endprimitive` body
+//                    (port list + port declarations + state table
+//                    for sequential UDPs or output assignments for
+//                    combinational UDPs) as a verbatim lexeme; sub-
+//                    grammar deferred to the T-4 LanguageModel —
+//                    the UDP state-table sub-grammar (§8.2) is its
+//                    own recursive sub-language, owned by the
+//                    bundled productions when they land.
+//
+// FILE-LEVEL DESIGN-ELEMENT NOTE. UdpDefinition is declared at the
+// same scope as VerilogModule (top-level type, sibling of the
+// module-style Disj). The IEEE 1364-2005 source_text grammar (§A.1.1)
+// admits a list of file-level design elements
+// `module_declaration | udp_declaration | config_declaration`; the
+// file-level Disj wrapping these into a single design-element
+// classifier is owned by the bundled T-4 LanguageModel grammar
+// productions when they land. At this vocabulary-slice phase
+// UdpDefinition exists as a sibling-typed carrier consumed by
+// UdpInstantiation; `config_declaration` is scope-negative per the
+// header PROBE LIMITS framing (configuration is a separate
+// elaboration-time concern outside the IN-B probe).
+type UdpDefinition {
+  name: Symbol
   body_lexeme: String
 }
 
