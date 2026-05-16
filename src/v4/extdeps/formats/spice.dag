@@ -487,8 +487,12 @@ type SubstrateSpec
 //         - MutualInductance: complete for the basic form (linear
 //           mutual inductance, no `.MODEL` reference); SPICE3 also
 //           supports nonlinear-core model-referenced form.
-//         - SubcircuitCall: complete by construction (the `terminals`
-//           list + `parameters` list span the syntax).
+//         - SubcircuitCall: complete by construction (the
+//           `connections: SubcircuitConnections` non-empty carrier +
+//           `parameters` list span the X-element syntax;
+//           `connections` mirrors `SubcircuitDefinition.ports`'s
+//           non-empty discipline at the call-site boundary per
+//           PR #3168 codex review).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
@@ -552,7 +556,7 @@ type Component
   | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, parameters: List<Parameter> }
   | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
   | MutualInductance { identity: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
-  | SubcircuitCall { identity: Symbol, terminals: List<NodeRef>, subcircuit: Symbol, parameters: List<Parameter> }
+  | SubcircuitCall { identity: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -996,6 +1000,37 @@ type SubcircuitDefinition {
 type SubcircuitPorts {
   first: NamedNode
   rest: List<NamedNode>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SubcircuitConnections — the non-empty list of node-refs an
+// X-element (subcircuit call) connects to its target subcircuit's
+// formal ports (PR #3168 codex review). The call-site mirror of
+// `SubcircuitPorts`: SPICE3F5 §3.4's `X NAME N1 N2 ... SUBCKTNAME
+// [PARAMS]` form requires at least one connection node (matching the
+// callee subcircuit's non-empty port arity), and a well-formed call
+// has the SAME arity as the callee's `ports`. The arity-match
+// invariant is a consumer-side check (it requires resolving
+// `subcircuit: Symbol` against the SubcircuitDefinition table to
+// know the callee's port count); the non-emptiness invariant is
+// type-enforced HERE.
+//
+// Element type is `NodeRef` (not `NamedNode`) because the call site
+// CAN connect a callee port to global ground (the simulator's
+// universal reference) — e.g. `X1 in 0 out my_amp` is legal: the
+// middle port is connected to ground at the call site. (Callee
+// ports themselves cannot BE ground; that's `SubcircuitPorts`'s
+// `NamedNode` discipline at the SubcircuitDefinition side.)
+//
+// Same head+tail discipline + same eventual std/-substrate
+// dissolution as `SubcircuitPorts` and `NodeVoltageBindings`: a
+// generic `NonEmptyList<T>` carrier would absorb all three. The
+// inlined record is the worker-tier scaffold that does not require
+// that substrate addition.
+type SubcircuitConnections {
+  first: NodeRef
+  rest: List<NodeRef>
 }
 
 
