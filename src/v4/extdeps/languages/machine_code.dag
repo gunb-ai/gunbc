@@ -2,11 +2,10 @@
 //
 // Scope: machine code model — direction-agnostic, the BOTTOM of the
 //        abstraction stack. emit: Node -> encoded instructions; ingest:
-//        bytes -> Node (disassembly). PARAMETERIZED BY AN ISA model
-//        (recommended fork — see below): one machine_code model, the ISA
-//        is the parameter, exactly as `LanguageModel` parameterizes the
-//        B2-OMNI boundary (fractal/consistent; O(N+M), not one file per
-//        ISA).
+//        bytes -> Node (disassembly). PARAMETERIZED BY AN ISA model:
+//        one machine_code model, the ISA is the parameter, exactly as
+//        `LanguageModel` parameterizes the B2-OMNI boundary
+//        (fractal/consistent; O(N+M), not one file per ISA).
 // Anchor: the ISA specification is the (parameterized) versioned fidelity
 //         authority (L-2) — Intel 64 & IA-32 Architectures SDM /
 //         Arm Architecture Reference Manual (Arm ARM); pin a revision.
@@ -21,10 +20,9 @@
 //   binary — we CAN), and `bytes → Node` disassembly, both via one
 //   ISA-parameterized model.
 //
-// Fork (PROPOSED — operator confirm): ONE `machine_code.dag`
-//   parameterized by an `Isa` model (recommended — parameterize, don't
-//   enumerate per-ISA files; matches B2-OMNI + O(N+M)) vs per-ISA files
-//   (`x86_64.dag`, `arm64.dag`, …). Recommend the parameterized form.
+// Shape (operator-ratified L-3): ONE `machine_code.dag` parameterized by
+//   an `Isa` model. Per-ISA files (`x86_64.dag`, `arm64.dag`, …) would
+//   reintroduce the N×M trap B2-OMNI forbids.
 //
 // Owns:
 //   - machine_code grammar parameterized by `Isa` (declarative,
@@ -35,7 +33,16 @@
 //   - Cost realization: per-instruction cost on the parameterized ISA
 //
 // Consumes:
-//   - std/node.dag, std/primitive.dag, std/diagnostic.dag
+//   - std/node.dag: Node pivot + behavior substrate
+//   - std/diagnostic.dag: fail-closed ingest/disassembly diagnostics
+//   - std/machine.dag: Byte, Word*, MachineWidth, PointerWidth
+//   - extdeps/languages/* canonical LanguageModel shape from T-4
+//
+// Prerequisite correction (T-4.13): this file is NOT fillable after T-1
+// alone. The worker must wait for std/machine.dag (T-3 scalar/numeric
+// stack: logic + nat -> machine) and T-4's canonical LanguageModel-as-data
+// shape. Do not invent local Byte/Word carriers or a private language model
+// schema here.
 //
 // Status: scaffold — fill per TASKS.md T-4.13
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
