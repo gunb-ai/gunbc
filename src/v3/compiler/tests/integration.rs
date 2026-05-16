@@ -271,6 +271,8 @@ mod thesis_parallelism_test;
 mod thesis_validation_test;
 #[path = "integration/timing_lens_substrate_carrier_test.rs"]
 mod timing_lens_substrate_carrier_test;
+#[path = "integration/v4_compiler_pipeline_dag_smoke_test.rs"]
+mod v4_compiler_pipeline_dag_smoke_test;
 #[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/v4_extdeps_typescript_dag_smoke_test.rs"]
