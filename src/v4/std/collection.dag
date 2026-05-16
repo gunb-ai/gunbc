@@ -8,15 +8,15 @@
 //          - List<T> = FreeMonoid<T>: a structurally finite sequence;
 //            its cardinality (length) IS intrinsic to the carrier,
 //            read by walking the Empty|Cons spine to bottom.
-//          - Set<T> = characteristic function fn(T) -> Bool: a
-//            subset-of-T carrier inhabiting BooleanAlgebra<Set<T>>. It
-//            does NOT structurally encode finiteness — the universe
-//            and complement constructions in the BooleanAlgebra grounding
-//            are deliberately representable (BooleanAlgebra requires
-//            them), so a `Set<Int>` such as "all positive ints" is a
-//            valid value. Finite-cardinality is a REFINEMENT layer —
-//            tracked as deferred (Wave-A2, see scaffold note below)
-//            and out of scope for the carrier in this PR.
+//          - Set<T> = PointwisePower<T>: a characteristic-function /
+//            power-set carrier owned by std/algebra.dag. It does NOT
+//            structurally encode finiteness — the universe and
+//            complement constructions in the BooleanAlgebra grounding are
+//            deliberately representable (BooleanAlgebra requires them),
+//            so a `Set<Int>` such as "all positive ints" is a valid
+//            value. Finite-cardinality is a REFINEMENT layer — tracked
+//            as deferred (Wave-A2, see scaffold note below) and out of
+//            scope for the bare carrier.
 //        This honest split was surfaced by the codex BLOCKING review
 //        (#3169) flagging an earlier "finite subsets / count `true`
 //        elements" over-claim on Set; the carrier is unchanged, the
@@ -27,9 +27,11 @@
 // Owns:
 //   - List<T> — finite sequences (the free-monoid carrier over T;
 //     finiteness is STRUCTURAL — every value bottoms out at Empty)
-//   - Set<T>  — subset-of-T carrier (characteristic function;
-//     inhabits BooleanAlgebra<Set<T>>; finite-cardinality refinement
-//     is NOT in this carrier, see "Deferred to Wave-A2" below)
+//   - Set<T>  — alias-identity to PointwisePower<T> (subset-of-T /
+//     characteristic-function carrier; BooleanAlgebra grounding flows
+//     through the algebra.dag construction; finite-cardinality
+//     refinement is NOT in this carrier, see "Deferred to Wave-A2"
+//     below)
 //   - Map<K, V> — partial function K → 1+V with fail-closed lookup
 //     (`lookup: fn(K) -> Witness<V>`; operator-ratified Option A,
 //     #3169; Wave-A2 / this PR).
@@ -53,11 +55,9 @@
 //     refinement-type carrier `Multiplicity` lives in std/cardinality.dag
 //     — UNMERGED at #3163 — and is NOT consumed by collection.dag
 //     today per the operator-ratified b2 decision.)
-//   - std/algebra.dag: FreeMonoid<T> (the recursive carrier List
-//     grounds in by carrier identity). BooleanAlgebra<Set<T>> grounds
-//     Set by pointwise lift but appears here only as a header
-//     reference, not as a parametric data instance (see modeling
-//     notes — there is no v2 parametric-instance form).
+//   - std/algebra.dag: FreeMonoid<T> and PointwisePower<T>. List<T>
+//     and Set<T> ground by alias-identity to those canonical algebraic
+//     constructions.
 //   - std/witness.dag: Witness<V> (Map.lookup codomain — operator
 //     Option A partial-function discipline, #3169).
 //   (Bool and the type parameters T, K, V are kernel-ambient; Symbol
@@ -72,9 +72,9 @@
 //   contract as originally written was unbuildable. The operator
 //   ratified option b2 (plain carriers — for List<T> = FreeMonoid<T>,
 //   cardinality (length) IS intrinsic via the FreeMonoid spine; for
-//   Set<T> as a characteristic function fn(T) -> Bool, finite-
-//   cardinality is NOT intrinsic to the carrier and is a deferred
-//   refinement — see scaffold item (2) below) + option A (Map<K,V>
+//   Set<T> as PointwisePower<T>, finite-cardinality is NOT intrinsic
+//   to the carrier and is a deferred refinement — see scaffold item
+//   (2) below) + option A (Map<K,V>
 //   split to Wave-A2, gated on witness.dag); this header is the
 //   reconciled b2 form. The original frozen-header STOP write-up
 //   lives in #3169 issuecomment-4464775997.
@@ -113,48 +113,14 @@
 //         arbitrary-subset BooleanAlgebra carrier. (Tracking the
 //         same operator-ratified deferral pattern as Map.)
 //
-// (3) `BooleanAlgebra<Set<T>>` inhabitance — PROSE-ONLY grounding,
-//   pending a machine-readable substrate edge. Codex BLOCKING review
-//   on #3169 (sha bc10dfb3) correctly observed that Set<T>'s
-//   BooleanAlgebra grounding (the pointwise-lift section in the
-//   Set<T> docstring below) lives only in COMMENTS — not as a
-//   substrate-readable inhabitance edge a downstream pipeline /
-//   lens consumer can mechanically traverse. This is genuinely an
-//   expressiveness gap, NOT a one-off omission:
-//     - List<T> = FreeMonoid<T> grounds by TYPE ALIAS — the
-//       inhabitance IS machine-readable via the alias edge (the
-//       type IS the FreeMonoid carrier).
-//     - Set<T> = { member: fn(T) -> Bool } is NOT an alias to
-//       BooleanAlgebra's carrier (BooleanAlgebra is a STRUCTURE
-//       record, not a carrier); the inhabitance is by POINTWISE
-//       LIFT — a derivation, not an alias. No type-alias edge to
-//       read, no `data` instance encoded (parametric `data
-//       set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>` has no
-//       precedent in the v2 seed; and even if it did, a stored
-//       instance would be a second authority for the algebra the
-//       carrier already structurally is — the INVARIANTS P2 +
-//       algebra.dag U1 "engine debt" the modeling notes below
-//       cite for declining the data-instance route).
-//   Three bridge properties:
-//     (a) scaffold doc — THIS note; the BooleanAlgebra<Set<T>>
-//         inhabitance is documented prose under the Set<T> type
-//         below, and is NOT machine-readable as a substrate edge.
-//     (b) bounds on use — Wave-A1 consumers that need Set's
-//         BooleanAlgebra ops compose them from `Bool`'s
-//         BooleanAlgebra by pointwise lift at the call site,
-//         using the prose-documented constructions; no consumer
-//         reads a `BooleanAlgebra<Set<T>>` instance edge today
-//         because none exists.
-//     (c) dissolution trigger — when EITHER the v2/seed gains a
-//         parametric `data` instance form (so we can author
-//         `data set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>`
-//         without breaking P2 / engine-debt by also making it the
-//         single authority), OR the pipeline / lens framework
-//         lands a structural-grounding-reader that mechanically
-//         derives BooleanAlgebra instances from pointwise-lift
-//         declarations, this note dissolves and the inhabitance
-//         becomes machine-readable. Until then the gap is named
-//         here, bounded as above, and not silently expanded.
+// (3) `BooleanAlgebra<Set<T>>` inhabitance — DISSOLVED 2026-05-16.
+//   `std/algebra.dag` now owns `PointwisePower<T>`, the canonical
+//   power-set / characteristic-function carrier whose BooleanAlgebra
+//   operations are inherited pointwise from Bool. `Set<T>` below is a
+//   type alias onto that carrier, exactly parallel to
+//   `List<T> = FreeMonoid<T>`. The alias edge is the machine-readable
+//   grounding; no parametric data instance or prose-only side table is
+//   needed.
 //
 // NO ENGINE — NO ENUMERATED OPS. There is deliberately no
 // `list_concat` / `set_union` table here: those would be a parallel
@@ -175,7 +141,7 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid }
+import v4.std.algebra { FreeMonoid, PointwisePower }
 import v4.std.witness { Witness }
 
 
@@ -185,8 +151,8 @@ import v4.std.witness { Witness }
 // CARRIERS, NOT STRUCTURES. This file owns CONTAINER CARRIERS. The
 // algebra structures they ground in (Monoid, BooleanAlgebra) are owned
 // by std/algebra.dag; the inhabitant owns its OWN grounding here per
-// std/algebra.dag's SCOPE note. The grounding is the structural
-// alias / pointwise lift — there is no per-carrier `data
+// std/algebra.dag's SCOPE note. The grounding is structural
+// alias-identity — there is no per-carrier `data
 // <name>: <Algebra><Carrier> = <Algebra> { … }` instance, for two
 // reasons that compose:
 //   (i)  v2-data instance-values are not parametric — no precedent
@@ -266,10 +232,11 @@ type List<T> = FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Set<T> — a subset of T, modeled as a characteristic function. A
-// `Set<T>` IS its `member` function: x ∈ S iff `S.member(x) == true`.
-// This is the textbook denotational form (Wikipedia "Algebra of
-// sets"): a subset is a function T → Bool.
+// Set<T> — a subset of T, modeled by alias-identity to
+// `PointwisePower<T>`. A `Set<T>` IS the pointwise-power carrier's
+// characteristic function: x ∈ S iff `S.member(x) == true`. This is the
+// textbook denotational form (Wikipedia "Algebra of sets"): a subset is
+// a function T → Bool.
 //
 // This carrier denotes ARBITRARY subsets, not "finite subsets" —
 // `universe` and `complement` below are deliberately representable
@@ -281,8 +248,10 @@ type List<T> = FreeMonoid<T>
 // Set<T> here is the unrefined BooleanAlgebra carrier; consumers
 // needing a guaranteed-finite subset wait on the refinement.
 //
-// Algebra grounding — Set<T> inhabits BooleanAlgebra<Set<T>> by
-// POINTWISE EXTENSION of Bool's BooleanAlgebra:
+// Algebra grounding — Set<T> inhabits BooleanAlgebra<Set<T>> because it
+// aliases `PointwisePower<T>`, the canonical algebra.dag construction
+// whose BooleanAlgebra operations are POINTWISE EXTENSIONS of Bool's
+// BooleanAlgebra:
 //
 //   union(a, b)              ≡ member: λx. a.member(x) || b.member(x)
 //   intersect(a, b)          ≡ member: λx. a.member(x) && b.member(x)
@@ -293,18 +262,11 @@ type List<T> = FreeMonoid<T>
 //   difference(a, b)         ≡ intersect(a, complement(b))
 //   symmetric_difference     ≡ union(difference(a,b), difference(b,a))
 //
-// Every one of these falls out of the Bool BooleanAlgebra owned by
-// std/algebra.dag composed with this carrier — there is deliberately
-// no `data set_T_boolean_algebra: BooleanAlgebra<Set<T>>` instance
-// here (the parametric-data + single-authority reasoning in the
-// modeling notes). The pointwise lift IS the inhabitance, exactly
-// the algebra.dag "aliasing is the inhabitant's concern" pattern —
-// BUT note that this grounding lives in PROSE here, not as a
-// substrate-readable inhabitance edge a pipeline / lens consumer
-// can mechanically traverse; that prose-only-grounding gap is
-// itself a tracked scaffold (see "Deferred to Wave-A2 — TRACKED
-// SCAFFOLD" block (3) in the file header for bounds + dissolution
-// trigger).
+// Every one of these falls out of the Bool BooleanAlgebra composed with
+// the `PointwisePower<T>` carrier — there is deliberately no `data
+// set_T_boolean_algebra: BooleanAlgebra<Set<T>>` instance here (the
+// parametric-data + single-authority reasoning in the modeling notes).
+// The alias edge is the machine-readable grounding.
 //
 // Cardinality is NOT intrinsic to Set<T>: counting `true` elements
 // requires an enumeration of T, and this carrier does not witness
@@ -314,11 +276,10 @@ type List<T> = FreeMonoid<T>
 // header's "Deferred to Wave-A2 — TRACKED SCAFFOLD" block (2) has
 // the three bridge properties).
 //
-// Conj record (one field, `member`); not a coproduct — no Practice-4
-// ledger applies.
-type Set<T> {
-  member: fn(T) -> Bool
-}
+// This declaration is a type ALIAS onto a Conj carrier owned by
+// std/algebra.dag. No new Practice-4 ledger applies — there is no new
+// coproduct to dissolve at this layer.
+type Set<T> = PointwisePower<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
