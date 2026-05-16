@@ -17,13 +17,14 @@
 //   - Hook call sites are **per-arm** `ReactHookSite` variants — each arm carries
 //     only the call-signature facts for that hook (deps / cleanup / refs live on
 //     the arms that admit them per react.dev), NOT a flat built-in tag + uniform
-//     `dependency_refs` on every hook (codex canvas:76 — avoids UseState carrying
+//     phantom dependency slots on every hook (codex canvas:76 — avoids UseState carrying
 //     dependency slots it does not have).
 //   - **No** standalone lifecycle / “effect trigger” coproduct: mount / update /
 //     unmount / cleanup-only obligations are read from `UseEffect` /
-//     `UseLayoutEffect` / `UseInsertionEffect` arm payloads (`dependency_refs`,
-//     `NoEffectBody` vs `EffectBody`, `NoCleanup` vs `CleanupBody`) per §4
-//     dissolution receipt — INVARIANTS P1/P2 (anti-pattern §11 #12).
+//     `UseLayoutEffect` / `UseInsertionEffect` arm payloads
+//     (`ReactHookInlineDependenciesArgument`, `NoEffectBody` vs `EffectBody`,
+//     `NoCleanup` vs `CleanupBody`) per §4 dissolution receipt — INVARIANTS P1/P2
+//     (anti-pattern §11 #12).
 //   - `CustomHook` + R4‑Phase‑1.5 Practice‑4 canvas:
 //     docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
@@ -42,8 +43,9 @@
 //   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
 //     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
 //     in-repo — dissolution trigger = new built-in at pin bump; see block ledger)
-//   - ReactHookInlineDependenciesArgument (omit vs present `dependencies` / deps
-//     array — react.dev `useEffect` fidelity; empty `Present` list = explicit `[]`)
+//   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactOptionalEffectBody,
+//     ReactEffectCleanupSite — supporting **substrate sums** (each carries its own
+//     Practice‑4 🟢 ledger below; they are not un-owned implementation details).
 //
 // Consumes (traceability):
 //   - std/collection.dag: List<T> (kernel-ambient `List` needs no import for use;
@@ -76,8 +78,16 @@ type ReactCrossDeclRef
 // ReactOptRef
 //
 // Optional operand at a hook call site (e.g. optional `getServerSnapshot`,
-// optional `useDebugValue` formatter, optional `useActionState` permalink) —
-// NOT a second program spine; encodes arity holes in the pinned API surface.
+// optional `useDebugValue` formatter, optional `useActionState` permalink,
+// optional `useReducer` `init`) — encodes arity holes in the **pinned** API surface.
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: optional slot duplicated on unrelated hooks.
+//   2. Variant-is-data — FAILS: nullable ref admits sentinel collision with payload.
+//   3. Algebraic form — N/A: not std/ algebra.
+//   4. Dimensional — FAILS: at most one of Present / Absent at each optional site.
+//   5. Parameterized family — FAILS: not indexed copy of another carrier.
+// Terminal: binary optional-ref partition (react@19.2.0 call-site substrate).
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
@@ -89,6 +99,14 @@ type ReactOptRef
 // `useEffect` / `useLayoutEffect` / `useInsertionEffect` may be cleanup-only
 // (design-r4 §4: body absent, cleanup present ⇒ unmount-style obligation reads
 // off the arm — not a parallel `OnUnmount` sum).
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: setup body folded into unrelated hook arms.
+//   2. Variant-is-data — FAILS: Bool “has body” admits illegal partial facts.
+//   3. Algebraic form — N/A: grammar proof for setup lives in lowered `Node`.
+//   4. Dimensional — FAILS: XOR at one effect-body site.
+//   5. Parameterized family — FAILS: not Practice-7 copy over hook roster.
+// Terminal: body-present vs cleanup-only effect setup partition.
 type ReactOptionalEffectBody
   = EffectBody { effect_body_ref: ReactCrossDeclRef }
   | NoEffectBody
@@ -98,16 +116,45 @@ type ReactOptionalEffectBody
 // ReactEffectCleanupSite
 //
 // Cleanup function edge, or explicit absence (deps-only / mount-only body).
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: cleanup folded into `dependency_refs` blob.
+//   2. Variant-is-data — FAILS: sentinel int admits “maybe cleanup” ambiguity.
+//   3. Algebraic form — N/A: cleanup algebra lives in lowered `Node`.
+//   4. Dimensional — FAILS: XOR cleanup vs no-cleanup at one site.
+//   5. Parameterized family — FAILS: not `Cleanup<Width>` indexed family.
+// Terminal: cleanup-present vs no-cleanup partition on effect-hook arms.
 type ReactEffectCleanupSite
   = NoCleanup
   | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
 
 
+// ═════════════════════════════════════════════════════════════════════
+// ReactHookInlineDependenciesArgument
+// Anchor: https://react.dev/reference/react/useEffect — optional `dependencies`
+//         argument; **omit** ⇒ Effect re-runs after **every** commit; **present**
+//         carries the inline dependency list (empty list = explicit `[]`, distinct
+//         from omit per react.dev “dependencies” examples).
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: deps live only on a shared `Hook` record (canvas:76).
+//   2. Variant-is-data — FAILS: nullable list conflates omit with empty array.
+//   3. Algebraic form — N/A: dependency algebra is `Object.is` lane in runtime proof.
+//   4. Dimensional — FAILS: XOR omit-argument vs present-array at one call site.
+//   5. Parameterized family — FAILS: not `Deps<N>` Practice-7 ladder.
+// Terminal: omit-vs-present partition for inline dependency-array parameter sites.
+type ReactHookInlineDependenciesArgument
+  = DependenciesArgOmitted
+  | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
-// A1 / ordered children + dependency lists. `List<ReactCrossDeclRef>` on each arm
-// is the ordered **dependency-array** identity spine where that hook admits deps.
+// A1 / ordered children + dependency lists. Inside `DependenciesArgPresent`,
+// `List<ReactCrossDeclRef>` is the ordered **dependency-array** identity spine.
+// **Omit vs present** is modeled only via `ReactHookInlineDependenciesArgument` —
+// never by conflating “missing field” with an empty list.
 //
 // Program-shaped sites use `ReactCrossDeclRef` for declarations whose bodies lower
 // to the `Node` tree in the full bundle — not a second recursive program type here.
@@ -149,8 +196,12 @@ type ReactModuleSurface
 // trigger** = React **semver pin / hooks-index** edit when react.dev adds a new
 // built-in (re‑ratify `ReactHookSite` arms on that PR). **Already dissolved here
 // (structural facts, §4 Q2 / canvas:76):** per-arm call signatures (no uniform
-// effect lifecycle only on `UseEffect` / `UseLayoutEffect` /
-// `UseInsertionEffect` payloads — no parallel lifecycle sum. Ledger — five patterns:
+// phantom `dependency_refs` on every hook); `ReactHookInlineDependenciesArgument`
+// where the pinned API admits **omit vs present** deps; effect lifecycle only on
+// `UseEffect` / `UseLayoutEffect` / `UseInsertionEffect` payloads — no parallel
+// lifecycle sum. **This canvas does not “close” the §12 YELLOW** — it only
+// authorizes Custom **shape** evolution; roster closure remains pin/index edits.
+// Ledger — five patterns:
 //   1. Fact placement — FAILS: shared hook-site tag for resolver/emit.
 //   2. Variant-is-data — FAILS: Int hook_id admits illegal values (P2).
 //   3. Algebraic form — PARTIAL: per-hook algebras live std/ elsewhere.
@@ -171,34 +222,41 @@ type ReactHookSite
     }
   | UseContext { context_ref: ReactCrossDeclRef }
   | UseRef { initial_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/useImperativeHandle — optional deps.
   | UseImperativeHandle {
       ref_target: ReactCrossDeclRef
       factory_ref: ReactCrossDeclRef
-      dependency_refs: List<ReactCrossDeclRef>
+      dependencies: ReactHookInlineDependenciesArgument
     }
   // Anchor: https://react.dev/reference/react/useEffect — deps + cleanup on-arm.
   | UseEffect {
       body: ReactOptionalEffectBody
-      dependency_refs: List<ReactCrossDeclRef>
+      dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
   // Anchor: https://react.dev/reference/react/useLayoutEffect
   | UseLayoutEffect {
       body: ReactOptionalEffectBody
-      dependency_refs: List<ReactCrossDeclRef>
+      dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
   // Anchor: https://react.dev/reference/react/useInsertionEffect
   | UseInsertionEffect {
       body: ReactOptionalEffectBody
-      dependency_refs: List<ReactCrossDeclRef>
+      dependencies: ReactHookInlineDependenciesArgument
       cleanup: ReactEffectCleanupSite
     }
   // Anchor: https://react.dev/reference/react/useEffectEvent — ships **React 19.2**
   //         (https://react.dev/blog/2025/10/01/react-19-2); included because pin ≥19.2.
   | UseEffectEvent { callback_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/useMemo — second arg **required** on
+  //         the pin; model as `Present` only (no `Omitted` inhabitant at grammar).
   | UseMemo { factory_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
-  | UseCallback { callback_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
+  // Anchor: https://react.dev/reference/react/useCallback — optional deps array.
+  | UseCallback {
+      callback_ref: ReactCrossDeclRef
+      dependencies: ReactHookInlineDependenciesArgument
+    }
   | UseTransition
   | UseDeferredValue { value_ref: ReactCrossDeclRef }
   | UseId
