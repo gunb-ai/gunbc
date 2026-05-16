@@ -75,10 +75,132 @@
 //   - std/diagnostic.dag: fail-closed on any step
 //   - std/verification.dag: BitIdentical TestClaim for the fixed-point assert
 //
-// Status: scaffold — fill per TASKS.md T-20 (scaffold early; full self-host
-// content lands incrementally as the pipeline matures; T-15 consumes this
-// for fixed-point validation)
+// Status: filled (declarative core — T-20 incremental scaffold-early
+// slice). The BootstrapPlan DATA + the four-step seed→self0→self1→fixpt
+// sequence are present and v2-compile-clean (the structural gate). The
+// INTERPRETATION of the plan (spawning v2-compiler/rustc/v4-stage-N via
+// extdeps/process.dag, reading/writing build-dir via
+// extdeps/file_system.dag) and the executable BitIdentical fixed-point
+// TestClaim are DEFERRED — see the TRACKED SCAFFOLD note below.
 // Brief: see BRIEF_TEMPLATE.md.
+//
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// DATA, not a runner. This file declares the bootstrap chain AS DATA: an
+// ordered `BootstrapPlan` of `BootstrapStep`s that v2's `run`
+// interpreter walks. There is deliberately NO orchestration body here —
+// no fn that spawns processes, reads the filesystem, or shells out. That
+// is exactly the v3 regression door (build.rs / bootstrap.sh = editable
+// Rust/script authority). The plan is inert structured data; the
+// interpreter that gives it effect is the deferred operation, with a
+// named owner and dissolution trigger (below).
+//
+// WHY `Stage` IS A CLOSED NULLARY SUM. The chain has exactly four named
+// artifacts: the frozen external seed (v2, in src/v2/, touched once) and
+// the three self-host products stage0/stage1/stage2. `Stage` enumerates
+// them; it carries no payload because a stage IS its identity — the
+// emission style (stage0 = v2-style, stage1+ = v4-style) and the source
+// root (always src/v4) are FACTS about a stage, derivable, not stored
+// fields (no non-load-bearing fields — CODING/MODELING discipline). This
+// is why the fixed point is `FixedPoint { Stage1, Stage2 }` and NOT
+// stage0==stage1: stage0 is v2-emission-style, so only stage1==stage2 is
+// the self-host fixed point.
+//
+// WHY THE PINNED HASH IS NOT A STORED LITERAL. STRUCTURE.md §"Bootstrap
+// chain" + the A3 block (above) make the v4 binary a content-addressed
+// release artifact pinned at the fixed-point `Hash` (B1, std/node.dag).
+// `Hash` is opaque (K-1, no literal constructor): a pin value is
+// PRODUCED by `content_hash : Node -> Hash` at interpret time, never
+// hand-written here (a hand-written hash would be exactly the editable
+// proxy A3 rejects). So the plan stores no `pinned: Hash` field; the
+// `FixedPoint` step DECLARES the BitIdentical equality structurally, and
+// the executable assertion over real emitted artifacts is T-15's
+// `BitIdentical` TestClaim CONSUMING this plan — not authored here.
+//
+// TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
+// the operator-ratified declarative-now / operations-deferred discipline
+// (std/collection.dag #3169, canonical json.dag #3184). NOT improvised
+// bodies, NOT bodiless `fn` (frozen v2 rejects bodiless `fn`, DECISIONS
+// PARSE-1):
+//   (1) `interpret(BootstrapPlan) -> Outcome<Hash>` — walks the steps,
+//       spawning v2-compiler/rustc/v4-stage-N (extdeps/process.dag) and
+//       reading src/v4/*.dag + writing transient build-dir Rust
+//       (extdeps/file_system.dag). Both extdeps files are T-4.5 SCAFFOLD
+//       (zero declarations today) — no process/fs carrier exists to
+//       consume. Fail-closed: any step → `Rejected { diagnostic }`
+//       (std/diagnostic.dag `Outcome<T>`, DECISIONS item I).
+//       OWNER/TRIGGER: dissolves when compiler/05_eval.dag (T-22, the
+//       PRIMARY execution path that interprets workflow/*.dag) lands AND
+//       extdeps/{process,file_system}.dag (T-4.5) are filled.
+//   (2) The executable fixed-point assertion (stage1-emitted ==
+//       stage2-emitted, BitIdentical) is a `TestClaim`
+//       (std/verification.dag, `kind: RoundTrips`) AUTHORED BY T-15, not
+//       here — bootstrap.dag declares the `FixedPoint` step it consumes.
+//       OWNER/TRIGGER: T-15 fixed-point validation lane.
+//   Bounds on use: no consumer reads an `interpret`/run symbol from this
+//   file in this PR; the only gate this file rides today is the
+//   structural one (it v2-compiles as well-formed data — the existing CI
+//   gate, modeled concretely in workflow/ci.dag's v2-compile job).
+//
+// This is a Conj record (`BootstrapPlan`) over a closed Disj
+// (`BootstrapStep`); no Practice-4 ledger applies to the record, and
+// `BootstrapStep`'s two variants are structurally distinct payloads
+// (a compile edge vs a fixed-point equality), not a mechanical copy of
+// an enumerable set (the diagnostic.dag `Correction` precedent).
 
 module v4.workflow.bootstrap
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Stage — the four named artifacts of the bootstrap chain. Closed
+// nullary sum: `Seed` is the frozen external v2 binary (src/v2/, touched
+// EXACTLY ONCE); `Stage0/1/2` are the three self-host products. No
+// payload — a stage is its identity (STRUCTURE.md §"Bootstrap chain").
+type Stage
+  = Seed
+  | Stage0
+  | Stage1
+  | Stage2
+
+
+// ─────────────────────────────────────────────────────────────────────
+// BootstrapStep — one step of the chain.
+//
+//   Compile    — `with` compiles src/v4/*.dag and `produces` the next
+//                stage binary (Seed→Stage0 is the seed-once boundary;
+//                Stage0→Stage1, Stage1→Stage2 are self-host).
+//   FixedPoint — assert `left`-emitted == `right`-emitted, BitIdentical.
+//                The self-host fixed point is `FixedPoint { Stage1,
+//                Stage2 }`; the executable assertion is T-15's
+//                `RoundTrips` TestClaim consuming this step (deferred —
+//                TRACKED SCAFFOLD (2) above).
+type BootstrapStep
+  = Compile { with: Stage, produces: Stage }
+  | FixedPoint { left: Stage, right: Stage }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// BootstrapPlan — the ordered step sequence. A `List<BootstrapStep>`
+// applied as a strict sequence (seed once, then self-host to fixed
+// point); the interpreter (TRACKED SCAFFOLD (1)) is fail-closed on any
+// step. The pinned content-hash is NOT a stored field — it is produced
+// by `content_hash` (B1) at interpret time, asserted by T-15.
+type BootstrapPlan {
+  steps: List<BootstrapStep>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// The canonical bootstrap plan — the seed-once → self-host →
+// fixed-point chain AS DATA (STRUCTURE.md §"Bootstrap chain"). This is
+// the ONLY bootstrap authority; v2's `run` interpreter walks THIS.
+data bootstrap_plan: BootstrapPlan = BootstrapPlan {
+  steps: [
+    Compile { with: Seed, produces: Stage0 },
+    Compile { with: Stage0, produces: Stage1 },
+    Compile { with: Stage1, produces: Stage2 },
+    FixedPoint { left: Stage1, right: Stage2 }
+  ]
+}
 

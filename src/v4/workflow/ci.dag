@@ -34,10 +34,145 @@
 //   - extdeps/process.dag: CI steps spawn subprocesses
 //   - workflow/bootstrap.dag: CI runs the bootstrap chain
 //
-// Status: scaffold — fill per TASKS.md T-24
+// Status: filled (declarative core — T-24 structural-gate slice). The
+// CiPipeline DATA shape + the affected-set-selection seam + the C4
+// committed==emit(ci.yml) projection seam are present and
+// v2-compile-clean. The canonical `ci_pipeline` instance models the
+// structural v2-compile gate (the existing day-1 CI gate: v2 indexes
+// src/v4). The ci.yml PROJECTION body, affected-set SELECTION body, and
+// the executable test/eval jobs are DEFERRED — see TRACKED SCAFFOLD.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// DATA, not a runner. `CiPipeline` is the CI pipeline AS DATA: jobs +
+// gates as inert structure. `.github/workflows/ci.yml` is a DERIVED
+// projection of this data (C4), never hand-authored — v3's gate #98
+// `ci_yml_hand_authority_dissolved` was an open R3 gap precisely
+// because the YAML stayed hand-authored; v4 must not reproduce it.
+//
+// WHY job/gate edges are `Symbol`, not inlined sub-nodes. `CiJob.needs`
+// and `CiGate.job` are post-resolution opaque `Symbol` references
+// (std/node.dag, K-1) to job ids — a job-dependency DAG by NAME, never
+// producer-inlining (project_v4_ssa_name_reference_not_inlining: a cyclic
+// or shared dependency graph cannot be finitely represented by
+// inlining). Affected-set selection (TRACKED SCAFFOLD (2)) traverses
+// these `Symbol` edges exactly as lens/affected_set.dag derives its
+// graph by `Symbol`-equality traversal.
+//
+// WHY `command` is an opaque `String`. A job's command line is a leaf
+// lexeme the deferred CI interpreter (extdeps/process.dag) executes —
+// modeled like yaml.dag's scalar `lexeme: String` (the structural cache
+// key + process spawn are the deferred operation, not a stored field).
+// It is job DATA, not a string sentinel: nothing branches on its
+// contents within this substrate.
+//
+// TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
+// the operator-ratified declarative-now / operations-deferred discipline
+// (std/collection.dag #3169, canonical json.dag #3184). NOT improvised
+// bodies, NOT bodiless `fn` (frozen v2 rejects bodiless `fn`, DECISIONS
+// PARSE-1):
+//   (1) `project_ci_yml : CiPipeline -> Outcome<YamlValue>` — the C4
+//       projection: walk `CiPipeline`, build the GitHub Actions
+//       document as `YamlValue` (extdeps/formats/yaml.dag). FAIL-CLOSED
+//       (`Outcome<T>`, std/diagnostic.dag, DECISIONS item I), mirroring
+//       the T-4-seam-gate-ratified `yaml_emit : YamlValue ->
+//       Outcome<String>` seam #3: a structurally-representable but
+//       spec-invalid pipeline emits `Rejected { diagnostic }`, never a
+//       fabricated workflow (INVARIANTS P3). The committed
+//       `.github/workflows/ci.yml` is then a `committed ==
+//       emit(ci_pipeline)` CHECKED PROJECTION (C4 / STRUCTURE.md
+//       invariant 7): divergence ⇒ CI red + STOP-routed; the `.dag` is
+//       authority, the file is a checked shadow.
+//       OWNER/TRIGGER: dissolves when extdeps/formats/yaml.dag
+//       `yaml_emit` is authored (T-4.6) AND compiler/05_emit.dag (T-10)
+//       provides the Shape-B user-program emission path.
+//   (2) `select_jobs : (CiPipeline, Diff) -> List<CiJob>` — affected-set
+//       job selection, consuming lens/affected_set.dag's `affected_set :
+//       (Dag, Diff) -> Witness<ReExecFrontier>` (this is IB-2 / what
+//       dissolves scripts/detect-affected-components.sh). lens/
+//       affected_set.dag is T-21 SCAFFOLD (zero declarations today) — no
+//       `affected_set` / `ReExecFrontier` symbol exists to consume yet,
+//       so the selection body is not authored (scaffold-header drift
+//       discipline: reference the seam, defer the body).
+//       OWNER/TRIGGER: dissolves when lens/affected_set.dag (T-21) lands.
+//   (3) The executable per-job evaluation (running fmt/clippy/test jobs,
+//       structural cache restore/store keyed by `content_hash` B1) rides
+//       compiler/05_eval.dag + extdeps/process.dag.
+//       OWNER/TRIGGER: T-22 (eval) + T-4.5 (process). Until then the
+//       ONLY exercised gate is structural: this file v2-compiles as
+//       well-formed data, and `v2_compile_gate_job` models that existing
+//       day-1 CI gate concretely (not theater — it is the real gate).
+//
+// `CiPipeline` is a Conj record over closed Disj-free records; no
+// Practice-4 ledger applies (records do not dissolve to a richer
+// source — the diagnostic.dag `Diagnostic` / verification.dag
+// `TestClaim` precedent).
 
 module v4.workflow.ci
+
+
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CiJob — one CI job. `id` is its opaque identity; `needs` are the job
+// ids it depends on (the job DAG, traversed by `Symbol` equality);
+// `command` is the leaf command line the deferred interpreter runs.
+type CiJob {
+  id: Symbol
+  command: String
+  needs: List<Symbol>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CiGate — a required check: the pipeline is GREEN only if the job
+// named `job` succeeds. Gates are the affected-set/STOP surface (a
+// failing gate is conspicuous and STOP-routed, A3 machine).
+type CiGate {
+  id: Symbol
+  job: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CiPipeline — the CI pipeline AS DATA. `.github/workflows/ci.yml` is a
+// C4 checked projection of this (TRACKED SCAFFOLD (1)); affected-set
+// selection over `jobs` is TRACKED SCAFFOLD (2).
+type CiPipeline {
+  jobs: List<CiJob>
+  gates: List<CiGate>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Job/gate identities. `Symbol` is opaque (K-1, no spelling accessor);
+// a Symbol value is a declared name (std/integer.dag reason-symbol
+// precedent: `data x: Symbol = x`).
+data v2_compile_src_v4: Symbol = v2_compile_src_v4
+data structural_v2_compile: Symbol = structural_v2_compile
+
+
+// ─────────────────────────────────────────────────────────────────────
+// The structural v2-compile gate — the existing day-1 CI gate modeled
+// concretely: v2 indexes/compiles src/v4 (the parse-viability step that
+// keeps the .dag corpus v2-bridge-clean). This is the ONLY job
+// exercised today; the executable test/eval lane is TRACKED SCAFFOLD
+// (3), deferred to T-22.
+data v2_compile_gate_job: CiJob = CiJob {
+  id: v2_compile_src_v4,
+  command: "v2-compiler compile --source-root src/v4",
+  needs: []
+}
+
+data ci_pipeline: CiPipeline = CiPipeline {
+  jobs: [v2_compile_gate_job],
+  gates: [
+    CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+  ]
+}
 
