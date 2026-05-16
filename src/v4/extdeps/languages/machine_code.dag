@@ -65,7 +65,7 @@ import v4.std.integer {
   UInt128
 }
 import v4.std.collection { List }
-import v4.std.machine { Byte, Word16, Word32, Word64, Word128 }
+import v4.std.machine { Byte }
 import v4.std.node { Symbol }
 
 
