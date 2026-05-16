@@ -51,6 +51,33 @@
 //     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
 //   - lens read: () -> Set<TestClaim>  (the produced corpus)
 //
+// C5-1 / C5-3 (operator-ratified 2026-05-16) — the bidirectional_roundtrip
+// contract:
+//   - C5-1: a RoundTrips TestClaim asserts `ingest∘emit = id_Node` —
+//     B1 `content_hash(N) == content_hash(ingest(emit(N)))` — the
+//     MEANING round-trips. It does NOT assert text-byte identity
+//     (`emit∘ingest = id_text`); the lexical skin (0x1F vs 31,
+//     whitespace, comment placement) is allowed to canonicalize.
+//   - C5-3: F (the lossless core a roundtrip claim covers) = the
+//     SPEC-PROVABLE meaning set. If the language spec does not
+//     unambiguously place a feature on the meaning side it is OUT of F
+//     — Declared-normalized (emit canonicalizes; recorded per-feature)
+//     or Fail-closed (ingest can't disambiguate without semantics ⇒
+//     Diagnostic, never a guess). Conservative / fail-safe: the spec
+//     decides, the modeler has NO discretion. A language's roundtrip
+//     corpus covers its declared F; non-F shrinkage (e.g. C++
+//     most-vexing-parse) is explicit up front, not discovered at test
+//     time.
+//   - Text-level fidelity (`emit∘ingest = id_text`) is a DEFERRED,
+//     ORTHOGONAL future layer: a concrete-syntax/trivia sidecar
+//     OUTSIDE the Node and OUTSIDE content_hash, partial (only
+//     ingest-originated Nodes; vacuous for synthesized ones). It does
+//     NOT change C5-1 or content_hash (Node stays the α-/rename-
+//     invariant identity, K-1). The C5-fidelity Declared-normalized
+//     per-feature dispositions ARE its forward hook — adopting
+//     node-level + the disposition table preserves text-level as a
+//     clean future add with zero rework. Not built now.
+//
 // Tier × Layer cross-cut discipline (per TESTING.md ratio targets):
 //   - Unit tests target ~75%: type-construction, exhaustiveness, lens-applicability
 //   - Integration tests target ~15%: cross-stage invariants, fixed-point convergence
