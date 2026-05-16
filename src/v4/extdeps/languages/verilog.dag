@@ -891,12 +891,16 @@ type VariableInitializerClause
 //                       [vectored | scalared] [signed] [range]
 //                       [delay3] list_of_net_decl_assignments ;
 //
-// The vectored/scalared modifier is a synthesis hint (rare); not
-// modeled in this initial cut — the lexeme captures it via
-// drive_strength_lexeme (the parser collapses it into the strength
-// lexeme position by §A.2.2). The charge_strength applies only to
-// `trireg` per spec §7.10; admitted alongside drive_strength via the
-// shared lexeme.
+// The vectored/scalared modifier is a SEPARATE §A.2.1.3 declaration-
+// boundary fact distinct from drive_strength — modeled structurally
+// via the dedicated `VectoredessClause` field (NoVectoredness |
+// VectoredNet | ScalaredNet). The prior framing that collapsed
+// vectored/scalared into the drive_strength lexeme position was a
+// codex BLOCKING-fix correction on PR #3176 2026-05-16. The
+// charge_strength applies only to `trireg` per spec §7.10; admitted
+// alongside drive_strength via the shared DriveStrengthClause lexeme
+// (charge_strength is itself a closed keyword set owned by the
+// bundled T-4 LanguageModel).
 //
 //   - net_type                 which net-type (wire / wand / wor /
 //                              tri / … per the closed NetType set)
