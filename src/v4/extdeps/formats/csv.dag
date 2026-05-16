@@ -8,7 +8,8 @@
 //     DQUOTE-quoted fields with doubled-DQUOTE escape (§2) — **not** a
 //     tunable multi-dialect CSV surface here (TSV / custom separators = out of
 //     scope for this authority file unless operator opens a sibling anchor).
-//   - `CsvDialect` — nullary witness for that pinned profile (`CsvDialectRfc4180`).
+//   - `CsvDialect` — **RFC 4180 profile witness** (`CsvDialectRfc4180 {}`): no
+//     tunable wire parameters; additional profiles = new sum arms / sibling file.
 //   - `CsvDocument` / `CsvRow` — honest **pre-ruling** carriers for tabular
 //     CSV data: `width: Nat` + `List<String>` per row (see **RECTANGULARITY**
 //     below). This is **not** yet the post-ruling “row arity STRUCTURALLY ==
@@ -58,12 +59,10 @@ import v4.std.nat { Nat }
 // table vs ragged rows, how `width` / `Row` / header interact, and what
 // parse/emit MUST do, is **operator-pending** — this worker does NOT pick a
 // disposition, does NOT describe a ratified parse policy here, and does NOT
-// block on the ruling. The immutable header's "STRUCTURALLY == width" prose
-// is frozen operator-tier; the pre-reconcile body below carries honest
-// carriers (`List<String>` per row, `Nat` width metadata) with explicit 🟡
-// (2) trigger. Structural illegal-state unrepresentability (INVARIANTS §2)
-// for rectangularity waits that ruling + any substrate it instructs (same
-// class as toml.dag `NonEmptyStr` / header reconcile — tracked-not-silent).
+// block on the ruling. **Current mechanical types** (`CsvRow` / `CsvDocument`)
+// are honest pre-reconcile carriers (`List<String>` per row, `Nat` width) with
+// explicit 🟡 (2) trigger — they do **not** yet enforce post-ruling structural
+// rectangularity at the type layer (INVARIANTS §2 honesty: no false guarantee).
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: `CsvRow`,
 // `CsvDocument`, **`CsvDialect` (nullary RFC 4180 profile)**, and
@@ -110,7 +109,7 @@ import v4.std.nat { Nat }
 // Ledger — single RFC profile; additional dialects = new sum arms or sibling
 // modules under operator pin, not open `Char` parameters.
 type CsvDialect
-  = CsvDialectRfc4180
+  = CsvDialectRfc4180 {}
 
 
 // ─────────────────────────────────────────────────────────────────────
