@@ -375,13 +375,19 @@ fn float_body_compare_ieee_ordered(a: FloatBody, b: FloatBody) -> Ordering {
 // `Produced` with `float_body_compare_ieee_ordered` (numeric ordered compare on
 // the non-NaN subset, `±0` ⇒ `Equal`; non-finite tie-breaks delegate to
 // `float_body_compare_semantic_total` — scaffold order on `FloatSpecial` only,
-// not interchange NaN payload `totalOrder`).
-fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
+// not interchange NaN payload `totalOrder`). Caller supplies **two** `Symbol`
+// anchors — see modeling notes "SYMBOL ANCHORS (P2 / diagnostic.dag)".
+fn float_ordered_compare_tier2(
+  a: Float,
+  b: Float,
+  failure_reason: Symbol,
+  failure_at_port: Symbol,
+) -> Outcome<Ordering> {
   if float_body_is_nan(a.body) {
     Rejected {
       diagnostic: Diagnostic {
-        reason: diagnostic_anchor,
-        at: PortLocus { port: diagnostic_anchor },
+        reason: failure_reason,
+        at: PortLocus { port: failure_at_port },
         correction: Unavailable { reason: UserInputBoundary },
       }
     }
@@ -389,8 +395,8 @@ fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) ->
     if float_body_is_nan(b.body) {
       Rejected {
         diagnostic: Diagnostic {
-          reason: diagnostic_anchor,
-          at: PortLocus { port: diagnostic_anchor },
+          reason: failure_reason,
+          at: PortLocus { port: failure_at_port },
           correction: Unavailable { reason: UserInputBoundary },
         }
       }
