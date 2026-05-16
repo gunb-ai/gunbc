@@ -657,6 +657,173 @@ type Signedness
 
 
 // ─────────────────────────────────────────────────────────────────────
+// DriveStrengthClause — the closed Verilog drive-strength /
+// charge-strength clause classifier on a net_declaration (IEEE
+// 1364-2005 §A.2.1.3 / §7.10). The clause is OPTIONAL per spec —
+// present-or-absent partition modeled as a closed Disj rather than
+// an empty-string sentinel on a `String` field (openai-pro
+// REQUEST_CHANGES on PR #3176; same pattern as PortConnectionActual's
+// BlankConnection — closed sum, not sentinel).
+//
+//   - NoDriveStrength
+//       — no `(strong0, weak1)` / `(small)` clause on the
+//       declaration.
+//   - DriveStrengthLexeme { lexeme: String }
+//       — the clause as a verbatim lexeme (sub-grammar deferred to
+//       T-4 LanguageModel — the spec's closed strength-keyword set
+//       lives there).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits the present/absent
+// partition; per-strength-keyword closure is owned by the bundled
+// LanguageModel.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter +
+//      every drive-resolution consumer reads the clause uniformly;
+//      shared classifier.
+//   2. Variant-is-data — FAILS: collapsing to `{ lexeme: String }`
+//      with "" = absent reintroduces the empty-string sentinel
+//      anti-pattern this Disj exists to dissolve (PortConnection
+//      Actual's BlankConnection precedent rejected the same shape).
+//   3. Algebraic form — N/A by construction: the present/absent
+//      partition is the spec's clause-presence axis; not a richer
+//      std/ algebraic structure.
+//   4. Dimensional — FAILS: a net_declaration has EXACTLY ONE
+//      drive-strength clause state; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: NoDriveStrength is nullary;
+//      DriveStrengthLexeme carries a `lexeme: String` payload —
+//      structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog drive-strength clause-
+// presence classifier.
+type DriveStrengthClause
+  = NoDriveStrength
+  | DriveStrengthLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DelayClause — the closed Verilog delay3 clause classifier on a
+// net_declaration (IEEE 1364-2005 §A.2.1.3 / §7.14). The clause is
+// OPTIONAL per spec — present-or-absent partition as a closed Disj
+// (same pattern as DriveStrengthClause).
+//
+//   - NoDelay
+//       — no `#5` / `#(2:3:4)` clause on the declaration.
+//   - DelayLexeme { lexeme: String }
+//       — the delay clause as a verbatim lexeme; sub-grammar deferred
+//       to T-4 LanguageModel.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter and
+//      every timing-aware consumer reads the clause uniformly.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejection
+//      same argument as DriveStrengthClause.
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: exactly one delay-clause state per
+//      declaration.
+//   5. Parameterized family — FAILS: heterogeneous payloads
+//      (Practice 7).
+// Terminal: the closed two-way Verilog delay-clause-presence
+// classifier.
+type DelayClause
+  = NoDelay
+  | DelayLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetInitializerClause — the closed Verilog net_decl_assignment
+// initializer-presence classifier (IEEE 1364-2005 §A.2.4). Optional
+// per spec — present-or-absent partition as a closed Disj.
+//
+//   - NoNetInitializer
+//       — `wire a;` form: no initializer expression.
+//   - NetInitializerLexeme { lexeme: String }
+//       — `wire a = expr;` form: the initializer expression as a
+//       verbatim lexeme.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter and
+//      every elaboration-time net-initialization consumer reads
+//      the clause uniformly.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected
+//      (same argument).
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one initializer state per declarator.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+// Terminal: the closed two-way Verilog net-initializer-presence
+// classifier.
+type NetInitializerClause
+  = NoNetInitializer
+  | NetInitializerLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// UnpackedDimensionsClause — the closed Verilog
+// unpacked-array-dimensions-presence classifier on a variable
+// declarator (IEEE 1364-2005 §7.4 / §A.2.4). Optional per spec —
+// present-or-absent partition.
+//
+//   - NoUnpackedDimensions
+//       — `reg a;` form: scalar (no unpacked array).
+//   - UnpackedDimensionsLexeme { lexeme: String }
+//       — `reg mem[0:1023];` form: unpacked-array dimensions as a
+//       verbatim lexeme.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every variable-declaration consumer
+//      reads the clause uniformly to size the unpacked array vs
+//      scalar.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected.
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one unpacked-dimensions state per
+//      declarator.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+// Terminal: the closed two-way Verilog unpacked-dimensions-presence
+// classifier.
+type UnpackedDimensionsClause
+  = NoUnpackedDimensions
+  | UnpackedDimensionsLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VariableInitializerClause — the closed Verilog variable-declarator
+// initializer-presence classifier (IEEE 1364-2005 §A.2.4). Optional
+// per spec — present-or-absent partition.
+//
+//   - NoVariableInitializer
+//       — `reg a;` form: no initializer.
+//   - VariableInitializerLexeme { lexeme: String }
+//       — `reg a = 8'h00;` form: initializer as a verbatim lexeme.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
+// as NetInitializerClause; abbreviated for brevity (each pattern's
+// argument is identical modulo "net" vs "variable").
+//   1. Fact placement — FAILS: shared classifier across emitters /
+//      simulation-init / elaboration consumers.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected.
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one initializer state per declarator.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+// Terminal: the closed two-way Verilog variable-initializer-
+// presence classifier.
+type VariableInitializerClause
+  = NoVariableInitializer
+  | VariableInitializerLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // NetDeclaration — a Verilog net declaration (`wire foo;`,
 // `wire [7:0] bus;`, `wire signed [15:0] s;`, `wand x;`,
 // `wire (strong0, weak1) #5 a = expr_a, b, c = expr_c;`).
@@ -718,8 +885,8 @@ type NetDeclaration {
   net_type: NetType
   packing: PackingShape
   signedness: Signedness
-  drive_strength_lexeme: String
-  delay_lexeme: String
+  drive_strength: DriveStrengthClause
+  delay: DelayClause
   declarators: NonEmptyList<NetDeclarator>
 }
 
@@ -740,7 +907,7 @@ type NetDeclaration {
 //                           the established body_lexeme precedent.
 type NetDeclarator {
   name: Symbol
-  initializer_lexeme: String
+  initializer: NetInitializerClause
 }
 
 
@@ -880,8 +1047,8 @@ type VariableDeclaration
 //                                  grammar deferred.
 type VariableDeclarator {
   name: Symbol
-  unpacked_dimensions_lexeme: String
-  initializer_lexeme: String
+  unpacked_dimensions: UnpackedDimensionsClause
+  initializer: VariableInitializerClause
 }
 
 
@@ -1828,6 +1995,52 @@ type GenerateRegion {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// LoopGenerateConstruct — a Verilog `for ( genvar = init ; cond ;
+// next ) generate_block` construct (IEEE 1364-2005 §12.4 +
+// §A.1.4 / §A.4.2 loop_generate_construct). Per spec grammar
+// loop_generate_construct is a module_or_generate_item DIRECTLY
+// (not nested inside `generate ... endgenerate`); a bare
+// `for (genvar i = 0; i < 8; i = i + 1) … endgenerate` is a legal
+// module-body item per Annex A.1.4. Conj record (no Practice-4
+// ledger).
+//
+//   - body_lexeme    the entire generate-for construct (genvar
+//                    init/cond/iteration + generate_block body)
+//                    as a verbatim lexeme; sub-grammar deferred to
+//                    T-4 LanguageModel (the elaboration-time
+//                    iteration semantics live there).
+//
+// Added per openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 —
+// the prior GenerateRegion variant only covered the `generate ...
+// endgenerate` form, omitting the bare loop_generate_construct
+// admitted directly at module-item level per spec Annex A.1.4.
+type LoopGenerateConstruct {
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ConditionalGenerateConstruct — a Verilog `if (cond) generate_block
+// [else generate_block]` or `case (cond) ... endcase` conditional
+// generate construct (IEEE 1364-2005 §A.1.4 / §A.4.2
+// conditional_generate_construct = if_generate_construct |
+// case_generate_construct). Like LoopGenerateConstruct, this is
+// admitted directly at module-item level per spec Annex A.1.4
+// (not nested inside `generate ... endgenerate`). Conj record (no
+// Practice-4 ledger).
+//
+//   - body_lexeme    the entire conditional-generate construct
+//                    (if/case head + generate_block body) as a
+//                    verbatim lexeme; sub-grammar deferred to
+//                    T-4 LanguageModel.
+//
+// Added per openai-pro REQUEST_CHANGES on PR #3176 2026-05-16.
+type ConditionalGenerateConstruct {
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // SpecifyBlock — a Verilog `specify ... endspecify` block
 // (IEEE 1364-2005 §14, §12.2). Specify blocks declare module path
 // delays + timing checks (`$setup`, `$hold`, `$width`, etc.). Conj
@@ -2178,6 +2391,8 @@ type AnsiModuleItem
   | ModuleInstanceItem { instance: ModuleInstance }
   | DefparamDeclarationItem { defparam: DefparamDeclaration }
   | GenerateRegionItem { generate_region: GenerateRegion }
+  | LoopGenerateConstructItem { loop_generate: LoopGenerateConstruct }
+  | ConditionalGenerateConstructItem { conditional_generate: ConditionalGenerateConstruct }
   | SpecifyBlockItem { specify_block: SpecifyBlock }
   | TaskDeclarationItem { task: TaskDeclaration }
   | FunctionDeclarationItem { function_decl: FunctionDeclaration }
@@ -2216,20 +2431,21 @@ type NonAnsiModuleItem
 // modeled via a closed Disj rather than a nullable field.
 //
 //   - NoModuleParameterPortList
-//       — `module M (a, b);` — no `#(...)` clause; the module
-//       takes no header-overridable parameters. (Body
-//       ParameterDeclarationItem may still appear, but those
-//       parameters are body-scoped and not part of the header-
-//       overridable surface; a ModuleInstance's
-//       ParameterOverrides bind to the HEADER parameter port list
-//       per §12.1.3.)
-//   - ModuleParameters { parameters: List<ParameterDeclaration> }
+//       — `module M (a, b);` — no `#(...)` clause; the module's
+//       OVERRIDEABLE-PARAMETER SURFACE is the ordered list of body
+//       `ParameterDeclarationItem` declarations per spec §12.1
+//       conditional rule (when no header parameter port list is
+//       given, body `parameter` declarations are the overrideable
+//       parameters). Instantiation `ParameterOverrides` actuals
+//       bind to THAT body-derived list.
+//   - ModuleParameters { parameters: NonEmptyList<ParameterDeclaration> }
 //       — `module M #(parameter W = 8, parameter D = 16) (a, b);`
-//       — the header carries the parameter port list. These
-//       parameters are externally overridable via instantiation
-//       `#(...)` syntax (the ParameterOverrides Disj's actuals
-//       bind positionally or by name to THESE header parameters,
-//       not to body ParameterDeclarations).
+//       — the header carries an explicit `#(...)` parameter port
+//       list. THESE header parameters are the overrideable surface;
+//       any body `ParameterDeclarationItem` becomes LOCAL (not
+//       overrideable) per the spec §12.1 conditional rule. Instantiation
+//       `ParameterOverrides` actuals bind positionally or by name
+//       to the header parameters only.
 //
 // CLOSED (C1 stop-signal). IEEE 1364-2005 §12.1 admits exactly the
 // present-or-absent partition; SystemVerilog adds type parameters
@@ -2287,17 +2503,30 @@ type ModuleParameterPortList
 //       "completely declared" and body redeclarations are a syntax
 //       error).
 //
-// Both variants carry name + parameter_port_list. The header
-// parameter_port_list (`#(parameter W = 8)`) extends with body
-// parameter declarations to form the module's UNIFIED OVERRIDEABLE
-// parameter surface — instantiation `#(...)` overrides bind to the
-// projection of header parameters concatenated with body
-// ParameterDeclarationItems (in declaration order); body
-// LocalParameterDeclarationItem is EXCLUDED from the overrideable
-// surface per §3.10 (codex BLOCKING on PR #3176 — the prior framing
-// suggested only header parameters were overrideable, but per spec
-// both header and body `parameter` declarations are overrideable;
-// only `localparam` is not).
+// Both variants carry name + parameter_port_list. The module's
+// OVERRIDEABLE-PARAMETER SURFACE is determined by IEEE 1364-2005
+// §12.1's CONDITIONAL rule (clarified per openai-pro REQUEST_CHANGES
+// on PR #3176 2026-05-16 — the prior framing was internally
+// inconsistent on this rule):
+//
+//   - WHEN `parameter_port_list` is `ModuleParameters { ... }` (i.e.
+//     the module has an explicit `#(...)` header clause), THOSE
+//     header parameters ARE the overrideable parameter surface; any
+//     body `ParameterDeclarationItem` is LOCAL (not overrideable —
+//     even though it uses the `parameter` keyword).
+//   - WHEN `parameter_port_list` is `NoModuleParameterPortList` (no
+//     header `#(...)`), the OVERRIDEABLE parameter surface is the
+//     ORDERED LIST of body `ParameterDeclarationItem` declarations
+//     in source-appearance order.
+//   - `LocalParameterDeclarationItem` is NEVER part of the
+//     overrideable surface regardless of header presence (per §3.10
+//     `localparam` is local-only by spec).
+//
+// Instantiation `#(parameter overrides)` clauses bind by position or
+// by name to whichever set IS the overrideable surface per the
+// conditional rule above. Downstream override-resolution consumers
+// read the per-variant `parameter_port_list` to determine which set
+// to walk.
 //
 // Per the IN-B PROBE FINDING: the `items` field IS the parallel-
 // Conj surface; the structural concurrency of multiple always-blocks
