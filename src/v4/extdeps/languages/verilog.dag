@@ -887,6 +887,9 @@ type NetDeclaration {
   signedness: Signedness
   drive_strength: DriveStrengthClause
   delay: DelayClause
+  // 🟡 spec-non-empty (§A.2.1.3) — deferred to std/collection.dag
+  // Wave-A2 `List<T> where non_empty` refinement; see shared
+  // TRACKED-SCAFFOLD note above.
   declarators: List<NetDeclarator>
 }
 
@@ -1011,6 +1014,9 @@ type NetDeclarator {
 // classifier; illegal kind×packing AND kind×signedness combinations
 // are unrepresentable by construction.
 type VariableDeclaration
+  // declarators: 🟡 spec-non-empty (§A.2.4 / §7.4) — deferred to
+  // std/collection.dag Wave-A2 `List<T> where non_empty` refinement;
+  // see shared TRACKED-SCAFFOLD note above.
   = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
   | IntegerVariable { declarators: List<VariableDeclarator> }
   | RealVariable { declarators: List<VariableDeclarator> }
@@ -1505,6 +1511,14 @@ type ParameterTypeKind
 //   4. LocalParameterDeclaration.assignments         (§A.2.1.1)
 //   5. SpecparamDeclaration.assignments              (§A.2.1.1)
 //   6. ModuleParameters.parameters                   (§12.1)
+//   7. AlwaysBlockSensitivity.ExplicitEventList.items (§9.7.2)
+//   8. ParameterOverrides.OrderedParameterOverrides.actuals (§12.1.3)
+//   9. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
+//
+// Sites 7-9 added 2026-05-16 per codex REQUEST_CHANGES on PR #3176
+// at sha f87fdf189; same deferred-refinement disposition per the
+// RQ-3 / Wave-A2 authority above (codex's motivation is spec-correct;
+// the FORM is the deferred refinement, not a verilog-local mint).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1553,6 +1567,8 @@ type ParameterAssignment {
 // without these facts the conversion is unspecified).
 type ParameterDeclaration {
   type_kind: ParameterTypeKind
+  // 🟡 spec-non-empty (§A.2.1.1) — deferred to std/collection.dag
+  // Wave-A2 refinement; see shared TRACKED-SCAFFOLD note above.
   assignments: List<ParameterAssignment>
 }
 
@@ -1706,6 +1722,9 @@ type AlwaysBlock {
 type AlwaysBlockSensitivity
   = NoEventControl
   | ImplicitAtStar
+  // ExplicitEventList.items: 🟡 spec-non-empty (§9.7.2) — deferred to
+  // std/collection.dag Wave-A2 refinement; see shared TRACKED-SCAFFOLD
+  // note above. (NoEventControl already covers the no-`@(...)` form.)
   | ExplicitEventList { items: List<SensitivityItem> }
 
 
@@ -1950,6 +1969,12 @@ type NamedParameterOverride {
 // override classifier of the IEEE 1364-2005 spec.
 type ParameterOverrides
   = NoParameterOverrides
+  // OrderedParameterOverrides.actuals + NamedParameterOverrides.
+  // overrides: 🟡 spec-non-empty (§12.1.3) — deferred to
+  // std/collection.dag Wave-A2 refinement; see shared TRACKED-SCAFFOLD
+  // note above. (NoParameterOverrides already covers the omitted-
+  // clause form, so an empty present-clause is structurally redundant
+  // AND spec-illegal.)
   | OrderedParameterOverrides { actuals: List<String> }
   | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
 
@@ -2162,6 +2187,8 @@ type GenvarDeclaration {
 //                   ParameterAssignment carries name + default_lexeme.
 type LocalParameterDeclaration {
   type_kind: ParameterTypeKind
+  // 🟡 spec-non-empty (§A.2.1.1) — deferred to std/collection.dag
+  // Wave-A2 refinement; see shared TRACKED-SCAFFOLD note above.
   assignments: List<ParameterAssignment>
 }
 
@@ -2309,6 +2336,8 @@ type UdpInstantiation {
 //                   admitted via the assignment's lexeme.
 type SpecparamDeclaration {
   packing: PackingShape
+  // 🟡 spec-non-empty (§A.2.1.1) — deferred to std/collection.dag
+  // Wave-A2 refinement; see shared TRACKED-SCAFFOLD note above.
   assignments: List<ParameterAssignment>
 }
 
@@ -2505,6 +2534,9 @@ type NonAnsiModuleItem
 // port-list classifier of the IEEE 1364-2005 spec §12.1.
 type ModuleParameterPortList
   = NoModuleParameterPortList
+  // ModuleParameters.parameters: 🟡 spec-non-empty (§12.1) — deferred
+  // to std/collection.dag Wave-A2 refinement; see shared TRACKED-
+  // SCAFFOLD note above.
   | ModuleParameters { parameters: List<ParameterDeclaration> }
 
 
