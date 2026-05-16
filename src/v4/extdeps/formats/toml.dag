@@ -279,13 +279,23 @@ module v4.extdeps.formats.toml
 //      kinds; mutually-exclusive alternatives (a value is a string or
 //      an integer or …, never several at once), never simultaneous
 //      coordinates.
-//   5. Parameterized family — FAILS: the eight variants are
-//      structurally heterogeneous (a `String`; int `lexeme`; float
-//      `lexeme`; `Bool`; datetime `lexeme`; `List<TomlValue>`; two
-//      distinct-construct `Map<String, TomlValue>`) — NOT one generic
-//      `F<X>` / projection over a separately-declared enumerable set
-//      (Practice 7). They are the irreducible constructors of the TOML
-//      v1.0.0 value space, not a mechanical copy of an enumerable set.
+//      (Per the ADJUDICATION in pattern 2 + the TomlInlineTable/
+//      TomlTable bullet: `TomlInlineTable`/`TomlTable` are NOT two
+//      distinct value constructs — they are ONE table kind
+//      (`Map<String, TomlValue>`) whose body still enumerates two
+//      variants ONLY pending the operator header-reconcile that
+//      collapses them; inline-vs-standard is construction syntax →
+//      deferred parser. So the genuinely-distinct value kinds are the
+//      SEVEN below; the eighth is a duplicated-map discriminant held
+//      tracked-not-silent, not a real distinction.)
+//   5. Parameterized family — FAILS: the (post-collapse) seven
+//      genuinely-distinct value kinds are structurally heterogeneous
+//      (a `String`; int `lexeme`; float `lexeme`; `Bool`; datetime
+//      `lexeme`; `List<TomlValue>`; one table `Map<String,
+//      TomlValue>`) — NOT one generic `F<X>` / projection over a
+//      separately-declared enumerable set (Practice 7). They are the
+//      irreducible constructors of the TOML v1.0.0 value space, not a
+//      mechanical copy of an enumerable set.
 // Terminal: the irreducible closed TOML v1.0.0 value space; a recursive
 // Disj whose Array/InlineTable/Table children recurse through kernel
 // `List`/`Map` of `TomlValue` (A1 recursion-in-children, name-reference
