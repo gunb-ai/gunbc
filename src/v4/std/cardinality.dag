@@ -10,7 +10,8 @@
 // Consumes:
 //   - std/node.dag: Cardinality connective
 //
-// Status: scaffold — fill per TASKS.md T-3
+// Status: T-3 modeled 2026-05-16 (stern-hawk-619); descent-evidence
+//   carriers + Multiplicity refinement
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
