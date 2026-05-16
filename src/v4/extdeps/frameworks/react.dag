@@ -16,21 +16,25 @@
 // Owns:
 //   - ReactModuleSurface (client vs React Server Components module capability)
 //   - ReactFunctionComponent (surface + props + render root)
-//   - ReactPropsSite (props type + value identities — K-1 `Symbol` per STRUCTURE)
+//   - ReactPropsSite (props type + value sites — `DeclarationRef` edges; same
+//     structural role as K-1 `Symbol` name-refs in std/node.dag, but resolvable
+//     under `compile_to_dag` today because `v3.spec.v3_l1::DeclarationRef` is
+//     bootstrap-seeded — 🟡 TRACKED-SCAFFOLD: when v4 import wiring loads
+//     `v4.std.node::Symbol` in single-file compiles, these fields ratchet to
+//     `Symbol` per STRUCTURE.md K-1; trigger = import/M1 substrate closes.)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
 //     fragment + text partition)
 //   - ReactContextBinding (`createContext` site identity)
 //   - ReactHook, ReactHookKind, ReactBuiltinHook (closed hook API partition)
-//   - ReactComponentEffect (trigger + effect body **as `Node`** — the kernel’s
-//     sole recursive program carrier; grammar lowers TS/JS closures here)
+//   - ReactComponentEffect (trigger + effect body as `Node`)
 //   - ReactEffectTrigger (closed scheduling-class partition)
 //
 // Consumes (traceability):
-//   - std/node.dag: Node, Symbol, Path (`Path` = ordered `List<Symbol>` carrier
-//     from node.dag for child / dependency **sequences** without authoring raw
-//     `List<Symbol>` in this module — see modeling notes)
+//   - std/node.dag: Node (program spine; kernel carrier for closures / render)
+//   - v3.spec.v3_l1: DeclarationRef (bootstrap-seeded declaration edges until
+//     v4 `Symbol` resolves in isolated `compile_to_dag` — scaffold above)
+//   - std/collection.dag: List<T> (traceability for `List<DeclarationRef>`)
 //   - std/diagnostic.dag: Outcome<T> (D1 / DECISIONS.md **I**) — commentary only
-//   - extdeps/languages/typescript.dag: props typing (traceability; no import edge)
 //
 // Owned ELSEWHERE: JSX/TSX grammar, portals, Suspense, class components, Next.js
 // directives, per-hook algebra inhabitance, GroundingMap home, parse→Outcome ops.
@@ -42,20 +46,27 @@
 module v4.extdeps.frameworks.react
 
 
-import v4.std.node { Node, Symbol, Path }
+import v3.spec.v3_l1 { DeclarationRef }
+import v4.std.node { Node }
+import v4.std.collection { List }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
-// A1 / K-1. Opaque identities use `Symbol`. Ordered sequences of those identities
-// reuse `Path` (`steps: List<Symbol>` in std/node.dag): one substrate carrier for
-// “ordered list of opaque names”, read by React lenses as **child order** or
-// **dependency-list order**, not necessarily as a diff-route through `Node` edges.
+// A1 / ordered children + dependency lists. `List<DeclarationRef>` is the
+// substrate’s ordered spine of declaration identities (bootstrap-resolvable in
+// `compile_to_dag`); React lenses read it as **dependency-array order** or **child
+// order**, not as arbitrary expression forests (those lower to `Node` at grammar
+// sites elsewhere).
 //
-// `Node` for effect bodies / custom-hook implementation / render root: the
-// substrate’s single recursive program carrier — TS/JS surface lowers into these
-// trees; this avoids a second parallel recursion.
+// `DeclarationRef` vs `Symbol` (🟡 scaffold). `Symbol` is the v4 K-1 opaque name
+// identity (std/node.dag). Isolated `compile_to_dag` on this file does not yet
+// resolve `import v4.std.node { Symbol }` into the declaration table (import lowering
+// is currently a no-op at M1(2.7) — see v3-compiler `lower_item` on `Import`).
+// `DeclarationRef` is the bootstrap-seeded stand-in so the model compiles and CI
+// can ratchet structure now; the ratchet to `Symbol` is operator-owned when import
+// wiring lands (header trigger).
 //
 // D1. Future `parse_* -> Outcome<…>` seams reference `v4.std.diagnostic.Outcome<T>`;
 // no operation rows here (DECLARATIVE-NOW).
@@ -133,7 +144,7 @@ type ReactHookKind
 //         https://react.dev/reference/react/useEffect#parameters
 type ReactHook {
   kind: ReactHookKind
-  dependency_value_path: Path
+  dependency_refs: List<DeclarationRef>
 }
 
 
@@ -169,8 +180,8 @@ type ReactComponentEffect {
 // ReactPropsSite
 // Anchor: https://react.dev/learn/passing-props-to-a-component
 type ReactPropsSite {
-  props_type_ref: Symbol
-  props_value_ref: Symbol
+  props_type_ref: DeclarationRef
+  props_value_ref: DeclarationRef
 }
 
 
@@ -188,9 +199,9 @@ type ReactFunctionComponent {
 // ReactHostElement
 // Anchor: https://react.dev/reference/react-dom/components
 type ReactHostElement {
-  tag_ref: Symbol
+  tag_ref: DeclarationRef
   props: ReactPropsSite
-  children_path: Path
+  child_refs: List<DeclarationRef>
 }
 
 
@@ -198,9 +209,9 @@ type ReactHostElement {
 // ReactCompositeElement
 // Anchor: https://react.dev/reference/react/createElement
 type ReactCompositeElement {
-  component_ref: Symbol
+  component_ref: DeclarationRef
   props: ReactPropsSite
-  children_path: Path
+  child_refs: List<DeclarationRef>
 }
 
 
@@ -220,8 +231,8 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { children_path: Path }
-  | Text { text_value_ref: Symbol }
+  | Fragment { child_refs: List<DeclarationRef> }
+  | Text { text_value_ref: DeclarationRef }
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -229,5 +240,5 @@ type ReactElement
 // Anchor: https://react.dev/reference/react/createContext +
 //         https://react.dev/learn/passing-data-deeply-with-context
 type ReactContextBinding {
-  context_pair_ref: Symbol
+  context_pair_ref: DeclarationRef
 }
