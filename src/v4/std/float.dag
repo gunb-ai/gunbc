@@ -236,6 +236,10 @@ fn float_body_negate(x: FloatBody) -> FloatBody {
 }
 
 
+// float_body_add / float_body_mul — when **both** operands are `NonFinite`,
+// the match returns **only `a`'s** tag (`NonFinite { tag: ta } => …`);
+// this is NOT IEEE NaN/∞ propagation (e.g. +∞ on the left does not lose to
+// NaN on the right). Real IEEE exceptional arithmetic waits on Grounding.
 fn float_body_add(a: FloatBody, b: FloatBody) -> FloatBody {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
