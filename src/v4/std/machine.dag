@@ -25,3 +25,130 @@
 
 
 module v4.std.machine
+
+
+import v4.std.logic { Bool }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CONJ + CARDINALITY (std/node.dag). The frozen header’s “Consumes …
+// Cardinality” names the **Cardinality connective** (one of the six type
+// connectives), not a refinement TYPE. A `Byte` / `Word*` is a **Conj**
+// nominal record whose `List<…>` field is the substrate’s finite-sequence
+// carrier: fixed width is **documented author intent** (8 bits; 1 / 2 /
+// 4 / 8 / 16 bytes) for validators and Grounding — the same honest gap
+// dsl/std/bit.dag records until alias `where` / bounded refinements land.
+// Do **not** write `Cardinality` as a type name here; std/cardinality.dag
+// owns refinement *types* (`Multiplicity`, …) — out of this file’s deps.
+//
+// NAT (std/nat.dag). Widths are counts in the external consensus sense
+// (8, 16, … bits); this file names **nominal word witnesses** (`Word8` …)
+// for the `MachineWidth<…>` phantom slot. Literal `Nat` magnitude in the
+// type DAG is Grounding’s job when lowering `MachineWidth<Word64>` → 64
+// — not a second Nat authority duplicated here (INVARIANTS P2).
+//
+// PRACTICE 4 (modeling-discipline.md §4). This module authors **no**
+// `type T = V1 | V2 | …` sum with N ≥ 2. Carriers here are: (1) a **type
+// alias** `Bit = Bool` (the machine-traversable edge to std/logic.dag’s
+// sole classical-bit authority — INVARIANTS worked-example chain); (2)
+// **Conj** nominal records `Byte`, `Word8` … `Word128`; (3) **opaque**
+// nominal placeholders `MachineWidth<bits>`, `PointerWidth`. For each
+// arity-1 Conj / opaque: Practice-4 dissolution checkpoint **N/A** (not
+// a multi-variant coproduct). The closed set of five `Word*` names is a
+// deliberate **nominal** enumeration of the standard byte-multiple word
+// sizes — not an internal `F<N>` family that would need a `Nat` index
+// refinement type outside this file’s contract (Practice 5 / Practice 7
+// do not force dissolving these into one parameter — they are distinct
+// authorities for `MachineWidth<Word*>` arguments, same spirit as dsl/std/
+// bit.dag’s separate `Word16` / `Word32` / …).
+//
+// MACHINE-READABLE INHABITANCE (operator ruling 2026-05-16). No machine.dag
+// type inhabits an algebra in this PR — there is no prose-only Monoid/
+// Ring claim; width facts are nominal structure + phantom carriers only.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bit — one classical bit (width = 1). Alias-identity to `Bool` from
+// std/logic.dag — the v4 classical truth value IS the bit carrier
+// (epistemic stacking; dsl/std/bit.dag’s `Bit = Classical` line, refreshed
+// for v4’s `Bool` name). Downstream reads machine width through bytes
+// built from `Bit`, not a parallel bit algebra.
+//
+// Coproduct dissolution — N/A: not a new sum; `Bool`’s 🟢 ledger lives in
+// std/logic.dag. This declaration is only the substrate-visible alias edge.
+type Bit = Bool
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Byte — an octet as a fixed-cardinality **intent** group of eight bits
+// (IEEE / ISO byte = 8 bits — INVARIANTS integer-chain anchor). Field is
+// `List<Bit>`; exact length-8 is author/validator intent until bounded
+// refinements land (see Modeling notes).
+//
+// Coproduct dissolution — N/A: Conj nominal (single constructor shape),
+// not an N ≥ 2 internal sum.
+type Byte {
+  bits: List<Bit>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Word8 / Word16 / Word32 / Word64 / Word128 — fixed-width machine words
+// as byte-sequences (Wikipedia “Word (computer architecture)” — anchor).
+// Author intent: 1 / 2 / 4 / 8 / 16 bytes respectively. Fields are
+// `List<Byte>`; exact lengths are the same documented-intent posture as
+// `Byte`’s bit list (see Modeling notes).
+//
+// Coproduct dissolution — N/A for each: Conj nominal, not a sum.
+type Word8 {
+  bytes: List<Byte>
+}
+
+type Word16 {
+  bytes: List<Byte>
+}
+
+type Word32 {
+  bytes: List<Byte>
+}
+
+type Word64 {
+  bytes: List<Byte>
+}
+
+type Word128 {
+  bytes: List<Byte>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// MachineWidth<bits> — sole machine-width **axis** carrier for composing
+// abstract numeric types with a concrete width (e.g. future
+// `Compose<Int, MachineWidth<Word64>>` in std/integer.dag). `bits` is a
+// **phantom** type parameter — documentation intent: instantiated only
+// with word nominals (`Word8` … `Word128`) or `PointerWidth`, not an
+// arbitrary type expression. Shapes like `MachineWidth<String>` are not
+// valid substrate uses; rejection is **mechanical at Grounding** (fail-
+// closed / omit per universal-substrate posture — gunbc#828), not silent
+// acceptance. Parser-parallel Nat bound on `bits` is a known P2/P5
+// scaffold gap — dissolves in the same change set that first lands bounded
+// phantom parameters or an explicit Nat-indexed width carrier; then delete
+// this paragraph’s trigger text (mirror: dsl/std/machine_constraints.dag).
+//
+// Coproduct dissolution — N/A: zero-variant opaque nominal phantom; not a
+// sum (Practice 4 applies to multi-variant coproducts only).
+type MachineWidth<bits>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PointerWidth — substrate token for the **target-resolved** pointer-width
+// axis at concept layer (orthogonal to OS “platform” identity). Consumed
+// as `MachineWidth<PointerWidth>`; Grounding projects to 32 / 64 / … per
+// target. Same constrained-inhabitance / Grounding-enforcement posture as
+// `MachineWidth<bits>` (gunbc#1739, #828 — rename rationale in dsl/std/
+// machine_constraints.dag).
+//
+// Coproduct dissolution — N/A: zero-variant opaque nominal token; not a sum.
+type PointerWidth
