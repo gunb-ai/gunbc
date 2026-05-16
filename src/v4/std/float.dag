@@ -16,14 +16,20 @@
 //     std/machine.dag, with the non-finite values (NaN, ±Inf, signed
 //     zero) modeled as explicit structure. Every part is reachable —
 //     nothing opaque.
-//   - inhabitance: Float inhabits the rounding-aware ("approximate")
-//     algebra structure owned by std/algebra.dag — NOT an exact `Field`
-//     (rounding is non-associative). The std/extdeps typescript.dag
-//     header already anticipates this structure as `ApproximateField`;
-//     algebra.dag (T-2) owns its exact name and definition. Float's
-//     grounding is the IEEE-754 spec (the anchor) — a real external
-//     standard — composed with that weakened algebra; it is not an
-//     unreconciled exception to the minimal-primitive ontology.
+//   - inhabitance: `ApproximateField<Float>` — **machine-readable `data`
+//     witness DEFERRED** (PR #3194 review 2026-05-16, codex BLOCKING).
+//     Installing `data … = ApproximateField { add, mul, compare, … }`
+//     with componentwise Nat field arithmetic **closed a false substrate
+//     algebra** before rounding, precision, special-value policy, or
+//     Grounding realization exist (THESIS epistemic stacking + INVARIANTS
+//     P1). This file keeps the IEEE **semantic carrier** + honest unary /
+//     compare scaffolding + Tier-2 `Outcome` surface; the **single**
+//     `data float_approximate_field: ApproximateField<Float> = …` edge
+//     lands only when those axes are modeled or Grounding owns the
+//     operation bodies — same dissolution trigger as v3
+//     `src/v3/std/approximate_field.dag` policy aggregation (rounding /
+//     precision / `SpecialValues`), imported or re-declared here under
+//     one ratified substrate plan.
 //   - Tier-2 totalization for the partial / non-total operations
 //     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
 //     commitment #2
@@ -35,14 +41,16 @@
 //   - std/machine.dag: `Bit`; `Word32` / `Word64` interchange nominals for
 //     `Float32Interchange` / `Float64Interchange` (P2 single authority for
 //     interchange words — same spirit as machine.dag's width scaffold).
-//   - std/algebra.dag: `ApproximateField`, `Ordering` (+ Less/Equal/Greater
-//     arms consumed by `nat_compare` / match exhaustiveness).
+//   - std/algebra.dag: `Ordering` (+ Less/Equal/Greater arms consumed by
+//     `nat_compare` / match exhaustiveness). `ApproximateField` is named
+//     in modeling notes as the **future** inhabitance target only — no
+//     `data` witness in this slice (see Owns / APPROXIMATEFIELD DEFERRAL).
 //   - std/diagnostic.dag: `Outcome`, `Diagnostic`, `PortLocus`, `Produced` /
 //     `Rejected`, `Unavailable`, `UserInputBoundary` — Tier-2 totalization
 //     surface (STRUCTURE.md commitment #2); not re-invented here.
 //   - std/logic.dag: `Bool` (IEEE sign bit; same carrier as machine `Bit`).
-//   - std/nat.dag: `Nat`, `nat_add`, `nat_mul` — Peano fields on `Finite`
-//     (width-as-count honest deferral per modeling notes below).
+//   - std/nat.dag: `Nat` — Peano fields on `Finite` (width-as-count honest
+//     deferral per modeling notes below).
 //
 // HEADER RECONCILE (T-3 verification / smart-fox-602, 2026-05-16) — frozen
 // Consumes/imports drift class (operator precedent: text.dag #3186,
@@ -62,7 +70,7 @@
 module v4.std.float
 
 
-import v4.std.algebra { ApproximateField, Ordering, Less, Equal, Greater }
+import v4.std.algebra { Ordering, Less, Equal, Greater }
 import v4.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -74,7 +82,7 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
-import v4.std.nat { Nat, nat_add, nat_mul }
+import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
 
@@ -97,17 +105,14 @@ import v4.std.node { Symbol }
 // respect nominal widths; the dissolution trigger is the same bounded
 // refinement substrate named in machine.dag's modeling notes.
 //
-// APPROXIMATEFIELD OPS — `add` / `mul` below are **componentwise** on the
-// three finite `Nat` fields when BOTH operands are `Finite` (NOT IEEE-754
-// floating-point rounding — that realization is explicitly downstream of
-// this substrate, at Grounding / host numerics). They are nevertheless a
-// **total** structural definition on this carrier (no silent `none` on
-// the success path). `compare` is a **deterministic total order** on the
-// semantic carrier (lexicographic on sign-rank, exponent, significand,
-// then non-finite tag ordering) — NOT the IEEE `<` relation; it exists so
-// `ApproximateField.compare` stays total while **Tier-2**
-// `float_ordered_compare_tier2` carries the fail-closed **unordered**
-// surface for NaN via `Outcome<Ordering>` (STRUCTURE.md commitment #2).
+// APPROXIMATEFIELD DEFERRAL — No `data … : ApproximateField<Float>` in
+// this slice (see Owns). `float_body_compare_total` is a **carrier-local**
+// deterministic total order (lexicographic on sign-rank, exponent,
+// significand, then non-finite tag ordering) for structural reasoning and
+// for the success path of **Tier-2** `float_ordered_compare_tier2`; it is
+// **NOT** IEEE `<` and is **NOT** packaged as `ApproximateField.compare`
+// until the deferred witness lands. NaN-unordered IEEE ordering stays
+// fail-closed via `Outcome<Ordering>` (STRUCTURE.md commitment #2).
 //
 // SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
 // `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
@@ -253,36 +258,6 @@ fn float_body_negate(x: FloatBody) -> FloatBody {
 }
 
 
-fn float_body_add(a: FloatBody, b: FloatBody) -> FloatBody {
-  match a {
-    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
-      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
-        sign: sa,
-        biased_exponent: nat_add(a: ea, b: eb),
-        trailing_significand: nat_add(a: fa, b: fb),
-      }
-      NonFinite { tag: tb } => NonFinite { tag: tb }
-    }
-    NonFinite { tag: ta } => NonFinite { tag: ta }
-  }
-}
-
-
-fn float_body_mul(a: FloatBody, b: FloatBody) -> FloatBody {
-  match a {
-    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
-      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
-        sign: sa,
-        biased_exponent: nat_mul(a: ea, b: eb),
-        trailing_significand: nat_mul(a: fa, b: fb),
-      }
-      NonFinite { tag: tb } => NonFinite { tag: tb }
-    }
-    NonFinite { tag: ta } => NonFinite { tag: ta }
-  }
-}
-
-
 fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
@@ -349,48 +324,4 @@ fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) ->
       Produced { value: float_body_compare_total(a.body, b.body) }
     }
   }
-}
-
-
-fn float_alg_add(a: Float, b: Float) -> Float {
-  Float { body: float_body_add(a.body, b.body) }
-}
-
-fn float_alg_negate(x: Float) -> Float {
-  Float { body: float_body_negate(x.body) }
-}
-
-fn float_alg_mul(a: Float, b: Float) -> Float {
-  Float { body: float_body_mul(a.body, b.body) }
-}
-
-fn float_alg_compare(a: Float, b: Float) -> Ordering {
-  float_body_compare_total(a.body, b.body)
-}
-
-
-// float_approximate_field — machine-readable inhabitance: `Float` (= `Float64`)
-// inhabits `ApproximateField` (operator ruling 2026-05-16). Method bodies are
-// free functions (`float_alg_*`) so v2 monomorphizes `T` to the concrete
-// float carrier (inline `fn` bodies inside `ApproximateField {…}` stay
-// generically typed as `T` and cannot project `.body`).
-data float_approximate_field: ApproximateField<Float> = ApproximateField {
-  add: float_alg_add,
-  zero: Float {
-    body: Finite {
-      sign: false
-      biased_exponent: Zero
-      trailing_significand: Zero
-    }
-  },
-  negate: float_alg_negate,
-  mul: float_alg_mul,
-  one: Float {
-    body: Finite {
-      sign: false
-      biased_exponent: Zero
-      trailing_significand: Succ { prev: Zero }
-    }
-  },
-  compare: float_alg_compare,
 }
