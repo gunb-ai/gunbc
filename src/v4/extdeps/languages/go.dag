@@ -106,21 +106,25 @@
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-
 //     values pre-T-3 / pre-D2)
-//   - Go D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
-//     2026-05-16 commit 44a37ad46 via PR #3195 merge; structural mirror
-//     of rust.dag #3174 @0328bee951962382aa60143bf563c7b9eb39d215):
-//     GroundingMap<IRCarrier> (surface-spelling Conj), OverflowAction
-//     (closed two-way Disj — **same carrier shape** as rust.dag for
-//     homogeneous downstream typing; Go 1.26 built-in integer defaults
-//     documented in the D2 block below), OverflowDisposition<IRCarrier>
-//     (per-language operation-semantics Conj); plus the LANDABLE NOW
-//     alias-identity row `type GoBool = Bool` + `data go_bool_grounding:
-//     GroundingMap<GoBool> = GroundingMap { spelling: "bool" }`
-//     (std/logic.dag's Bool is landed). Per-primitive alias-identity
-//     rows for Go integers / floats / complex / string / never are 🟡
-//     TRACKED-SCAFFOLD with named owner + dissolution trigger per the
-//     D2-resolver block below; they amend in as one-line landings as
-//     their std/ targets reach `origin/main`.
+//   - Go D2 RESOLVER — **partial fan-out** per T-4 mgr brief (msg_6aaebc89,
+//     canonical rust.dag #3174 @0328bee951962382aa60143bf563c7b9eb39d215 +
+//     encoded DECISIONS.md D2 row @44a37ad46): mirror **discipline**, not
+//     a literal type-copy — Go's spec partition is modeled here (Go ≠ Rust
+//     asymmetry). **D2a(1)** alias-identity lands now where kernel-ambient
+//     (`Bool` per STRUCTURE.md:147 — std/logic.dag sole authority). **D2a(3)**
+//     operation-semantics: Go-only `GoBuiltinIntegerArithmeticOverflow`
+//     (silent two's-complement modular truncation on overflow — go.dev/ref/spec
+//     §Integer_overflow, pinned go1.26) + `GoIntegerOverflowDisposition<IRCarrier>`
+//     — NOT rust's `PanicOnOverflow | TwoComplementWrap` superset (B3 parallel-
+//     taxonomy anti-pattern; peer-confirmed (a)). **D2a(2) grounding map** —
+//     the ENTIRE facet (shared `GroundingMap<IRCarrier>` type **home** + every
+//     `*_grounding` data row) is 🟡 TRACKED-SCAFFOLD **DEFERRED**: operator must
+//     pin `GroundingMap`'s single substrate home (P2 — import-never-redeclare-
+//     carriers; five identical local declarations across the language fan-out
+//     would violate P2). Named trigger = "operator pins GroundingMap's home
+//     (under escalation)". Non-kernel-ambient std/ int/float ladder aliases
+//     remain 🟡 deferred (explicit `import` when they land; owners std/
+//     integer.dag | std/float.dag, T-3 Wave-A3; do NOT mint std/ types here).
 //
 // Owned ELSEWHERE (deliberately NOT in this slice — named owners +
 //   dissolution triggers per the rust #3174 deferral shape):
@@ -128,9 +132,10 @@
 //   - Go scalar inhabitance **instance-values** — D2 RATIFIED 2026-05-16
 //     (encoded DECISIONS.md D2 row, commit 44a37ad46 via PR #3195 merge;
 //     resolver reshape mirrors rust.dag @0328bee951962382aa60143bf563c7b9eb39d215).
-//     The ratified form is the THREE-THIN-FACTS D2a resolver (alias-
-//     identity + grounding map + operation-semantics) in the D2 block
-//     below — NOT a per-language `data go_<prim>_ring: OrderedRing<
+//     The ratified D2a surface is **partial** in this file until D2a(2)
+//     pins: alias-identity + operation-semantics carriers in the D2 block
+//     below; **grounding-map type + rows are deferred** (operator-pending
+//     home — see D2 block). NOT a per-language `data go_<prim>_ring: OrderedRing<
 //     GoPrim, …>` inhabitance (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`
 //     forbids that parallel-substrate pattern). D2b `Transform →
 //     FunctionRef → Arrow` IEEE / complex realization **bodies** ride
@@ -242,6 +247,11 @@
 //
 // Consumes:
 //   - std/node.dag, std/algebra.dag (same as rust.dag)
+//
+// KERNEL-AMBIENT traceability (STRUCTURE.md:147 — usable without import;
+// std/ file remains sole modeling authority; listed here for header
+// traceability only): `Bool` (D2a(1) `GoBool = Bool` — std/logic.dag),
+// `Int` (GoCost instruction/allocation axes — std/integer.dag).
 //
 // Status: T-4 go-slice modeled 2026-05-16 (bright-crane-527);
 //   structural finding: NO STOP from the type-system surface. The
