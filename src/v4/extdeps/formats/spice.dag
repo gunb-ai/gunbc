@@ -359,7 +359,7 @@ type SubstrateSpec
 //   structural rather than lexeme-only; transient source specs as
 //   typed sub-coproducts; optional terminals via per-variant named
 //   slots — NOT by `Option<NodeRef>` or sentinel value), the SUM
-//   reclassifies 🟢 GREEN. Tied to `ModelKind`'s 🟡 trigger above
+//   reclassifies 🟢 GREEN. Tied to `ModelKind`'s 🟡 trigger below
 //   (the two dissolve as one sweep — same SPICE3 authority).
 // Five patterns attempted on the SUM (all FAIL to dissolve it):
 //   1. Fact placement — FAILS: every netlist consumer (well-formedness
@@ -435,7 +435,7 @@ type Component
 // .MODEL kinds enumerated above) exists in the spec but is not yet
 // modeled here.
 //   Named trigger: when (a) `Component`'s 🟡 trigger fires (the full
-//   SPICE3 element set is enumerated — see Component below), AND
+//   SPICE3 element set is enumerated — see Component above), AND
 //   (b) the model-referencing variants among them (every Component
 //   variant that carries a `model: Symbol` slot) have their
 //   corresponding `.MODEL` kind enumerated here — `ModelKind`
