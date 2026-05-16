@@ -1311,7 +1311,7 @@ type Terminator
       indirect_targets: List<Symbol>
     }
   | Resume { value: LlvmValue }
-  | CatchSwitch { parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
+  | CatchSwitch { result: Symbol, parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
   | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
   | CatchRet { catch_pad: LlvmValue, successor: Symbol }
 
@@ -1589,9 +1589,49 @@ fn block_successors(t: Terminator) -> List<Symbol> {
     CallBr { callee: _, arguments: _, result: _, fallthrough: f, indirect_targets: it } =>
       concat([f], it)
     Resume { value: _ } => []
-    CatchSwitch { parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
+    CatchSwitch { result: _, parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
     CleanupRet { cleanup_pad: _, unwind: u } => unwind_successors(d: u)
     CatchRet { catch_pad: _, successor: s } => [s]
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// block_well_formed — a CHECKED structural invariant, resolved per the
+// operator-ratified directive **D3** (std/node.dag header, "operator
+// directive D3, 2026-05-15": a structural rule whose type-unrepresentable
+// form would require a core-type redesign is CHECK-enforced via a
+// well-formed predicate — "keep one shape; the illegal state is
+// CHECK-enforced, not type-unrepresentable" — NOT a shape redesign;
+// node.dag's own `node_well_formed` is exactly this pattern for the
+// edge-discipline rule).
+//
+// Applied here (NO `BasicBlock`/`Terminator` shape redesign — D3's
+// no-redesign call): LLVM 18 LangRef requires a `catchswitch` to be the
+// FIRST non-phi instruction in its block AND the block to contain no
+// other instructions. Since `CatchSwitch` IS the block's `terminator`,
+// that rule reduces to: a catchswitch-terminated block's `body` must be
+// EMPTY. Making this type-unrepresentable would require a per-terminator
+// `BasicBlock` shape (the core-type redesign D3 explicitly declines);
+// so — exactly as node.dag's D3 case — it is the checked structural
+// invariant consumers (parse / normalize) evaluate fail-closed
+// (INVARIANTS P3), never a silently-representable illegal state by
+// convention. `BasicBlock` is NOT self-recursive (a block contains no
+// blocks), so the faithful analog of node.dag's whole-tree
+// `node_well_formed` is a single pure total LOCAL predicate (the
+// `node_locally_well_formed` shape) — not artificial recursion.
+fn terminator_is_catchswitch(t: Terminator) -> Bool {
+  match t {
+    CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => true
+    _ => false
+  }
+}
+
+fn block_well_formed(b: BasicBlock) -> Bool {
+  if terminator_is_catchswitch(t: b.terminator) {
+    count(b.body) == 0
+  } else {
+    true
   }
 }
 
