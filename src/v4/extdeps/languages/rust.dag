@@ -68,9 +68,17 @@
 //     three-way visibility partition reflecting the Reference's
 //     fundamental form (§visibility-and-privacy). PubInPath carries
 //     an ABSOLUTE PATH FROM CRATE ROOT (empty = `pub(crate)`; non-
-//     empty = `pub(in crate::...)`); ONE canonical PubInPath value
-//     per resolved ancestor scope (P2 single-authority TYPE-
-//     ENFORCED — same resolved module = same structural value).
+//     empty = `pub(in crate::...)`). The carrier is a 🟡 SCAFFOLD
+//     (see PubInPath's bridge note): SHAPE-level invariants are
+//     type-enforced (one resolved_path field; closed-record
+//     NamedSegment; List equality on Symbol elements); SEMANTIC-
+//     level invariants (real-module-ness of segments, valid
+//     containment descent, strict-ancestor of target, end-to-end
+//     same-resolved-scope ⇒ same-canonical-value) are PRODUCER-
+//     OBLIGATION pending the module-tree substrate (named
+//     dissolution trigger: typed Module-Node + ancestor-relation
+//     Witness in std/; co-temporal with the bundled T-4
+//     LanguageModel grammar work that the resolver consumes).
 //     `pub(crate)`, `pub(super)`, `pub(in <SimplePath>)` source
 //     forms all canonicalize to their absolute-from-crate-root
 //     resolved path at parse/resolve time; the carrier represents
@@ -1213,7 +1221,11 @@ type PubInPath {
 // `PubInPath { resolved_path: List<NamedSegment> }` (declared above
 // this type). The carrier is keyed by the ABSOLUTE PATH FROM CRATE
 // ROOT to the resolved ancestor module — ONE canonical PubInPath
-// value per resolved scope, P2 single-authority TYPE-ENFORCED.
+// value per resolved scope at the SHAPE level (List equality on
+// Symbol elements); SEMANTIC-level enforcement (real-module-ness,
+// strict-ancestor, end-to-end same-resolved-scope canonicalization)
+// is producer-obligation 🟡 scaffold per PubInPath's bridge note
+// (declared above this type) — pending the module-tree substrate.
 // Reference-invalid path-qualifier orderings are upstream parse-
 // rejected by the resolver before construction. All valid source
 // forms (`pub(self)` / `pub(in self)` / no-modifier / `pub(crate)` /
@@ -1260,13 +1272,16 @@ type PubInPath {
 //               `pub(in crate::a)` → SAME as `pub(super::super)`
 //               (same resolved scope → same canonical value).
 //               Source-syntax variants pointing at the SAME resolved
-//               module produce the SAME canonical PubInPath value —
-//               there is no source-spelling distinction in the
-//               canonical form (P2 single-authority TYPE-ENFORCED
-//               via the absolute-from-crate-root shape). Reference-
-//               invalid path-qualifier orderings (a non-ancestor
-//               resolved module; an empty SimplePath) are parse/
-//               resolver-rejected before construction. Self-prefixed
+//               module produce the SAME canonical PubInPath value at
+//               the SHAPE level (the absolute-from-crate-root shape
+//               structurally collapses source spellings into one
+//               List<NamedSegment>); SEMANTIC-level enforcement (that
+//               the absolute path is actually computed correctly by
+//               the resolver) is producer-obligation 🟡 scaffold per
+//               PubInPath's bridge note. Reference-invalid path-
+//               qualifier orderings (a non-ancestor resolved module;
+//               an empty SimplePath) are parse/resolver-rejected
+//               before construction. Self-prefixed
 //               source forms (`pub(in self::super)`, etc.) resolve
 //               via name-resolution to their absolute ancestor path
 //               before construction; the carrier doesn't see the
