@@ -113,7 +113,7 @@ type OpenApiHttpMethod
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
-// five-pattern scan as `CsvEscapeSpec`-class present/absent sums (two
+// five-pattern scan as other two-variant present/absent sums (two
 // distinct shapes; no illegal mixed state in a flat record).
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
@@ -160,6 +160,8 @@ type OpenApiMediaTypeSchemaSlot
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiResponse — Response Object (description required at JSON surface).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
 type OpenApiResponse {
   description: String,
   content: Map<String, OpenApiMediaType>,
@@ -173,6 +175,10 @@ type OpenApiResponse {
 // map may be structurally representable; OAS-level validity is 🟡 deferred
 // parse authority). Parameters, requestBody, callbacks, security live in
 // `extensions` until decomposed.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#operation-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
   responses: Map<String, OpenApiResponse>,
