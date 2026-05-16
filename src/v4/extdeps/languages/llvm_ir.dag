@@ -1306,6 +1306,7 @@ type Terminator
   | CallBr {
       callee: LlvmValue
       arguments: List<CallArgument>
+      result: CallResult
       fallthrough: Symbol
       indirect_targets: List<Symbol>
     }
@@ -1585,7 +1586,7 @@ fn block_successors(t: Terminator) -> List<Symbol> {
     IndirectBr { address: _, possible_targets: ts } => ts
     Unreachable => []
     Invoke { callee: _, arguments: _, result: _, normal_target: n, unwind_target: u } => [n, u]
-    CallBr { callee: _, arguments: _, fallthrough: f, indirect_targets: it } =>
+    CallBr { callee: _, arguments: _, result: _, fallthrough: f, indirect_targets: it } =>
       concat([f], it)
     Resume { value: _ } => []
     CatchSwitch { parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
