@@ -955,8 +955,9 @@ type RustReferenceKind
 //           boundary intern table, never readable from kernel /
 //           lens code per node.dag:70-86)
 //
-// Used inside `PubInPath.suffix` for module-qualified visibility
-// paths like `pub(in crate::outer_mod::inner_mod)`.
+// Used inside `PubInPath.resolved_path` (the absolute path from
+// crate root) for module-qualified visibility paths like
+// `pub(in crate::outer_mod::inner_mod)`.
 // Spec: https://doc.rust-lang.org/reference/paths.html
 type NamedSegment {
   id: Symbol
@@ -970,9 +971,68 @@ type NamedSegment {
 // CANONICAL SHAPE: an ABSOLUTE PATH FROM CRATE ROOT, expressed as a
 // `List<NamedSegment>`. Empty list `[]` denotes the crate root itself
 // (equivalent to `pub(crate)`); a non-empty list `[A, B, ...]` denotes
-// the module at `crate::A::B::...`. ONE canonical PubInPath value per
-// resolved ancestor scope — INVARIANTS P2 single-authority TYPE-
-// ENFORCED.
+// the module at `crate::A::B::...`.
+//
+// 🟡 SCAFFOLD — producer-obligation enforcement of the ancestor-
+// resolution invariant (openai-pro/gpt-5.5-pro REQUEST_CHANGES
+// 2026-05-16T13:24:03Z). The TYPE structurally enforces only the
+// SHAPE (a List of NamedSegments, each carrying an opaque Symbol id);
+// it does NOT enforce the SEMANTIC properties Rust's
+// `pub(in path)` requires: that the resolved_path's segments name
+// real modules, that those modules form an existing chain from crate
+// root, and that the target module is a STRICT ANCESTOR of the
+// declaring item (not the current module — which is Private — and
+// not a non-ancestor — which is parse-rejected). Those semantic
+// invariants live in the parser/resolver's contract; the carrier
+// has no module-tree substrate to ground them structurally yet.
+// Three bridge properties (same pattern as Dim3 / RustCost /
+// SuperHops):
+//   (a) scaffold doc — THIS note. The carrier is a post-resolution
+//       canonical form expressed as the resolved absolute path; the
+//       resolver pre-validates module-resolution + strict-ancestor-
+//       relation before constructing PubInPath.
+//   (b) bounds on use — producers (parser / resolver) MUST verify:
+//       (i) every NamedSegment.id resolves to a real module in the
+//       defining crate; (ii) the resolved_path forms a valid
+//       descent from crate root through actual module containment;
+//       (iii) the target module is a strict ancestor of the
+//       declaring item. Failing any check → Diagnostic upstream, not
+//       a PubInPath value. The carrier represents only validated
+//       post-resolution scopes.
+//   (c) dissolution trigger — when std/ exposes a typed MODULE-TREE
+//       carrier (a Module-Node type with ancestor-relation Witness
+//       and module-existence Witness facts), PubInPath collapses to
+//       a refined `{ target: ModuleRef, ancestor_proof: Witness<...> }`
+//       form where the semantic invariants are TYPE-LEVEL. That
+//       module-tree substrate is a future-substrate question
+//       (likely co-temporal with the bundled T-4 LanguageModel
+//       grammar productions when those land, since the resolver
+//       needs to consume them); it is NOT modeled in this slice.
+//
+// What IS type-enforced today (the shape-level claims):
+//   - PubInPath has exactly one field; producers can't structurally
+//     forget the resolved_path.
+//   - NamedSegment is closed-record-with-one-field; producers can't
+//     structurally include extra coordinates per segment.
+//   - Same resolved_path List value = same PubInPath value at the
+//     SHAPE level (Lists are structurally equal when their elements
+//     are equal; opaque Symbol id equality is K-1-discipline).
+//     Single-authority THIS layer: the canonical-form discipline.
+//
+// What IS NOT type-enforced today (the producer-obligation claims):
+//   - That resolved_path names a real module that exists in the
+//     defining crate.
+//   - That the target module is a strict ancestor of the declaring
+//     item.
+//   - That the resolved_path's segments form a valid descent through
+//     actual module containment (vs an arbitrary sequence of opaque
+//     Symbols).
+//
+// The earlier doc-comment claim that this carrier is "P2 enforced
+// structurally" overstated what the type system actually does — the
+// shape is enforced structurally, but the semantic ancestor-validity
+// is producer-obligated until the module-tree substrate lands. This
+// 🟡 SCAFFOLD framing is the honest acknowledgment.
 //
 // (Corrected 2026-05-16 per openai-pro/gpt-5.5-pro BLOCKING review
 // 2026-05-16T08:36:04Z. Prior head-rooted shape
@@ -1006,11 +1066,13 @@ type NamedSegment {
 // modules; the SimplePath resolving to the item's current module
 // (which is no-modifier visibility, canonicalizes to Private, not
 // PubIn) — are parse/resolver-rejected or canonicalized upstream;
-// the carrier represents only legitimate strict-ancestor canonical
-// destinations + the crate-root case. P2 enforced structurally: a
-// given resolved ancestor scope has EXACTLY ONE structural
-// representation here (the absolute List<NamedSegment> from crate
-// root to the target module).
+// the carrier represents only validated post-resolution scopes (per
+// the producer-obligation bridge above). Same-resolved-scope ⇒
+// same-resolved_path-List is a SHAPE-LEVEL property; same-resolved-
+// scope ⇒ same-canonical-RustVisibility-value depends on the
+// resolver computing the same absolute path for every source form
+// that points at the same module (producer-side, awaiting the
+// module-tree substrate to make it type-level).
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 type PubInPath {
   resolved_path: List<NamedSegment>
