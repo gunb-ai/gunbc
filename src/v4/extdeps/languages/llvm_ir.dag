@@ -89,25 +89,34 @@ import v4.std.node { Symbol }
 // behavior and NO core/pipeline change. The structurally-unusual SSA
 // shapes resolve to ORDINARY Node structure — and modeling them HONESTLY
 // drove the right structural form:
-//   - "every value defined once" (SSA) — an `LlvmValue` IS its def-site:
-//     an operand edges DIRECTLY to the producing instruction Node
-//     (`InstructionValue`), to a parameter binder, a global, or an
-//     inline constant. This is the scaffold's own "the value graph is
-//     Node edges": SSA is literally the operand-DAG; a value reused
-//     twice is two edges to ONE node (node.dag's content-hash makes the
-//     shared node canonical). Single-assignment is therefore STRUCTURAL
-//     (the node is the unique authority — INVARIANTS P2); there is no
-//     mutable cell to make reassignment representable. The textual `%x`
-//     / `%1` SPELLING is NOT load-bearing data — it is a K-1-style
-//     boundary rendering concern (a `DeclaredNormalized` C5 feature, the
-//     SAME α-equivalence node.dag's content-hash fold already has). An
-//     EARLIER cut carried a `result: Symbol` on every instruction; that
-//     was the un-faithful form — any declarative algebra-op witness
-//     would have had to MINT a fresh SSA `Symbol` (which the substrate
-//     forbids: K-1 opaque, not hand-mintable). Removing it
-//     both fixed that and produced the more faithful value-graph model —
-//     a STOP-shaped finding resolved by better structure, not a
-//     workaround.
+//   - "every value defined once" (SSA) — the value graph (operands
+//     reference their producers) realized the A1-FAITHFUL, FINITE way:
+//     a value-producing instruction / φ carries `result: Symbol` (its
+//     def-site name); an operand is a NAME-REFERENCE
+//     (`LlvmValue.LocalRef`) resolved through function scope to that
+//     def-site (or a parameter / a global / an inline constant). This
+//     IS the scaffold's "value graph is Node edges" — node.dag A1's
+//     cross-declaration idiom (references are name `Atom`s resolved
+//     through the namespace; precedent: diagnostic.dag `reason:
+//     Symbol`). Single-assignment is the structural fact that exactly
+//     one def-site declares each name (INVARIANTS P2). CRUCIAL: the
+//     def-use graph is CYCLIC for every loop (a loop-carried φ names an
+//     instruction whose operand names the φ) — a name-reference keeps
+//     the bounded Node tree FINITE while expressing that cycle, which is
+//     PRECISELY why A1 mandates name-reference recursion. An EARLIER cut
+//     INLINED the producer node into each use (`InstructionValue {
+//     instruction }` / `PhiValue { phi }`); that could not finitely
+//     represent cyclic loop-carried SSA — it excluded ALL loops, a
+//     P1/M3 spec-narrowing and the exact A1 violation A1 exists to
+//     prevent. Reverted to this name-reference form (T-4 mgr-confirmed):
+//     the value-graph INTENT is preserved; name-reference is its correct
+//     finite REALIZATION, not an abandonment. `result: Symbol` is a
+//     declaration FIELD = a name-reference (K-1-opaque, resolved
+//     structurally), NOT a runtime Symbol mint — the K-1 no-mint rule
+//     was specific to the removed inhabitance LAMBDAS, not declaration-
+//     class fields. The textual `%x`/`%1` spelling is `DeclaredNormalized`
+//     (α-equivalent — `Symbol` is opaque, the content-hash fold is
+//     rename-invariant).
 //   - phi — phi is an ORDINARY Node, hoisted to the block's structural
 //     `phis` region (`PhiNode`), so "a phi after a non-phi instruction"
 //     is UNREPRESENTABLE (P2), not a checker rule. It is NOT a variant
@@ -1553,10 +1562,12 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 //     skeleton, atomic orderings, linkage).
 //   - DeclaredNormalized — deliberately NOT in F; `emit∘ingest`
 //     canonicalizes it, a DECLARED reviewable loss, never silent:
-//       * SSA value spellings (`%1` vs `%x`) — identity is the def-site
-//         Node; names are K-1-opaque, α-equivalence (the SAME
-//         rename-invariance node.dag's content-hash fold already has,
-//         and the reason no instruction carries a `result: Symbol`).
+//       * SSA value spellings (`%1` vs `%x`) — the `result: Symbol`
+//         def-site name and its `LocalRef` uses are K-1-opaque, so the
+//         spelling is α-equivalent (the SAME rename-invariance
+//         node.dag's content-hash fold already has — identity is the
+//         structural one-def-site-per-name fact, the spelling
+//         normalizes).
 //       * non-entry basic-block textual order — the CFG defines order.
 //       * comments (`;`), blank lines, horizontal whitespace.
 //       * `data_layout` / `target_triple` opaque token (preserved
@@ -1614,10 +1625,12 @@ type FidelityDisposition
 // machine-consumable boundary, no opaque-Symbol/prose-only smell).
 // Closed: a LangRef surface feature outside this set is itself the
 // `MalformedStructure`/`UnmodeledSemanticAttribute` fail-closed case (no
-// silent escape). Not Symbol-keyed (K-1: Symbols are un-mintable in
-// data literals — the same constraint behind the value-graph SSA form);
-// a closed enum keyed by the feature CLASS is the faithful, authorable
-// carrier.
+// silent escape). Not Symbol-keyed: a disposition TABLE/projection is
+// authored data, and K-1 forbids minting a `Symbol` VALUE in a data
+// literal — so a Symbol-keyed table is un-authorable (distinct from a
+// declaration-class `result: Symbol` FIELD, which is a name-reference,
+// not a mint — that is the SSA def-site idiom and is fine). A closed
+// enum keyed by the feature CLASS is the faithful, authorable carrier.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -1739,30 +1752,30 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 // the symbolic composition; this is the per-leaf ground weight).
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
-    Binary { result_type: _, op: _, lhs: _, rhs: _ } => 1
-    Conversion { result_type: _, op: OpBitCast, value: _ } => 0
-    Conversion { result_type: _, op: _, value: _ } => 1
-    IntCompare { predicate: _, lhs: _, rhs: _ } => 1
-    FloatCompare { predicate: _, lhs: _, rhs: _ } => 1
-    Alloca { allocated_type: _, element_count: _ } => 1
-    Load { result_type: _, pointer: _, ordering: _ } => 4
+    Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
+    Conversion { result: _, result_type: _, op: OpBitCast, value: _ } => 0
+    Conversion { result: _, result_type: _, op: _, value: _ } => 1
+    IntCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    FloatCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    Alloca { result: _, allocated_type: _, element_count: _ } => 1
+    Load { result: _, result_type: _, pointer: _, ordering: _ } => 4
     Store { value: _, pointer: _, ordering: _ } => 4
-    GetElementPtr { source_type: _, base: _, indices: _ } => 1
-    AtomicRmw { op: _, pointer: _, operand: _, ordering: _ } => 8
-    CmpXchg { pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
+    GetElementPtr { result: _, source_type: _, base: _, indices: _ } => 1
+    AtomicRmw { result: _, op: _, pointer: _, operand: _, ordering: _ } => 8
+    CmpXchg { result: _, pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
     Fence { ordering: _ } => 4
-    ExtractValue { aggregate: _, indices: _ } => 0
-    InsertValue { aggregate: _, element: _, indices: _ } => 1
-    ExtractElement { vector: _, index: _ } => 1
-    InsertElement { vector: _, element: _, index: _ } => 1
-    ShuffleVector { first: _, second: _, mask: _ } => 1
-    Select { condition: _, if_true: _, if_false: _ } => 1
-    Call { result_type: _, callee: _, arguments: _ } => 5
-    Freeze { value: _ } => 0
-    FNeg { result_type: _, operand: _ } => 1
-    VaArg { result_type: _, va_list: _, arg_type: _ } => 2
-    LandingPad { result_type: _, is_cleanup: _, clauses: _ } => 1
-    CatchPad { catch_switch: _, args: _ } => 1
-    CleanupPad { parent_pad: _, args: _ } => 1
+    ExtractValue { result: _, aggregate: _, indices: _ } => 0
+    InsertValue { result: _, aggregate: _, element: _, indices: _ } => 1
+    ExtractElement { result: _, vector: _, index: _ } => 1
+    InsertElement { result: _, vector: _, element: _, index: _ } => 1
+    ShuffleVector { result: _, first: _, second: _, mask: _ } => 1
+    Select { result: _, condition: _, if_true: _, if_false: _ } => 1
+    Call { result: _, result_type: _, callee: _, arguments: _ } => 5
+    Freeze { result: _, value: _ } => 0
+    FNeg { result: _, result_type: _, operand: _ } => 1
+    VaArg { result: _, result_type: _, va_list: _, arg_type: _ } => 2
+    LandingPad { result: _, result_type: _, is_cleanup: _, clauses: _ } => 1
+    CatchPad { result: _, catch_switch: _, args: _ } => 1
+    CleanupPad { result: _, parent_pad: _, args: _ } => 1
   }
 }
