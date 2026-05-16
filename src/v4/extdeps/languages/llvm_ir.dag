@@ -1222,6 +1222,46 @@ type Terminator
 
 
 // ─────────────────────────────────────────────────────────────────────
+// UnwindDest — the unwind destination of an EH terminator. LangRef
+// `catchswitch`/`cleanupret` each allow EITHER `unwind label <bb>` OR
+// `unwind to caller` — two genuinely distinct legal forms. The earlier
+// `unwind_target: Symbol` forced a block label, making the LangRef-legal
+// `unwind to caller` UNREPRESENTABLE (the codex REQUEST_CHANGES — a P1/M3
+// spec-narrowing: valid source programs not modelable). Fixed as a
+// typed two-case sum, the SAME alternative-forms-as-distinct-shapes
+// discipline as `RetVoid`-vs-`RetValue` / `UnconditionalBr`-vs-
+// `ConditionalBr` (a typed case, NEVER an in-band sentinel label). Only
+// `catchswitch`/`cleanupret` carry it — `invoke`/`catchret` unwind/jump
+// is ALWAYS a label per LangRef (verified — no inverse over-application).
+// (The companion `catchswitch within none` form is NOT a narrowing: the
+// parent operand is a token VALUE in LLVM's own model — `within none`
+// is faithfully `parent_pad = ConstantOperand { constant: NoneToken }`,
+// `within %pad` is the pad's token result; both representable.)
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: read uniformly by the CFG/unwind
+//      consumer (`block_successors`, the effect lens); a shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the reduction is a nullable/sentinel
+//      label (`unwind_target` = "" meaning to-caller) — exactly the
+//      in-band-absence anti-pattern INVARIANTS P2 + diagnostic.dag
+//      `Correction` forbid; the typed two-case is faithful.
+//   3. Algebraic form — N/A: a LangRef EH control-flow form, not an
+//      algebra carrier; no richer std/ source.
+//   4. Dimensional — FAILS: an unwind is EXACTLY to-caller XOR
+//      to-a-label; never both — alternatives, not coordinates.
+//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
+//      vs label-carrying), not `F<X>` over a declared set.
+// Terminal: the closed LangRef unwind-destination partition; the typed
+// sum makes `unwind to caller` representable WITHOUT a sentinel label
+// (P1/M3 faithful — neither over- nor under-constrained).
+type UnwindDest
+  = UnwindToCaller
+  | UnwindToLabel { target: Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // BasicBlock — a label + the SSA-mandated structure: phi nodes FIRST,
 // then ordinary instructions, then EXACTLY ONE terminator. Record (Conj),
 // no ledger. The phi-before-body LangRef rule is STRUCTURAL here (a
@@ -1428,6 +1468,18 @@ type LlvmModule {
 // edge would be a second authority for what the CFG already determines).
 // One self-recursion-free fold, terminating by structural list descent
 // (std/node.dag A2 implicit case).
+//
+// `unwind_successors` projects an `UnwindDest` to its CFG edge(s):
+// `unwind to caller` adds NO intra-function successor (control leaves
+// the function), `unwind label %bb` adds that one edge — the structural
+// reason `UnwindDest` is a typed sum, not a sentinel label.
+fn unwind_successors(d: UnwindDest) -> List<Symbol> {
+  match d {
+    UnwindToCaller => []
+    UnwindToLabel { target: t } => [t]
+  }
+}
+
 fn block_successors(t: Terminator) -> List<Symbol> {
   match t {
     RetVoid => []
@@ -1442,8 +1494,8 @@ fn block_successors(t: Terminator) -> List<Symbol> {
     CallBr { callee: _, arguments: _, fallthrough: f, indirect_targets: it } =>
       concat([f], it)
     Resume { value: _ } => []
-    CatchSwitch { parent_pad: _, handlers: hs, unwind_target: u } => concat(hs, [u])
-    CleanupRet { cleanup_pad: _, unwind_target: u } => [u]
+    CatchSwitch { parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
+    CleanupRet { cleanup_pad: _, unwind: u } => unwind_successors(d: u)
     CatchRet { catch_pad: _, successor: s } => [s]
   }
 }
