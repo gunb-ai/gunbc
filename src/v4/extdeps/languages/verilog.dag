@@ -1653,29 +1653,103 @@ type LocalParameterDeclaration {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// PrimitiveGateKind — the closed Verilog built-in primitive-gate
+// kind classifier (IEEE 1364-2005 §7.2). The spec admits exactly 26
+// primitive gate types partitioned into six families per §7. Modeling
+// the keyword as a free `String` admits spec-illegal keywords —
+// corrected per codex BLOCKING on PR #3176 (M4 closed-sets-are-enums
+// + INVARIANTS P2 illegal-states-unrepresentable). The keyword IS the
+// closed kind discriminator and lives on this enum.
+//
+//   N-input gates (§7.2):
+//   - GateAnd, GateNand, GateOr, GateNor, GateXor, GateXnor
+//   N-output gates (§7.2):
+//   - GateBuf, GateNot
+//   Three-state gates (§7.2):
+//   - GateBufif0, GateBufif1, GateNotif0, GateNotif1
+//   MOS switches (§7.5):
+//   - GateNmos, GatePmos, GateCmos, GateRnmos, GateRpmos, GateRcmos
+//   Bidirectional pass switches (§7.6):
+//   - GateTran, GateRtran, GateTranif0, GateTranif1, GateRtranif0,
+//     GateRtranif1
+//   Pull gates (§7.7):
+//   - GatePulldown, GatePullup
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §7 admits this 26-way
+// primitive-gate partition; SystemVerilog adds no new primitives.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every gate-emission consumer + every
+//      per-gate terminal-arity check + every per-gate drive-strength
+//      legality check reads the kind tag uniformly; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ keyword: String }` proxy admits
+//      spec-illegal keywords (M4 closed-sets-are-enums-not-strings;
+//      the K-1 readable-string heuristic surface this Disj forecloses).
+//      A `{ id: Int }` proxy admits unbounded Int — same anti-pattern.
+//      The enum IS the M4-faithful form.
+//   3. Algebraic form — N/A by construction: the 26 gates are the
+//      spec's primitive electrical-primitive taxonomy; the per-family
+//      sub-partitions (n-input / n-output / three-state / MOS / pass /
+//      pull) are observable derivations, not richer std/ algebra.
+//   4. Dimensional — FAILS: a single gate instantiation has EXACTLY
+//      ONE kind; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the 26 are structurally
+//      heterogeneous per family (varying terminal-arity admissibility
+//      per gate, varying drive-strength admissibility, varying
+//      bidirectionality) — NOT one generic `F<X>` / projection over
+//      a separately-declared source set (Practice 7). The spec's
+//      partition is irreducible.
+// Terminal: the closed twenty-six-way Verilog primitive-gate-kind
+// classifier of the IEEE 1364-2005 §7 spec.
+type PrimitiveGateKind
+  = GateAnd
+  | GateNand
+  | GateOr
+  | GateNor
+  | GateXor
+  | GateXnor
+  | GateBuf
+  | GateNot
+  | GateBufif0
+  | GateBufif1
+  | GateNotif0
+  | GateNotif1
+  | GateNmos
+  | GatePmos
+  | GateCmos
+  | GateRnmos
+  | GateRpmos
+  | GateRcmos
+  | GateTran
+  | GateRtran
+  | GateTranif0
+  | GateTranif1
+  | GateRtranif0
+  | GateRtranif1
+  | GatePulldown
+  | GatePullup
+
+
+// ─────────────────────────────────────────────────────────────────────
 // GateInstantiation — a Verilog built-in primitive instantiation
 // (`and g1(out, a, b);` / `not n1(o, i);` / `bufif1 b1(out, in, en);`,
-// etc.). IEEE 1364-2005 §7 admits 24 built-in primitive gate types
-// (and / or / nand / nor / xor / xnor / not / buf / bufif0 / bufif1 /
-// notif0 / notif1 / pulldown / pullup / nmos / pmos / cmos / rnmos /
-// rpmos / rcmos / tran / tranif0 / tranif1 / rtran / rtranif0 /
-// rtranif1). Conj record (no Practice-4 ledger).
+// etc.). IEEE 1364-2005 §7. Conj record (no Practice-4 ledger).
 //
-//   - gate_keyword     the primitive's keyword as a verbatim lexeme
-//                      (the closed 24-keyword set is owned by the
-//                      bundled T-4 LanguageModel productions; the
-//                      vocabulary slice carries the keyword as
-//                      lexeme + the per-keyword terminal-arity table
-//                      is a LanguageModel-level joint check, same
-//                      pattern as gate primitives' per-keyword
-//                      admissibility)
-//   - body_lexeme      instance name + terminal list as a verbatim
-//                      lexeme (sub-grammar deferred — the
-//                      per-primitive terminal arity / drive strength
-//                      / delay control is in the bundled
-//                      LanguageModel)
+//   - gate_kind        which built-in primitive gate (PrimitiveGateKind
+//                      closed Disj; replaces the prior free-String
+//                      gate_keyword that admitted spec-illegal
+//                      keywords — M4 / INVARIANTS P2 fix per codex
+//                      BLOCKING on PR #3176)
+//   - body_lexeme      instance name + terminal list + drive-strength
+//                      + delay control as a verbatim lexeme (sub-
+//                      grammar deferred — the per-primitive terminal
+//                      arity / drive strength / delay control
+//                      admissibility lives in the bundled T-4
+//                      LanguageModel productions)
 type GateInstantiation {
-  gate_keyword: String
+  gate_kind: PrimitiveGateKind
   body_lexeme: String
 }
 
