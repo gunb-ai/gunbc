@@ -11,7 +11,7 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Six Modeling Practices
+## Seven Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -26,6 +26,7 @@ Mapping:
 - Practice 4 (Coproduct dissolution) — implements **P1: Modeling Faithfulness**
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
+- Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
@@ -108,7 +109,7 @@ Every enum with N ≥ 2 variants must be classified as one of:
 - **🔴 RED (dissolvable-now)** — richer source exists and extraction
   is cheap. Do it immediately, before the next consumer is added.
 
-**Four dissolution patterns to try in order** before classifying as
+**Five dissolution patterns to try in order** before classifying as
 terminal:
 
 1. **Fact placement.** Variants trace to different consumers or DAG
@@ -127,6 +128,18 @@ terminal:
    Promote the dimensions to fields. Example:
    `EdgeKind::Consumed | Read | Threaded | Projected` →
    `Edge { source_effect, control_role }`.
+5. **Parameterized family.** The N variants are mechanically the same
+   shape `F<X>` for X ranging over a known, separately-declared set —
+   the coproduct is an *enumerated copy of that set*. It is not N
+   variants; it is one generic / one projection over X. Replace the
+   enumeration with that projection — see **Practice 7**. Example: a
+   `Homomorphism` enum with one variant per algebra structure
+   (`HomMagma`, `HomMonoid`, … — each `{ source: X<S>, target: X<T>,
+   map }`) is the algebra-structure set copied into a second type; the
+   faithful form is one generic `Homomorphism<C>` projected over the
+   structures. Patterns 1–4 will *not* catch this — they test coproduct
+   *shape*, not parameterized mechanical repetition; that is exactly why
+   this pattern exists.
 
 **What to check:** Any new Rust enum with N ≥ 2 variants must have a
 checkpoint comment naming its classification (🟢/🟡/🔴), with a ledger
@@ -182,6 +195,57 @@ crate-internal caller forgets, the invariant breaks.
 eliminate it entirely by making the state transition atomic at the
 data-model level.
 
+### 7. Projection over enumeration
+
+The substrate is a concept DAG. When a concept is a *mechanical
+function* of a parent concept — when its content is fully determined by
+walking the parent — it is an **edge** (a projection) in that DAG, not a
+sibling **node** authored and maintained on its own. Materialising the
+derived family as hand-written declarations is a parallel
+representation: it copies the parent's structure, and cost-of-change
+becomes ≥ 2 — every addition to the parent forces a matching addition to
+the copy, and the two drift.
+
+This is Practice 4's constructive sibling. Practice 4 (pattern 5)
+*detects* the enumerated-copy smell in a coproduct; this practice is the
+shape to reach for, and it is broader than coproducts — it applies to
+any family of declarations, enum or not.
+
+**What to check:** For any family of declarations, ask "is each member
+`F(X)` for X over a set that already exists somewhere?" If yes — is the
+family written as a projection (one generic, one fold, one lens) or
+hand-enumerated? Enumeration is the violation. **The test:** if adding
+one element to a source set forces a matching hand-edit elsewhere, you
+have an enumeration where a projection belongs. Cost-of-change must be 1
+(CLAUDE.md "Cost of Change").
+
+**Worked example — `Homomorphism` (the enumerated form, and the fix).**
+A first cut declared a 15-variant `Homomorphism` coproduct: one variant
+per algebra structure, each mechanically `Hom{X} { source: X<Source>,
+target: X<Target>, map: fn(Source) -> Target }`. Every variant is
+identical but for the structure name — the enum is the algebra-structure
+*set copied into a second type*. It passed all four original Practice-4
+dissolution patterns (it genuinely is not a record, not dimensional, …)
+and two independent reviews, because those patterns test coproduct
+*shape*, not parameterized mechanical repetition. The faithful form is
+one generic `Homomorphism<C>`, projected over the algebra structures C;
+adding an algebra then costs 1, not 2. (If the substrate cannot carry
+the higher-kinded `C`, the fallback is still one type — `Homomorphism`
+over an algebra-as-data carrier with same-class as a checked predicate —
+never the enumeration.)
+
+**Worked example — `Int` (projection done right).** `Int`'s arithmetic
+is never re-listed on `Int`. `Int` inhabits `OrderedRing`; its `add` /
+`mul` / `compare` *project from* that algebra-instance — reached by
+walking `Int → its OrderedRing<Int> → add`. Likewise `Int64` is not a
+hand-authored fixed-width type sitting beside `Int8`…`Int128`; it is
+`Int` projected onto a machine-width axis (`Int` composed with
+`MachineWidth<Word64>` — see INVARIANTS P1's integer worked example).
+The fixed-width integers are a projection over the width set, not eleven
+enumerated siblings. "Operations fall out of inhabitance" (THESIS,
+epistemic stacking) is precisely this practice: the operations are
+projected from the algebra, not enumerated on the type.
+
 ## Calibration: Blocking vs Non-blocking
 
 A finding is **BLOCKING** if fixing it in a later PR would be meaningfully
@@ -209,7 +273,7 @@ milestones before anyone notices.
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The six modeling practices above
+[INVARIANTS.md](../INVARIANTS.md)**. The seven modeling practices above
 are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
@@ -219,9 +283,15 @@ For each relevant principle and its implementing practices:
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
-4. For new enums: verify the 🟢/🟡/🔴 classification annotation.
-5. For cross-stage boundaries: verify facts flow forward.
-6. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
+4. For new enums: verify the 🟢/🟡/🔴 classification annotation, and
+   that Practice 4 pattern 5 (parameterized family) was applied — an
+   enum that is `F<X>` per variant is an enumerated copy, not a
+   coproduct.
+5. For any new family of declarations (enum or not): verify it is a
+   projection over its source set (Practice 7), not a hand-enumeration —
+   the cost-of-change test is adding one element to the source set.
+6. For cross-stage boundaries: verify facts flow forward.
+7. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
    above.
 
 This document is the distilled version of modeling principles. For the

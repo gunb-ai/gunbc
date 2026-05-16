@@ -1,0 +1,26 @@
+// src/v4/std/logic.dag
+//
+// Scope: classical two-valued logic — the `Bool` truth value and its
+//        algebraic grounding. The boolean kernel every predicate returns.
+// Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
+//         (two-element / classical bivalent logic; the Boolean data type)
+//
+// Owns:
+//   - Bool — the closed two-variant truth value (a `Disj` of True | False)
+//   - inhabitance: Bool inhabits `BooleanAlgebra` (std/algebra.dag) —
+//     conjunction / disjunction / negation FALL OUT of the algebra; they
+//     are never re-declared here (epistemic stacking)
+//
+// Consumes:
+//   - std/node.dag: Disj
+//   - std/algebra.dag: BooleanAlgebra
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.logic

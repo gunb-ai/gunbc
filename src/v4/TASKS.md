@@ -10,7 +10,7 @@ The XL tasks below define "v4 done" (the count is intentionally NOT stated — i
 Phase 1 (parallel — substrate foundation):
   T-1   std/node.dag                     [BLOCKS: all]
   T-2   std/algebra.dag                  [needs T-1]
-  T-3   std/* supporting (6 files)       [needs T-1]
+  T-3   std/* supporting (11 files)      [needs T-1, T-2; diagnostic/cardinality are T-1-only, the scalar/numeric stack needs T-2 (algebra) — ordered cluster, see T-3 detail]
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag   [needs T-1, T-2]
   T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
   T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
@@ -22,7 +22,8 @@ Phase 1 (parallel — substrate foundation):
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-1; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
-  T-5   workflow/* (5 files)             [needs T-1; FIRST IN EXECUTION]
+  T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
+        cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
 
 Phase 1.5 (test + bootstrap substrate — early, before compiler stages):
   T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
@@ -82,6 +83,14 @@ Phase 3 (parallel — lens dimensions):
 Phase 4 (serial — close the loop):
   T-14  test/claim/* + test/fixture/* (port load-bearing TestClaims from v3)
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
+        + PROOF-1: the external trust-discharge for A3 — a lens =
+          (evidence read: A2 descent, algebra-homomorphism chain, cost,
+          effects) ⊕ (B2-OMNI emit to a lean/coq language model). The
+          prover KERNEL-CHECKS gunbc's exported witnesses (never
+          searches — no-engine + A2). No new file; framing in
+          STRUCTURE.md §7 + DECISIONS.md PROOF-1. Realized when the
+          lens framework + a lean/coq model land (composition, not a
+          new subsystem).
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
         + React/TS frontend + OpenAPI wire contract
         [needs T-4, T-4.5, T-4.6, T-4.7, T-4.8, T-10, T-11]
@@ -125,10 +134,19 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-3: std/* supporting (cardinality, witness, diagnostic, primitive, collection, verification)
+### T-3: std/* supporting (cardinality, witness, diagnostic, collection, verification + the scalar/numeric stack)
 
-**File**: 6 files in `src/v4/std/`
+**File**: 11 files in `src/v4/std/` — `cardinality`, `witness`, `diagnostic`,
+`collection`, `verification`, plus the **scalar/numeric stack** (`logic`,
+`nat`, `machine`, `integer`, `float`, `text`) that replaced the deleted
+`primitive.dag` — see `STRUCTURE.md` §"Scalar/numeric concept decomposition".
 **Why bundled**: smaller individually, all interrelated, foundation for everything.
+
+**Dependency order within T-3** (the scalar/numeric stack is a cluster, not
+flat — dispatch in waves):
+- `diagnostic`, `cardinality` need only `node.dag`.
+- `logic`, `nat`, `collection`, `witness`, `verification` need `algebra.dag` (T-2) or `diagnostic`.
+- `machine` needs `logic` + `nat`; `text` needs `nat` + `algebra.dag` (T-2, FreeMonoid); `integer` needs `nat` + `machine` + `algebra.dag` (T-2, OrderedRing/AbelianGroup); `float` needs `machine` + `algebra.dag` (T-2, ApproximateField). Every scalar file except `machine` consumes `algebra.dag` — none of the scalar/numeric cluster is dispatchable before T-2.
 
 **Modeling decisions per file** (see file headers for specifics).
 
@@ -167,7 +185,7 @@ Phase 4 (serial — close the loop):
 
 **Modeling decisions**:
 - `process.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
-- `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as Diagnostic NamedReason variants.
+- `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as distinct Diagnostic `reason` name-references (`Symbol`, per std/diagnostic.dag — `reason` is an opaque name-reference, not a closed enum).
 
 **Reference**:
 - Anchors in file headers (Wikipedia: Process, Wikipedia: File system, POSIX File and Directory Operations)
@@ -175,20 +193,24 @@ Phase 4 (serial — close the loop):
 
 ---
 
-### T-5: workflow/* — recursive-flex (FIRST IN EXECUTION ORDER)
+### T-5: REMOVED — work-direction meta-layer cut (operator-ratified 2026-05-15)
 
-**File**: 5 files in `src/v4/workflow/`
-**Why FIRST**: this IS the structural fix to v3's hierarchy/gaming failure. Implement workflow substrate before any compiler work, so every subsequent task's WorkerOutput is a typed instance.
+T-5 ("workflow/* — recursive-flex": `brief.dag`, `worker_output.dag`,
+`cycle.dag`, `retirement.dag`, `doc_anchor.dag`) is **deleted**. Rationale
+(operator-ratified): modeling gunbc's *own work-direction* as `.dag` data
+is not used by the project; the compiler model self-justifies (rationale
+emergent from composition), so no meta-layer is needed to narrate it.
+Tombstone retained (not silently dropped) so the decision is on record.
 
-**Modeling decisions**:
-- Brief contract shape (what fields are mandatory?)
-- Retirement predicate (A3, operator-ratified 2026-05-15): `retired` is a REPRODUCTION, never a count. `retired ⟺ rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash ∧ the seed's own hash matches its pin`. `HandResidual` = the Rust the .dag-rebuild cannot reproduce — empty by reproduction, not by count (defeats paper-shrink: relocation/inlining is non-seed Rust, removed by the test). NOT un-gameable (Trusting-Trust — pin/CI/seed are editable); its job is early/loud surfacing per-PR on the affected set so gaming is un-missable + operator-routed. Seed trust = named axiom, not proof. Enforcement = operator-ratification + STOP-culture; structure makes defection conspicuous, not impossible. Typed workflow substrate, NOT a CI grep (feedback_no_textual_enforcement_bridges).
-- Cycle data: lens-readable progression vs prose status
+What survives in `workflow/`, as standalone tasks — these are *compiler
+build infrastructure*, not the work-direction meta-layer:
+- **`workflow/bootstrap.dag` → T-20** (the bootstrap chain; load-bearing
+  for the anti-regression guarantee, STRUCTURE.md invariant 7).
+- **`workflow/ci.dag` → T-24** (CI pipeline as data).
 
-**Reference**:
-- This conversation (the failure mode that motivated this substrate)
-- `feedback_doc_authority_must_propagate_to_execution_authority` (memory)
-- `feedback_paper_shrink_variants` (memory) — the failure modes to refuse
+THESIS facet 4 / STRUCTURE.md invariant 6 narrowed correspondingly.
+The 5 deleted files were never filled (scaffolds only); nothing in the
+substrate imported them, so the cut is a pure scope reduction.
 
 ---
 
@@ -499,7 +521,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - **No semantic equivalence, no pattern library.** Synthesis reads the user's **declared** I/O relation (its contract/type — declared, never inferred; this dissolves the Rice-undecidability collision). It does NOT prove two programs equivalent and does NOT match against a `(naive→better)` catalogue (engine-shaped + unbounded — `feedback_no_engine`).
 - **`LowerBoundTechnique` = closed set, enumerated up front**: `DecisionTree | AlgebraicRank | AdversaryCommunication | InformationTheoretic | ReductionConditional`. Each is a *general algebraic property over a relation class*, encoded once; adding the Nth algorithm adds ZERO entries.
 - Synthesis = `compare(cost-lens-derived cost of the user's realization, the declared relation's lower bound derived via the technique set)`. No applicable technique ⇒ helpful Diagnostic (honest, never fabricated — `feedback_no_engine`).
-- Report carrier shape (`std/report.dag`): closed-enum `ReportReason` disjoint from Diagnostic's `NamedReason`; advisory by construction; opt-in fail-closed via `apply_lens(synthesis, Enforce { ... })`.
+- Report carrier shape (`std/report.dag`): closed-enum `ReportReason` disjoint from Diagnostic's `reason` name-reference (`Symbol`); advisory by construction; opt-in fail-closed via `apply_lens(synthesis, Enforce { ... })`.
 - **Honest worked examples (for the worker later — illustrations of the technique→relation→lower-bound→compare flow, NOT a rule catalogue):**
   - *Sorting* — relation: "ordered permutation under a comparison oracle". Technique: `DecisionTree` ⇒ ≥ n! leaves ⇒ Θ(n log n). User Θ(n²) ⇒ Report the gap. (Merge-sort never named — the provable gap to optimum is surfaced, not a fix.)
   - *Matrix multiply* — relation: bilinear form. Technique: `AlgebraicRank` ⇒ naive n³ is rank-suboptimal vs n^ω. (Strassen never named; ω is open — the model surfaces structural suboptimality, refuses to fabricate an optimal.)
@@ -593,6 +615,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - Diff representation (file-set? node-set? structural-delta over the Dag?)
 - Purity-aware skipping: an unchanged pure subgraph is incrementally skippable; what makes a subgraph "unchanged" structurally?
 - Composition with `compiler/05_eval.dag` (skip) and `workflow/ci.dag` (job selection)
+- Structural caching is the **dual** of the affected set — the same mechanism. A build/exec artifact's cache key is `content_hash` (B1) of its input subgraph: the affected set names what re-runs, a cache restores what doesn't. Caching is not a separate system. The cache backend (GHA `actions/cache`, a remote build cache, a local memo table) is just an emission target of the hash.
 
 **Scope**: L (large — load-bearing for incremental execution + CI dissolution)
 
@@ -643,6 +666,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - `CiPipeline { jobs, gates }` shape
 - `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
+- Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
 
 **Scope**: L (large — closes the v3 hand-authored-CI gap; dissolves the shell bridge)

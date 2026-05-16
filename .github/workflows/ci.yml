@@ -206,7 +206,30 @@ jobs:
         restore-keys: |
           cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
           cargo-v2-${{ runner.os }}-
+    # Cache the built v2-compiler BINARY, keyed on the frozen bootstrap
+    # seed. src/v2/ is touched almost never (and CI-gated when it is), so
+    # this key is near-permanently stable — a hit skips the cold ~1m
+    # v2-compiler rebuild entirely. Caching target/ alone is unreliable:
+    # cargo's freshness check over a cache-restored target/ frequently
+    # recompiles anyway; caching the output artifact and not invoking
+    # cargo at all sidesteps that.
+    #
+    # Interim MANUAL key. The structural form is content_hash() over the
+    # src/v2/stage0 input subgraph — see src/v4/lens/affected_set.dag and
+    # src/v4/workflow/ci.dag. Once workflow/ci.dag (T-24) emits this
+    # workflow, the key becomes an emitted content-hash, not a hashFiles
+    # glob.
+    - name: Cache v2-compiler binary
+      id: v2-bin
+      uses: actions/cache@v4
+      with:
+        path: target/release/v2-compiler
+        # Root Cargo.toml is included: its [profile.release] settings
+        # affect the v2-compiler binary without touching Cargo.lock or
+        # src/v2/stage0/**.
+        key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (bootstrap stage minus one)
+      if: steps.v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: v2 → v4 bootstrap viability (parse all v4 .dag files via v2)
       run: |
