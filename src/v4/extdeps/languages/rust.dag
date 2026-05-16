@@ -1408,26 +1408,48 @@ type RustVisibility
   | PubIn { path: PubInPath }
 
 
-// RustVisibility well-formedness — TYPE-ENFORCED via PubInPath's
-// absolute-from-crate-root single-canonical-form discipline.
+// RustVisibility well-formedness — SPLIT enforcement (shape: type-
+// level / semantic: producer-obligation 🟡 scaffold via PubInPath's
+// scaffold bridge).
 //
-// The single-authority invariant "same resolved scope ⇒ same
-// RustVisibility value" is structurally enforced by PubInPath's
-// shape: there is exactly ONE `List<NamedSegment>` per module
-// under crate (the absolute path from crate root), so every valid
-// `pub(in <SimplePath>)` source form canonicalizes to a unique
-// PubInPath value at the resolver. Source-spelling variants (e.g.
-// `pub(super)` vs `pub(in crate::a)` for an item in `crate::a::b`)
-// resolve to the SAME absolute path and produce the SAME canonical
-// PubInPath value; the carrier has no place to encode source-
-// spelling distinctions. Reference's reflexive-current-module case
-// canonicalizes to Private (one structural representation for the
-// no-modifier scope). Illegal-non-ancestor and empty-path cases are
-// parse/resolver-rejected upstream; the carrier admits only valid
-// strict-ancestor + crate-root destinations. Illegal states
-// unrepresentable per modeling-discipline.md §Practices 2/6 AND
-// INVARIANTS P2; NOT a doc-only producer obligation, NOT a noop
-// well-formedness fn.
+// What IS type-enforced today (shape-level invariants — structural):
+//   - RustVisibility's three-variant Disj forces a value to be
+//     exactly one of Private / Pub / PubIn { path: PubInPath }.
+//   - PubInPath's single-field shape forces a resolved_path
+//     coordinate; no parallel absolute-vs-relative representation
+//     is admitted by the type.
+//   - NamedSegment's closed-record-with-one-field shape forces a
+//     single Symbol id per segment.
+//   - List equality on the resolved_path is structural; two values
+//     with the same opaque-Symbol-id list ARE the same PubInPath
+//     value (K-1 Symbol equality is the boundary).
+//
+// What is NOT type-enforced today (semantic-level invariants —
+// producer-obligation 🟡 scaffold, per PubInPath's bridge note):
+//   - That each NamedSegment.id resolves to an actually-existing
+//     module in the defining crate.
+//   - That the resolved_path's segments form a valid descent through
+//     real module containment (vs an arbitrary Symbol sequence).
+//   - That the target module is a STRICT ANCESTOR of the declaring
+//     item (vs the current module, which is Private, or a non-
+//     ancestor, which is parse-rejected).
+//   - That "same resolved scope ⇒ same canonical PubInPath value"
+//     holds end-to-end (this depends on the resolver computing the
+//     same absolute path for every source form pointing at the
+//     same module — producer-side until the module-tree substrate
+//     makes resolution type-level).
+//
+// Per the openai-pro REQUEST_CHANGES 2026-05-16T13:24:03Z framing:
+// the earlier "TYPE-ENFORCED" claim conflated these two layers. The
+// shape IS type-enforced; the semantic ancestor-validity IS NOT.
+// Dissolution trigger: when std/ exposes a typed MODULE-TREE
+// substrate (Module-Node + ancestor-relation Witness + module-
+// existence Witness), the semantic invariants become type-level —
+// PubInPath collapses to a refined { target: ModuleRef,
+// ancestor_proof: Witness<...> } form. Co-temporal with the bundled
+// T-4 LanguageModel grammar work (since the resolver consumes those
+// productions). See PubInPath's 🟡 SCAFFOLD declaration above for
+// the full bridge properties.
 
 
 // ─────────────────────────────────────────────────────────────────────
