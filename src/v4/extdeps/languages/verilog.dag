@@ -978,8 +978,9 @@ type InitialBlock {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortConnection — one connection in a module-instance's port-binding
-// list (IEEE 1364-2005 §12.1.2). Conj record (no Practice-4 ledger).
+// NamedPortConnection — one named connection in a module-instance's
+// port-binding list (IEEE 1364-2005 §12.1.2, named form). Conj record
+// (no Practice-4 ledger).
 //
 //   - port      the formal port name on the instantiated module
 //               (K-1-opaque Symbol; resolved through the namespace
@@ -989,34 +990,89 @@ type InitialBlock {
 //               context (K-1-opaque Symbol; resolved to a
 //               `NetDeclaration` / `VariableDeclaration` /
 //               `PortDeclaration` of the enclosing module)
-//
-// This is the NAMED port-connection form (`.port(signal)`) — the
-// IEEE 1364-2005 §12.1.2 alternative positional form (`(signal1,
-// signal2, ...)`) is scope-negative for T-4.9 (it is order-dependent
-// and prone to silent reorder-bugs the spec recommends against; the
-// L-2 pin discipline admits it via a future PortConnectionKind
-// coproduct EDIT when consumer demand surfaces).
-type PortConnection {
+type NamedPortConnection {
   port: Symbol
   signal: Symbol
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
+// PortConnections — the closed Verilog port-binding-list form
+// classifier (IEEE 1364-2005 §12.1.2). The spec admits exactly TWO
+// port-connection forms; each module-instance picks ONE form for the
+// entire instance (mixing positional and named in a single instance
+// is forbidden by the grammar — `Adder a1 (x, .b(y))` is a syntax
+// error). The Disj-with-named-payloads makes "mixed positional/named"
+// structurally unrepresentable (codex BLOCKING fix on PR #3176
+// 2026-05-16: the prior NAMED-ONLY model had positional connections
+// scope-negative, which excluded valid spec syntax and violated
+// INVARIANTS P1 modeling-faithfulness).
+//
+//   - PositionalConnections   — `Adder a1 (sig1, sig2, sig3)` —
+//                               actuals listed in declaration-order
+//                               position; the i-th signal binds to
+//                               the i-th port of the instantiated
+//                               module. Spec §12.1.2 "Ordered port
+//                               connections".
+//   - NamedConnections         — `Adder a1 (.a(x), .b(y), .sum(z))`
+//                               — actuals explicitly bound to formals
+//                               by name. Spec §12.1.2 "Named port
+//                               connections".
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
+// port-connection forms; a third would be an edit to THIS declaration
+// under the L-2 pin discipline (SystemVerilog adds `.port` shorthand
+// for `.port(port)` and `.*` for "connect all matching names" — a
+// future language-version model would EDIT this Disj explicitly).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every instance-emission consumer and
+//      every port-binding resolver reads the connection form
+//      uniformly to know whether to align by position or by name;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the variants to a uniform
+//      `List<PortConnectionEntry>` where each entry has `kind: Form`
+//      ratifies the illegal state "mixed positional+named within
+//      one instance" — exactly the spec-forbidden form. The
+//      Disj-with-heterogeneous-payloads makes the per-instance
+//      uniform-form choice structural.
+//   3. Algebraic form — N/A by construction: the two forms are the
+//      IEEE 1364-2005 spec's primitive port-connection partition;
+//      they do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single module instance is EXACTLY
+//      ONE form; mutually-exclusive alternatives. (Mixed-form is a
+//      syntax error per spec.)
+//   5. Parameterized family — FAILS: the two variants carry
+//      structurally heterogeneous payloads (PositionalConnections
+//      carries `List<Symbol>` — the signal names by position only;
+//      NamedConnections carries `List<NamedPortConnection>` — each
+//      with formal+actual) — NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7).
+// Terminal: the closed two-way Verilog port-connection-form
+// classifier of the IEEE 1364-2005 spec.
+type PortConnections
+  = PositionalConnections { signals: List<Symbol> }
+  | NamedConnections { connections: List<NamedPortConnection> }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // ModuleInstance — a Verilog module instantiation (`Adder a1 (.a(x),
-// .b(y), .sum(z));`). IEEE 1364-2005 §12.1. Conj record (no
-// Practice-4 ledger).
+// .b(y), .sum(z));` or `Adder a1 (x, y, sum);`). IEEE 1364-2005 §12.1.
+// Conj record (no Practice-4 ledger).
 //
 //   - module_name      the instantiated module's name (K-1-opaque
 //                      Symbol; resolved through the namespace to the
 //                      matching top-level `VerilogModule`)
 //   - instance_name    this instance's local name (K-1-opaque
 //                      Symbol)
-//   - connections      the named port-connection list
+//   - connections      the port-binding list (PositionalConnections
+//                      OR NamedConnections per spec §12.1.2; uniform
+//                      per instance)
 type ModuleInstance {
   module_name: Symbol
   instance_name: Symbol
-  connections: List<PortConnection>
+  connections: PortConnections
 }
 
 
