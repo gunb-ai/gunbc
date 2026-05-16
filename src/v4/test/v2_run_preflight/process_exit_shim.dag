@@ -6,6 +6,10 @@
 //        under `--source-root src/v4` alone (full `dsl/` tree is not v2-parse-
 //        clean as a single root).
 // Anchor: dsl/std/process.dag + src/v4/DECISIONS.md T-20 pre-flight note
+//
+// Drift discipline: if `dsl/std/process.dag` changes `ProcessExit` / exit-code
+// carriers, reconcile this shim in the same change-set (or delete the shim
+// when v4 no longer needs a src/v4-local `dag run` host contract).
 
 module v4.test.v2_run_preflight.process_exit_shim
 
