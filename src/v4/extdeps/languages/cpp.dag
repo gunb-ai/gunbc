@@ -18,9 +18,10 @@
 //   - C++ grammar (declarations, expressions, statements, templates, classes)
 //   - Type system (primitive types + struct + union + class + template instantiation)
 //   - D2 resolver facts for C++ primitive carriers: alias-identity to
-//     std/ carriers, grounding maps, and operation-semantics carriers.
-//     This file is NOT an algebra-inhabitance site; the std/ scalar
-//     files own algebra once.
+//     std/ carriers and operation-semantics carriers. This file is NOT
+//     an algebra-inhabitance site; the std/ scalar files own algebra
+//     once. D2a(2) grounding-map rows are tracked-scaffold deferred
+//     because the shared `GroundingMap` home is operator-pending.
 //   - Cost realization: per-operation cost on C++ targets
 //
 // Consumes:
@@ -30,9 +31,11 @@
 //     D2 forbids per-language algebra re-declaration.
 //
 // Status: T-4 cpp D2-resolver modeled 2026-05-16 (sunny-cat-482).
-//   Mirrors the canonical rust.dag D2-resolver shape from PR #3174
-//   at 0328bee9: resolver facts only, no per-language algebra
+//   Mirrors the canonical rust.dag D2-resolver DISCIPLINE from PR
+//   #3174 at 0328bee9: resolver facts only, no per-language algebra
 //   inhabitance, no IrToCpp string table, no grammar operation stub.
+//   Header edits encode the resolver shape under DECISIONS.md D2's
+//   delegated "extdeps/languages/* headers" authority.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -45,12 +48,11 @@ module v4.extdeps.languages.cpp
 //
 // D2 RESOLVER, NOT INHABITANCE. Per DECISIONS.md D2, a language
 // extdeps file is a resolver for abstract std/ carriers. It contributes
-// three thin facts per primitive:
+// three thin facets per primitive:
 //   (1) alias-identity to the std/ carrier (`type CppBool = Bool`);
-//   (2) a grounding map carrying the source spelling (`"bool"`);
-//   (3) operation-semantics carriers that are genuine C++ facts
-//       (for example, signed overflow is undefined behavior while
-//       unsigned arithmetic is modulo 2^N).
+//   (2) a grounding map carrying the source spelling — DEFERRED here
+//       because the shared `GroundingMap` type has no pinned home yet;
+//   (3) operation-semantics carriers that are genuine C++ facts.
 //
 // It must NOT declare `OrderedRing<CppInt, ...>` or a sibling algebra
 // instance for any C++ primitive. Integer, float, text, and boolean
@@ -87,83 +89,111 @@ module v4.extdeps.languages.cpp
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GroundingMap<IRCarrier> — the per-primitive surface-spelling carrier.
-// Conj record (no coproduct dissolution ledger).
+// D2a(2) grounding-map facet — 🟡 TRACKED-SCAFFOLD DEFERRED.
 //
-// Per DECISIONS.md D2a(2), every primitive alias-identity row has a
-// sibling grounding map naming the C++ source spelling that the generic
-// B2-OMNI emit/ingest fold reads. The spelling is boundary text; it is
-// not a kernel-readable semantic tag.
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
+// Per the T-4 manager brief (msg_c131bdf6, 2026-05-16), `GroundingMap`
+// is a SHARED resolver type with no pinned substrate home yet. Declaring
+// a local `GroundingMap<IRCarrier>` in every language file would create
+// N parallel declarations for one fact, violating INVARIANTS P2.
+//
+// Therefore this file intentionally does NOT declare:
+//   - `type GroundingMap<IRCarrier> { spelling: String }`
+//   - `data cpp_bool_grounding: GroundingMap<CppBool> = ...`
+//   - any future `cpp_<primitive>_grounding` rows
+//
+// Dissolution trigger: when the operator pins the shared `GroundingMap`
+// home, C++ primitive grounding rows amend in as consumers of that
+// single authority. Until then D2a(1) alias-identity and D2a(3)
+// operation-semantics can land without fabricating the shared type.
 
 
 // ─────────────────────────────────────────────────────────────────────
-// CppOverflowAction — the closed C++ integer-overflow action set for
-// the core arithmetic operators.
+// CppDefinedIntegerOverflow — the closed IN-F C++ integer-overflow
+// semantics set for core arithmetic.
+// Anchor: C++ draft [basic.fundamental] unsigned integer range and
+// arithmetic modulo 2^N:
+//   https://eel.is/c++draft/basic.fundamental
+// Anchor: C++ draft [expr.pre] undefined behavior rule for expression
+// evaluation outside mathematically-defined result range:
+//   https://eel.is/c++draft/expr.pre
 //
-//   - UndefinedBehavior  signed integer overflow for the ordinary
-//                        arithmetic operators. The C++ abstract
-//                        machine imposes no value semantics for the
-//                        overflowing operation.
-//   - ModuloWrap         unsigned arithmetic is performed modulo
-//                        2^N for the unsigned type's width.
+//   - UnsignedModuloArithmetic  unsigned arithmetic is defined modulo
+//                               2^N for the unsigned type's width.
 //
-// This is operation-semantics data, not algebra inhabitance. A signed
-// bounded integer alias may still point at an `IntN` std carrier; this
-// sibling disposition records the C++ runtime/spec consequence when an
-// operation exceeds that carrier's representable range.
+// Signed integer overflow is deliberately NOT a variant here. The C++
+// standard gives it undefined behavior; per C5-3 and the manager brief,
+// that is fail-closed / out-of-F, not a third "action" inside a
+// language-wide overflow taxonomy. A C++ signed arithmetic operation is
+// in F only when the program graph proves the operation stays in range
+// or the source uses an explicitly totalized operation/carrier modeled
+// elsewhere. Otherwise ingest/evaluation rejects with a Diagnostic
+// rather than producing a fabricated semantic value.
+//
+// This is operation-semantics data, not algebra inhabitance. Unsigned
+// bounded integer aliases may point at std/ `UIntN` carriers; this
+// sibling disposition records C++'s defined modulo arithmetic. Signed
+// aliases carry no "overflow action" row for the undefined case.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: emit, ingest, runtime-equivalence, and
-//      Tier-2 safety consumers all need the same overflow action fact.
+//      Tier-2 safety consumers all need the same defined-overflow fact
+//      for unsigned arithmetic; shared, not scattered.
 //   2. Variant-is-data — FAILS: a string/Symbol tag would reopen the
-//      K-1 readable-tag anti-pattern; the two alternatives are closed.
-//   3. Algebraic form — N/A: these are C++ abstract-machine outcomes,
-//      not algebraic structures over the integer carrier.
-//   4. Dimensional — FAILS: a single operator/default has exactly one
-//      action; undefined behavior and modulo wrap are alternatives.
-//   5. Parameterized family — FAILS: the two actions are not one
-//      generic family over a richer source set.
-// Terminal: the closed two-way core C++ overflow-action classifier.
-type CppOverflowAction
-  = UndefinedBehavior
-  | ModuloWrap
+//      K-1 readable-tag anti-pattern. A Bool such as
+//      `{ wraps: true }` would also hide that the only admitted value is
+//      the C++ standard's unsigned modulo rule.
+//   3. Algebraic form — PARTIAL: unsigned modulo arithmetic is ring-like
+//      over a fixed width, but the algebra lives on the std/ `UIntN`
+//      carrier. This C++ carrier records the language's operation
+//      disposition, not a second algebra instance.
+//   4. Dimensional — FAILS: defined unsigned modulo overflow and
+//      undefined signed overflow are not two coordinates. The undefined
+//      case is outside F, so it is absence/fail-closed, not a value
+//      carried simultaneously with the defined one.
+//   5. Parameterized family — FAILS: `UnsignedModuloArithmetic` is the
+//      C++ standard's specific defined overflow rule. The type parameter
+//      on `OverflowDisposition<IRCarrier>` supplies the concrete carrier;
+//      no richer source set collapses this variant.
+// Terminal: the closed in-F C++ core integer-overflow semantics set.
+type CppDefinedIntegerOverflow
+  = UnsignedModuloArithmetic
 
 
 // ─────────────────────────────────────────────────────────────────────
 // OverflowDisposition<IRCarrier> — the C++ integer operation-semantics
 // carrier for a primitive alias. Conj record (no coproduct ledger).
+// Anchor: C++ draft [basic.fundamental], unsigned arithmetic modulo 2^N:
+//   https://eel.is/c++draft/basic.fundamental
 //
-//   - default_action   the C++ core-language action for ordinary
-//                      arithmetic operators on this primitive family.
+//   - defined_overflow  the C++ core-language defined overflow semantics
+//                       for this primitive family.
 //
-// Signed core integer aliases use `UndefinedBehavior`; unsigned aliases
-// use `ModuloWrap`. This record is deliberately a sibling of the alias,
-// not a field on the std/ integer carrier, because the same abstract
-// integer carrier may realize differently across languages.
+// Unsigned core integer aliases use `UnsignedModuloArithmetic`. Signed
+// core integer aliases do NOT use this row for overflow: signed overflow
+// is undefined behavior and therefore fail-closed / out-of-F unless a
+// proof or explicit totalized carrier makes the operation defined.
+// This record is deliberately a sibling of the alias, not a field on the
+// std/ integer carrier, because the same abstract integer carrier may
+// realize differently across languages.
 type OverflowDisposition<IRCarrier> {
-  default_action: CppOverflowAction
+  defined_overflow: CppDefinedIntegerOverflow
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Per-primitive alias-identity + grounding declarations.
+// Per-primitive alias-identity declarations.
 //
 // LANDABLE NOW — grounded against current origin/main carriers:
 
 // C++ `bool` ↔ std/logic.dag's `Bool`.
+// Anchor: C++ draft [basic.fundamental], boolean type:
+//   https://eel.is/c++draft/basic.fundamental
 //
 // Alias-identity is the machine-readable D2 inhabitance form: CppBool
 // is literally the same Node carrier as Bool, so Bool's BooleanAlgebra
 // inhabitance flows through std/logic.dag's single authority.
 type CppBool = Bool
-
-data cpp_bool_grounding: GroundingMap<CppBool> = GroundingMap {
-  spelling: "bool"
-}
 
 // Bool has no integer overflow / NaN operation-semantics row.
 
@@ -174,11 +204,12 @@ data cpp_bool_grounding: GroundingMap<CppBool> = GroundingMap {
 // blocked on named upstream carriers. When the owner lands, each row
 // amends in as:
 //   - `type Cpp<X> = <StdCarrier>` alias-identity;
-//   - `data cpp_<x>_grounding: GroundingMap<Cpp<X>> =
-//      GroundingMap { spelling: "<token>" }`;
-//   - for integer aliases, `data cpp_<x>_overflow:
+//   - grounding row ONLY after the shared `GroundingMap` home is pinned;
+//   - for unsigned integer aliases, `data cpp_<x>_overflow:
 //      OverflowDisposition<Cpp<X>> = OverflowDisposition {
-//        default_action: <UndefinedBehavior|ModuloWrap> }`.
+//        defined_overflow: UnsignedModuloArithmetic }`.
+// Signed aliases carry no undefined-overflow value row; signed overflow
+// is fail-closed/out-of-F unless separately proven safe or totalized.
 //
 // SUBSTRATE SINGLE-AUTHORITY GUARD. cpp.dag MUST NOT mint local
 // `Int`, `UInt`, `Float`, `Char`, or `String` carriers. The std/ scalar
@@ -189,7 +220,8 @@ data cpp_bool_grounding: GroundingMap<CppBool> = GroundingMap {
 //                            long long int
 //   - target form        alias to the std signed integer carrier selected
 //                        by the declared C++ implementation data model,
-//                        plus spelling and `UndefinedBehavior` overflow.
+//                        plus a future shared grounding row. No
+//                        undefined-overflow action row is declared.
 //   - named owner        std/integer.dag for the Int/IntN ladder;
 //                        target implementation model for source type →
 //                        width mapping (LP64/LLP64/ILP32 or successor).
@@ -203,7 +235,8 @@ data cpp_bool_grounding: GroundingMap<CppBool> = GroundingMap {
 //                              unsigned long long int
 //   - target form        alias to the std unsigned integer carrier
 //                        selected by the declared implementation model,
-//                        plus spelling and `ModuloWrap` overflow.
+//                        plus a future shared grounding row and
+//                        `UnsignedModuloArithmetic` overflow semantics.
 //   - named owner        std/integer.dag for the UInt/UIntN ladder;
 //                        target implementation model for widths.
 //   - dissolution trigger
