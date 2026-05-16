@@ -3488,6 +3488,15 @@ type UdpInstantiation {
 // name-reference resolution target). This NOTE is the single
 // source-of-truth deferral marker for the missing aggregator.
 type UdpDefinition {
+  // Per IEEE 1364-2005 Syntax 3-9, udp_declaration carries
+  // a top-level `{ attribute_instance }` prefix: `(* attr *) primitive
+  // ... endprimitive` is legal spec form. Field added at sha 7b7dd0b54+
+  // per openai-pro REQUEST_CHANGES on PR #3176 sha f9159ce8b (Layer-
+  // Model BLOCKING: top-level UDP attributes had no typed home; reuses
+  // the existing AttributeInstanceClause Disj). No double-authority
+  // concern: the source_text design-element classifier is deferred to
+  // the bundled T-4 LanguageModel and doesn't yet wrap UdpDefinition.
+  attributes: AttributeInstanceClause
   name: Symbol
   body_lexeme: String
 }
@@ -4026,6 +4035,16 @@ type ModuleKeyword
 // openai-pro REQUEST_CHANGES (line 3525 — no-port-list
 // representation-duality + non-ANSI body port_declarations with
 // empty header).
+// All 3 variants carry `attributes: AttributeInstanceClause` per
+// IEEE 1364-2005 Syntax 3-4: `module_declaration ::= { attribute_
+// instance } module_keyword ... endmodule` — `(* optimize_power *)
+// module M ... endmodule` is legal spec form. Field added at sha
+// 7b7dd0b54+ per openai-pro REQUEST_CHANGES on PR #3176 sha
+// f9159ce8b (Layer-Model BLOCKING: top-level module attributes had
+// no typed home; reuses the existing AttributeInstanceClause Disj).
+// No double-authority concern: the source_text design-element
+// classifier is deferred to the bundled T-4 LanguageModel and
+// doesn't yet wrap VerilogModule.
 type VerilogModule
   = NoPortsModule {
       // `module M; ... endmodule` (no port list at all). Style-
@@ -4038,12 +4057,14 @@ type VerilogModule
       // header ports for body port_declarations to reference per
       // §12.3.4 — so admitting body port_declaration items here
       // would be a spec-illegal state.
+      attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
       name: Symbol,
       parameter_port_list: ModuleParameterPortList,
       items: List<AnsiModuleItem>
     }
   | NonAnsiVerilogModule {
+      attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
       name: Symbol,
       parameter_port_list: ModuleParameterPortList,
@@ -4056,6 +4077,7 @@ type VerilogModule
       items: List<NonAnsiModuleItem>
     }
   | AnsiVerilogModule {
+      attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
       name: Symbol,
       parameter_port_list: ModuleParameterPortList,
