@@ -17,11 +17,14 @@
 //     (Result-return / refinement-precondition — STRUCTURE.md commitment #2)
 //
 // Consumes:
-//   - std/node.dag: Instantiation
+//   - std/node.dag: Instantiation, Symbol
 //   - std/nat.dag: Nat
-//   - std/machine.dag: MachineWidth
-//   - std/algebra.dag: OrderedRing, AbelianGroup
-//   - std/diagnostic.dag: Outcome<T> for Tier-2 divide/modulo
+//   - std/machine.dag: MachineWidth, PointerWidth, Word8, Word16,
+//     Word32, Word64, Word128
+//   - std/algebra.dag: Magma, Semigroup, Monoid, Group, AbelianGroup,
+//     Ring, OrderedRing, Ordering
+//   - std/diagnostic.dag: Diagnostic, Locus, Correction,
+//     NoCorrectionReason, Outcome<T> for Tier-2 divide/modulo
 //
 // D2 (operator-ratified 2026-05-16; see DECISIONS.md D2) — this file is
 //   the SINGLE authority for integer algebra inhabitance. `Int` inhabits
@@ -45,9 +48,15 @@
 //   selects one via its alias target plus a sibling `OverflowDisposition`
 //   carrier declared in its own `extdeps` file.
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Status: T-3 modeled 2026-05-16 (jolly-gull-889). Replaces part of the
+//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
+//   concept decomposition".
+// HEADER RECONCILE (2026-05-16, #3190, smart-fox-602 + operator Decision 2):
+//   the frozen scaffold header understated delivered imports and remained
+//   marked scaffold after the model landed. Consumes now names the actual
+//   machine-width, algebra-witness, diagnostic, and Symbol dependencies.
+//   Decision 2 also fixes integer-owned diagnostic reasons as Symbol name-
+//   references declared in this file, not caller-supplied values.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -105,9 +114,10 @@ import v4.std.nat { Nat }
 // free construction. `GroupCompletion<M>` exists here because this file
 // is the sole v4 consumer in the closed tree: the construction is needed
 // to model integers from Nat, and exporting it from algebra.dag would
-// widen the T-2 structures file after its brief. The construction remains
-// generic so the ontology is honest, but this file's intended use is
-// exactly `GroupCompletion<Nat>`.
+// widen the T-2 structures file after its brief. The record is the
+// formal-difference representation: `positive - negative`. Equality is
+// quotient equality; comparison below cross-adds to avoid choosing a
+// canonical normal form as a hidden second authority.
 //
 // CONSTRAINED-INHABITANCE GAP (tracked scaffold). Denotationally the
 // Grothendieck group completion requires a commutative monoid. v4 does
@@ -122,28 +132,30 @@ import v4.std.nat { Nat }
 // FIXED-WIDTH INTEGERS ARE WIDTH PROJECTIONS. A machine integer is not a
 // sibling algebra authority beside abstract `Int` / `UInt`; it is the
 // abstract carrier composed with the independent machine-width axis
-// (`MachineInteger<Int, MachineWidth<Word64>>`, etc.). The local
-// `MachineInteger<carrier, width>` carrier is opaque and phantom: exact
-// width discharge happens at Grounding / emission, consistent with
-// machine.dag's list-length scaffold. No fixed-width row declares a
+// (`Compose<Int, MachineWidth<Word64>>`, etc.). This preserves the D2
+// fact-flow shape from INVARIANTS P1: width rows alias the abstract
+// carrier plus a width refinement, and no fixed-width row declares a
 // separate OrderedRing/Semiring instance in this file.
 //
 // TIER-2 TOTALIZATION. Integer division and modulo are partial at divisor
 // zero. Per STRUCTURE.md commitment #2, the totalized operations live
 // here and return std/diagnostic.dag's ratified `Outcome<Int>` carrier
-// (DECISIONS.md I), not a new Result type. The caller supplies both
-// `reason: Symbol` and `at: Locus`, because the scalar operation cannot
-// faithfully mint a declaration name-reference or invent a source
-// location; fabricating either would violate INVARIANTS P3.
+// (DECISIONS.md I), not a new Result type. The source location is call-
+// site context (`at: Locus`), but the failure reason is intrinsic to the
+// integer dimension: integer.dag declares the Symbol name-references
+// `integer_div_by_zero` and `integer_modulo_by_zero`, then uses those
+// names in the produced Diagnostic.
 
 
 // ─────────────────────────────────────────────────────────────────────
 // GroupCompletion<M> — the carrier produced by completing a commutative
-// monoid to an abelian group (Grothendieck construction). Opaque at this
-// layer: representation as equivalence classes of pairs is mathematical
-// grounding, not a field-level substrate representation. Per-target
-// realization chooses the efficient carrier.
-type GroupCompletion<M>
+// monoid to an abelian group (Grothendieck construction). A value is the
+// formal difference `positive - negative`; quotient equality is observed
+// by the operations below through cross-addition.
+type GroupCompletion<M> {
+  positive: M
+  negative: M
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -160,53 +172,174 @@ type UInt = Nat
 // ─────────────────────────────────────────────────────────────────────
 // Fixed-width integer projections over std/machine.dag's width axis.
 //
-// `MachineInteger<carrier, width>` is intentionally body-less: it is a
-// phantom projection of an abstract numeric carrier onto a width witness,
-// not a runtime record with separate `value` and `width` fields.
-type MachineInteger<carrier, width>
+// `Compose<carrier, dimension>` is the D2 projection carrier used by the
+// fixed-width aliases. It is intentionally body-less: the dimension is a
+// refinement axis, not a runtime field beside the numeric value.
+type Compose<carrier, dimension>
 
-type Int8 = MachineInteger<Int, MachineWidth<Word8>>
-type Int16 = MachineInteger<Int, MachineWidth<Word16>>
-type Int32 = MachineInteger<Int, MachineWidth<Word32>>
-type Int64 = MachineInteger<Int, MachineWidth<Word64>>
-type Int128 = MachineInteger<Int, MachineWidth<Word128>>
+type Int8 = Compose<Int, MachineWidth<Word8>>
+type Int16 = Compose<Int, MachineWidth<Word16>>
+type Int32 = Compose<Int, MachineWidth<Word32>>
+type Int64 = Compose<Int, MachineWidth<Word64>>
+type Int128 = Compose<Int, MachineWidth<Word128>>
 
-type UInt8 = MachineInteger<UInt, MachineWidth<Word8>>
-type UInt16 = MachineInteger<UInt, MachineWidth<Word16>>
-type UInt32 = MachineInteger<UInt, MachineWidth<Word32>>
-type UInt64 = MachineInteger<UInt, MachineWidth<Word64>>
-type UInt128 = MachineInteger<UInt, MachineWidth<Word128>>
+type UInt8 = Compose<UInt, MachineWidth<Word8>>
+type UInt16 = Compose<UInt, MachineWidth<Word16>>
+type UInt32 = Compose<UInt, MachineWidth<Word32>>
+type UInt64 = Compose<UInt, MachineWidth<Word64>>
+type UInt128 = Compose<UInt, MachineWidth<Word128>>
 
-type IntPlatform = MachineInteger<Int, MachineWidth<PointerWidth>>
-type UIntPlatform = MachineInteger<UInt, MachineWidth<PointerWidth>>
+type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Integer algebra operations. These functions bind the kernel-ambient
-// integer operations into the single algebra instance-values below.
-// Operations are not re-declared elsewhere; consumers reach them through
-// `int_ordered_ring`.
+// Integer algebra operations. These functions construct `Int` from
+// Nat's Peano operations, then bind those functions into the single
+// algebra instance-values below. Operations are not re-declared
+// elsewhere; consumers reach them through `int_ordered_ring`.
+fn nat_compare_for_int(a: Nat, b: Nat) -> Ordering {
+  match a {
+    Zero => match b {
+      Zero => Equal
+      Succ { prev: bp } => Less
+    }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare_for_int(a: ap, b: bp)
+    }
+  }
+}
+
+fn nat_less_for_int(a: Nat, b: Nat) -> Bool {
+  match nat_compare_for_int(a: a, b: b) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+}
+
+fn nat_sub_saturating_for_int(a: Nat, b: Nat) -> Nat {
+  match a {
+    Zero => Zero
+    Succ { prev: ap } => match b {
+      Zero => a
+      Succ { prev: bp } => nat_sub_saturating_for_int(a: ap, b: bp)
+    }
+  }
+}
+
+fn nat_div_total_for_int(a: Nat, b: Nat) -> Nat {
+  match b {
+    Zero => Zero
+    Succ { prev: bp } => if nat_less_for_int(a: a, b: b) {
+      Zero
+    } else {
+      Succ {
+        prev: nat_div_total_for_int(
+          a: nat_sub_saturating_for_int(a: a, b: b),
+          b: b
+        )
+      }
+    }
+  }
+}
+
+fn nat_mod_total_for_int(a: Nat, b: Nat) -> Nat {
+  match b {
+    Zero => a
+    Succ { prev: bp } => if nat_less_for_int(a: a, b: b) {
+      a
+    } else {
+      nat_mod_total_for_int(a: nat_sub_saturating_for_int(a: a, b: b), b: b)
+    }
+  }
+}
+
+fn int_zero() -> Int {
+  GroupCompletion { positive: Zero, negative: Zero }
+}
+
+fn int_one() -> Int {
+  GroupCompletion { positive: Succ { prev: Zero }, negative: Zero }
+}
+
 fn int_add(a: Int, b: Int) -> Int {
-  a + b
+  GroupCompletion {
+    positive: nat_add(a: a.positive, b: b.positive),
+    negative: nat_add(a: a.negative, b: b.negative)
+  }
 }
 
 fn int_negate(a: Int) -> Int {
-  0 - a
+  GroupCompletion { positive: a.negative, negative: a.positive }
 }
 
 fn int_mul(a: Int, b: Int) -> Int {
-  a * b
+  GroupCompletion {
+    positive: nat_add(
+      a: nat_mul(a: a.positive, b: b.positive),
+      b: nat_mul(a: a.negative, b: b.negative)
+    ),
+    negative: nat_add(
+      a: nat_mul(a: a.positive, b: b.negative),
+      b: nat_mul(a: a.negative, b: b.positive)
+    )
+  }
 }
 
 fn int_compare(a: Int, b: Int) -> Ordering {
-  if a < b {
-    Less
-  } else {
-    if a == b {
-      Equal
+  nat_compare_for_int(
+    a: nat_add(a: a.positive, b: b.negative),
+    b: nat_add(a: b.positive, b: a.negative)
+  )
+}
+
+fn int_is_zero(a: Int) -> Bool {
+  match int_compare(a: a, b: int_zero()) {
+    Less => false
+    Equal => true
+    Greater => false
+  }
+}
+
+fn int_is_negative(a: Int) -> Bool {
+  match int_compare(a: a, b: int_zero()) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+}
+
+fn int_abs_nat(a: Int) -> Nat {
+  match int_compare(a: a, b: int_zero()) {
+    Less => nat_sub_saturating_for_int(a: a.negative, b: a.positive)
+    Equal => Zero
+    Greater => nat_sub_saturating_for_int(a: a.positive, b: a.negative)
+  }
+}
+
+fn int_from_nat(n: Nat) -> Int {
+  GroupCompletion { positive: n, negative: Zero }
+}
+
+fn int_signs_differ(a: Int, b: Int) -> Bool {
+  if int_is_negative(a: a) {
+    if int_is_negative(a: b) {
+      false
     } else {
-      Greater
+      true
     }
+  } else {
+    int_is_negative(a: b)
+  }
+}
+
+fn int_from_signed_nat(n: Nat, negative: Bool) -> Int {
+  if negative {
+    int_negate(a: int_from_nat(n: n))
+  } else {
+    int_from_nat(n: n)
   }
 }
 
@@ -220,7 +353,7 @@ data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
   group: Group {
     monoid: Monoid {
       semigroup: Semigroup { magma: Magma { op: int_add } },
-      identity: 0
+      identity: GroupCompletion { positive: Zero, negative: Zero }
     },
     inverse: int_negate
   }
@@ -231,7 +364,7 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
     add: int_abelian_group,
     mul: Monoid {
       semigroup: Semigroup { magma: Magma { op: int_mul } },
-      identity: 1
+      identity: GroupCompletion { positive: Succ { prev: Zero }, negative: Zero }
     }
   },
   compare: int_compare
@@ -240,20 +373,22 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
 
 // ─────────────────────────────────────────────────────────────────────
 // Diagnostic construction for integer partial operations. The `reason`
-// is a Symbol name-reference owned by the calling dimension / declaration
-// namespace; integer.dag owns the totalization shape, while
-// diagnostic.dag owns the schema.
-fn integer_divide_by_zero_diagnostic(reason: Symbol, at: Locus) -> Diagnostic {
+// is a Symbol name-reference owned by this integer dimension;
+// diagnostic.dag owns only the schema.
+data integer_div_by_zero: Symbol = integer_div_by_zero
+data integer_modulo_by_zero: Symbol = integer_modulo_by_zero
+
+fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: reason,
+    reason: integer_div_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn integer_modulo_by_zero_diagnostic(reason: Symbol, at: Locus) -> Diagnostic {
+fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: reason,
+    reason: integer_modulo_by_zero,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -266,22 +401,32 @@ fn integer_modulo_by_zero_diagnostic(reason: Symbol, at: Locus) -> Diagnostic {
 // `int_div` and `int_mod` are total functions: divisor zero produces a
 // typed `Rejected { diagnostic }`; all other cases produce the value.
 // There is no sentinel integer and no panic-shaped boundary.
-fn int_div(a: Int, b: Int, reason: Symbol, at: Locus) -> Outcome<Int> {
-  if b == 0 {
+fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if int_is_zero(a: b) {
     Rejected {
-      diagnostic: integer_divide_by_zero_diagnostic(reason: reason, at: at)
+      diagnostic: integer_divide_by_zero_diagnostic(at: at)
     }
   } else {
-    Produced { value: a / b }
+    Produced {
+      value: int_from_signed_nat(
+        n: nat_div_total_for_int(a: int_abs_nat(a: a), b: int_abs_nat(a: b)),
+        negative: int_signs_differ(a: a, b: b)
+      )
+    }
   }
 }
 
-fn int_mod(a: Int, b: Int, reason: Symbol, at: Locus) -> Outcome<Int> {
-  if b == 0 {
+fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if int_is_zero(a: b) {
     Rejected {
-      diagnostic: integer_modulo_by_zero_diagnostic(reason: reason, at: at)
+      diagnostic: integer_modulo_by_zero_diagnostic(at: at)
     }
   } else {
-    Produced { value: a % b }
+    Produced {
+      value: int_from_signed_nat(
+        n: nat_mod_total_for_int(a: int_abs_nat(a: a), b: int_abs_nat(a: b)),
+        negative: int_is_negative(a: a)
+      )
+    }
   }
 }
