@@ -109,6 +109,40 @@ import v4.std.diagnostic { Diagnostic }
 //     this file's. A future probe may model the SPICE numeric sub-
 //     grammar; that is not in T-4.10's scope.)
 //
+// FIDELITY SCOPE (PR #3168 codex REQUEST_CHANGES, 2026-05-16). Two
+// distinct deliverables for this file, EXPLICITLY DISTINGUISHED so the
+// authority claim and the coverage state do not contradict each other:
+//   (1) SHAPE DELIVERABLE — the substrate-design decisions the T-4.10
+//       probe tests: closed coproduct over SPICE3 element kinds with
+//       per-variant terminal slots (`Component`); typed sum for
+//       optional fields rather than `Option<NodeRef>` (`SubstrateSpec`);
+//       lexical-scope-preserving SUBCKT lift (`parent_scope: List<
+//       Symbol>`); `.END` owned by parse/emit discipline rather than
+//       as a data variant; subcircuit bodies type-enforced against
+//       control-card containment; well-formed-by-construction at the
+//       SHAPE layer. **This is COMPLETE for the T-4.10 probe scope.**
+//       The B2-OMNI O(N+M) substrate-validation claim rests on the
+//       SHAPE, not on coverage exhaustiveness.
+//   (2) SPEC-EXHAUSTIVE COVERAGE — full enumeration of every SPICE3F5
+//       element kind, `.MODEL` device kind, analysis/control directive,
+//       and per-variant grammar facts (instance parameters, transient
+//       source specs, etc.). **This is PARTIAL.** The YELLOW
+//       classifications + named triggers on `Component` / `ModelKind` /
+//       `Directive` track the gap to spec-exhaustive coverage; each
+//       missing-list is kept synchronized with the SPICE3F5 anchor
+//       (synchronization-discipline note repeated at each gap site).
+// What the file CLAIMS authority for: (1). What it DOES NOT yet
+// claim: (2). A valid SPICE3 deck using an omitted element/directive
+// kind cannot be represented in the current state — this is bounded,
+// documented, and the YELLOW triggers + missing-lists name exactly
+// what work closes the gap. **The "T-4.10 probe permits non-
+// exhaustive coverage" framing means the SHAPE deliverable did not
+// require concurrent spec-exhaustive coverage — it does NOT mean the
+// fidelity gap is excusable; the YELLOW triggers track that gap as
+// load-bearing follow-up, not as discretion to leave unfilled.** A
+// downstream consumer that needs spec-exhaustive coverage is the
+// trigger that schedules the per-variant sweeps named below.
+//
 // WHY NO `nodes: List<NodeRef>` INVENTORY FIELD (Practice 7).
 // SPICE does not DECLARE its nodes — they emerge from being referenced
 // by component terminals (Quarles 1993 §2: nodes are name-referenced,
