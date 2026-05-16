@@ -86,16 +86,18 @@
 //     / SendOnly / RecvOnly — the Go spec §Channel_types direction
 //     partition), and the Conj carrier GoChannel attaching it to an
 //     opaque element-type-reference Symbol (K-1)
-//   - Go identifier export-status: GoExportStatus (Exported /
-//     Unexported — the binary partition Go's first-letter-case
-//     visibility rule projects to; Go spec §Exported_identifiers).
-//     Note: Go's visibility is structurally encoded in the
-//     identifier's first-letter case at the LEXICAL surface; the
-//     PARSER reads the spelling at the K-1 boundary (the human-
-//     readable spelling lives in the intern table — node.dag:70-86
-//     K-1 discipline) and emits this structural tag onto the
-//     enclosing declaration's Conj record. Kernel/lens code reads
-//     the tag, never the spelling.
+//   - Go identifier export-status: GoExportStatus (Exported / Unexported,
+//     each carrying a `locus: GoExportLocus` payload) PLUS GoExportLocus
+//     (PackageBlock / StructField / InterfaceMethod — the three
+//     export-eligible declaration loci per Go spec §Exported_identifiers).
+//     Go's export rule is TWO-CONDITION: an identifier is exported iff
+//     BOTH (a) the first character is a Unicode upper-case letter AND
+//     (b) the identifier is in an export-eligible locus. The locus
+//     payload makes condition (b) structural — function-local
+//     declarations carry NO GoExportStatus, so "exported function-
+//     local uppercase identifier" is unrepresentable (cursor/composer-2
+//     BLOCKING fix on PR #3182). The PARSER reads spelling AND AST
+//     locus at the K-1 boundary; kernel/lens code reads the typed tag.
 //   - Go per-target cost-realization carrier shape: GoCost (per-
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-
@@ -1023,43 +1025,137 @@ type GoChannelDirection
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GoExportStatus — the closed Go identifier-visibility classifier.
-// The Go Specification §Exported_identifiers defines visibility as a
-// BINARY partition derived from the identifier's first-letter case:
-// an identifier with an upper-case first letter is "exported"
-// (visible to importing packages); otherwise it is unexported
-// (package-private). There is no `pub` / `pub(crate)` / `private`
-// keyword scheme — visibility is structurally encoded in the
-// spelling.
+// GoExportLocus — the closed Go export-eligible declaration-locus
+// classifier. The Go Specification §Exported_identifiers makes export-
+// status a TWO-CONDITION property: an identifier is exported iff BOTH
+// (a) the first character is a Unicode upper-case letter (Lu), AND
+// (b) the identifier is declared in the package block OR is a field
+// name OR is a method name. Locus (b) is what this carrier closes —
+// a function-local declaration with an upper-case first letter is
+// NOT exported per the spec, because it fails condition (b).
 // Spec: https://go.dev/ref/spec#Exported_identifiers.
 //
-//   - Exported    — first letter is upper-case Unicode letter
-//                   (Spec §Exported_identifiers: "the first character
-//                   of the identifier's name is a Unicode upper case
-//                   letter (Unicode class 'Lu')")
-//   - Unexported  — first letter is NOT an upper-case Unicode letter
-//                   (lower-case, digit, underscore — only lower-case
-//                   letters appear in idiomatic Go identifiers, but
-//                   the spec's negative-of-Lu rule is what closes
-//                   the binary partition)
+// The carrier exists to make condition (b) structural rather than
+// producer-discipline. Without it, GoExportStatus could be attached
+// to any identifier (function-local included), and "exported local
+// uppercase identifier" — which is a spec-impossibility — would be
+// representable. Adding the locus tag and coupling it to
+// GoExportStatus's variants makes the impossible state
+// unrepresentable, per INVARIANTS P1 modeling-faithfulness +
+// modeling-discipline.md Practice 2 illegal-states-unrepresentable
+// (cursor/composer-2 BLOCKING review on PR #3182 2026-05-16: the
+// prior binary-only GoExportStatus admitted exported-local-uppercase
+// identifiers — a violation of P1's spec-partition discipline).
+//
+//   - PackageBlock      — a declaration directly in the package
+//                         block (top-level `var`, `const`, `type`,
+//                         `func`). Per spec the most common eligible
+//                         locus.
+//   - StructField       — a field name in a struct type declaration.
+//                         Per spec §Struct_types the field name's
+//                         case-derived export-status governs cross-
+//                         package access to the field.
+//   - InterfaceMethod   — a method name in an interface type
+//                         declaration. Per spec §Interface_types the
+//                         method name's case-derived export-status
+//                         governs cross-package satisfaction of the
+//                         interface contract.
+//
+// CLOSED (C1 stop-signal). The Go Specification names exactly these
+// three eligible loci for export-status. A fourth would be a future
+// language-version change requiring edit under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every export-status consumer (the
+//      cross-package-name-resolution walk, the public-API-surface
+//      synthesis) reads the locus uniformly to know whether the
+//      identifier is actually export-eligible per spec; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses (a
+//      `match name { "package_block" => … }` smell); a `{ depth:
+//      Int }` proxy replaces a closed 3-valued exhaustive sum with
+//      an unbounded Int. The enum IS the faithful form.
+//   3. Algebraic form — N/A by construction: the three loci are
+//      the Go Specification's export-eligible-declaration partition;
+//      they do not trace to a richer std/ algebraic structure (one
+//      could attempt a containment partial-order — package-block
+//      contains type declarations contain fields/methods — but
+//      that ordering is derived FROM the closed enum, not a richer
+//      source).
+//   4. Dimensional — FAILS: a single export-eligible declaration is
+//      in EXACTLY ONE locus (a struct field is not also an interface
+//      method); mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the three loci are
+//      structurally distinct declaration kinds (package-level
+//      binding / member of a struct type / member of an interface
+//      type) — NOT one generic `F<X>` / projection over a
+//      separately-declared source set (Practice 7). The Go-Spec
+//      enumeration is the irreducible partition.
+// Terminal: the closed three-way Go export-eligible-locus classifier.
+type GoExportLocus
+  = PackageBlock
+  | StructField
+  | InterfaceMethod
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoExportStatus — the closed Go identifier-visibility classifier.
+// The Go Specification §Exported_identifiers defines visibility as a
+// TWO-CONDITION property: an identifier is exported iff BOTH (a) the
+// first character is a Unicode upper-case letter (Lu) AND (b) the
+// identifier is declared in the package block or is a field name or
+// method name. Function-local identifiers — even uppercase ones —
+// are NOT exported per the spec. The model couples both conditions
+// structurally: a GoExportStatus carrier exists ONLY for identifiers
+// in eligible loci (see GoExportLocus above), and its variant carries
+// the locus payload. Function-local declarations DO NOT receive a
+// GoExportStatus tag at all — the carrier itself represents the
+// eligible-locus partition (cursor/composer-2 BLOCKING fix on
+// PR #3182 2026-05-16: the prior binary-only carrier admitted
+// "exported function-local uppercase identifier" — a spec-
+// impossibility now structurally unrepresentable).
+// Spec: https://go.dev/ref/spec#Exported_identifiers.
+//
+//   - Exported    — { locus: GoExportLocus }
+//                   first letter is upper-case Unicode letter (Lu)
+//                   AND identifier is in an export-eligible locus.
+//                   Per spec: "An identifier is exported if both:
+//                   (1) the first character of the identifier's name
+//                   is a Unicode upper case letter (Unicode class
+//                   'Lu'); and (2) the identifier is declared in the
+//                   package block or it is a field name or method
+//                   name." Both conditions structurally required by
+//                   construction.
+//   - Unexported  — { locus: GoExportLocus }
+//                   first letter is NOT upper-case (lower-case Lu,
+//                   digit, underscore) AND identifier is in an
+//                   export-eligible locus. A package-block lower-case
+//                   identifier, a lower-case struct-field name, etc.
+//
+// FUNCTION-LOCAL DECLARATIONS DO NOT CARRY GoExportStatus. A
+// `func main() { var X int }` — the local `X` — is not export-
+// eligible per spec; emitting a GoExportStatus tag on it would
+// violate the spec partition. The parser MUST NOT attach this carrier
+// to local-block identifiers. The structural enforcement: the
+// carrier's mere PRESENCE on a declaration is the spec's condition
+// (b); a declaration that fails (b) has NO GoExportStatus.
 //
 // CLOSED (C1 stop-signal). Go has no intermediate visibility scopes;
-// the binary partition is the entire visibility taxonomy per spec.
-// A third scope would be a future language-version change requiring
-// edit under the L-2 pin discipline.
+// the binary upper-case-or-not partition is the entire visibility
+// taxonomy per spec. A third scope would be a future language-
+// version change requiring edit under the L-2 pin discipline.
 //
 // K-1 BOUNDARY NOTE. The export-status of a Go identifier is a
-// FUNCTION of its spelling — the first character's Unicode category.
-// Per K-1 (node.dag:70-86) `Symbol` is OPAQUE: kernel/lens code
-// cannot read a Symbol's spelling. The export-status is therefore
-// resolved AT THE PARSER BOUNDARY (where the spelling IS readable)
-// and ATTACHED to the declaration's Conj record as a structural tag.
-// Kernel/lens code reads `export_status: GoExportStatus`, never the
-// underlying Symbol spelling. This is the structurally-correct
-// instantiation of K-1's "human-readable spelling lives in a
-// boundary intern table" discipline — Go's spec ties visibility to
-// spelling, and the v4 model carries the derived fact as a typed
-// tag, never re-reads the spelling.
+// FUNCTION of its spelling (the first character's Unicode category)
+// AND its declaration locus. Per K-1 (node.dag:70-86) `Symbol` is
+// OPAQUE: kernel/lens code cannot read a Symbol's spelling. Both
+// conditions are therefore resolved AT THE PARSER BOUNDARY (where
+// the spelling IS readable AND the AST locus is known) and ATTACHED
+// to eligible-locus declarations as a structural tag. Kernel/lens
+// code reads `export_status: GoExportStatus`, never the underlying
+// Symbol spelling and never re-walks the locus.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -1068,12 +1164,14 @@ type GoChannelDirection
 //      resolution walk, the public-API-surface synthesis for
 //      documentation / coordination contracts) reads the export
 //      status uniformly; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ exported: Bool }` proxy is
-//      faithful (the partition IS binary), but the M4 "closed sets
-//      are enums, not Bool proxies" smell applies — the named-enum
-//      preserves the semantic distinction (Exported / Unexported)
-//      that a bare Bool conflates. The enum IS the M4-faithful
-//      form (same argument as rust.dag RustReferenceKind's ledger).
+//   2. Variant-is-data — FAILS: a `{ exported: Bool, locus:
+//      GoExportLocus }` proxy is structurally equivalent on the
+//      type-level but loses the case-derived semantic distinction
+//      (Exported vs Unexported is the Spec's terminology) and the
+//      named-enum is the M4-faithful form. Promoting to a unified
+//      `{ exported: Bool }` proxy (dropping locus) reintroduces the
+//      "exported function-local uppercase" illegal state — the
+//      INVARIANTS P2 anti-pattern this PR's BLOCKING-fix dissolves.
 //   3. Algebraic form — N/A by construction: the two statuses are
 //      the Go Specification's export partition; they do not trace
 //      to a richer std/ algebraic structure (one could attempt a
@@ -1081,23 +1179,30 @@ type GoChannelDirection
 //      that would be a parallel representation of the import-
 //      visibility containment, a property derived FROM the two
 //      tags).
-//   4. Dimensional — FAILS: a single Go identifier has EXACTLY
-//      ONE export status (the first-letter-case test is exhaustive
-//      and mutually exclusive); mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: Exported / Unexported are
-//      the Go visibility partition; they are NOT one generic
-//      `F<X>` / projection over a separately-declared source set
-//      (Practice 7). The richer per-package visibility model that
-//      Rust's `pub(crate)` / `pub(super)` provide is structurally
-//      ABSENT from Go (Go's spec has no intermediate-scope
-//      visibility), so there is no richer source for this enum to
-//      project from.
-// Terminal: the closed two-way Go identifier-visibility partition;
-// the binary case-derived rule is structurally complete per the
-// pinned Go Specification.
+//   4. Dimensional — FAILS: a single export-eligible Go identifier
+//      has EXACTLY ONE export status (the first-letter-case test
+//      is exhaustive and mutually exclusive over eligible-locus
+//      identifiers); mutually-exclusive alternatives.
+//   5. Parameterized family — PARTIALLY: both variants are
+//      structurally identical except for the case-derived axis
+//      (each carries `{ locus: GoExportLocus }`), so this enum IS
+//      projection-uniform over the locus-bearing record shape.
+//      However, the projection-source is GoExportLocus itself
+//      (already declared as its own closed Disj above), and
+//      collapsing Exported/Unexported into a single record
+//      `{ exported: Bool, locus: GoExportLocus }` loses the Spec's
+//      named partition (Spec §Exported_identifiers names "exported"
+//      explicitly; the Unexported partition is its negation but
+//      has its own consumer-side semantics). Keeping the named
+//      two-variant Disj preserves the Spec partition's terminology
+//      while the locus carrier is the projection-uniform component.
+// Terminal: the closed two-way Go identifier-visibility partition
+// over export-eligible loci; first-letter case is the discriminator;
+// declaration locus is the carrier payload coupling both spec
+// conditions structurally.
 type GoExportStatus
-  = Exported
-  | Unexported
+  = Exported { locus: GoExportLocus }
+  | Unexported { locus: GoExportLocus }
 
 
 // ─────────────────────────────────────────────────────────────────────
