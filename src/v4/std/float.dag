@@ -247,10 +247,14 @@ fn float_body_negate(x: FloatBody) -> FloatBody {
 }
 
 
-// float_body_add / float_body_mul — when **both** operands are `NonFinite`,
-// the match returns **only `a`'s** tag (`NonFinite { tag: ta } => …`);
-// this is NOT IEEE NaN/∞ propagation (e.g. +∞ on the left does not lose to
-// NaN on the right). Real IEEE exceptional arithmetic waits on Grounding.
+// float_body_add / float_body_mul — mixed finite / non-finite arms are **not**
+// IEEE NaN/∞ propagation; they are arbitrary v2-exhaustive totality picks so the
+// match stays total without asserting exceptional float algebra:
+//   * `Finite × NonFinite` → **right** tag (`tb`);
+//   * `NonFinite × _` (outer row) → **left** tag (`ta`) — covers both
+//     `NonFinite × Finite` and `NonFinite × NonFinite`.
+// Do **not** read this as a commutative “wins” rule; real IEEE exceptional
+// arithmetic waits on Grounding.
 //
 // When **both** are `Finite`, these return **the left operand** (see modeling
 // notes: NOT IEEE `+` / `×`; Peano combine on exponent/significand is forbidden
