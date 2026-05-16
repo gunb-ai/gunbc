@@ -915,19 +915,29 @@ type RustReferenceKind
 // (`$crate` is a macro-context segment scope-negative for this
 // slice; it lands as a C1 edit to this declaration when hygienic-
 // macro support lands — see SCOPE NEGATIVE in the header notes.
-// Multi-segment paths starting with `self` (e.g.
-// `pub(in self::outer_mod)`) are NEVER valid path-restricted
-// visibility under the Reference's ancestor-resolution rule —
-// `pub(in path)` requires `path` to resolve to an ancestor module
-// of the item, and `self::X` resolves to a CHILD of the current
-// module (a descendant, not an ancestor). Such forms are
-// parse-REJECTED upstream and never reach this carrier (NOT
-// "canonicalized by dropping self" — that would silently equate
-// two semantically distinct scopes, P1 fidelity violation).
-// `self::super::X` paths that resolve to a valid ancestor are
-// likewise normalized at the parse boundary to their canonical
-// (Crate / Super / Named) prefix; the structural carrier only
-// ever sees the canonical ancestor-rooted form.)
+// ALL multi-segment paths starting with `self` (e.g.
+// `pub(in self::outer_mod)`, `pub(in self::super::X)`) are
+// out-of-scope for this carrier — there is no Self segment to
+// build them with. Whether such forms are valid Rust source
+// (the Reference admits the SimplePath grammar; the ancestor-
+// resolution rule rejects descendants) and what canonical
+// representation a parser/resolver produces from them is
+// upstream parser/resolver concern, NOT a fact this carrier
+// commits to. The earlier draft of this comment claimed
+// `self::outer_mod` and `self::super::X` "canonicalize by
+// dropping the leading self" — both wrong: `self::outer_mod`
+// resolves to a descendant (not an ancestor; the Reference
+// rejects it), and `self::super::X` is not equivalent to
+// `super::X` as a structural fact (silently dropping `self`
+// would equate two distinct syntactic scopes; P1 fidelity
+// violation per BLOCKING operator reviews 2026-05-16T03:44:50Z
+// + 2026-05-16T05:06:50Z). The corrected position: the
+// structural carrier neither represents nor canonicalizes
+// any self-prefixed multi-segment path. Producers
+// (parser / resolver) must emit `Private` for the canonical
+// no-modifier case OR `PubIn { path: <ancestor-rooted segments> }`
+// for path-restricted cases; how they handle source containing
+// `self::*` segments is upstream, not modeled here.)
 // Spec: https://doc.rust-lang.org/reference/paths.html
 //
 //   - Crate              the `crate` keyword (the current crate
