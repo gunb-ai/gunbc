@@ -14,19 +14,40 @@
 // Consumes:
 //   - std/node.dag: Conj, Cardinality
 //   - std/logic.dag: Bool (a byte is a fixed-cardinality group of bits)
-//   - std/nat.dag: Nat (a width is a count)
+//   - std/collection.dag: List (Byte / Word* fields — `List<T>` =
+//     `FreeMonoid<T>`; the honest unrefined length scaffold is tracked in
+//     Modeling notes below)
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Status: T-3 modeled 2026-05-16 (zesty-bat-822). Replaces part of the
+//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
+//   concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (T-3 manager disposition + cool-wren-237 verification,
+// 2026-05-16) — scaffold-header-drift class (same disposition family as
+// #3186 text.dag / collection.dag operator-ratified b2 + #3169 issuecomment-
+// 4464775997 precedent: frozen Consumes must match machine-evident imports).
+// (1) The original scaffold listed `std/nat.dag: Nat` under Consumes but
+//     shipped no `Nat` import — width-as-count / Nat magnitude for lowering
+//     `MachineWidth<Word*>` is **Grounding’s single authority** (INVARIANTS
+//     P2), not a machine.dag type dependency; that Consumes line is **dropped**
+//     as a non-dep (deferred-out of this file’s contract).
+// (2) The delivered `Byte` / `Word*` model uses `List<Bit>` / `List<Byte>` —
+//     the achievable v2 surface given the Cardinality **connective** cannot
+//     be written as a refinement TYPE on the field (Cardinality-connective-
+//     not-type discipline). The real edge is **std/collection.dag**’s
+//     `List<T>` (`List<T> = FreeMonoid<T>` per collection.dag). Consumes
+//     now names it; `import v4.std.collection { List }` makes the dep self-
+//     evident for reviewers and the resolver. Carriers are unchanged — header /
+//     import / Status hygiene only.
 
 
 module v4.std.machine
 
 
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 
 
@@ -78,7 +99,9 @@ import v4.std.logic { Bool }
 // (8, 16, … bits); this file names **nominal word witnesses** (`Word8` …)
 // for the `MachineWidth<…>` phantom slot. Literal `Nat` magnitude in the
 // type DAG is Grounding’s job when lowering `MachineWidth<Word64>` → 64
-// — not a second Nat authority duplicated here (INVARIANTS P2).
+// — not a second Nat authority duplicated here (INVARIANTS P2). The
+// reconciled header therefore does **not** list `std/nat.dag` under
+// Consumes (see HEADER RECONCILE).
 //
 // PRACTICE 4 (modeling-discipline.md §4). This module authors **no**
 // `type T = V1 | V2 | …` sum with N ≥ 2. Carriers here are: (1) a **type
