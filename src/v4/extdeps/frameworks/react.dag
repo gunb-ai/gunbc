@@ -25,7 +25,9 @@
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
 //     fragment + text partition)
 //   - ReactContextBinding (`createContext` site identity)
-//   - ReactHook, ReactHookKind, ReactBuiltinHook (closed hook API partition)
+//   - ReactHook, ReactHookKind, ReactBuiltinHook (closed stable `react` call-site
+//     partition: built-in Hooks from /reference/react/hooks plus the separate
+//     `use` resource API — see `ReactBuiltinHook` anchors)
 //   - ReactComponentEffect (trigger + `effect_body_ref` — declaration edge to the
 //     lowered effect closure; same `DeclarationRef` scaffold as props/children)
 //   - ReactEffectTrigger (closed scheduling-class partition)
@@ -96,8 +98,12 @@ type ReactModuleSurface
 
 // ═════════════════════════════════════════════════════════════════════
 // ReactBuiltinHook
-// Anchor: https://react.dev/reference/react/hooks (index; pin tracks
-//         https://github.com/facebook/react/releases/tag/v19.1.0 )
+// Anchor: https://react.dev/reference/react/hooks — built-in Hooks index (pin
+//         tracks https://github.com/facebook/react/releases/tag/v19.1.0 ).
+// Anchor: https://react.dev/reference/react/use — `use(resource)`; react.dev
+//         documents this as the **`use` API** (Promise/context reader), distinct
+//         in prose from “Hooks” because it may appear in loops/conditionals; still
+//         one stable `react@19.1.0` export modeled here as variant `ReactUse`.
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
 //   1. Fact placement — FAILS: shared hook discriminator for resolver/emit.
@@ -105,7 +111,10 @@ type ReactModuleSurface
 //   3. Algebraic form — PARTIAL: per-hook algebras live std/ elsewhere.
 //   4. Dimensional — FAILS: one built-in hook per call site.
 //   5. Parameterized family — FAILS: not `F<X>` Practice-7 over a width set.
-// Terminal: closed eighteen-way `react@19.1.0` stable hook classifier.
+// Terminal: nineteen-way `react@19.1.0` classifier — **18** built-in Hooks from the
+// hooks index (including `useEffectEvent`) plus variant **`ReactUse`** for the
+// separate **`use` API** above (P1: names + anchors track react.dev, not internal
+// abbreviations like `…Api`).
 type ReactBuiltinHook
   = ReactUseState
   | ReactUseReducer
@@ -115,6 +124,8 @@ type ReactBuiltinHook
   | ReactUseEffect
   | ReactUseLayoutEffect
   | ReactUseInsertionEffect
+  // Anchor: https://react.dev/reference/react/useEffectEvent
+  | ReactUseEffectEvent
   | ReactUseMemo
   | ReactUseCallback
   | ReactUseTransition
@@ -124,7 +135,8 @@ type ReactBuiltinHook
   | ReactUseDebugValue
   | ReactUseActionState
   | ReactUseOptimistic
-  | ReactUseApi
+  // Anchor: https://react.dev/reference/react/use — `use(resource)`
+  | ReactUse
 
 
 // ═════════════════════════════════════════════════════════════════════
