@@ -23,8 +23,8 @@
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
 //   - spawn(cmd) -> Result<Process, Diagnostic>      (fork+exec)
-//   - wait(p)    -> Result<Termination, Diagnostic>  (blocks until terminated)
-//   - capture(p) -> Result<{stdout, stderr, term: Termination}, Diagnostic>
+//   - wait(p)    -> Result<Process, Diagnostic>      (blocks until terminated)
+//   - capture(p) -> Result<{stdout, stderr, process: Process}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -39,6 +39,11 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
+// wait/capture return the advanced Process (single-authority terminal
+// fact), reconciling the frozen wait/capture contract per the operator
+// P2/§2-floor BLOCKING.
 
 
 module v4.extdeps.process
@@ -189,9 +194,10 @@ type Process {
 //
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination
-// returns `Produced { value: Termination }`. stdout/stderr are captured
-// as separate byte-decoded text streams so harness/setup diagnostics
-// cannot be blended into the logical child's output channel. The
+// returns the advanced `Process` whose `state` is
+// `Terminated { status: Termination }`. stdout/stderr are captured as
+// separate byte-decoded text streams so harness/setup diagnostics cannot
+// be blended into the logical child's output channel. The
 // `ProcessOperations` record is the declared callable boundary a future
 // host realization must inhabit; it is intentionally only a signature
 // bundle here, not an effect resolver.
@@ -205,12 +211,12 @@ type WaitProcessRequest {
   process: Process
 }
 
-type WaitProcessResult = Outcome<Termination>
+type WaitProcessResult = Outcome<Process>
 
 type CapturedProcessOutput {
   stdout: String
   stderr: String
-  term: Termination
+  process: Process
 }
 
 type CaptureProcessRequest {
