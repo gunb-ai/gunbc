@@ -2,17 +2,237 @@
 //
 // Scope: Go target language spec — primitives, syntax, codegen rules.
 // Anchor: https://go.dev/ref/spec (Go Programming Language Specification)
-// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
+//         — the versioned upstream specification (L-2 fidelity authority).
+//         The Specification is the spec the carriers below are pinned
+//         to; when the Specification changes (a new language version
+//         adds / renames a primitive, adds a numeric width, adds a
+//         visibility scope), the change is a visible C1 edit to the
+//         relevant declaration below, never a silent extension.
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter
+//         runtime. ONE substrate carrier for all three roles. Different
+//         lenses read different facts from the same data (emission
+//         reads syntax; transport reads serialization; interpreter
+//         reads execution semantics). A worker needing transport or
+//         runtime extends this file, not a new "transport spec" file.
 //
-// Owns:
-//   - Go primitives
-//   - emission rules
-//   - cost realization for Go
+// STRUCTURAL FINDING (this slice's deliverable, manager directive
+//   msg_4f7e1280 fan-out — the operator-RATIFIED canonical-rust shape,
+//   PR #3174 loyal-koi-702 — applied to Go). Go's TYPE-SYSTEM SURFACE
+//   — predeclared scalar vocabulary, channel direction, identifier
+//   export-status — fits the substrate's existing classifier shape
+//   (closed Disj + Conj records) without modification. No 7th
+//   connective, no 6th behavior is surfaced by this slice. The slice
+//   declares the Go type VOCABULARY as Node-shaped declaration-class
+//   data; it deliberately STOPS at the carrier-shaped seams where D1
+//   (parse/emit operations — ratified Outcome<T> = Produced { value:
+//   T } | Rejected { diagnostic: Diagnostic }, NOT YET LANDED in
+//   std/diagnostic.dag) and D2 (per-language primitive inhabitance
+//   instance-values + fn-value-expression form — operator-pending
+//   SEMANTIC decision, msg_640d429c) plug in.
+//
+//   The seams are NAMED in "Owned ELSEWHERE" below with their owners
+//   and dissolution triggers. Authoring those seams here would have
+//   improvised past D1/D2 — exactly the rust slice's blessed deferral
+//   shape (#3174). Deferral-with-named-trigger, never improvisation.
+//
+//   Go-vs-Rust per-language fact (the fan-out's deliverable beyond
+//   "the shape is the work"): Go's IN-B effect-typing locus is CHANNEL
+//   DIRECTION (`chan T` / `<-chan T` / `chan<- T`), not borrow-kind.
+//   Go does not have Rust's `&T` / `&mut T` borrow-kind partition;
+//   Go pointers (`*T`) carry no aliasing discipline (no shared/
+//   exclusive partition — multiple `*T` to the same place is
+//   admissible). The structural effect-typing the goroutine/channel
+//   concurrency model reads (per the IN-B THESIS:401 framing) is the
+//   channel-direction tag on a typed value — Go's analog of Rust's
+//   RustReferenceKind, the verilog signal-type, and ptx's StateSpace.
+//   The probe's per-language finding: IN-B holds across BOTH borrow-
+//   kind (Rust) AND channel-direction (Go) AND signal-type (Verilog)
+//   AND state-space (PTX) — the IN-B claim is "effects are intrinsic
+//   to the type signature", not "the effect-type carrier is identical
+//   across languages". Per-language carriers, one IN-B principle.
+//
+// Owns (this slice — REVISED from scaffold; scaffold's "Go primitives"
+//   + "emission rules" + "cost realization for Go" lines are PRESERVED
+//   AS GOALS in the Owns→ELSEWHERE table below; the slice-vs-bundled
+//   split is explicit, not silent — same revision discipline as
+//   ptx.dag #3170 and rust.dag #3174):
+//
+//   - Go scalar primitive vocabulary as closed structural carriers:
+//     GoIntKind (signed / unsigned), GoIntWidth (Bits8/16/32/64 fixed
+//     + PlatformInt for int/uint + PointerSized for uintptr — three
+//     spec-distinct platform-dependent kinds preserved per Go spec
+//     §Numeric_types, NOT collapsed to one Pointer variant; the
+//     Reference's partition grounds the carrier per INVARIANTS P1),
+//     GoFloatWidth (Bits32/64 — IEEE-754 binary32/binary64 per Go
+//     spec §Numeric_types), GoComplexWidth (Bits64/128 — Go's two
+//     complex types `complex64` / `complex128`, structurally distinct
+//     from the float widths because the complex number is a Conj of
+//     two same-width floats), GoScalarKind (the Int/Float/Complex/
+//     Bool/String partition per Go spec §Types)
+//   - Go scalar typed-shape sum: GoScalar (kind × width as a Disj
+//     with named-field variant payloads — illegal kind×width pairs
+//     are STRUCTURALLY UNREPRESENTABLE: no "Bool with width=Bits32",
+//     because Bool/String variants carry no width payload — the
+//     same Disj-with-heterogeneous-payloads design rust #3174 uses,
+//     for the same INVARIANTS P2 reason)
+//   - Go channel-direction vocabulary: GoChannelDirection (SendRecv
+//     / SendOnly / RecvOnly — the Go spec §Channel_types direction
+//     partition), and the Conj carrier GoChannel attaching it to an
+//     opaque element-type-reference Symbol (K-1)
+//   - Go identifier export-status: GoExportStatus (Exported /
+//     Unexported — the binary partition Go's first-letter-case
+//     visibility rule projects to; Go spec §Exported_identifiers).
+//     Note: Go's visibility is structurally encoded in the
+//     identifier's first-letter case at the LEXICAL surface; the
+//     PARSER reads the spelling at the K-1 boundary (the human-
+//     readable spelling lives in the intern table — node.dag:70-86
+//     K-1 discipline) and emits this structural tag onto the
+//     enclosing declaration's Conj record. Kernel/lens code reads
+//     the tag, never the spelling.
+//   - Go per-target cost-realization carrier shape: GoCost (per-
+//     instruction + per-allocation components — the per-target
+//     projection U1 reads; the carrier SHAPE only, no instance-
+//     values pre-T-3 / pre-D2)
+//
+// Owned ELSEWHERE (deliberately NOT in this slice — named owners +
+//   dissolution triggers per the rust #3174 deferral shape):
+//
+//   - Go scalar inhabitance instance-values: `data go_int32_ring:
+//     OrderedRing<Int32> = OrderedRing { ... }` and the parallel rows
+//     for the other integer types, IEEE-754 widths, the two complex
+//     widths, Bool, String. RIDES the operator D2 form-decision
+//     (msg_640d429c — STOP-2/STOP-3 escalated by loyal-koi-702; the
+//     fn-value-expression form for spec-primitive operations
+//     (3a/3b/3c — name-reference Atom vs relaxed instance vs new
+//     substrate carrier) is unspecified). §0 ratifies v2-SYNTAX
+//     LEGALITY ONLY; per-target inhabitance shape is a SEPARATE
+//     operator-pending SEMANTIC decision. AND rides std/integer.dag
+//     / std/float.dag / std/logic.dag / std/text.dag (T-3 wave A3)
+//     carrier landing for P2 single-authority: pre-D2 / pre-T-3
+//     inhabitance would foreclose the eventual canonical authority.
+//     STOP-TRIGGER (named, binding): authoring even a "placeholder"
+//     `data go_int32_ring: OrderedRing<...> = ...` row here pre-D2
+//     is the FORBIDDEN deferral (the v3 cross-layer-drift failure
+//     mode this file's restraint exists to prevent). The PR #3171
+//     improvisation-held draft is the precedent for what NOT to do.
+//     Stub-to-keep-moving is forbidden; defer-with-named-trigger is
+//     the legitimate form.
+//     SEAM (where it plugs in): the closed GoScalar Disj declared
+//     below is the SURFACE through which each Go scalar's
+//     inhabitance parameterizes — when D2 ratifies the instance-
+//     value form AND T-3 wave A3 lands, the inhabitance rows land
+//     in this file with the typed scalar variants below as their
+//     carriers. Special inhabitance notes:
+//       * Go's `complex64` / `complex128` inhabit a field-like
+//         structure (`ApproximateField` for the rounding-aware
+//         analog — IEEE-754 binary32/binary64 component pairs
+//         compose into a complex number whose multiplication is
+//         rounding-approximate), specifically `ApproximateField<
+//         Conj<Float, Float>>` or a richer complex carrier in
+//         std/float.dag's eventual extension. Not authored here.
+//       * Go's `string` inhabits FreeMonoid<Byte> (UTF-8 bytes —
+//         Go strings are immutable byte sequences, NOT necessarily
+//         valid UTF-8 per the spec, though idiomatic Go strings
+//         are UTF-8; FreeMonoid<Byte> is the faithful inhabitance,
+//         with the UTF-8 interpretation as a SEPARATE lens that
+//         reads byte sequences). Owned by std/text.dag's eventual
+//         inhabitance plus std/machine.dag's Byte carrier.
+//       * `byte` (alias for `uint8`) and `rune` (alias for `int32`)
+//         are NOT separate scalar kinds — the Go spec defines them
+//         as aliases (§Numeric_types), so per P2 they ground in
+//         the existing `IntScalar { kind: Unsigned, width: Bits8 }`
+//         and `IntScalar { kind: Signed, width: Bits32 }` carriers
+//         respectively. The alias names live in the boundary
+//         intern table; kernel/lens code reads the underlying
+//         GoScalar.
+//
+//   - Bidirectional Go LanguageModel substrate (grammar productions
+//     as declarative B2-OMNI data, C5-fidelity disposition tags per
+//     surface feature, ingest∘emit roundtrip carrier): the BUNDLED
+//     work of T-4 across all 5 Shape A source languages, where "the
+//     SHAPE is the work" (TASKS.md T-4 authoring contract). RIDES
+//     the operator D1 value-or-Diagnostic carrier — `Outcome<T> =
+//     Produced { value: T } | Rejected { diagnostic: Diagnostic }`,
+//     RATIFIED 2026-05-16 (manager reinforcement msg_8b477982,
+//     ratified shape), NOT YET LANDED in std/diagnostic.dag. Parse /
+//     emit operations cannot type their failure mode without it.
+//     When the carrier lands AND the bundled LanguageModel shape
+//     lands, this file's classifiers slot into the Go `LanguageModel`
+//     instance without revision.
+//     STOP-TRIGGER (named, binding): the temptation to STUB an
+//     `emit_go : Node -> Outcome<GoSource>` op here while D1 is
+//     unlanded is the FORBIDDEN deferral — STOP and surface, never
+//     stub. Stub-to-keep-moving is the exact shape that broke v3.
+//
+//   - Pipeline emission/ingest operations (`.dag` Node → Go source;
+//     Go source → Node ingest with C5-fidelity classification per
+//     surface feature). RIDES the ratified `Outcome<T>` D1 carrier
+//     directly. Owners: compiler/05_emit.dag (T-10), compiler/
+//     02_parse.dag (T-7). Defer-with-named-trigger, never stub.
+//
+//   - Goroutine + channel-coordination semantic enforcement (the
+//     send/receive direction-vs-operation legality rules — a
+//     SendOnly channel rejects `<-ch` receives, a RecvOnly channel
+//     rejects `ch <- v` sends, the close-vs-send race avoidance):
+//     the COORDINATION-EFFECT-TYPING surface (lens/effect.dag T-13
+//     and/or extdeps/coordination.dag T-4.8) CONSUMES the
+//     `GoChannel` carrier declared here as the structural fact it
+//     reads. Per THESIS:401 IN-B "effects are intrinsic to the type
+//     signature, not an annotation layer" — channel direction is a
+//     STRUCTURAL Go fact, not an annotation; declared here as the
+//     type-system surface and READ by the effect/coordination lens
+//     from the signature.
+//
+//   - Goroutine intra-program concurrency (`go f(args)` spawning
+//     parallel sibling computations): the same Conj-of-parallel-
+//     siblings + per-goroutine Bind chain shape as verilog #3176's
+//     always-blocks finding. A goroutine's body is a Transform
+//     invoked as a structural sibling in the enclosing scope's
+//     statement list; the M:N runtime scheduler is the mechanical
+//     realization of the dependency graph (THESIS:18 "parallelism
+//     is the default — independence is visible in the structure").
+//     The `go` keyword is a structural decoration on a call site,
+//     not a 6th `Goroutine` behavior. The structural carrier for
+//     "this call site is a goroutine" lives at the LanguageModel
+//     grammar layer (T-4 bundled work) — not the scalar/channel
+//     vocabulary layer this slice owns.
+//
+//   - Interface declarations (`type X interface { Method() }`),
+//     struct types, slice / map / array types, function types —
+//     the COMPOSITE TYPES partition of the Go spec. Modeled at the
+//     bundled LanguageModel grammar layer; the scalar vocabulary
+//     here is the irreducible carrier the composite types compose
+//     over. Same scoping as ptx.dag's "scope negative warp
+//     intrinsics + tensor cores" and rust.dag's "scope negative
+//     tuple types + generics".
+//
+//   - Go per-instruction cost INSTANCE-VALUES (concrete `GoCost {
+//     instruction_cost: 1, allocation_cost: 0 }` rows per operation):
+//     the carrier SHAPE is owned here (GoCost below); concrete cost
+//     rows ride T-12 lens/cost.dag + U2.
 //
 // Consumes:
 //   - std/node.dag, std/algebra.dag (same as rust.dag)
 //
-// Status: scaffold — fill per TASKS.md T-4
+// Status: T-4 go-slice modeled 2026-05-16 (bright-crane-527);
+//   structural finding: NO STOP from the type-system surface. The
+//   I/O contract in this header is immutable for downstream workers.
+//   The scaffold's `Consumes` line — `std/node.dag, std/algebra.dag
+//   (same as rust.dag)` — is preserved verbatim. The effective
+//   imports this slice declares are narrower: only `Symbol` from
+//   std/node.dag (the K-1 opaque kernel identity used as the
+//   channel-element-type-reference on `GoChannel`). std/algebra.dag
+//   is NOT imported because the inhabitance instance-values this
+//   slice would otherwise declare ride D2 (operator-pending) — the
+//   import returns when D2 ratifies and the inhabitance rows land
+//   here, exactly the rust #3174 pattern. This per-file Consumes
+//   correction rides the systemic operator scaffold-Consumes
+//   reconciliation (T-4 mgr synthesis msg_1fddb75c) — uniform with
+//   ptx #3170, spice #3168, llvm_ir #3171, rust #3174, and verilog
+//   #3176; the operator ratifies all per-file Consumes strikes
+//   uniformly in one pass; this is not worker-settled. Splitting
+//   this file requires explicit operator ratification (substrate
+//   extension = stop signal).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -20,3 +240,929 @@
 
 module v4.extdeps.languages.go
 
+
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// THE SLICE-VS-BUNDLED FRAMING (T-4, manager directive fan-out from
+// the operator-RATIFIED canonical-rust shape #3174). T-4 is the bundled
+// work across the 5 Shape A source languages: "the SHAPE is the work"
+// — the canonical declarative LanguageModel shape was established on
+// rust.dag; THIS slice is the go HALF of fan-out: the type-system
+// VOCABULARY and Go-side carrier shapes, with the D1/D2-dependent
+// pieces (parse/emit operations + scalar algebra inhabitance instance-
+// values) explicitly DEFERRED to their named owners. Deferral ≠
+// improvisation: every deferred item is named in "Owned ELSEWHERE"
+// with its owner and dissolution trigger.
+//
+// THE GO → SUBSTRATE STRUCTURAL FIT. Each Go surface concept maps to a
+// member of the closed substrate axes (node.dag's 6 connectives + 5 L1
+// behaviors). The mapping, member-by-member — recording it here
+// because the fit IS the deliverable (per the slice's structural
+// finding above):
+//
+//   - FUNCTION (`func name(args) (returns) { body }`) ↦ Transform.
+//     Spec: https://go.dev/ref/spec#Function_declarations.
+//     A Go `func` is a typed function — `(args) -> (returns)` — whose
+//     body is a sub-DAG of behaviors. That is exactly Transform (the
+//     typed-total-λ fragment INVARIANTS:72; node.dag:209 "Transform =
+//     application"). Multiple return values are modeled as a Conj-
+//     record return type (the bundled LanguageModel grammar layer
+//     authors the multi-return Conj when it lands).
+//
+//   - VAR / SHORT-VAR DECLARATION (`var x T = expr;`, `x := expr;`)
+//     ↦ Bind. Spec: https://go.dev/ref/spec#Variable_declarations and
+//     https://go.dev/ref/spec#Short_variable_declarations. A Go `var`
+//     or `:=` introduces a name into a scope with a value; that is
+//     exactly Bind (node.dag:209 "Bind = let"). Go variables are
+//     mutable by default (unlike Rust's `let` requiring `mut` for
+//     rebinding); the mutability is a BINDING-LEVEL fact distinct
+//     from any TYPE-LEVEL discipline (Go has no `&mut` analog — see
+//     POINTER below).
+//
+//   - SWITCH / TYPE-SWITCH (`switch x { case … }`, `switch x.(type)
+//     { case T1: … }`) ↦ Branch. Spec: https://go.dev/ref/spec#Switch_statements.
+//     A Go switch is a guarded sum over a discriminator — exactly
+//     Branch (node.dag:209 "Branch = sums"). Go's case-fallthrough
+//     semantics (fall-through is opt-in via the `fallthrough`
+//     keyword, NOT the default) is a SCHEDULING property of the
+//     Branch's arms, modeled at the LanguageModel grammar layer.
+//     Type-switch over an interface (`switch v := x.(type)`) is a
+//     Branch over the closed set of concrete types implementing the
+//     interface; the closure is structural (the implementing-type
+//     set is known at the program-resolution boundary).
+//
+//   - FOR LOOP (`for init; cond; post { … }`, `for cond { … }`,
+//     `for x := range y { … }`) ↦ Loop with BOUNDED descent
+//     (node.dag:42-68, the A2 discipline). Spec: https://go.dev/ref/spec#For_statements.
+//     `for x := range y` is bounded by `y`'s iterator cardinality (a
+//     finite measure when `y` is bounded — slice / array / map /
+//     channel-with-close / string); `for cond` is bounded by a
+//     ranking dimension that decreases on each iteration; `for { }`
+//     with no `break` is structurally unbounded — STOP under A2 (the
+//     substrate refuses to claim totality it cannot prove). The v4
+//     Go model reads bounded loops, fail-closes on unbounded ones.
+//
+//   - LITERAL / VALUE (`42`, `"hello"`, `true`, `3.14`, `2 + 1i`) ↦
+//     Value (node.dag:209). Spec: https://go.dev/ref/spec#Constants.
+//     A literal IS a Value. The literal's typed interpretation (its
+//     scalar kind + width for numerics; its UTF-8 / byte
+//     interpretation for strings; its component widths for
+//     complexes) is the inhabitance walk that RIDES D2 — pre-D2 the
+//     Value's TYPED interpretation is unspecified; the Value carrier
+//     itself is just a Node. Untyped-constant promotion (Go's
+//     idiomatic numeric-literal handling per spec §Constant_expressions)
+//     is a LanguageModel-layer concern.
+//
+//   - POINTER (`*T`, `&x` addressing) — NO REFERENCE-KIND PARTITION
+//     (the explicit Go-vs-Rust difference). Spec: https://go.dev/ref/spec#Pointer_types.
+//     Go pointers are uniform: a `*T` is just a memory address. There
+//     is no shared/exclusive partition, no borrow-checker, no lifetime
+//     parameter — multiple `*T` to the same place is admissible at all
+//     times. The substrate carrier for "this typed value is reached
+//     through a pointer" is a Conj record at the LanguageModel grammar
+//     layer (a PointerType with a pointee element-type-ref), NOT a
+//     reference-kind classifier at this slice's vocabulary layer.
+//     This is the structural Go-vs-Rust per-language fact: same
+//     IN-B principle (effects intrinsic to type signature), different
+//     effect-typing locus — Go's coordination-discipline locus is
+//     CHANNEL DIRECTION (below), not pointer-kind.
+//
+//   - CHANNELS (`chan T`, `<-chan T`, `chan<- T`) ↦ effect-typed
+//     parameter (structural Conj field), per THESIS:401 IN-B applied
+//     to Go. Spec: https://go.dev/ref/spec#Channel_types. A channel
+//     is NOT a separate behavior; it is a TYPE whose
+//     `direction: GoChannelDirection` and `element_type_ref: Symbol`
+//     fields are structural Conj coordinates. Channel I/O (`ch <- v`
+//     send, `<-ch` receive) is a Transform whose operand type
+//     CARRIES the channel direction in its signature; the effect /
+//     coordination lens (T-13 / T-4.8) READS that signature and
+//     validates well-typedness (a SendOnly channel rejects receives,
+//     a RecvOnly channel rejects sends) as a structural property.
+//     This is EXACTLY the rust #3174 RustReference precedent and
+//     the ptx #3170 RegisterScalar.state_space precedent, applied
+//     to Go's channel-direction locus. Tempting alternative: a
+//     `ChannelSend` / `ChannelRecv` behavior wrapping every channel
+//     op. REJECTED — that would parallel-represent what the
+//     Transform's signature already says; the effect-typed parameter
+//     is the unannotated primitive (feedback_no_annotations).
+//
+//   - GOROUTINES (`go f(args)`) ↦ Conj-of-parallel-siblings (per the
+//     verilog #3176 IN-B finding). Spec: https://go.dev/ref/spec#Go_statements.
+//     A `go` statement spawns a parallel sibling computation: the
+//     called function is a Transform invoked as a structural sibling
+//     in the enclosing scope's statement list (same shape as
+//     verilog's parallel `always`-blocks in a module body). The M:N
+//     goroutine runtime is the mechanical realization of the
+//     dependency graph (THESIS:18); the `go` keyword is a STRUCTURAL
+//     decoration on the call site indicating "execute concurrently
+//     with the next statement", not a new behavior. NO 6th `Goroutine`
+//     behavior; intra-program Go concurrency = Conj-of-parallel-
+//     siblings + per-goroutine Bind chain + channel-effect-typed
+//     coordination. Same per-language IN-B win as verilog: structural
+//     parallelism + per-language effect-typing carriers.
+//
+//   - DEFER (`defer f()`) ↦ Bind with deferred-scheduling discriminator.
+//     Spec: https://go.dev/ref/spec#Defer_statements. A `defer`
+//     statement schedules a function call for execution at the
+//     enclosing function's return — exactly Bind with a scheduling
+//     discriminator on the sequencing-point (analogous to verilog's
+//     ProceduralAssignKind = NonBlocking, which schedules a write
+//     for the end of the simulation time-step). The scheduling
+//     discriminator is a LanguageModel-grammar-layer fact; not
+//     authored at this vocabulary slice.
+//
+//   - METHOD (`func (r Recv) Method() …`) ↦ Transform with a named
+//     receiver argument. Spec: https://go.dev/ref/spec#Method_declarations.
+//     A Go method is a function with an extra implicit "receiver"
+//     parameter; the receiver's type is the named type the method is
+//     defined on. Structurally a Transform; method dispatch through
+//     an interface is a Branch over the interface's implementing
+//     type set, modeled at the LanguageModel grammar layer.
+//
+// CONCLUSION. The type-system half of Go's spec fits the existing
+// substrate with no new connectives, no new behaviors, no parallel
+// taxonomies. The classifiers declared below are the closed Go-side
+// surface; their composition with grammar productions (Owned
+// ELSEWHERE) and inhabitance instance-values (Owned ELSEWHERE — rides
+// D2) lands when those dependencies dissolve, with the I/O contract
+// of THIS file immutable.
+//
+// SCOPE NEGATIVE (operator-tier, do not work around).
+//   - Composite types (slice `[]T`, array `[N]T`, map `map[K]V`,
+//     struct, function-type, interface) — Go spec §Types partitions
+//     them as composite. Modeling each requires generic carriers
+//     (Conj over component types) at the LanguageModel grammar layer
+//     (T-4 bundled work); not authored here. Same scoping as rust.dag
+//     #3174's "tuple types out-of-scope" and ptx.dag #3170's "warp
+//     intrinsics out-of-scope".
+//   - The full Go GRAMMAR production set (declarations, expressions,
+//     statements, type-switch patterns, package-import syntax) is
+//     owned by the bundled T-4 LanguageModel shape. Not authored
+//     here.
+//   - Generics (type parameters introduced in Go 1.18 per the
+//     spec's §Type_parameters section). Modeled at the LanguageModel
+//     grammar layer; structural inhabitance against std/algebra.dag
+//     algebras (Go's `comparable` constraint, type-set constraints)
+//     rides D2.
+//   - The Go runtime + garbage-collector — the cost-realization
+//     carrier here (GoCost.allocation_cost) names the seam through
+//     which GC pressure enters the cost lens, but the GC's internal
+//     model (mark-sweep generations, write barriers, stop-the-world
+//     pauses) is a per-runtime-implementation detail, not a
+//     language-spec fact; the lens reads only the structural
+//     "this operation allocates" fact, not the GC's internal state.
+//   - `unsafe.Pointer` and the `unsafe` package — Go's escape-hatch
+//     surface (Spec §Package_unsafe). A STRUCTURAL boundary fact (a
+//     declaration / call-site carries an unsafe-package discriminator),
+//     modeled at the LanguageModel grammar layer when the bundled
+//     work lands; not the vocabulary slice.
+//   - Reflection (`reflect` package) — a library, per L-2 (a library
+//     is just a program in the modeled language = Node); not a
+//     language-spec feature requiring substrate.
+//
+// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj carrier below
+// carries the full 🟢/🟡/🔴 + all five patterns (Fact-placement /
+// Variant-is-data / Algebraic-form / Dimensional / Parameterized-
+// family-Practice-7) per modeling-discipline.md §4 (operator-ratified
+// binding 2026-05-15, gate (b) — #3163 made the 4-pattern miss the
+// proof case; do not omit Practice-7). Conj records carry no ledger
+// (only coproducts dissolve); scaffold-residual Conj fields (GoCost
+// raw Int components) carry a 🟡 bridge note mirroring std/diagnostic
+// .dag's `Extent.ByteRange`, ptx.dag's `Dim3` / `PtxCost`, and
+// rust.dag's `RustCost` precedent.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoIntKind — the closed Go signed-vs-unsigned integer kind. The Go
+// Specification §Numeric_types partitions integer types into exactly
+// two kinds: signed (int family) and unsigned (uint family).
+// Spec: https://go.dev/ref/spec#Numeric_types.
+//
+//   - Signed   — `int8` / `int16` / `int32` / `int64` / `int`
+//                (two's-complement signed integers; `rune` is an
+//                alias for `int32` and grounds on this variant
+//                with width=Bits32 per Owned ELSEWHERE)
+//   - Unsigned — `uint8` / `uint16` / `uint32` / `uint64` / `uint` /
+//                `uintptr` (unsigned modular integers; `byte` is an
+//                alias for `uint8` and grounds on this variant with
+//                width=Bits8 per Owned ELSEWHERE)
+//
+// CLOSED (C1 stop-signal). A third integer kind is an edit to THIS
+// declaration routed to operator ratification under the L-2 pin
+// discipline (a future Specification revision modifying the integer
+// kind partition is a visible diff, never a silent extension).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every integer-scalar consumer (the
+//      Go `LanguageModel` grammar's integer-literal production, the
+//      per-target cost-realization for integer ops, the eventual
+//      inhabitance walk for Semiring-vs-OrderedRing dispatch) reads
+//      the kind tag uniformly; shared classifier, not a per-consumer
+//      scattered fact.
+//   2. Variant-is-data — FAILS: nullary tags from a closed
+//      Specification-defined set. A `{ signed: Bool }` proxy
+//      replaces a closed 2-valued exhaustive sum with an unbounded
+//      Bool — and while Bool is 2-valued, the Bool proxy also
+//      admits the read "is the integer kind 'true' or 'false'?" —
+//      exactly the M4 "closed sets are enums, not numeric/boolean
+//      proxies" smell. The enum IS the faithful form (same as
+//      rust.dag's RustIntKind argument).
+//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
+//      structure (Signed → OrderedRing, Unsigned → Semiring — minus
+//      negate). That grounding IS the inhabitance walk owned by
+//      std/integer.dag per P2 (and rides D2 + T-3 per "Owned
+//      ELSEWHERE"); the kind enum itself stays a closed classifier.
+//   4. Dimensional — FAILS: a single Go integer type has EXACTLY ONE
+//      kind; `int32` is signed, `uint32` is unsigned, the
+//      Specification admits no "both" type. Mutually-exclusive
+//      alternatives, not simultaneous coordinates. (Kind × Width
+//      is the Cartesian product on GoScalar's IntScalar variant.)
+//   5. Parameterized family — FAILS: Signed and Unsigned are the Go
+//      Specification's integer-kind partition; they are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). One could attempt `IntKind<algebra:
+//      AlgebraStructure>` parameterized over a 2-element algebra
+//      subset, but the partition is the spec's irreducible kind-
+//      distinction, not a mechanical copy of a richer set.
+// Terminal: the closed two-way Go integer-kind partition; a 3rd is
+// the C1 stop-signal.
+type GoIntKind
+  = Signed
+  | Unsigned
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoIntWidth — the closed Go integer bit-width classifier. The Go
+// Specification §Numeric_types admits four fixed widths and two
+// platform-dependent widths.
+// Spec: https://go.dev/ref/spec#Numeric_types.
+//
+//   - Bits8         — `int8`  / `uint8` / `byte`    (1-byte; `byte`
+//                                                    is an alias for
+//                                                    `uint8`)
+//   - Bits16        — `int16` / `uint16`           (2-byte integers)
+//   - Bits32        — `int32` / `uint32` / `rune`  (4-byte; `rune`
+//                                                    is an alias for
+//                                                    `int32`)
+//   - Bits64        — `int64` / `uint64`           (8-byte integers)
+//   - PlatformInt   — `int`   / `uint`             (the platform-
+//                                                    dependent default
+//                                                    integer width;
+//                                                    per spec ≥ 32
+//                                                    bits, typically
+//                                                    64 on 64-bit
+//                                                    platforms)
+//   - PointerSized  — `uintptr`                    (an unsigned
+//                                                    integer large
+//                                                    enough to hold
+//                                                    the bit pattern
+//                                                    of any pointer;
+//                                                    structurally
+//                                                    DISTINCT from
+//                                                    PlatformInt per
+//                                                    the spec)
+//
+// CLOSED (C1 stop-signal). A 128-bit width (Go has no stable int128
+// in the pinned Specification — distinct from Rust's i128/u128) is
+// an edit to THIS declaration under the L-2 pin discipline.
+//
+// SPEC FAITHFULNESS NOTE (INVARIANTS P1). The Go Specification
+// §Numeric_types preserves `int`/`uint` and `uintptr` as STRUCTURALLY
+// DISTINCT types (the spec does not equate them, even on platforms
+// where they happen to be the same width). The partition above
+// reflects this: PlatformInt and PointerSized are separate variants,
+// NOT collapsed into one Pointer variant. This is the Go-vs-Rust
+// per-language fact — Rust's `isize`/`usize` are spec-equated to
+// pointer-width (one Pointer variant in rust.dag #3174); Go's
+// `int`/`uint` and `uintptr` are NOT equated by the spec (two
+// variants here). Grounding the partition in the spec partition is
+// what INVARIANTS P1 modeling-faithfulness requires.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every integer-scalar consumer reads
+//      the width to size representations (emission of `int32` vs
+//      `int64`; per-target cost-realization sizes); shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
+//      64/<platform>/<pointer>) replaces a closed 6-valued
+//      exhaustive sum with an unbounded Int (bits=42 representable),
+//      AND fails to express PlatformInt and PointerSized as
+//      STRUCTURALLY DISTINCT platform-dependent kinds. The widths
+//      are NOT free Int values; they are the Go-Specification-
+//      admitted subset, so a free-Int carrier would ratify illegal
+//      widths (P2 illegal-states-unrepresentable shape, same as
+//      ptx.dag RegisterWidth and rust.dag RustIntWidth).
+//   3. Algebraic form — partially N/A: the bit-counts form an
+//      ordered set (8 < 16 < 32 < … with PlatformInt and
+//      PointerSized reading the host pointer-width / platform-int
+//      width on common targets), but the ORDER is derived FROM the
+//      closed enum (and the platform-dependent values resolve at
+//      the boundary), not a richer source — pointing to a
+//      `Lattice<GoIntWidth>` would parallel-represent the
+//      enumeration the order is defined over (algebra.dag U1
+//      engine-debt smell).
+//   4. Dimensional — FAILS: a single typed integer has EXACTLY ONE
+//      width; mutually-exclusive alternatives. The kind × width
+//      Cartesian product lives on GoScalar's IntScalar variant
+//      (Disj-with-payload), not on this enum.
+//   5. Parameterized family — FAILS: the six widths are the Go
+//      Specification's stable-integer-width set; they are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The fixed widths' bit-count is the
+//      discriminant for the fixed variants; PlatformInt and
+//      PointerSized are DIFFERENT-SHAPED variants (platform-
+//      dependent, not a fixed count, AND structurally distinct from
+//      each other per spec) — they are not all `F<bit-count: Int>`.
+// Terminal: the closed six-way Go integer-width classifier for the
+// pinned Go Specification; a 7th is the C1 stop-signal.
+type GoIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | PlatformInt
+  | PointerSized
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoFloatWidth — the closed Go floating-point bit-width classifier.
+// The Go Specification §Numeric_types admits exactly two widths (both
+// IEEE-754 binary formats).
+// Spec: https://go.dev/ref/spec#Numeric_types.
+//
+//   - Bits32 — `float32`  (IEEE-754 binary32 single-precision)
+//   - Bits64 — `float64`  (IEEE-754 binary64 double-precision; the
+//                          Go idiomatic default float width)
+//
+// CLOSED (C1 stop-signal). f16 / f128 stabilization in a future Go
+// Specification revision would be an edit to THIS declaration under
+// the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every float-scalar consumer reads the
+//      width to size representations (emission of `float32` vs
+//      `float64`; cost-realization for floating-point ops); shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (32/64)
+//      replaces a closed 2-valued exhaustive sum with an unbounded
+//      Int — and floating-point widths are NOT free Int values;
+//      they are the IEEE-754-binary-format-admitted subset Go
+//      stabilizes (P2 illegal-states-unrepresentable; same shape
+//      as GoIntWidth and rust.dag RustFloatWidth).
+//   3. Algebraic form — N/A by construction: the two widths
+//      structurally inhabit the SAME algebra (std/algebra.dag
+//      `ApproximateField` per the rounding-aware framing —
+//      INVARIANTS:43, std/float.dag scaffold's anchor); they do
+//      not partition into distinct algebraic structures. No richer
+//      std/ source to collapse the enum INTO.
+//   4. Dimensional — FAILS: a single typed float has EXACTLY ONE
+//      width; mutually-exclusive alternatives. (Go does not admit
+//      `float32 ⊓ float64` as a hybrid type.)
+//   5. Parameterized family — FAILS: the two widths are the Go-
+//      stable-IEEE-754-binary-format set; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). A richer IEEE-754 source (the full binary16/
+//      32/64/128 set) is the spec's universe, but Go admits only
+//      the binary32/64 subset stably — the choice of "which widths
+//      Go stabilizes" is the partition discriminant, not a
+//      parameterization of a richer source set.
+// Terminal: the closed two-way Go stable-float-width classifier.
+type GoFloatWidth
+  = Bits32
+  | Bits64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoComplexWidth — the closed Go complex-number bit-width classifier.
+// The Go Specification §Numeric_types admits exactly two complex
+// widths: `complex64` (two `float32` components) and `complex128`
+// (two `float64` components).
+// Spec: https://go.dev/ref/spec#Numeric_types.
+//
+//   - Bits64  — `complex64`   (real and imaginary components are
+//                              each IEEE-754 binary32; total 64
+//                              bits of representation)
+//   - Bits128 — `complex128`  (real and imaginary components are
+//                              each IEEE-754 binary64; total 128
+//                              bits of representation)
+//
+// CLOSED (C1 stop-signal). Adding a complex-of-float16 or complex-
+// of-float128 width would be an edit to THIS declaration under the
+// L-2 pin discipline (Go has not stabilized these).
+//
+// SPEC FAITHFULNESS NOTE (INVARIANTS P1). Go's complex types are
+// PRIMITIVE per spec §Numeric_types (the Specification lists them
+// alongside the integer and float types in the predeclared types
+// list — they are not composite types built from `(float, float)`
+// at the language layer; the spec treats them as their own typed
+// scalar values). They therefore appear as a kind partition member
+// in GoScalarKind below, not as a composite-type construction. This
+// is a structural Go-vs-Rust difference — Rust has no primitive
+// complex type (complex arithmetic lives in libraries like
+// `num-complex`, which are programs per L-2, NOT primitives).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every complex-scalar consumer reads
+//      the width to size representations (emission of `complex64`
+//      vs `complex128`; cost-realization for complex ops which
+//      decompose into per-component float ops); shared classifier,
+//      not scattered.
+//   2. Variant-is-data — FAILS: a `{ component_bits: Int }` proxy
+//      (32 → complex64, 64 → complex128) replaces a closed 2-valued
+//      exhaustive sum with an unbounded Int (the same P2 illegal-
+//      states-unrepresentable shape). The enum IS the faithful
+//      form.
+//   3. Algebraic form — N/A by construction: complex64 / complex128
+//      inhabit the SAME structure (the rounding-aware complex-
+//      number analog; an ApproximateField over a Conj of two same-
+//      width floats); they do not partition into distinct
+//      algebraic structures. The inhabitance ride D2 per "Owned
+//      ELSEWHERE".
+//   4. Dimensional — FAILS: a single typed complex has EXACTLY ONE
+//      width; mutually-exclusive alternatives.
+//   5. Parameterized family — PARTIALLY: each complex width
+//      structurally projects from the corresponding GoFloatWidth
+//      (complex64 → Bits32, complex128 → Bits64) — `F<X> =
+//      complex-of-float-width-X`. However, this projection-uniformity
+//      is INCIDENTAL: the spec does not define complex types as a
+//      generic family parameterized over the float widths; they are
+//      enumerated as two named primitive types. Pointing this enum
+//      AT GoFloatWidth would parallel-represent the spec's
+//      enumeration. The carrier stays a closed 2-way enum; the
+//      projection is observed in commentary, not encoded as a
+//      Practice 7 collapse.
+// Terminal: the closed two-way Go stable-complex-width classifier.
+type GoComplexWidth
+  = Bits64
+  | Bits128
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoScalarKind — the closed Go scalar-type kind classifier. The Go
+// Specification §Types partitions the predeclared primitive types
+// into exactly five kinds, per §Numeric_types (the Int / Float /
+// Complex bifurcation), §Boolean_types, and §String_types.
+// Spec: https://go.dev/ref/spec#Types.
+//
+//   - Int      — integer scalars (Spec §Numeric_types — both signed
+//                and unsigned, all widths — see GoIntKind × GoIntWidth)
+//   - Float    — floating-point scalars (Spec §Numeric_types —
+//                float32 / float64 stable — see GoFloatWidth)
+//   - Complex  — complex-number scalars (Spec §Numeric_types —
+//                complex64 / complex128 stable — see GoComplexWidth;
+//                a primitive scalar kind in Go, structurally distinct
+//                from Rust which has no primitive complex)
+//   - Bool     — the `bool` two-valued type (Spec §Boolean_types;
+//                classical-logic-inhabiting per std/logic.dag)
+//   - String   — the `string` immutable byte-sequence type (Spec
+//                §String_types; an immutable sequence of bytes — Go
+//                strings are NOT guaranteed UTF-8 by the spec,
+//                though idiomatic Go strings are UTF-8 and the
+//                language has explicit `rune` / `[]byte` conversion
+//                surfaces. Inhabits FreeMonoid<Byte> per "Owned
+//                ELSEWHERE" — the UTF-8 interpretation is a separate
+//                lens-read).
+//
+// Aliases (`byte` for `uint8`, `rune` for `int32`) are DELIBERATELY
+// NOT in this partition: the Go Specification §Numeric_types defines
+// them as aliases — they are the SAME types as their targets, not
+// new kinds. Per P2 single-authority, alias names live in the
+// boundary intern table (resolved at parse time); kernel/lens code
+// reads the underlying `IntScalar { kind: Unsigned, width: Bits8 }`
+// (for `byte`) or `IntScalar { kind: Signed, width: Bits32 }` (for
+// `rune`). The alias spelling never appears in this partition.
+//
+// `error` (Go's standard error interface) is DELIBERATELY NOT in
+// this partition: it is an INTERFACE TYPE, not a primitive scalar
+// (Spec §Errors). Composite types are out-of-scope per the header
+// SCOPE NEGATIVE.
+//
+// CLOSED (C1 stop-signal). A sixth scalar kind is an edit to THIS
+// declaration under the L-2 pin discipline. The kind enum is the
+// meta-classifier; the typed scalar values themselves are the
+// `GoScalar` Disj below (which carries the kind × width
+// admissibility as structural variant payloads).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Go-typed value consumer
+//      branches on the scalar kind to dispatch (which algebra
+//      applies, which width is meaningful, which emission syntax
+//      to use); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses (a
+//      `match name { "int32" => … }` smell, exactly the v3
+//      regression the K-1 opacity discipline structurally
+//      prevents). The enum IS the faithful form.
+//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
+//      structure (Int → OrderedRing-or-Semiring per GoIntKind, Float
+//      → ApproximateField, Complex → ApproximateField over a Conj
+//      of two same-width floats, Bool → BooleanAlgebra, String →
+//      FreeMonoid<Byte> per the spec's byte-sequence semantics).
+//      That grounding is the INHABITANCE walk owned by the std/
+//      scalar files per P2 (rides D2 + T-3 wave A3). The kind enum
+//      itself stays a closed classifier; the "kind → algebra" map
+//      IS the future inhabitance walk, not a richer std/ source to
+//      collapse this enum INTO. Same shape as ptx.dag
+//      RegisterScalarKind and rust.dag RustScalarKind.
+//   4. Dimensional — FAILS: a single Go scalar value has EXACTLY
+//      ONE kind; mutually-exclusive alternatives. (Kind × Width is
+//      a Cartesian product on GoScalar's IntScalar / FloatScalar /
+//      ComplexScalar variants — that IS the dimensional model for
+//      the width-bearing kinds.)
+//   5. Parameterized family — FAILS: the five kinds are the Go-
+//      Specification primitive-type partition; they are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The kinds ground in STRUCTURALLY
+//      HETEROGENEOUS algebraic structures (OrderedRing/Semiring/
+//      ApproximateField/ApproximateField-over-Conj-of-floats/
+//      BooleanAlgebra/FreeMonoid — five distinct std/algebra
+//      structures). The partition is the spec's irreducible
+//      primitive-kind distinction, not a copy of any enumerable
+//      source.
+// Terminal: the closed five-way Go primitive-scalar-kind classifier
+// for the pinned Go Specification.
+type GoScalarKind
+  = Int
+  | Float
+  | Complex
+  | Bool
+  | String
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoScalar — a typed Go primitive-scalar value: kind × (width if
+// applicable). Disj sum with NAMED-FIELD VARIANT PAYLOADS so that
+// the kind × width admissibility is STRUCTURALLY ENFORCED — Bool /
+// String carry no width payload, so "Bool with width=Bits32" is
+// unrepresentable (not "rejected by a check" — unrepresentable, the
+// INVARIANTS P2 illegal-states-unrepresentable shape, exactly the
+// same design choice node.dag took with EdgeLabel's `Positional`,
+// algebra.dag took with the Field type's omitted total `reciprocal`,
+// and rust.dag #3174 took with RustScalar).
+// Spec: https://go.dev/ref/spec#Types.
+//
+//   - IntScalar      — { kind: GoIntKind, width: GoIntWidth }
+//                      e.g. IntScalar { kind: Signed, width: Bits32 }
+//                      is Go's `int32`; IntScalar { kind: Unsigned,
+//                      width: PointerSized } is `uintptr`;
+//                      IntScalar { kind: Signed, width: PlatformInt }
+//                      is `int`.
+//   - FloatScalar    — { width: GoFloatWidth }
+//                      e.g. FloatScalar { width: Bits64 } is `float64`.
+//   - ComplexScalar  — { width: GoComplexWidth }
+//                      e.g. ComplexScalar { width: Bits128 } is
+//                      `complex128`; the COMPONENT widths (binary32
+//                      for complex64, binary64 for complex128) are
+//                      DERIVED from the complex width per spec
+//                      §Numeric_types — not a separate payload.
+//   - BoolScalar     — Go's `bool` (the two-valued type — there is
+//                      no width variant; the Specification does not
+//                      expose bool's storage width as a kind-level
+//                      discriminator).
+//   - StringScalar   — Go's `string` (immutable byte sequence; Spec
+//                      §String_types. No width variant; the byte-
+//                      sequence length is a value-level fact, not a
+//                      kind-level discriminator).
+//
+// The structural argument for the Disj-with-payloads (vs ptx's Conj-
+// record `RegisterScalar { kind, width, state_space }`): in PTX every
+// typed register has a (kind, width, state_space), so the three-
+// coordinate Conj is the natural form. In Go (as in Rust), the five
+// scalar kinds have DIFFERENT structural shapes — Int has (kind,
+// width), Float / Complex have (width), Bool / String have nothing
+// beyond the kind. A Conj record `{ kind, width? }` would force a
+// width Option for Bool/String, ratifying the illegal state "Bool
+// with width=Bits32" — exactly the M4 / Practice-2/6 / P2 pattern
+// those disciplines structurally forbid. The Disj-with-payloads is
+// the dissolved form: each variant carries EXACTLY the structural
+// data its kind admits, and no illegal kind×width combination is
+// constructible. This is the rust.dag #3174 precedent applied to Go.
+//
+// SEAM (where D2 inhabitance plugs in). When the D2 form decision
+// lands, the per-variant inhabitance instance-values land in this
+// file with these typed variants as their carriers — IntScalar
+// { kind: Signed, width: Bits32 } is the carrier for Go's `int32`
+// inhabitance into OrderedRing (or its v4-equivalent per the D2-
+// ratified form); FloatScalar { width: Bits32 } is the carrier for
+// `float32` → ApproximateField; ComplexScalar { width: Bits128 } is
+// the carrier for `complex128` → ApproximateField over a Conj of
+// two binary64 floats; StringScalar is the carrier for `string` →
+// FreeMonoid<Byte>. The seam itself is the typed variant; the
+// inhabitance value is the deferred row.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Go-typed value consumer
+//      (literal parsing, expression typing, emission to source,
+//      cost-realization, eventual inhabitance dispatch) reads the
+//      scalar's kind + width-if-applicable through this carrier;
+//      shared, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the variants to a
+//      uniform record `{ kind: GoScalarKind, width: Option<…> }`
+//      reintroduces the illegal state "Bool with width=Bits32"
+//      this Disj-with-payloads design exists to forbid. The five-
+//      variant Disj IS the dissolved form (P2 + Practice 2/6 + M4).
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra or cardinality structure (IntScalar → OrderedRing
+//      / Semiring per GoIntKind; FloatScalar → ApproximateField;
+//      ComplexScalar → ApproximateField over a Conj of two same-
+//      width floats; BoolScalar → BooleanAlgebra; StringScalar →
+//      FreeMonoid<Byte> per the spec's byte-sequence semantics).
+//      That grounding IS the inhabitance walk owned ELSEWHERE per
+//      P2; the Disj structure here is the closed surface, not a
+//      collapsing target.
+//   4. Dimensional — FAILS: a single Go scalar value IS EXACTLY ONE
+//      variant of this Disj; mutually-exclusive alternatives. The
+//      shapes differ across variants (IntScalar carries two
+//      coordinates; FloatScalar / ComplexScalar one; the rest none)
+//      — they cannot be coordinates of a single record without the
+//      illegal-state smell.
+//   5. Parameterized family — FAILS: the five variants are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The Disj has heterogeneous
+//      structural shapes (kind partitions across structurally-
+//      distinct value spaces, with three distinct algebraic
+//      groundings — OrderedRing/Semiring, ApproximateField, and
+//      ApproximateField-over-Conj-of-floats — plus BooleanAlgebra
+//      and FreeMonoid<Byte>). The Disj-with-heterogeneous-payloads
+//      is the irreducible faithful form, same as rust.dag's
+//      RustScalar argument.
+// Terminal: the closed five-variant Go primitive-scalar typed-value
+// sum; illegal kind×width combinations are unrepresentable by
+// construction; composite types are scope-negative for this slice.
+type GoScalar
+  = IntScalar { kind: GoIntKind, width: GoIntWidth }
+  | FloatScalar { width: GoFloatWidth }
+  | ComplexScalar { width: GoComplexWidth }
+  | BoolScalar
+  | StringScalar
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoChannelDirection — the closed Go channel-direction classifier.
+// The Go Specification §Channel_types admits exactly three channel
+// directions (the send-vs-receive-vs-both partition the type system
+// enforces at the channel-type level).
+// Spec: https://go.dev/ref/spec#Channel_types.
+//
+//   - SendRecv  — `chan T`   bidirectional channel; admits both
+//                            sends (`ch <- v`) and receives (`<-ch`)
+//   - SendOnly  — `chan<- T` send-only channel; admits only sends;
+//                            using `<-ch` on a SendOnly channel is
+//                            a static type error
+//   - RecvOnly  — `<-chan T` receive-only channel; admits only
+//                            receives; using `ch <- v` on a RecvOnly
+//                            channel is a static type error
+//
+// CLOSED (C1 stop-signal). A fourth direction is an edit to THIS
+// declaration routed to operator ratification under the L-2 pin
+// discipline.
+//
+// IN-B SEAM (effects intrinsic to the type signature, THESIS:401).
+// The GoChannel Conj record below ATTACHES this direction to an
+// opaque element-type-reference Symbol, making the channel a
+// structural Conj field on a typed value (the same shape as ptx.dag's
+// `state_space: StateSpace` on RegisterScalar and rust.dag's
+// RustReference). The COORDINATION / EFFECT LENS reads this field
+// from typed signatures; the channel-direction-vs-operation legality
+// rules are a STRUCTURAL property of the signature, not a parallel
+// channel-discipline taxonomy. This is the Go-specific instantiation
+// of the IN-B principle "effects are intrinsic to the type signature",
+// applied to the goroutine/channel concurrency model.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every channel-bearing-typed-value
+//      consumer (the coordination lens, the emission of `chan T` /
+//      `chan<- T` / `<-chan T`, the per-direction operation-
+//      legality check) reads the direction tag uniformly; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ can_send: Bool, can_recv:
+//      Bool }` proxy replaces a closed 3-valued exhaustive sum
+//      (where the spec excludes the (false, false) "neither" case)
+//      with an unbounded 4-state record that ratifies the illegal
+//      "neither send nor receive" state — exactly the P2 illegal-
+//      states-unrepresentable anti-shape. The enum IS the faithful
+//      form.
+//   3. Algebraic form — PARTIAL: the three directions form a
+//      DEGENERATE-LATTICE-LIKE shape (SendRecv subsumes both
+//      SendOnly and RecvOnly; SendOnly and RecvOnly are
+//      incomparable siblings — `SendRecv ⊒ SendOnly` and `SendRecv
+//      ⊒ RecvOnly`). But the subsumption is DERIVED FROM the closed
+//      enum (it is a property of "which directions a typed channel
+//      value can be assigned to"), not a richer source — pointing
+//      to a `BoundedLattice<GoChannelDirection>` would parallel-
+//      represent the direction taxonomy the order is defined over
+//      (algebra.dag U1 engine-debt smell, same argument as ptx.dag
+//      BarrierScope's ledger and rust.dag RustVisibility's ledger).
+//   4. Dimensional — FAILS: a single channel-typed value has
+//      EXACTLY ONE direction; mutually-exclusive alternatives.
+//      (The assignment-direction subsumption — `chan T` is
+//      assignable to `chan<- T` — is a TYPE-LEVEL conversion, not
+//      a same-value-with-multiple-directions state.)
+//   5. Parameterized family — FAILS: SendRecv / SendOnly /
+//      RecvOnly are the Go Specification's channel-direction
+//      partition; they are NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7). The
+//      directions correspond to STRUCTURALLY DISTINCT operation-
+//      legality disciplines (admits-send-and-receive vs admits-
+//      send-only vs admits-receive-only) — they are not
+//      projection-uniform over any richer source.
+// Terminal: the closed three-way Go channel-direction partition.
+type GoChannelDirection
+  = SendRecv
+  | SendOnly
+  | RecvOnly
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoExportStatus — the closed Go identifier-visibility classifier.
+// The Go Specification §Exported_identifiers defines visibility as a
+// BINARY partition derived from the identifier's first-letter case:
+// an identifier with an upper-case first letter is "exported"
+// (visible to importing packages); otherwise it is unexported
+// (package-private). There is no `pub` / `pub(crate)` / `private`
+// keyword scheme — visibility is structurally encoded in the
+// spelling.
+// Spec: https://go.dev/ref/spec#Exported_identifiers.
+//
+//   - Exported    — first letter is upper-case Unicode letter
+//                   (Spec §Exported_identifiers: "the first character
+//                   of the identifier's name is a Unicode upper case
+//                   letter (Unicode class 'Lu')")
+//   - Unexported  — first letter is NOT an upper-case Unicode letter
+//                   (lower-case, digit, underscore — only lower-case
+//                   letters appear in idiomatic Go identifiers, but
+//                   the spec's negative-of-Lu rule is what closes
+//                   the binary partition)
+//
+// CLOSED (C1 stop-signal). Go has no intermediate visibility scopes;
+// the binary partition is the entire visibility taxonomy per spec.
+// A third scope would be a future language-version change requiring
+// edit under the L-2 pin discipline.
+//
+// K-1 BOUNDARY NOTE. The export-status of a Go identifier is a
+// FUNCTION of its spelling — the first character's Unicode category.
+// Per K-1 (node.dag:70-86) `Symbol` is OPAQUE: kernel/lens code
+// cannot read a Symbol's spelling. The export-status is therefore
+// resolved AT THE PARSER BOUNDARY (where the spelling IS readable)
+// and ATTACHED to the declaration's Conj record as a structural tag.
+// Kernel/lens code reads `export_status: GoExportStatus`, never the
+// underlying Symbol spelling. This is the structurally-correct
+// instantiation of K-1's "human-readable spelling lives in a
+// boundary intern table" discipline — Go's spec ties visibility to
+// spelling, and the v4 model carries the derived fact as a typed
+// tag, never re-reads the spelling.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Go-item consumer (emission of
+//      the identifier preserving case, the cross-package-name-
+//      resolution walk, the public-API-surface synthesis for
+//      documentation / coordination contracts) reads the export
+//      status uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ exported: Bool }` proxy is
+//      faithful (the partition IS binary), but the M4 "closed sets
+//      are enums, not Bool proxies" smell applies — the named-enum
+//      preserves the semantic distinction (Exported / Unexported)
+//      that a bare Bool conflates. The enum IS the M4-faithful
+//      form (same argument as rust.dag RustReferenceKind's ledger).
+//   3. Algebraic form — N/A by construction: the two statuses are
+//      the Go Specification's export partition; they do not trace
+//      to a richer std/ algebraic structure (one could attempt a
+//      `BoundedLattice<ExportStatus>` with Exported = top, but
+//      that would be a parallel representation of the import-
+//      visibility containment, a property derived FROM the two
+//      tags).
+//   4. Dimensional — FAILS: a single Go identifier has EXACTLY
+//      ONE export status (the first-letter-case test is exhaustive
+//      and mutually exclusive); mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: Exported / Unexported are
+//      the Go visibility partition; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The richer per-package visibility model that
+//      Rust's `pub(crate)` / `pub(super)` provide is structurally
+//      ABSENT from Go (Go's spec has no intermediate-scope
+//      visibility), so there is no richer source for this enum to
+//      project from.
+// Terminal: the closed two-way Go identifier-visibility partition;
+// the binary case-derived rule is structurally complete per the
+// pinned Go Specification.
+type GoExportStatus
+  = Exported
+  | Unexported
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoChannel — a typed Go channel: direction × element-type identity.
+// Conj record (no Practice-4 ledger — only coproducts dissolve).
+// Spec: https://go.dev/ref/spec#Channel_types.
+//
+//   - direction          which channel direction (SendRecv /
+//                        SendOnly / RecvOnly — the partition the
+//                        type system enforces at the channel-type
+//                        level)
+//   - element_type_ref   the channel's element type, as an opaque
+//                        K-1 Symbol referring to a type declaration
+//                        resolved through the namespace (per
+//                        node.dag's name-reference idiom — A1).
+//                        Inline / unnamed element types (`chan
+//                        struct{}`, `chan func()`) are out-of-scope
+//                        for this slice — the bundled T-4
+//                        LanguageModel grammar productions resolve
+//                        type expressions; at this vocabulary
+//                        layer, the channel's element is named via
+//                        Symbol just as Rust's lifetime is named
+//                        via Symbol (rust.dag #3174 precedent).
+//
+// IN-B / structural-fact discipline (per the header STRUCTURAL
+// FINDING). The GoChannel Conj record IS the structural surface of
+// the IN-B claim "Go coordination is intrinsic to the type
+// signature, NOT an annotation layer" (THESIS:401, scaffold header
+// IN-B framing applied to Go's channel-direction locus). Channel
+// I/O through a typed channel is a Transform whose operand type
+// CARRIES this record in its signature; the coordination / effect
+// lens READS the (direction, element_type_ref) coordinates directly
+// from the typed signature and validates well-typedness as a
+// structural property — there is no separate "channel-discipline
+// annotation" layer. Same shape as rust.dag's RustReference and
+// ptx.dag's RegisterScalar.state_space.
+type GoChannel {
+  direction: GoChannelDirection
+  element_type_ref: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GoCost — the per-target cost-realization carrier shape for the Go
+// `LanguageModel`. Conj record (no Practice-4 ledger).
+//
+// This declares the SHAPE the U1 spine reads when computing Go-side
+// realization cost — both components per the scaffold header's "cost
+// realization for Go" claim (preserved as a goal; the carrier shape
+// lands now, the cost INSTANCE-VALUES land downstream per "Owned
+// ELSEWHERE"):
+//
+//   - instruction_cost   per-operation throughput cost (the U1 per-
+//                        target-op cost projection — the `map` side
+//                        of `Homomorphism<…, …, GoScalar>` carries
+//                        this; cost is read FROM the map's structure,
+//                        never stored as a parallel field per
+//                        algebra.dag's U1 no-engine discipline)
+//   - allocation_cost    per-allocation cost — in Go this carries
+//                        BOTH the heap-allocation throughput AND the
+//                        GC-pressure contribution (Go's escape-
+//                        analyzer determines whether a value is
+//                        stack- or heap-allocated; heap allocations
+//                        contribute to GC pressure measured by the
+//                        runtime). The per-target shape that the
+//                        cost lens T-12 reads when synthesizing a
+//                        Go realization's total cost. The GC's
+//                        internal model (mark-sweep generations,
+//                        write barriers) is per-runtime-
+//                        implementation detail, not encoded here —
+//                        only the structural "this operation
+//                        allocates" fact composes through this
+//                        carrier.
+//
+// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`,
+// ptx.dag's `Dim3` / `PtxCost`, and rust.dag's `RustCost`). With only
+// kernel-ambient `Int` available at the T-4 phase, `{ instruction_cost:
+// Int, allocation_cost: Int }` STRUCTURALLY ADMITS illegal states
+// (negative costs; nonsense magnitudes). modeling-discipline.md §2
+// (illegal-states-unrepresentable) forbids admitting them; no
+// bounded-Cardinality refinement substrate exists yet to exclude
+// them. It is a TRACKED scaffold, declared with the three bridge
+// properties (the precedent diagnostic.dag established 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       the terminal refined-positive shape.
+//   (b) bounds on use — a producer MUST construct only non-negative
+//       costs; until the substrate enforces it the invariant is
+//       producer-side; a GoCost with negative components is a
+//       producer bug, not a legal value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (T-3, P4 decidability), `instruction_cost`
+//       and `allocation_cost` become refined bounded-non-negative-
+//       Int axes, and this scaffold dissolves.
+//
+// SEAM (where T-12 cost-lens reads). When lens/cost.dag (T-12, U2)
+// lands, its `SymbolicCost` lattice carrier composes over the per-
+// target projections; the Go projection is read from this Conj
+// record's components per the U2 "complexity consumes cost, never
+// re-derives" discipline. Pre-T-12, GoCost is the declared SHAPE the
+// projection plugs into; concrete cost instance-values per operation
+// (e.g. `Add<Int>` costs `GoCost { instruction_cost: 1,
+// allocation_cost: 0 }`) ride T-12 + D2 per "Owned ELSEWHERE."
+type GoCost {
+  instruction_cost: Int
+  allocation_cost: Int
+}
