@@ -212,30 +212,32 @@ type Set<T> = fn(T) -> Bool
 //
 // Coproduct dissolution — N/A (returns a Conj-shaped algebra record,
 // not a sum type).
-fn set_boolean_algebra<T>() -> BooleanAlgebra<Set<T>> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: fn(a, b) {
-        fn(x) {
-          bool_boolean_algebra.bounded_lattice.lattice.meet(a(x), b(x))
+fn set_boolean_algebra<T>() -> BooleanAlgebra<Set<T>> {
+  BooleanAlgebra {
+    bounded_lattice: BoundedLattice {
+      lattice: Lattice {
+        meet: fn(a, b) {
+          fn(x) {
+            bool_boolean_algebra.bounded_lattice.lattice.meet(a(x), b(x))
+          }
+        },
+        join: fn(a, b) {
+          fn(x) {
+            bool_boolean_algebra.bounded_lattice.lattice.join(a(x), b(x))
+          }
         }
       },
-      join: fn(a, b) {
-        fn(x) {
-          bool_boolean_algebra.bounded_lattice.lattice.join(a(x), b(x))
-        }
+      top: fn(x) {
+        True
+      },
+      bottom: fn(x) {
+        False
       }
     },
-    top: fn(x) {
-      True
-    },
-    bottom: fn(x) {
-      False
-    }
-  },
-  complement: fn(a) {
-    fn(x) {
-      bool_boolean_algebra.complement(a(x))
+    complement: fn(a) {
+      fn(x) {
+        bool_boolean_algebra.complement(a(x))
+      }
     }
   }
 }
