@@ -371,7 +371,7 @@ fn float_body_compare_ieee_ordered(a: FloatBody, b: FloatBody) -> Ordering {
 
 
 // float_ordered_compare_nan_rejected — shared Tier-2 `Rejected` shape for NaN
-// on either operand (claude-opus exploratory: dedupe literal; semantics unchanged).
+// on either operand (single structural literal for both branches; semantics unchanged).
 fn float_ordered_compare_nan_rejected(
   failure_reason: Symbol,
   failure_at_port: Symbol,
