@@ -886,6 +886,68 @@ type PortAnsiTypeKind
 
 
 // ─────────────────────────────────────────────────────────────────────
+// OutputPortAnsiTypeKind — the closed Verilog ANSI-OUTPUT-port
+// type/kind classifier. IEEE 1364-2005 §12.3.3 admits ALL six
+// PortAnsiTypeKind variants for outputs MINUS real / realtime (the
+// spec explicitly states "An output port can be of any net or
+// variable type EXCEPT a real type" — floating-point types are not
+// admitted as output ports because they have no well-defined
+// inter-module wire representation). The OUTPUT-specific subset is
+// modeled here; the spec-illegal AnsiRealType / AnsiRealTimeType
+// outputs are unrepresentable by construction (codex BLOCKING fix on
+// PR #3176 2026-05-16 — the prior AnsiOutputPort reused
+// PortAnsiTypeKind directly, admitting `output real` / `output
+// realtime` which the spec forbids).
+//
+//   - OutputAnsiNetType { net_type: NetType, packing: PackingShape,
+//                         signedness: Signedness }
+//       — `output wire [7:0] data`; net family.
+//   - OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
+//       — `output reg [7:0] count`; reg-typed (procedural-assignable
+//       output, the most common parameterized output form).
+//   - OutputAnsiIntegerType
+//       — `output integer counter`; 32-bit signed.
+//   - OutputAnsiTimeType
+//       — `output time t`; 64-bit unsigned simulation-time.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits exactly
+// this four-way output-type partition; SystemVerilog adds further
+// types — future language-version model EDITS this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every output-port consumer reads the
+//      kind to dispatch emission / type-check legality; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: reusing PortAnsiTypeKind directly
+//      (the prior shape) admits AnsiRealType / AnsiRealTimeType
+//      outputs — exactly the §12.3.3 illegal state this Disj
+//      dissolves. P2 illegal-states-unrepresentable.
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (OutputAnsiNetType / OutputAnsiRegType →
+//      Semiring or OrderedRing per packing × signedness;
+//      OutputAnsiIntegerType → OrderedRing<Int<32>>;
+//      OutputAnsiTimeType → Semiring<UInt<64>>). D2-deferred per
+//      "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: an ANSI output port has EXACTLY ONE
+//      type/kind; mutually-exclusive alternatives.
+//   5. Parameterized family — PARTIAL: this Disj is a SUBSET
+//      projection of PortAnsiTypeKind (the 6-variant general
+//      partition minus real/realtime). The projection is the spec's
+//      output-port-admissibility filter — not a generic `F<X>` over
+//      a richer source set (Practice 7), because the real/realtime
+//      exclusion IS the partition's defining filter.
+// Terminal: the closed four-way Verilog ANSI-output-port type/kind
+// classifier; real/realtime outputs unrepresentable by construction
+// per IEEE 1364-2005 §12.3.3.
+type OutputPortAnsiTypeKind
+  = OutputAnsiNetType { net_type: NetType, packing: PackingShape, signedness: Signedness }
+  | OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
+  | OutputAnsiIntegerType
+  | OutputAnsiTimeType
+
+
+// ─────────────────────────────────────────────────────────────────────
 // NonAnsiPort — a non-ANSI-style Verilog module-HEADER port entry
 // (`module M (a, b, c);` — the header lists port-EXPRESSIONS only;
 // direction lives in BODY port_declaration items per IEEE 1364-2005
@@ -1058,7 +1120,7 @@ type AnsiNetPortType
 // unrepresentable by construction.
 type AnsiPortDeclaration
   = AnsiInputPort { name: Symbol, net: AnsiNetPortType }
-  | AnsiOutputPort { name: Symbol, type_kind: PortAnsiTypeKind }
+  | AnsiOutputPort { name: Symbol, type_kind: OutputPortAnsiTypeKind }
   | AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
 
 
@@ -1987,37 +2049,80 @@ type ModuleParameterPortList
 // ─────────────────────────────────────────────────────────────────────
 // VerilogModule — a top-level Verilog module (`module Name
 // #(parameters) (ports); items endmodule`). IEEE 1364-2005 §12.1.
-// Conj record (no Practice-4 ledger).
+// Per-style Disj — each variant carries its own header-port-list type
+// AND its own admissible body-items list type. The §12.3.4 module-
+// style partition is the dimensional axis of VerilogModule itself;
+// "ANSI port-list module with body PortDeclarationItem" is
+// unrepresentable by construction.
 //
-//   - name              the module identifier (K-1-opaque Symbol)
-//   - parameter_port_list
-//                       the OPTIONAL header `#(...)` parameter
-//                       port list (ModuleParameterPortList Disj —
-//                       NoModuleParameterPortList | ModuleParameters
-//                       per spec §12.1). These header parameters
-//                       are externally overridable via
-//                       instantiation `#(...)` syntax
-//                       (ParameterOverrides on ModuleInstance).
-//                       Added per codex BLOCKING on PR #3176 — the
-//                       prior shape had no carrier for `module M
-//                       #(parameter W = 8) (...)` headers,
-//                       collapsing the §12.1 partition with body
-//                       ParameterDeclarationItem (which is body-
-//                       scoped only).
-//   - ports             the port-declaration list as a
-//                       ModulePortsList Disj (NonAnsiPorts OR
-//                       AnsiPorts per spec §12.3.4; uniform per
-//                       module — mixing styles is a syntax error).
-//   - items             the module-body items list (the Conj of
-//                       parallel siblings — the IN-B parallel-
-//                       composition surface)
+//   - NonAnsiVerilogModule
+//       — non-ANSI style: header carries port-EXPRESSIONS only
+//       (List<NonAnsiPort>); body carries the full NonAnsiModuleItem
+//       set including body PortDeclarationItem +
+//       BodyPortDeclarationItem per §12.3.4.
+//   - AnsiVerilogModule
+//       — ANSI style: header carries fully-declared ports
+//       (List<AnsiPortDeclaration>); body carries AnsiModuleItem
+//       only (the 18 items spec-admitted in any module body
+//       EXCLUDING port_declarations — per §12.3.3 ANSI ports are
+//       "completely declared" and body redeclarations are a syntax
+//       error).
+//
+// Both variants carry name + parameter_port_list. The header
+// parameter_port_list (`#(parameter W = 8)`) extends with body
+// parameter declarations to form the module's UNIFIED OVERRIDEABLE
+// parameter surface — instantiation `#(...)` overrides bind to the
+// projection of header parameters concatenated with body
+// ParameterDeclarationItems (in declaration order); body
+// LocalParameterDeclarationItem is EXCLUDED from the overrideable
+// surface per §3.10 (codex BLOCKING on PR #3176 — the prior framing
+// suggested only header parameters were overrideable, but per spec
+// both header and body `parameter` declarations are overrideable;
+// only `localparam` is not).
 //
 // Per the IN-B PROBE FINDING: the `items` field IS the parallel-
 // Conj surface; the structural concurrency of multiple always-blocks
 // / continuous-assigns / instances is precisely "these are siblings
 // in the items list". There is no `concurrent: Bool` flag; the
-// parallelism is read FROM the list-of-siblings shape (
-// feedback_no_annotations).
+// parallelism is read FROM the list-of-siblings shape
+// (feedback_no_annotations).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.4 admits exactly the
+// two module-style forms; SystemVerilog adds further declaration
+// forms — future language-version model EDITS this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every module-level consumer
+//      (emission, port-binding resolution, body item-set
+//      admissibility check, synthesis dispatch) branches on the
+//      style uniformly; shared classifier at the module-as-a-whole
+//      level, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform Conj
+//      record `{ name, parameter_port_list, ports: ModulePortsList,
+//      items: List<UnifiedModuleItem> }` ratifies the §12.3.3
+//      illegal state "ANSI ports + body port_declaration" — the
+//      prior shape this VerilogModule Disj was introduced to
+//      dissolve. The per-style payloads make admissibility
+//      structural.
+//   3. Algebraic form — N/A by construction: the two module styles
+//      are the IEEE 1364-2005 spec's primitive module-style
+//      partition; they do not trace to a richer std/ algebraic
+//      structure.
+//   4. Dimensional — FAILS: a single module declaration is EXACTLY
+//      ONE style; mutually-exclusive alternatives per §12.3.4.
+//   5. Parameterized family — FAILS: the two variants carry
+//      structurally heterogeneous payloads (NonAnsi.header_ports:
+//      List<NonAnsiPort> + items: List<NonAnsiModuleItem> vs Ansi.
+//      header_ports: List<AnsiPortDeclaration> + items:
+//      List<AnsiModuleItem>) — the header port-list type AND the
+//      body item-set type both differ per style. NOT one generic
+//      `F<X>` / projection over a single source set (Practice 7).
+//      The compound payload-type difference IS the partition's
+//      defining structural fact.
+// Terminal: the closed two-way Verilog module-declaration-style
+// classifier of the IEEE 1364-2005 §12.3.4 spec; ledger added per
+// codex BLOCKING on PR #3176 2026-05-16.
 type VerilogModule
   = NonAnsiVerilogModule {
       name: Symbol,
