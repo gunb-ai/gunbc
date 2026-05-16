@@ -282,16 +282,40 @@ import v4.std.node { Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NamedNode — a non-ground node identity (PR #3168 codex review). A
-// REUSABLE carrier for "this is a named node, not the global ground
-// convention" — extracted from the `NodeRef.Named` variant so contexts
-// that structurally exclude ground (`SubcircuitPorts`, future named-
-// node-only carriers) can name `NamedNode` directly rather than rely
-// on the absence of `Ground` in a permissive type like `Symbol`.
-// Using `Symbol` as the port-element type achieved ground-exclusion
-// only by being LESS permissive than `NodeRef` (Symbol can't carry the
-// `Ground` variant) — a fact-by-absence rather than a positive type
-// guarantee. `NamedNode` makes "named-node-not-ground" structural.
+// NamedNode — the `NodeRef.Named` variant's payload factored as a
+// REUSABLE carrier (PR #3168 codex review). A context that types a
+// field as `NamedNode` (rather than `NodeRef`) STRUCTURALLY EXCLUDES
+// the `Ground` variant of `NodeRef` — a `NamedNode` value is, by
+// type, not the `Ground` variant. This is what `SubcircuitPorts` and
+// other named-node-only carriers (`MutualInductance.l1` / `l2` —
+// inductor name references, not node references; intentionally
+// `Symbol` not `NamedNode`) exploit.
+//
+// WHAT NamedNode DOES AND DOES NOT ENFORCE (PR #3168 codex review on
+// commit 9a477536 — honest framing). NamedNode does NOT, at the type
+// layer, exclude a `Symbol` whose parser-translation is the
+// SPICE3-ground literal `"0"`. The kernel cannot observe Symbol
+// content (K-1 opaque), so a `NamedNode { name = Symbol(<the symbol
+// the parser would have mapped to Ground>) }` is, in principle,
+// constructible at the type layer. The "ground-token exclusion"
+// invariant is held by PARSER DISCIPLINE: the parser maps the deck
+// literal "0" to `NodeRef.Ground`, never to `NodeRef.Named
+// { node: NamedNode { name = Symbol("0") } }`. After parse, no
+// well-formed value contains a NamedNode whose Symbol is the "0"
+// literal; before parse, the Symbol-content is unobservable by
+// kernel/lens code.
+//   What's STRUCTURAL: a `NamedNode` value is not the `Ground`
+//   variant of `NodeRef`. Type-enforced.
+//   What's PARSER-DISCIPLINE: a `NamedNode`'s Symbol is not the
+//   parser's `"0"` literal. Held by the parse boundary; enforced
+//   by the parser's mapping rule, not by the type system.
+//   YELLOW DEBT: this gap dissolves when std/ provides a Symbol
+//   refinement substrate (a `Symbol` carrier whose content excludes
+//   a specific literal). With that, `NamedNode { name:
+//   NonZeroSymbol }` would push ground-token rejection into the
+//   type layer. The refinement substrate is std/-substrate-tier and
+//   not in T-4.10's scope; the current parser-discipline framing is
+//   the worker-tier scaffold.
 type NamedNode {
   name: Symbol
 }
