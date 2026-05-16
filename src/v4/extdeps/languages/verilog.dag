@@ -1062,71 +1062,17 @@ type AnsiPortDeclaration
   | AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ModulePortsList — the closed Verilog module-ports-list-style
-// classifier (IEEE 1364-2005 §12.3.4). The spec admits two port-list
-// styles and they are MUTUALLY EXCLUSIVE PER MODULE: a single module
-// declares its entire port list in EITHER non-ANSI style (port names
-// in header + matching body declarations) OR ANSI style (full type-
-// fact inline in header). Mixing styles within one module is a syntax
-// error per §12.3.4. The Disj-with-named-payloads makes that
-// uniformity structural at the module-list level — the prior per-port
-// `style: PortDeclarationStyle` field admitted the spec-forbidden
-// mixed state (codex BLOCKING review on PR #3176 corrected this; the
-// per-port encoding was a product-axis miscarve relative to the spec's
-// module-header partition).
-//
-//   - NonAnsiPorts { ports: List<NonAnsiPort> }
-//       — the entire module's port list is non-ANSI style; each
-//       header entry is a port-EXPRESSION (port name or bit-select
-//       or renamed-port form) per spec §12.3.2. Port direction +
-//       type-facts live in BODY port_declaration items
-//       (PortDeclarationItem / BodyPortDeclarationItem in
-//       ModuleItem). The spec's Verilog-1995 module-header form.
-//   - AnsiPorts { ports: List<AnsiPortDeclaration> }
-//       — the entire module's port list is ANSI style; each port
-//       carries direction + name + inline net_kind + packing +
-//       signedness. The spec's Verilog-2001 / 1364-2005 §12.3.3
-//       module-header form.
-//
-// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
-// module-port-list styles; SystemVerilog adds `.name`-shorthand and
-// interface ports — a future language-version model would EDIT this
-// Disj explicitly.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every module-port-list emitter and
-//      every type-resolution walker reads the style uniformly to
-//      know WHERE the type-fact lives across the entire port list
-//      (header for ANSI / body lookup for non-ANSI); shared
-//      classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing to a uniform `{ ports:
-//      List<PortDeclarationLike>, ansi: Bool }` ratifies the
-//      spec-forbidden mixed-style state (an `ansi=false` flag with
-//      ANSI-typed elements, or vice versa) — INVARIANTS P2
-//      illegal-states-unrepresentable anti-pattern (this PR's
-//      BLOCKING fix exists to dissolve). The Disj-with-typed-
-//      payload-lists makes mixed-style unrepresentable by
-//      construction.
-//   3. Algebraic form — N/A by construction: the two styles are
-//      the IEEE 1364-2005 module-header primitive partition; they
-//      do not trace to a richer std/ algebraic structure.
-//   4. Dimensional — FAILS: a single module's port-list is EXACTLY
-//      ONE style; mutually-exclusive alternatives per §12.3.4.
-//   5. Parameterized family — FAILS: the two variants carry
-//      structurally heterogeneous payload-element types
-//      (NonAnsiPorts.ports: List<NonAnsiPort> with port-expression
-//      name only; AnsiPorts.ports: List<AnsiPortDeclaration> with
-//      direction + name + net_kind + packing + signedness) — NOT
-//      one generic `F<X>` / projection over a single source set
-//      (Practice 7). The list-element-shape difference IS the
-//      partition's defining structural fact.
-// Terminal: the closed two-way Verilog module-ports-list-style
-// classifier of the IEEE 1364-2005 spec.
-type ModulePortsList
-  = NonAnsiPorts { ports: List<NonAnsiPort> }
-  | AnsiPorts { ports: List<AnsiPortDeclaration> }
+// (The standalone ModulePortsList Disj has been dissolved into
+// VerilogModule's own per-style Disj — VerilogModule is now
+// NonAnsiVerilogModule | AnsiVerilogModule, each variant carrying its
+// own header-port list type AND its own admissible body-items list
+// type. This lifts the port-style choice from the port-list carrier
+// to the module-as-a-whole carrier, making "ANSI port-list module
+// with body PortDeclarationItem" structurally unrepresentable —
+// INVARIANTS P2 illegal-states-unrepresentable fix per codex BLOCKING
+// on PR #3176 2026-05-16. The §12.3.4 module-style partition is now
+// the dimensional axis of VerilogModule itself; the rationale
+// formerly housed here is folded into VerilogModule's ledger below.)
 
 
 // ─────────────────────────────────────────────────────────────────────
