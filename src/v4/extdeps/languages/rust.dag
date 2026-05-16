@@ -624,15 +624,23 @@ type RustFloatWidth
 //                §3.5 textual-types; 32-bit Unicode code-point,
 //                strictly excluding the surrogate range)
 //   - Str      — the `str` UTF-8 string-slice type (Reference §3.5
-//                textual-types; an UNSIZED / dynamically-sized type
-//                that only appears behind a reference like `&str` /
-//                `&mut str`. The unsized property is a STRUCTURAL
-//                Rust fact, separate from the kind classification
-//                here; a sized-vs-unsized substrate fact would be a
-//                future refinement carrier — for this slice the
-//                kind enum closes the type-classification axis, and
-//                downstream consumers reading a Str-kinded scalar
-//                must compose it with a reference type)
+//                textual-types; a DYNAMICALLY-SIZED TYPE (DST), per
+//                Reference §dynamically-sized-types). DSTs appear in
+//                a broader set of legal contexts than just references:
+//                behind reference types (`&str` / `&mut str`); behind
+//                pointer types (`*const str` / `*mut str` / `Box<str>`
+//                / `Rc<str>` / `Arc<str>`); as `?Sized` type parameters
+//                / associated types; and as the FINAL field of a
+//                struct (`struct S { header: u32, data: str }`). The
+//                unsized / DST property is a STRUCTURAL Rust fact,
+//                separate from the kind classification here; a
+//                sized-vs-unsized substrate fact (and the full DST
+//                composition surface) is a future refinement carrier
+//                — for this slice the kind enum closes the type-
+//                classification axis. Downstream consumers reading a
+//                Str-kinded scalar are obligated to compose it with
+//                one of the legal DST contexts; reference is the most
+//                common but not the only valid one.)
 //   - Never    — the `!` never type (Reference §3.6 never-type; the
 //                empty-inhabitance type a diverging computation
 //                returns. `!` IS in the pinned Reference's primitive-
@@ -740,12 +748,18 @@ type RustScalarKind
 //                    a kind-level discriminator the Reference
 //                    exposes).
 //   - StrScalar    — Rust's `str` (UTF-8 unsized string slice;
-//                    Reference §3.5 textual-types. `str` only
-//                    appears behind a reference in legal Rust code
-//                    — the unsized-ness is a STRUCTURAL Rust fact
-//                    composed by surrounding the StrScalar with a
-//                    `RustReference`; there is no kind-level width
-//                    or sub-discriminator on str itself).
+//                    Reference §3.5 textual-types). A DYNAMICALLY-
+//                    SIZED TYPE (DST) per Reference §dynamically-
+//                    sized-types — legal in any DST context: behind
+//                    reference types (`&str` / `&mut str`); behind
+//                    pointer types (`*const str` / `*mut str` /
+//                    `Box<str>` / `Rc<str>` / `Arc<str>`); as
+//                    `?Sized` type parameters / associated types;
+//                    as the final field of a struct. References are
+//                    the most common context but not the only valid
+//                    one. The unsized / DST property is a STRUCTURAL
+//                    Rust fact; there is no kind-level width or sub-
+//                    discriminator on str itself).
 //   - NeverScalar  — Rust's `!` (Reference §3.6 never-type; empty-
 //                    inhabitance type. No width, no kind sub-
 //                    discriminator; its empty-cardinality is the
@@ -1004,6 +1018,30 @@ type PubInPath {
 //   `pub(crate)` / `pub(in crate)` →  PubIn { path:
 //                                     PubInPath { resolved_path: [] } }
 //                                     (empty absolute path = crate root)
+//                                     — APPLIES ONLY when the item is
+//                                     declared in a STRICT DESCENDANT
+//                                     of the crate root (i.e. inside
+//                                     some `crate::a::b::…` module).
+//                                     For an item declared AT THE
+//                                     CRATE ROOT itself (top-level
+//                                     item in `lib.rs` / `main.rs`),
+//                                     the crate-root visibility scope
+//                                     coincides with the no-modifier
+//                                     scope: Private = "defining
+//                                     module + descendants" = "crate
+//                                     root + all of crate" = same as
+//                                     pub(crate). For crate-root items,
+//                                     `pub(crate)` canonicalizes to
+//                                     `Private` (single authority for
+//                                     the no-modifier scope). This is
+//                                     the same context-dependent rule
+//                                     as the `pub(in <current-module>)`
+//                                     reflexive-ancestor case, applied
+//                                     to the crate-root-as-current-
+//                                     module special case (operator
+//                                     BLOCKING 2026-05-16T08:36:04Z +
+//                                     openai-pro REQUEST_CHANGES
+//                                     2026-05-16T09:27:05Z).
 //   `pub(in <SimplePath>)`         →  the resolver computes the
 //                                     ABSOLUTE PATH from crate root to
 //                                     the module the SimplePath
