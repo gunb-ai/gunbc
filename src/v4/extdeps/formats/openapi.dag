@@ -74,12 +74,13 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // discipline applies when operation bodies close the yaml/json surface loop.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
-// the document root, info, paths, operations, responses, media types, and
-// component schemas; **$ref** resolution, parameter objects, callbacks,
-// security schemes, servers, and the full Components object beyond `schemas`
-// are 🟡 deferred with named triggers — not silently omitted without a
-// receipt: overflow lives in `components_extras` / `path_extensions` /
-// `operation_extensions` as faithful `JsonValue` maps (M5).
+// the document root, **Info Object (OAS-fixed fields + `info_extensions`)**,
+// paths, operations, responses, media types, and component schemas; **$ref**
+// resolution, parameter objects, callbacks, security schemes, servers, and
+// the full Components object beyond `schemas` are 🟡 deferred with named
+// triggers — not silently omitted without a receipt: overflow lives in
+// `components_extras` / `path_extensions` / `operation_extensions` /
+// `info_extensions` / `root_extensions` as faithful `JsonValue` maps (M5).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -121,15 +122,76 @@ type OpenApiOptionalString
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiInfo — OAS Info Object (title + version are required strings at
-// the JSON surface; modeled here as mandatory fields).
+// OpenApiContact — OAS Contact Object (every member optional at the JSON
+// surface; empty `{}` is structurally admissible — OAS-level tightening is
+// 🟡 deferred to `openapi_parse` alongside URI/email shape checks).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#contact-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+type OpenApiContact {
+  name: OpenApiOptionalString,
+  url: OpenApiOptionalString,
+  email: OpenApiOptionalString,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiContactSlot — optional `contact` on the Info Object.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
+// vs absent `contact` are distinct shapes; no nullable single-field collapse.
+type OpenApiContactSlot
+  = OpenApiContactPresent { contact: OpenApiContact }
+  | OpenApiContactAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiLicense — OAS License Object (`name` required when the license
+// object exists at the JSON surface).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+type OpenApiLicense {
+  name: String,
+  url: OpenApiOptionalString,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiLicenseSlot — optional `license` on the Info Object.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
+type OpenApiLicenseSlot
+  = OpenApiLicensePresent { license: OpenApiLicense }
+  | OpenApiLicenseAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiInfo — OAS 3.1.0 Info Object: required `title` + `version`, optional
+// `summary` / `description` / `termsOfService`, optional nested `contact` /
+// `license`, plus **`info_extensions`** for Specification Extension members
+// (`^x-`) and any future spec-added Info keywords until a pinned decomposition
+// lands (M5 — same discipline as `operation_extensions` / `components_extras`;
+// no silent drop of wire facts).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiInfo {
   title: String,
   summary: OpenApiOptionalString,
   description: OpenApiOptionalString,
+  terms_of_service: OpenApiOptionalString,
+  contact: OpenApiContactSlot,
+  license: OpenApiLicenseSlot,
   version: String,
+  info_extensions: Map<String, JsonValue>,
 }
 
 
@@ -269,3 +331,9 @@ type OpenApiDocument {
 // (3) Extension HTTP methods / non-OAS verbs — policy for whether they lift
 //     into a dedicated sum or remain JSON-tagged; trigger = operator transport
 //     layer pin (`HttpMethod` shared home).
+//
+// (4) Info Object **value validation** — `termsOfService` / `contact.url` URI
+//     shapes, `contact.email` addr-spec checks, and `license.url` URI checks
+//     remain 🟡 with the same dissolution trigger as (1) (`openapi_parse` +
+//     std/text substrate); structural carriers above are faithful **data**
+//     homes for wire fields, not executable validators yet.
