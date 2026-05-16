@@ -886,22 +886,67 @@ type PortAnsiTypeKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortDeclaration — a non-ANSI-style Verilog module port (`module M
-// (a, b, c); input wire [7:0] a; output reg b; …`). The header lists
-// port direction + name; the type/packing/signedness facts come from
-// a MATCHING `NetDeclaration` / `VariableDeclaration` in the module
-// body's items list. Conj record (no Practice-4 ledger).
+// NonAnsiPort — a non-ANSI-style Verilog module-HEADER port entry
+// (`module M (a, b, c);` — the header lists port-EXPRESSIONS only;
+// direction lives in BODY port_declaration items per IEEE 1364-2005
+// §12.3.2). Conj record (no Practice-4 ledger).
+//
+//   - port_expression_lexeme   the port_expression as a verbatim
+//                              lexeme (per spec grammar the
+//                              port_expression can be a bare
+//                              identifier `a`, a bit/part-select
+//                              `a[3:0]`, a concatenation `{a, b[3:0]}`,
+//                              or a renamed-port form
+//                              `.external_name(internal_expression)`).
+//                              Sub-grammar deferred to the T-4
+//                              LanguageModel via the established
+//                              body_lexeme precedent — at the
+//                              vocabulary-slice layer the slice
+//                              carries the port-expression text
+//                              losslessly; downstream
+//                              port-binding resolution is the
+//                              LanguageModel grammar's concern.
+//
+// Per IEEE 1364-2005 §12.3.2 the non-ANSI header carries port-
+// expressions ONLY — port direction (input/output/inout) and any
+// inline type/packing/signedness facts live in BODY
+// `port_declaration` items (see PortDeclaration below + the
+// PortDeclarationItem ModuleItem variant). The prior
+// `PortDeclaration { direction, name }` on the header port-list
+// collapsed this spec-boundary; corrected per codex BLOCKING on
+// PR #3176 2026-05-16.
+type NonAnsiPort {
+  port_expression_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PortDeclaration — a non-ANSI-style Verilog BODY port_declaration
+// (`input a;`, `output b;`, `inout c;`). IEEE 1364-2005 §12.3.4 +
+// §12.2 admit these as module-body items. Each declares port
+// direction + name; the type/packing/signedness facts come from a
+// MATCHING `NetDeclaration` / `VariableDeclaration` in the same
+// module body (the non-ANSI separated form), OR — per spec — a body
+// port_declaration may combine direction + type inline (`input wire
+// [7:0] a;`). The combined form is structurally equivalent to ANSI
+// and is admitted by the same `AnsiPortDeclaration` carrier surfaced
+// as `BodyPortDeclarationItem` in ModuleItem; this PortDeclaration
+// record covers the direction-only form.
 //
 //   - direction  input / output / inout
 //   - name       the port identifier (K-1-opaque Symbol; resolves
 //                through the namespace to the matching body
-//                Net/Variable declaration that carries the type-fact)
+//                Net/Variable declaration that carries the type-
+//                fact, when separated)
 //
-// Per IEEE 1364-2005 §12.3.4 a module's port-list is uniformly EITHER
-// non-ANSI (this record's form) OR ANSI (AnsiPortDeclaration below);
-// mixing styles within one module is forbidden. The
-// ModulePortsList Disj makes that uniformity structural at the
-// module level.
+// Per IEEE 1364-2005 §12.3.4 / §12.2 PortDeclaration is a MODULE
+// BODY item (PortDeclarationItem in ModuleItem), NOT a module-
+// header element. The non-ANSI header carries port-EXPRESSIONS via
+// NonAnsiPort above; this body declaration carries the direction
+// fact that the non-ANSI form requires. Corrected per codex
+// BLOCKING on PR #3176 2026-05-16 — the prior shape mis-located
+// PortDeclaration on the header port-list, conflating the spec's
+// header-vs-body partition.
 type PortDeclaration {
   direction: PortDirection
   name: Symbol
@@ -1031,11 +1076,13 @@ type AnsiPortDeclaration
 // per-port encoding was a product-axis miscarve relative to the spec's
 // module-header partition).
 //
-//   - NonAnsiPorts { ports: List<PortDeclaration> }
-//       — the entire module's port list is non-ANSI style; each port
-//       declares direction + name only and the type-fact comes from
-//       the matching body Net/Variable declaration. The spec's
-//       Verilog-1995 module-header form.
+//   - NonAnsiPorts { ports: List<NonAnsiPort> }
+//       — the entire module's port list is non-ANSI style; each
+//       header entry is a port-EXPRESSION (port name or bit-select
+//       or renamed-port form) per spec §12.3.2. Port direction +
+//       type-facts live in BODY port_declaration items
+//       (PortDeclarationItem / BodyPortDeclarationItem in
+//       ModuleItem). The spec's Verilog-1995 module-header form.
 //   - AnsiPorts { ports: List<AnsiPortDeclaration> }
 //       — the entire module's port list is ANSI style; each port
 //       carries direction + name + inline net_kind + packing +
@@ -1069,7 +1116,7 @@ type AnsiPortDeclaration
 //      ONE style; mutually-exclusive alternatives per §12.3.4.
 //   5. Parameterized family — FAILS: the two variants carry
 //      structurally heterogeneous payload-element types
-//      (NonAnsiPorts.ports: List<PortDeclaration> with direction +
+//      (NonAnsiPorts.ports: List<NonAnsiPort> with port-expression
 //      name only; AnsiPorts.ports: List<AnsiPortDeclaration> with
 //      direction + name + net_kind + packing + signedness) — NOT
 //      one generic `F<X>` / projection over a single source set
@@ -1078,7 +1125,7 @@ type AnsiPortDeclaration
 // Terminal: the closed two-way Verilog module-ports-list-style
 // classifier of the IEEE 1364-2005 spec.
 type ModulePortsList
-  = NonAnsiPorts { ports: List<PortDeclaration> }
+  = NonAnsiPorts { ports: List<NonAnsiPort> }
   | AnsiPorts { ports: List<AnsiPortDeclaration> }
 
 
@@ -1824,6 +1871,8 @@ type ModuleItem
   | GateInstantiationItem { gate: GateInstantiation }
   | UdpInstantiationItem { udp_instance: UdpInstantiation }
   | SpecparamDeclarationItem { specparam: SpecparamDeclaration }
+  | PortDeclarationItem { port_decl: PortDeclaration }
+  | BodyPortDeclarationItem { body_port: AnsiPortDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
