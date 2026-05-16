@@ -863,12 +863,22 @@ type NodeVoltageBindings {
 //           `parse ∘ emit` round-trip preserves single-card identity
 //           (no silent normalization into N directives). Fix landed
 //           per PR #3168 openai-pro review.
-//         - Ac / Op / Options / Include: complete-for-mandatory-grammar
-//           at this layer. `.AC` is `.AC SWEEP N FSTART FSTOP`
-//           (4 mandatory fields, no optional); `.OP` is nullary;
-//           `.OPTIONS` is variadic via `parameters: List<Parameter>`;
-//           `.INCLUDE` carries one filename. Surfaced honestly so any
-//           spec re-read can flag a miss.
+//         - Options: bare flag + `name=value` mixed grammar
+//           ADDRESSED (PR #3168 openai-pro review). SPICE3 `.OPTIONS`
+//           admits BOTH bare option tokens (`.OPTIONS ACCT NOPAGE`)
+//           and `name=value` (`.OPTIONS METHOD=GEAR ABSTOL=1e-12`) in
+//           the same card; an earlier shape `parameters: List<
+//           Parameter>` only admitted the latter, making bare-option
+//           cards unrepresentable. `Options` now carries `modifiers:
+//           List<Modifier>` (the same Flag/KeyValue typed sum used by
+//           Mosfet/Bjt instance modifiers); bare options are `Flag`
+//           and `name=value` options are `KeyValue`. Anchor: ngspice
+//           manual §"Simulator variables (.OPTIONS)".
+//         - Ac / Op / Include: complete-for-mandatory-grammar at this
+//           layer. `.AC` is `.AC SWEEP N FSTART FSTOP` (4 mandatory
+//           fields, no optional); `.OP` is nullary; `.INCLUDE` carries
+//           one filename. Surfaced honestly so any spec re-read can
+//           flag a miss.
 //
 // `.End`'s absence from this SUM is NOT part of the YELLOW debt — by
 // construction it does not belong here at all (file-terminator note
@@ -921,7 +931,7 @@ type Directive
   | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
   | InitialCondition { assignments: NodeVoltageBindings }
   | NodeSet { assignments: NodeVoltageBindings }
-  | Options { parameters: List<Parameter> }
+  | Options { modifiers: List<Modifier> }
   | Include { path: String }
 
 
