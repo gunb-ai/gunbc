@@ -180,7 +180,11 @@ type TsNumberAdditiveMultiplicativeSemantics
   = Ieee754Binary64Ecma262NumberType
 
 
-data ts_number_additive_multiplicative_semantics: TsNumberAdditiveMultiplicativeSemantics = Ieee754Binary64Ecma262NumberType
+// Instance `data` rows for singleton enum bodies are M1(2.8)-blocked as
+// "opaque bodies" until the class-5 structural-validation gap closes
+// (DOWNSTREAM_REQUIREMENTS.md). The **type** above is the D2a(3) carrier;
+// canonical instance-values land with that substrate work, not as
+// unvalidated opaque enum literals here.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -200,7 +204,8 @@ type TsNumberBitwiseSemantics
   = Int32Uint32ModuloTwoPow32Ecma262
 
 
-data ts_number_bitwise_semantics: TsNumberBitwiseSemantics = Int32Uint32ModuloTwoPow32Ecma262
+// (No `data` instance — same M1(2.8) opaque-body discipline as additive/
+// multiplicative axis above.)
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -225,7 +230,7 @@ type TsBigIntPrimitiveSemantics
   = ExactUnboundedIntegerEcma262BigIntType
 
 
-data ts_bigint_primitive_semantics: TsBigIntPrimitiveSemantics = ExactUnboundedIntegerEcma262BigIntType
+// (No `data` instance — M1(2.8) opaque-body discipline; see Number axes.)
 
 
 // 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
