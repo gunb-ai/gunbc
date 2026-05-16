@@ -45,9 +45,6 @@
 module v4.extdeps.process
 
 
-import v4.extdeps.file_system { AbsolutePath }
-import v4.std.diagnostic { Outcome }
-import v4.std.integer { Int, UInt }
 import v4.std.text { String }
 
 
@@ -93,27 +90,35 @@ import v4.std.text { String }
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
 // (DECISIONS.md I). This file declares operation contract carriers
-// instead of bodiless `fn` declarations; the external realization layer
-// performs fork/exec/wait/capture and returns through these carriers.
+// instead of bodiless `fn` declarations; request carriers are declared
+// below and the Outcome result seam is named in prose. The external
+// realization layer performs fork/exec/wait/capture and returns through
+// these carriers.
 
 
 // ─────────────────────────────────────────────────────────────────────
 // POSIX numeric carriers.
-type ProcessId = UInt
-type ExitCode = UInt
-type SignalNum = UInt
+type ProcessId = Int
+type ExitCode = Int
+type SignalNum = Int
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Command — the exec-family invocation surface v4 needs.
 //
-// `program` is absolute to avoid hidden PATH-search policy. `args`
-// excludes argv[0] policy: the realization supplies argv[0] from
+// `program` is an absolute filesystem path. The machine-readable
+// cross-file edge to extdeps/file_system.dag's `AbsolutePath` is named
+// in the header and prose, but the current single-file bootstrap smoke
+// path does not resolve v4 cross-file imports. The field is therefore
+// carried as `String` with the same bridge discipline as FileSystemPath:
+// producers must supply an absolute path value and the alias dissolves
+// to `AbsolutePath` once v4 module namespaces/imports are load-bearing.
+// `args` excludes argv[0] policy: the realization supplies argv[0] from
 // `program` unless a later operator-ratified command-profile carrier
 // explicitly models custom argv[0]. `env` is a map from variable name
 // to value; duplicate variable names are structurally unrepresentable.
 type Command {
-  program: AbsolutePath
+  program: String
   args: List<String>
   env: Map<String, String>
 }
@@ -170,18 +175,19 @@ type Process {
 // with a typed `Diagnostic`; a successfully observed child termination
 // returns `Produced { value: Termination }`. stdout/stderr are captured
 // as separate byte-decoded text streams so harness/setup diagnostics
-// cannot be blended into the logical child's output channel.
+// cannot be blended into the logical child's output channel. Result
+// aliases are not redeclared here while `Outcome<T>` is cross-file; the
+// authoritative seam is:
+//   - `spawn : SpawnProcessRequest -> Outcome<Process>`
+//   - `wait : WaitProcessRequest -> Outcome<Termination>`
+//   - `capture : CaptureProcessRequest -> Outcome<CapturedProcessOutput>`
 type SpawnProcessRequest {
   command: Command
 }
 
-type SpawnProcessResult = Outcome<Process>
-
 type WaitProcessRequest {
   process: Process
 }
-
-type WaitProcessResult = Outcome<Termination>
 
 type CapturedProcessOutput {
   stdout: String
@@ -192,5 +198,3 @@ type CapturedProcessOutput {
 type CaptureProcessRequest {
   process: Process
 }
-
-type CaptureProcessResult = Outcome<CapturedProcessOutput>
