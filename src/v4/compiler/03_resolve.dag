@@ -8,6 +8,22 @@
 //   - resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>
 //   - identifier binding to declarations
 //
+// B-4 (side-session 2026-05-16) — this stage is the AUTHORITY for the
+//   use→def fact affected_set R2 traverses (T-21). The named forward
+//   carrier is the opaque `Symbol` (K-1) on the name-reference `Atom`,
+//   NOT 04_infer's `resolved_type` (that is the node's type — lossy
+//   for binding identity; the P2/Practice-3 review point). Contract:
+//   - resolve canonicalizes a use-site `Atom`'s `Symbol` to be
+//     IDENTICAL to its binder declaration's `Symbol`, so binding =
+//     `Symbol` equality (the one K-1-granted op; node.dag
+//     `name_occurrences`; "resolved through the namespace", A1/K-1).
+//   - binding is NODE-PRECISE: the canonical `Symbol` identifies the
+//     EXACT declaration, never merely its module/scope. Coarse binding
+//     ⇒ affected_set correct but maximally over-fires (the dominant R2
+//     minimality gate). 04_infer must PRESERVE this `Symbol` unchanged
+//     (preserve-only; no 5th InferredFacts field). See 04_infer.dag
+//     B-4 + lens/affected_set.dag.
+//
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/03_normalize.dag: NormalizedTree
