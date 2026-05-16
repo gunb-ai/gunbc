@@ -969,6 +969,32 @@ type NamedSegment {
 //      one rather than zero).
 // Terminal: the closed two-variant inductive non-empty super-chain
 // (a Peano-like Nat ≥ 1 specialized for the super-hop axis).
+//
+// 🟡 SCAFFOLD — local Peano-like positive-count encoding (codex
+// BLOCKING review 2026-05-16T06:26:18Z). The shape is parallel to
+// std/nat.dag's `Nat = Zero | Succ { prev: Nat }`, specialized as
+// "at-least-one" with `OneSuper` as the base case (instead of Zero).
+// A shared substrate authority for non-empty / positive-cardinality
+// counts does not yet exist (std/cardinality.dag's Multiplicity
+// carrier doesn't expose a `Positive Nat` refinement, and Nat itself
+// admits Zero which would re-introduce the zero-hop ≡ Private
+// duplicate-authority defect this carrier exists to prevent). The
+// three bridge properties (the precedent diagnostic.dag established
+// 2026-05-15 + ptx.dag's Dim3 / RustCost):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       a canonical positive-count shape.
+//   (b) bounds on use — producers MUST construct only via the
+//       declared variants (OneSuper as base; MoreSuper for chain
+//       extension); the carrier already structurally enforces the
+//       non-empty invariant.
+//   (c) dissolution trigger — when std/cardinality.dag (or its
+//       successor refinement substrate) exposes a shared `PositiveNat`
+//       / `NonEmpty Nat` / equivalent positive-count carrier,
+//       `SuperHops` collapses into a refinement `{ hops: <shared
+//       positive-count carrier> }` (likely the same shape as Dim3 /
+//       RustCost will use for their bounded-non-negative-Int axes).
+//       The structural enforcement here is correct in shape; only
+//       the parallel-to-Nat encoding is provisional.
 type SuperHops
   = OneSuper
   | MoreSuper { outer: SuperHops }
@@ -1091,6 +1117,87 @@ type PubInPath {
   root: PubInRoot
   suffix: List<NamedSegment>
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PubInPath is POST-RESOLUTION canonical form (codex BLOCKING review
+// 2026-05-16T06:26:18Z made this explicit).
+//
+// The Rust Reference SimplePath grammar admits multiple SOURCE forms
+// that resolve to the same VISIBILITY SCOPE. PubInPath represents the
+// post-canonicalization scope, NOT the source-path syntax. The parser /
+// resolver is responsible for normalizing source forms into the
+// canonical PubInPath / Private values before constructing
+// RustVisibility. The carrier shape itself only admits canonical forms;
+// non-canonical source paths cannot be constructed at all.
+//
+// Canonicalization rules (parser/resolver-side, per Reference's
+// path-resolution rules):
+//
+//   SOURCE FORM                  →  CANONICAL RustVisibility
+//   ───────────────────────────────────────────────────────────────────
+//   <no `pub` modifier>          →  Private
+//   `pub(self)`                  →  Private  (Reference equivalence)
+//   `pub(in self)`               →  Private  (Reference equivalence)
+//   `pub`                        →  Pub
+//   `pub(crate)`                 →  PubIn { path: { root: AtCrate,
+//                                                  suffix: [] } }
+//   `pub(in crate)`              →  same as `pub(crate)` (Reference
+//                                   equivalence)
+//   `pub(in crate::M::N::…)`     →  PubIn { path: { root: AtCrate,
+//                                                  suffix: [M, N, …] } }
+//   `pub(super)`                 →  PubIn { path: { root: AtSuperChain
+//                                                       { hops: OneSuper },
+//                                                  suffix: [] } }
+//   `pub(in super)`              →  same as `pub(super)` (Reference
+//                                   equivalence)
+//   `pub(in super::super)`       →  PubIn { path: { root: AtSuperChain
+//                                                       { hops:
+//                                                         MoreSuper { outer:
+//                                                                     OneSuper } },
+//                                                  suffix: [] } }
+//   `pub(in super::M::N::…)`     →  PubIn { path: { root: AtSuperChain
+//                                                       { hops: OneSuper },
+//                                                  suffix: [M, N, …] } }
+//   `pub(in self::super)`        →  PubIn { path: { root: AtSuperChain
+//                                                       { hops: OneSuper },
+//                                                  suffix: [] } }
+//                                   (the `self::super` syntactic form
+//                                   resolves to `super` per Reference
+//                                   §paths; canonical PubInPath
+//                                   represents `super`, not the
+//                                   syntactic `self::super` form)
+//   `pub(in self::M)` where M    →  parse-REJECTED. Per Reference
+//   resolves to a DESCENDANT       `pub(in path)` requires path to
+//   (child of current module)      resolve to an ANCESTOR module; a
+//                                  child-of-current is not an
+//                                  ancestor. Resolver rejects upstream;
+//                                  no canonical PubInPath value exists.
+//   `pub(in foo::bar)` where      →  PubIn { path: { … } } with the
+//   foo::bar resolves to an        resolved root (Crate / SuperChain
+//   ancestor via name             based on where foo::bar resolves) +
+//   resolution                    suffix carrying the named segments
+//                                 (the resolver-determined canonical
+//                                 path, NOT the verbatim source).
+//   `pub(in $crate::…)` (macro    →  out-of-scope for this slice
+//   context)                       (SCOPE NEGATIVE per the header —
+//                                  hygienic-macro support is a future
+//                                  C1 edit to RustPathSegment that
+//                                  adds a `MacroCrate` variant).
+//
+// The carrier itself enforces the post-resolution invariants
+// (PubInRoot has no Self anchor; SuperHops has no zero-hop case;
+// suffix admits only NamedSegments) — non-canonical states are
+// unrepresentable, NOT canonicalized-on-construction by this file.
+// The canonicalization above is the PARSER / RESOLVER's contract;
+// the carrier provides the destination types.
+//
+// (Source-syntax modeling, if a future slice wants to retain
+// pre-resolution paths for diagnostic-source-spans / IDE round-trip:
+// a separate carrier would live alongside PubInPath, distinct from
+// the visibility-scope carrier here. That's an explicit future-
+// substrate question; this carrier represents the canonical scope
+// only.)
 
 
 // ─────────────────────────────────────────────────────────────────────
