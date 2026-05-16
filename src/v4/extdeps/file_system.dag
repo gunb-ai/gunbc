@@ -9,10 +9,10 @@
 //   - RelativePath { components: List<PathComponent> }
 //   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
 //   - FileKind = RegularFile | Directory | Symlink(target: Path)
-//   - read_file(p)        -> Result<FreeMonoid<Char>, Diagnostic>
-//   - write_file(p, body) -> Result<Unit, Diagnostic>
-//   - list_dir(p)         -> Result<List<PathComponent>, Diagnostic>
-//   - file_kind(p)        -> Result<FileKind, Diagnostic>
+//   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
+//   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
+//   - list_dir(fs, p)         -> Result<List<PathComponent>, Diagnostic>
+//   - file_kind(fs, p)        -> Result<FileKind, Diagnostic>
 //
 // Scope NOT included in v4 (subset for compiler self-hosting needs):
 //   - Permissions (mode bits) — out of scope; v4 compiler reads/writes own files
@@ -33,6 +33,11 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
+// filesystem operations take an explicit Filesystem resource parameter
+// per ratified lens/effect.dag B3/B-5. `write_file` returns the
+// modified Filesystem resource; read/list/kind return derived values.
 
 
 module v4.extdeps.file_system
@@ -71,11 +76,10 @@ import v4.std.text { Char }
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
-// (DECISIONS.md I). This file does not author bodiless `fn`
-// declarations because the frozen v2 seed rejects them; instead it
-// declares request and result carriers over the shared Outcome seam.
-// The external realization layer reads these carriers and binds the
-// actual host-system effects.
+// (DECISIONS.md I). Per lens/effect.dag B3/B-5, type signatures are the
+// single effect authority: effects are explicit parameters, and the
+// effect lens reads returned-modified-resource as write and
+// returned-derived-value as read.
 //
 // FILE CONTENT IS TEXT IN V4. `read_file` / `write_file` are scoped to
 // the compiler self-hosting need: reading and writing text `.dag`,
@@ -171,42 +175,44 @@ type FileKind
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
 //
+// `Filesystem` is the explicit resource parameter for this extdep's
+// file-system effects. It is a nominal handle, not an effect taxonomy:
+// the effect fact is read from each operation signature.
+type Filesystem {
+  label: String
+}
+
 // Each `*Request` is a pure data description of the host operation. The
 // result seam is the shared `Outcome<T>` carrier named in this file's
 // header/prose. The `FileSystemOperations` record is the declared
 // callable boundary a future host realization must inhabit; it is
 // intentionally only a signature bundle here, not an effect resolver.
-//
-// 🟡 TRACKED-SCAFFOLD (2026-05-16, #3209, briansrls BLOCKING):
-// `write_file` remains at the frozen `Outcome<Unit>` contract here.
-// Dissolution trigger: v4 effect-model design pass (ACTIVE — operator +
-// merry-ibex-337; canonical effect/resource-threading shape). That pass
-// owns the shared resource-threading signature for filesystem reads,
-// filesystem writes, and process effects; modeling a local Filesystem
-// resource in this file before that ruling would fork the substrate
-// effect model.
 type FileBody = FreeMonoid<Char>
 
 type ReadFileRequest {
+  filesystem: Filesystem
   path: Path
 }
 
 type ReadFileResult = Outcome<FileBody>
 
 type WriteFileRequest {
+  filesystem: Filesystem
   path: Path
   body: FileBody
 }
 
-type WriteFileResult = Outcome<Unit>
+type WriteFileResult = Outcome<Filesystem>
 
 type ListDirRequest {
+  filesystem: Filesystem
   path: Path
 }
 
 type ListDirResult = Outcome<List<PathComponent>>
 
 type FileKindRequest {
+  filesystem: Filesystem
   path: Path
 }
 
