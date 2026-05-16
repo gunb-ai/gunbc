@@ -632,10 +632,15 @@ type SubcircuitDefinition {
 // terminators as representable values — INVARIANTS P2. See the
 // `Directive` declaration's header note for the full rationale.
 //
-// Lists are non-empty by no structural constraint at this layer —
-// SPICE3 admits empty body sections (a deck with only directives is
-// legal, e.g. an `.INCLUDE`-only deck). Consumer-side checks
-// (simulator-driver) enforce semantic non-emptiness where applicable.
+// Emptiness of the `components` / `models` / `subcircuits` /
+// `directives` lists is NOT structurally ruled out at this layer —
+// SPICE3 admits empty body sections (a deck with only an `.INCLUDE`
+// directive is legal, e.g. a library include-only deck). The lists
+// may therefore be empty as a matter of type. Consumer-side checks
+// (simulator-driver) enforce semantic non-emptiness where applicable
+// (e.g. a deck with no components and no `.INCLUDE` is well-formed
+// SPICE syntax but has nothing to simulate — that's a simulator
+// concern, not a netlist-format concern).
 type SpiceNetlist {
   title: String
   components: List<Component>
