@@ -143,14 +143,51 @@
 //   structural one (it v2-compiles as well-formed data — the existing CI
 //   gate, modeled concretely in workflow/ci.dag's v2-compile job).
 //
-// `BootstrapPlan` is a Conj record — no Practice-4 ledger applies to a
-// record (records do not dissolve to a richer source; the
-// diagnostic.dag `Diagnostic` / verification.dag `TestClaim`
-// precedent). The two coproducts `Stage` and `BootstrapStep` EACH carry
-// the full Practice-4 🟢/🟡/🔴 classification + the five-pattern
-// dissolution ledger inline at their declaration below (modeling-
-// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
-// enumerates FIVE patterns, the fifth being Parameterized-family).
+// SHAPE (INVARIANTS P1/P2 — structural, not prose). The bootstrap chain
+// is FIXED by STRUCTURE.md §"Bootstrap chain": exactly seed→stage0,
+// stage0→stage1, stage1→stage2, then the stage1==stage2 fixed point —
+// zero degrees of freedom (it is not configuration). `BootstrapPlan` is
+// therefore a FIXED RECORD with four NAMED positional slots whose
+// SLOT TYPES are distinct (`CompileStep` for the three compiles,
+// `FixedPointStep` for the assertion). This makes the
+// seed-once→stage0→stage1→stage2→fixed-point sequence the TYPE itself:
+// a reordered, duplicated, missing, or extra step is UNCONSTRUCTIBLE
+// (no list to malform; the slot type pins compile-vs-fixedpoint per
+// position). This REPLACES the prior `steps: List<BootstrapStep>`,
+// which was exactly the illegal-states-representable anti-pattern the
+// node.dag `Diff` finding (#3162) canonically forecloses (an
+// over-general list whose validity could only be a prose/predicate
+// check — the shape P2 rejects).
+//
+// BOUNDED RESIDUAL (honest, tracked — the yaml.dag `lexeme` refinement
+// class, NOT a P2 type-level illegal state). `CompileStep`/
+// `FixedPointStep` carry free `Stage` fields, so a hand-built
+// `BootstrapPlan` could mis-WIRE a slot (e.g. `seed` with
+// `produces: Stage2`). This is the SAME bounded-refinement class as
+// `YamlInt { lexeme: String }` carrying a not-yet-§10.3.2-constrained
+// lexeme: the canonical `bootstrap_plan` below is the SOLE authority
+// and is correctly wired; a divergent hand-constructed plan is a
+// fail-closed Diagnostic at INTERPRET time (TRACKED SCAFFOLD (1)) —
+// legitimate operational behavior, NOT a representable type-level
+// illegal state (the exact node.dag `Diff` ratified stance: "an Edit
+// whose Path no longer resolves ⇒ a fail-closed Diagnostic at apply
+// time, not a type-level illegal state"). Full type-level wiring-pinning
+// would need Stage-indexed phantom positions; v4's grammar does not
+// admit that, and a single-variant singleton step type has no v4
+// precedent — so this residual is documented and owned (the deferred
+// interpreter / a future grammar refinement), not escalated and not
+// papered with an unprecedented form.
+//
+// LEDGER PROVENANCE. `BootstrapPlan`, `CompileStep`, `FixedPointStep`
+// are Conj RECORDS — no Practice-4 🟢/🟡/🔴 dissolution ledger applies
+// (Practice 4 binds COPRODUCTS; records do not dissolve to a richer
+// source — the diagnostic.dag `Diagnostic` / verification.dag
+// `TestClaim` precedent). The `Stage` coproduct below RETAINS its full
+// five-pattern ledger (unchanged). The earlier `BootstrapStep`
+// coproduct is REMOVED — compile-vs-fixedpoint is now the slot TYPE,
+// not a sum variant, so its ledger is removed WITH the type it
+// classified (surfaced here as provenance, not silently dropped — the
+// diagnostic.dag #3161 reconcile precedent).
 
 module v4.workflow.bootstrap
 
@@ -197,76 +234,58 @@ type Stage
 
 
 // ─────────────────────────────────────────────────────────────────────
-// BootstrapStep — one step of the chain.
-//
-//   Compile    — `with` compiles src/v4/*.dag and `produces` the next
-//                stage binary (Seed→Stage0 is the seed-once boundary;
-//                Stage0→Stage1, Stage1→Stage2 are self-host).
-//   FixedPoint — assert `left`-emitted == `right`-emitted, BitIdentical.
-//                The self-host fixed point is `FixedPoint { Stage1,
-//                Stage2 }`; the executable assertion is T-15's
-//                `RoundTrips` TestClaim consuming this step (deferred —
-//                TRACKED SCAFFOLD (2) above).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: the plan interpreter (TRACKED SCAFFOLD
-//      (1)) handles BOTH arms at the single step-dispatch site (run a
-//      compile vs assert a fixed point); it is the shared
-//      step-semantics result, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: collapsing to a flat record
-//      `{ kind, with?, produces?, left?, right? }` makes a `Compile`
-//      with a populated `left`/`right` (and a `FixedPoint` with a
-//      populated `produces`) representable — exactly the optional-hole
-//      illegal state (INVARIANTS P3 / the inverse of P2) this sum
-//      forecloses.
-//   3. Algebraic form — N/A by construction: a bootstrap step is the
-//      chain's own primitive (a production edge or an equality
-//      assertion); it is not the carrier of a richer std/algebra.dag
-//      structure and traces to no richer std/ source.
-//   4. Dimensional — FAILS: a step is EITHER a compile production OR a
-//      fixed-point assertion — mutually-exclusive operations, never
-//      simultaneous coordinates. No step both produces a stage and
-//      asserts an equality.
-//   5. Parameterized family — FAILS: although `Compile` and
-//      `FixedPoint` coincidentally share a `(Stage, Stage)` field
-//      shape, they are NOT `F<X>` over an enumerable set — they are
-//      semantically distinct operations (a directed production edge
-//      `with → produces` vs a symmetric BitIdentical equality
-//      `left == right`), not a mechanical copy of an enumerable set
-//      (not a Practice-7 projection — the witness.dag `Witness<C>`
-//      pattern-5 precedent: shared/parametric shape ≠ enumerated-copy
-//      smell).
-// Terminal: the irreducible two-case bootstrap-step kind — a stage
-// production edge vs a fixed-point equality assertion, the only two
-// things the chain does.
-type BootstrapStep
-  = Compile { with: Stage, produces: Stage }
-  | FixedPoint { left: Stage, right: Stage }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// BootstrapPlan — the ordered step sequence. A `List<BootstrapStep>`
-// applied as a strict sequence (seed once, then self-host to fixed
-// point); the interpreter (TRACKED SCAFFOLD (1)) is fail-closed on any
-// step. The pinned content-hash is NOT a stored field — it is produced
-// by `content_hash` (B1) at interpret time, asserted by T-15.
-type BootstrapPlan {
-  steps: List<BootstrapStep>
+// CompileStep — a compile edge: `with` compiles src/v4/*.dag and
+// `produces` the next-stage binary. A Conj RECORD (no Practice-4
+// ledger — records do not dissolve). The three compile positions
+// (seed→stage0, stage0→stage1, stage1→stage2) are distinguished by
+// their SLOT in `BootstrapPlan`, not by a discriminant here.
+type CompileStep {
+  with: Stage
+  produces: Stage
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// The canonical bootstrap plan — the seed-once → self-host →
-// fixed-point chain AS DATA (STRUCTURE.md §"Bootstrap chain"). This is
-// the ONLY bootstrap authority; v2's `run` interpreter walks THIS.
+// FixedPointStep — the BitIdentical assertion `left`-emitted ==
+// `right`-emitted. A Conj RECORD (no Practice-4 ledger). The self-host
+// fixed point is stage1==stage2 — NOT stage0==stage1 (stage0 is
+// v2-emission-style, stage1+ is v4-style). The executable assertion is
+// T-15's `RoundTrips` TestClaim consuming this step (deferred — TRACKED
+// SCAFFOLD (2) above).
+type FixedPointStep {
+  left: Stage
+  right: Stage
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// BootstrapPlan — the bootstrap chain AS DATA. A FIXED RECORD: the four
+// NAMED slots ARE the chain positions, and their distinct slot TYPES
+// pin compile-vs-fixedpoint per position, so the
+// seed-once→stage0→stage1→stage2→fixed-point sequence is the TYPE, not
+// prose (INVARIANTS P1/P2). No `List` ⇒ no reorder/duplicate/missing/
+// extra step is constructible. The pinned content-hash is NOT a stored
+// field — produced by `content_hash` (B1) at interpret time, asserted
+// by T-15.
+type BootstrapPlan {
+  seed: CompileStep
+  self0: CompileStep
+  self1: CompileStep
+  fixpt: FixedPointStep
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// The canonical (and authoritative) bootstrap plan — STRUCTURE.md
+// §"Bootstrap chain" AS DATA. This is the ONLY bootstrap authority;
+// v2's `run` interpreter walks THIS. The slot wiring below is the
+// correct chain (the BOUNDED RESIDUAL note above: a divergently-wired
+// hand-built plan is a fail-closed interpret-time Diagnostic, not a
+// type-level illegal state).
 data bootstrap_plan: BootstrapPlan = BootstrapPlan {
-  steps: [
-    Compile { with: Seed, produces: Stage0 },
-    Compile { with: Stage0, produces: Stage1 },
-    Compile { with: Stage1, produces: Stage2 },
-    FixedPoint { left: Stage1, right: Stage2 }
-  ]
+  seed: CompileStep { with: Seed, produces: Stage0 },
+  self0: CompileStep { with: Stage0, produces: Stage1 },
+  self1: CompileStep { with: Stage1, produces: Stage2 },
+  fixpt: FixedPointStep { left: Stage1, right: Stage2 }
 }
 
