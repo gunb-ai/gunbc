@@ -1,86 +1,20 @@
 // src/v4/std/collection.dag
 //
-// Scope: bounded containers — every collection grounds structurally in
-//        an algebra from std/algebra.dag, so the collection-side
-//        operations are reads of that algebra, never an enumerated
-//        per-op table (the NO-ENGINE STOP per std/algebra.dag header
-//        U1).
-// Anchor: https://en.wikipedia.org/wiki/Free_monoid (List/Map) +
-//         https://en.wikipedia.org/wiki/Algebra_of_sets (Set)
+// Scope: bounded containers — every collection carries cardinality and element type.
+// Anchor: https://en.wikipedia.org/wiki/Free_monoid (List/String) + https://en.wikipedia.org/wiki/Algebra_of_sets (Set/Map)
 //
 // Owns:
-//   - List<T>        — finite sequences (the free-monoid carrier over T)
-//   - Set<T>         — membership-predicate carrier
-//   - MapEntry<K, V> — single (key, value) pair
-//   - Map<K, V>      — finite associations (the free-monoid carrier
-//                      over MapEntry<K, V>, with a uniqueness-of-keys
-//                      discipline — see modeling notes)
-//
-// Each container's operations FALL OUT of its algebra grounding:
-//   - List<T>      grounds in FreeMonoid<T> by the structural alias;
-//                  fold ops read a Monoid<T> the call site supplies
-//                  (the brief's "Monoid for fold").
-//   - Set<T>       grounds in BooleanAlgebra<Set<T>> by the pointwise
-//                  extension of Bool's BooleanAlgebra (union =
-//                  pointwise OR, intersect = pointwise AND, complement
-//                  = NOT, empty = constant false, universe = constant
-//                  true).
-//   - Map<K, V>    grounds in FreeMonoid<MapEntry<K, V>> by the
-//                  structural alias; merge is the monoid op with a
-//                  right-bias rule on duplicate keys (later occurrence
-//                  wins — the standard map-merge semantics; the monoid
-//                  laws hold because the op is associative and the
-//                  empty entry list is identity).
+//   - List<T, n: Cardinality>, Set<T, n>, Map<K, V, n>
+//   - operations defined as algebra-instance, not enumerated
 //
 // Consumes:
-//   - std/node.dag: the Cardinality and Instantiation connectives are
-//     how the kernel represents these parameterized container types in
-//     the type DAG (no Cardinality TYPE is consumed — see scaffold
-//     note below).
-//   - std/algebra.dag: FreeMonoid<T> (the recursive carrier List/Map
-//     ground in by carrier identity — the same grounding move
-//     algebra.dag's header anticipates: "Concrete sequence types
-//     ground by aliasing onto it"). BooleanAlgebra<T> grounds Set
-//     pointwise but appears here only as a header reference, not as a
-//     parametric data instance (see modeling notes).
-//   (Bool and the type parameters T, K, V are kernel-ambient; Symbol
-//   is substrate-ambient per std/node.dag K-1 — none is imported.)
+//   - std/node.dag: Cardinality, Instantiation
+//   - std/algebra.dag: Monoid for fold operations
 //
-// Cardinality refinement — TRACKED SCAFFOLD (🟡):
-//   The scaffold header named the family "List<T, n: Cardinality>,
-//   Set<T, n>, Map<K, V, n>" — a refinement carrier that surfaces an
-//   exact element count on the type. With std/cardinality.dag still
-//   in flight (#3163, T-3 Wave-A2), no Cardinality TYPE is consumable
-//   yet; only the Cardinality CONNECTIVE in std/node.dag exists.
-//   Today's modeling treats cardinality as INTRINSIC to the carrier
-//   (length-of-FreeMonoid for List/Map; count-of-`true`-elements for
-//   Set), not as a refinement parameter — the three bridge
-//   properties:
-//     (a) scaffold doc — THIS note; cardinality is read off the
-//         carrier shape, not declared on the type.
-//     (b) bounds on use — pipeline stages reading a Cardinality fact
-//         derive it by walking the FreeMonoid spine (List/Map) or by
-//         folding `member` against an enumerable T (Set, where T's
-//         enumerability is itself a structural fact).
-//     (c) dissolution trigger — when std/cardinality.dag lands its
-//         refinement substrate, the carrier-derived count becomes a
-//         refinement read at the type level (`List<T, n>`,
-//         `Set<T, n>`, `Map<K, V, n>`) and this scaffold note
-//         dissolves.
-//
-// NO ENGINE — NO ENUMERATED OPS. There is deliberately no
-// `list_concat` / `set_union` / `map_lookup` table here: those would
-// be a parallel representation of structure std/algebra.dag already
-// owns (the `kernel_algebra_profile` debt v3 carried, which
-// std/algebra.dag's U1 note explicitly forbids — "not a name-keyed
-// table lookup"). Consumers read the algebra structures from
-// algebra.dag and the carrier shapes here; ops are reads of that one
-// authority, not table rows.
-//
-// Status: T-3 modeled 2026-05-16 (witty-dove-121). This header is the
-// I/O contract downstream workers build to; splitting this file
-// requires explicit operator ratification (substrate extension = stop
-// signal).
+// Status: scaffold — fill per TASKS.md T-3
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
 
 
 module v4.std.collection
