@@ -1173,6 +1173,34 @@ type PubInPath {
 //                                   equivalence)
 //   `pub(in crate::M::N::…)`     →  PubIn { path: { root: AtCrate,
 //                                                  suffix: [M, N, …] } }
+//                                   — APPLIES ONLY when the resolved
+//                                   path is a STRICT ANCESTOR of the
+//                                   declaring item (i.e. a proper
+//                                   super-module). If `crate::M::N::…`
+//                                   resolves to the EXACT CURRENT
+//                                   MODULE of the item (item declared
+//                                   INSIDE `crate::M::N::…`), the
+//                                   visibility is semantically
+//                                   equivalent to `pub(self)` ≡ Private
+//                                   (the path IS the current module —
+//                                   reflexively an ancestor, not a
+//                                   strict ancestor) and canonicalizes
+//                                   to Private. This is a CONTEXT-
+//                                   DEPENDENT canonicalization
+//                                   (resolver-time work, requires
+//                                   knowing the item's containing
+//                                   module path) — the same P2 axis
+//                                   as `pub(self)` ≡ Private, but
+//                                   parameterized by declaration
+//                                   context. Producers MUST
+//                                   canonicalize before constructing
+//                                   PubInPath; admitting
+//                                   `PubInPath { root: AtCrate,
+//                                   suffix: [a, b] }` for an item
+//                                   declared inside `crate::a::b`
+//                                   would be the P2 duplicate-
+//                                   authority defect for the
+//                                   no-modifier visibility scope.
 //   `pub(super)`                 →  PubIn { path: { root: AtSuperChain
 //                                                       { hops: OneSuper },
 //                                                  suffix: [] } }
@@ -1218,11 +1246,34 @@ type PubInPath {
 //   as a child)                    ancestor. Resolver rejects upstream;
 //                                  no canonical PubInPath value exists.
 //   `pub(in foo::bar)` where      →  PubIn { path: { … } } with the
-//   foo::bar resolves to an        resolved root (Crate / SuperChain
-//   ancestor via name             based on where foo::bar resolves) +
-//   resolution                    suffix carrying the named segments
-//                                 (the resolver-determined canonical
+//   foo::bar resolves to a        resolved root (Crate / SuperChain
+//   STRICT ANCESTOR via name      based on where foo::bar resolves) +
+//   resolution (i.e. a proper     suffix carrying the named segments
+//   super-module of the item)     (the resolver-determined canonical
 //                                 path, NOT the verbatim source).
+//                                 If the resolved path is the EXACT
+//                                 current module (not a strict
+//                                 ancestor), canonicalize to Private
+//                                 — same context-dependent rule as
+//                                 the `crate::M::N` case above.
+//
+// CONTEXT-DEPENDENT CANONICALIZATION INVARIANT (BLOCKING operator
+// review 2026-05-16T07:30:48Z): the carrier represents POST-RESOLUTION
+// canonical scope. Two source forms with the SAME resolved scope MUST
+// canonicalize to the SAME RustVisibility value. Concretely: any
+// `pub(in path)` source form whose resolved path IS the item's
+// current module ≡ Private (regardless of whether `path` is `self`,
+// `crate::full::path`, `super::super::…::back_to_current`, or any
+// other syntactic form pointing at the current module). The
+// structural carrier doesn't know "current module" — that's
+// resolver context — so the canonicalization is a producer
+// obligation: producers (parser/resolver) MUST resolve the
+// `pub(in path)` to its target module, compare against the item's
+// containing module, and emit Private if equal / PubInPath if
+// strict-ancestor. P2 single-authority: the no-modifier scope has
+// EXACTLY ONE structural representation (Private); any other
+// representation is the duplicate-authority defect this discipline
+// prevents.
 //   `pub(in $crate::…)` (macro    →  out-of-scope for this slice
 //   context)                       (SCOPE NEGATIVE per the header —
 //                                  hygienic-macro support is a future
