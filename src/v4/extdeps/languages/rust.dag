@@ -16,16 +16,20 @@
 //         runtime extends this file, not a new "transport spec" file.
 //
 // STRUCTURAL FINDING (this slice's deliverable, manager directive
-//   msg_4f7e1280 — the operator-critical-path T-4 directive, item 3).
+//   msg_4f7e1280 — the operator-critical-path T-4 directive, item 3;
+//   reinforced msg_8b477982).
 //   Rust's TYPE-SYSTEM SURFACE — scalar primitive vocabulary, reference
 //   kinds, visibility scopes — fits the substrate's existing
 //   classifier shape (closed Disj + Conj records) without modification.
 //   No 7th connective, no 6th behavior is surfaced by this slice. The
 //   slice declares the Rust type VOCABULARY as Node-shaped declaration-
 //   class data; it deliberately STOPS at the carrier-shaped seams where
-//   D1 (parse/emit operations — operator-pending value-or-Diagnostic
-//   carrier) and D2 (per-language primitive inhabitance instance-values
-//   — operator-pending form decision, msg_640d429c) plug in.
+//   D1 (parse/emit operations — ratified Outcome<T> = Produced { value:
+//   T } | Rejected { diagnostic: Diagnostic }, NOT YET LANDED in
+//   std/diagnostic.dag) and D2 (per-language primitive inhabitance
+//   instance-values + fn-value-expression form — operator-pending
+//   SEMANTIC decision, msg_640d429c; §0 ratifies v2-syntax legality
+//   only, NOT the inhabitance shape per msg_8b477982) plug in.
 //
 //   The seams are NAMED in "Owned ELSEWHERE" below with their owners
 //   and dissolution triggers. Authoring those seams here would have
