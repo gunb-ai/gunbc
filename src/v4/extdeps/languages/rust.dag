@@ -1342,10 +1342,17 @@ type PubInPath {
 // absolute-path-from-crate-root shape: `PubInPath { resolved_path:
 // List<NamedSegment> }` (declared above this type). Empty
 // `resolved_path` = the crate root (≡ `pub(crate)`); non-empty =
-// `crate::<seg1>::<seg2>::…`. ONE canonical PubInPath value per
-// resolved ancestor scope — P2 single-authority TYPE-ENFORCED via
-// the absolute shape (no parallel absolute-vs-relative forms to
-// pick between). SuperHops + PubInRoot are DELETED as non-
+// `crate::<seg1>::<seg2>::…`. One canonical PubInPath value per
+// resolved ancestor scope at the SHAPE level (no parallel
+// absolute-vs-relative forms to pick between, since AtSuperChain is
+// deleted); SEMANTIC-level enforcement (module-existence, valid
+// containment descent, strict-ancestor of target) is producer-
+// obligation 🟡 scaffold per PubInPath's bridge note. The earlier
+// "P2 single-authority TYPE-ENFORCED" framing on this round
+// overstated what the type enforces — corrected per openai-pro
+// REQUEST_CHANGES 2026-05-16T15:04:44Z which caught the contradiction
+// between the header claim and the scaffold's actual producer-
+// obligation status. SuperHops + PubInRoot are DELETED as non-
 // canonical source-spelling artifacts; the resolver canonicalizes
 // every valid `pub(in <SimplePath>)` source form to its absolute
 // path before constructing PubInPath. Reference-invalid orderings
