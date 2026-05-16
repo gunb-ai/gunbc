@@ -241,15 +241,20 @@ import v4.std.node { Symbol }
 // CLOSED-SET COVERAGE. The variants enumerated below cover the SPICE3
 // core element set (Quarles 1993 §11): R/C/L (passives), V/I
 // (independent sources), D/Q/M (semiconductor devices, model-referenced),
-// K (mutual inductance), X (subcircuit invocation). Eleven element
-// kinds are NOT enumerated in this initial cut — linear controlled
-// sources (E/F/G/H), JFET (J), LTRA lossy transmission line (O),
-// switches (S/W), lossless transmission line (T), URC distributed RC
-// (U), MESFET (Z) — each tracked in the `Component` 🟡 trigger's
-// missing-list (the synchronization-discipline section). Per FIDELITY
-// SCOPE above, this is the spec-exhaustive-coverage gap (deliverable
-// (2)), not the shape deliverable (1); the YELLOW trigger is the
-// load-bearing follow-up that closes (2), not discretion to leave
+// K (mutual inductance), X (subcircuit invocation). Twelve element
+// kinds are NOT enumerated in this initial cut — non-linear dependent
+// source (B), linear controlled sources (E/F/G/H), JFET (J), LTRA
+// lossy transmission line (O), switches (S/W), lossless transmission
+// line (T), URC distributed RC (U), MESFET (Z) — each tracked in the
+// `Component` 🟡 trigger's missing-list (the synchronization-
+// discipline section). THIS SUMMARY-LIST MUST STAY SYNCHRONIZED WITH
+// THE DETAILED MISSING-LIST IN THE COMPONENT HONESTY NOTE BELOW —
+// out-of-sync omission lists tell the next worker the coverage gap
+// is smaller than it actually is (PR #3168 codex review surfaced
+// this when the prior summary was missing `B`). Per FIDELITY SCOPE
+// above, this is the spec-exhaustive-coverage gap (deliverable (2)),
+// not the shape deliverable (1); the YELLOW trigger is the load-
+// bearing follow-up that closes (2), not discretion to leave
 // unfilled. The B2-OMNI finding stands on the shape decisions made
 // here; the substrate has been shown to model these element kinds
 // without contortion, and the same shape extends mechanically to the
