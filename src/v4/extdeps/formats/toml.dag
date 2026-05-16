@@ -170,19 +170,44 @@ module v4.extdeps.formats.toml
 //                      the same array-of-tables VALUE is a deferred-emit
 //                      decision, not a value distinction (direction-
 //                      agnostic model).
-//   - TomlInlineTable — §"Inline Table". A key/value table written
-//                      inline (`{ … }`); TOML 1.0 §"Inline Table":
-//                      inline tables are SELF-CONTAINED — keys/sub-
-//                      tables cannot be added after definition. Carrier
-//                      `Map<String, TomlValue>`.
-//   - TomlTable     — §Table (`[table]` / dotted). A standard table
-//                      that, per TOML 1.0 §Table, MAY be assembled
-//                      across the document until closed — a distinct
-//                      construct from the immutable inline table (the
-//                      mutability/provenance distinction TOML 1.0 draws;
-//                      see ledger pattern 2). Carrier `Map<String,
-//                      TomlValue>` (key non-emptiness/charset is the
-//                      deferred §Keys refinement, 🟡 below).
+//   - TomlInlineTable / TomlTable — §"Inline Table" / §Table. Both
+//                      carry `Map<String, TomlValue>`. ADJUDICATED at
+//                      the T-4 seam-gate (codex RC #3189, finding
+//                      substantively CORRECT): these are NOT two value
+//                      kinds. An inline table `{ … }` and a `[table]`
+//                      with the same keys/values denote the SAME TOML
+//                      1.0 logical value (TOML maps to a hash table; a
+//                      table is a table). Inline-vs-standard (single-
+//                      line/self-contained vs document-assemblable) is
+//                      a CONSTRUCTION-SYNTAX distinction, NOT a value-
+//                      level fact — exactly the discipline this file
+//                      already applies to §Array-of-Tables (a syntactic
+//                      construction, not a value variant; construction
+//                      constraints → deferred parser). Keeping them as
+//                      two value variants is the Practice-2 / P2
+//                      surface-syntax-as-value-distinction error (an
+//                      earlier ledger note that called them "the
+//                      faithful form" was internally inconsistent and
+//                      is corrected — see pattern 2). ADJUDICATED-
+//                      CORRECT MODELING: collapse to ONE
+//                      `TomlTable { entries: Map<String, TomlValue> }`;
+//                      inline-vs-standard becomes a deferred parser/
+//                      emit construction concern. ENACTMENT is
+//                      operator-tier (csv-class): collapsing the
+//                      declared variant supersedes the immutable
+//                      scaffold-header's explicit `…|InlineTable|Table`
+//                      enumeration — the worker may NOT edit the
+//                      immutable header. The two body variants are
+//                      retained ONLY pending the OPERATOR HEADER-
+//                      RECONCILE (batched), where the collapse is a
+//                      DETERMINISTIC mechanical apply (the modeling is
+//                      adjudicated-settled, not a re-decision). Held
+//                      tracked-not-silent here, exactly like the #3184
+//                      `emit -> Outcome<String>` header/note divergence.
+//                      (Key non-emptiness/charset is the deferred §Keys
+//                      refinement, 🟡 below; toml-LOCAL — json/yaml have
+//                      no inline/standard split, canonical seam
+//                      unaffected.)
 //
 // Recursion lives in the `elements` / `entries` children (node.dag A1:
 // the one recursive type is `Node`; this recursive `Disj` is a finite
@@ -204,20 +229,30 @@ module v4.extdeps.formats.toml
 //      every TOML consumer (the deferred parse builds it, emit walks
 //      it, any ingest dispatches on it). Shared classifier of the whole
 //      TOML value space, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the eight carry structurally DISTINCT
-//      payloads (nullary-free: a `String`; int `lexeme`; float
-//      `lexeme`; `Bool`; datetime `lexeme`; `List<TomlValue>`; two
-//      `Map<String, TomlValue>`). Collapsing to a flat `{ kind, … }`
-//      record makes illegal mixed states representable — the inverse of
-//      INVARIANTS P2. The two table variants are NOT a spurious
-//      flag-collapse despite a shared payload SHAPE: TOML v1.0.0 draws
-//      a real construct distinction — an inline table is self-contained
-//      and immutable once defined (§"Inline Table"), a standard table
-//      may be assembled across the document (§Table). Folding them to
-//      one variant + a `bool inline` flag erases that mutability/
-//      provenance fact and ratifies the very kind of stringly/flag
-//      proxy M4 rejects; the two distinct constructors are the faithful
-//      form.
+//   2. Variant-is-data — FAILS for the SUM as a whole: the value
+//      kinds carry structurally DISTINCT payloads (a `String`; int
+//      `lexeme`; float `lexeme`; `Bool`; datetime `lexeme`;
+//      `List<TomlValue>`; a table `Map<String, TomlValue>`).
+//      Collapsing to a flat `{ kind, … }` record makes illegal mixed
+//      states representable — the inverse of INVARIANTS P2.
+//      CORRECTION (ADJUDICATED, codex RC #3189, T-4 seam-gate): a
+//      PRIOR version of this clause asserted `TomlInlineTable` vs
+//      `TomlTable` were "two distinct constructors / the faithful
+//      form" on a mutability/provenance basis. That was WRONG and
+//      internally inconsistent with this file's own §Array-of-Tables
+//      treatment. Inline-vs-standard is CONSTRUCTION SYNTAX, not a
+//      value distinction (same TOML 1.0 logical value); keeping them
+//      as two same-payload variants IS exactly the Practice-2 / P2
+//      surface-syntax-as-value-distinction error. Adjudicated-correct:
+//      they COLLAPSE to ONE `TomlTable` (inline-vs-standard → deferred
+//      parser/emit construction concern). The body still enumerates
+//      both ONLY because the immutable scaffold header does; collapsing
+//      it is the operator-tier header-reconcile (csv-class), batched,
+//      mechanical-apply when reconciled — tracked-not-silent (see the
+//      TomlInlineTable/TomlTable bullet). Post-collapse the sum is the
+//      seven genuinely-distinct kinds and pattern 2 still FAILS for the
+//      sum (the heterogeneous-payload argument above is unaffected by
+//      the table collapse).
 //   3. Algebraic form — N/A by construction: a TOML value is TOML
 //      v1.0.0's value space; heterogeneous external data, not the
 //      carrier of a richer std/algebra.dag structure (no Monoid/Ring it
