@@ -1,43 +1,662 @@
 // src/v4/extdeps/languages/ptx.dag
 //
 // Scope: CUDA model — direction-agnostic. Modeled at the PTX ISA layer
-//        (recommended fork — see below): the SIMT execution model
-//        (grid / block / thread / warp), the memory hierarchy
-//        (global/shared/local/register), kernels and barriers.
+//        (forced by DECISIONS.md L-3 — PTX is the SIMT *IR*; CUDA-C++ is
+//        a Shape A source already covered by general modeling, so it
+//        would not be a down-the-stack probe at all): the SIMT execution
+//        model (grid / block / thread), the memory hierarchy
+//        (register / shared / global / etc.), kernels and barriers.
 // Anchor: NVIDIA "Parallel Thread Execution ISA" specification — pin a
 //         version (e.g. PTX ISA 8.x) as the versioned fidelity authority
 //         (L-2); the "CUDA C++ Programming Guide" documents the SIMT
 //         execution model the spec encodes.
-// Stress (T-4.14 — a B2-OMNI + IN-B falsification probe): the SIMT
-//   data-parallel execution model. CUDA's grid/block/thread is massive
-//   data-parallelism — does it fit the 5 L1 behaviors as effect-typed
-//   Bind composition (the IN-B bet, like Verilog's concurrency), or does
-//   it tempt a 6th `Parallel`/`Kernel` behavior? If it cannot be modeled
-//   without one, that is a C1 stop-signal escalation — and catching it
-//   early is exactly why this is added up front.
-// Clear win: `.dag → PTX` (GPU kernels from one source, same Node as a
-//   CPU backend), demonstrating omni-emission reaches the GPU.
 //
-// Fork (PROPOSED — operator confirm): model PTX (the spec'd IR — clean,
-//   most general, captures SIMT directly, parallel to llvm_ir.dag —
-//   recommended) vs CUDA-C++ as a `cpp.dag` extension (entangled with
-//   cpp.dag; the C++ surface is not where the stress is). Recommend PTX.
+// IN-B FINDING (the T-4.14 probe's deliverable, operator-ratified
+//   STOP-or-find discipline per §D): SIMT data-parallelism IS modelable
+//   as the existing 5 L1 behaviors — NO 6th `Parallel` / `Kernel`
+//   behavior is required. The full mapping lives in the modeling notes
+//   section below; the headline:
+//     kernel        → Transform (a function over (thread_coord, params))
+//     thread grid   → Loop (bounded recursion over the grid's bounded
+//                     thread-index cardinality; THESIS:18 "parallelism
+//                     is the default" — independence is read from the
+//                     dependency graph, scheduling is mechanical)
+//     barrier       → Bind (sequencing synchronization point)
+//     state space   → effect-typed parameter (a structural Conj field
+//                     on the value, per THESIS:401 IN-B "intrinsic to
+//                     the type signature, not an annotation layer")
+//     @p predicate  → Branch (predicated execution = guarded Branch on
+//                     a `.pred` carrier)
+//   The 5 behaviors hold; the probe surfaces no substrate gap (no STOP).
 //
 // Owns:
-//   - PTX grammar as declarative bidirectional data (B2-OMNI):
-//     kernel / thread-hierarchy / memory-space / barrier / instruction
-//   - SIMT parallelism as effect-typed Bind composition per IN-B — NOT a
-//     new behavior (a 6th behavior here = C1 STOP, escalate)
-//   - Inhabitance: PTX register/vector types per std/algebra.dag
-//   - Cost realization: per-instruction + occupancy cost on a PTX target
+//   - PTX coordinate classifiers as closed structural carriers:
+//     StateSpace (memory hierarchy), BarrierScope (CTA/GPU/system),
+//     ThreadAxis (X/Y/Z), ThreadCoordSource (thread-in-CTA / CTA-in-grid),
+//     RegisterWidth (b1/b8/b16/b32/b64/b128), RegisterScalarKind
+//     (Bits/Unsigned/Signed/Float/Predicate)
+//   - PTX value shapes as Conj records: RegisterScalar, Dim3 (🟡 scaffold
+//     — same bridge as std/diagnostic.dag's ByteRange), ThreadHierarchy,
+//     ThreadCoord
+//   - PTX cost-realization carrier shape: PtxCost (per-instruction +
+//     occupancy components — the per-target cost projection U1 reads)
+//   - the IN-B mapping (modeling notes): SIMT → 5 behaviors, no 6th
+//
+// Owned ELSEWHERE (do not duplicate here):
+//   - the bidirectional LanguageModel substrate (grammar productions,
+//     C5-fidelity disposition tags, ingest∘emit roundtrip carrier) — the
+//     BUNDLED work of T-4 across the 5 Shape A source languages, where
+//     "the SHAPE is the work" (TASKS.md T-4 authoring contract). When
+//     that shape lands, this file's classifiers slot into the PTX
+//     `LanguageModel` instance; the classifiers themselves do not
+//     prejudge that shape.
+//   - PTX integer / float scalar grounding (`.u32` inhabits `Semiring`,
+//     `.s32` inhabits `OrderedRing`, `.f32` inhabits `ApproximateField`)
+//     — flows from std/integer.dag / std/machine.dag / std/float.dag
+//     (T-3 wave A3) when those carriers + their algebra instance-values
+//     land. The PTX register-type vocabulary (kind × width) declared
+//     here is the SURFACE through which that grounding parameterizes.
+//     Pre-T-3-A3 this file declares no algebra instance-value, by P2
+//     single-authority: re-declaring an inhabitance whose carrier file
+//     is unwritten would foreclose its eventual authority.
+//   - SIMT-as-Bind composition's effect-typing carrier — that is the
+//     subject of extdeps/coordination.dag (T-4.8); the IN-B finding
+//     here demonstrates the mapping fits the 5 behaviors, and
+//     coordination.dag (when it lands) owns the effect-typed Bind
+//     carrier the kernel-as-Transform composes through.
 //
 // Consumes:
-//   - std/node.dag, std/algebra.dag, std/primitive.dag
-//   - extdeps/coordination.dag (SIMT via effect-typed Bind — IN-B)
+//   - nothing — this file is closed-enum + Conj-record declarations
+//     only. `Int` is kernel-ambient (Dim3 component, RegisterWidth bit-
+//     count surface). No algebra instance-values are declared at this
+//     phase (see "Owned ELSEWHERE" — PTX scalar inhabitance is
+//     downstream of T-3 wave A3 + T-4's LanguageModel shape).
+//   (The scaffold header's prior `std/node.dag, std/algebra.dag,
+//   std/primitive.dag` Consumes line predated PR #3152's
+//   std/primitive.dag decomposition AND the operator-ratified §0
+//   scope-narrowing of this probe to "closed classifiers + IN-B
+//   finding"; the revised Consumes line above reflects what the file
+//   actually imports, not the scaffold's anticipatory list.)
 //
-// Status: scaffold — fill per TASKS.md T-4.14
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-4.14 modeled 2026-05-16 (gentle-deer-446); probe finding:
+// NO 6th behavior surfaced. The I/O contract in this header is
+// immutable for downstream workers. Splitting this file requires
+// explicit operator ratification (substrate extension = stop signal).
+
 
 module v4.extdeps.languages.ptx
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// THE IN-B FALSIFICATION PROBE (T-4.14, B2-OMNI + IN-B, DECISIONS.md
+// L-3). The brief's §D framing is binding: "the STOP discipline is the
+// deliverable — if the substrate (5 behaviors / 6 connectives / fail-
+// closed) genuinely can't model the target, that is a substrate
+// finding to surface, not force." For T-4.14: "STOP if tempted toward
+// a 6th behavior." This section records the structural fit and
+// names the operator-tier triggers that would have flipped the
+// finding to STOP — neither fired.
+//
+// PROBE OUTCOME — the 5 behaviors hold; the SIMT model fits without a
+// 6th. The mapping, member-by-member:
+//
+//   - KERNEL ↦ Transform.
+//     A PTX `.entry` is a function `(thread_coord, kernel_params) ->
+//     side-effects-on-state-space`. That is exactly the Transform
+//     behavior (function application — INVARIANTS:72 typed-total-λ
+//     fragment, node.dag:209 "Transform=application"). The kernel's
+//     body is a sub-DAG of the 5 behaviors, identical to a CPU
+//     function's body — no kernel-specific behavior surfaces.
+//     "Run once per thread" is the SCHEDULING of the surrounding Loop
+//     (see next), not a property of the kernel function itself; the
+//     Transform IS the kernel callable.
+//
+//   - THREAD GRID ↦ Loop.
+//     The execution-of-a-kernel-across-its-grid is bounded recursion
+//     over the grid's bounded thread-index cardinality (gridDim ×
+//     blockDim, both Cardinality-bounded). This is exactly the A2
+//     `Loop` discipline (node.dag:42-68: bounded recursion, total-by-
+//     construction). Per THESIS:18 / node.dag:209 "Parallelism is the
+//     default because independence is visible in the structure" —
+//     iterations of the kernel-Loop over distinct thread-coords are
+//     INDEPENDENT unless they communicate (through `.shared` /
+//     `.global` reads/writes or barriers, both visible structural
+//     edges). The SIMT schedule (lock-step warp execution) is the
+//     mechanical realization of the dependency graph; it is NOT a
+//     separate behavior. Tempting alternative: a `Parallel` /
+//     `Kernel` behavior carrying "this Loop is data-parallel". That
+//     temptation would have been the STOP trigger — but it duplicates
+//     what the dependency graph already says (THESIS:18 again:
+//     "sequential execution is what needs justification"). Adding
+//     such a behavior would be a feedback_no_annotations violation
+//     (annotating a property structurally already visible). REJECTED;
+//     no STOP needed.
+//
+//   - BARRIER ↦ Bind.
+//     `bar.sync` / `membar` join concurrent threads at a
+//     synchronization point. That is exactly the Bind behavior
+//     (node.dag:209 "Bind=let" — sequencing). A barrier's SCOPE (CTA
+//     / GPU / system) is a Conj-record field on the Bind (the
+//     `BarrierScope` classifier below), not a new behavior; same
+//     pattern as `bar.sync 0` vs `membar.gl` differing only in scope.
+//     Tempting alternative: a `Synchronize` behavior. REJECTED — Bind
+//     is the existing sequencing primitive; "synchronize across
+//     concurrent threads" is a property of the surrounding parallel
+//     Loop reading the Bind, not of the Bind itself.
+//
+//   - STATE SPACE ↦ effect-typed parameter (structural Conj field).
+//     A PTX value's `.reg` / `.shared` / `.global` / etc. tag is a
+//     structural field on its `RegisterScalar` (the StateSpace
+//     classifier below, not modeled in this file — see PtxCost note
+//     for the carrier shape). Memory ops (`ld.global`, `st.shared`)
+//     are Transforms whose input/output StateSpace tags constrain
+//     valid composition. This IS the THESIS:401 IN-B claim made
+//     concrete: effects are "intrinsic to the type signature, NOT an
+//     annotation layer." Tempting alternative: a `StateSpaceTransfer`
+//     behavior wrapping every ld/st. REJECTED — it would parallel-
+//     represent what the Transform's signature already says; the
+//     effect-typed parameter is the unannotated primitive.
+//
+//   - @p PREDICATE ↦ Branch.
+//     PTX predicated execution (`@p mov.b32 r1, r2;`) is a guarded
+//     Branch on the `.pred` carrier: `if p then op else skip`. The
+//     `Branch` behavior already covers this (node.dag:209
+//     "Branch=sums"). Predicate negation (`@!p`) is the
+//     `BooleanAlgebra<.pred>.complement` instance-value — to land
+//     downstream when std/logic.dag's inhabitance form lands;
+//     declaring it here would parallel-represent it pre-substrate
+//     (P2). For T-4.14 the structural fit is the deliverable; the
+//     instance-value follows.
+//
+// CONCLUSION. The probe's IN-B half closes with no STOP. The B2-OMNI
+// half (PTX grammar as declarative bidirectional data) hinges on
+// T-4's LanguageModel shape — when that bundled shape lands, this
+// file's coordinate classifiers slot into the PTX `LanguageModel`
+// instance without revision (their I/O contract is the immutable
+// header above).
+//
+// SCOPE NEGATIVE (operator-tier, do not work around): warp-level
+// intrinsics (`%warpid`, `%laneid`, `%smid`), texture / surface
+// references, async copies (`cp.async`), tensor cores (`wmma`,
+// `mma.sync`), and the `bf16` / vector-pack types (`.f16x2`,
+// `.f32x2`) are deliberately not modeled at T-4.14. They sit either
+// (a) inside the bundled LanguageModel shape (grammar productions —
+// T-4's work), (b) inside the cost-realization detail per release
+// pin (PtxCost note below), or (c) inside the SIMT-effect-typed Bind
+// substrate that coordination.dag (T-4.8) owns. The classifiers
+// declared here are the irreducible SIMT coordinate set; the rest
+// composes over them when their substrate lands.
+//
+// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj carrier below
+// carries the full 🟢/🟡/🔴 + all five patterns (Fact-placement /
+// Variant-is-data / Algebraic-form / Dimensional / Parameterized-
+// family-Practice-7) per modeling-discipline.md §4 (operator-ratified
+// binding 2026-05-15, gate (b) — #3163 made the 4-pattern miss the
+// proof case; do not omit Practice-7). Conj records carry no ledger
+// (only coproducts dissolve); scaffold-residual Conj fields (Dim3
+// raw Int offsets) carry a 🟡 bridge note mirroring std/diagnostic.dag's
+// `Extent.ByteRange` precedent.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// StateSpace — the closed PTX memory hierarchy classifier. Exactly
+// eight; the surface vocabulary of the PTX state-space declaration
+// directive (e.g. `.global .f32 v;`).
+//
+//   - Reg       — `.reg`     virtual register (per-thread; the
+//                            register-allocated value's home)
+//   - SReg      — `.sreg`    special register (read-only thread-coord
+//                            and warp/lane intrinsics; per-thread)
+//   - Const     — `.const`   constant memory (read-only; per-grid)
+//   - Global    — `.global`  global memory (read-write; per-grid)
+//   - Local     — `.local`   local memory (per-thread spill region)
+//   - Param     — `.param`   kernel parameter memory (read-only;
+//                            kernel-launch staging)
+//   - Shared    — `.shared`  shared memory (read-write; per-CTA)
+//   - Tex       — `.tex`     texture memory (read-only; per-grid)
+//
+// CLOSED (C1 stop-signal). A ninth state space is an edit to THIS
+// declaration — a visible diff routed to operator ratification. The
+// PTX spec adds state spaces across releases (e.g. recent additions
+// for cooperative-group memory); the pin discipline (L-2 versioned
+// fidelity authority) means each release-version model EDITS this
+// declaration explicitly, never silently extends it.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every memory-op Transform branches on
+//      the operand's StateSpace (`ld.global` vs `ld.shared` are
+//      distinct ops); shared classifier, not a per-consumer scattered
+//      fact.
+//   2. Variant-is-data — FAILS: the eight are nullary tags drawn
+//      from a closed PTX-defined set. Promoting to a `{ name:
+//      Symbol }` record reintroduces the readable-string-as-tag
+//      heuristic surface K-1 forecloses (a `match name { "global" =>
+//      … }` smell). The enum IS the faithful form.
+//   3. Algebraic form — N/A by construction: PTX state spaces are
+//      the PTX spec's primitive memory-region taxonomy; they do not
+//      trace to a richer std/ algebraic structure (no Lattice / no
+//      Field on the eight tags — read-only vs read-write is a
+//      separate per-state-space property, not a partial order over
+//      them).
+//   4. Dimensional — FAILS: a PTX value lives in EXACTLY ONE state
+//      space; the directive `.global .shared` is a syntax error in
+//      PTX itself. Mutually-exclusive alternatives, not simultaneous
+//      coordinates.
+//   5. Parameterized family — FAILS: the eight have structurally
+//      distinct semantic roles (per-thread vs per-CTA vs per-grid;
+//      readable vs read-only; addressable vs intrinsic-only) — NOT
+//      one generic `F<X>` / projection over a source set (Practice
+//      7). They are the PTX spec's irreducible memory-region
+//      partition, not a mechanical copy of any enumerable set.
+// Terminal: the closed eight-way memory-hierarchy classifier; a 9th
+// is the C1 stop-signal (a visible ratified edit to this declaration,
+// STRUCTURE.md commitment #1).
+type StateSpace
+  = Reg
+  | SReg
+  | Const
+  | Global
+  | Local
+  | Param
+  | Shared
+  | Tex
+
+
+// ─────────────────────────────────────────────────────────────────────
+// BarrierScope — the closed PTX synchronization scope classifier. The
+// scope at which a Bind-as-barrier synchronizes (`bar.sync` / `membar`
+// directives carry exactly one of three scopes).
+//
+//   - Cta     — `.cta`     within-CTA (within-block) synchronization
+//                          (`bar.sync 0;` is `.cta`-scoped by default)
+//   - Gpu     — `.gl`      device-wide (within-GPU) memory ordering
+//                          (`membar.gl`)
+//   - System  — `.sys`     system-wide (across host/device) ordering
+//                          (`membar.sys`)
+//
+// CLOSED (C1 stop-signal). A fourth scope is an edit to THIS
+// declaration (the PTX spec has not added a fourth top-level scope
+// across major versions, but the L-2 pin discipline still routes a
+// hypothetical extension through operator ratification).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Bind-as-barrier reads the scope
+//      uniformly (the synchronization radius is the same datum every
+//      consumer needs); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: nullary tags from a closed PTX-defined
+//      set. A `{ radius: Int }` proxy (1=cta, 2=gpu, 3=sys) replaces a
+//      closed 3-valued exhaustive sum with an unbounded Int
+//      (radius=42 representable) — violates P2 + M4 (closed sets are
+//      enums, not numeric proxies). Same shape as algebra.dag's
+//      `Ordering` ledger.
+//   3. Algebraic form — N/A by construction: the three scopes are the
+//      PTX memory-fence primitive radii; they do not trace to a
+//      richer std/ algebraic structure (a `BoundedLattice<Scope>`
+//      with Cta ⊑ Gpu ⊑ System would be a parallel representation of
+//      "stronger fence subsumes weaker" — a derived property of the
+//      tags, not a richer source).
+//   4. Dimensional — FAILS: a single barrier directive carries
+//      EXACTLY ONE scope; `membar.cta.gl` is not a PTX construct.
+//      Mutually-exclusive alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the three are distinct
+//      synchronization-radius primitives — NOT one generic `F<X>` /
+//      projection over a source set (Practice 7). The three radii
+//      are the PTX spec's irreducible scope partition.
+// Terminal: the closed three-way synchronization scope.
+type BarrierScope
+  = Cta
+  | Gpu
+  | System
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ThreadAxis — the closed PTX coordinate axis classifier. PTX exposes
+// thread / block indices as 3-vectors (`%tid.x/.y/.z`, `%ctaid.x/.y/.z`);
+// ThreadAxis is the axis SELECTOR for one of those components.
+//
+//   - X — the x-axis component (the SIMT-fast axis: lanes within a
+//         warp vary along x first; the layout convention threadIdx.x
+//         carries)
+//   - Y — the y-axis component
+//   - Z — the z-axis component
+//
+// CLOSED (C1 stop-signal). PTX has fixed 3-D thread/block addressing
+// across all current versions; a fourth axis would be a substantive
+// ISA change routed to operator ratification.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every ThreadCoord consumer that reads
+//      a specific axis (e.g. emission of `%tid.x`) branches on the
+//      axis tag; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ component: Int }` proxy (0/1/2)
+//      replaces a closed 3-valued exhaustive sum with an unbounded
+//      Int (component=42 representable) — violates P2 + M4 the same
+//      way `Ordering` does (algebra.dag:332). The enum IS the
+//      faithful form.
+//   3. Algebraic form — N/A by construction: X/Y/Z are the basis
+//      labels of a 3-D coordinate vector; they do not trace to a
+//      richer std/ structure (no algebra over the labels themselves;
+//      the algebra is on the bounded-Int dim values, separately).
+//   4. Dimensional — FAILS: a `.x` / `.y` / `.z` axis selector picks
+//      EXACTLY ONE axis; mutually-exclusive, not simultaneous
+//      coordinates. (`%tid` as a whole vector is the Dim3 record,
+//      separate from the per-axis selector.)
+//   5. Parameterized family — FAILS: X/Y/Z are positional labels of
+//      a fixed 3-D vector — NOT one generic `F<X>` / projection over
+//      a source set (Practice 7). They are the closed three-axis
+//      basis, not a copy of any enumerable set.
+// Terminal: the closed three-way axis selector of PTX's 3-D
+// coordinate addressing.
+type ThreadAxis
+  = X
+  | Y
+  | Z
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ThreadCoordSource — the closed PTX thread-coordinate hierarchy
+// classifier. PTX exposes two structural levels of thread coordinate:
+// position within the CTA, and CTA position within the grid. Warp /
+// lane / SM intrinsics (`%warpid`, `%laneid`, `%smid`) are scope-
+// negative for T-4.14 (see header SCOPE NEGATIVE) — they are
+// realizations of the SIMT schedule, not a coordinate axis the model
+// admits as substrate.
+//
+//   - ThreadInCta — `%tid.{x,y,z}` — thread position within the CTA
+//                                    (block)
+//   - CtaInGrid   — `%ctaid.{x,y,z}` — CTA position within the grid
+//
+// CLOSED (C1 stop-signal). A third hierarchy level (e.g. cluster — a
+// CUDA 9.0+ surface that bundles CTAs) is an edit to THIS declaration
+// routed to operator ratification under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every ThreadCoord consumer reads the
+//      source uniformly to know which intrinsic register family it
+//      emits; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ level: Int }` (0=thread,
+//      1=cta) replaces a closed exhaustive sum with an unbounded
+//      Int — violates P2 + M4 (algebra.dag:332 `Ordering`
+//      precedent).
+//   3. Algebraic form — N/A by construction: the two hierarchy
+//      levels are the PTX coordinate-space partition; they do not
+//      trace to a richer std/ structure (one could attempt a
+//      `PartialOrder<ThreadCoordSource>` with ThreadInCta ⊑
+//      CtaInGrid, but that would be a parallel representation of
+//      what is already a structural containment — feedback_no_engine
+//      parallel-rep smell).
+//   4. Dimensional — FAILS: a single coordinate read is EITHER
+//      thread-in-cta OR cta-in-grid; mutually-exclusive
+//      alternatives, not simultaneous coordinates. (A kernel that
+//      uses both addresses each through a separate read; it does
+//      not co-locate the two.)
+//   5. Parameterized family — FAILS: the two are distinct
+//      coordinate-space partitions — NOT one generic `F<X>` /
+//      projection over a source set (Practice 7).
+// Terminal: the closed two-way thread-coordinate hierarchy at the
+// SIMT-substrate layer the probe models.
+type ThreadCoordSource
+  = ThreadInCta
+  | CtaInGrid
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RegisterWidth — the closed PTX bit-width classifier for typed
+// registers. Exactly six widths admitted by the PTX scalar type
+// system (`.b{n}` / `.u{n}` / `.s{n}` / `.f{n}`):
+//
+//   - Bits1   — `.pred`        the 1-bit predicate register width
+//                              (only the Predicate kind admits this)
+//   - Bits8   — `.{b,u,s}8`
+//   - Bits16  — `.{b,u,s,f}16` (`.f16` is IEEE-754 half-precision)
+//   - Bits32  — `.{b,u,s,f}32`
+//   - Bits64  — `.{b,u,s,f}64`
+//   - Bits128 — `.b128`        (untyped only at this width)
+//
+// CLOSED (C1 stop-signal). A 256-bit / 512-bit / bf16-distinct
+// addition is an edit to THIS declaration (and the kind-width
+// admissibility table) under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every RegisterScalar consumer that
+//      emits or sizes a register reads the width tag; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (1/8/16/…)
+//      replaces a closed 6-valued exhaustive sum with an unbounded
+//      Int (bits=42 representable) — violates P2 + M4. The widths
+//      are NOT free Int values; they are the PTX-admitted subset,
+//      so a free-Int carrier would ratify illegal widths (the
+//      INVARIANTS P2 illegal-states-unrepresentable shape).
+//   3. Algebraic form — partially N/A: the bit-counts form an
+//      ordered set (1 < 8 < 16 < …), but the ORDER is derived FROM
+//      the closed enum, not a richer source — pointing to a
+//      `Lattice<RegisterWidth>` would parallel-represent the
+//      enumeration the order is defined over (algebra.dag U1 engine-
+//      debt smell).
+//   4. Dimensional — FAILS: a single typed register has EXACTLY ONE
+//      width; mutually-exclusive alternatives. The kind × width
+//      Cartesian product lives on `RegisterScalar` (Conj), not on
+//      this enum.
+//   5. Parameterized family — FAILS: the six widths are the PTX-
+//      admitted bit-counts; they are NOT one generic `F<X>` /
+//      projection over a separately-declared source set (Practice
+//      7). The bit-count itself IS the discriminant; there is no
+//      richer X to project from.
+// Terminal: the closed six-way PTX register-width classifier.
+type RegisterWidth
+  = Bits1
+  | Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RegisterScalarKind — the closed PTX scalar-type kind classifier.
+// PTX scalar types decompose as KIND × WIDTH (the kind names the
+// interpretation; the width sizes it):
+//
+//   - Bits      — `.b{w}`   untyped bit-vector (width-only, no
+//                           arithmetic semantics)
+//   - Unsigned  — `.u{w}`   unsigned modular integer (Semiring)
+//   - Signed    — `.s{w}`   signed two's-complement integer
+//                           (OrderedRing)
+//   - Float     — `.f{w}`   IEEE-754 floating-point (ApproximateField;
+//                           w ∈ {16, 32, 64})
+//   - Predicate — `.pred`   1-bit boolean (BooleanAlgebra; width is
+//                           always Bits1, so the kind alone
+//                           determines width)
+//
+// The KIND × WIDTH admissibility (e.g. `.f8` is invalid; `.b128` is
+// the only Bits-kind width above 64; `.pred` admits only Bits1) is a
+// `RegisterScalar`-record-level structural invariant, evaluated
+// fail-closed by a `register_scalar_well_formed` check whose home is
+// the LanguageModel grammar substrate (T-4). The kind enum here
+// closes the K dimension; widths close the W dimension; the cross-
+// product admissibility is the joint check, not a separate carrier.
+//
+// CLOSED (C1 stop-signal). A sixth kind (e.g. brain-float `bf` as a
+// kind distinct from Float) is an edit to THIS declaration under the
+// L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every RegisterScalar consumer reads
+//      the kind to dispatch to the right algebra instance (which
+//      operations apply); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses (a
+//      `match name { "u32" => … }` smell). The enum IS the faithful
+//      form.
+//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
+//      structure (Unsigned→Semiring, Signed→OrderedRing,
+//      Float→ApproximateField, Predicate→BooleanAlgebra, Bits→no
+//      arithmetic algebra by design). That grounding is an
+//      INHABITANCE relation — owned by the inhabiting carrier file
+//      (std/integer.dag for Unsigned/Signed at width w,
+//      std/float.dag for Float, std/logic.dag for Predicate) per
+//      P2. The kind enum itself stays a closed classifier; the
+//      "kind → algebra" map IS the future inhabitance walk, not a
+//      richer std/ source to collapse this enum INTO.
+//   4. Dimensional — FAILS: a single scalar register has EXACTLY
+//      ONE kind; mutually-exclusive alternatives. (Kind × Width is
+//      a Cartesian product on `RegisterScalar`, which IS the
+//      dimensional model — these are the K coordinates.)
+//   5. Parameterized family — FAILS: the five are the PTX-spec
+//      kind partition; they are NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7). One
+//      could attempt `Kind<algebra: AlgebraStructure>` parameterized
+//      over an algebra-structure set, but only four of the five
+//      ground in algebra (Bits has no arithmetic algebra by design);
+//      the partition does not project from a single source set.
+// Terminal: the closed five-way PTX scalar-kind classifier.
+type RegisterScalarKind
+  = Bits
+  | Unsigned
+  | Signed
+  | Float
+  | Predicate
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RegisterScalar — a typed PTX scalar register carrier: kind × width
+// × state-space residence. Conj record (no Practice-4 ledger — only
+// coproducts dissolve).
+//
+//   - kind          which scalar-type kind (`.b` / `.u` / `.s` / `.f`
+//                   / `.pred`)
+//   - width         which bit-width (`.b8` / `.b16` / … / `.b128`)
+//                   — the kind × width admissibility (e.g. `.pred`
+//                   admits only Bits1; `.f8` is invalid) is the
+//                   T-4-owned `register_scalar_well_formed` joint
+//                   check (see RegisterScalarKind note above)
+//   - state_space   where the register-bound value lives in the
+//                   memory hierarchy (the effect-typed parameter per
+//                   the IN-B mapping — see header IN-B FINDING)
+//
+// The state_space FIELD on this record is the structural surface of
+// the IN-B claim "state space is an effect-typed parameter, intrinsic
+// to the type signature, NOT an annotation layer" (THESIS:401,
+// scaffold header IN-B note). Memory-op Transforms read this field
+// directly from operand types; there is no separate state-space-
+// annotation layer.
+type RegisterScalar {
+  kind: RegisterScalarKind
+  width: RegisterWidth
+  state_space: StateSpace
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Dim3 — the PTX 3-D dimension/index carrier: an x/y/z triple of
+// kernel-launch dimensions or coordinate indices. Conj record (no
+// Practice-4 ledger — only coproducts dissolve).
+//
+//   - x, y, z       the three-axis components
+//
+// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`).
+// With only kernel-ambient `Int` available at the T-4.14 phase,
+// `{ x: Int, y: Int, z: Int }` STRUCTURALLY ADMITS illegal states
+// (negative dims; zero dims; dims exceeding the PTX max per axis —
+// 65535 for x of gridDim, 1024 for thread count of blockDim, etc.).
+// modeling-discipline.md §2 (illegal-states-unrepresentable) forbids
+// admitting them; no bounded-Cardinality refinement substrate exists
+// yet to exclude them. It is a TRACKED scaffold, declared with the
+// three bridge properties (the precedent diagnostic.dag established
+// 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       the terminal bounded-axis shape.
+//   (b) bounds on use — a producer MUST construct only valid PTX
+//       dimensions per the pinned PTX-ISA version's per-axis limits.
+//       Until the substrate enforces it the invariant is producer-
+//       side; a Dim3 violating it is a producer bug, not a legal
+//       value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (T-3, P4 decidability), `x` / `y` / `z`
+//       become refined bounded-positive-Int axes (positive and
+//       within the PTX-version-pinned per-axis maxima), and this
+//       scaffold dissolves.
+type Dim3 {
+  x: Int
+  y: Int
+  z: Int
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ThreadHierarchyShape — a PTX kernel launch's structural shape: the
+// grid's CTA-count dimensions × the per-CTA thread-count dimensions.
+// Conj record (no Practice-4 ledger).
+//
+//   - grid_dim      number of CTAs along x/y/z in the grid
+//                   (`gridDim.{x,y,z}`)
+//   - block_dim     number of threads along x/y/z within each CTA
+//                   (`blockDim.{x,y,z}`)
+//
+// The product `grid_dim × block_dim` is the BOUNDED CARDINALITY of
+// the thread-grid Loop per the IN-B mapping (kernel iteration runs
+// over this finite set — the A2 boundedness that lets the Loop be
+// total-by-construction).
+type ThreadHierarchyShape {
+  grid_dim: Dim3
+  block_dim: Dim3
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ThreadCoord — a typed thread-coordinate read: a specific axis
+// component of a specific hierarchy level. Conj record (no Practice-4
+// ledger).
+//
+//   - source        which hierarchy level (thread-in-CTA or CTA-in-
+//                   grid; warp / lane / SM are scope-negative for
+//                   T-4.14)
+//   - axis          which 3-D axis component (X / Y / Z)
+//
+// Concretely: `ThreadCoord { source: ThreadInCta, axis: X }` is the
+// `%tid.x` intrinsic; `{ source: CtaInGrid, axis: Z }` is `%ctaid.z`.
+type ThreadCoord {
+  source: ThreadCoordSource
+  axis: ThreadAxis
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PtxCost — the per-target cost-realization carrier shape for the
+// PTX `LanguageModel`. Conj record (no Practice-4 ledger).
+//
+// This declares the SHAPE the U1 spine reads when computing PTX-side
+// realization cost — both components per the scaffold header's
+// "per-instruction + occupancy cost on a PTX target" claim:
+//
+//   - instruction_cost   per-instruction throughput cost (the U1
+//                        per-target-op cost projection — the `map`
+//                        side of `Homomorphism<…, …, PtxScalar>`
+//                        carries this; cost is read FROM the map's
+//                        structure, never stored as a parallel field
+//                        per algebra.dag's U1 no-engine discipline)
+//   - occupancy_cost     per-kernel occupancy cost (registers-per-
+//                        thread × threads-per-block, shared-memory-
+//                        per-block) — the SIMT-specific cost
+//                        contribution beyond per-instruction; how
+//                        many warps the SM can co-schedule
+//
+// Both Int carriers are scaffold (same 🟡 bridge as Dim3): cost is a
+// non-negative quantity, but without std/cardinality.dag refinement
+// negative-cost is structurally representable. Producer-side
+// invariant pending the cardinality substrate landing. PTX-ISA-
+// version-specific cost tables (e.g. SASS instruction latencies per
+// release) sit in the inhabitance walk that T-4's LanguageModel
+// shape parameterizes, not in this carrier itself.
+type PtxCost {
+  instruction_cost: Int
+  occupancy_cost: Int
+}
