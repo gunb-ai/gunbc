@@ -102,9 +102,9 @@ import v4.std.node { Symbol }
 //     boundary rendering concern (a `DeclaredNormalized` C5 feature, the
 //     SAME α-equivalence node.dag's content-hash fold already has). An
 //     EARLIER cut carried a `result: Symbol` on every instruction; that
-//     was the un-faithful form — it would have forced the declarative
-//     inhabitance instances to MINT a fresh SSA `Symbol` (which the
-//     substrate forbids: K-1 opaque, not hand-mintable). Removing it
+//     was the un-faithful form — any declarative algebra-op witness
+//     would have had to MINT a fresh SSA `Symbol` (which the substrate
+//     forbids: K-1 opaque, not hand-mintable). Removing it
 //     both fixed that and produced the more faithful value-graph model —
 //     a STOP-shaped finding resolved by better structure, not a
 //     workaround.
@@ -135,20 +135,18 @@ import v4.std.node { Symbol }
 // termination is not structurally evident is the walker's fail-closed
 // boundary (declared in F below), not a totality this file may claim.
 //
-// HONEST INHABITANCE (mirrors algebra.dag Float≠Field precedent). LLVM
-// `iN` default arithmetic WRAPS (two's-complement, mod 2^N). The
-// faithful algebra is therefore the finite COMMUTATIVE RING Z/2^N Z —
-// NOT `OrderedRing`: wrap-around makes the order incompatible with
-// addition (a < b does not survive `a + k`), exactly the fail-open
-// fabrication algebra.dag refuses for Float→Field. `icmp` supplies
-// genuine total orders, modeled SEPARATELY (the `Ordering` codomain),
-// not folded into a mendacious `OrderedRing`. `float`/`double` inhabit
-// `ApproximateField` (the structure algebra.dag declares precisely for
-// IEEE-754). `i1` inhabits `BooleanAlgebra`. Vectors inhabit element-
-// wise by PROJECTION over the element algebra (Practice 7) — not an
-// enumerated per-width family. Pointers inhabit NO numeric algebra
-// (pointer arithmetic is partial/UB-laden); `ptrtoint`/`inttoptr` are
-// the honest bridge — asserting a pointer ring would be fabrication.
+// INHABITANCE IS OWNED ELSEWHERE (P2) — see the "Inhabitance — OWNED
+// ELSEWHERE" section near the end. This file declares only the LLVM
+// type/value/instruction VOCABULARY; WHICH algebra a scalar grounds in
+// is owned by the std/ scalar wave (std/integer.dag/float.dag/logic.dag,
+// T-3) + the operator-pending D2 FORM decision, by P2 single-authority.
+// This file does NOT declare, assert, or restate that grounding (an
+// extdeps language file restating it is the second-authority P2
+// violation the T-4 mgr ruling + gentle-deer-446 audit identified).
+// Faithful observations for that owner / the D2 decision (NOT this
+// file's authority): LLVM `iN` arithmetic wraps mod 2^N ⇒ a finite ring
+// that is NOT order-compatible (the algebra.dag Float≠Field analog);
+// `fcmp` is NaN-unordered; pointers have no total numeric algebra.
 //
 // Every coproduct below carries the full Practice-4 🟢/🟡/🔴
 // classification + the 5-pattern dissolution ledger (modeling-
@@ -391,10 +389,11 @@ type VarArg
 //      value }; AggregateConstant { ty, elements }; NoneToken nullary).
 //      A flat record makes "a NoneToken with elements" representable —
 //      the inverse of P2.
-//   3. Algebraic form — the NUMERIC constants are grounded via
-//      inhabitance (IntConstant in the `iN` CommutativeRing instance
-//      below) — but the SUM itself is the LangRef constant taxonomy, not
-//      one algebra carrier; N/A as a whole-sum dissolution.
+//   3. Algebraic form — the NUMERIC constants' algebra grounding is
+//      OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 — see the
+//      Inhabitance section; not declared here) — and the SUM itself is
+//      the LangRef constant taxonomy, not one algebra carrier; N/A as a
+//      whole-sum dissolution.
 //   4. Dimensional — FAILS: a constant is EXACTLY ONE form; never
 //      several simultaneously.
 //   5. Parameterized family — FAILS: the forms are heterogeneous (scalar
@@ -483,13 +482,13 @@ type LlvmValue
 //      — it is the projected axis of the `Binary` shape, the faithful
 //      form, not a coproduct awaiting promotion.
 //   3. Algebraic form — PARTIAL and DELIBERATELY NOT TAKEN as the
-//      carrier: add/sub/mul DO trace to the `iN` CommutativeRing / float
-//      ApproximateField instances (below), and "operations fall out of
-//      inhabitance" is honored THERE. But the *instruction opcode* is
-//      the concrete-syntax token the bidirectional grammar needs; it is
-//      the LangRef surface, faithfully named, with its algebra grounding
-//      carried by the inhabitance instances — two faithful facts, not a
-//      duplicate authority.
+//      carrier: add/sub/mul DO trace to the abstract algebra, but that
+//      grounding is OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 —
+//      see the Inhabitance section; not declared here). The *instruction
+//      opcode* is the concrete-syntax token the bidirectional grammar
+//      needs — the LangRef surface, faithfully named; its algebra
+//      grounding is the std/ owner's authority, NOT restated here (two
+//      faithful facts in two owners, never a duplicate authority).
 //   4. Dimensional — FAILS: a binary instruction has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: this enum IS the closed source
 //      set the single `Binary` shape projects over (Practice 7); it is
@@ -589,8 +588,8 @@ type FloatPredicate
 //   2. Variant-is-data — N/A dissolving: the promoted projected axis of
 //      `ConstantExpr` (Practice-2 applied).
 //   3. Algebraic form — N/A: a constexpr opcode is the LangRef surface;
-//      its numeric cases share grounding with the inhabitance instances
-//      (not re-asserted here).
+//      its numeric cases' algebra grounding is owned elsewhere (std/
+//      scalar wave + pending D2, P2 — not declared here).
 //   4. Dimensional — FAILS: a constexpr has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: the closed source set
 //      `ConstantExpr` projects over (Practice 7); the dissolution target.
@@ -725,10 +724,11 @@ type AtomicRmwOp
 //      genuinely disjoint shapes (Store { value, ptr }; Call { callee,
 //      args }); a flat record makes "a Store with call arguments"
 //      representable — the inverse of P2. Cannot fully fold.
-//   3. Algebraic form — APPLIED where it grounds: arithmetic opcodes
-//      trace to the inhabitance instances ("operations fall out of
-//      inhabitance"); the instruction is still the bidirectional grammar
-//      surface the model needs — two faithful facts, not duplication.
+//   3. Algebraic form — arithmetic opcodes DO trace to the abstract
+//      algebra, but that grounding is OWNED ELSEWHERE (std/ scalar wave
+//      + pending D2, P2 — not declared here); the instruction is the
+//      bidirectional grammar surface the model needs — two faithful
+//      facts in two owners, not duplication.
 //   4. Dimensional — FAILS: an instruction is EXACTLY ONE kind; never a
 //      coordinate tuple of all kinds.
 //   5. Parameterized family — APPLIED to the uniform sub-families
@@ -1207,56 +1207,58 @@ type FidelityDisposition
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Inhabitance — HONEST GROUNDING + DEFERRED FORM (operator-pending D2).
+// Inhabitance — OWNED ELSEWHERE (P2 single-authority); DEFERRED, not
+// declared here. (ptx.dag #3170 / spice.dag #3168 verified-clean
+// deferral shape; T-4 mgr ruling on PR #3171; still-heron-594 directive
+// item 3 — a probe CONSUMES the canonical shape, it does not AUTHOR it.)
 //
-// WHICH algebra each LLVM scalar type grounds in is a faithful,
-// uncontested mathematical fact, DECLARED here as prose (M3 — the spec
-// grounding is the model's job):
-//   - `iN` default arithmetic WRAPS (two's-complement, mod 2^N) ⇒ the
-//     finite COMMUTATIVE RING Z/2^N Z — deliberately NOT `OrderedRing`
-//     (wrap breaks order-compatibility: a<b need not survive a+k),
-//     exactly the fail-open fabrication algebra.dag refuses for
-//     Float≠Field. `icmp`'s total orders are SEPARATE (the `Ordering`
-//     codomain), never folded into a mendacious `OrderedRing`.
-//   - `float`/`double` (IEEE-754) ⇒ `ApproximateField` (algebra.dag's
-//     rounding-aware structure), NOT exact `Field`.
-//   - `i1` ⇒ `BooleanAlgebra` (its `and`/`or`/`xor` ARE the Boolean ops
-//     — epistemic stacking, the std/logic.dag discipline).
-//   - vectors ⇒ the SAME class as the element, element-wise (the SIMD
-//     lowering): a Practice-7 PROJECTION over the element algebra, never
-//     a per-width enumerated family.
-//   - pointers ⇒ NO numeric algebra (getelementptr is partial/UB-laden);
-//     `ptrtoint`/`inttoptr` are the explicit lossy bridge — asserting a
-//     pointer ring would be fabrication (no-engine).
+// This file declares ONLY the LLVM type/value/instruction VOCABULARY
+// (the declaration-class grammar above). It does NOT declare, assert, or
+// even restate which algebra an LLVM scalar grounds in. WHY-here vs
+// where-owned:
+//   - WHICH algebra a scalar inhabits is owned by the std/ scalar wave
+//     (std/integer.dag, std/float.dag, std/logic.dag — T-3), by P2
+//     single-authority: a concrete type declares its OWN inhabitance in
+//     its OWN concept file (std/algebra.dag header SCOPE; node.dag T-1
+//     disposition). An extdeps language file restating it — even as
+//     prose — is a SECOND authority that forecloses that owner (the
+//     exact P2 violation; gentle-deer-446's audited reasoning).
+//   - The instance-value FORM (per-target `<Algebra><Concrete>` vs
+//     abstract; the fn-body convention for spec-primitive ops) is the
+//     OPEN, OPERATOR-PENDING **D2 STOP**: TASKS.md T-4 "i32 →
+//     OrderedRing" DIRECTLY CONTRADICTS INVARIANTS P1 (~:42 — "operator
+//     dispatch consumes abstract algebra facts, NOT a parallel
+//     `OrderedRing<Word*>` substrate per width class"; R3 gate #19);
+//     D2b's fn-body form (name-ref Atom / relaxed / new C1 carrier) is
+//     one of three resolutions a worker may NOT pick. Surfaced +
+//     escalated 2026-05-16 (loyal-koi-702 → T-4 mgr vivid-carp-207).
 //
-// The instance-value FORM is DEFERRED, not improvised. An EARLIER cut of
-// this file declared `data llvm_*: <Algebra><LlvmValue> = …` per-file
-// instances. That is exactly the per-target `<Algebra><Concrete>`
-// improvisation the OPEN, OPERATOR-PENDING **D2 STOP** forbids ahead of
-// ratification: TASKS.md T-4's "per-language primitive inhabitance
-// (i32 → OrderedRing)" DIRECTLY CONTRADICTS INVARIANTS P1 (~:42 —
-// "operator dispatch consumes abstract algebra facts, NOT a parallel
-// `OrderedRing<Word*>` substrate per width class"; R3 gate #19), and the
-// fn-value form for spec-primitive ops (name-ref Atom vs relaxed form vs
-// a new C1 carrier) is one of three resolutions a worker may NOT pick.
-// D2 was surfaced + escalated to operator 2026-05-16 (loyal-koi-702 →
-// T-4 mgr vivid-carp-207); it blocks the whole T-4 languages/probe wave,
-// including this B2-OMNI probe. Per CULTURE / CLAUDE.md ("if the brief
-// contradicts the intro docs, STOP and escalate") and the standing
-// directive "do NOT improvise a per-file `<Algebra><Concrete>` before D2
-// lands; reference this STOP", this file declares the grounding above
-// and CONSUMES the ratified instance-value form once D2 lands — it does
-// not cement a contested shape. Empirical note for the D2b sub-question:
-// the deep nested-constructor + lambda-field `data`-instance form DOES
-// parse 0-diag under the frozen v2 seed (verified while probing this
-// file) — so D2b is a FORM-authority decision, NOT a v2-admissibility
-// blocker.
+// An EARLIER cut of THIS file improvised three
+// `data llvm_*: <Algebra><LlvmValue> = …` instances + fn carrier-type
+// helpers. That was the exact D2-gated surface (P2 + INVARIANTS P1:42);
+// an operator-PENDING substrate-design decision is a HOLD/defer, never a
+// 🟡-track-and-ship (🟡 is "richer source exists, substrate not ready",
+// NOT "ship past an active escalation"). They were REMOVED (fix-forward,
+// commit 835cd40b2); the no-6th-behavior probe result stands on the
+// declarative model ALONE and does not need them.
 //
-// Scaffold "Owns: Inhabitance" is satisfied by the faithful grounding +
-// the principled deferral to the ratified form — NOT by improvising the
-// D2-contested per-file `<Algebra><Concrete>` instance ahead of operator
-// ratification (that improvisation IS the v3 cross-layer-drift failure
-// mode v4 exists to kill — the STOP is the contribution).
+// When D2 lands AND the std/ scalar owner declares the grounding, the
+// connection (per-target SPELLING of the abstract algebra, not a
+// re-inhabitance) is added at the ratified owner per the ratified form —
+// CONSUMED here, never authored here. Empirical datum handed to the D2b
+// decision (NOT a green-light): the deep nested-constructor + lambda-
+// field `data`-instance form parses 0-diag under the frozen v2 seed
+// (verified while probing) — so D2b is a FORM-authority decision, not a
+// v2-admissibility blocker. Faithful grounding OBSERVATIONS for that
+// owner (LLVM `iN` wraps ⇒ a finite ring, NOT order-compatible — the
+// Float≠Field analog; `fcmp` NaN-unordered; pointers have no total
+// numeric algebra) are carried to D2 / the std/ owner, NOT asserted as
+// this file's authority.
+//
+// Scaffold "Owns: Inhabitance" is satisfied by this principled
+// deferral-to-owner — NOT by improvising the D2-contested instance
+// ahead of ratification (that improvisation IS the v3 cross-layer-drift
+// failure mode v4 exists to kill — the STOP is the contribution).
 
 // ─────────────────────────────────────────────────────────────────────
 // Cost realization — per-instruction realization cost on an LLVM target
