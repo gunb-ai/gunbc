@@ -21,6 +21,7 @@
 //   - std/nat.dag: Nat
 //   - std/machine.dag: MachineWidth
 //   - std/algebra.dag: OrderedRing, AbelianGroup
+//   - std/diagnostic.dag: Outcome<T> for Tier-2 divide/modulo
 //
 // Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
@@ -31,3 +32,231 @@
 
 
 module v4.std.integer
+
+
+import v4.std.algebra {
+  AbelianGroup,
+  Group,
+  Magma,
+  Monoid,
+  OrderedRing,
+  Ordering,
+  Ring,
+  Semigroup
+}
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+import v4.std.machine {
+  MachineWidth,
+  PointerWidth,
+  Word8,
+  Word16,
+  Word32,
+  Word64,
+  Word128
+}
+import v4.std.nat { Nat }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// V4 SPLITS CARRIER FROM WITNESS. The v3 spelling
+// `Int = AbelianGroup<GroupCompletion<Nat>>` named the construction chain
+// compactly, but v4's scalar files use instance-values for inhabitance
+// (see nat.dag / logic.dag): the concrete carrier is named first, then
+// the algebra value over that carrier is declared here. Consequently:
+//   - `GroupCompletion<M>` is the derived carrier construction.
+//   - `Int = GroupCompletion<Nat>` is the abstract signed-integer carrier.
+//   - `data int_abelian_group` and `data int_ordered_ring` are the
+//     machine-readable inhabitance edges.
+//
+// GROUP-COMPLETION IS LOCAL TO THIS CONCEPT FILE. std/algebra.dag's v4
+// scope is "structures only" and deliberately omits construction
+// carriers except FreeMonoid<T>, whose carrier shape is itself the root
+// free construction. `GroupCompletion<M>` exists here because this file
+// is the sole v4 consumer in the closed tree: the construction is needed
+// to model integers from Nat, and exporting it from algebra.dag would
+// widen the T-2 structures file after its brief. The construction remains
+// generic so the ontology is honest, but this file's intended use is
+// exactly `GroupCompletion<Nat>`.
+//
+// CONSTRAINED-INHABITANCE GAP (tracked scaffold). Denotationally the
+// Grothendieck group completion requires a commutative monoid. v4 does
+// not yet have a parametric where-clause syntax such as
+// `<M> where M : CommutativeMonoid<_>`. The only authored use here is
+// `GroupCompletion<Nat>`, and nat.dag already declares Nat's additive
+// `CommutativeMonoid<Nat>` instance, so the mathematical precondition
+// holds for the actual construction. Dissolution trigger: when v4 lands
+// constrained generic parameters / inhabitance bounds, tighten
+// `GroupCompletion<M>` to require the commutative-monoid witness.
+//
+// FIXED-WIDTH INTEGERS ARE WIDTH PROJECTIONS. A machine integer is not a
+// sibling algebra authority beside abstract `Int` / `UInt`; it is the
+// abstract carrier composed with the independent machine-width axis
+// (`MachineInteger<Int, MachineWidth<Word64>>`, etc.). The local
+// `MachineInteger<carrier, width>` carrier is opaque and phantom: exact
+// width discharge happens at Grounding / emission, consistent with
+// machine.dag's list-length scaffold. No fixed-width row declares a
+// separate OrderedRing/Semiring instance in this file.
+//
+// TIER-2 TOTALIZATION. Integer division and modulo are partial at divisor
+// zero. Per STRUCTURE.md commitment #2, the totalized operations live
+// here and return std/diagnostic.dag's ratified `Outcome<Int>` carrier
+// (DECISIONS.md I), not a new Result type. The caller supplies `at:
+// Locus`, because the scalar operation cannot faithfully invent a source
+// location; fabricating one would violate INVARIANTS P3.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GroupCompletion<M> — the carrier produced by completing a commutative
+// monoid to an abelian group (Grothendieck construction). Opaque at this
+// layer: representation as equivalence classes of pairs is mathematical
+// grounding, not a field-level substrate representation. Per-target
+// realization chooses the efficient carrier.
+type GroupCompletion<M>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Int / UInt — abstract integer carriers.
+//
+// `Int` is the signed carrier obtained by group-completing Nat's
+// additive commutative monoid. `UInt` is Nat itself: unsigned integers
+// require no additive inverse, so wrapping Nat would only drop facts
+// nat.dag already provides.
+type Int = GroupCompletion<Nat>
+type UInt = Nat
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Fixed-width integer projections over std/machine.dag's width axis.
+//
+// `MachineInteger<carrier, width>` is intentionally body-less: it is a
+// phantom projection of an abstract numeric carrier onto a width witness,
+// not a runtime record with separate `value` and `width` fields.
+type MachineInteger<carrier, width>
+
+type Int8 = MachineInteger<Int, MachineWidth<Word8>>
+type Int16 = MachineInteger<Int, MachineWidth<Word16>>
+type Int32 = MachineInteger<Int, MachineWidth<Word32>>
+type Int64 = MachineInteger<Int, MachineWidth<Word64>>
+type Int128 = MachineInteger<Int, MachineWidth<Word128>>
+
+type UInt8 = MachineInteger<UInt, MachineWidth<Word8>>
+type UInt16 = MachineInteger<UInt, MachineWidth<Word16>>
+type UInt32 = MachineInteger<UInt, MachineWidth<Word32>>
+type UInt64 = MachineInteger<UInt, MachineWidth<Word64>>
+type UInt128 = MachineInteger<UInt, MachineWidth<Word128>>
+
+type IntPlatform = MachineInteger<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = MachineInteger<UInt, MachineWidth<PointerWidth>>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Integer algebra operations. These functions bind the kernel-ambient
+// integer operations into the single algebra instance-values below.
+// Operations are not re-declared elsewhere; consumers reach them through
+// `int_ordered_ring`.
+fn int_add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn int_negate(a: Int) -> Int {
+  0 - a
+}
+
+fn int_mul(a: Int, b: Int) -> Int {
+  a * b
+}
+
+fn int_compare(a: Int, b: Int) -> Ordering {
+  if a < b {
+    Less
+  } else {
+    if a == b {
+      Equal
+    } else {
+      Greater
+    }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Inhabitance — Int grounds in AbelianGroup and OrderedRing.
+//
+// The additive group is named separately because `OrderedRing.ring.add`
+// consumes the same authority; it is not re-listed inside the ring.
+data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
+  group: Group {
+    monoid: Monoid {
+      semigroup: Semigroup { magma: Magma { op: int_add } },
+      identity: 0
+    },
+    inverse: int_negate
+  }
+}
+
+data int_ordered_ring: OrderedRing<Int> = OrderedRing {
+  ring: Ring {
+    add: int_abelian_group,
+    mul: Monoid {
+      semigroup: Semigroup { magma: Magma { op: int_mul } },
+      identity: 1
+    }
+  },
+  compare: int_compare
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Diagnostic reasons owned by integer.dag. Diagnostic.reason is a
+// Symbol name-reference; these declarations are the names the
+// Diagnostic points at. diagnostic.dag owns the schema, not this reason
+// vocabulary.
+type IntegerDivideByZero
+type IntegerModuloByZero
+
+fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: IntegerDivideByZero,
+    at: at,
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: IntegerModuloByZero,
+    at: at,
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Tier-2 totalized integer partial operations.
+//
+// `int_div` and `int_mod` are total functions: divisor zero produces a
+// typed `Rejected { diagnostic }`; all other cases produce the value.
+// There is no sentinel integer and no panic-shaped boundary.
+fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if b == 0 {
+    Rejected { diagnostic: integer_divide_by_zero_diagnostic(at: at) }
+  } else {
+    Produced { value: a / b }
+  }
+}
+
+fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+  if b == 0 {
+    Rejected { diagnostic: integer_modulo_by_zero_diagnostic(at: at) }
+  } else {
+    Produced { value: a % b }
+  }
+}
