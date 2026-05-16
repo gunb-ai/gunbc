@@ -24,12 +24,12 @@
 //   section below; the headline:
 //     kernel        → Transform (a function over (thread_coord, params))
 //     thread grid   → Loop (bounded recursion over the grid's bounded
-//                     thread-index cardinality; THESIS:18 "parallelism
+//                     thread-index cardinality; THESIS:19 "parallelism
 //                     is the default" — independence is read from the
 //                     dependency graph, scheduling is mechanical)
 //     barrier       → Bind (sequencing synchronization point)
 //     state space   → effect-typed parameter (a structural Conj field
-//                     on the value, per THESIS:401 IN-B "intrinsic to
+//                     on the value, per THESIS:396 IN-B "intrinsic to
 //                     the type signature, not an annotation layer")
 //     @p predicate  → Branch (predicated execution = guarded Branch on
 //                     a `.pred` carrier)
@@ -142,7 +142,7 @@ module v4.extdeps.languages.ptx
 //     over the grid's bounded thread-index cardinality (gridDim ×
 //     blockDim, both Cardinality-bounded). This is exactly the A2
 //     `Loop` discipline (node.dag:42-68: bounded recursion, total-by-
-//     construction). Per THESIS:18 / node.dag:209 "Parallelism is the
+//     construction). Per THESIS:19 / node.dag:209 "Parallelism is the
 //     default because independence is visible in the structure" —
 //     iterations of the kernel-Loop over distinct thread-coords are
 //     INDEPENDENT unless they communicate (through `.shared` /
@@ -152,7 +152,7 @@ module v4.extdeps.languages.ptx
 //     separate behavior. Tempting alternative: a `Parallel` /
 //     `Kernel` behavior carrying "this Loop is data-parallel". That
 //     temptation would have been the STOP trigger — but it duplicates
-//     what the dependency graph already says (THESIS:18 again:
+//     what the dependency graph already says (THESIS:19 again:
 //     "sequential execution is what needs justification"). Adding
 //     such a behavior would be a feedback_no_annotations violation
 //     (annotating a property structurally already visible). REJECTED;
@@ -187,7 +187,7 @@ module v4.extdeps.languages.ptx
 //     .pred`) with no memory load/store path; residence is
 //     implicit `.reg`. Memory ops (`ld.global`, `st.shared::cta`)
 //     are Transforms whose input/output state-space tags constrain
-//     valid composition. This IS the THESIS:401 IN-B claim made
+//     valid composition. This IS the THESIS:396 IN-B claim made
 //     concrete: effects are "intrinsic to the type signature, NOT
 //     an annotation layer." Tempting alternative: a
 //     `StateSpaceTransfer` behavior wrapping every ld/st. REJECTED
@@ -993,7 +993,7 @@ type RegisterStateSpace
 // The state_space FIELD on the typed-scalar variants is the
 // structural surface of the IN-B claim "state space is an effect-
 // typed parameter, intrinsic to the type signature, NOT an
-// annotation layer" (THESIS:401, scaffold header IN-B note).
+// annotation layer" (THESIS:396, scaffold header IN-B note).
 // Memory-op Transforms read this field directly from operand types;
 // there is no separate state-space-annotation layer.
 //
@@ -1265,13 +1265,18 @@ type ThreadHierarchyShape
 // component of a specific hierarchy level. Conj record (no Practice-4
 // ledger).
 //
-//   - source        which hierarchy level (thread-in-CTA or CTA-in-
-//                   grid; warp / lane / SM are scope-negative for
-//                   T-4.14)
+//   - source        which hierarchy level — one of the four
+//                   `ThreadCoordSource` variants per PTX ISA 8.5:
+//                   ThreadInCta (`%tid`) / CtaInCluster
+//                   (`%cluster_ctaid`) / ClusterInGrid (`%clusterid`)
+//                   / CtaInGrid (`%ctaid`); warp / lane / SM are
+//                   scope-negative for T-4.14
 //   - axis          which 3-D axis component (X / Y / Z)
 //
 // Concretely: `ThreadCoord { source: ThreadInCta, axis: X }` is the
-// `%tid.x` intrinsic; `{ source: CtaInGrid, axis: Z }` is `%ctaid.z`.
+// `%tid.x` intrinsic; `{ source: CtaInGrid, axis: Z }` is `%ctaid.z`;
+// `{ source: CtaInCluster, axis: Y }` is `%cluster_ctaid.y`;
+// `{ source: ClusterInGrid, axis: X }` is `%clusterid.x`.
 type ThreadCoord {
   source: ThreadCoordSource
   axis: ThreadAxis
