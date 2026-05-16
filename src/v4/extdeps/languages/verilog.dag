@@ -1236,17 +1236,26 @@ type NetAssignmentDeclarator {
 // ─────────────────────────────────────────────────────────────────────
 // NetIdentifierDeclarator — one element of a net_declaration's
 // list_of_net_identifiers (IEEE 1364-2005 §A.2.3 / §A.2.1.3
-// identifier-only form). Carries ONLY the net identifier: the
-// identifier-only spec form forbids initializers structurally
-// (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 — making
-// "identifier-only-with-initializer" unrepresentable rather than a
-// runtime check). A single `wire [7:0] a, b, c;` carries THREE
-// NetIdentifierDeclarators. Conj record (no Practice-4 ledger).
+// identifier-only form). Carries the net identifier and optional
+// unpacked-array dimensions: the identifier-only spec form forbids
+// initializers structurally (openai-pro REQUEST_CHANGES on PR #3176
+// 2026-05-16 — making "identifier-only-with-initializer"
+// unrepresentable rather than a runtime check). Per §A.2.3:
+// `net_identifier [ dimension { dimension } ]` — each identifier
+// admits an OPTIONAL unpacked-array dimension suffix
+// (openai-pro REQUEST_CHANGES on PR #3176 sha 4ccc6267 added this
+// field; the prior shape dropped the per-identifier dimensions fact).
+// A single `wire [7:0] a, b[0:1023], c;` carries THREE
+// NetIdentifierDeclarators (the second with unpacked dimensions).
+// Conj record (no Practice-4 ledger).
 //
-//   - name             the declared net identifier (K-1-opaque
-//                      Symbol).
+//   - name                 the declared net identifier (K-1-opaque
+//                          Symbol).
+//   - unpacked_dimensions  optional unpacked-array dimensions per
+//                          §A.2.3 (reuses UnpackedDimensionsClause).
 type NetIdentifierDeclarator {
   name: Symbol
+  unpacked_dimensions: UnpackedDimensionsClause
 }
 
 
@@ -1659,20 +1668,33 @@ type AnsiNetPortType
 // illegal combinations structurally unrepresentable, mirroring the
 // VariableDeclaration kind×packing×signedness dissolution).
 //
-//   - AnsiInputPort { name: Symbol, net: AnsiNetPortType }
+//   - AnsiInputPort { attributes, net: AnsiNetPortType,
+//                     names: List<Symbol> }
 //       — input ports are net-typed only (the spec forbids
-//       `input reg`).
-//   - AnsiOutputPort { name: Symbol, type_kind: OutputPortAnsiTypeKind }
+//       `input reg`); names form a §A.1.3 list_of_port_identifiers.
+//   - AnsiOutputPort { attributes, type_kind: OutputPortAnsiTypeKind,
+//                     names: List<AnsiOutputPortDeclarator> }
 //       — output ports admit the OutputPortAnsiTypeKind 4-way set
 //       (net, reg, integer, time per §12.3.3 — REAL / REALTIME
-//       outputs are excluded per spec). The closed 4-way partition
-//       is structural per the OutputPortAnsiTypeKind ledger below;
-//       corrected per codex BLOCKING on PR #3176 2026-05-16 — the
-//       prior reuse of a generic 6-way ANSI-port carrier admitted
-//       spec-forbidden `output real` / `output realtime`.
-//   - AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
+//       outputs are excluded per spec). Names form a §A.1.3
+//       list_of_variable_port_identifiers (each declarator admits
+//       an optional initializer for variable-typed output ports).
+//       The closed 4-way partition is structural per the
+//       OutputPortAnsiTypeKind ledger below; corrected per codex
+//       BLOCKING on PR #3176 2026-05-16 — the prior reuse of a
+//       generic 6-way ANSI-port carrier admitted spec-forbidden
+//       `output real` / `output realtime`.
+//   - AnsiInoutPort { attributes, net: AnsiNetPortType,
+//                    names: List<Symbol> }
 //       — inout ports are net-typed only (bidirectional requires
-//       nets; `inout reg` is a spec violation).
+//       nets; `inout reg` is a spec violation); names form a
+//       §A.1.3 list_of_port_identifiers.
+//
+// All three variants gained an `attributes: AttributeInstanceClause`
+// prefix and a non-empty `names` list at sha 4ccc6267 per openai-pro
+// REQUEST_CHANGES (Layer-Model BLOCKING) — the prior single-name-no-
+// attributes shape dropped §A.1.3 attribute-instance and
+// list_of_port_identifiers declaration-boundary facts.
 //
 // CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits exactly
 // these three direction-bearing ANSI-port forms; SystemVerilog
@@ -1826,7 +1848,7 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Twenty-one sites in this file carry `List<T>` payloads where IEEE
+// Twenty-four sites in this file carry `List<T>` payloads where IEEE
 // 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
 // state is structurally representable, the same INVARIANTS P2
 // illegal-states-unrepresentable concern codex / openai-pro
@@ -1853,16 +1875,16 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the twenty-one spec-non-empty sites keeps `List<T>` for now.
+// - Each of the twenty-four spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
 // - DISSOLUTION TRIGGER: when `std/collection.dag` Wave-A2 lands the
-//   non-empty refinement, the twenty-one sites adopt
+//   non-empty refinement, the twenty-four sites adopt
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The twenty-one spec-non-empty sites (back-pointers to this note):
+// The twenty-four spec-non-empty sites (back-pointers to this note):
 //   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
 //   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
 //   3. NetDeclaration.TriregIdentifierForm.identifiers    (§A.2.1.3)
@@ -1885,6 +1907,9 @@ type ParameterTypeKind
 //  19. GenvarDeclaration.genvar_names                (§A.2.1.1)
 //  20. UdpInstantiation.instances                    (§A.5.2)
 //  21. PortDeclaration.names                          (§A.2.1.2)
+//  22. AnsiPortDeclaration.AnsiInputPort.names        (§A.1.3)
+//  23. AnsiPortDeclaration.AnsiOutputPort.names       (§A.1.3)
+//  24. AnsiPortDeclaration.AnsiInoutPort.names        (§A.1.3)
 //
 // Sites previously numbered 7-9 added 2026-05-16 per codex
 // REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
@@ -1916,10 +1941,11 @@ type ParameterTypeKind
 // DefparamDeclaration / EventDeclaration / GenvarDeclaration each
 // gained a non-empty list of per-entry sub-records (new
 // DefparamAssignment Conj for §A.2.5 list_of_defparam_assignments;
-// `event_names: List<Symbol>` for §A.2.1.4 list_of_event_identifiers;
-// `genvar_names: List<Symbol>` for §A.2.1.1 list_of_genvar_
-// identifiers) — restoring the spec statement-boundary lost by the
-// prior singular-entry shape. UdpInstantiation refactored to the
+// `event_declarators: List<EventDeclarator>` for §A.2.1.4
+// list_of_event_identifiers (later sha 4ccc6267 added per-identifier
+// dimensions via EventDeclarator); `genvar_names: List<Symbol>` for
+// §A.2.1.1 list_of_genvar_identifiers) — restoring the spec
+// statement-boundary lost by the prior singular-entry shape. UdpInstantiation refactored to the
 // same shared-header + non-empty-instance-list pattern as
 // ModuleInstantiation, per §A.5.2 `udp_identifier [drive_strength]
 // [delay2] udp_instance { , udp_instance } ;` — shared
@@ -1932,6 +1958,18 @@ type ParameterTypeKind
 // reshape from singular-name to list-form mirrors the Defparam/
 // Event/Genvar list-form precedent under §A.2.1.2 list_of_port_
 // identifiers; the non-empty list rides the same RQ-3 deferral.
+// Sites 22-24 added 2026-05-16 per openai-pro REQUEST_CHANGES on
+// PR #3176 at sha 4ccc6267 (Layer-Model BLOCKING on
+// AnsiPortDeclaration per-single-name carrier): the three ANSI port
+// direction variants reshape from `name: Symbol` singletons to
+// non-empty name-lists (AnsiInputPort/AnsiInoutPort use
+// `List<Symbol>` per §A.1.3 list_of_port_identifiers; AnsiOutputPort
+// uses `List<AnsiOutputPortDeclarator>` per §A.1.3
+// list_of_variable_port_identifiers — output variable-ports admit
+// per-port initializers via the existing VariableInitializerClause
+// Disj). All three new non-empty lists ride the same RQ-3 /
+// std/collection.dag Wave-A2 deferral; no verilog-local
+// NonEmptyList mint.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2239,8 +2277,39 @@ type InitialBlock {
 // classifier; the expression sub-grammar is deferred to T-4
 // LanguageModel.
 type PortConnectionActual
-  = ExpressionConnection { attributes: AttributeInstanceClause, expression_lexeme: String }
-  | BlankConnection { attributes: AttributeInstanceClause }
+  = ExpressionConnection { expression_lexeme: String }
+  | BlankConnection
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OrderedPortConnection — one element of a positional port-binding
+// list (IEEE 1364-2005 §A.4.1.1):
+//
+//   ordered_port_connection ::= { attribute_instance } [ expression ]
+//
+// The §A.4.1.1 grammar places the attribute_instance prefix at the
+// ordered_port_connection element level — the same level where
+// named_port_connection carries its attribute prefix. The earlier
+// shape (sha cba903a3e) put attributes ON each PortConnectionActual
+// variant, which then double-authoritied named connections
+// (NamedPortConnection.attributes + actual.attributes both present
+// for one syntactic binding) — openai-pro REQUEST_CHANGES on
+// PR #3176 sha 4ccc6267 flagged the double-authority. Resolution:
+// strip attributes from PortConnectionActual (the inner blank-vs-
+// expression Disj is shared between ordered and named forms;
+// attributes live at the OUTER wrapping level) and wrap the
+// positional case in this OrderedPortConnection Conj that mirrors
+// NamedPortConnection's outer-attribute placement.
+// Conj record (no Practice-4 ledger).
+//
+//   - attributes   the optional attribute_instance prefix per
+//                  §A.4.1.1 (reuses AttributeInstanceClause).
+//   - actual       the connection's expression-or-blank inner form
+//                  (PortConnectionActual).
+type OrderedPortConnection {
+  attributes: AttributeInstanceClause
+  actual: PortConnectionActual
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2350,7 +2419,7 @@ type PortConnections
       // 🟡 spec-non-empty (§A.4.1.1 ordered_port_connection list) —
       // deferred to std/collection.dag Wave-A2 `List<T> where
       // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
-      actuals: List<PortConnectionActual>
+      actuals: List<OrderedPortConnection>
     }
   | NamedConnections {
       // 🟡 spec-non-empty (§A.4.1.1 named_port_connection list) —
@@ -2768,30 +2837,58 @@ type FunctionDeclaration {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// EventDeclarator — one (name, optional-unpacked-dimensions) entry
+// in an event_declaration's list_of_event_identifiers (IEEE 1364-2005
+// §A.2.1.4 / §A.2.3). Per spec:
+//
+//   list_of_event_identifiers ::= event_identifier [ dimension
+//                                 { dimension } ]
+//                               { , event_identifier [ dimension
+//                                 { dimension } ] }
+//
+// each event identifier admits an OPTIONAL unpacked-array dimension
+// suffix (openai-pro REQUEST_CHANGES on PR #3176 sha 4ccc6267 — the
+// prior Symbol-only shape dropped the per-identifier dimensions
+// fact). Conj record (no Practice-4 ledger).
+//
+//   - name                 the event identifier (K-1-opaque Symbol).
+//   - unpacked_dimensions  optional unpacked-array dimensions per
+//                          §A.2.3 (reuses UnpackedDimensionsClause).
+type EventDeclarator {
+  name: Symbol
+  unpacked_dimensions: UnpackedDimensionsClause
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // EventDeclaration — a Verilog named-event declaration (`event ev1,
-// ev2, ev3;`). IEEE 1364-2005 §9.7.3 / §10.3 / §A.2.1.4. Named events
-// are explicitly-triggered control-flow primitives (`-> ev;` triggers,
-// `@ev` waits). Per spec §A.2.1.4 grammar:
+// ev2, ev3;` / `event log[0:255];`). IEEE 1364-2005 §9.7.3 / §10.3 /
+// §A.2.1.4. Named events are explicitly-triggered control-flow
+// primitives (`-> ev;` triggers, `@ev` waits). Per spec §A.2.1.4
+// grammar:
 //
 //   event_declaration ::= event list_of_event_identifiers ;
-//   list_of_event_identifiers ::= event_identifier
-//                               { , event_identifier }
+//   list_of_event_identifiers ::= event_identifier [ dimension
+//                                 { dimension } ]
+//                               { , event_identifier [ dimension
+//                                 { dimension } ] }
 //
-// a single `event` statement declares a NON-EMPTY list of event
-// identifiers under a shared `event` keyword. The prior singular-name
-// shape lost the §A.2.1.4 statement-boundary (shared `event` keyword
-// across multi-identifier forms) — openai-pro REQUEST_CHANGES on
-// PR #3176 2026-05-16 at line 2315 (grouped with DefparamDeclaration
-// / GenvarDeclaration). Conj record (no Practice-4 ledger).
+// a single `event` statement declares a NON-EMPTY list of
+// (name, optional-dimensions) entries under a shared `event` keyword
+// (sha 4ccc6267 openai-pro REQUEST_CHANGES — per-identifier
+// dimensions added via EventDeclarator). The prior singular-name
+// shape lost the §A.2.1.4 statement-boundary; the prior
+// Symbol-only-list shape dropped the per-identifier dimensions.
+// Conj record (no Practice-4 ledger).
 //
-//   - event_names    the non-empty list of event identifiers (K-1-
-//                    opaque Symbols) declared under this single
-//                    `event` statement.
+//   - event_declarators   the non-empty list of EventDeclarator
+//                         entries declared under this single
+//                         `event` statement.
 type EventDeclaration {
   // 🟡 spec-non-empty (§A.2.1.4 list_of_event_identifiers) —
   // deferred to std/collection.dag Wave-A2 `List<T> where
   // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
-  event_names: List<Symbol>
+  event_declarators: List<EventDeclarator>
 }
 
 
@@ -3155,27 +3252,88 @@ type UdpDefinition {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// SpecparamAssignment — one element of a specparam declaration's
+// list_of_specparam_assignments (IEEE 1364-2005 §A.2.4):
+//
+//   specparam_assignment ::=
+//       specparam_identifier = constant_mintypmax_expression
+//     | pulse_control_specparam
+//   pulse_control_specparam ::=
+//       PATHPULSE$ = ( reject_limit_value [ , error_limit_value ] ) ;
+//     | PATHPULSE$specify_input_terminal_descriptor
+//             $specify_output_terminal_descriptor
+//             = ( reject_limit_value [ , error_limit_value ] ) ;
+//
+// The two alternatives have distinct spec syntax — pulse_control_
+// specparam is NOT a `name = expr` form; it's the special
+// `PATHPULSE$...` family. The prior shape reused ParameterAssignment
+// `{ name: Symbol, default_lexeme: String }`, forcing every specparam
+// to claim a name+value shape — which made pulse_control_specparam
+// unrepresentable as a structural variant (openai-pro REQUEST_CHANGES
+// on PR #3176 sha 4ccc6267). Split into a specparam-specific Disj
+// over the two §A.2.4 spec alternatives.
+//
+//   - NamedSpecparamAssignment
+//       — `specparam T_rise = 1.0;` form: identifier + constant
+//       mintypmax-expression lexeme.
+//   - PulseControlSpecparam
+//       — `PATHPULSE$ = (1.5, 2.0);` / `PATHPULSE$in$out =
+//       (1.5);` form: the entire PATHPULSE$... directive as a
+//       verbatim lexeme (sub-grammar — terminal descriptors +
+//       reject/error limit values — deferred to the bundled T-4
+//       LanguageModel via the established body_lexeme precedent).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.2.4 admits exactly the
+// two specparam_assignment alternatives.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every specparam-emission consumer
+//      branches on the form (named-value vs pulse-control); shared
+//      classifier.
+//   2. Variant-is-data — FAILS: reusing ParameterAssignment (prior
+//      shape) forced pulse_control_specparam to claim a `name +
+//      value_lexeme` shape it doesn't have, losing the PATHPULSE$
+//      form as a structural variant.
+//   3. Algebraic form — N/A by construction: the two alternatives
+//      are the §A.2.4 spec's irreducible partition.
+//   4. Dimensional — FAILS: a single specparam_assignment is
+//      EXACTLY ONE form; mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: NamedSpecparamAssignment
+//      carries `{ name: Symbol, value_lexeme: String }`;
+//      PulseControlSpecparam carries `{ lexeme: String }` (no name
+//      field — the PATHPULSE$... directive has its own internal
+//      identifier structure) — structurally heterogeneous
+//      (Practice 7).
+// Terminal: the closed two-way Verilog specparam_assignment
+// classifier of the IEEE 1364-2005 §A.2.4 spec.
+type SpecparamAssignment
+  = NamedSpecparamAssignment { name: Symbol, value_lexeme: String }
+  | PulseControlSpecparam { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // SpecparamDeclaration — a Verilog `specparam` declaration. IEEE
 // 1364-2005 §14.3.1 + §12.2 + §A.2.1.1. Specify parameters are
 // distinct from ordinary parameters: they are intended for timing-
 // check values (rise/fall/hi-Z transitions, pulse-control limits)
 // and CANNOT be used as bit-vector widths or array indices per spec.
 // Per spec grammar specparam admits an optional range and a list of
-// specparam_assignments. Conj record (no Practice-4 ledger).
+// specparam_assignments (sha 4ccc6267 openai-pro REQUEST_CHANGES —
+// specparam_assignment carrier split via SpecparamAssignment Disj
+// above to admit both NamedSpecparamAssignment + PulseControlSpecparam
+// alternatives per §A.2.4). Conj record (no Practice-4 ledger).
 //
 //   - packing       optional range (`specparam [9:0]`); applies to
 //                   all assignments in this declaration.
-//   - assignments   the list_of_specparam_assignments — each
-//                   ParameterAssignment carries name + default_lexeme.
-//                   Reusing ParameterAssignment per the shared
-//                   (name, value-expression-lexeme) shape;
-//                   specparam-specific pulse-control variants are
-//                   admitted via the assignment's lexeme.
+//   - assignments   the list_of_specparam_assignments per §A.2.4;
+//                   each entry is one of the two SpecparamAssignment
+//                   variants (named-value or pulse-control).
 type SpecparamDeclaration {
   packing: PackingShape
   // 🟡 spec-non-empty (§A.2.1.1) — deferred to std/collection.dag
   // Wave-A2 refinement; see shared TRACKED-SCAFFOLD note above.
-  assignments: List<ParameterAssignment>
+  assignments: List<SpecparamAssignment>
 }
 
 
