@@ -1,21 +1,216 @@
 // src/v4/std/collection.dag
 //
-// Scope: bounded containers — every collection carries cardinality and element type.
-// Anchor: https://en.wikipedia.org/wiki/Free_monoid (List/String) + https://en.wikipedia.org/wiki/Algebra_of_sets (Set/Map)
+// Scope: bounded containers — every collection grounds structurally in
+//        an algebra from std/algebra.dag, so the collection-side
+//        operations are reads of that algebra, never an enumerated
+//        per-op table (the NO-ENGINE STOP per std/algebra.dag header
+//        U1).
+// Anchor: https://en.wikipedia.org/wiki/Free_monoid (List/Map) +
+//         https://en.wikipedia.org/wiki/Algebra_of_sets (Set)
 //
 // Owns:
-//   - List<T, n: Cardinality>, Set<T, n>, Map<K, V, n>
-//   - operations defined as algebra-instance, not enumerated
+//   - List<T>        — finite sequences (the free-monoid carrier over T)
+//   - Set<T>         — membership-predicate carrier
+//   - MapEntry<K, V> — single (key, value) pair
+//   - Map<K, V>      — finite associations (the free-monoid carrier
+//                      over MapEntry<K, V>, with a uniqueness-of-keys
+//                      discipline — see modeling notes)
+//
+// Each container's operations FALL OUT of its algebra grounding:
+//   - List<T>      grounds in FreeMonoid<T> by the structural alias;
+//                  fold ops read a Monoid<T> the call site supplies
+//                  (the brief's "Monoid for fold").
+//   - Set<T>       grounds in BooleanAlgebra<Set<T>> by the pointwise
+//                  extension of Bool's BooleanAlgebra (union =
+//                  pointwise OR, intersect = pointwise AND, complement
+//                  = NOT, empty = constant false, universe = constant
+//                  true).
+//   - Map<K, V>    grounds in FreeMonoid<MapEntry<K, V>> by the
+//                  structural alias; merge is the monoid op with a
+//                  right-bias rule on duplicate keys (later occurrence
+//                  wins — the standard map-merge semantics; the monoid
+//                  laws hold because the op is associative and the
+//                  empty entry list is identity).
 //
 // Consumes:
-//   - std/node.dag: Cardinality, Instantiation
-//   - std/algebra.dag: Monoid for fold operations
+//   - std/node.dag: the Cardinality and Instantiation connectives are
+//     how the kernel represents these parameterized container types in
+//     the type DAG (no Cardinality TYPE is consumed — see scaffold
+//     note below).
+//   - std/algebra.dag: FreeMonoid<T> (the recursive carrier List/Map
+//     ground in by carrier identity — the same grounding move
+//     algebra.dag's header anticipates: "Concrete sequence types
+//     ground by aliasing onto it"). BooleanAlgebra<T> grounds Set
+//     pointwise but appears here only as a header reference, not as a
+//     parametric data instance (see modeling notes).
+//   (Bool and the type parameters T, K, V are kernel-ambient; Symbol
+//   is substrate-ambient per std/node.dag K-1 — none is imported.)
 //
-// Status: scaffold — fill per TASKS.md T-3
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Cardinality refinement — TRACKED SCAFFOLD (🟡):
+//   The scaffold header named the family "List<T, n: Cardinality>,
+//   Set<T, n>, Map<K, V, n>" — a refinement carrier that surfaces an
+//   exact element count on the type. With std/cardinality.dag still
+//   in flight (#3163, T-3 Wave-A2), no Cardinality TYPE is consumable
+//   yet; only the Cardinality CONNECTIVE in std/node.dag exists.
+//   Today's modeling treats cardinality as INTRINSIC to the carrier
+//   (length-of-FreeMonoid for List/Map; count-of-`true`-elements for
+//   Set), not as a refinement parameter — the three bridge
+//   properties:
+//     (a) scaffold doc — THIS note; cardinality is read off the
+//         carrier shape, not declared on the type.
+//     (b) bounds on use — pipeline stages reading a Cardinality fact
+//         derive it by walking the FreeMonoid spine (List/Map) or by
+//         folding `member` against an enumerable T (Set, where T's
+//         enumerability is itself a structural fact).
+//     (c) dissolution trigger — when std/cardinality.dag lands its
+//         refinement substrate, the carrier-derived count becomes a
+//         refinement read at the type level (`List<T, n>`,
+//         `Set<T, n>`, `Map<K, V, n>`) and this scaffold note
+//         dissolves.
+//
+// NO ENGINE — NO ENUMERATED OPS. There is deliberately no
+// `list_concat` / `set_union` / `map_lookup` table here: those would
+// be a parallel representation of structure std/algebra.dag already
+// owns (the `kernel_algebra_profile` debt v3 carried, which
+// std/algebra.dag's U1 note explicitly forbids — "not a name-keyed
+// table lookup"). Consumers read the algebra structures from
+// algebra.dag and the carrier shapes here; ops are reads of that one
+// authority, not table rows.
+//
+// Status: T-3 modeled 2026-05-16 (witty-dove-121). This header is the
+// I/O contract downstream workers build to; splitting this file
+// requires explicit operator ratification (substrate extension = stop
+// signal).
 
 
 module v4.std.collection
 
+
+import v4.std.algebra { FreeMonoid }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CARRIERS, NOT STRUCTURES. This file owns CONTAINER CARRIERS. The
+// algebra structures they ground in (Monoid, BooleanAlgebra) are owned
+// by std/algebra.dag; the inhabitant owns its OWN grounding here per
+// std/algebra.dag's SCOPE note. The grounding is the structural
+// alias / pointwise lift — there is no per-carrier `data
+// <name>: <Algebra><Carrier> = <Algebra> { … }` instance, for two
+// reasons that compose:
+//   (i)  v2-data instance-values are not parametric — no precedent for
+//        `data list_T_monoid<T>: Monoid<List<T>> = Monoid { … }` in
+//        the v2 seed (the closest precedent is concrete-typed `data
+//        timing_lens_monoid: Monoid<TimingMeasurement>` in v3
+//        timing_lens.dag), and a parametric instance would need a
+//        substrate the seed doesn't yet have.
+//   (ii) Even if it did, a stored instance would be a SECOND AUTHORITY
+//        for the monoid the FreeMonoid carrier already IS (INVARIANTS
+//        P2 — the std/algebra.dag header U1's "engine debt" — a
+//        name-keyed table lookup mirroring the structure it traces).
+// The aliasing IS the inhabitance — the same pattern std/text.dag
+// uses for `String = FreeMonoid<Char>`.
+//
+// NO NEW COPRODUCTS. Every declaration below is either a TYPE ALIAS
+// onto a coproduct owned elsewhere (List, Map → FreeMonoid in
+// algebra.dag) or a Conj record (Set, MapEntry). No new Disj declared
+// here means no new Practice-4 5-pattern ledger applies — the
+// FreeMonoid<T> ledger already lives in algebra.dag and is the one
+// authority.
+//
+// OPS FALL OUT OF GROUNDING — illustrated, not enumerated. The header
+// names which algebra each carrier grounds in and how the ops project.
+// Authoring those projections as concrete functions here would be the
+// per-op table the brief forbids; they are pipeline-stage / lens reads
+// of (carrier shape) ⊗ (algebra structure), consumed at the use site.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// List<T> — finite sequences of T. Structurally identical to
+// FreeMonoid<T> (Empty | Cons { head, tail }); the alias IS the
+// inhabitance — by being a FreeMonoid<T>, List<T> is a free-monoid
+// carrier and inherits the Monoid structure with no parallel data
+// instance (std/algebra.dag header: "Concrete sequence types ground
+// by aliasing onto it (e.g. a text type onto FreeMonoid over a char
+// type)").
+//
+// Operations (concat, length, fold, map, filter, head, tail) are
+// STRUCTURAL READS of the FreeMonoid Empty/Cons constructors composed
+// with a Monoid<T> the CALL SITE supplies — never enumerated here.
+// The element type's algebra is the only authority for the per-call
+// reduction; the carrier shape is the only authority for the
+// recursion.
+//
+// This declaration is a type ALIAS onto a coproduct owned by
+// std/algebra.dag (the FreeMonoid<T> = Empty | Cons ledger lives
+// there). No new Practice-4 ledger applies — there is no new
+// coproduct to dissolve at this layer.
+type List<T> = FreeMonoid<T>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// MapEntry<K, V> — one (key, value) pair. Conj record (no Practice-4
+// ledger; records do not dissolve to a richer source). MapEntry is
+// the element of the Map<K, V> free monoid; the key is treated as
+// MEMBERSHIP IDENTITY (uniqueness discipline lives on Map, not on
+// the entry — see Map's modeling note).
+type MapEntry<K, V> {
+  key: K
+  value: V
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Map<K, V> — finite associations from K to V. Modeled as the free
+// monoid over MapEntry<K, V>: an ordered sequence of entries; the
+// monoid op is concatenation with a right-bias rule on duplicate keys
+// (later occurrence wins — the standard map-merge semantics). The
+// monoid laws hold because concatenation is associative and the empty
+// entry list is identity.
+//
+// Uniqueness-of-keys is a SEMANTIC discipline producers honor, not a
+// type-enforced invariant in v4 today — the refinement substrate that
+// would express it lives in std/cardinality.dag + std/witness.dag
+// (both T-3, in flight; collection.dag is Wave-A1 by the operator's
+// split, ahead of them). The grounded definition + its dissolution
+// trigger live in the Cardinality scaffold note in the file header
+// above; once the refinement substrate lands, `Map<K, V>` becomes a
+// `FreeMonoid<MapEntry<K, V>>` refined by `unique_keys`, and the
+// uniqueness obligation moves from producer-side to type-enforced.
+//
+// As with List, this is a type ALIAS onto algebra.dag's
+// FreeMonoid<…> coproduct; no new Practice-4 ledger applies here.
+type Map<K, V> = FreeMonoid<MapEntry<K, V>>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Set<T> — finite subsets of T, modeled as a membership-predicate
+// carrier. A `Set<T>` IS its `member` function: x ∈ S iff
+// `S.member(x) == true`. This is the textbook denotational form
+// (Wikipedia "Algebra of sets"): a set is a function T → Bool.
+//
+// Algebra grounding — Set<T> inhabits BooleanAlgebra<Set<T>> by
+// POINTWISE EXTENSION of Bool's BooleanAlgebra:
+//
+//   union(a, b)              ≡ member: λx. a.member(x) || b.member(x)
+//   intersect(a, b)          ≡ member: λx. a.member(x) && b.member(x)
+//   complement(a)            ≡ member: λx. ! a.member(x)
+//   empty                    ≡ member: λ_. false                (bottom)
+//   universe                 ≡ member: λ_. true                 (top)
+//   is_subset(a, b)          ≡ ∀x. a.member(x) → b.member(x)
+//   difference(a, b)         ≡ intersect(a, complement(b))
+//   symmetric_difference     ≡ union(difference(a,b), difference(b,a))
+//
+// Every one of these falls out of the Bool BooleanAlgebra owned by
+// std/algebra.dag composed with this carrier — there is deliberately
+// no `data set_T_boolean_algebra: BooleanAlgebra<Set<T>>` instance
+// here (the parametric-data + single-authority reasoning in the
+// modeling notes). The pointwise lift IS the inhabitance, exactly the
+// algebra.dag "aliasing is the inhabitant's concern" pattern.
+//
+// Conj record (one field, `member`); not a coproduct — no Practice-4
+// ledger applies.
+type Set<T> {
+  member: fn(T) -> Bool
+}
