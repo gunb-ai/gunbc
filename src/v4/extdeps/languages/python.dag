@@ -166,10 +166,10 @@
 //     (3) per-language operation-semantics. **This slice lands (1) only
 //     where substrate exists** (`PyBool = Bool`); **defers (2) in full**
 //     until operator pins shared `GroundingMap` (see Owns + D2 block);
-//     **lands no (3) carriers** in this file (peer-(a); anchor docs.python.org/
-//     3/reference). The seven retired `data
-//     python_*: PythonScalar = …` registry rows and the `IrToPython<>` /
-//     Layer-2 assert dissolved per #3174 @0328bee9 deletion provenance
+//     **lands no (3) carriers** in this file (peer-(a); D2a(3) anchor:
+//     https://docs.python.org/3/reference/). The seven retired
+//     `data python_*: PythonScalar = …` registry rows and the `IrToPython<>`
+//     correspondence + Layer-2 assert dissolved per #3174 @0328bee9 deletion provenance
 //     (INVARIANTS P1 parallel-cementing path). Remaining D2a(1) aliases for
 //     int/float/singletons 🟡 TRACKED-SCAFFOLD to std/integer.dag |
 //     std/float.dag | std/cardinality.dag (T-3 Wave-A3); D2a(2) rows co-
