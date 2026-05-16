@@ -2,6 +2,7 @@
 //
 // Scope: algebraic primitives that ground every concrete type via inhabitance.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure (Magma, Monoid, Group, FreeMonoid<T>)
+//         + https://en.wikipedia.org/wiki/Power_set (PointwisePower<T>)
 //
 // Owns:
 //   - the algebra-STRUCTURE hierarchy — the THESIS roots AND the derived
@@ -14,6 +15,8 @@
 //         see std/float.dag + DECISIONS.md C5-fidelity)
 //       * BooleanAlgebra (classical logic)
 //       * FreeMonoid<T> (free constructions)
+//       * PointwisePower<T> (power-set / characteristic-function carrier
+//         whose BooleanAlgebra structure is inherited pointwise from Bool)
 //     The "roots" (Magma/Monoid/BooleanAlgebra/FreeMonoid) are where the
 //     ontology bottoms out; the derived structures are compositions of
 //     them — but ALL are declared here, because the scalar files
@@ -21,9 +24,10 @@
 //     AbelianGroup, float→ApproximateField, logic→BooleanAlgebra,
 //     text→FreeMonoid). A scalar's grounding is represented, not
 //     deferred, iff this file owns the structure it names.
-//   - STRUCTURES ONLY. A concrete type declares its OWN inhabitance in
-//     its own file (std/integer.dag, std/logic.dag, …); algebra.dag owns
-//     what gets inhabited, never the instances (P2).
+//   - STRUCTURES + CANONICAL CARRIER CONSTRUCTIONS ONLY. A concrete type
+//     declares its OWN inhabitance in its own file (std/integer.dag,
+//     std/logic.dag, …); algebra.dag owns what gets inhabited or aliased,
+//     never the concrete instances (P2).
 //
 // U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
 //   - ONE carrier: a structure-preserving map between algebras, WITH its
@@ -52,7 +56,9 @@
 //   the consuming lens in its own file — algebra.dag declares structures
 //   only and references no Diagnostic)
 //
-// Status: scaffold — fill per TASKS.md T-2
+// Status: T-2 modeled; D1 header reconcile 2026-05-16 adds
+//   PointwisePower<T> per the operator D1-D ruling (alias-identity
+//   power BooleanAlgebra construction for Set<T>).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -65,12 +71,16 @@ module v4.std.algebra
 // Modeling notes (read before validating against the anchor)
 //
 // SCOPE (operator-ratified 2026-05-15): this file owns algebra
-// STRUCTURES ONLY. Inhabitance — which concrete type grounds in which
-// algebra — is NOT here; the inhabiting type owns its own grounding in
-// its own concept file. There is no inhabitance carrier, no instance,
-// no concrete-type reference. This file consumes std/node.dag ONLY
-// (every `type` below is surface sugar over node.dag's Conj/Disj/Arrow;
-// no other module is named).
+// STRUCTURES and canonical algebraic constructions only. Inhabitance —
+// which concrete type grounds in which algebra — is NOT here; the
+// inhabiting type owns its own grounding in its own concept file. There
+// is no per-concrete-type instance and no concrete-type reference.
+// `FreeMonoid<T>` and `PointwisePower<T>` are the two canonical carrier
+// constructions this file owns because the construction itself is the
+// algebraic fact other concrete types alias onto. This file consumes
+// std/node.dag ONLY (every `type` below is surface sugar over node.dag's
+// Conj/Disj/Arrow; `Bool` is kernel-ambient and not imported from
+// std/logic.dag, avoiding an algebra↔logic cycle).
 //
 // REFINEMENT IS STRUCTURAL NESTING, not field duplication. A stronger
 // algebra CONTAINS the weaker one as a child (Conj composition):
@@ -324,6 +334,36 @@ type FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
+// PointwisePower<T> — the power-set / characteristic-function carrier
+// over T. A value is a predicate T → Bool; BooleanAlgebra operations are
+// inherited POINTWISE from Bool's BooleanAlgebra:
+//   join(a,b).member(x)       = bool.join(a.member(x), b.member(x))
+//   meet(a,b).member(x)       = bool.meet(a.member(x), b.member(x))
+//   complement(a).member(x)   = bool.complement(a.member(x))
+//   top.member(_)             = True
+//   bottom.member(_)          = False
+//
+// Like FreeMonoid<T>, this is a canonical algebraic construction rather
+// than a per-concrete-type instance. Concrete set-like types ground by
+// aliasing onto it (`Set<T> = PointwisePower<T>` in collection.dag);
+// that alias edge is machine-readable identity, so consumers do not need
+// a prose-only `BooleanAlgebra<Set<T>>` side table. The construction is
+// the single authority for the carrier shape; Bool's own
+// `BooleanAlgebra<Bool>` instance remains the single authority for the
+// truth operations being lifted.
+//
+// Cardinality is deliberately absent: the power carrier denotes
+// arbitrary subsets, including universe and complements, so finiteness
+// requires a refinement layer with enumerability evidence on T.
+//
+// Coproduct dissolution: N/A — this is a Conj record (one field), not a
+// sum type. Anchor: Wikipedia "Algebra of sets" / "Power set".
+type PointwisePower<T> {
+  member: fn(T) -> Bool
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Ordering — the result of a total-order comparison. Consumed by
 // OrderedRing.compare. Anchor: order theory (trichotomy: exactly one
 // of <, =, > holds).
@@ -412,4 +452,3 @@ type Homomorphism<C, Source, Target> {
   target: C<Target>
   map: fn(Source) -> Target
 }
-
