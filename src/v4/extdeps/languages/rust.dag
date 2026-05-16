@@ -63,13 +63,17 @@
 //     coordinates total per `&'lifetime mut? TypeNoBounds`, so
 //     `&'a i32` and `&'a str` are distinct facts (P1/P2 fidelity)
 //   - Rust visibility scope: RustVisibility (Private / Pub / PubIn
-//     { path: List<Symbol> }) — the three-way visibility partition
-//     reflecting the Reference's fundamental form
-//     (§visibility-and-privacy), with `pub(crate)` / `pub(self)` /
-//     `pub(super)` folding into PubIn's path-list per the Reference's
-//     stated equivalences. Path-restricted visibility CARRIES its
-//     SimplePath structurally; `pub(in crate::outer_mod)` is
-//     representable.
+//     { path: List<RustPathSegment> }) + RustPathSegment (Crate /
+//     Super / Named { id: Symbol }; NO Self variant) — the three-
+//     way visibility partition reflecting the Reference's
+//     fundamental form (§visibility-and-privacy), with `pub(crate)`
+//     / `pub(super)` canonicalizing to PubIn's path-list per the
+//     Reference's stated equivalences AND `pub(self)` ≡ `pub(in
+//     self)` ≡ no-modifier canonicalizing to Private structurally
+//     (Self is not a constructible segment kind — P2 duplicate-
+//     authority TYPE-ENFORCED, not documented-only). Path-restricted
+//     visibility CARRIES its SimplePath structurally;
+//     `pub(in crate::outer_mod)` is representable.
 //   - Rust per-target cost-realization carrier shape: RustCost (per-
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
@@ -887,6 +891,96 @@ type RustReferenceKind
 
 
 // ─────────────────────────────────────────────────────────────────────
+// RustPathSegment — the closed structural classifier for a segment
+// of a Rust SimplePath, used by RustVisibility.PubIn's path. Per the
+// Reference §paths.html SimplePath grammar:
+//
+//   SimplePath        ::= ::? SimplePathSegment (:: SimplePathSegment)*
+//   SimplePathSegment ::= IDENTIFIER | super | self | crate | $crate
+//
+// This carrier admits THREE kinds of segments — the two keyword
+// segments (`crate` / `super`) and identifier segments — but
+// DELIBERATELY EXCLUDES `self`. The `self` keyword in path position
+// is a CANONICALIZATION fact: per the Reference's three-way
+// equivalence, `pub(self)` ≡ `pub(in self)` ≡ no-modifier =
+// `RustVisibility.Private` (see RustVisibility below). Excluding
+// `Self` from RustPathSegment makes the duplicate-authority state
+// `PubIn { path: [Self] }` STRUCTURALLY UNREPRESENTABLE — illegal
+// states unrepresentable per modeling-discipline.md §Practices 2/6
+// AND INVARIANTS P2 single-authority, NOT documented-only.
+// (`$crate` is a macro-context segment scope-negative for this
+// slice; it lands as a C1 edit to this declaration when hygienic-
+// macro support lands — see SCOPE NEGATIVE in the header notes.
+// Multi-segment paths like `self::outer_mod` are canonicalized at
+// the parse boundary to drop the leading self per Reference §paths
+// — `self::X` IS `X` from the current module's POV.)
+// Spec: https://doc.rust-lang.org/reference/paths.html
+//
+//   - Crate              the `crate` keyword (the current crate
+//                        root); appears as a path-segment in
+//                        `pub(crate)` (canonicalizes to PubIn
+//                        { path: [Crate] }) and as a leading
+//                        segment in `pub(in crate::module)`
+//   - Super              the `super` keyword (the parent module);
+//                        appears in `pub(super)` and in chained
+//                        forms like `pub(in super::super::module)`
+//                        (multiple Super segments are admissible —
+//                        each ascends one module level)
+//   - Named { id: Symbol }
+//                        a module-identifier segment; the segment
+//                        identity IS the opaque Symbol per K-1.
+//                        Used for module-qualified paths like
+//                        `pub(in crate::outer_mod::inner_mod)`
+//                        where `outer_mod` and `inner_mod` are
+//                        Named segments.
+//
+// NO `Self` variant — per the P2 type-enforcement rationale above.
+//
+// CLOSED (C1 stop-signal). A fourth segment kind (e.g. `MacroCrate`
+// for `$crate`) is an edit to THIS declaration under the L-2 pin
+// discipline. The closure is the Reference's SimplePathSegment
+// partition minus `self`; future macro support lands `MacroCrate`
+// as a visible diff.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every PubIn consumer that walks the
+//      path branches on the segment kind (emission of `crate` /
+//      `super` keywords vs identifier text); shared classifier, not
+//      scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{ name:
+//      Symbol }` reopens the readable-string-as-tag K-1 anti-
+//      pattern (a `match name { "crate" => … }` smell). The
+//      keyword segments are STRUCTURAL, not name-distinguishable
+//      from identifier segments at the K-1 boundary; the closed
+//      Disj IS the faithful form.
+//   3. Algebraic form — N/A by construction: the three segment
+//      kinds are the Reference's path-segment partition; they do
+//      not trace to a richer std/ algebraic structure (path
+//      segments are syntactic / namespace facts, not algebraic).
+//      No richer std/ source.
+//   4. Dimensional — FAILS: a single path segment IS EXACTLY ONE
+//      kind; mutually-exclusive alternatives. (A multi-segment
+//      path is a List<RustPathSegment>, where each element picks
+//      one of these — the dimensional model lives at the List
+//      level, not on this enum.)
+//   5. Parameterized family — FAILS: the three variants are
+//      structurally heterogeneous (Crate / Super are nullary
+//      keyword markers; Named carries a Symbol identifier) — NOT
+//      one generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The keyword-vs-identifier split is
+//      irreducible per the Reference's SimplePathSegment grammar.
+// Terminal: the closed three-way Rust path-segment classifier
+// (per Reference §paths.html, minus the canonicalized `self` and
+// scope-negative `$crate`). The Self exclusion is the structural
+// P2 enforcement that pub(self) ≡ Private.
+type RustPathSegment
+  = Crate
+  | Super
+  | Named { id: Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // RustVisibility — the closed Rust item-visibility classifier. The
 // Rust Reference §visibility-and-privacy partitions item visibility
 // into TWO fundamental forms — unrestricted (`pub`) and path-
@@ -920,49 +1014,68 @@ type RustReferenceKind
 //               (`rust_visibility_well_formed`) enforces this.
 //   - Pub     — `pub`         publicly visible (no restriction
 //               beyond the defining crate's API surface)
-//   - PubIn { path: List<Symbol> }
+//   - PubIn { path: List<RustPathSegment> }
 //             — `pub(in SimplePath)` — visible to the module at
-//               the given SimplePath. The path is a List<Symbol> of
-//               its segments, each segment a K-1-opaque Symbol (the
-//               spellings `crate` / `super` / module identifiers
-//               live in the boundary intern table per node.dag:70-86;
-//               equality on the segment Symbols distinguishes
-//               `pub(in crate)` from `pub(in super)` etc.). The
-//               convenience forms `pub(crate)` / `pub(super)` are
-//               EQUAL (per Reference) to `PubIn { path: [crate-symbol] }`
-//               / `[super-symbol]` respectively; multi-segment paths
-//               like `pub(in crate::outer_mod)` are represented as
-//               `PubIn { path: [crate-symbol, outer_mod-symbol] }`
-//               — the path fact preserved structurally, not dropped.
-//               `pub(self)` / `pub(in self)` are NOT folded here:
-//               they are syntactic equivalents of NO-MODIFIER, and
-//               their canonical representation is `Private` (per the
-//               Reference's three-way equivalence above). A
-//               `PubIn { path: [self-symbol] }` value is structurally
-//               ill-formed and is the producer-obligation invariant
-//               below enforces; admitting it would create two
-//               authorities for the no-modifier visibility scope, the
-//               P2 violation this carrier exists to prevent.
+//               the given SimplePath. The path is a
+//               `List<RustPathSegment>` where RustPathSegment is the
+//               closed typed-segment classifier (declared above):
+//               `Crate` / `Super` for the keyword segments;
+//               `Named { id: Symbol }` for module-identifier
+//               segments; NO `Self` variant. The convenience forms
+//               `pub(crate)` / `pub(super)` canonicalize to
+//               `PubIn { path: [Crate] }` / `PubIn { path: [Super] }`
+//               respectively; multi-segment paths like
+//               `pub(in crate::outer_mod)` are `PubIn { path:
+//               [Crate, Named { id: outer_mod_symbol }] }`. Multi-
+//               segment paths starting with `self` (e.g.,
+//               `pub(in self::outer_mod)`) are canonicalized at the
+//               parse boundary to drop the `self` segment (per
+//               Reference §paths — `self::X` IS `X` from the current
+//               module's POV).
+//               `pub(self)` / `pub(in self)` are STRUCTURALLY
+//               UNREPRESENTABLE as PubIn — RustPathSegment has no
+//               Self variant. Per Reference's three-way equivalence
+//               (pub(self) ≡ pub(in self) ≡ no-modifier), their
+//               canonical representation is `Private`. The model
+//               does NOT admit a `PubIn { path: [Self] }` value
+//               because Self isn't a constructible segment kind —
+//               P2 single-authority TYPE-ENFORCED (illegal states
+//               unrepresentable, NOT documented-only).
 //               P2 single-authority: each Reference visibility scope
 //               has EXACTLY ONE canonical representation in this
-//               partition.
+//               partition, enforced structurally by RustPathSegment's
+//               closed Disj.
 //
-// (Corrected 2026-05-16 per TWO BLOCKING operator reviews on PR
-// #3174:
+// (Corrected 2026-05-16 per THREE BLOCKING reviews on PR #3174:
 //   1. Prior 4-way partition `Private | Crate | Super | Pub` dropped
 //      the `pub(in SimplePath)` path fact (P1 + P2 violation).
-//   2. Folding ALL `pub(in path)` syntactic forms into PubIn
-//      included `pub(in self)` / `pub(self)` — both Reference-
-//      equivalent to NO-MODIFIER (Private), so the model admitted
-//      TWO authorities for the same visibility scope: `Private` AND
-//      `PubIn { path: [self-symbol] }` (P2 violation: two
-//      authorities for the no-modifier scope).
-// The corrected partition fixes BOTH: PubIn carries the SimplePath
-// for `pub(crate)` / `pub(super)` / `pub(in <path>)` (preserves the
-// path fact, P1 restored), but `pub(self)` / `pub(in self)` /
-// no-modifier ALL canonicalize to `Private` (single authority,
-// P2 restored). The well-formedness fn below makes
-// `PubIn { path: [self-symbol] }` an explicit producer-side error.)
+//   2. Folding ALL `pub(in path)` syntactic forms into a
+//      `PubIn { path: List<Symbol> }` included `pub(in self)` /
+//      `pub(self)` — both Reference-equivalent to NO-MODIFIER
+//      (Private), so the model admitted TWO authorities for the
+//      same visibility scope: `Private` AND
+//      `PubIn { path: [self-symbol] }` (P2 violation).
+//   3. The remediation in fix 2 documented the invariant as a
+//      producer obligation only (`rust_visibility_well_formed`
+//      noop fn / doc-comment) — but the structural state
+//      `PubIn { path: [self-symbol] }` was still CONSTRUCTIBLE
+//      (codex REQUEST_CHANGES 2026-05-16T02:51:57Z: "the
+//      single-authority rule for pub(self)/pub(in self) vs Private
+//      is not structurally enforced by the model being introduced
+//      here"). The illegal-states-unrepresentable discipline
+//      (Practices 2 & 6) requires STRUCTURAL enforcement.
+// The final corrected partition introduces `RustPathSegment`
+// as the closed typed-segment classifier (declared above this type)
+// with NO Self variant. `PubIn { path: List<RustPathSegment> }`
+// thus STRUCTURALLY excludes the `[Self]` case — Self isn't a
+// constructible segment kind, so the illegal duplicate-authority
+// state is unrepresentable by construction, NOT by documentation.
+// The `self` keyword's canonicalization to `Private` is type-
+// enforced. (Multi-segment paths involving `self` like
+// `pub(in self::outer)` canonicalize at the parse boundary by
+// dropping the leading self segment — `self::outer` IS `outer` in
+// the current module per Reference §paths; the structural carrier
+// only ever sees the non-self form.))
 //
 // CLOSED (C1 stop-signal). A fourth top-level form is an edit to
 // THIS declaration under the L-2 pin discipline. The PubIn variant
@@ -986,16 +1099,17 @@ type RustReferenceKind
 //      construction; the Disj-with-payloads is the dissolved form
 //      per P2 + Practice 2/6 + M4).
 //   3. Algebraic form — PARTIAL: visibility scopes form a partial
-//      order (Private ⊑ PubIn { path: [super] } ⊑ PubIn { path:
-//      [crate] } ⊑ Pub for items in a nested module — and PubIn
+//      order (Private ⊑ PubIn { path: [Super] } ⊑ PubIn { path:
+//      [Crate] } ⊑ Pub for items in a nested module — and PubIn
 //      paths in general are ordered by module containment;
-//      pub(self) ≡ Private is not a separate level). The partial-
-//      order is DERIVED FROM the closed enum + the namespace's
-//      module-containment relation, not a richer std/ source —
-//      pointing to a `BoundedLattice<RustVisibility>` would
-//      parallel-represent the visibility taxonomy the order is
-//      defined over (algebra.dag U1 engine-debt smell — the same
-//      argument ptx.dag's BarrierScope ledger makes).
+//      pub(self) ≡ Private is structurally enforced, not a
+//      separate level). The partial-order is DERIVED FROM the
+//      closed enum + the namespace's module-containment relation,
+//      not a richer std/ source — pointing to a
+//      `BoundedLattice<RustVisibility>` would parallel-represent
+//      the visibility taxonomy the order is defined over
+//      (algebra.dag U1 engine-debt smell — the same argument
+//      ptx.dag's BarrierScope ledger makes).
 //   4. Dimensional — FAILS: a single Rust item has EXACTLY ONE
 //      visibility modifier; the three variants are mutually-
 //      exclusive alternatives (an item is private, OR `pub`, OR
@@ -1013,61 +1127,38 @@ type RustReferenceKind
 // Terminal: the closed three-way Rust item-visibility partition
 // reflecting the Reference's fundamental form. Reference equivalences
 // canonicalize to: `pub(crate)` / `pub(in crate)` → `PubIn { path:
-// [crate-symbol] }`; `pub(super)` / `pub(in super)` → `PubIn { path:
-// [super-symbol] }`; `pub(self)` / `pub(in self)` / no-modifier →
-// `Private` (NOT PubIn — Reference says all three are the no-
-// modifier scope). The well-formedness fn below enforces the
-// canonical mapping.
+// [Crate] }`; `pub(super)` / `pub(in super)` → `PubIn { path:
+// [Super] }`; `pub(self)` / `pub(in self)` / no-modifier → `Private`
+// (STRUCTURALLY UNREPRESENTABLE as PubIn — RustPathSegment has no
+// Self variant).
 type RustVisibility
   = Private
   | Pub
-  | PubIn { path: List<Symbol> }
+  | PubIn { path: List<RustPathSegment> }
 
 
-// RustVisibility producer-side invariant — DOCUMENTED-ONLY (NOT a
-// stub fn, per the FORBIDDEN-deferral discipline; operator review
-// 2026-05-16T02:26:00Z + claude-opus-4-7 review observation
-// 2026-05-16T02:35:05Z).
+// RustVisibility well-formedness — TYPE-ENFORCED via RustPathSegment.
 //
-// A `RustVisibility` value is well-formed iff: when it is the
-// `PubIn` variant, its `path` is NOT a single-segment path whose
-// only segment is the `self` Symbol — that case canonicalizes to
-// `Private`. Producers MUST emit `Private` for the no-modifier /
-// `pub(self)` / `pub(in self)` source forms; admitting
-// `PubIn { path: [self-symbol] }` as a parallel representation is
-// the P2 duplicate-authority bug (two authorities for one
-// visibility scope) this carrier exists to prevent.
+// The single-authority invariant "pub(self) ≡ Private; never
+// PubIn { path: [Self] }" is structurally enforced by RustPathSegment's
+// Disj having no `Self` variant. There is no way to construct a
+// `List<RustPathSegment>` of length 1 whose element is "the self
+// segment" — Self isn't a constructible segment kind. Illegal
+// states unrepresentable per modeling-discipline.md §Practices 2/6
+// AND INVARIANTS P2; NOT a doc-only producer obligation, NOT a
+// noop well-formedness fn.
 //
-// NO `fn rust_visibility_well_formed(v) -> Bool` is declared here.
-// The check `path == [self-symbol]` requires comparing the path's
-// first Symbol to a known `self` Symbol — but K-1 forbids minting
-// Symbol values in data literals (Symbols come from the boundary
-// intern table, never authored inline). A fn that returns `true`
-// unconditionally would assert an invariant it doesn't enforce —
-// exactly the stub-to-keep-moving anti-pattern the manager
-// reinforcement msg_8b477982 named as the FORBIDDEN deferral, AND
-// the false-sense-of-validation smell flagged by claude-opus-4-7's
-// review observation.
-//
-// The invariant lives as PRODUCER OBLIGATION in this doc-comment
-// only, until either:
-//   (a) std/ exposes a canonical `self_symbol` value through a
-//       typed boundary surface (e.g. a `KnownSymbols` carrier in
-//       std/parse.dag or similar), at which point a real
-//       `rust_visibility_well_formed(v) -> Bool` can be declared
-//       with a working check; or
-//   (b) std/cardinality.dag lands a refined-path carrier admitting
-//       only non-[self] paths, at which point the invariant is
-//       type-level (illegal states unrepresentable) and no fn is
-//       needed at all.
-//
-// Same shape as the Dim3 / RustCost 🟡 scaffold bridges, but
-// applied at the documentation layer — NOT a noop fn. When the
-// substrate can actually enforce, the fn lands; until then, the
-// obligation is on producers (emitters / ingest / lens consumers
-// constructing RustVisibility values) and a downstream consumer
-// reading a PubIn MUST NOT assume a well-formedness check has
-// validated the path.
+// (Evolution of this carrier through the BLOCKING-fix history:
+// the prior shape used `path: List<Symbol>`, which DID admit
+// `PubIn { path: [self-symbol] }` since K-1 Symbols are opaque
+// identities and the kernel can't structurally exclude any
+// particular Symbol value. The fix-by-doc-comment that followed
+// was the noop / stub-to-keep-moving anti-pattern flagged by
+// codex REQUEST_CHANGES 2026-05-16T02:51:57Z + claude-opus-4-7
+// review observation 2026-05-16T02:35:05Z. The final fix
+// introduces RustPathSegment as the typed segment classifier with
+// the Self exclusion structurally enforced — the duplicate
+// authority becomes unrepresentable, NOT documented-as-forbidden.)
 
 
 // ─────────────────────────────────────────────────────────────────────
