@@ -236,7 +236,8 @@ type SpiceValue {
 // directives (Quarles 1993 §11.3, §15). The remaining variants without
 // a `parameters` slot (`Resistor`, `Capacitor`, `Inductor`, `Diode`,
 // `VoltageSource`, `CurrentSource`) are part of the same follow-up
-// that enumerates E/F/G/H/J/T/S/W — see `Component`'s 🟡 trigger; the
+// that enumerates the missing-list (E, F, G, H, J, O, S, T, U, W, Z)
+// — see `Component`'s 🟡 trigger; the
 // `Parameter` carrier is ready for them. `name` is a `Symbol`
 // (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar deferred
 // per `SpiceValue`).
@@ -375,8 +376,9 @@ type SubstrateSpec
 // coverage gaps enumerated above — the richer source (the full
 // SPICE3 §11 element grammar) exists in the spec but is not yet
 // modeled here.
-//   Named trigger: when (a) all SPICE3 elements (E/F/G/H/J/T/S/W) are
-//   added as variants AND (b) each enumerated variant carries its
+//   Named trigger: when (a) all SPICE3F5 elements named in the
+//   missing-list above (E, F, G, H, J, O, S, T, U, W, Z) are added
+//   as variants AND (b) each enumerated variant carries its
 //   full SPICE3 §11 statement grammar (optional parameters made
 //   structural rather than lexeme-only; transient source specs as
 //   typed sub-coproducts; optional terminals via per-variant named
