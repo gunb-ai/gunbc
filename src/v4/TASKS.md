@@ -143,6 +143,7 @@ flat — dispatch in waves):
 - `diagnostic`, `cardinality` need only `node.dag`.
 - `logic`, `nat`, `collection`, `witness`, `verification` need `algebra.dag` (T-2) or `diagnostic`.
 - `machine` needs `logic` + `nat`; `text` needs `nat` + `algebra.dag` (T-2, FreeMonoid); `integer` needs `nat` + `machine` + `algebra.dag` (T-2, OrderedRing/AbelianGroup); `float` needs `machine` + `algebra.dag` (T-2, ApproximateField). Every scalar file except `machine` consumes `algebra.dag` — none of the scalar/numeric cluster is dispatchable before T-2.
+- **`collection.Map<K, V>` → `witness.dag` (Wave-A2)** — Map is split out of the Wave-A1 collection.dag PR per operator-ratified Option A 2026-05-16; the honest `PartialFunction<K, V>` shape is `Map<K, V> { lookup: fn(K) -> Witness<V> }` (duplicate keys structurally unrepresentable). Lands in a follow-up `collection.dag` PR after `witness.dag` merges; tracked in `src/v4/std/collection.dag`'s "Deferred to Wave-A2 — TRACKED SCAFFOLD" header note (named dissolution trigger: `witness.dag` lands).
 
 **Modeling decisions per file** (see file headers for specifics).
 
