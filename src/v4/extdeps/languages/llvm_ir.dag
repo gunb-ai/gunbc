@@ -501,7 +501,10 @@ type LlvmValue
 // CLAUDE.md / Practice 7).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: the opcode is read by every binary-
 //      instruction consumer (emit, cost, inhabitance dispatch); shared,
 //      not scattered.
@@ -551,7 +554,10 @@ type BinaryOpcode
 // Operations"). One `Conversion` shape projects over this set.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: read uniformly by every conversion
 //      consumer; shared classifier, not scattered.
 //   2. Variant-is-data — N/A dissolving: this IS the promoted-label
@@ -594,7 +600,10 @@ type ConversionOpcode
 // std/algebra.dag's `Ordering` (consumed via inhabitance, not re-spelled).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: the predicate is read uniformly by the
 //      `icmp` consumer; shared, not scattered.
 //   2. Variant-is-data — FAILS: promoting to `{ signed: Bool, op: ... }`
@@ -640,7 +649,10 @@ type IntPredicate
 // same reason `Float` is `ApproximateField`, not `Field`).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: read uniformly by the `fcmp` consumer.
 //   2. Variant-is-data — FAILS: an `{ ordered: Bool, … }` record makes
 //      `fcmp true`/`fcmp false` (which have no ordering sense) carry a
@@ -869,7 +881,10 @@ type LandingClause
 // relation is a derived lens read over this order, NOT a stored field.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: the ordering is read uniformly by every
 //      atomic-op consumer (emit, the effect lens); shared, not scattered.
 //   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
@@ -981,7 +996,10 @@ type AtomicRmwOrdering
 // `AtomicRmw` instruction projects over this closed set (Practice 7).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: read uniformly by the atomicrmw consumer.
 //   2. Variant-is-data — N/A dissolving: the promoted projected axis.
 //   3. Algebraic form — PARTIAL: xchg/add/and/or/xor/max/min trace to
@@ -1498,7 +1516,10 @@ type BasicBlock {
 // Linkage — symbol linkage (LangRef "Linkage Types"). Closed set.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: linkage is read uniformly by emit/the
 //      symbol-resolution model; not a per-consumer scattered fact.
 //   2. Variant-is-data — FAILS: reduces to an opaque keyword string —

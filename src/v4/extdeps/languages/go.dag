@@ -539,7 +539,10 @@ import v4.std.node { Symbol }
 // an edit to THIS declaration under the L-2 pin discipline.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every signed-integer-scalar consumer
 //      (emission of `int32` vs `int64`; per-target cost-realization
 //      sizes; the eventual std/integer.dag inhabitance + D2a(3)
@@ -656,7 +659,10 @@ type SignedIntWidth
 // P1 modeling-faithfulness requires.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every unsigned-integer-scalar consumer
 //      reads the width to size representations (emission of `uint32`
 //      vs `uint64` vs `uintptr`; per-target cost-realization sizes);
@@ -729,7 +735,10 @@ type UnsignedIntWidth
 // the L-2 pin discipline.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every float-scalar consumer reads the
 //      width to size representations (emission of `float32` vs
 //      `float64`; cost-realization for floating-point ops); shared
@@ -815,7 +824,10 @@ type GoFloatWidth
 // `num-complex`, which are programs per L-2, NOT primitives).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every complex-scalar consumer reads
 //      the width to size representations (emission of `complex64`
 //      vs `complex128`; cost-realization for complex ops which

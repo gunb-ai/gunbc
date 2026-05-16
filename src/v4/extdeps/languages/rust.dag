@@ -575,7 +575,10 @@ type RustIntKind
 // rides T-3.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every integer-scalar consumer reads
 //      the width to size representations (emission of `i32` vs
 //      `i64`; per-target cost-realization sizes); shared
@@ -614,6 +617,32 @@ type RustIntKind
 //      collapsing source for this enum.
 // Terminal: the closed six-way Rust integer-width classifier for the
 // pinned Rust Reference; a 7th is the C1 stop-signal.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48: "yellow please" — any width-enum across the lane flips
+// 🟡 per Practice-7-projection-over-Nat richer-source):
+//   Richer source: bit-counts project from Nat (and the future
+//     std/machine.dag MachineWidth/PointerWidth carrier for the
+//     platform-dependent cell) — Bits8/16/32/64/128 are
+//     F<bit-count: Nat>, Pointer is a `PlatformDependent` discriminant
+//     cell on the same axis reading PointerWidth. A future std/
+//     integer.dag width carrier would name this Nat-projection
+//     authoritatively; the Pointer variant resolves through
+//     std/machine.dag.
+//   Trigger: first consumer of width MEANING (cost-realization sizes /
+//     std/integer.dag bounded-Int inhabitance / std/machine.dag
+//     PointerWidth resolution — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (bit-count |
+//     pointer-width-reading) decomposition AT that consumer (a lens
+//     read), NOT a local match-over-width lookup in this carrier; the
+//     Rust Reference keyword (`i32` / `isize`) stays the parse/emit-
+//     side authority. Per the cited operator ruling, do NOT fold this
+//     🟡 into a fresh push; track for the next review-tail commit on
+//     any touching PR.
 type RustIntWidth
   = Bits8
   | Bits16
@@ -641,7 +670,10 @@ type RustIntWidth
 // edit to THIS declaration under the L-2 pin discipline.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists per standing width-enum
+// precedent; see #3200 RE-SCOPE footer before the type declaration
+// below). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every float-scalar consumer reads the
 //      width to size representations (emission of `f32` vs `f64`;
 //      cost-realization for floating-point ops); shared classifier,
@@ -672,6 +704,27 @@ type RustIntWidth
 //      "which widths Rust stabilizes" is the partition discriminant,
 //      not a parameterization of a richer source set.
 // Terminal: the closed two-way Rust stable-float-width classifier.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48):
+//   Richer source: bit-counts project from Nat (and from the IEEE-754
+//     binaryN universe `{16, 32, 64, 128, …}`) — Bits32 / Bits64 are
+//     F<bit-count: Nat> selecting the Rust-stabilized subset. A future
+//     std/float.dag width carrier (the ApproximateField partition
+//     across IEEE-754 binaryN) would name this projection
+//     authoritatively.
+//   Trigger: first consumer of float-width MEANING (cost-realization
+//     sizes / std/float.dag ApproximateField instance — D2 pathway).
+//   Obligation: the first meaning-consumer owes the bit-count
+//     decomposition AT that consumer (a lens read), NOT a local
+//     match-over-width lookup; the Rust Reference keyword (`f32` /
+//     `f64`) stays the parse/emit-side authority. Per the cited
+//     operator ruling, do NOT fold this 🟡 into a fresh push; track
+//     for the next review-tail commit on any touching PR.
 type RustFloatWidth
   = Bits32
   | Bits64
