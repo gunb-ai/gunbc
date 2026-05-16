@@ -37,7 +37,10 @@
 //
 // Owns:
 //   - PTX coordinate classifiers as closed structural carriers:
-//     StateSpace (memory hierarchy), BarrierScope (CTA/cluster/GPU/sys),
+//     StateSpace (memory hierarchy — with ParamScope / SharedScope
+//     sub-qualifiers structurally enforced on `.param` / `.shared`
+//     per PTX 8.5 §5.1.7-8 / §6 memory-operand grammar),
+//     BarrierScope (CTA/cluster/GPU/sys),
 //     ThreadAxis (X/Y/Z), ThreadCoordSource (thread / CTA-in-cluster /
 //     cluster / CTA-in-grid hierarchy per PTX ISA 8.5),
 //     BitsWidth / IntegerWidth / FloatWidth (per-kind admissible-
@@ -218,20 +221,144 @@ module v4.extdeps.languages.ptx
 
 
 // ─────────────────────────────────────────────────────────────────────
-// StateSpace — the closed PTX memory hierarchy classifier. Exactly
-// eight; the surface vocabulary of the PTX state-space declaration
-// directive (e.g. `.global .f32 v;`).
+// ParamScope — the closed PTX `.param` state-space sub-qualifier.
+// PTX ISA 8.5 §5.1.7 / §6 distinguishes two `.param` sub-spaces in
+// the memory-operand grammar (`ld.param::entry` vs `ld.param::func`):
+//
+//   - ParamEntry — `.param::entry`  kernel-entry parameter memory
+//                                   (the parameter buffer at the
+//                                   kernel-launch boundary; staged
+//                                   by the host launch site, read-
+//                                   only inside the kernel)
+//   - ParamFunc  — `.param::func`   function-call parameter memory
+//                                   (parameters at PTX device-function
+//                                   call sites, distinct from the
+//                                   kernel-entry parameter buffer)
+//
+// CLOSED (C1 stop-signal). A third `.param` sub-qualifier is an edit
+// to THIS declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parameter-state-space
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every `.param` operand consumer reads
+//      the scope (an `ld.param::entry` is at the kernel boundary; an
+//      `ld.param::func` is at a function call site — distinct
+//      emission paths); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses. Same
+//      argument as StateSpace's nullary-tag form.
+//   3. Algebraic form — N/A by construction: the two are the PTX-
+//      spec param-sub-qualifier partition; no richer std/ structure.
+//   4. Dimensional — FAILS: a `.param` operand has EXACTLY ONE
+//      sub-qualifier; `.param::entry::func` is not a PTX construct.
+//   5. Parameterized family — FAILS: the two are structurally
+//      distinct parameter-boundary roles (kernel-entry boundary vs
+//      function-call boundary) — NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7).
+// Terminal: the closed two-way `.param` sub-qualifier partition.
+type ParamScope
+  = ParamEntry
+  | ParamFunc
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SharedScope — the closed PTX `.shared` state-space sub-qualifier.
+// PTX ISA 8.5 §5.1.8 / §6 distinguishes two `.shared` sub-spaces in
+// the memory-operand grammar (`ld.shared::cta` vs `ld.shared::cluster`,
+// the latter being distributed shared memory across cluster CTAs;
+// PTX 7.8+ / Hopper / CUDA 9.0):
+//
+//   - SharedCta     — `.shared::cta`     CTA-scoped shared memory
+//                                        (the legacy per-CTA shared
+//                                        region; the default when
+//                                        sub-qualifier is omitted in
+//                                        pre-cluster code)
+//   - SharedCluster — `.shared::cluster` cluster-scoped distributed
+//                                        shared memory (DSMEM —
+//                                        addressable across the
+//                                        CTAs of a cluster; PTX 7.8+,
+//                                        Hopper / CUDA 9.0 — the
+//                                        same cluster surface
+//                                        BarrierScope.Cluster and
+//                                        ThreadHierarchyShape's
+//                                        ClusterLaunch variant
+//                                        compose with)
+//
+// CLOSED (C1 stop-signal). A third `.shared` sub-qualifier is an
+// edit to THIS declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#shared-state-space
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every `.shared` operand consumer
+//      reads the scope (`ld.shared::cta` is intra-CTA; `ld.shared
+//      ::cluster` is cluster-wide — distinct emission paths and
+//      distinct memory-consistency rules per the pinned spec);
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ cluster_wide: Bool }` proxy
+//      replaces a closed 2-valued exhaustive sum with an unbounded
+//      Bool (the same M4 smell as RustIntKind's signed-vs-unsigned).
+//   3. Algebraic form — N/A by construction: the two are the PTX-
+//      spec shared-sub-qualifier partition; no richer std/
+//      structure. The containment SharedCta ⊑ SharedCluster (a
+//      cluster-wide address is reachable from any CTA in the
+//      cluster) is derived FROM the closed enum, not a richer
+//      source (same parallel-rep smell as BarrierScope's
+//      Cta ⊑ Cluster ⊑ Gpu ⊑ System lattice).
+//   4. Dimensional — FAILS: a `.shared` operand has EXACTLY ONE
+//      sub-qualifier; `.shared::cta::cluster` is not a PTX
+//      construct.
+//   5. Parameterized family — FAILS: the two are structurally
+//      distinct shared-scope partitions (intra-CTA vs cluster-wide
+//      distributed) — NOT one generic `F<X>` / projection over a
+//      separately-declared source set (Practice 7).
+// Terminal: the closed two-way `.shared` sub-qualifier partition.
+type SharedScope
+  = SharedCta
+  | SharedCluster
+
+
+// ─────────────────────────────────────────────────────────────────────
+// StateSpace — the closed PTX memory-hierarchy classifier. PTX ISA
+// 8.5 §5.1 admits eight top-level state spaces; `.param` and
+// `.shared` carry sub-qualifiers in the memory-operand grammar
+// (§5.1.7 / §5.1.8 / §6 — `.param::{entry,func}` and
+// `.shared::{cta,cluster}`), making this enum a Disj-with-mixed-
+// arity-variants rather than a flat 8-way enum: nullary tags for
+// state spaces with no sub-qualifier, named-field payloads for
+// `Param` and `Shared` to carry their sub-qualifiers structurally.
+// Illegal "Shared without scope" or "Param without entry/func
+// distinction" are unrepresentable (the INVARIANTS P2 illegal-
+// states-unrepresentable shape; the same Disj-with-payloads design
+// rust.dag's RustScalar took for kind×width admissibility and
+// ptx.dag's RegisterScalar took for kind × admissible-width).
+//
+// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
+// the prior flat 8-way enum collapsed PTX 8.5 sub-qualifier facts
+// — `.param::entry` vs `.param::func`, `.shared::cta` vs
+// `.shared::cluster` — into the bare Param/Shared tags. INVARIANTS
+// P2 spec-fidelity violated: facts the spec's memory-operand
+// grammar distinguishes were dropped before consumers could
+// enforce them.)
 //
 //   - Reg       — `.reg`     virtual register (per-thread; the
 //                            register-allocated value's home)
-//   - SReg      — `.sreg`    special register (read-only thread-coord
-//                            and warp/lane intrinsics; per-thread)
+//   - SReg      — `.sreg`    special register (read-only thread-
+//                            coord and warp/lane intrinsics; per-
+//                            thread)
 //   - Const     — `.const`   constant memory (read-only; per-grid)
 //   - Global    — `.global`  global memory (read-write; per-grid)
 //   - Local     — `.local`   local memory (per-thread spill region)
-//   - Param     — `.param`   kernel parameter memory (read-only;
-//                            kernel-launch staging)
-//   - Shared    — `.shared`  shared memory (read-write; per-CTA)
+//   - Param     — `.param::{entry,func}` parameter memory,
+//                            sub-qualified by ParamScope (the
+//                            kernel-entry boundary vs the function-
+//                            call boundary)
+//   - Shared    — `.shared::{cta,cluster}` shared memory,
+//                            sub-qualified by SharedScope (CTA-
+//                            scoped vs cluster-distributed)
 //   - Tex       — `.tex`     texture memory (read-only; per-grid)
 //
 // CLOSED (C1 stop-signal). A ninth state space is an edit to THIS
@@ -241,44 +368,55 @@ module v4.extdeps.languages.ptx
 // fidelity authority) means each release-version model EDITS this
 // declaration explicitly, never silently extends it.
 //
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#state-spaces
+//
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every memory-op Transform branches on
-//      the operand's StateSpace (`ld.global` vs `ld.shared` are
-//      distinct ops); shared classifier, not a per-consumer scattered
-//      fact.
-//   2. Variant-is-data — FAILS: the eight are nullary tags drawn
-//      from a closed PTX-defined set. Promoting to a `{ name:
-//      Symbol }` record reintroduces the readable-string-as-tag
-//      heuristic surface K-1 forecloses (a `match name { "global" =>
-//      … }` smell). The enum IS the faithful form.
+//      the operand's StateSpace (`ld.global` vs `ld.shared::cta`
+//      vs `ld.shared::cluster` are distinct ops with distinct
+//      emission syntax and memory-consistency rules); shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: collapsing the variants to a
+//      uniform record `{ kind: StateSpaceKind, param_scope:
+//      Option<…>, shared_scope: Option<…> }` reintroduces the
+//      illegal states "Param with shared_scope set" and "Global
+//      with param_scope set" the Disj-with-payloads exists to
+//      forbid — same argument as RegisterScalar's variant-is-data
+//      ledger entry. The enum IS the faithful form.
 //   3. Algebraic form — N/A by construction: PTX state spaces are
-//      the PTX spec's primitive memory-region taxonomy; they do not
-//      trace to a richer std/ algebraic structure (no Lattice / no
-//      Field on the eight tags — read-only vs read-write is a
-//      separate per-state-space property, not a partial order over
-//      them).
+//      the PTX spec's primitive memory-region taxonomy; they do
+//      not trace to a richer std/ algebraic structure (no Lattice
+//      / no Field on the eight tags — read-only vs read-write is
+//      a separate per-state-space property, not a partial order
+//      over them).
 //   4. Dimensional — FAILS: a PTX value lives in EXACTLY ONE state
 //      space; the directive `.global .shared` is a syntax error in
-//      PTX itself. Mutually-exclusive alternatives, not simultaneous
-//      coordinates.
+//      PTX itself. The variants' INTERNAL structure differs (the
+//      sub-qualified variants carry a scope payload; the others
+//      don't) — they cannot be coordinates of a single record
+//      without the illegal-state smell.
 //   5. Parameterized family — FAILS: the eight have structurally
 //      distinct semantic roles (per-thread vs per-CTA vs per-grid;
-//      readable vs read-only; addressable vs intrinsic-only) — NOT
-//      one generic `F<X>` / projection over a source set (Practice
-//      7). They are the PTX spec's irreducible memory-region
-//      partition, not a mechanical copy of any enumerable set.
-// Terminal: the closed eight-way memory-hierarchy classifier; a 9th
-// is the C1 stop-signal (a visible ratified edit to this declaration,
-// STRUCTURE.md commitment #1).
+//      readable vs read-only; addressable vs intrinsic-only; with
+//      vs without sub-qualifiers) — NOT one generic `F<X>` /
+//      projection over a source set (Practice 7). The variants
+//      carry structurally-distinct payload shapes (Reg / SReg /
+//      Const / Global / Local / Tex are bare; Param carries
+//      ParamScope; Shared carries SharedScope) — not projection-
+//      uniform.
+// Terminal: the closed eight-way PTX memory-hierarchy classifier
+// with structural sub-qualifier enforcement on `.param` and
+// `.shared`; a 9th state space is the C1 stop-signal (a visible
+// ratified edit to this declaration, STRUCTURE.md commitment #1).
 type StateSpace
   = Reg
   | SReg
   | Const
   | Global
   | Local
-  | Param
-  | Shared
+  | Param { scope: ParamScope }
+  | Shared { scope: SharedScope }
   | Tex
 
 
