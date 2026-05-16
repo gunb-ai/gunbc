@@ -6,10 +6,16 @@
 //        would not be a down-the-stack probe at all): the SIMT execution
 //        model (grid / block / thread), the memory hierarchy
 //        (register / shared / global / etc.), kernels and barriers.
-// Anchor: NVIDIA "Parallel Thread Execution ISA" specification — pin a
-//         version (e.g. PTX ISA 8.x) as the versioned fidelity authority
-//         (L-2); the "CUDA C++ Programming Guide" documents the SIMT
-//         execution model the spec encodes.
+// Anchor: NVIDIA "Parallel Thread Execution ISA Version 8.5" —
+//         https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
+//         (release PDF: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf,
+//         CUDA Toolkit 12.5). This is the L-2 versioned fidelity authority
+//         the carriers below are pinned to (BarrierScope's `.cluster`,
+//         ThreadCoordSource's cluster hierarchy, and StateSpace's eight
+//         memory regions are derived from this release; a future ISA
+//         release modifying any of them is a visible C1 edit). The
+//         "CUDA C++ Programming Guide" documents the SIMT execution
+//         model the spec encodes.
 //
 // IN-B FINDING (the T-4.14 probe's deliverable, operator-ratified
 //   STOP-or-find discipline per §D): SIMT data-parallelism IS modelable
@@ -32,7 +38,8 @@
 // Owns:
 //   - PTX coordinate classifiers as closed structural carriers:
 //     StateSpace (memory hierarchy), BarrierScope (CTA/cluster/GPU/sys),
-//     ThreadAxis (X/Y/Z), ThreadCoordSource (thread-in-CTA / CTA-in-grid),
+//     ThreadAxis (X/Y/Z), ThreadCoordSource (thread / CTA-in-cluster /
+//     cluster / CTA-in-grid hierarchy per PTX ISA 8.5),
 //     RegisterWidth (b1/b8/b16/b32/b64/b128), RegisterScalarKind
 //     (Bits/Unsigned/Signed/Float/Predicate)
 //   - PTX value shapes as Conj records: RegisterScalar, Dim3 (🟡 scaffold
@@ -76,7 +83,12 @@
 //   std/primitive.dag decomposition AND the operator-ratified §0
 //   scope-narrowing of this probe to "closed classifiers + IN-B
 //   finding"; the revised Consumes line above reflects what the file
-//   actually imports, not the scaffold's anticipatory list.)
+//   actually imports, not the scaffold's anticipatory list. Header
+//   Consumes change pending operator ratification of the systemic
+//   scaffold-Consumes reconciliation (T-4 mgr synthesis
+//   msg_1fddb75c) — the surface+trigger discipline lets the
+//   operator ratify all per-file Consumes strikes uniformly in one
+//   pass; this is not worker-settled.)
 //
 // Status: T-4.14 modeled 2026-05-16 (gentle-deer-446); probe finding:
 // NO 6th behavior surfaced. The I/O contract in this header is
@@ -270,7 +282,7 @@ type StateSpace
 // BarrierScope — the closed PTX synchronization scope classifier. The
 // scope at which a Bind-as-barrier synchronizes (`bar.sync` / `membar`
 // / `fence` directives carry exactly one of four scopes per the
-// pinned PTX ISA 8.x §8.5 memory-consistency model).
+// pinned PTX ISA 8.5 §8.5 memory-consistency model).
 //
 //   - Cta      — `.cta`      within-CTA (within-block) synchronization
 //                            (`bar.sync 0;` is `.cta`-scoped by default;
@@ -318,7 +330,7 @@ type StateSpace
 //      the PTX spec's irreducible scope partition for the pinned ISA
 //      version.
 // Terminal: the closed four-way synchronization scope for the pinned
-// PTX ISA 8.x §8.5 spec.
+// PTX ISA 8.5 §8.5 spec.
 type BarrierScope
   = Cta
   | Cluster
@@ -373,20 +385,32 @@ type ThreadAxis
 
 // ─────────────────────────────────────────────────────────────────────
 // ThreadCoordSource — the closed PTX thread-coordinate hierarchy
-// classifier. PTX exposes two structural levels of thread coordinate:
-// position within the CTA, and CTA position within the grid. Warp /
-// lane / SM intrinsics (`%warpid`, `%laneid`, `%smid`) are scope-
-// negative for T-4.14 (see header SCOPE NEGATIVE) — they are
-// realizations of the SIMT schedule, not a coordinate axis the model
-// admits as substrate.
+// classifier. PTX ISA 8.5 §5.4 / §11 exposes FOUR structural levels of
+// thread coordinate (three legacy + one cluster intrinsic family that
+// landed in PTX 7.8 for Hopper / CUDA 9.0 thread block clusters and
+// is present in the pinned 8.5 spec). Warp / lane / SM intrinsics
+// (`%warpid`, `%laneid`, `%smid`) are scope-negative for T-4.14 (see
+// header SCOPE NEGATIVE) — they are realizations of the SIMT schedule,
+// not a coordinate axis the model admits as substrate.
 //
-//   - ThreadInCta — `%tid.{x,y,z}` — thread position within the CTA
-//                                    (block)
-//   - CtaInGrid   — `%ctaid.{x,y,z}` — CTA position within the grid
+//   - ThreadInCta    — `%tid.{x,y,z}`           thread position within
+//                                               the CTA (block)
+//   - CtaInCluster   — `%cluster_ctaid.{x,y,z}` CTA position within the
+//                                               cluster (PTX 7.8+,
+//                                               Hopper / CUDA 9.0)
+//   - ClusterInGrid  — `%clusterid.{x,y,z}`     cluster position within
+//                                               the grid (PTX 7.8+)
+//   - CtaInGrid      — `%ctaid.{x,y,z}`         CTA position within the
+//                                               grid (the cluster-
+//                                               independent flat
+//                                               coordinate; remains a
+//                                               first-class intrinsic
+//                                               in PTX 8.5 alongside
+//                                               the cluster reads)
 //
-// CLOSED (C1 stop-signal). A third hierarchy level (e.g. cluster — a
-// CUDA 9.0+ surface that bundles CTAs) is an edit to THIS declaration
-// routed to operator ratification under the L-2 pin discipline.
+// CLOSED (C1 stop-signal). A fifth hierarchy level is an edit to THIS
+// declaration routed to operator ratification under the L-2 pin
+// discipline (pinned PTX ISA 8.5).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -394,28 +418,32 @@ type ThreadAxis
 //      source uniformly to know which intrinsic register family it
 //      emits; shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: a `{ level: Int }` (0=thread,
-//      1=cta) replaces a closed exhaustive sum with an unbounded
-//      Int — violates P2 + M4 (algebra.dag:332 `Ordering`
-//      precedent).
-//   3. Algebraic form — N/A by construction: the two hierarchy
+//      1=cta-in-cluster, 2=cluster, 3=cta-in-grid) replaces a closed
+//      4-valued exhaustive sum with an unbounded Int — violates
+//      P2 + M4 (algebra.dag:332 `Ordering` precedent).
+//   3. Algebraic form — N/A by construction: the four hierarchy
 //      levels are the PTX coordinate-space partition; they do not
 //      trace to a richer std/ structure (one could attempt a
-//      `PartialOrder<ThreadCoordSource>` with ThreadInCta ⊑
-//      CtaInGrid, but that would be a parallel representation of
-//      what is already a structural containment — feedback_no_engine
-//      parallel-rep smell).
-//   4. Dimensional — FAILS: a single coordinate read is EITHER
-//      thread-in-cta OR cta-in-grid; mutually-exclusive
-//      alternatives, not simultaneous coordinates. (A kernel that
-//      uses both addresses each through a separate read; it does
-//      not co-locate the two.)
-//   5. Parameterized family — FAILS: the two are distinct
+//      `PartialOrder<ThreadCoordSource>` containment along Thread ⊑
+//      Cta ⊑ Cluster ⊑ Grid, but that would be a parallel
+//      representation of what is already a structural containment
+//      — feedback_no_engine parallel-rep smell).
+//   4. Dimensional — FAILS: a single coordinate read picks EXACTLY
+//      ONE intrinsic family; mutually-exclusive alternatives, not
+//      simultaneous coordinates. (A kernel that uses several
+//      addresses each through a separate read; it does not co-locate
+//      them.)
+//   5. Parameterized family — FAILS: the four are distinct
 //      coordinate-space partitions — NOT one generic `F<X>` /
-//      projection over a source set (Practice 7).
-// Terminal: the closed two-way thread-coordinate hierarchy at the
-// SIMT-substrate layer the probe models.
+//      projection over a source set (Practice 7). They are the PTX
+//      8.5 spec's irreducible coordinate-intrinsic partition for
+//      the cluster-aware hierarchy.
+// Terminal: the closed four-way thread-coordinate hierarchy at the
+// SIMT-substrate layer the probe models, pinned to PTX ISA 8.5.
 type ThreadCoordSource
   = ThreadInCta
+  | CtaInCluster
+  | ClusterInGrid
   | CtaInGrid
 
 
