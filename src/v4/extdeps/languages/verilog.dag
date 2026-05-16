@@ -909,34 +909,112 @@ type PortDeclaration {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// AnsiNetPortType — the closed type/payload variants admitted for an
+// ANSI port that ONLY accepts net types (input + inout ports per IEEE
+// 1364-2005 §12.3.3). Input and inout ports cannot be reg-typed
+// (procedural assignment requires reg, which only output can carry),
+// and cannot be the spec-fixed-width variable kinds (integer / real /
+// time / realtime are output-only per spec). This carrier is the
+// closed type-payload set for input / inout — strictly the net family.
+//
+//   - AnsiInputInoutNet { net_type: NetType, packing: PackingShape,
+//                         signedness: Signedness }
+//       — any NetType variant (wire/wand/wor/tri/etc.) with optional
+//       packing + signedness per spec §5.6.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits exactly net
+// types for input/inout ANSI ports; SystemVerilog `logic` would EDIT
+// this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Single-variant Disj (currently exactly one
+// type-shape — net with payload — admitted; future spec extensions
+// would add variants). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every input/inout-ANSI consumer reads
+//      the type uniformly to dispatch emission / drive net-resolution;
+//      shared classifier.
+//   2. Variant-is-data — FAILS: the single variant carries a
+//      structured payload (net_type + packing + signedness); a
+//      uniform record would collapse the future-extension axis a
+//      Disj preserves.
+//   3. Algebraic form — N/A by construction: net types are the spec's
+//      primitive resolution-function set per §3.7.1; D2-deferred per
+//      "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: an input/inout ANSI port has EXACTLY ONE
+//      net-type payload; the variant is the dispatcher.
+//   5. Parameterized family — FAILS: the single variant's payload is
+//      a structured record (NetType × PackingShape × Signedness),
+//      not one generic `F<X>` projection (Practice 7).
+// Terminal: the closed net-only type-payload classifier for input /
+// inout ANSI ports; a second variant would be an L-2 pin edit.
+type AnsiNetPortType
+  = AnsiInputInoutNet { net_type: NetType, packing: PackingShape, signedness: Signedness }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // AnsiPortDeclaration — an ANSI-style Verilog module port (`module M
 // (input wire [7:0] a, output reg b, output reg signed [3:0] count,
-// …);`). The header carries direction, name, AND the per-kind type
-// payload INLINE. Per IEEE 1364-2005 §12.3.3 the port declaration is
-// "completely declared" by this single carrier; a body redeclaration
-// is a SYNTAX ERROR — single-authority enforced structurally because
-// the type-fact lives ON this record, not in a matching body item.
-// Conj record (no Practice-4 ledger).
+// inout tri bus, …);`). The header carries direction, name, AND a
+// direction-specific type payload. Per IEEE 1364-2005 §12.3.3 the
+// port declaration is "completely declared" by this single carrier;
+// a body redeclaration is a SYNTAX ERROR.
 //
-//   - direction   input / output / inout
-//   - name        the port identifier (K-1-opaque Symbol)
-//   - type_kind   the full per-variant ANSI-port type payload
-//                 (PortAnsiTypeKind: AnsiNetType / AnsiRegType carry
-//                 their own packing + signedness; AnsiIntegerType /
-//                 AnsiRealType / AnsiTimeType / AnsiRealTimeType
-//                 carry neither per spec). The prior uniform
-//                 packing + signedness fields on this record were a
-//                 codex BLOCKING (PR #3176): they admitted spec-
-//                 forbidden states like `output integer signed [N:0]`
-//                 — INVARIANTS P2 illegal-states-unrepresentable
-//                 violation. Packing / signedness are now per-variant
-//                 payloads on the type-kind, dissolving those illegal
-//                 states by construction.
-type AnsiPortDeclaration {
-  direction: PortDirection
-  name: Symbol
-  type_kind: PortAnsiTypeKind
-}
+// Direction × type-kind admissibility is modeled STRUCTURALLY via
+// Disj-with-named-payloads per direction (codex BLOCKING fix on
+// PR #3176 2026-05-16: the prior uniform `{ direction, name, type_
+// kind }` Conj record admitted spec-forbidden combinations like
+// `input reg [N:0]` and `inout integer` — INVARIANTS P2 illegal-
+// states-unrepresentable violation. Per spec §12.3.3 input/inout
+// ports MUST be net-typed; only output ports admit reg/integer/real/
+// time/realtime variable kinds. The per-direction split makes those
+// illegal combinations structurally unrepresentable, mirroring the
+// VariableDeclaration kind×packing×signedness dissolution).
+//
+//   - AnsiInputPort { name: Symbol, net: AnsiNetPortType }
+//       — input ports are net-typed only (the spec forbids
+//       `input reg`).
+//   - AnsiOutputPort { name: Symbol, type_kind: PortAnsiTypeKind }
+//       — output ports admit the full PortAnsiTypeKind set (net or
+//       any variable kind; output is the only direction that
+//       admits reg/integer/real/time/realtime).
+//   - AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
+//       — inout ports are net-typed only (bidirectional requires
+//       nets; `inout reg` is a spec violation).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits exactly
+// these three direction-bearing ANSI-port forms; SystemVerilog
+// `ref` ports would EDIT this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every ANSI-port consumer branches on
+//      direction × type-kind to dispatch emission / type-check
+//      legality / drive net-vs-reg-assignment-legality; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform
+//      `{ direction: PortDirection, name: Symbol, type_kind:
+//      PortAnsiTypeKind }` ratifies spec-forbidden combinations
+//      (Input + AnsiRegType, Inout + AnsiIntegerType, etc.) — the
+//      product-axis admits illegal states this per-direction Disj
+//      dissolves. INVARIANTS P2 illegal-states-unrepresentable.
+//   3. Algebraic form — N/A by construction: the three direction-
+//      bearing ANSI forms are the spec's primitive direction × type
+//      admissibility table — not a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single ANSI port is EXACTLY ONE
+//      direction variant; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: AnsiInputPort and AnsiInoutPort
+//      carry `net: AnsiNetPortType` (net-only); AnsiOutputPort
+//      carries `type_kind: PortAnsiTypeKind` (full type-kind set
+//      including reg/integer/real/time/realtime). The payload
+//      types differ structurally — NOT one generic `F<direction>` /
+//      projection over a single source set (Practice 7).
+// Terminal: the closed three-way Verilog ANSI-port direction-kind
+// classifier; illegal direction × type-kind combinations are
+// unrepresentable by construction.
+type AnsiPortDeclaration
+  = AnsiInputPort { name: Symbol, net: AnsiNetPortType }
+  | AnsiOutputPort { name: Symbol, type_kind: PortAnsiTypeKind }
+  | AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1022,34 +1100,53 @@ type ParameterDeclaration {
 
 // ─────────────────────────────────────────────────────────────────────
 // SensitivityItem — one entry in an always-block's event-control list
-// (`posedge clk`, `negedge rst`, bare `data_in`). Conj record (no
-// Practice-4 ledger).
+// (`posedge clk`, `negedge rst`, `posedge (a & b)`, bare expression).
+// IEEE 1364-2005 §9.7.2. Conj record (no Practice-4 ledger).
 //
-//   - trigger    which edge / level-sensitivity
-//   - signal     the signal identifier the trigger watches (K-1-
-//                opaque Symbol; resolved through the namespace to
-//                the matching net or variable declaration)
+//   - trigger                   which edge / level-sensitivity
+//   - event_expression_lexeme   the expression the trigger watches
+//                               as a verbatim lexeme. Per spec
+//                               §9.7.2 the event_expression can be
+//                               ANY expression (identifier, bit-
+//                               select, arithmetic combination), not
+//                               just a bare identifier — corrected
+//                               2026-05-16 per codex BLOCKING on
+//                               PR #3176 (the prior `signal: Symbol`
+//                               narrowed event expressions to
+//                               identifier references, excluding
+//                               valid syntax). Sub-grammar deferred
+//                               to the T-4 LanguageModel via the
+//                               established body_lexeme precedent.
 type SensitivityItem {
   trigger: EdgeTrigger
-  signal: Symbol
+  event_expression_lexeme: String
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // ContinuousAssign — a Verilog continuous-assignment statement
-// (`assign net = expr;`, IEEE 1364-2005 §6.1). Conj record (no
-// Practice-4 ledger).
+// (`assign net = expr;`, `assign {a, b} = c;`, `assign x[3:0] = …`).
+// IEEE 1364-2005 §6.1. Conj record (no Practice-4 ledger).
 //
-//   - lhs              the destination net identifier (K-1-opaque
-//                      Symbol; resolved to a `NetDeclaration` —
-//                      procedural variables cannot be continuous-
-//                      assignment destinations, that legality is the
-//                      T-4 LanguageModel's joint check)
+//   - lhs_lexeme       the destination net_lvalue as a verbatim
+//                      lexeme. Per spec §6.1 the lvalue of a
+//                      continuous assign is a net_lvalue: an
+//                      identifier reference, a net bit-select, a
+//                      net part-select, or a concatenation/replication
+//                      of net_lvalues — NOT just a bare identifier
+//                      (corrected 2026-05-16 per codex BLOCKING on
+//                      PR #3176; the prior `lhs: Symbol` narrowed
+//                      lvalues to identifier references, excluding
+//                      valid §6.1 net_lvalue forms). Sub-grammar
+//                      deferred to the T-4 LanguageModel. Procedural
+//                      variables cannot be continuous-assignment
+//                      destinations — that joint check is the T-4
+//                      LanguageModel's concern.
 //   - rhs_lexeme       the right-hand-side expression as a verbatim
 //                      lexeme (sub-grammar deferred — same shape as
 //                      `ParameterDeclaration.default_lexeme`)
 type ContinuousAssign {
-  lhs: Symbol
+  lhs_lexeme: String
   rhs_lexeme: String
 }
 
