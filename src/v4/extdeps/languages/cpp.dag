@@ -108,8 +108,8 @@ module v4.extdeps.languages.cpp
 
 
 // ─────────────────────────────────────────────────────────────────────
-// CppDefinedIntegerOverflow — the closed IN-F C++ integer-overflow
-// semantics set for core arithmetic.
+// CppIntegerArithmeticSemantics — the closed IN-F C++ integer
+// arithmetic-semantics set for core operators.
 // Anchor: C++ draft [basic.fundamental] unsigned integer range and
 // arithmetic modulo 2^N:
 //   https://eel.is/c++draft/basic.fundamental
@@ -117,67 +117,78 @@ module v4.extdeps.languages.cpp
 // evaluation outside mathematically-defined result range:
 //   https://eel.is/c++draft/expr.pre
 //
-//   - UnsignedModuloArithmetic  unsigned arithmetic is defined modulo
-//                               2^N for the unsigned type's width.
+//   - RepresentableResultRequired  signed arithmetic is defined only
+//                                  when the mathematical result is
+//                                  representable by the result type.
+//                                  If not, the source program is outside
+//                                  F and the consumer must fail closed.
+//   - UnsignedModuloArithmetic     unsigned arithmetic is defined modulo
+//                                  2^N for the unsigned type's width.
 //
-// Signed integer overflow is deliberately NOT a variant here. The C++
-// standard gives it undefined behavior; per C5-3 and the manager brief,
-// that is fail-closed / out-of-F, not a third "action" inside a
-// language-wide overflow taxonomy. A C++ signed arithmetic operation is
-// in F only when the program graph proves the operation stays in range
-// or the source uses an explicitly totalized operation/carrier modeled
-// elsewhere. Otherwise ingest/evaluation rejects with a Diagnostic
-// rather than producing a fabricated semantic value.
+// Signed integer OVERFLOW is deliberately NOT a variant here. The C++
+// standard gives overflow undefined behavior; per C5-3 and the manager
+// brief, that is fail-closed / out-of-F, not a third "action" inside a
+// language-wide overflow taxonomy. `RepresentableResultRequired` models
+// the in-F signed-operation precondition; a consumer that cannot prove it
+// rejects with a Diagnostic rather than producing a fabricated semantic
+// value.
 //
 // This is operation-semantics data, not algebra inhabitance. Unsigned
 // bounded integer aliases may point at std/ `UIntN` carriers; this
 // sibling disposition records C++'s defined modulo arithmetic. Signed
-// aliases carry no "overflow action" row for the undefined case.
+// aliases point at `RepresentableResultRequired`, not at an undefined-
+// behavior value.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: emit, ingest, runtime-equivalence, and
-//      Tier-2 safety consumers all need the same defined-overflow fact
-//      for unsigned arithmetic; shared, not scattered.
+//      Tier-2 safety consumers all need the same arithmetic semantics
+//      fact; shared, not scattered.
 //   2. Variant-is-data — FAILS: a string/Symbol tag would reopen the
 //      K-1 readable-tag anti-pattern. A Bool such as
-//      `{ wraps: true }` would also hide that the only admitted value is
-//      the C++ standard's unsigned modulo rule.
+//      `{ wraps: true }` would also collapse the signed precondition
+//      and unsigned modulo rule into a boolean proxy.
 //   3. Algebraic form — PARTIAL: unsigned modulo arithmetic is ring-like
 //      over a fixed width, but the algebra lives on the std/ `UIntN`
 //      carrier. This C++ carrier records the language's operation
 //      disposition, not a second algebra instance.
-//   4. Dimensional — FAILS: defined unsigned modulo overflow and
-//      undefined signed overflow are not two coordinates. The undefined
-//      case is outside F, so it is absence/fail-closed, not a value
-//      carried simultaneously with the defined one.
-//   5. Parameterized family — FAILS: `UnsignedModuloArithmetic` is the
-//      C++ standard's specific defined overflow rule. The type parameter
-//      on `OverflowDisposition<IRCarrier>` supplies the concrete carrier;
-//      no richer source set collapses this variant.
-// Terminal: the closed in-F C++ core integer-overflow semantics set.
-type CppDefinedIntegerOverflow
-  = UnsignedModuloArithmetic
+//   4. Dimensional — FAILS: signed representability and unsigned modulo
+//      are alternatives selected by the primitive family, not
+//      simultaneous coordinates. The undefined signed-overflow case is
+//      outside F, so it is absence/fail-closed, not a value carried
+//      simultaneously with the in-F semantics.
+//   5. Parameterized family — FAILS: the two variants are the C++
+//      standard's own signed-vs-unsigned arithmetic semantics. The type
+//      parameter on `IntegerOperationSemantics<IRCarrier>` supplies the
+//      concrete carrier; no richer source set collapses this variant.
+// Terminal: the closed in-F C++ core integer arithmetic-semantics set.
+type CppIntegerArithmeticSemantics
+  = RepresentableResultRequired
+  | UnsignedModuloArithmetic
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OverflowDisposition<IRCarrier> — the C++ integer operation-semantics
-// carrier for a primitive alias. Conj record (no coproduct ledger).
+// IntegerOperationSemantics<IRCarrier> — the C++ integer operation-
+// semantics carrier for a primitive alias. Conj record (no coproduct
+// ledger).
 // Anchor: C++ draft [basic.fundamental], unsigned arithmetic modulo 2^N:
 //   https://eel.is/c++draft/basic.fundamental
+// Anchor: C++ draft [expr.pre], result not mathematically defined or not
+// in representable range is undefined behavior:
+//   https://eel.is/c++draft/expr.pre
 //
-//   - defined_overflow  the C++ core-language defined overflow semantics
-//                       for this primitive family.
+//   - arithmetic_semantics  the C++ core-language arithmetic semantics
+//                           for this primitive family.
 //
-// Unsigned core integer aliases use `UnsignedModuloArithmetic`. Signed
-// core integer aliases do NOT use this row for overflow: signed overflow
-// is undefined behavior and therefore fail-closed / out-of-F unless a
-// proof or explicit totalized carrier makes the operation defined.
-// This record is deliberately a sibling of the alias, not a field on the
-// std/ integer carrier, because the same abstract integer carrier may
-// realize differently across languages.
-type OverflowDisposition<IRCarrier> {
-  defined_overflow: CppDefinedIntegerOverflow
+// Signed core integer aliases use `RepresentableResultRequired`;
+// overflow itself is undefined behavior and therefore fail-closed /
+// out-of-F unless a proof or explicit totalized carrier makes the
+// operation defined. Unsigned aliases use `UnsignedModuloArithmetic`.
+// This record is deliberately a sibling of the alias, not a field on
+// the std/ integer carrier, because the same abstract integer carrier
+// may realize differently across languages.
+type IntegerOperationSemantics<IRCarrier> {
+  arithmetic_semantics: CppIntegerArithmeticSemantics
 }
 
 
@@ -205,11 +216,13 @@ type CppBool = Bool
 // amends in as:
 //   - `type Cpp<X> = <StdCarrier>` alias-identity;
 //   - grounding row ONLY after the shared `GroundingMap` home is pinned;
-//   - for unsigned integer aliases, `data cpp_<x>_overflow:
-//      OverflowDisposition<Cpp<X>> = OverflowDisposition {
-//        defined_overflow: UnsignedModuloArithmetic }`.
-// Signed aliases carry no undefined-overflow value row; signed overflow
-// is fail-closed/out-of-F unless separately proven safe or totalized.
+//   - for integer aliases, `data cpp_<x>_integer_semantics:
+//      IntegerOperationSemantics<Cpp<X>> = IntegerOperationSemantics {
+//        arithmetic_semantics: <RepresentableResultRequired |
+//        UnsignedModuloArithmetic> }`.
+// Signed aliases carry `RepresentableResultRequired`; signed overflow
+// itself is fail-closed/out-of-F unless separately proven safe or
+// totalized. There is no undefined-behavior variant.
 //
 // SUBSTRATE SINGLE-AUTHORITY GUARD. cpp.dag MUST NOT mint local
 // `Int`, `UInt`, `Float`, `Char`, or `String` carriers. The std/ scalar
@@ -220,8 +233,9 @@ type CppBool = Bool
 //                            long long int
 //   - target form        alias to the std signed integer carrier selected
 //                        by the declared C++ implementation data model,
-//                        plus a future shared grounding row. No
-//                        undefined-overflow action row is declared.
+//                        plus a future shared grounding row and
+//                        `RepresentableResultRequired` integer
+//                        operation semantics.
 //   - named owner        std/integer.dag for the Int/IntN ladder;
 //                        target implementation model for source type →
 //                        width mapping (LP64/LLP64/ILP32 or successor).
@@ -236,7 +250,8 @@ type CppBool = Bool
 //   - target form        alias to the std unsigned integer carrier
 //                        selected by the declared implementation model,
 //                        plus a future shared grounding row and
-//                        `UnsignedModuloArithmetic` overflow semantics.
+//                        `UnsignedModuloArithmetic` integer operation
+//                        semantics.
 //   - named owner        std/integer.dag for the UInt/UIntN ladder;
 //                        target implementation model for widths.
 //   - dissolution trigger
