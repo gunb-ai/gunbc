@@ -542,30 +542,54 @@ type AcSweepKind
 // emit always appends `.END` after the last directive. There is no
 // data shape it could correctly take here.
 //
-// Closed-set coverage (initial cut): `.OP`, `.TRAN`, `.DC`, `.AC`,
-// `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`. The remaining SPICE3
-// directives (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`, `.PRINT`,
-// `.PLOT`, `.SAVE`, `.LIB`) are not enumerated in this initial cut —
-// the same subset-coverage concern as `Component` / `ModelKind`,
-// tracked by the YELLOW classification + named trigger below.
+// HONESTY NOTE (PR #3168 codex review). The Directive coverage has
+// TWO distinct gaps tracked by the YELLOW trigger below, parallel to
+// `Component`'s structure:
+//   (a) DIRECTIVE-KIND COVERAGE — enumerated: `.OP`, `.TRAN`, `.DC`,
+//       `.AC`, `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`. NOT yet
+//       enumerated: `.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`,
+//       `.PZ` (pole-zero), `.PRINT`, `.PLOT`, `.SAVE`, `.WIDTH`,
+//       `.LIB`. Quarles 1993 SPICE3F5 §11.5. This list MUST stay
+//       synchronized with the SPICE3F5 anchor's analysis/control card
+//       table — same synchronization discipline as `Component` above;
+//       a missing directive name lets the 🟡 trigger false-fire green
+//       (M3 / P1 failure mode codex review #3168 surfaced for the
+//       prior omission of `.PZ`).
+//   (b) PER-VARIANT GRAMMAR COVERAGE — each enumerated variant is a
+//       MANDATORY-FIELDS-ONLY shape; the spec's optional facts are
+//       not yet modeled:
+//         - Tran: optional `TSTART` (default 0), `TMAX` (default
+//           (TSTOP-TSTART)/50), and flag `UIC` (use initial
+//           conditions) — Quarles 1993 §11.5.7. Current shape is
+//           `{ tstep, tstop }` only.
+//         - Dc: optional second-source nested sweep
+//           `[SRC2 VSTART2 VSTOP2 VINCR2]` — Quarles 1993 §11.5.2.
+//           Current shape is single-source only.
+//         - Ac / Op / InitialCondition / NodeSet / Options / Include:
+//           complete-for-mandatory-grammar at this layer (no known
+//           optional facts on these in SPICE3F5; surface honestly so
+//           any spec re-read can flag a miss).
+//
+// `.End`'s absence from this SUM is NOT part of the YELLOW debt — by
+// construction it does not belong here at all (file-terminator note
+// above).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
 // structural shape (one variant per SPICE3 analysis/control directive
-// with mandatory-parameter slots) is the right form; what makes it
-// YELLOW is the INCOMPLETE COVERAGE of the closed SPICE3 directive
-// authority — the richer source (the remaining nine directives
-// enumerated above) exists in the spec but is not yet modeled here.
-// `.End`'s absence is NOT part of the YELLOW debt — by construction
-// it does not belong in this SUM at all (header note above).
-//   Named trigger: when the remaining SPICE3 §11.5 directives
-//   (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`, `.PRINT`, `.PLOT`,
-//   `.SAVE`, `.LIB`) are added as variants — each with its mandatory-
+// with named mandatory-parameter slots) is the right form; what makes
+// it YELLOW is the two coverage gaps above.
+//   Named trigger: when (a) all SPICE3F5 §11.5 directives from the
+//   missing-list are added as variants (each with its mandatory-
 //   parameter slots typed structurally, no `parameters: List<
-//   Parameter>` catch-all — the SUM reclassifies 🟢 GREEN. Tied
-//   conceptually to `Component`'s 🟡 trigger (same SPICE3 authority),
-//   but a separate sweep because the directive set is disjoint from
-//   the element set.
+//   Parameter>` catch-all) AND (b) each enumerated variant carries
+//   its full SPICE3F5 §11.5 grammar (Tran's TSTART/TMAX/UIC; Dc's
+//   optional 2nd-source sweep, modeled either as an Implicit/Explicit
+//   typed sum like `SubstrateSpec` or as a nested-sweep variant), the
+//   SUM reclassifies 🟢 GREEN. Tied conceptually to `Component`'s 🟡
+//   trigger (same SPICE3 authority + same per-variant-grammar
+//   discipline), but a separate sweep because the directive set is
+//   disjoint from the element set.
 // Five patterns attempted on the SUM (all FAIL to dissolve it):
 //   1. Fact placement — FAILS: every netlist consumer (analysis-driver,
 //      emitter) dispatches on the directive kind to know what to do
