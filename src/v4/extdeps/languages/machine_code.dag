@@ -50,3 +50,298 @@
 // ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.machine_code
+
+
+import v4.std.integer {
+  Int8,
+  Int16,
+  Int32,
+  Int64,
+  Int128,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  UInt128
+}
+import v4.std.machine { Byte, Word16, Word32, Word64, Word128 }
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes
+//
+// SPEC, NOT FAMILY OF FILES (L-2 + L-3). This file models machine code
+// as the common language-model boundary parameterized by an ISA. The ISA
+// pin is a field (`revision`) on `Isa`, not a split into x86_64.dag /
+// arm64.dag / riscv64.dag. Per DECISIONS.md L-3, a per-ISA file tree is
+// the N×M trap B2-OMNI forbids.
+//
+// DECLARATIVE MODEL, NOT DISASSEMBLER CODE. The carriers below are the
+// instruction-encoding vocabulary and the C5 fidelity boundary as data.
+// `bytes -> Node` disassembly and `Node -> bytes` emission remain the
+// generic B2-OMNI walker reading this data; this file declares no
+// procedure and no local Result/Diagnostic type. Ill-formed byte runs are
+// represented by `MachineFidelityDisposition.FailClosed` feature classes
+// that the walker turns into diagnostics.
+//
+// D2 RESOLVER SHAPE. This file is an extdeps resolver, not an algebra
+// inhabitance site. The `Machine*` aliases below are D2a(1) alias-
+// identity rows to std/integer.dag's fixed-width carriers. Algebra flows
+// through those aliases. D2a(2) grounding-map rows are deferred wholesale
+// until the shared `GroundingMap` home is pinned. D2a(3) operation
+// semantics live here only as machine-code-specific facts such as
+// overflow, trap, and flag-write disposition. There are no
+// `OrderedRing<MachineI32>` / `Semiring<MachineU32>` rows here.
+//
+// SCOPE NEGATIVE. ISA instruction-set grammar facts are in scope; source-
+// language type systems, assembler macro languages, object-file formats,
+// relocation/linker semantics, and ABI calling conventions are not
+// modeled here. Those are separate LanguageModel / format / ABI layers.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// IsaFamily — the closed family discriminator for the first machine-code
+// probe set. A future family is a visible L-2 revision edit here; it is
+// never an opaque string escape hatch.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: encoding, register classes, and operand
+//      rules all dispatch on ISA family.
+//   2. Variant-is-data — FAILS: reducing to a Symbol would make the
+//      closed spec family set stringly and uncheckable.
+//   3. Algebraic form — N/A: this is an external spec family partition.
+//   4. Dimensional — FAILS: an ISA revision belongs to exactly one
+//      family in this model.
+//   5. Parameterized family — FAILS: the families are not one uniform
+//      width-indexed carrier; they have incompatible encoding schemes.
+type IsaFamily
+  = X86_64Isa
+  | Aarch64Isa
+  | RiscV64Isa
+
+
+// Isa — parameter object for the one machine-code LanguageModel.
+// `revision` is an opaque Symbol naming the pinned upstream spec edition
+// (for example an Intel SDM revision, Arm ARM issue, or RISC-V unprivileged
+// ISA release). The Symbol is a name-reference, not a readable string.
+type Isa {
+  family: IsaFamily
+  revision: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ByteOrder — ISA byte order for multi-byte instruction fields.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode/emit reads this uniformly for
+//      immediate and displacement fields.
+//   2. Variant-is-data — FAILS: Bool would erase which bit means which
+//      order; Symbol would be stringly.
+//   3. Algebraic form — N/A: external machine representation fact.
+//   4. Dimensional — FAILS: one field has one byte order.
+//   5. Parameterized family — FAILS: two nullary alternatives, not F<X>.
+type ByteOrder
+  = LittleEndian
+  | BigEndian
+
+
+// ─────────────────────────────────────────────────────────────────────
+// InstructionLength — fixed-width vs variable-width instruction streams.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: tokenization/decoding consumes this at
+//      the instruction boundary.
+//   2. Variant-is-data — FAILS: `Fixed` carries a width while
+//      `Variable` carries a bounded prefix; flattening makes illegal
+//      combinations representable.
+//   3. Algebraic form — N/A: encoding-shape fact from the ISA spec.
+//   4. Dimensional — FAILS: an instruction stream uses exactly one
+//      length discipline at a decode point.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type InstructionLength
+  = FixedLength { width: InstructionWord }
+  | VariableLength { max_bytes: InstructionWord }
+
+
+// InstructionWord — admissible instruction-word / maximum-length carrier
+// choices. The variants alias std/machine word carriers structurally
+// rather than inventing local byte sequences.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: encoded-width decisions are shared by
+//      grammar, cost, and disassembly.
+//   2. Variant-is-data — PARTIAL: a Nat byte-count would be tempting,
+//      but fixed-cardinality list refinement is not landed; the std/
+//      machine word names are the current single-authority width tokens.
+//   3. Algebraic form — N/A: representation width, not algebra.
+//   4. Dimensional — FAILS: exactly one width token is selected.
+//   5. Parameterized family — DEFERRED: dissolves when bounded Nat-indexed
+//      width carriers land; until then the std/machine word aliases are
+//      the grounded width vocabulary.
+type InstructionWord
+  = Instr16 { width: Word16 }
+  | Instr32 { width: Word32 }
+  | Instr64 { width: Word64 }
+  | Instr128 { width: Word128 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RegisterClass — ISA register-file classifier.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: operand legality, calling convention
+//      consumers, and cost all read register class.
+//   2. Variant-is-data — FAILS: width alone cannot distinguish vector,
+//      predicate/flags, floating, and control registers.
+//   3. Algebraic form — PARTIAL: integer/float aliases ground through
+//      std/ carriers; the register file classifier itself is ISA surface.
+//   4. Dimensional — FAILS: a concrete register occurrence has exactly
+//      one class.
+//   5. Parameterized family — FAILS: heterogeneous register semantics.
+type RegisterClass
+  = GeneralPurposeRegister
+  | FloatingPointRegister
+  | VectorRegister
+  | PredicateRegister
+  | FlagsRegister
+  | ControlRegister
+
+
+type RegisterRef {
+  class: RegisterClass
+  name: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AddressingMode — core machine addressing forms shared by the first
+// ISA probe set. ISA-specific sub-modes remain grammar productions over
+// these fields, not a second addressing taxonomy.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: operand decode and memory-effect lenses
+//      share this classifier.
+//   2. Variant-is-data — FAILS: variants have different required fields;
+//      a single record would admit immediate+base+pc-relative mixtures.
+//   3. Algebraic form — N/A: machine addressing surface fact.
+//   4. Dimensional — FAILS: one operand occurrence has one address form.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type AddressingMode
+  = AbsoluteAddress { displacement: MachineI64 }
+  | RegisterIndirect { base: RegisterRef }
+  | BaseDisplacement { base: RegisterRef, displacement: MachineI32 }
+  | BaseIndexScale { base: RegisterRef, index: RegisterRef, scale: MachineU8, displacement: MachineI32 }
+  | PcRelative { displacement: MachineI32 }
+
+
+// Operand — instruction operand shape. `Immediate` is byte-carried here:
+// interpreting those bytes as signed/unsigned/float is selected by the
+// instruction production plus D2 alias target, not by duplicating an
+// algebra row on the operand itself.
+type Operand
+  = RegisterOperand { register: RegisterRef }
+  | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
+  | MemoryOperand { mode: AddressingMode }
+
+
+type ByteSequence {
+  bytes: List<Byte>
+}
+
+
+// EncodedInstruction — one decoded instruction with its raw byte witness.
+// The opcode is an opaque Symbol resolved through the ISA grammar table.
+type EncodedInstruction {
+  isa: Isa
+  opcode: Symbol
+  operands: List<Operand>
+  encoding: ByteSequence
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// MachineFidelityFeature / MachineFidelityDisposition — the machine-code
+// C5 boundary as data. Disassembly failures are first-class feature
+// classes; the generic walker emits diagnostics from these, never a
+// guessed instruction.
+type MachineFidelityFeature
+  = ValidInstructionEncoding
+  | InstructionAliasSpelling
+  | PaddingByteRun
+  | UndecodableByteRun
+  | PrivilegedOrUndefinedEncoding
+  | IsaRevisionMismatch
+  | AmbiguousDecode
+
+
+type MachineFidelityDisposition
+  = MachineModeled
+  | MachineDeclaredNormalized { feature: MachineFidelityFeature }
+  | MachineFailClosed { feature: MachineFidelityFeature }
+
+
+fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisposition {
+  match f {
+    ValidInstructionEncoding => MachineModeled
+    InstructionAliasSpelling => MachineDeclaredNormalized { feature: InstructionAliasSpelling }
+    PaddingByteRun => MachineDeclaredNormalized { feature: PaddingByteRun }
+    UndecodableByteRun => MachineFailClosed { feature: UndecodableByteRun }
+    PrivilegedOrUndefinedEncoding => MachineFailClosed { feature: PrivilegedOrUndefinedEncoding }
+    IsaRevisionMismatch => MachineFailClosed { feature: IsaRevisionMismatch }
+    AmbiguousDecode => MachineFailClosed { feature: AmbiguousDecode }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2a(3) operation semantics for machine integer instructions. This is
+// per-target operational fact, not algebra inhabitance.
+type MachineIntegerOverflowBehavior
+  = WrapModuloWidth
+  | TrapOnOverflow
+  | SetConditionFlags
+  | UndefinedByIsa
+
+
+type MachineIntegerOperationSemantics<IRCarrier> {
+  overflow: MachineIntegerOverflowBehavior
+  writes_flags: FlagWriteDisposition
+}
+
+
+type FlagWriteDisposition
+  = DoesNotWriteFlags
+  | WritesArchitecturalFlags
+  | WritesPredicateRegister
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2a(1) alias-identity rows to std/integer.dag. These are the only
+// primitive grounding rows that can land before shared `GroundingMap`.
+type MachineI8 = Int8
+type MachineI16 = Int16
+type MachineI32 = Int32
+type MachineI64 = Int64
+type MachineI128 = Int128
+
+type MachineU8 = UInt8
+type MachineU16 = UInt16
+type MachineU32 = UInt32
+type MachineU64 = UInt64
+type MachineU128 = UInt128
+
+
+// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding maps and D2a(3) instance rows.
+//
+// D2a(2): `data machine_<prim>_grounding: GroundingMap<Machine*> = ...`
+// is deferred wholesale until the single shared `GroundingMap` home is
+// operator-pinned. This file must import that type when it lands; it must
+// not declare a local `GroundingMap`.
+//
+// D2a(3): per-instruction operation-semantics instance rows such as
+// `add_i32_wraps`, `add_i32_traps`, or `add_i32_sets_flags` are deferred
+// until top-level sum-variant data bodies / shared operation-realization
+// rows can be validated uniformly. The carrier shape above is canonical;
+// individual rows are ISA-production data, not hand-written algebra.

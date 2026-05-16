@@ -57,3 +57,224 @@
 // explicit operator ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.lean
+
+
+import v4.std.integer { Int, UInt }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes
+//
+// SPEC, NOT MATHLIB (L-2). The carriers below model Lean 4's language
+// surface and kernel-checkable proof artifacts: declarations, terms,
+// inductives, theorem/proof boundaries, and termination clauses. Mathlib
+// declarations are ordinary programs in the modeled language, not
+// extdeps vocabulary.
+//
+// CHECKER, NOT SEARCH ENGINE. PROOF-1 exports gunbc evidence to Lean
+// terms; Lean checks those terms. This file does not model tactic search
+// as an engine and does not add a theorem-prover subsystem. A tactic
+// block that cannot be represented as a kernel-checkable term is outside
+// F and must fail closed at the B2-OMNI boundary.
+//
+// D2 RESOLVER SHAPE. Lean primitive aliases below are D2a(1)
+// alias-identity rows to std/ carriers. Algebra inhabitance remains owned
+// by std/integer.dag / std/nat.dag / std/logic.dag. D2a(2) grounding-map
+// rows are deferred until the shared `GroundingMap` home is pinned. D2a(3)
+// operation-semantics rows are Lean-specific only where the spec supplies
+// a fact distinct from the std carrier, such as proof irrelevance,
+// reduction/checking mode, or theorem export normalization.
+//
+// SCOPE NEGATIVE. This file is the Lean LanguageModel/prover target for
+// the first theorem class, termination. It does not model Coq, SMT-LIB,
+// Mathlib APIs, Lake package metadata, editor elaborator UX, or a general
+// proof search strategy.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LeanDeclarationKind — closed Lean declaration categories needed for
+// the PROOF-1 termination export slice.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: grammar, emit, and proof-export consumers
+//      all dispatch on declaration kind.
+//   2. Variant-is-data — FAILS: reducing to Symbol would make the closed
+//      spec categories stringly and uncheckable.
+//   3. Algebraic form — N/A: external language declaration taxonomy.
+//   4. Dimensional — FAILS: one Lean declaration has one top-level kind.
+//   5. Parameterized family — FAILS: declarations have heterogeneous
+//      payload/validation rules, not one F<X>.
+type LeanDeclarationKind
+  = LeanDef
+  | LeanTheorem
+  | LeanInductive
+  | LeanStructure
+  | LeanAxiom
+
+
+// LeanName — opaque qualified name reference. The Symbol is identity,
+// not readable spelling; textual pretty-printing is a grounding-map /
+// LanguageModel spelling fact.
+type LeanName {
+  namespace: List<Symbol>
+  local: Symbol
+}
+
+
+// LeanBinderInfo — binder visibility in Lean term syntax.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: parser, emitter, and elaboration boundary
+//      all consume binder visibility.
+//   2. Variant-is-data — FAILS: Bool cannot distinguish explicit,
+//      implicit, strict implicit, and instance implicit.
+//   3. Algebraic form — N/A: Lean syntax/spec fact.
+//   4. Dimensional — FAILS: a binder has one visibility.
+//   5. Parameterized family — FAILS: closed nullary alternatives.
+type LeanBinderInfo
+  = ExplicitBinder
+  | ImplicitBinder
+  | StrictImplicitBinder
+  | InstanceImplicitBinder
+
+
+type LeanBinder {
+  name: LeanName
+  type: LeanTerm
+  info: LeanBinderInfo
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LeanTerm — the kernel-level term surface this model needs for
+// termination proof export. This is a domain recursive type over Lean
+// terms, not a new kernel connective; the universal pivot remains Node.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: type checking, emission, and proof export
+//      share this exact term classifier.
+//   2. Variant-is-data — FAILS: heterogeneous payloads; a flat record
+//      would admit invalid mixtures like a lambda with no binder but an
+//      application argument.
+//   3. Algebraic form — N/A: Lean term grammar is the external source.
+//   4. Dimensional — FAILS: one term node has one syntactic form.
+//   5. Parameterized family — FAILS: heterogeneous constructors.
+type LeanTerm
+  = LeanSort { level: Symbol }
+  | LeanConst { name: LeanName }
+  | LeanVar { name: LeanName }
+  | LeanApp { function: LeanTerm, argument: LeanTerm }
+  | LeanLambda { binder: LeanBinder, body: LeanTerm }
+  | LeanForall { binder: LeanBinder, body: LeanTerm }
+  | LeanLet { binder: LeanBinder, value: LeanTerm, body: LeanTerm }
+  | LeanMatch { scrutinee: LeanTerm, alternatives: List<LeanMatchAlternative> }
+
+
+type LeanMatchAlternative {
+  constructor: LeanName
+  binders: List<LeanBinder>
+  body: LeanTerm
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Termination export shape. A2 descent evidence maps to Lean's
+// `termination_by` / `decreasing_by` clauses; Lean checks the result.
+type LeanTerminationMeasure {
+  subject: LeanName
+  measure: LeanTerm
+}
+
+
+type LeanDecreasingProof {
+  proof: LeanTerm
+}
+
+
+type LeanTerminationClause
+  = LeanTerminationBy { measure: LeanTerminationMeasure }
+  | LeanDecreasingBy { proof: LeanDecreasingProof }
+
+
+// LeanProofArtifact — the PROOF-1 export unit. The source evidence is a
+// Node-side proof artifact read by lenses; this file models the Lean
+// target term boundary, not a new gunbc proof system.
+type LeanProofArtifact {
+  declaration: LeanDeclarationKind
+  name: LeanName
+  type: LeanTerm
+  proof: LeanTerm
+  termination: List<LeanTerminationClause>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// C5 fidelity boundary for Lean. Proof-relevant kernel terms are modeled;
+// non-kernel surface conveniences normalize or fail closed.
+type LeanFidelityFeature
+  = LeanKernelTerm
+  | LeanPrettyNameSpelling
+  | LeanWhitespaceAndLayout
+  | LeanTacticScript
+  | LeanElaboratorOnlySyntax
+  | LeanUnresolvedUniverseLevel
+  | LeanUnsupportedTheoremClass
+
+
+type LeanFidelityDisposition
+  = LeanModeled
+  | LeanDeclaredNormalized { feature: LeanFidelityFeature }
+  | LeanFailClosed { feature: LeanFidelityFeature }
+
+
+fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
+  match f {
+    LeanKernelTerm => LeanModeled
+    LeanPrettyNameSpelling => LeanDeclaredNormalized { feature: LeanPrettyNameSpelling }
+    LeanWhitespaceAndLayout => LeanDeclaredNormalized { feature: LeanWhitespaceAndLayout }
+    LeanTacticScript => LeanFailClosed { feature: LeanTacticScript }
+    LeanElaboratorOnlySyntax => LeanFailClosed { feature: LeanElaboratorOnlySyntax }
+    LeanUnresolvedUniverseLevel => LeanFailClosed { feature: LeanUnresolvedUniverseLevel }
+    LeanUnsupportedTheoremClass => LeanFailClosed { feature: LeanUnsupportedTheoremClass }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2a(3) Lean operation/proof-checking semantics. These are genuine Lean
+// resolver facts; they are not algebra-inhabitance rows.
+type LeanReductionSemantics
+  = KernelDefinitionalReduction
+  | OpaqueAxiomBoundary
+  | ProofIrrelevantProposition
+
+
+type LeanProofCheckSemantics<IRCarrier> {
+  reduction: LeanReductionSemantics
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2a(1) alias-identity rows. These are Lean's language-level primitive
+// names resolved to existing std/ carriers; the algebra flows through
+// std/, not through this file.
+type LeanBool = Bool
+type LeanNat = Nat
+type LeanInt = Int
+type LeanUInt = UInt
+
+
+// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding maps and D2a(3) data rows.
+//
+// D2a(2): `data lean_bool_grounding: GroundingMap<LeanBool> = ...` and
+// peers are deferred until the shared `GroundingMap` type has a single
+// pinned home. This file must not declare `GroundingMap` locally.
+//
+// D2a(3): top-level data rows selecting `LeanReductionSemantics` for
+// specific exported primitives / theorem artifacts are deferred until the
+// shared operation-realization path can validate those rows uniformly.
+// The carrier shape above is canonical; individual rows belong to the
+// Lean LanguageModel resolver data, not to std/algebra.dag.
