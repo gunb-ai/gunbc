@@ -10,6 +10,9 @@
 //
 // Owns:
 //   - Diagnostic { reason: Symbol, at: Locus, correction: Correction }
+//   - Outcome<T> = Produced { value: T } | Rejected { diagnostic: Diagnostic }
+//     (DECISIONS.md **I** 2026-05-16 — fail-closed success|failure carrier for
+//     pipeline stages and verification; co-located with Diagnostic.)
 //   - Locus = Textual | NodeLocus | PortLocus  (WHERE a diagnostic
 //     points; a `Textual` locus carries a file identity AND an Extent,
 //     so "a span in a specific file" is ONE boundary fact — P2 facts-
@@ -109,7 +112,9 @@ import v4.std.node { Node }
 // discipline.md §4 — operator-ratified binding 2026-05-15; the doc
 // enumerates FIVE patterns, the fifth being Parameterized-family).
 // `reason` is a name-reference, not a coproduct — no ledger applies; the
-// `Diagnostic` record is a Conj, likewise none.
+// `Diagnostic` record is a Conj, likewise none. `Outcome<T>` (declared
+// after `Diagnostic` in this file) is a coproduct and carries its own
+// ledger there.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -327,3 +332,40 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Outcome<T> — ratified as v4/DECISIONS.md **I** (2026-05-16). The shared
+// fail-closed carrier for "produced value vs rejected with Diagnostic"
+// (`TASKS.md` / `STRUCTURE.md` `Result<…, Diagnostic>` **prose** names this
+// same surface — the `.dag` authority is `Outcome<…>` here; no parallel
+// `Result<ok, err>` type in `std/`; see **I** for M6/P2 reconciliation.
+// variant names `Produced` / `Rejected` and field names `value` /
+// `diagnostic` are binding for downstream: verification.dag TestClaim
+// expectations, Tier-2 numeric carriers, collection partial-access, etc.)
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — five patterns attempted; classification: 🟢 GREEN
+// (terminal). Ledger:
+//   1. Fact placement — FAILS: every consumer of an `Outcome<T>` handles
+//      both arms uniformly at the stage boundary (carry success forward
+//      or surface the `Diagnostic`); not a per-site fact to scatter.
+//   2. Variant-is-data — FAILS: `Produced` carries `T` and `Rejected` carries
+//      a full `Diagnostic` — different shapes. Collapsing to `{ ok: Bool,
+//      value?, diagnostic? }` ratifies illegal mutual states (success
+//      with no value, rejection with no diagnostic) — the inverse of P2.
+//   3. Algebraic form — N/A: an outcome is not an algebra carrier; neither
+//      arm traces to a richer single `std/` operation family to factor into.
+//   4. Dimensional — FAILS: success and failure are mutually exclusive
+//      alternatives at one boundary — not simultaneous coordinates in a
+//      product of independent dimensions.
+//   5. Parameterized family — FAILS: the two variants are not mechanically
+//      the same payload shape `F<X>` for `X` over a separately-declared
+//      enumerable set (Practice 7). `Produced`/`Rejected` are the
+//      irreducible partition of produced vs fail-closed reject — not an
+//      enumerated copy of such a set.
+// Terminal: the irreducible typed sum for fail-closed stage returns beside
+// `Diagnostic` — never a bare optional on the error path (INVARIANTS P3).
+type Outcome<T>
+  = Produced { value: T }
+  | Rejected { diagnostic: Diagnostic }
