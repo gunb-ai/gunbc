@@ -297,17 +297,43 @@ type Component
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ModelKind — the closed set of `.MODEL` device kinds in SPICE3. Each
-// `.MODEL` card declares a NAMED parameter set for one of these device
-// types (Quarles 1993 §11.3 + §6); component instances reference the
-// model by name (`Diode.model`, `Bjt.model`, `Mosfet.model`).
+// ModelKind — the supported subset of `.MODEL` device kinds in SPICE3.
+// Each `.MODEL` card declares a NAMED parameter set for one of these
+// device types (Quarles 1993 §11.3 + §6); component instances reference
+// the model by name (`Diode.model`, `Bjt.model`, `Mosfet.model`).
+//
+// HONESTY NOTE (PR #3168 codex review): this enum is a SUBSET of the
+// SPICE3 `.MODEL` authority. The full SPICE3 set is R (resistor model),
+// C (capacitor model), URC (uniform RC line), LTRA (lossy transmission
+// line), SW (voltage-controlled switch), CSW (current-controlled
+// switch), D (diode), NPN, PNP, NJF (N-JFET), PJF (P-JFET), NMOS, PMOS,
+// NMF (N-MESFET), PMF (P-MESFET) — Quarles 1993 §6. The five variants
+// below match the five `Component` variants that carry a `model: Symbol`
+// slot in this initial cut (`Diode` / `Bjt`(N|P) / `Mosfet`(N|P)); the
+// classification reflects that incomplete coverage rather than papering
+// over it.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every `.MODEL`-consumer (parameter-schema
-//      checker, emitter) dispatches on the model kind to know which
-//      parameter names are valid; shared classifier, not scattered.
+// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
+// structural shape (a closed enumeration of SPICE3 device kinds) is
+// terminal; what makes it YELLOW is its INCOMPLETE COVERAGE of the
+// closed SPICE3 authority — the richer source (the remaining ten
+// .MODEL kinds enumerated above) exists in the spec but is not yet
+// modeled here.
+//   Named trigger: when (a) `Component`'s 🟡 trigger fires (the full
+//   SPICE3 element set is enumerated — see Component below), AND
+//   (b) the model-referencing variants among them (every Component
+//   variant that carries a `model: Symbol` slot) have their
+//   corresponding `.MODEL` kind enumerated here — `ModelKind`
+//   reclassifies 🟢 GREEN. The two coverage gaps dissolve as one
+//   sweep because they share the SAME authority (the SPICE3 spec) and
+//   the same per-element work (a Component variant that references a
+//   model has a matching ModelKind, by construction of the spec).
+// Five patterns attempted on the SUM (all FAIL to dissolve it):
+//   1. Fact placement — FAILS: every `.MODEL`-consumer (parameter-
+//      schema checker, emitter) dispatches on the model kind to know
+//      which parameter names are valid; shared classifier, not
+//      scattered.
 //   2. Variant-is-data — FAILS: collapsing the closed kind set to a
 //      `{ name: Symbol }` field makes the kind opaque — the parameter-
 //      schema check loses its dispatch target and degenerates to a
@@ -324,7 +350,6 @@ type Component
 //      as variant payload; the schema is itself a separately
 //      enumerable concern the consuming check projects over). No
 //      mechanical copy of a source set; not a Practice-7 projection.
-// Terminal: the closed SPICE3 `.MODEL` device-kind enumeration.
 type ModelKind
   = DiodeModel
   | BjtNpn
