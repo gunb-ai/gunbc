@@ -71,7 +71,8 @@ import v4.std.node { Symbol }
 // (interchange formats) remain the authority of `Word32` / `Word64` in
 // std/machine.dag — Grounding maps `Float*` ↔ interchange words; this
 // file does not duplicate width-correct bit lists (same 🟡 list-length
-// scaffold class as machine.dag's `Word*` fields).
+// scaffold class as **std/machine.dag**'s `Word*` section under the same
+// "LIST FIELD LENGTH vs NOMINAL WIDTH — TRACKED SCAFFOLD (🟡)" heading).
 //
 // NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
 // unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
