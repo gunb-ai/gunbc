@@ -1687,7 +1687,7 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Fourteen sites in this file carry `List<T>` payloads where IEEE
+// Twenty sites in this file carry `List<T>` payloads where IEEE
 // 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
 // state is structurally representable, the same INVARIANTS P2
 // illegal-states-unrepresentable concern codex / openai-pro
@@ -1714,16 +1714,16 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the fourteen spec-non-empty sites keeps `List<T>` for now.
+// - Each of the twenty spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
 // - DISSOLUTION TRIGGER: when `std/collection.dag` Wave-A2 lands the
-//   non-empty refinement, the fourteen sites adopt
+//   non-empty refinement, the twenty sites adopt
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The fourteen spec-non-empty sites (back-pointers to this note):
+// The twenty spec-non-empty sites (back-pointers to this note):
 //   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
 //   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
 //   3. NetDeclaration.TriregIdentifierForm.identifiers    (§A.2.1.3)
@@ -1739,6 +1739,12 @@ type ParameterTypeKind
 //  12. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
 //  13. ContinuousAssign.assignments                  (§6.1)
 //  14. ModuleInstantiation.instances                 (§A.4.1.1)
+//  15. PortConnections.PositionalConnections.actuals (§A.4.1.1)
+//  16. PortConnections.NamedConnections.connections  (§A.4.1.1)
+//  17. DefparamDeclaration.assignments               (§A.2.5)
+//  18. EventDeclaration.event_names                  (§A.2.1.4)
+//  19. GenvarDeclaration.genvar_names                (§A.2.1.1)
+//  20. UdpInstantiation.instances                    (§A.5.2)
 //
 // Sites previously numbered 7-9 added 2026-05-16 per codex
 // REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
@@ -1760,9 +1766,27 @@ type ParameterTypeKind
 // initializer) unrepresentable; the four per-variant
 // list_of_net_decl_assignments / list_of_net_identifiers fields
 // inherit the §A.2.1.3 spec-non-empty constraint and ride the same
-// RQ-3 deferral. Codex's / openai-pro's motivation is spec-correct
-// in each case; the FORM is the deferred refinement, not a verilog-
-// local mint.
+// RQ-3 deferral. Sites 15-20 added 2026-05-16 per openai-pro
+// REQUEST_CHANGES on PR #3176 at sha 1eb241a2 (inline BLOCKING
+// findings at lines 2156 / 2315 / 2604): PortConnections gained the
+// NoPortConnections nullary variant — the §A.4.1.1 empty `()`
+// connection-list form is now structurally distinct from non-empty
+// ordered/named lists (P2 representation-duality dissolution); the
+// two non-empty inner lists ride the same RQ-3 deferral.
+// DefparamDeclaration / EventDeclaration / GenvarDeclaration each
+// gained a non-empty list of per-entry sub-records (new
+// DefparamAssignment Conj for §A.2.5 list_of_defparam_assignments;
+// `event_names: List<Symbol>` for §A.2.1.4 list_of_event_identifiers;
+// `genvar_names: List<Symbol>` for §A.2.1.1 list_of_genvar_
+// identifiers) — restoring the spec statement-boundary lost by the
+// prior singular-entry shape. UdpInstantiation refactored to the
+// same shared-header + non-empty-instance-list pattern as
+// ModuleInstantiation, per §A.5.2 `udp_identifier [drive_strength]
+// [delay2] udp_instance { , udp_instance } ;` — shared
+// (udp_name, drive_strength, delay) clause + per-instance
+// (instance_name, body_lexeme) UdpInstance entries. Codex's /
+// openai-pro's motivation is spec-correct in each case; the FORM
+// is the deferred refinement, not a verilog-local mint.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2099,29 +2123,48 @@ type NamedPortConnection {
 
 // ─────────────────────────────────────────────────────────────────────
 // PortConnections — the closed Verilog port-binding-list form
-// classifier (IEEE 1364-2005 §12.1.2). The spec admits exactly TWO
-// port-connection forms; each module-instance picks ONE form for the
-// entire instance (mixing positional and named in a single instance
-// is forbidden by the grammar — `Adder a1 (x, .b(y))` is a syntax
-// error). The Disj-with-named-payloads makes "mixed positional/named"
-// structurally unrepresentable (codex BLOCKING fix on PR #3176
-// 2026-05-16: the prior NAMED-ONLY model had positional connections
-// scope-negative, which excluded valid spec syntax and violated
-// INVARIANTS P1 modeling-faithfulness).
+// classifier (IEEE 1364-2005 §12.1.2 / §A.4.1.1). The spec admits
+// THREE forms per the §A.4.1.1 grammar:
 //
-//   - PositionalConnections   — `Adder a1 (sig1, sig2, sig3)` —
-//                               actuals listed in declaration-order
-//                               position; the i-th signal binds to
-//                               the i-th port of the instantiated
-//                               module. Spec §12.1.2 "Ordered port
-//                               connections".
+//   module_instance ::= name_of_instance ( [list_of_port_connections] ) ;
+//   list_of_port_connections ::=
+//       ordered_port_connection { , ordered_port_connection }
+//     | named_port_connection { , named_port_connection }
+//
+// where the `[list_of_port_connections]` brackets make the entire
+// connection list OPTIONAL (`Adder a1 ();` — empty parens — is legal
+// spec syntax), and when present the inner list is a NON-EMPTY list
+// of ordered_port_connection OR a NON-EMPTY list of named_port_
+// connection — mixing the two is forbidden (`Adder a1 (x, .b(y))`
+// is a syntax error).
+//
+// The empty `()` form is modeled as a STRUCTURAL `NoPortConnections`
+// variant rather than as an `[]` empty list inside either of the
+// other two variants — otherwise the empty connection-list state is
+// representable TWO ways (positional-empty vs named-empty) and
+// violates INVARIANTS P2 representation-duality (openai-pro
+// REQUEST_CHANGES on PR #3176 2026-05-16 at line 2156). Sibling
+// non-empty lists ride the established RQ-3 / std/collection.dag
+// Wave-A2 `List<T> where non_empty` deferral (see shared TRACKED-
+// SCAFFOLD note above).
+//
+//   - NoPortConnections        — `Adder a1 ();` — empty parens; the
+//                                spec's "[list_of_port_connections]"
+//                                bracket-absent form.
+//   - PositionalConnections    — `Adder a1 (sig1, sig2, sig3)` —
+//                                actuals listed in declaration-order
+//                                position; the i-th signal binds to
+//                                the i-th port. Spec §12.1.2
+//                                "Ordered port connections". The
+//                                `actuals` list is spec-non-empty.
 //   - NamedConnections         — `Adder a1 (.a(x), .b(y), .sum(z))`
-//                               — actuals explicitly bound to formals
-//                               by name. Spec §12.1.2 "Named port
-//                               connections".
+//                                — actuals explicitly bound to
+//                                formals by name. Spec §12.1.2
+//                                "Named port connections". The
+//                                `connections` list is spec-non-empty.
 //
-// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
-// port-connection forms; a third would be an edit to THIS declaration
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.4.1.1 admits exactly
+// these three forms; a fourth would be an edit to THIS declaration
 // under the L-2 pin discipline (SystemVerilog adds `.port` shorthand
 // for `.port(port)` and `.*` for "connect all matching names" — a
 // future language-version model would EDIT this Disj explicitly).
@@ -2130,32 +2173,45 @@ type NamedPortConnection {
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every instance-emission consumer and
 //      every port-binding resolver reads the connection form
-//      uniformly to know whether to align by position or by name;
-//      shared classifier, not scattered.
+//      uniformly to know whether to emit `()`, align by position,
+//      or align by name; shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: collapsing the variants to a uniform
 //      `List<PortConnectionEntry>` where each entry has `kind: Form`
 //      ratifies the illegal state "mixed positional+named within
-//      one instance" — exactly the spec-forbidden form. The
-//      Disj-with-heterogeneous-payloads makes the per-instance
-//      uniform-form choice structural.
-//   3. Algebraic form — N/A by construction: the two forms are the
-//      IEEE 1364-2005 spec's primitive port-connection partition;
-//      they do not trace to a richer std/ algebraic structure.
+//      one instance" — exactly the spec-forbidden form. Replacing
+//      `NoPortConnections` with empty inner lists ratifies the
+//      double-spelling of `()`. Disj-with-heterogeneous-payloads-
+//      plus-nullary-empty-variant makes both partitions structural.
+//   3. Algebraic form — N/A by construction: the three forms are
+//      the IEEE 1364-2005 §A.4.1.1 spec's primitive port-connection
+//      partition; they do not trace to a richer std/ algebraic
+//      structure.
 //   4. Dimensional — FAILS: a single module instance is EXACTLY
-//      ONE form; mutually-exclusive alternatives. (Mixed-form is a
-//      syntax error per spec.)
-//   5. Parameterized family — FAILS: the two variants carry
-//      structurally heterogeneous payloads (PositionalConnections
-//      carries `List<PortConnectionActual>` — the actuals by
-//      position; NamedConnections carries
-//      `List<NamedPortConnection>` — each with formal+actual) —
-//      NOT one generic `F<X>` / projection over a separately-
-//      declared source set (Practice 7).
-// Terminal: the closed two-way Verilog port-connection-form
-// classifier of the IEEE 1364-2005 spec.
+//      ONE form; mutually-exclusive alternatives. (Mixed-form and
+//      multi-form-per-instance are syntax errors per spec.)
+//   5. Parameterized family — FAILS: the three variants carry
+//      structurally heterogeneous payloads (NoPortConnections is
+//      nullary; PositionalConnections carries
+//      `List<PortConnectionActual>`; NamedConnections carries
+//      `List<NamedPortConnection>`) — NOT one generic `F<X>`
+//      projection over a separately-declared source set
+//      (Practice 7).
+// Terminal: the closed three-way Verilog port-connection-form
+// classifier of the IEEE 1364-2005 §A.4.1.1 spec.
 type PortConnections
-  = PositionalConnections { actuals: List<PortConnectionActual> }
-  | NamedConnections { connections: List<NamedPortConnection> }
+  = NoPortConnections
+  | PositionalConnections {
+      // 🟡 spec-non-empty (§A.4.1.1 ordered_port_connection list) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      actuals: List<PortConnectionActual>
+    }
+  | NamedConnections {
+      // 🟡 spec-non-empty (§A.4.1.1 named_port_connection list) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      connections: List<NamedPortConnection>
+    }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2300,21 +2356,48 @@ type ModuleInstantiation {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// DefparamDeclaration — a Verilog `defparam` statement
-// (`defparam top.sub.WIDTH = 8;`). IEEE 1364-2005 §12.2 +
-// §4.10.2.1. Deprecated per spec but admitted. Conj record (no
-// Practice-4 ledger).
+// DefparamAssignment — one (target_path, value) pair in a `defparam`
+// statement's defparam_assignment list (IEEE 1364-2005 §A.2.5:
+// `defparam_assignment ::= hierarchical_parameter_identifier =
+// mintypmax_expression`). Conj record (no Practice-4 ledger).
 //
 //   - target_path     the hierarchical target-parameter path as a
 //                     verbatim lexeme (sub-grammar deferred to the
 //                     T-4 LanguageModel — hierarchical identifier
-//                     resolution is its concern)
+//                     resolution is its concern).
 //   - value_lexeme    the override value as a verbatim expression
-//                     lexeme (same body_lexeme precedent as
-//                     ParameterDeclaration.default_lexeme)
-type DefparamDeclaration {
+//                     lexeme.
+type DefparamAssignment {
   target_path: String
   value_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DefparamDeclaration — a Verilog `defparam` statement
+// (`defparam top.sub.WIDTH = 8, top.sub.DEPTH = 16;`). IEEE 1364-2005
+// §12.2 + §A.2.5 (deprecated per spec but admitted). Per spec a
+// single `defparam` statement carries a NON-EMPTY list of
+// defparam_assignment entries:
+//
+//   defparam_assignment_list ::= defparam_assignment
+//                              { , defparam_assignment } ;
+//
+// The prior singular-entry shape lost the §12.2 statement-boundary
+// (shared `defparam` keyword across multi-assignment forms) and made
+// repeated DefparamDeclaration items in a module's ModuleItems
+// ambiguous about whether two adjacent defparams came from one
+// statement or two (openai-pro REQUEST_CHANGES on PR #3176
+// 2026-05-16 at line 2315). Conj record (no Practice-4 ledger).
+//
+//   - assignments     the non-empty list of defparam assignments
+//                     declared under this single `defparam`
+//                     statement.
+type DefparamDeclaration {
+  // 🟡 spec-non-empty (§A.2.5 defparam_assignment list) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where
+  // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+  assignments: List<DefparamAssignment>
 }
 
 
@@ -2439,26 +2522,58 @@ type FunctionDeclaration {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// EventDeclaration — a Verilog named-event declaration (`event ev;`).
-// IEEE 1364-2005 §9.7.3 / §10.3. Named events are explicitly-
-// triggered control-flow primitives (`-> ev;` triggers, `@ev` waits).
-// Conj record (no Practice-4 ledger).
+// EventDeclaration — a Verilog named-event declaration (`event ev1,
+// ev2, ev3;`). IEEE 1364-2005 §9.7.3 / §10.3 / §A.2.1.4. Named events
+// are explicitly-triggered control-flow primitives (`-> ev;` triggers,
+// `@ev` waits). Per spec §A.2.1.4 grammar:
 //
-//   - name    the event identifier (K-1-opaque Symbol)
+//   event_declaration ::= event list_of_event_identifiers ;
+//   list_of_event_identifiers ::= event_identifier
+//                               { , event_identifier }
+//
+// a single `event` statement declares a NON-EMPTY list of event
+// identifiers under a shared `event` keyword. The prior singular-name
+// shape lost the §A.2.1.4 statement-boundary (shared `event` keyword
+// across multi-identifier forms) — openai-pro REQUEST_CHANGES on
+// PR #3176 2026-05-16 at line 2315 (grouped with DefparamDeclaration
+// / GenvarDeclaration). Conj record (no Practice-4 ledger).
+//
+//   - event_names    the non-empty list of event identifiers (K-1-
+//                    opaque Symbols) declared under this single
+//                    `event` statement.
 type EventDeclaration {
-  name: Symbol
+  // 🟡 spec-non-empty (§A.2.1.4 list_of_event_identifiers) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where
+  // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+  event_names: List<Symbol>
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GenvarDeclaration — a Verilog `genvar` declaration (`genvar i;`).
-// IEEE 1364-2005 §12.4.2. Generate variables drive elaboration-time
-// loop iteration in `generate-for` constructs. Conj record (no
-// Practice-4 ledger).
+// GenvarDeclaration — a Verilog `genvar` declaration (`genvar i, j,
+// k;`). IEEE 1364-2005 §12.4.2 / §A.2.1.1. Generate variables drive
+// elaboration-time loop iteration in `generate-for` constructs. Per
+// spec §A.2.1.1 grammar:
 //
-//   - name    the genvar identifier (K-1-opaque Symbol)
+//   genvar_declaration ::= genvar list_of_genvar_identifiers ;
+//   list_of_genvar_identifiers ::= genvar_identifier
+//                                { , genvar_identifier }
+//
+// a single `genvar` statement declares a NON-EMPTY list of genvar
+// identifiers under a shared `genvar` keyword. The prior singular-
+// name shape lost the §A.2.1.1 statement-boundary — openai-pro
+// REQUEST_CHANGES on PR #3176 2026-05-16 at line 2315 (grouped with
+// DefparamDeclaration / EventDeclaration). Conj record (no Practice-4
+// ledger).
+//
+//   - genvar_names    the non-empty list of genvar identifiers (K-1-
+//                     opaque Symbols) declared under this single
+//                     `genvar` statement.
 type GenvarDeclaration {
-  name: Symbol
+  // 🟡 spec-non-empty (§A.2.1.1 list_of_genvar_identifiers) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where
+  // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+  genvar_names: List<Symbol>
 }
 
 
@@ -2587,24 +2702,70 @@ type GateInstantiation {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// UdpInstance — one (instance_name, port-list body) entry in a UDP
+// instantiation's udp_instance list (IEEE 1364-2005 §A.5.2:
+// `udp_instance ::= name_of_udp_instance ( output_terminal ,
+// input_terminal { , input_terminal } )`). Conj record (no Practice-4
+// ledger).
+//
+//   - instance_name    this instance's local name (K-1-opaque Symbol)
+//   - body_lexeme      the per-instance terminal list (`( out , in1,
+//                      in2, ... )`) as a verbatim lexeme; sub-grammar
+//                      (output_terminal + input_terminal_list per
+//                      §A.5.4) deferred to the bundled T-4
+//                      LanguageModel.
+type UdpInstance {
+  instance_name: Symbol
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // UdpInstantiation — a Verilog user-defined-primitive instantiation
 // (a UDP defined via `primitive ... endprimitive` at the file level
 // per IEEE 1364-2005 §8 is instantiated like a gate at the module-
-// body level). Conj record (no Practice-4 ledger).
+// body level). Per spec §A.5.2 grammar:
+//
+//   udp_instantiation ::= udp_identifier [drive_strength] [delay2]
+//                         udp_instance { , udp_instance } ;
+//
+// the spec form is ONE shared (udp_identifier + drive_strength +
+// delay) clause followed by a NON-EMPTY list of udp_instance entries
+// — multi-instance UDP statements share the statement's udp-name and
+// strength/delay authority across all listed instances. The prior
+// singular-instance shape lost the §A.5.2 statement-boundary (shared
+// udp_identifier + shared strength/delay) for multi-instance forms
+// (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 at line 2604;
+// same shape as the ModuleInstantiation refactor above per
+// §A.4.1.1). Conj record (no Practice-4 ledger).
 //
 //   - udp_name         the UDP identifier (K-1-opaque Symbol;
 //                      resolves through the namespace to the
 //                      matching file-level UdpDefinition — see
 //                      below; the UDP and Module sibling design-
-//                      elements share the same name-space).
-//   - instance_name    this instance's local name (K-1-opaque Symbol)
-//   - body_lexeme      port list + drive strength + delay as a
-//                      verbatim lexeme (sub-grammar deferred to the
-//                      bundled T-4 LanguageModel)
+//                      elements share the same name-space). Shared
+//                      across all instances in this statement.
+//   - drive_strength   optional drive_strength clause; reuses the
+//                      DriveStrengthClause Disj shared with
+//                      NetDeclaration / ContinuousAssign. Shared
+//                      across all instances.
+//   - delay            optional delay clause; reuses the DelayClause
+//                      Disj. Per spec §A.5.2 this is `delay2` (rise/
+//                      fall) where net_declaration uses `delay3`
+//                      (rise/fall/turn-off); the delay2-vs-delay3
+//                      sub-grammar distinction lives in the bundled
+//                      T-4 LanguageModel productions. Shared across
+//                      all instances.
+//   - instances        the per-instance entries — each carries its
+//                      own (instance_name, body_lexeme).
 type UdpInstantiation {
   udp_name: Symbol
-  instance_name: Symbol
-  body_lexeme: String
+  drive_strength: DriveStrengthClause
+  delay: DelayClause
+  // 🟡 spec-non-empty (§A.5.2 udp_instance list) — deferred to
+  // std/collection.dag Wave-A2 `List<T> where non_empty` refinement;
+  // see shared TRACKED-SCAFFOLD note above.
+  instances: List<UdpInstance>
 }
 
 
@@ -2954,8 +3115,56 @@ type ModuleParameterPortList
 
 
 // ─────────────────────────────────────────────────────────────────────
+// ModuleKeyword — the closed Verilog module-declaration-keyword
+// classifier (IEEE 1364-2005 §A.1.2): a module declaration begins
+// with either `module` or `macromodule`. The two keywords select
+// distinct simulator-elaboration semantics — `macromodule` requests
+// the implementation to "treat the module as a macromodule" (a
+// hint that the simulator MAY flatten the module's hierarchy for
+// performance) while `module` is the standard hierarchical form.
+// The two are syntactically distinct on the spec surface and
+// `parse ∘ emit` must preserve which keyword the writer used
+// (otherwise a `macromodule` declaration emitted as `module`
+// silently loses a simulator hint — openai-pro REQUEST_CHANGES on
+// PR #3176 2026-05-16 at line 3046).
+//
+//   - ModuleKw         — `module` — the standard module-declaration
+//                        keyword.
+//   - MacromoduleKw    — `macromodule` — the macromodule-declaration
+//                        keyword.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.1.2 admits exactly the
+// two keywords.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every module-emission consumer reads
+//      the keyword tag to choose `module` vs `macromodule`; shared
+//      classifier at the module-declaration boundary.
+//   2. Variant-is-data — FAILS: a `{ is_macromodule: Bool }` proxy
+//      ratifies the K-1-forbidden Bool-as-keyword anti-pattern; a
+//      `{ keyword: Symbol }` proxy reopens the readable-string
+//      heuristic surface K-1 forecloses. The 2-variant Disj IS the
+//      dissolved form.
+//   3. Algebraic form — N/A by construction: the two keywords are
+//      the IEEE 1364-2005 spec's irreducible module-keyword
+//      partition.
+//   4. Dimensional — FAILS: a single module declaration uses
+//      EXACTLY ONE keyword; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: both variants are nullary;
+//      they are spec-distinct keyword identities, not a generic
+//      `F<X>` projection over a richer source set (Practice 7).
+// Terminal: the closed two-way Verilog module-declaration-keyword
+// classifier of the IEEE 1364-2005 §A.1.2 spec.
+type ModuleKeyword
+  = ModuleKw
+  | MacromoduleKw
+
+
+// ─────────────────────────────────────────────────────────────────────
 // VerilogModule — a top-level Verilog module (`module Name
-// #(parameters) (ports); items endmodule`). IEEE 1364-2005 §12.1.
+// #(parameters) (ports); items endmodule`, or `macromodule Name …`).
+// IEEE 1364-2005 §12.1 / §A.1.2.
 // Per-style Disj — each variant carries its own header-port-list type
 // AND its own admissible body-items list type. The §12.3.4 module-
 // style partition is the dimensional axis of VerilogModule itself;
@@ -3045,12 +3254,14 @@ type ModuleParameterPortList
 // codex BLOCKING on PR #3176 2026-05-16.
 type VerilogModule
   = NonAnsiVerilogModule {
+      module_keyword: ModuleKeyword,
       name: Symbol,
       parameter_port_list: ModuleParameterPortList,
       header_ports: List<NonAnsiPort>,
       items: List<NonAnsiModuleItem>
     }
   | AnsiVerilogModule {
+      module_keyword: ModuleKeyword,
       name: Symbol,
       parameter_port_list: ModuleParameterPortList,
       header_ports: List<AnsiPortDeclaration>,
