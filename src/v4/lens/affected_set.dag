@@ -136,7 +136,7 @@
 module v4.lens.affected_set
 
 
-import v4.std.collection { Set }
+import v4.std.collection { List }
 import v4.std.node { Diff, Node }
 import v4.std.witness { Witness }
 
@@ -151,14 +151,18 @@ import v4.std.witness { Witness }
 type Dag = Node
 
 
-// ReExecFrontier — the minimal node set that must re-execute after a
-// structural Diff. `rerun` is a Set<Node> because node granularity is the
-// single substrate granularity; file/module affectedness is a later
-// projection over nodes, never a second tier. Cache reuse is the
+// ReExecFrontier — the finite node frontier that must re-execute after a
+// structural Diff. This is a List<Node>, not Set<Node>: collection.dag's
+// bare Set<T> intentionally denotes arbitrary subsets and does not encode
+// finiteness, while a frontier over a finite Dag must be finite. The
+// eventual read emits each Node at most once in deterministic traversal
+// order; that uniqueness/minimality proof belongs to the read fold, not
+// to a bare Set carrier. File/module affectedness remains a later
+// projection over these nodes, never a second tier. Cache reuse is the
 // complement read through B1 content_hash and the same Dag, so it is not
 // duplicated as another field here.
 type ReExecFrontier {
-  rerun: Set<Node>
+  rerun: List<Node>
 }
 
 
