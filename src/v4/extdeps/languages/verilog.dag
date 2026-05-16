@@ -1045,20 +1045,43 @@ type ModuleInstance {
 //   - ParameterDeclarationItem  `parameter NAME = expr;`
 //   - ModuleInstanceItem        nested `ModuleName inst (...);`
 //
-// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.2 admits additional
-// item kinds (`defparam`, generate-blocks, specify-blocks, task /
-// function declarations) — these are scope-negative for T-4.9
-// (`defparam` is deprecated; generate-blocks / task / function /
-// specify each open a sub-language out of T-4.9's scope). A new
-// item kind is an edit to THIS declaration under the L-2 pin
-// discipline.
+// CLOSED-SET COVERAGE (clarified per codex BLOCKING review on PR #3176
+// 2026-05-16). IEEE 1364-2005 §12.2 also admits `defparam` (deprecated),
+// `generate` blocks, `specify` blocks, and `task` / `function`
+// declarations as module items. The variants enumerated below cover
+// the IN-B PROBE's CORE NEEDS — the parallel-composition surface,
+// signal declarations, instantiation — which is what the T-4.9 probe
+// validates. The remaining items are NOT enumerated in this initial
+// cut: `defparam` is deprecated per spec, and `generate` / `specify`
+// / `task` / `function` each OPEN A SUB-LANGUAGE (the recursive body
+// of a generate block, the timing-check vocabulary of `specify`, the
+// procedural body of a task/function) whose grammar is owned by the
+// bundled T-4 LanguageModel productions when they land. Adding each
+// is MECHANICAL (one variant per kind, payload as a Conj record with
+// a `body_lexeme: String` for the sub-language portion — the same
+// `AlwaysBlock.body_lexeme` precedent), and crucially the 5-pattern
+// ledger BELOW STAYS UNCHANGED when those variants are added: the
+// dissolution argument is about coproduct SHAPE, not membership
+// completeness. This is the deliberate non-exhaustive scoping the
+// probe permits (same shape as spice.dag #3168 `Component`'s
+// "controlled-source variants E/F/G/H, JFET, transmission line,
+// switches are NOT enumerated in this initial cut" framing — adding
+// them is mechanical and does not affect the structural finding).
+// A NEW item kind (one the spec does not list) is the C1 stop-signal
+// edit; a follow-up adding the named scope-negative items is
+// straightforward L-2 maintenance.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟢 GREEN (terminal). The ledger is about coproduct DISSOLUTION
+// SHAPE (do these variants need to collapse to something simpler?),
+// NOT membership completeness — adding the named scope-negative
+// variants per the closed-set-coverage note above keeps every
+// pattern's argument unchanged. Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every module-body consumer (emission,
 //      port-binding resolution, sensitivity-list signal lookup,
 //      synthesis dispatch) branches on the item kind; shared
-//      classifier, not scattered.
+//      classifier, not scattered. (Adding generate/specify/task/
+//      function would extend the dispatch uniformly; same shape.)
 //   2. Variant-is-data — FAILS: each variant carries a payload of
 //      a DIFFERENT type (`ContinuousAssign` / `AlwaysBlock` /
 //      `InitialBlock` / `NetDeclaration` / `VariableDeclaration` /
@@ -1066,26 +1089,34 @@ type ModuleInstance {
 //      uniform `{ kind: ItemKind, … }` shape requires Option-typed
 //      payload fields (an item carries the AlwaysBlock or NULL),
 //      which makes "ContinuousAssign item with an AlwaysBlock
-//      payload" representable — the inverse of P2.
-//   3. Algebraic form — N/A by construction: the seven module-
-//      body items are the IEEE 1364-2005 spec's primitive item
-//      taxonomy; they do not trace to a richer std/ algebraic
-//      structure.
+//      payload" representable — the inverse of P2. (Adding more
+//      variants with their own payload types preserves the
+//      heterogeneity — same argument.)
+//   3. Algebraic form — N/A by construction: the module-body items
+//      are the IEEE 1364-2005 spec's primitive item taxonomy; they
+//      do not trace to a richer std/ algebraic structure.
 //   4. Dimensional — FAILS: a single item is EXACTLY ONE kind;
 //      mutually-exclusive alternatives. (The module body as a
 //      WHOLE is `List<ModuleItem>` — multiple items co-exist as
 //      siblings, but each item is one kind. The Conj-of-siblings
 //      IS the dimensional model the IN-B finding consumes; that
 //      lives on `VerilogModule.items`, not on this enum.)
-//   5. Parameterized family — FAILS: the seven variants are
-//      structurally heterogeneous (different payload types; the
-//      declaration variants carry storage-shape facts while the
-//      action variants carry computation-shape facts) — NOT one
-//      generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7). The IEEE 1364-2005 module-body
-//      item set is the irreducible partition.
-// Terminal: the closed seven-way module-body-item classifier of the
-// IEEE 1364-2005 spec.
+//   5. Parameterized family — FAILS: the variants are structurally
+//      heterogeneous (different payload types; the declaration
+//      variants carry storage-shape facts while the action variants
+//      carry computation-shape facts) — NOT one generic `F<X>` /
+//      projection over a separately-declared source set (Practice
+//      7). The IEEE 1364-2005 module-body item set is the
+//      irreducible partition; the future scope-negative additions
+//      preserve heterogeneity (generate carries a body shape,
+//      specify carries timing-check vocabulary, task/function each
+//      carry a body) — no projection-uniformity.
+// Terminal SHAPE: the closed module-body-item classifier of the
+// IEEE 1364-2005 spec; the seven variants enumerated below are the
+// IN-B-probe-core subset, with the named scope-negative variants
+// (defparam, generate, specify, task, function) deliberately
+// non-exhaustive in this initial cut. The dissolution argument
+// holds across the full spec set.
 type ModuleItem
   = ContinuousAssignItem { assign: ContinuousAssign }
   | AlwaysBlockItem { always_block: AlwaysBlock }
