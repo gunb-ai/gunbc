@@ -2457,14 +2457,35 @@ type UdpInstantiation {
 // same scope as VerilogModule (top-level type, sibling of the
 // module-style Disj). The IEEE 1364-2005 source_text grammar (§A.1.1)
 // admits a list of file-level design elements
-// `module_declaration | udp_declaration | config_declaration`; the
-// file-level Disj wrapping these into a single design-element
-// classifier is owned by the bundled T-4 LanguageModel grammar
-// productions when they land. At this vocabulary-slice phase
-// UdpDefinition exists as a sibling-typed carrier consumed by
-// UdpInstantiation; `config_declaration` is scope-negative per the
-// header PROBE LIMITS framing (configuration is a separate
-// elaboration-time concern outside the IN-B probe).
+// `module_declaration | udp_declaration | config_declaration`.
+//
+// verilog.dag does NOT mint the design-element Disj LOCALLY. Per
+// TASKS.md:504 (verbatim, dispositive): "A local Byte/Word copy or
+// private language-model schema is invalid." The source_text
+// design-element classifier IS the canonical T-4 LanguageModel
+// contract spine (top-level compilation-unit composition) — owned
+// by the bundled LanguageModel grammar-productions work per the
+// canonical-LanguageModel-first directive (TASKS.md 457/473/504),
+// + P2 single-authority. Per-language minting would be the v3
+// cross-layer spine-drift the canonical-first directive exists to
+// kill (5-language parallel-declaration precedent: every language
+// file otherwise hits "source_text needs a design-element
+// classifier" and would mint locally; codex top-level review will
+// push each language file to do so, exactly what TASKS.md:504
+// forbids).
+//
+// Dissolution trigger: when the canonical T-4 LanguageModel
+// grammar-productions work lands, that owner aggregates
+// VerilogModule + UdpDefinition (+ config_declaration when its
+// sub-language lands) into the source_text design-element Disj.
+// `config_declaration` is scope-negative here per the header
+// PROBE LIMITS framing (configuration is a separate elaboration-
+// time concern outside the IN-B probe).
+//
+// At this vocabulary-slice phase UdpDefinition exists as a
+// sibling-typed carrier consumed by UdpInstantiation (the
+// name-reference resolution target). This NOTE is the single
+// source-of-truth deferral marker for the missing aggregator.
 type UdpDefinition {
   name: Symbol
   body_lexeme: String
@@ -2860,64 +2881,43 @@ type VerilogModule
 
 
 // ─────────────────────────────────────────────────────────────────────
-// VerilogDesignElement — the closed Verilog file-level
-// design-element classifier (IEEE 1364-2005 §A.1.1 source_text /
-// description). A Verilog source file is a sequence of design
-// elements; the spec partition admits module declarations, UDP
-// declarations, and config declarations. ConfigDeclaration is
-// scope-negative for T-4.9 per the header PROBE LIMITS (config is
-// an elaboration-time concern outside the IN-B probe); the two
-// in-scope variants are modeled here.
+// (The file-level §A.1.1 source_text design-element Disj
+// aggregating VerilogModule + UdpDefinition is DELIBERATELY NOT
+// declared in this file — relayed disposition from T-4 mgr
+// vivid-carp-207 msg_f2a511b6, 2026-05-16; same shape as the
+// NonEmptyList → std/collection.dag Wave-A2 deferral.
 //
-//   - ModuleDesignElement { module_decl: VerilogModule }
-//       — a `module ... endmodule` (or `macromodule`) declaration
-//       per §12.1. Carries the full VerilogModule per-style Disj.
-//   - UdpDesignElement { udp_def: UdpDefinition }
-//       — a `primitive ... endprimitive` UDP declaration per §8.
-//       Carries the UdpDefinition Conj.
+// Three anchors:
+//   1. TASKS.md:504 (verbatim, dispositive): "A local Byte/Word
+//      copy or private language-model schema is invalid." The
+//      source_text design-element classifier IS the canonical
+//      LanguageModel contract spine (top-level compilation-unit
+//      composition), not verilog-private grammar; minting it
+//      locally is the v3 cross-layer spine-drift this directive
+//      exists to prevent (every language file otherwise hits
+//      "source_text needs a design-element classifier" → 5-language
+//      parallel-declaration precedent).
+//   2. P2 single-authority + canonical-LanguageModel-first
+//      directive (TASKS.md 457/473/504): the design-element
+//      aggregator is owned by the canonical T-4 LanguageModel
+//      grammar-productions work — already the named owner in
+//      UdpDefinition's FILE-LEVEL DESIGN-ELEMENT NOTE.
+//   3. Codex's gap finding is spec-right (the §A.1.1 partition
+//      should exist somewhere), but the FORM is the deferred
+//      canonical-LanguageModel obligation, not a verilog-local
+//      mint. Same pattern the NonEmptyList HOLD established.
 //
-// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.1.1 admits a third
-// `config_declaration` form which is scope-negative for this slice
-// per the header PROBE LIMITS framing (configuration is a separate
-// elaboration-time concern, not part of the IN-B probe). A future
-// language-version model EDITS this Disj to add ConfigDesignElement
-// when the configuration sub-language lands.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal for the IN-B-probe scope; scope-negative
-// ConfigDesignElement marked in the closed-set-coverage note).
-// Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every file-level walker (the
-//      bundled T-4 LanguageModel grammar emitter, the
-//      UdpInstantiation udp_name resolver, the
-//      ModuleInstantiation module_name resolver, the lens-side
-//      design-element-list traverser) reads the design-element
-//      variant uniformly; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing the two variants to a
-//      uniform `{ kind: ElementKind, payload: … }` shape requires
-//      Option-typed payload fields admitting mismatched-kind
-//      combinations (the inverse of P2 illegal-states-
-//      unrepresentable). Disj-with-heterogeneous-payloads is the
-//      dissolved form.
-//   3. Algebraic form — N/A by construction: the partition is the
-//      IEEE 1364-2005 §A.1.1 spec's design-element taxonomy; not
-//      a richer std/ algebraic structure.
-//   4. Dimensional — FAILS: a single design element is EXACTLY ONE
-//      variant; mutually-exclusive alternatives (`module M { …
-//      primitive U …}` is a syntax error per spec — primitive
-//      definitions cannot nest inside modules).
-//   5. Parameterized family — FAILS: ModuleDesignElement carries
-//      VerilogModule (itself a per-style Disj); UdpDesignElement
-//      carries UdpDefinition (Conj with body_lexeme). Structurally
-//      heterogeneous payloads — NOT one generic `F<X>` projection
-//      (Practice 7).
-// Terminal: the closed two-way Verilog file-level design-element
-// classifier for the T-4.9 in-scope partition (module + UDP);
-// config is scope-negative per PROBE LIMITS. Added per codex
-// BLOCKING on PR #3176 2026-05-16.
-type VerilogDesignElement
-  = ModuleDesignElement { module_decl: VerilogModule }
-  | UdpDesignElement { udp_def: UdpDefinition }
+// In-scope vocabulary carriers at file scope: VerilogModule (the
+// per-style Disj declared above) + UdpDefinition (the Conj
+// declared earlier alongside UdpInstantiation). The bundled
+// T-4 LanguageModel grammar productions, when they land, aggregate
+// these two file-level carriers into the canonical source_text
+// design-element classifier — `config_declaration` is admitted by
+// that canonical Disj when its sub-language lands (scope-negative
+// here per the header PROBE LIMITS framing). The FILE-LEVEL
+// DESIGN-ELEMENT NOTE in UdpDefinition's commentary is the single
+// source-of-truth deferral marker; verilog.dag does NOT mint the
+// design-element Disj locally.)
 
 
 // ─────────────────────────────────────────────────────────────────────
