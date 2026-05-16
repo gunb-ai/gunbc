@@ -61,6 +61,13 @@
 //     Signature only; body deferred for the same reason as `parse`.)
 //
 // Consumes:
+//   - std/node.dag — the `Symbol` opaque-identity carrier (K-1).
+//     Symbol is conceptually substrate-ambient per node.dag's K-1
+//     header note, but the v2 bridge parser requires an explicit
+//     import to bring Symbol into the module's resolution scope; the
+//     import is a v2-bridge necessity, not a model-level dependency.
+//     The `Node` type itself is deliberately NOT imported: this is a
+//     Shape-B data format, not a `LanguageModel` — the probe's premise.
 //   - std/diagnostic.dag — the fail-closed Diagnostic carrier for
 //     malformed input (cited in prose only at this layer, matching
 //     sibling format scaffolds — `json.dag`, `csv.dag`, etc. —
@@ -68,18 +75,17 @@
 //     and do not live in this format-model file; the actual
 //     `import v4.std.diagnostic { Diagnostic }` lands when those
 //     bodies do).
-//   (Symbol is substrate-ambient per std/node.dag K-1; String, Int,
-//   List are kernel-ambient per STRUCTURE.md — none is imported. Node
-//   is deliberately NOT imported: this is a Shape-B data format, not a
-//   `LanguageModel` — the probe's premise. The scaffold-header
-//   `Consumes` line originally read `std/node.dag, std/diagnostic.dag,
-//   std/collection.dag, std/primitive.dag`; `std/primitive.dag` was
-//   deleted by PR #3152 (STRUCTURE.md §"Scalar/numeric concept
-//   decomposition"); `std/node.dag` is not needed at the Shape-B
-//   boundary; `std/collection.dag` is not consumed because `List` is
-//   kernel-ambient and no modeled collection facts are used here. The
-//   line is corrected to actual modeled dependencies — a stale citation
-//   from the primitive.dag decomposition is mechanical cleanup, not a
+//   (String, Int, List are kernel-ambient per STRUCTURE.md — none is
+//   imported. The scaffold-header `Consumes` line originally read
+//   `std/node.dag, std/diagnostic.dag, std/collection.dag,
+//   std/primitive.dag`; `std/primitive.dag` was deleted by PR #3152
+//   (STRUCTURE.md §"Scalar/numeric concept decomposition"); the
+//   diagnostic citation moved to prose-only to match sibling format
+//   scaffolds; `std/collection.dag` is not consumed because `List` is
+//   kernel-ambient and no modeled collection facts are used here.
+//   `std/node.dag` is retained for the Symbol bring-in. The line is
+//   corrected to actual modeled dependencies — a stale citation from
+//   the primitive.dag decomposition is mechanical cleanup, not a
 //   contract revision; the Scope/Owns/Stress/Clear-win contract above
 //   stands. Header Consumes change pending operator ratification of
 //   the systemic scaffold-Consumes reconciliation (T-4 mgr synthesis
@@ -93,6 +99,9 @@
 
 
 module v4.extdeps.formats.spice
+
+
+import v4.std.node { Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
