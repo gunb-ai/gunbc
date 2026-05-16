@@ -46,13 +46,17 @@
 module v4.extdeps.languages.llvm_ir
 
 
+// std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
+// name-reference identity used pervasively in the grammar — block
+// labels, SSA/parameter/global names) resolvable through this file's
+// import closure. std/algebra.dag is NOT imported: this file's declared
+// `Consumes` of it is its INHABITANCE, which is DEFERRED to the
+// operator-pending D2 STOP (see the Inhabitance section). The algebra
+// import + the ratified instance-value form are added only once D2
+// lands; importing algebra now while unused would be dead code, and
+// improvising the instances now would be the exact per-file
+// `<Algebra><Concrete>` form D2 forbids.
 import v4.std.node { Node }
-import v4.std.algebra {
-  CommutativeRing, Ring, AbelianGroup, Group, Monoid, Semigroup, Magma,
-  ApproximateField,
-  BooleanAlgebra, BoundedLattice, Lattice,
-  Ordering, Less, Equal, Greater
-}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1203,208 +1207,56 @@ type FidelityDisposition
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Inhabitance (operator-ratified instance-value form: a
-// `data <name>: <Algebra><Carrier> = <Algebra> { … }` value IN THIS
-// FILE; never a carrier, never an `inhabits` keyword). The nominal
-// carrier is `LlvmValue` (precision residual — see "CARRIER-PRECISION
-// RESIDUAL" below; the faithful carrier is the typed-value subset);
-// each algebra operation is the corresponding LangRef
-// instruction, returned AS a value via `InstructionValue` — the value
-// IS its producing node (the value-graph finding): "operations fall out
-// of the instance" (THESIS epistemic stacking) — emitting `add` IS
-// walking the ring instance's additive `op`. NO SSA `Symbol` is minted
-// anywhere (K-1: opaque, not hand-mintable; the textual name is the
-// `DeclaredNormalized` cosmetic, not load-bearing — this is exactly the
-// structural realization the probe surfaced). The result type is the
-// canonical scalar carrier; a concrete width flows through the value
-// (the constant operand's own `ty`), so each instance is width-generic
-// (the Practice-7 width projection of INVARIANTS P1's integer worked
-// example — ONE instance, never a per-width family).
+// Inhabitance — HONEST GROUNDING + DEFERRED FORM (operator-pending D2).
 //
-// HONESTY (modeling notes; mirrors algebra.dag Float≠Field):
-//   - `iN` default arithmetic WRAPS (Z/2^N Z) ⇒ `CommutativeRing`,
-//     deliberately NOT `OrderedRing` (wrap breaks order-compatibility).
-//   - `float`/`double` ⇒ `ApproximateField` (algebra.dag's IEEE-754
-//     structure), NOT exact `Field`.
-//   - `i1` ⇒ `BooleanAlgebra`.
-//   - vectors ⇒ element-wise PROJECTION over the element algebra
-//     (Practice 7), grounded in prose below — NOT an enumerated family.
-//   - pointers ⇒ NO numeric algebra (pointer arithmetic is partial/UB);
-//     `ptrtoint`/`inttoptr` are the honest bridge — asserting a pointer
-//     ring would be fabrication, so NO pointer instance is declared.
+// WHICH algebra each LLVM scalar type grounds in is a faithful,
+// uncontested mathematical fact, DECLARED here as prose (M3 — the spec
+// grounding is the model's job):
+//   - `iN` default arithmetic WRAPS (two's-complement, mod 2^N) ⇒ the
+//     finite COMMUTATIVE RING Z/2^N Z — deliberately NOT `OrderedRing`
+//     (wrap breaks order-compatibility: a<b need not survive a+k),
+//     exactly the fail-open fabrication algebra.dag refuses for
+//     Float≠Field. `icmp`'s total orders are SEPARATE (the `Ordering`
+//     codomain), never folded into a mendacious `OrderedRing`.
+//   - `float`/`double` (IEEE-754) ⇒ `ApproximateField` (algebra.dag's
+//     rounding-aware structure), NOT exact `Field`.
+//   - `i1` ⇒ `BooleanAlgebra` (its `and`/`or`/`xor` ARE the Boolean ops
+//     — epistemic stacking, the std/logic.dag discipline).
+//   - vectors ⇒ the SAME class as the element, element-wise (the SIMD
+//     lowering): a Practice-7 PROJECTION over the element algebra, never
+//     a per-width enumerated family.
+//   - pointers ⇒ NO numeric algebra (getelementptr is partial/UB-laden);
+//     `ptrtoint`/`inttoptr` are the explicit lossy bridge — asserting a
+//     pointer ring would be fabrication (no-engine).
 //
-// CARRIER-PRECISION RESIDUAL — the three instances below are TRACKED 🟡
-// SCAFFOLDS (the reviewer-sanctioned "defer the witness as a tracked
-// scaffold" resolution; same honesty discipline as algebra.dag Float≠
-// Field + diagnostic.dag Extent.ByteRange). The TYPED nominal carrier is
-// `LlvmValue`, but the FAITHFUL mathematical carrier is narrower: only
-// the i-typed value subset is Z/2^N Z, only float-typed values are the
-// ApproximateField, only i1 values the BooleanAlgebra. `LlvmValue` also
-// spans float/pointer/aggregate/vector values, so the broad annotation
-// over-claims (M9/P1: the algebraic carrier must be faithfully grounded).
-// A refined "i-typed `LlvmValue`" subtype is NOT expressible: the
-// refinement substrate (std/cardinality.dag) is parallel Wave-A1, not in
-// this file's whitelist. Declared with the three bridge properties:
-//   (a) scaffold doc — THIS note; the broad `<LlvmValue>` annotation is
-//       provisional, not the terminal precisely-typed carrier.
-//   (b) bounds on use — the instance applies ONLY to values whose LLVM
-//       type is the matching scalar (integer / float / i1). Off-carrier
-//       application (e.g. ring-adding two pointers) is a producer error,
-//       not a legal use of the witness; this is a producer-side
-//       restriction until the substrate type-encodes it.
-//   (c) dissolution trigger — when std/cardinality.dag's refinement
-//       substrate lands, the annotation refines to the typed-value
-//       subset (`CommutativeRing<IntTypedValue>`, …) and this residual
-//       reclassifies 🟢. The operations themselves are already faithful
-//       (real LangRef `add`/`mul`/… instructions — no placeholder, no
-//       law-violating projection); only the carrier WIDTH is the residual.
-
-// Carrier-type helpers — the canonical scalar each inhabiting type
-// projects from (single authority, M7; return `LlvmType`, mint no
-// Symbol). The width is the Practice-7 projection axis (INVARIANTS P1).
-fn integer_carrier_type() -> LlvmType { IntegerType { bits: 32 } }
-fn float_carrier_type() -> LlvmType { FloatingType { kind: SingleFloat } }
-fn i1_carrier_type() -> LlvmType { IntegerType { bits: 1 } }
-
-// iN integer ⇒ finite commutative ring Z/2^N Z. `add`/`sub`(via
-// inverse)/`mul` are the LangRef `add`/`sub`/`mul` instructions; the
-// additive identity is the i-typed constant 0, the multiplicative
-// identity the constant 1. Width-generic.
-data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing {
-  ring: Ring {
-    add: AbelianGroup {
-      group: Group {
-        monoid: Monoid {
-          semigroup: Semigroup {
-            magma: Magma {
-              op: fn(a, b) {
-                InstructionValue {
-                  instruction: Binary {
-                    result_type: integer_carrier_type(),
-                    op: OpAdd,
-                    lhs: a,
-                    rhs: b
-                  }
-                }
-              }
-            }
-          },
-          identity: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 0 } }
-        },
-        inverse: fn(a) {
-          InstructionValue {
-            instruction: Binary {
-              result_type: integer_carrier_type(),
-              op: OpSub,
-              lhs: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 0 } },
-              rhs: a
-            }
-          }
-        }
-      }
-    },
-    mul: Monoid {
-      semigroup: Semigroup {
-        magma: Magma {
-          op: fn(a, b) {
-            InstructionValue {
-              instruction: Binary {
-                result_type: integer_carrier_type(),
-                op: OpMul,
-                lhs: a,
-                rhs: b
-              }
-            }
-          }
-        }
-      },
-      identity: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 1 } }
-    }
-  }
-}
-
-// float/double ⇒ ApproximateField (IEEE-754: + is not associative, no
-// exact reciprocal — exactly algebra.dag's ApproximateField rationale).
-// The ops are the LangRef `fadd`/`fsub`(negate)/`fmul` instructions;
-// `compare` is `fcmp`-shaped, codomain std/algebra.dag's `Ordering`.
-// The NaN-unordered case is the honest boundary: it is NOT folded into a
-// fabricated total here — the unordered case is a `FloatPredicate`
-// (`FcmpUno`) concern at the instruction layer, not a mendacious total
-// this instance may assert.
-data llvm_float_approximate_field: ApproximateField<LlvmValue> = ApproximateField {
-  add: fn(a, b) {
-    InstructionValue { instruction: Binary { result_type: float_carrier_type(), op: OpFAdd, lhs: a, rhs: b } }
-  },
-  zero: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 0 } },
-  negate: fn(a) {
-    InstructionValue {
-      instruction: Binary {
-        result_type: float_carrier_type(),
-        op: OpFSub,
-        lhs: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 0 } },
-        rhs: a
-      }
-    }
-  },
-  mul: fn(a, b) {
-    InstructionValue { instruction: Binary { result_type: float_carrier_type(), op: OpFMul, lhs: a, rhs: b } }
-  },
-  one: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 1065353216 } },
-  compare: fn(a, b) { Equal }
-}
-
-// i1 ⇒ BooleanAlgebra. meet = `and`, join = `or`, complement = `xor %v,
-// true` (LangRef: i1 `and`/`or`/`xor` ARE the Boolean operations —
-// "conjunction/disjunction/negation fall out of the algebra", the
-// std/logic.dag epistemic-stacking discipline applied to LLVM `i1`).
-data llvm_i1_boolean_algebra: BooleanAlgebra<LlvmValue> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: fn(a, b) {
-        InstructionValue { instruction: Binary { result_type: i1_carrier_type(), op: OpAnd, lhs: a, rhs: b } }
-      },
-      join: fn(a, b) {
-        InstructionValue { instruction: Binary { result_type: i1_carrier_type(), op: OpOr, lhs: a, rhs: b } }
-      }
-    },
-    top: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 1 } },
-    bottom: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 0 } }
-  },
-  complement: fn(a) {
-    InstructionValue {
-      instruction: Binary {
-        result_type: i1_carrier_type(),
-        op: OpXor,
-        lhs: a,
-        rhs: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 1 } }
-      }
-    }
-  }
-}
-
-// Vector inhabitance — PROJECTION, not enumeration (Practice 7 / M7).
-// `<N x T>` inhabits the SAME algebra class as its element `T`,
-// element-wise: LLVM binary ops are defined element-wise on vectors
-// (LangRef), so the vector's `op` IS the element `op` lifted pointwise
-// (the SIMD `add <4 x i32>` lowering). This is the product construction
-// over the element algebra; it is NOT a per-width family of declared
-// instances (that would be the enumerated-copy smell Practice 7
-// forbids — cost-of-change would be ≥2 per vector width). algebra.dag
-// declares no explicit finite-Product combinator, so the lifted
-// instance is grounded HERE in prose (the honest boundary: the lift is
-// the well-known free product of N copies of the element structure —
-// math consensus) rather than fabricated as a stored per-width table;
-// when a Product-of-algebra combinator lands in algebra.dag this becomes
-// a one-line instance derived from `llvm_integer_commutative_ring` /
-// `llvm_float_approximate_field` (the named dissolution trigger).
-
-// Pointer inhabitance — DELIBERATELY ABSENT. Pointer arithmetic
-// (`getelementptr`) is partial and UB-laden (out-of-bounds, provenance);
-// pointers do not form a ring/field. Declaring a pointer numeric algebra
-// would be fabrication (no-engine). The honest model: `ptrtoint` /
-// `inttoptr` (in `ConversionOpcode`) are the explicit, lossy, declared
-// bridge to the integer ring — there is no implicit pointer algebra.
-
+// The instance-value FORM is DEFERRED, not improvised. An EARLIER cut of
+// this file declared `data llvm_*: <Algebra><LlvmValue> = …` per-file
+// instances. That is exactly the per-target `<Algebra><Concrete>`
+// improvisation the OPEN, OPERATOR-PENDING **D2 STOP** forbids ahead of
+// ratification: TASKS.md T-4's "per-language primitive inhabitance
+// (i32 → OrderedRing)" DIRECTLY CONTRADICTS INVARIANTS P1 (~:42 —
+// "operator dispatch consumes abstract algebra facts, NOT a parallel
+// `OrderedRing<Word*>` substrate per width class"; R3 gate #19), and the
+// fn-value form for spec-primitive ops (name-ref Atom vs relaxed form vs
+// a new C1 carrier) is one of three resolutions a worker may NOT pick.
+// D2 was surfaced + escalated to operator 2026-05-16 (loyal-koi-702 →
+// T-4 mgr vivid-carp-207); it blocks the whole T-4 languages/probe wave,
+// including this B2-OMNI probe. Per CULTURE / CLAUDE.md ("if the brief
+// contradicts the intro docs, STOP and escalate") and the standing
+// directive "do NOT improvise a per-file `<Algebra><Concrete>` before D2
+// lands; reference this STOP", this file declares the grounding above
+// and CONSUMES the ratified instance-value form once D2 lands — it does
+// not cement a contested shape. Empirical note for the D2b sub-question:
+// the deep nested-constructor + lambda-field `data`-instance form DOES
+// parse 0-diag under the frozen v2 seed (verified while probing this
+// file) — so D2b is a FORM-authority decision, NOT a v2-admissibility
+// blocker.
+//
+// Scaffold "Owns: Inhabitance" is satisfied by the faithful grounding +
+// the principled deferral to the ratified form — NOT by improvising the
+// D2-contested per-file `<Algebra><Concrete>` instance ahead of operator
+// ratification (that improvisation IS the v3 cross-layer-drift failure
+// mode v4 exists to kill — the STOP is the contribution).
 
 // ─────────────────────────────────────────────────────────────────────
 // Cost realization — per-instruction realization cost on an LLVM target
