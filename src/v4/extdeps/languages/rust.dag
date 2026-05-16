@@ -1196,3 +1196,186 @@ type RustCost {
   instruction_cost: Int
   allocation_cost: Int
 }
+
+
+// ═════════════════════════════════════════════════════════════════════
+// Per-primitive named registry + IrToRust mapping shape.
+//
+// The two halves of the IR ↔ Rust connection (operator-directed
+// 2026-05-16, conversational ratification — the SHAPE goes in this
+// PR; the connecting rows land as their `ir_carrier` std/ types
+// reach merged state).
+//
+//   (1) Per-primitive named inhabitants — each Rust primitive type
+//       gets a stable named identity as a `data X: RustScalar = ...`
+//       closed-enum value. These are STRUCTURAL FACTS (not algebra-
+//       inhabitance — no D2 trap; just typed values of the closed
+//       RustScalar Disj). emit / ingest dispatch on these by
+//       STRUCTURAL identity, never on a spelling.
+//
+//   (2) IrToRust Conj carrier — names a single IR-type ↔ Rust-type
+//       correspondence row. emit (T-10) reads these rows; ingest
+//       (the C5 reverse direction) walks them backwards. The
+//       carrier SHAPE lands now; the row instances ride T-3
+//       (each row's `ir_carrier` references a std/ type Node that
+//       must exist in the namespace before the row can resolve).
+//
+// This is the SEAM through which all IR → Rust emission flows.
+// One row per std/ ↔ Rust primitive correspondence; emit dispatches
+// by structural-identity match on `ir_carrier`, never by name.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Per-primitive named inhabitants — 18 typed scalar values, one per
+// Rust primitive type. Each is a `data` instance of `RustScalar`'s
+// closed-enum payload-bearing variants; the `(kind, width)`
+// combinations are STRUCTURALLY enforced by RustScalar's Disj-with-
+// payloads (Bool/Char/Str/Never carry no width; only Int/Float do).
+//
+// These are NOT algebra-inhabitance instance-values (D2-pending) —
+// they are just typed VALUES of the closed Disj. Authorable today;
+// fan-out to python/go/cpp/typescript mirrors this shape.
+
+// Signed integers — `i8` / `i16` / `i32` / `i64` / `i128` / `isize`
+data rust_i8:    RustScalar = IntScalar { kind: Signed,   width: Bits8   }
+data rust_i16:   RustScalar = IntScalar { kind: Signed,   width: Bits16  }
+data rust_i32:   RustScalar = IntScalar { kind: Signed,   width: Bits32  }
+data rust_i64:   RustScalar = IntScalar { kind: Signed,   width: Bits64  }
+data rust_i128:  RustScalar = IntScalar { kind: Signed,   width: Bits128 }
+data rust_isize: RustScalar = IntScalar { kind: Signed,   width: Pointer }
+
+// Unsigned integers — `u8` / `u16` / `u32` / `u64` / `u128` / `usize`
+data rust_u8:    RustScalar = IntScalar { kind: Unsigned, width: Bits8   }
+data rust_u16:   RustScalar = IntScalar { kind: Unsigned, width: Bits16  }
+data rust_u32:   RustScalar = IntScalar { kind: Unsigned, width: Bits32  }
+data rust_u64:   RustScalar = IntScalar { kind: Unsigned, width: Bits64  }
+data rust_u128:  RustScalar = IntScalar { kind: Unsigned, width: Bits128 }
+data rust_usize: RustScalar = IntScalar { kind: Unsigned, width: Pointer }
+
+// IEEE-754 floating-point — `f32` / `f64` (stable Rust set)
+data rust_f32:   RustScalar = FloatScalar { width: Bits32 }
+data rust_f64:   RustScalar = FloatScalar { width: Bits64 }
+
+// Reference-primitive scalars — `bool` / `char` / `str` / `!`
+data rust_bool:  RustScalar = BoolScalar
+data rust_char:  RustScalar = CharScalar
+data rust_str:   RustScalar = StrScalar
+data rust_never: RustScalar = NeverScalar
+
+
+// ─────────────────────────────────────────────────────────────────────
+// IrToRust — the IR-type ↔ Rust-primitive correspondence carrier.
+// One row per std/ canonical carrier ↔ Rust primitive emission.
+// Conj record (no Practice-4 ledger).
+// Spec: this carrier IS the U1 "coercion = emission" projection
+//       (algebra.dag U1 header) made concrete per language. Same
+//       shape per-language across fan-out.
+//
+//   - ir_carrier   the std/ canonical type this row maps to/from
+//                  (a name-reference Node — e.g. the Node naming
+//                  std/integer.dag's `Int64` or std/logic.dag's
+//                  `Bool`). Per A1, std/ type declarations ARE
+//                  Node-shaped values; this field carries the
+//                  reference. emit dispatches by structural-identity
+//                  match on this field, never by spelling (K-1).
+//   - rust_repr    the Rust-side typed scalar value — one of the
+//                  18 per-primitive named inhabitants above.
+//
+// SEAM (where rows land). Each row requires its `ir_carrier` to
+// resolve to an existing std/ type declaration. As T-3 wave A1/A2/A3
+// merges land the std/ scalar types, the corresponding `IrToRust`
+// rows land here. The row authoring is mechanical — one per
+// std/-↔-Rust correspondence — and incremental: a row can land the
+// moment its std/ carrier reaches merged state, without waiting for
+// the whole std/ wave.
+//
+// Worked example: Bool → rust_bool (post-#3166 logic.dag merge):
+//
+//   // PR #3166 (in flight) declares in std/logic.dag:
+//   //   type Bool = Disj True | False
+//   //   data bool_boolean_algebra: BooleanAlgebra<Bool> = ...
+//   //
+//   // Then this row lands here (one-line amend):
+//   //   import v4.std.logic { Bool }
+//   //   data bool_to_rust_bool: IrToRust = IrToRust {
+//   //     ir_carrier: Bool,     // name-ref to std/logic.dag's Bool
+//   //     rust_repr:  rust_bool // the BoolScalar inhabitant above
+//   //   }
+//   //
+//   // emit (T-10) consumes this row:
+//   //   given a Bool-typed value in InferredTree
+//   //   →  lookup bool_to_rust_bool by structural-identity match
+//   //      (`ir_carrier == Bool` — Symbol equality on the Node's
+//   //      identity, K-1-compatible)
+//   //   →  read rust_repr = rust_bool = BoolScalar
+//   //   →  emit Rust source token `"bool"` (the spelling
+//   //      determined by the RustScalar's variant — BoolScalar
+//   //      maps to "bool" via the LanguageModel grammar)
+//   //
+//   // ingest (reverse direction, C5) walks the row backwards:
+//   //   parsed Rust `bool` keyword
+//   //   →  produces BoolScalar Node
+//   //   →  reverse-lookup: rust_repr == rust_bool ⇒ ir_carrier = Bool
+//   //   →  Bool-typed Node into the IR
+//
+// The whole IR ↔ Rust pipeline IS one declarative correspondence
+// table consumed in both directions. No name-convention dispatch,
+// no string matching — structural-identity match on `ir_carrier`.
+type IrToRust {
+  ir_carrier: Node
+  rust_repr:  RustScalar
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// IrToRust row authoring — DEFERRED per row to the std/ carrier's
+// merged state.
+//
+// Below is a comment-only authoring guide. Each row is independent:
+// it lands as soon as its `ir_carrier` is declared in the relevant
+// std/ file. The rows are NOT all-or-nothing — incremental landing
+// is fine and recommended (one per PR if std/* lands incrementally).
+//
+// Status of in-flight std/ PRs (snapshot, may update):
+//   - #3166 std/logic.dag (Bool)              — unlocks rust_bool row
+//   - #3165 std/nat.dag (Nat)                  — unlocks rust_u*  rows once
+//                                                 std/integer.dag composes Nat × MachineWidth
+//   - std/integer.dag                         — MISSING; unlocks rust_i* + rust_u* rows
+//   - std/machine.dag                         — MISSING; unlocks Pointer width resolution for
+//                                                 rust_isize / rust_usize
+//   - std/float.dag                           — MISSING; unlocks rust_f32 / rust_f64 rows
+//   - std/text.dag                            — MISSING; unlocks rust_char / rust_str rows
+//
+// As each std/ type lands, add a `data <name>_to_<rust>: IrToRust =
+// IrToRust { ir_carrier: <Type>, rust_repr: <rust_prim> }` row +
+// the corresponding `import v4.std.<file> { <Type> }` line. Each
+// row is one line of import + one short data block. v2-compiler
+// verifies 0-diag at each landing (structural resolution check).
+//
+// Worked-example shape, fully fleshed (for ratification — comment
+// only, since std/logic.dag's Bool isn't merged yet):
+//
+//   import v4.std.logic { Bool }                                   // pending #3166
+//
+//   // IR Bool ↔ Rust bool — the 1:1 Reference correspondence.
+//   data bool_to_rust_bool: IrToRust = IrToRust {
+//     ir_carrier: Bool,
+//     rust_repr:  rust_bool
+//   }
+//
+// Per-row TestClaim shape (pending std/verification.dag — T-3
+// Wave-A2):
+//
+//   data t_bool_to_rust_bool_roundtrip: TestClaim = TestClaim {
+//     kind:     RoundTrips,
+//     label:    "IR Bool ↔ Rust bool roundtrips through emit + ingest",
+//     input:    <Bool-typed Node>,
+//     expected: <same Bool-typed Node — emit(input) → "bool",
+//                ingest("bool") → same Node by structural-identity>
+//   }
+//
+// The TestClaim row IS the IR ↔ Rust testcase the operator asked
+// about; it authorables once std/verification.dag merges + the
+// corresponding IrToRust row lands. The fully-instrumented testcase
+// thus rides three landings: (a) std/<scalar>.dag, (b) this PR's
+// shape (current), (c) std/verification.dag's TestClaim schema.
