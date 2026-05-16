@@ -73,6 +73,19 @@ import v4.std.node { Symbol }
 // file does not duplicate width-correct bit lists (same 🟡 list-length
 // scaffold class as machine.dag's `Word*` fields).
 //
+// P2 NOMINAL WRAPPERS — `Float32` / `Float64` add **no** fields beyond
+// `body: FloatBody` and therefore attach **no** structural witness tying
+// `Finite.biased_exponent` / `Finite.trailing_significand` to binary32
+// (8+23) vs binary64 (11+52) bit counts. A `Float32` value whose `body` is
+// `Finite { … }` with exponent/significand magnitudes that could not decode
+// from any `Word32` interchange pattern is **still representable** here —
+// that hole is the same honest deferral class as **std/machine.dag**'s
+// `Word*` / `Byte` list-length vs nominal-width **"LIST FIELD LENGTH vs
+// NOMINAL WIDTH — TRACKED SCAFFOLD (🟡)"** block (single P2 authority for
+// interchange bit-vectors: `Word32` / `Word64`, not a shadow width engine
+// re-authored inside float.dag). Producer-side discipline + bounded
+// refinement / dissolution named there close the gap.
+//
 // NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
 // unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
 // 11+52 binary64) are NOT type-enforced here — the same honest deferral
@@ -157,6 +170,10 @@ type FloatBody
 
 // ─────────────────────────────────────────────────────────────────────
 // Float32 / Float64 — nominal width wrappers over the shared semantic body.
+//
+// INVARIANTS P2 — outer nominal discriminates API / defaults only; it does
+// **not** refine `FloatBody.Finite` fields to binary32 vs binary64 exponent /
+// significand bounds (see modeling notes "P2 NOMINAL WRAPPERS").
 type Float32 {
   body: FloatBody
 }
