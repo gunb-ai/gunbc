@@ -867,9 +867,10 @@ type ContinuousAssign {
 // AlwaysBlock — a Verilog `always @(...)` block (IEEE 1364-2005 §9.9).
 // Conj record (no Practice-4 ledger).
 //
-//   - sensitivity    the event-control list (empty list = `always`
-//                    with no event control — a delay-driven block,
-//                    rare; the common case is one-or-more events)
+//   - sensitivity    the event-control specification (closed Disj
+//                    over the three IEEE 1364-2005 §9.7.2 forms:
+//                    no event control / implicit `@*` / explicit
+//                    event list)
 //   - body_lexeme    the procedural body (begin…end or single
 //                    statement) as a verbatim lexeme (sub-grammar
 //                    deferred to the T-4 LanguageModel expression /
@@ -882,9 +883,83 @@ type ContinuousAssign {
 // synthesizer's coordination boundary; the sequential composition of
 // statements inside the body is the Bind chain.
 type AlwaysBlock {
-  sensitivity: List<SensitivityItem>
+  sensitivity: AlwaysBlockSensitivity
   body_lexeme: String
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AlwaysBlockSensitivity — the closed Verilog event-control
+// classifier for an `always` block (IEEE 1364-2005 §9.7.2). The spec
+// admits exactly THREE event-control forms; modeling sensitivity as
+// `List<SensitivityItem>` collapsed the implicit `@*` form with both
+// "no event control" (empty list) and "explicit event list" (non-
+// empty) — the codex BLOCKING review on PR #3176 surfaced the gap.
+// This Disj-with-named-payloads makes each form structurally distinct
+// per INVARIANTS P1 modeling-faithfulness + P2 single-authority.
+//
+//   - NoEventControl         — bare `always begin ... end` with no
+//                              `@(...)` — the body uses internal
+//                              delay control (`#10 ...`) for timing.
+//                              Rare in practice; legal per spec.
+//   - ImplicitAtStar         — `always @*` or `always @(*)` —
+//                              implicit sensitivity list covering
+//                              ALL signals read in the body (the
+//                              §9.7.2 implicit-event-control form;
+//                              recommended for combinational logic
+//                              to avoid manual list errors). The
+//                              implicit set is COMPUTED FROM THE
+//                              BODY at synthesis / simulation time;
+//                              this variant carries no payload —
+//                              the body itself is the authority for
+//                              which signals trigger the always.
+//   - ExplicitEventList      — `always @(event_expression)` —
+//                              explicit list of edge-triggered or
+//                              level-sensitive entries (`posedge
+//                              clk, negedge rst, data`). The
+//                              `items` payload is the list of
+//                              `SensitivityItem` entries.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §9.7.2 admits exactly
+// these three event-control forms; a fourth would be a future
+// language-version change requiring edit under the L-2 pin
+// discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every always-block consumer (the
+//      synthesis dispatch for flip-flop vs latch vs combinational
+//      inference, the implicit-set-from-body extraction, the
+//      explicit-list emission) branches on the form uniformly;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to
+//      `{ items: List<SensitivityItem> }` (the prior model)
+//      conflates NoEventControl (empty list) with ExplicitEventList
+//      (empty list is technically possible) AND has NO
+//      representation for ImplicitAtStar — exactly the codex
+//      BLOCKING finding. The Disj-with-heterogeneous-payloads is
+//      the dissolution: each variant carries exactly the structural
+//      data its form admits.
+//   3. Algebraic form — N/A by construction: the three forms are
+//      the IEEE 1364-2005 spec's primitive event-control partition;
+//      they do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single `always` block has EXACTLY
+//      ONE event-control form; mutually-exclusive alternatives
+//      (per spec: a single `always` cannot have both an implicit
+//      and explicit list).
+//   5. Parameterized family — FAILS: the three variants carry
+//      structurally heterogeneous payloads (NoEventControl is
+//      nullary; ImplicitAtStar is a nullary marker — the implicit
+//      set is computed from the body, not stored; ExplicitEventList
+//      carries a `List<SensitivityItem>`) — NOT one generic `F<X>`
+//      / projection over a separately-declared source set
+//      (Practice 7).
+// Terminal: the closed three-way Verilog always-block event-control
+// classifier of the IEEE 1364-2005 spec.
+type AlwaysBlockSensitivity
+  = NoEventControl
+  | ImplicitAtStar
+  | ExplicitEventList { items: List<SensitivityItem> }
 
 
 // ─────────────────────────────────────────────────────────────────────
