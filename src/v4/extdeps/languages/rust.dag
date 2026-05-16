@@ -25,11 +25,16 @@
 //   slice declares the Rust type VOCABULARY as Node-shaped declaration-
 //   class data; it deliberately STOPS at the carrier-shaped seams where
 //   D1 (parse/emit operations — ratified Outcome<T> = Produced { value:
-//   T } | Rejected { diagnostic: Diagnostic }, NOT YET LANDED in
-//   std/diagnostic.dag) and D2 (per-language primitive inhabitance
-//   instance-values + fn-value-expression form — operator-pending
-//   SEMANTIC decision, msg_640d429c; §0 ratifies v2-syntax legality
-//   only, NOT the inhabitance shape per msg_8b477982) plug in.
+//   T } | Rejected { diagnostic: Diagnostic }, LANDED 2026-05-16 in
+//   std/diagnostic.dag via PR #3181 commit 54d12e62a; this slice does
+//   not yet consume Outcome<T> directly, as parse/emit are pipeline-
+//   stage operations owned elsewhere — see Owned ELSEWHERE below) and
+//   D2 (per-language primitive inhabitance + fn-value-expression form
+//   — RATIFIED 2026-05-16 via PR #3195 commit 44a37ad46, encoded as
+//   the DECISIONS.md D2 row's THREE-THIN-FACTS resolver shape:
+//   alias-identity to the std/ carrier + grounding map +
+//   operation-semantics carriers; the prior msg_640d429c-pending
+//   framing is SUPERSEDED) plug in.
 //
 //   The seams are NAMED in "Owned ELSEWHERE" below with their owners
 //   and dissolution triggers. Authoring those seams here would have
@@ -92,8 +97,9 @@
 //     upstream and never reach this carrier.
 //   - Rust per-target cost-realization carrier shape: RustCost (per-
 //     instruction + per-allocation components — the per-target
-//     projection U1 reads; the carrier SHAPE only, no instance-values
-//     pre-T-3 / pre-D2)
+//     projection U1 reads; the carrier SHAPE only, no concrete cost
+//     instance-values in this slice — those ride T-12 lens/cost.dag
+//     per "Owned ELSEWHERE" below)
 //   - Rust D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
 //     2026-05-16 commit 44a37ad46): GroundingMap<IRCarrier>
 //     (surface-spelling Conj — 🟡 TRACKED-SCAFFOLD: declaration
@@ -159,21 +165,23 @@
 //     as declarative B2-OMNI data, C5-fidelity disposition tags per
 //     surface feature, ingest∘emit roundtrip carrier): the BUNDLED
 //     work of T-4 across all 5 Shape A source languages, where "the
-//     SHAPE is the work" (TASKS.md T-4 authoring contract). RIDES the
-//     operator D1 value-or-Diagnostic carrier — `Outcome<T> =
-//     Produced { value: T } | Rejected { diagnostic: Diagnostic }`,
-//     RATIFIED 2026-05-16 (manager reinforcement msg_8b477982,
-//     ratified shape), NOT YET LANDED in std/diagnostic.dag. Parse /
-//     emit operations cannot type their failure mode without it.
-//     When the carrier lands AND the bundled LanguageModel shape
-//     lands, this file's classifiers slot into the Rust
+//     SHAPE is the work" (TASKS.md T-4 authoring contract). Will
+//     consume the D1 `Outcome<T> = Produced { value: T } | Rejected
+//     { diagnostic: Diagnostic }` carrier — LANDED 2026-05-16 in
+//     std/diagnostic.dag via PR #3181 commit 54d12e62a. When the
+//     bundled LanguageModel shape lands (operations typed via
+//     Outcome<T>), this file's classifiers slot into the Rust
 //     `LanguageModel` instance without revision; their I/O contract
-//     is the immutable header above.
+//     is the immutable header above. This slice does not author the
+//     Outcome-typed operations directly — parse/emit are pipeline-
+//     stage operations owned elsewhere (see next bullet).
 //     STOP-TRIGGER (named, binding): the temptation to STUB an
-//     `emit_rust : Node -> Outcome<RustSource>` op here while D1 is
-//     unlanded is the FORBIDDEN deferral (the v3 failure mode the
-//     value-or-Diagnostic-STOP precedent foreclosed) — STOP and
-//     surface, never stub. Stub-to-keep-moving is the exact shape
+//     `emit_rust : Node -> Outcome<RustSource>` op HERE — even with
+//     the Outcome carrier now landed — is the FORBIDDEN deferral
+//     (the v3 failure mode the value-or-Diagnostic-STOP precedent
+//     foreclosed). Emission ops belong in compiler/05_emit.dag
+//     (T-10); parse ops in compiler/02_parse.dag (T-7); not in this
+//     language-spec file. Stub-to-keep-moving is the exact shape
 //     that broke v3; the named "Owned ELSEWHERE" note is the
 //     legitimate deferral form (ptx #3170 precedent).
 //     SEAM: the Rust grammar production data attaches as Node trees
@@ -183,18 +191,20 @@
 //
 //   - Pipeline emission/ingest operations (`.dag` Node → Rust source;
 //     Rust source → Node ingest with C5-fidelity classification per
-//     surface feature). RIDES the ratified `Outcome<T>` D1 carrier
-//     directly (when it lands in std/diagnostic.dag). Owners:
-//     compiler/05_emit.dag (T-10), compiler/02_parse.dag (T-7) —
-//     emission and ingest are pipeline-stage operations, NOT facts
-//     of this language file. The LanguageModel data DECLARES the
-//     bidirectional rules; the pipeline stages EXECUTE them.
-//     STOP-TRIGGER (named, binding): pre-D1 authoring of
-//     `emit_rust : Node -> Outcome<RustSource>` here would parallel-
-//     represent the Outcome carrier across every language file —
-//     exactly the v3 cross-layer-drift failure mode the
-//     keen-wren-419 STOP (T-4.6 formats, msg_0da56c18) foreclosed.
-//     Defer-with-named-trigger, never stub.
+//     surface feature). Will consume the ratified `Outcome<T>` D1
+//     carrier (LANDED in std/diagnostic.dag via #3181 commit
+//     54d12e62a). Owners: compiler/05_emit.dag (T-10),
+//     compiler/02_parse.dag (T-7) — emission and ingest are
+//     pipeline-stage operations, NOT facts of this language file.
+//     The LanguageModel data DECLARES the bidirectional rules; the
+//     pipeline stages EXECUTE them.
+//     STOP-TRIGGER (named, binding): authoring `emit_rust : Node ->
+//     Outcome<RustSource>` here would parallel-represent the Outcome-
+//     typed emission op across every language file — exactly the v3
+//     cross-layer-drift failure mode the keen-wren-419 STOP (T-4.6
+//     formats, msg_0da56c18) foreclosed. The D1 carrier landing did
+//     NOT make this slice the right home for emission ops; defer-
+//     with-named-trigger, never stub.
 //
 //   - Rust ownership / lifetime semantic enforcement (the borrow-
 //     checker rules — single-owner, exclusive-mutable, lifetime
@@ -249,9 +259,14 @@
 //   Consumes line was anticipatory — std/node.dag IS imported
 //   (`Node` + `Symbol`, exactly as std/diagnostic.dag imports
 //   `Node`); std/algebra.dag is NOT imported in this slice because
-//   the inhabitance instance-values it would supply are DEFERRED
-//   per D2 (so algebra.dag returns when D2 ratifies and the
-//   inhabitance rows land here). The revised Consumes block
+//   the algebra inhabitance for Rust primitives flows through the
+//   D2a(1) alias-identity targets (e.g. `type RustI32 = Int32`)
+//   rather than per-language `OrderedRing<RustI32, …>` instance
+//   rows in this file (the D2 row's machine-readable-inhabitance
+//   form, per `List<T> = FreeMonoid<T>` precedent); the algebra
+//   structure is consumed transitively through the std/ alias
+//   target's own algebra inhabitance, never re-declared here.
+//   The revised Consumes block
 //   reflects what the file actually depends on, distinguishing
 //   import-required (Node + Symbol) from kernel-ambient (Bool +
 //   Int + List). Consumes correction rides the systemic operator
@@ -368,11 +383,13 @@ import v4.std.node { Node, Symbol }
 //   - LITERAL / VALUE (`42i32`, `"hello"`, `true`) ↦ Value
 //     (node.dag:209). A literal IS a Value. The literal's typed
 //     interpretation (its scalar kind + width for numerics; its
-//     UTF-8 byte sequence for strings) is the inhabitance walk that
-//     RIDES D2 — pre-D2 the Value's TYPED interpretation is
-//     unspecified; the Value carrier itself is just a Node. (`()` is
-//     a Value literal too, but it is a zero-tuple TupleType — out-of-
-//     scope for this slice; see SCOPE NEGATIVE Tuple types below.)
+//     UTF-8 byte sequence for strings) flows through the D2 ratified
+//     resolver — the literal's Value carrier is just a Node; the
+//     typed interpretation rides the D2a(1) alias-identity to the
+//     std/ carrier (`type RustI32 = Int32`) where the algebra
+//     inhabitance lives. (`()` is a Value literal too, but it is a
+//     zero-tuple TupleType — out-of-scope for this slice; see
+//     SCOPE NEGATIVE Tuple types below.)
 //
 //   - REFERENCES (`&T`, `&mut T`, `'a` lifetime parameters) ↦ effect-
 //     typed parameter (structural Conj field), per THESIS:401 IN-B
@@ -733,17 +750,37 @@ type RustFloatWidth
 // carries EXACTLY the structural data its kind admits, and no
 // illegal kind×width combination is constructible.
 //
-// SEAM (where D2 inhabitance plugs in). When the D2 form decision
-// lands (operator-pending, msg_640d429c), the per-variant
-// inhabitance instance-values land in this file with these typed
-// variants as their carriers — IntScalar { kind: Signed, width:
-// Bits32 } is the carrier for Rust's i32 inhabitance into
-// OrderedRing (or its v4-equivalent per the D2-ratified form);
-// FloatScalar { width: Bits32 } is the carrier for f32 →
-// ApproximateField; StrScalar is the carrier for `str` →
-// FreeMonoid<Char>; NeverScalar is the carrier for `!` → empty-
-// cardinality. The seam itself is the typed variant; the
-// inhabitance value is the deferred row.
+// ROLE under the RATIFIED D2 resolver (DECISIONS.md D2 row, commit
+// 44a37ad46, via PR #3195 merge 2026-05-16). RustScalar is the
+// PARSE-STAGE SOURCE-SYNTAX CLASSIFIER for Rust's six-way scalar
+// partition — the closed Disj that captures Reference §3.3-§3.6's
+// kind×width-or-not surface shape. It is NOT the inhabitance
+// carrier. Per the ratified D2a three-thin-facts form, primitive
+// inhabitance + grounding land via:
+//   (1) alias-identity to the std/ carrier
+//       (`type RustI32 = Int32` — algebra inhabitance flows through
+//       the alias per the `List<T> = FreeMonoid<T>` precedent;
+//       Node identity, machine-readable);
+//   (2) grounding map (`data rust_i32_grounding: GroundingMap<RustI32>
+//       = GroundingMap { spelling: "i32" }`);
+//   (3) per-language operation-semantics carriers (OverflowDisposition
+//       for integers; NaN/Inf handling for floats).
+// See the D2 resolver block at the carrier declarations below for
+// the canonical form contract. The earlier pre-ratification framing
+// of this seam ("when D2 lands, per-variant inhabitance lands in
+// this file with these typed variants as their carriers — IntScalar
+// is the carrier for Rust's i32 inhabitance into OrderedRing") is
+// SUPERSEDED — that shape was the parallel-substrate per-language
+// `data rust_<x>: OrderedRing<RustX>` inhabitance the D2 row
+// (D2.2 + INVARIANTS P1:42 `numeric_aliases_align_to_refinements`)
+// explicitly forbids. RustScalar variants are NOT carriers for
+// algebra inhabitance; the alias-identity targets (`Int32`,
+// `Float32`, `Bool`, etc.) ARE, via the kernel-ambient / std/
+// algebra structures attached to them. Per BLOCKING reviewer
+// 2026-05-16T20:45:01Z (openai-pro REQUEST_CHANGES on sha:dfb9464e):
+// unreconciled seam prose contradicting the ratified resolver
+// shape would mislead downstream workers into the superseded
+// per-variant-inhabitance path.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
