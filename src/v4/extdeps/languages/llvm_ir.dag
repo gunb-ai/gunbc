@@ -251,9 +251,16 @@ type FloatKind
 //      The width AXIS *inside* IntegerType IS a projection (pattern-5
 //      applied there: `bits: Int`, not enumerated iN siblings), but the
 //      category sum itself is not a mechanical copy of any set.
-// Terminal: the closed LangRef type taxonomy; an addition is an upstream
-// LangRef revision (M3 spec-anchor analog of node.dag's C1 stop-signal),
-// never a silent open variant.
+// Terminal: the MODELED LangRef (LLVM 18) type taxonomy — void/label/
+// token/metadata + the integer/float/pointer scalar core + the
+// aggregate/vector/function/named constructors. A LangRef type OUTSIDE
+// this modeled set (e.g. `x86_amx`, a `target("…")` target-extension
+// type) is the EXPLICIT `FidelityDisposition.FailClosed` boundary —
+// declared, diagnosed, never a silent fabricated parse (no-engine):
+// completeness of F is declared, not over-claimed. Extending the modeled
+// core is an upstream-LangRef-revision edit to THIS declaration (the M3
+// spec-anchor analog of node.dag's C1 stop-signal), never a silent open
+// variant.
 //
 // RAW-Int WIDTH RESIDUAL — TRACKED 🟡 SCAFFOLD (isolated, the exact
 // std/diagnostic.dag `Locus`(🟢)/`Extent.ByteRange`(🟡) precedent). The
@@ -656,6 +663,55 @@ type CallArgument {
 }
 
 
+// LandingPadCleanup — a `landingpad` either has the `cleanup` flag or it
+// does not (LangRef "landingpad Instruction"). A genuine closed 2-valued
+// LangRef distinction; a named sum, not a Bool (M4 — closed named
+// distinction is an enum, not a boolean proxy; same rationale as
+// VectorScaling/StructPacking).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: read uniformly by the EH/unwind consumer
+//      wherever a landingpad is lowered; not a per-consumer scattered
+//      fact.
+//   2. Variant-is-data — FAILS: reduces only to a Bool — the M4
+//      boolean-proxy for a closed named LangRef keyword.
+//   3. Algebraic form — N/A: a leaf LangRef EH spelling distinction; no
+//      richer std/ source.
+//   4. Dimensional — FAILS: a landingpad is cleanup XOR not; never both.
+//   5. Parameterized family — FAILS: two nullary spellings, not `F<X>`
+//      over a declared set.
+// Terminal: the closed cleanup-vs-not LangRef landingpad distinction.
+type LandingPadCleanup
+  = IsCleanup
+  | NotCleanup
+
+
+// LandingClause — one clause of a `landingpad` (LangRef "landingpad
+// Instruction"): `catch <type>` (a single type-info operand) or
+// `filter <array-of-type>` (a list of type-infos). Two genuinely
+// distinct LangRef clause forms with different payload shapes.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every landingpad consumer iterates the
+//      clause list uniformly; not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: `CatchClause` carries ONE type,
+//      `FilterClause` a type LIST — disjoint shapes; a flat
+//      `{ kind, ty?, types? }` makes "a catch clause with a type list"
+//      representable, the inverse of P2.
+//   3. Algebraic form — N/A: a leaf LangRef EH clause taxonomy; no
+//      richer std/ source.
+//   4. Dimensional — FAILS: a clause is EXACTLY catch XOR filter; never
+//      both — alternatives, not coordinates.
+//   5. Parameterized family — FAILS: a single type vs a type list are
+//      not one `F<X>` over a declared set (heterogeneous arities).
+// Terminal: the closed LangRef landingpad clause set.
+type LandingClause
+  = CatchClause { type_info: LlvmValue }
+  | FilterClause { type_infos: List<LlvmValue> }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // AtomicOrdering — the memory-model ordering for atomic ops (LangRef
 // "Atomic Memory Ordering Constraints", C++11/C11 memory model). A
@@ -751,8 +807,19 @@ type AtomicRmwOp
 //      (the opcode-set projections) and FAILS for the residual: Load/
 //      Store/GEP/Select/Call/… are not one `F<X>` over a single declared
 //      set (heterogeneous arities and operand roles).
-// Terminal: the closed LangRef non-terminator non-phi instruction set,
-// maximally Practice-7-collapsed; residual variants irreducibly distinct.
+// Terminal: the MODELED LangRef (LLVM 18) non-terminator non-phi
+// instruction set — the arithmetic / bitwise / conversion / comparison /
+// memory / aggregate / vector / EH-pad / call / freeze / fneg / va_arg
+// core, maximally Practice-7-collapsed; residual variants irreducibly
+// distinct. This is NOT a claim that EVERY LangRef opcode is enumerated
+// here: a LangRef instruction outside the modeled core (a target-
+// specific / deprecated / newly-added LangRef opcode) is the EXPLICIT
+// `FidelityDisposition.FailClosed` boundary — declared, diagnosed, never
+// silently dropped or fabricated (the no-engine discipline; the honest
+// reconciliation of "modeled spec core" vs "the full LangRef surface" —
+// completeness of F is declared, not over-claimed). Extending the
+// modeled core is an upstream-LangRef-driven edit to THIS declaration
+// (the M3 spec-anchor analog of node.dag's C1 stop-signal).
 type LlvmInstruction
   = Binary {
       result_type: LlvmType
@@ -846,6 +913,75 @@ type LlvmInstruction
   | Freeze {
       value: LlvmValue
     }
+  | FNeg {
+      result_type: LlvmType
+      operand: LlvmValue
+    }
+  | VaArg {
+      result_type: LlvmType
+      va_list: LlvmValue
+      arg_type: LlvmType
+    }
+  | LandingPad {
+      result_type: LlvmType
+      is_cleanup: LandingPadCleanup
+      clauses: List<LandingClause>
+    }
+  | CatchPad {
+      catch_switch: LlvmValue
+      args: List<LlvmValue>
+    }
+  | CleanupPad {
+      parent_pad: LlvmValue
+      args: List<LlvmValue>
+    }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OPERATION-SPECIFIC OPERAND CONSTRAINTS — consolidated TRACKED 🟡
+// SCAFFOLD (codex BLOCKING root-cause #3; the merged, manager-audited
+// diagnostic.dag `Extent.ByteRange` three-bridge precedent — a CHECKABLE
+// trigger, not a prose-only disposition).
+//
+// Several instructions carry LangRef operand-relation constraints that
+// the broad `LlvmValue` / `LlvmType` carriers do NOT type-enforce, e.g.:
+//   - `icmp`/`fcmp`: both operands same type; `icmp` int/ptr, `fcmp`
+//     float (or same-shaped vector); result is `i1`/vector-of-`i1`.
+//   - `getelementptr`: indices are integer-typed; struct indices are
+//     `i32` constants; result type is the GEP-walked type.
+//   - `select`: condition is `i1` (or vector-of-`i1` matching operands);
+//     the two arms share the result type.
+//   - `Binary`: `lhs`/`rhs`/result share one type; float opcodes need
+//     float operands, integer opcodes integer operands.
+//   - `insert/extractelement`, `shufflevector`: element/index/mask type
+//     and length relations.
+// These are NOT collapsed-away facts — they are real LangRef invariants
+// the model currently leaves PRODUCER-SIDE because the substrate to
+// type-encode an operand-relation refinement (a dependent/refined
+// typed-value carrier) is std/cardinality.dag's refinement substrate,
+// which is parallel Wave-A1 and NOT in this file's whitelist.
+// Introducing a constrained carrier here would be exactly the
+// improvise-past-not-ready-substrate failure mode; the sanctioned path
+// (operator-ratified, merged in diagnostic.dag) is the tracked scaffold
+// with the three bridge properties:
+//   (a) scaffold doc — THIS note; the broad operands are provisional,
+//       not the terminal operand-relation-refined shape.
+//   (b) bounds on use — a producer MUST construct only LangRef-valid
+//       operand-type relations (same-type binary/compare; i1 select
+//       cond; integer GEP indices; …). Until the substrate enforces it
+//       the invariant is producer-side; a violating instruction is a
+//       producer bug, not a legal value.
+//   (c) dissolution trigger — CHECKABLE, not prose: when
+//       std/cardinality.dag's refinement substrate lands (its own T-3
+//       entry — a concrete, observable file/feature-landing event, the
+//       SAME trigger the merged diagnostic.dag `Extent.ByteRange` 🟡
+//       uses), these operand relations refine to type-enforced
+//       constraints and this residual reclassifies 🟢. The trigger is a
+//       substrate-landing fact a reviewer can check, not a vague
+//       "later".
+// This converts root-cause #3's "broad carriers + prose-only
+// dispositions" into a single tracked residual with a checkable trigger,
+// without improvising refinement substrate that is not yet ratified.
 
 
 // LoadStoreAtomicity — a load/store is either plain or atomic-with-an-
@@ -1313,5 +1449,10 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
     Select { condition: _, if_true: _, if_false: _ } => 1
     Call { result_type: _, callee: _, arguments: _ } => 5
     Freeze { value: _ } => 0
+    FNeg { result_type: _, operand: _ } => 1
+    VaArg { result_type: _, va_list: _, arg_type: _ } => 2
+    LandingPad { result_type: _, is_cleanup: _, clauses: _ } => 1
+    CatchPad { catch_switch: _, args: _ } => 1
+    CleanupPad { parent_pad: _, args: _ } => 1
   }
 }
