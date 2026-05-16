@@ -20,12 +20,13 @@
 //     `ApproximateField` structure owned by std/algebra.dag (ontology +
 //     TASKS.md T-3), **not** an exact `Field` (rounding is non-associative).
 //     The std/extdeps typescript.dag header already anticipates this shape;
-//     algebra.dag (T-2) owns its exact name and definition. The **machine-
-//     readable** `data float_approximate_field: ApproximateField<Float>`
-//     witness ships here (see DECISIONS.md **D3**): op fields are `fn` refs
-//     (THESIS:203 `FunctionRef` spine) to IEEE primitive-op signatures whose
-//     **executable** bodies are realized in `extdeps/languages/*` (T-4), not
-//     Peano-field componentwise stubs in this file (D2b).
+//     algebra.dag (T-2) owns its exact name and definition. A **machine-
+//     readable** `data …: ApproximateField<Float>` inhabitance is **not**
+//     published in this file until IEEE primitive ops and identity (`one`)
+//     are non-fabricating facts (INVARIANTS P1/P3; DECISIONS.md **D3**;
+//     codex REQUEST_CHANGES on PR #3191): v2-bridge constructive bodies here
+//     cannot honestly realize finite `+`/`*` or bias-1023 `one` on the Peano
+//     exponent carrier without known-wrong stubs.
 //   - Tier-2 totalization for the partial / non-total operations
 //     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
 //     commitment #2
@@ -35,9 +36,8 @@
 //     (`data …: Symbol = …` intrinsic identities — D2 cross-declaration idiom)
 //   - std/machine.dag: bit-width interchange authorities (`Bit`, `Word32` /
 //     `Word64`) for `Float*` nominal widths
-//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology + the
-//     monomorphic `ApproximateField<Float>` inhabitance **instance** declared
-//     here as `data float_approximate_field`
+//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology (no
+//     monomorphic `ApproximateField<Float>` **data** witness in this file yet)
 //   - std/diagnostic.dag: `Outcome` / `Diagnostic` / `PortLocus` — Tier-2
 //     fail-closed compare API (NaN / unavailable inputs)
 //   - std/logic.dag: `Bool` (finite sign bit and other carrier-local uses)
@@ -71,9 +71,10 @@
 //   and adds its own operation-semantics siblings (NaN/Inf handling); it
 //   does NOT re-declare the `ApproximateField` inhabitance.
 //
-// Status: T-3 modeled — float carrier + `ApproximateField<Float>` witness +
-//   Tier-2 ordered compare; IEEE primitive **executable** semantics route
-//   through T-4 `extdeps/languages/*` per D2b (this file names Arrows only).
+// Status: T-3 modeled — float carrier + Tier-2 ordered compare; grounded
+//   `ApproximateField<Float>` **data** witness deferred per D3/P1/P3. IEEE
+//   primitive **executable** semantics route through T-4 `extdeps/languages/*`
+//   per D2b (this file does not ship fabricating primitive `fn` bodies).
 //   Replaces part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
@@ -84,7 +85,7 @@
 module v4.std.float
 
 
-import v4.std.algebra { ApproximateField, Ordering, Less, Equal, Greater }
+import v4.std.algebra { Ordering, Less, Equal, Greater }
 import v4.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -132,19 +133,15 @@ import v4.std.node { Symbol }
 // respect nominal widths; the dissolution trigger is the same bounded
 // refinement substrate named in machine.dag's modeling notes.
 //
-// APPROXIMATEFIELD INHABITANCE — DECISIONS.md **D3**: the machine-readable
-// `data float_approximate_field: ApproximateField<Float>` witness **ships**
-// here. `add` / `mul` name IEEE primitive ops whose **executable** bodies are
-// T-4 `extdeps/languages/*` realizations (D2b — THESIS:203 primitive path), not
-// in-.dag Peano arithmetic on `Nat` exponent/significand fields (that pattern
-// was a second numeric authority — deleted). `compare` uses the in-file
-// carrier scaffold `float_body_compare_semantic_total` as the total compare
-// hook until interchange-grounded compare is composed through the same spine.
-//
-// Until interchange-grounded `add`/`mul` bodies land in extdeps, the declared
-// `float_ieee754_primitive_add` / `float_ieee754_primitive_mul` remain **left-
-// operand forwarding hooks** at this declaration site (signature authority
-// only — wrong for finite IEEE semantics; T-4 dissolution replaces behavior).
+// APPROXIMATEFIELD INHABITANCE — DECISIONS.md **D3**: a machine-readable
+// `data …: ApproximateField<Float>` witness is **not** encoded in this file.
+// Shipping left-operand `add`/`mul`, a non–bias-1023 `one`, or wiring those
+// into inhabitance data would publish INVARIANTS P1/P3-violating substrate
+// authority (codex REQUEST_CHANGES, PR #3191). Re-introduce the data row only
+// when T-4 `extdeps/languages/*` supplies grounded Arrow bodies and/or v4
+// admits bodiless primitive signatures (**PARSE-1**). Tier-2 compare and
+// carrier-local `float_body_compare_semantic_total` remain honest scaffolds,
+// not interchange-grounded IEEE `totalOrder`.
 //
 // D2 — intrinsic Tier-2 diagnostic identities (operator 2026-05-16): the
 // `Rejected` nan path uses **this file's** `data …: Symbol = …` name-reference
@@ -319,41 +316,6 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
 }
 
 
-// IEEE-754 primitive ops — D2b: `std/` owns signatures; **executable** IEEE
-// bodies are T-4 `extdeps/languages/*` realizations. `add`/`mul` are left-
-// operand hooks here until that spine lands (never Peano on exponent fields).
-fn float_ieee754_primitive_add(a: Float, b: Float) -> Float {
-  a
-}
-
-
-fn float_ieee754_primitive_mul(a: Float, b: Float) -> Float {
-  a
-}
-
-
-fn float_ieee754_primitive_negate(x: Float) -> Float {
-  match x.body {
-    Finite { sign: s, biased_exponent: e, trailing_significand: f } => {
-      let s2 = match s {
-        true => false
-        false => true
-      }
-      Float64 { body: Finite { sign: s2, biased_exponent: e, trailing_significand: f } }
-    }
-    NonFinite { tag: t } => {
-      let t2 = match t {
-        PosInfinity => NegInfinity
-        NegInfinity => PosInfinity
-        QuietNan => QuietNan
-        SignalingNan => SignalingNan
-      }
-      Float64 { body: NonFinite { tag: t2 } }
-    }
-  }
-}
-
-
 // float_finite_magnitude_zero — true when `biased_exponent` and
 // `trailing_significand` are both Peano `Zero` (IEEE ±0 magnitude on this
 // carrier; sign bit may still differ).
@@ -429,36 +391,6 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
       )
     }
   }
-}
-
-
-fn float_ieee754_primitive_compare(a: Float, b: Float) -> Ordering {
-  float_body_compare_semantic_total(a: a.body, b: b.body)
-}
-
-
-// float_approximate_field — monomorphic `ApproximateField<Float>` witness
-// (DECISIONS.md **D3**). Op fields reference the primitive `fn`s on the
-// THESIS:203 external-primitive spine (D2b).
-data float_approximate_field: ApproximateField<Float> = ApproximateField {
-  add: float_ieee754_primitive_add,
-  zero: Float64 {
-    body: Finite {
-      sign: false
-      biased_exponent: Zero
-      trailing_significand: Zero
-    }
-  },
-  negate: float_ieee754_primitive_negate,
-  mul: float_ieee754_primitive_mul,
-  one: Float64 {
-    body: Finite {
-      sign: false
-      biased_exponent: Succ { prev: Zero }
-      trailing_significand: Zero
-    }
-  },
-  compare: float_ieee754_primitive_compare,
 }
 
 
