@@ -183,8 +183,14 @@ type TsEcma262PrimitiveOperationSemantics
   | TsBigIntExactUnboundedSemantics
 
 
-// (No `data` rows — M1(2.8) opaque-body discipline on enum literals until the
-// class-5 structural-validation gap closes; the **type** is the D2a(3) carrier.)
+// (No per-primitive INSTANCE `data` rows here — M1(2.8) opaque-body: record /
+// enum-literal bodies are what the v3 lowerer rejects until structural
+// validation exists. **Deferred** to the Class-5-Gap-3 / top-level-`ValueBody`
+// substrate work (R2/R3 lane, ROADMAP.md:416; Class-5-Gap-3 / opaque-body
+// structural validation — substrate items #920 / #1017 / #1068). **Trigger**
+// = that gap closes. The D2a(3) **TYPES** / classifiers + Practice-4 ledgers
+// above are canonical regardless; instance rows land when the substrate can
+// structurally validate them.)
 
 
 // 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
