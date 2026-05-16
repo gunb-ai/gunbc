@@ -577,7 +577,7 @@ fn node_well_formed(n: Node) -> Bool {
 // `EdgeSelector = ByName { name: Symbol } | ByPosition { index: Int }`.
 // That sum is dissolved, not retained; this receipt is the required
 // substrate-shape artifact for that decision (PR #3162 BLOCKING — a
-// D1 sum needs the ledger or it is not landable). Ledger — the four
+// D1 sum needs the ledger or it is not landable). Ledger — the five
 // patterns attempted against "must a positional/ordinal selector
 // variant exist":
 //   1. Fact placement — DISSOLVES it. The "address a positional child"
@@ -600,6 +600,16 @@ fn node_well_formed(n: Node) -> Bool {
 //      addressing is never "by-name AND by-position" simultaneously;
 //      positional internals are reached THROUGH the enclosing `ByName`
 //      step, so there is exactly one addressing coordinate, not two.
+//   5. Parameterized family — FAILS: `ByName`/`ByPosition` are NOT one
+//      mechanical `F<X>` over a separately-declared set — they carry
+//      different payload types (`Symbol` vs `Int`) and different
+//      addressing semantics; they mirror node.dag's genuine 2-variant
+//      `EdgeLabel` discriminant, NOT an enumerated copy of some
+//      declared "selector-kind" set (contrast the Pattern-5
+//      `Homomorphism`-per-algebra example → one generic
+//      `Homomorphism<C>`). No source set X to project over ⇒ the
+//      Practice-7 projection is N/A. (And post-(1) a single constructor
+//      remains — a one-element family is not a family.)
 // Terminal: positional addressing is structurally SUBSUMED by
 // enclosing-`Named`-subtree replacement — coarser granularity #3157
 // point 3 ratifies as safe over-fire, not lossy. This is NOT a deferred
