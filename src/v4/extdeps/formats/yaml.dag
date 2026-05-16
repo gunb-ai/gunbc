@@ -339,13 +339,19 @@ type YamlValue
 //   https://yaml.org/spec/1.2.2/#3213-node-comparison) defines mapping
 //   keys as duplicate iff equal by TAG + CANONICAL content. The
 //   `Map<YamlValue, YamlValue>` carrier only forecloses lexeme-
-//   IDENTICAL duplicate keys; canonically-equal-but-lexeme-distinct
-//   scalar keys (e.g. `0x10`/`16` `!!int`; `1.0`/`1.0e0` `!!float`;
-//   tag-distinct same-content) remain representable because
-//   canonicalization needs the resolved tag + numeric value that is
-//   deferred (item (2)). This is surfaced honestly, NOT over-claimed
-//   as a structural guarantee (the std/collection.dag #3169
-//   over-claim-correction precedent).
+//   IDENTICAL duplicate keys; **SAME-TAG** canonically-equal-but-
+//   lexeme-distinct scalar keys (e.g. `0x10`/`16` both `!!int`;
+//   `1.0`/`1.0e0` both `!!float`) are §3.2.1.3 DUPLICATES yet remain
+//   representable because canonicalization needs the resolved tag +
+//   numeric value that is deferred (item (2)). (Precision, per review:
+//   §3.2.1.3 equality requires MATCHING tags AND equal canonical
+//   content — so a TAG-DISTINCT same-content pair, e.g. `!!str "1"`
+//   vs `!!int 1`, is NOT a §3.2.1.3 duplicate; it is an ALLOWED
+//   distinct key, and the carrier correctly keeps it distinct. Only
+//   the same-tag canonically-equal case above is the deferred gap.)
+//   This is surfaced honestly, NOT over-claimed as a structural
+//   guarantee (the std/collection.dag #3169 over-claim-correction
+//   precedent).
 //     (a) scaffold doc — THIS note + the YamlMapping bullet; the
 //         carrier's structural dedup is lexeme-scoped, explicitly not
 //         the full §3.2.1.3 relation.
