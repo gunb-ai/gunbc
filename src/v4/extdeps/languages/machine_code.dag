@@ -82,9 +82,11 @@ import v4.std.node { Symbol }
 // instruction-encoding vocabulary and the C5 fidelity boundary as data.
 // `bytes -> Node` disassembly and `Node -> bytes` emission remain the
 // generic B2-OMNI walker reading this data; this file declares no
-// procedure and no local Result/Diagnostic type. Ill-formed byte runs are
-// represented by `MachineFidelityDisposition.FailClosed` feature classes
-// that the walker turns into diagnostics.
+// disassembler/emitter procedure and no local Result/Diagnostic type.
+// The one pure projection below (`machine_feature_disposition`) is the C5
+// disposition map the walker reads. Ill-formed byte runs are represented
+// by `MachineFidelityDisposition.MachineFailClosed` feature classes that
+// the walker turns into diagnostics.
 //
 // D2 RESOLVER SHAPE. This file is an extdeps resolver, not an algebra
 // inhabitance site. The `Machine*` aliases below are D2a(1) alias-

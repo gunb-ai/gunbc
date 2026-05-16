@@ -364,7 +364,7 @@ type LeanUInt = UInt
 // peers are deferred until the shared `GroundingMap` type has a single
 // pinned home. This file must not declare `GroundingMap` locally.
 //
-// D2a(3): top-level data rows selecting `LeanReductionSemantics` for
+// D2a(3): top-level data rows selecting `LeanProofCheckSemantics` for
 // specific exported primitives / theorem artifacts are deferred until the
 // shared operation-realization path can validate those rows uniformly.
 // The carrier shape above is canonical; individual rows belong to the
