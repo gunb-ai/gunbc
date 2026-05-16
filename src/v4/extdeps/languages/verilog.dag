@@ -588,10 +588,6 @@ type PackingShape
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NetDeclaration — a Verilog net (`wire foo;`, `wire [7:0] bus;`,
-// `wand x;`). Conj record (no Practice-4 ledger).
-//
-// ─────────────────────────────────────────────────────────────────────
 // Signedness — the closed Verilog net/reg signedness classifier
 // (IEEE 1364-2005 §5.6 "Signed types"). The `signed` keyword on a net
 // or `reg` declaration selects two's-complement signed interpretation
