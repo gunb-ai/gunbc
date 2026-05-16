@@ -21,10 +21,11 @@
 //     TASKS.md T-3), **not** an exact `Field` (rounding is non-associative).
 //     The std/extdeps typescript.dag header already anticipates this shape;
 //     algebra.dag (T-2) owns its exact name and definition. The **machine-
-//     readable** `data … ApproximateField<Float>` witness is **deferred**
-//     here (see modeling notes "APPROXIMATEFIELD INHABITANCE"); dissolution is
-//     grounded `add`/`mul` over interchange + U1 — not silent fabrication in
-//     `.dag`. Float's external anchor remains IEEE-754 (the Wikipedia link).
+//     readable** `data float_approximate_field: ApproximateField<Float>`
+//     witness ships here (operator D3 2026-05-16): op fields are `fn` refs
+//     (THESIS:203 `FunctionRef` spine) to IEEE primitive-op signatures whose
+//     **executable** bodies are realized in `extdeps/languages/*` (T-4), not
+//     Peano-field componentwise stubs in this file (D2b).
 //   - Tier-2 totalization for the partial / non-total operations
 //     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
 //     commitment #2
@@ -34,8 +35,9 @@
 //     wiring (Tier-2 `Rejected` — no Symbol mint here)
 //   - std/machine.dag: bit-width interchange authorities (`Bit`, `Word32` /
 //     `Word64`) for `Float*` nominal widths
-//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology (typed
-//     inhabitance target; machine-readable witness still deferred in-file)
+//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology + the
+//     monomorphic `ApproximateField<Float>` inhabitance **instance** declared
+//     here as `data float_approximate_field`
 //   - std/diagnostic.dag: `Outcome` / `Diagnostic` / `PortLocus` — Tier-2
 //     fail-closed compare API (NaN / unavailable inputs)
 //   - std/logic.dag: `Bool` (finite sign bit and other carrier-local uses)
@@ -69,8 +71,10 @@
 //   and adds its own operation-semantics siblings (NaN/Inf handling); it
 //   does NOT re-declare the `ApproximateField` inhabitance.
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+// Status: T-3 modeled — float carrier + `ApproximateField<Float>` witness +
+//   Tier-2 ordered compare; IEEE primitive **executable** semantics route
+//   through T-4 `extdeps/languages/*` per D2b (this file names Arrows only).
+//   Replaces part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
@@ -80,7 +84,7 @@
 module v4.std.float
 
 
-import v4.std.algebra { Ordering, Less, Equal, Greater }
+import v4.std.algebra { ApproximateField, Ordering, Less, Equal, Greater }
 import v4.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -128,32 +132,25 @@ import v4.std.node { Symbol }
 // respect nominal widths; the dissolution trigger is the same bounded
 // refinement substrate named in machine.dag's modeling notes.
 //
-// APPROXIMATEFIELD INHABITANCE — machine-readable `data … ApproximateField<Float>`
-// is **deferred** (tracked scaffold 🟡; INVARIANTS P1/P2 + T-3 operator track):
-// wiring `ApproximateField.add` / `mul` to any in-.dag combine on unrefined
-// `Nat` exponent/significand fields would either fabricate IEEE float facts or
-// install a **second operation authority** beside interchange + Grounding/U1.
-// Dissolution = grounded `add`/`mul` realized over `Float32Interchange` /
-// `Float64Interchange` (machine.dag `Word*`) on the homomorphism spine.
+// APPROXIMATEFIELD INHABITANCE — operator D3 (2026-05-16): the machine-readable
+// `data float_approximate_field: ApproximateField<Float>` witness **ships**
+// here. `add` / `mul` name IEEE primitive ops whose **executable** bodies are
+// T-4 `extdeps/languages/*` realizations (D2b — THESIS:203 primitive path), not
+// in-.dag Peano arithmetic on `Nat` exponent/significand fields (that pattern
+// was a second numeric authority — deleted). `compare` uses the in-file
+// carrier scaffold `float_body_compare_semantic_total` as the total compare
+// hook until interchange-grounded compare is composed through the same spine.
 //
-// Until then: **Tier-2** `float_ordered_compare_tier2` carries IEEE **numeric**
-// ordered comparison via `float_body_compare_ieee_ordered_outcome` on
-// `Float.body` (`±0` magnitude with both `Nat` fields at Peano `Zero` ⇒ `Equal`
-// in the `Produced` branch — IEEE numeric equality). For non-finite values, **NaN sign/payload are not modeled**
-// on `FloatBody` (`FloatSpecial` is class-only); a separate deterministic
-// total compare on the carrier — `float_body_compare_semantic_total` — is used
-// only as a **scaffold** order over modeled facts, **not** full interchange-
-// grounded IEEE 754 `totalOrder` (P1 faithfulness). Still NOT a packaged
-// `ApproximateField` witness.
+// Until interchange-grounded `add`/`mul` bodies land in extdeps, the declared
+// `float_ieee754_primitive_add` / `float_ieee754_primitive_mul` remain **left-
+// operand forwarding hooks** at this declaration site (signature authority
+// only — wrong for finite IEEE semantics; T-4 dissolution replaces behavior).
 //
-// SYMBOL ANCHORS (P2 / diagnostic.dag) — Tier-2 `Rejected` paths take **two**
-// caller-supplied opaque `Symbol`s (K-1: no Symbol mint in this file):
-// `failure_reason` binds `Diagnostic.reason` (dimension-owned failure
-// identity); `failure_at_port` binds `PortLocus.port` (**where** — a separate
-// boundary fact from `reason`, per diagnostic.dag header `reason` vs `at`).
-// Fusing both into one symbol regresses Practices 3/5 + INVARIANTS P2; callers
-// wire two declaration-site identities (they may coincide only upstream by
-// explicit dimension policy — this API does not collapse them here).
+// D2 — intrinsic Tier-2 diagnostic identities (operator 2026-05-16): the
+// `Rejected` nan path uses **this file's** `data …: Symbol = …` name-reference
+// carriers for `Diagnostic.reason` and `PortLocus.port` (diagnostic.dag header
+// lines 42–51; node.dag K-1 cross-declaration idiom). **Not** caller-supplied
+// `Symbol` parameters (integer totalizer parity).
 //
 // INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
 // interchange authorities for Grounding edges (P2 single place for words).
