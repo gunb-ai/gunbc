@@ -36,8 +36,8 @@
 //     RegisterWidth (b1/b8/b16/b32/b64/b128), RegisterScalarKind
 //     (Bits/Unsigned/Signed/Float/Predicate)
 //   - PTX value shapes as Conj records: RegisterScalar, Dim3 (🟡 scaffold
-//     — same bridge as std/diagnostic.dag's ByteRange), ThreadHierarchy,
-//     ThreadCoord
+//     — same bridge as std/diagnostic.dag's ByteRange),
+//     ThreadHierarchyShape, ThreadCoord
 //   - PTX cost-realization carrier shape: PtxCost (per-instruction +
 //     occupancy components — the per-target cost projection U1 reads)
 //   - the IN-B mapping (modeling notes): SIMT → 5 behaviors, no 6th
@@ -147,13 +147,14 @@ module v4.extdeps.languages.ptx
 //     Loop reading the Bind, not of the Bind itself.
 //
 //   - STATE SPACE ↦ effect-typed parameter (structural Conj field).
-//     A PTX value's `.reg` / `.shared` / `.global` / etc. tag is a
-//     structural field on its `RegisterScalar` (the StateSpace
-//     classifier below, not modeled in this file — see PtxCost note
-//     for the carrier shape). Memory ops (`ld.global`, `st.shared`)
-//     are Transforms whose input/output StateSpace tags constrain
-//     valid composition. This IS the THESIS:401 IN-B claim made
-//     concrete: effects are "intrinsic to the type signature, NOT an
+//     A PTX value's `.reg` / `.shared` / `.global` / etc. tag is the
+//     `state_space: StateSpace` field on its `RegisterScalar` Conj
+//     record (`StateSpace` is the closed classifier declared below;
+//     `RegisterScalar` is the Conj record that attaches it to the
+//     typed value). Memory ops (`ld.global`, `st.shared`) are
+//     Transforms whose input/output StateSpace tags constrain valid
+//     composition. This IS the THESIS:401 IN-B claim made concrete:
+//     effects are "intrinsic to the type signature, NOT an
 //     annotation layer." Tempting alternative: a `StateSpaceTransfer`
 //     behavior wrapping every ld/st. REJECTED — it would parallel-
 //     represent what the Transform's signature already says; the
