@@ -2860,6 +2860,67 @@ type VerilogModule
 
 
 // ─────────────────────────────────────────────────────────────────────
+// VerilogDesignElement — the closed Verilog file-level
+// design-element classifier (IEEE 1364-2005 §A.1.1 source_text /
+// description). A Verilog source file is a sequence of design
+// elements; the spec partition admits module declarations, UDP
+// declarations, and config declarations. ConfigDeclaration is
+// scope-negative for T-4.9 per the header PROBE LIMITS (config is
+// an elaboration-time concern outside the IN-B probe); the two
+// in-scope variants are modeled here.
+//
+//   - ModuleDesignElement { module_decl: VerilogModule }
+//       — a `module ... endmodule` (or `macromodule`) declaration
+//       per §12.1. Carries the full VerilogModule per-style Disj.
+//   - UdpDesignElement { udp_def: UdpDefinition }
+//       — a `primitive ... endprimitive` UDP declaration per §8.
+//       Carries the UdpDefinition Conj.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.1.1 admits a third
+// `config_declaration` form which is scope-negative for this slice
+// per the header PROBE LIMITS framing (configuration is a separate
+// elaboration-time concern, not part of the IN-B probe). A future
+// language-version model EDITS this Disj to add ConfigDesignElement
+// when the configuration sub-language lands.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal for the IN-B-probe scope; scope-negative
+// ConfigDesignElement marked in the closed-set-coverage note).
+// Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every file-level walker (the
+//      bundled T-4 LanguageModel grammar emitter, the
+//      UdpInstantiation udp_name resolver, the
+//      ModuleInstantiation module_name resolver, the lens-side
+//      design-element-list traverser) reads the design-element
+//      variant uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the two variants to a
+//      uniform `{ kind: ElementKind, payload: … }` shape requires
+//      Option-typed payload fields admitting mismatched-kind
+//      combinations (the inverse of P2 illegal-states-
+//      unrepresentable). Disj-with-heterogeneous-payloads is the
+//      dissolved form.
+//   3. Algebraic form — N/A by construction: the partition is the
+//      IEEE 1364-2005 §A.1.1 spec's design-element taxonomy; not
+//      a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single design element is EXACTLY ONE
+//      variant; mutually-exclusive alternatives (`module M { …
+//      primitive U …}` is a syntax error per spec — primitive
+//      definitions cannot nest inside modules).
+//   5. Parameterized family — FAILS: ModuleDesignElement carries
+//      VerilogModule (itself a per-style Disj); UdpDesignElement
+//      carries UdpDefinition (Conj with body_lexeme). Structurally
+//      heterogeneous payloads — NOT one generic `F<X>` projection
+//      (Practice 7).
+// Terminal: the closed two-way Verilog file-level design-element
+// classifier for the T-4.9 in-scope partition (module + UDP);
+// config is scope-negative per PROBE LIMITS. Added per codex
+// BLOCKING on PR #3176 2026-05-16.
+type VerilogDesignElement
+  = ModuleDesignElement { module_decl: VerilogModule }
+  | UdpDesignElement { udp_def: UdpDefinition }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // VerilogCost — the per-target cost-realization carrier shape for the
 // Verilog `LanguageModel`. Conj record (no Practice-4 ledger).
 //
