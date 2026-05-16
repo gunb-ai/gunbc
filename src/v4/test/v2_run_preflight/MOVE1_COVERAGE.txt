@@ -36,6 +36,12 @@ evaluating v4 programs + TestClaims must wait on **T-22 (v4 compiler/05_eval
 and claim runner)** — dissolution trigger for an automated `v2-compiler run`
 TestClaim CI lane.
 
+There is **no** `ProcessExit` duplicate under `src/v4/` — canonical carrier
+remains **`dsl/std/process.dag`** only (P2 single authority). A prior test-only
+shim was removed once it had zero consumers; reintroduce only with an explicit
+Practice-4 receipt **and** a real `dag run` entry consumer, or after T-22 when
+v4 owns eval without cross-root duplication.
+
 Interim CI (Move 3)
 -------------------
 Per brief: **DEFERRED** — no required `v2-compiler run` gate on TestClaim
