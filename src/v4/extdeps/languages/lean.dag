@@ -98,6 +98,9 @@ import v4.std.node { Symbol }
 // ─────────────────────────────────────────────────────────────────────
 // LeanDeclarationKind — closed Lean declaration categories needed for
 // the PROOF-1 termination export slice.
+// Anchor: Lean 4.20.0 Reference Manual, "Definitions", "Theorems",
+// "Inductive Types", "Structures", and "Axioms":
+// https://lean-lang.org/doc/reference/4.20.0/
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: grammar, emit, and proof-export consumers
@@ -119,6 +122,8 @@ type LeanDeclarationKind
 // LeanName — opaque qualified name reference. The Symbol is identity,
 // not readable spelling; textual pretty-printing is a grounding-map /
 // LanguageModel spelling fact.
+// Anchor: Lean 4.20.0 Reference Manual, identifiers and namespaces:
+// https://lean-lang.org/doc/reference/4.20.0/
 type LeanName {
   namespace: List<Symbol>
   local: Symbol
@@ -126,6 +131,8 @@ type LeanName {
 
 
 // LeanBinderInfo — binder visibility in Lean term syntax.
+// Anchor: Lean 4.20.0 Reference Manual, function binders:
+// https://lean-lang.org/doc/reference/4.20.0/
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: parser, emitter, and elaboration boundary
@@ -144,15 +151,23 @@ type LeanBinderInfo
 
 type LeanBinder {
   name: LeanName
-  type: LeanTerm
+  type: LeanTermRef
   info: LeanBinderInfo
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// LeanTerm — the kernel-level term surface this model needs for
-// termination proof export. This is a domain recursive type over Lean
-// terms, not a new kernel connective; the universal pivot remains Node.
+// LeanTermRef / LeanTermNode / LeanTermForm — the kernel-level term
+// surface this model needs for termination proof export.
+//
+// Anchor: Lean 4.20.0 Reference Manual, terms / expressions:
+// https://lean-lang.org/doc/reference/4.20.0/
+//
+// A1/K-1 recursion discipline: term trees are represented by named nodes
+// and opaque references. Subterms are `LeanTermRef`s, never producer-
+// inlined recursive payloads. This keeps cyclic/elaborated sharing and
+// future binder-relative identity finite and structural, matching
+// node.dag's name-reference recursion rule.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: type checking, emission, and proof export
@@ -163,35 +178,49 @@ type LeanBinder {
 //   3. Algebraic form — N/A: Lean term grammar is the external source.
 //   4. Dimensional — FAILS: one term node has one syntactic form.
 //   5. Parameterized family — FAILS: heterogeneous constructors.
-type LeanTerm
+type LeanTermRef {
+  name: LeanName
+}
+
+
+type LeanTermNode {
+  name: LeanName
+  form: LeanTermForm
+}
+
+
+type LeanTermForm
   = LeanSort { level: Symbol }
   | LeanConst { name: LeanName }
   | LeanVar { name: LeanName }
-  | LeanApp { function: LeanTerm, argument: LeanTerm }
-  | LeanLambda { binder: LeanBinder, body: LeanTerm }
-  | LeanForall { binder: LeanBinder, body: LeanTerm }
-  | LeanLet { binder: LeanBinder, value: LeanTerm, body: LeanTerm }
-  | LeanMatch { scrutinee: LeanTerm, alternatives: List<LeanMatchAlternative> }
+  | LeanApp { function: LeanTermRef, argument: LeanTermRef }
+  | LeanLambda { binder: LeanBinder, body: LeanTermRef }
+  | LeanForall { binder: LeanBinder, body: LeanTermRef }
+  | LeanLet { binder: LeanBinder, value: LeanTermRef, body: LeanTermRef }
+  | LeanMatch { scrutinee: LeanTermRef, alternatives: List<LeanMatchAlternative> }
 
 
 type LeanMatchAlternative {
   constructor: LeanName
   binders: List<LeanBinder>
-  body: LeanTerm
+  body: LeanTermRef
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Termination export shape. A2 descent evidence maps to Lean's
 // `termination_by` / `decreasing_by` clauses; Lean checks the result.
+// Anchor: Lean 4.20.0 Reference Manual, termination checking /
+// `termination_by` and `decreasing_by`:
+// https://lean-lang.org/doc/reference/4.20.0/
 type LeanTerminationMeasure {
   subject: LeanName
-  measure: LeanTerm
+  measure: LeanTermRef
 }
 
 
 type LeanDecreasingProof {
-  proof: LeanTerm
+  proof: LeanTermRef
 }
 
 
@@ -206,8 +235,8 @@ type LeanTerminationClause
 type LeanProofArtifact {
   declaration: LeanDeclarationKind
   name: LeanName
-  type: LeanTerm
-  proof: LeanTerm
+  type: LeanTermRef
+  proof: LeanTermRef
   termination: List<LeanTerminationClause>
 }
 
@@ -215,6 +244,8 @@ type LeanProofArtifact {
 // ─────────────────────────────────────────────────────────────────────
 // C5 fidelity boundary for Lean. Proof-relevant kernel terms are modeled;
 // non-kernel surface conveniences normalize or fail closed.
+// Anchor: Lean 4.20.0 Reference Manual, elaboration and kernel checking:
+// https://lean-lang.org/doc/reference/4.20.0/
 type LeanFidelityFeature
   = LeanKernelTerm
   | LeanPrettyNameSpelling
@@ -247,6 +278,8 @@ fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
 // ─────────────────────────────────────────────────────────────────────
 // D2a(3) Lean operation/proof-checking semantics. These are genuine Lean
 // resolver facts; they are not algebra-inhabitance rows.
+// Anchor: Lean 4.20.0 Reference Manual, reduction and opaque constants:
+// https://lean-lang.org/doc/reference/4.20.0/
 type LeanReductionSemantics
   = KernelDefinitionalReduction
   | OpaqueAxiomBoundary
@@ -262,6 +295,9 @@ type LeanProofCheckSemantics<IRCarrier> {
 // D2a(1) alias-identity rows. These are Lean's language-level primitive
 // names resolved to existing std/ carriers; the algebra flows through
 // std/, not through this file.
+// Anchor: Lean 4.20.0 Reference Manual, built-in propositions and numeric
+// types:
+// https://lean-lang.org/doc/reference/4.20.0/
 type LeanBool = Bool
 type LeanNat = Nat
 type LeanInt = Int

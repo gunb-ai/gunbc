@@ -105,6 +105,10 @@ import v4.std.node { Symbol }
 // IsaFamily — the closed family discriminator for the first machine-code
 // probe set. A future family is a visible L-2 revision edit here; it is
 // never an opaque string escape hatch.
+// Anchor: Intel 64 and IA-32 Architectures Software Developer's Manual
+// 2025 edition; Arm Architecture Reference Manual for A-profile
+// architecture 2025-03 edition; RISC-V Unprivileged ISA Specification
+// version 20240411.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: encoding, register classes, and operand
@@ -126,6 +130,7 @@ type IsaFamily
 // `revision` is an opaque Symbol naming the pinned upstream spec edition
 // (for example an Intel SDM revision, Arm ARM issue, or RISC-V unprivileged
 // ISA release). The Symbol is a name-reference, not a readable string.
+// Anchor: same version-pinned ISA manuals named on `IsaFamily`.
 type Isa {
   family: IsaFamily
   revision: Symbol
@@ -134,6 +139,9 @@ type Isa {
 
 // ─────────────────────────────────────────────────────────────────────
 // ByteOrder — ISA byte order for multi-byte instruction fields.
+// Anchor: Intel SDM 2025 instruction encoding; Arm ARM 2025-03 memory
+// model / instruction encoding; RISC-V Unprivileged ISA 20240411 base
+// instruction formats.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: decode/emit reads this uniformly for
@@ -150,6 +158,8 @@ type ByteOrder
 
 // ─────────────────────────────────────────────────────────────────────
 // InstructionLength — fixed-width vs variable-width instruction streams.
+// Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
+// encoding; RISC-V Unprivileged ISA 20240411 instruction-length encoding.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: tokenization/decoding consumes this at
@@ -169,6 +179,8 @@ type InstructionLength
 // InstructionWord — admissible instruction-word / maximum-length carrier
 // choices. The variants alias std/machine word carriers structurally
 // rather than inventing local byte sequences.
+// Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
+// encoding; RISC-V Unprivileged ISA 20240411 instruction-length encoding.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: encoded-width decisions are shared by
@@ -190,6 +202,8 @@ type InstructionWord
 
 // ─────────────────────────────────────────────────────────────────────
 // RegisterClass — ISA register-file classifier.
+// Anchor: Intel SDM 2025 registers chapter; Arm ARM 2025-03 register
+// descriptions; RISC-V Unprivileged ISA 20240411 programmer's model.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: operand legality, calling convention
@@ -220,6 +234,8 @@ type RegisterRef {
 // AddressingMode — core machine addressing forms shared by the first
 // ISA probe set. ISA-specific sub-modes remain grammar productions over
 // these fields, not a second addressing taxonomy.
+// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// addressing modes; RISC-V Unprivileged ISA 20240411 load/store formats.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: operand decode and memory-effect lenses
@@ -241,6 +257,7 @@ type AddressingMode
 // interpreting those bytes as signed/unsigned/float is selected by the
 // instruction production plus D2 alias target, not by duplicating an
 // algebra row on the operand itself.
+// Anchor: version-pinned ISA instruction-format sections named above.
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
@@ -267,6 +284,8 @@ type EncodedInstruction {
 // C5 boundary as data. Disassembly failures are first-class feature
 // classes; the generic walker emits diagnostics from these, never a
 // guessed instruction.
+// Anchor: version-pinned ISA instruction decoding / reserved-encoding
+// rules named above.
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -299,6 +318,9 @@ fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisp
 // ─────────────────────────────────────────────────────────────────────
 // D2a(3) operation semantics for machine integer instructions. This is
 // per-target operational fact, not algebra inhabitance.
+// Anchor: Intel SDM 2025 arithmetic instruction semantics; Arm ARM
+// 2025-03 integer instruction pseudocode; RISC-V Unprivileged ISA
+// 20240411 integer computational instructions.
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
@@ -321,6 +343,8 @@ type FlagWriteDisposition
 // ─────────────────────────────────────────────────────────────────────
 // D2a(1) alias-identity rows to std/integer.dag. These are the only
 // primitive grounding rows that can land before shared `GroundingMap`.
+// Anchor: version-pinned ISA integer operand width definitions named
+// above.
 type MachineI8 = Int8
 type MachineI16 = Int16
 type MachineI32 = Int32
