@@ -47,15 +47,28 @@ module v4.extdeps.formats.json
 // 🟡 TRACKED-SCAFFOLD block with the three bridge properties, exactly
 // the collection.dag-deferred-Map pattern.
 //
-// CARRIER SEAM = Outcome<JsonValue> (NOT a per-file sum). The header's
-// `parse(String) -> Result<JsonValue, Diagnostic>` prose denotes the
-// operator-ratified D1 carrier `Outcome<T> = Produced { value: T } |
-// Rejected { diagnostic: Diagnostic }` (std/diagnostic.dag, DECISIONS
-// item **I**, 2026-05-16; `Result<…, Diagnostic>` prose names this same
-// surface — there is no parallel `Result<ok, err>` in std/). When the
-// parse op is authored (trigger below), it returns `Outcome<JsonValue>`.
-// This is the cross-file seam the canonical-first directive ratifies on
-// THIS file; the other five formats consume the SAME carrier.
+// CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
+// fail-closed BOTH directions (single authority = the Deferred (1)
+// block below; this is the summary, not a second authority — no
+// divergence):
+//   - `json_parse : String -> Outcome<JsonValue>`
+//   - `json_emit  : JsonValue -> Outcome<String>`  (NOT a total
+//      `-> String`; a spec-invalid JsonValue — e.g. a non-§6
+//      `JsonNumber.lexeme` while the type-level §6 guarantee is
+//      deferred (2c) — emits `Rejected{diagnostic}`, never a fabricated
+//      artifact: the P3/no-fabrication finding, seam-gate-ratified
+//      msg_c7704bd6).
+// Both use the operator-ratified D1 carrier `Outcome<T> = Produced
+// { value: T } | Rejected { diagnostic: Diagnostic }` (std/diagnostic.
+// dag, DECISIONS item **I**, 2026-05-16). The immutable scaffold
+// header's `parse(String) -> Result<JsonValue, Diagnostic>` prose
+// denotes `Outcome<JsonValue>`; its `emit(JsonValue) -> String` line is
+// the total-emit shape superseded by this ratified fail-closed seam —
+// the literal header-line edit is the operator-tier batched
+// header-reconcile (csv-class; tracked-not-silent, see the Deferred (1)
+// block). No parallel `Result<ok, err>` in std/. This is the cross-file
+// seam the canonical-first directive ratifies on THIS file; the other
+// five formats consume the SAME fail-closed-both-directions carrier.
 //
 // FAIL-CLOSED, NO FABRICATION (RFC 8259; brief §C binding STOP). Every
 // non-conforming input is `Rejected { diagnostic }` — never a partial
