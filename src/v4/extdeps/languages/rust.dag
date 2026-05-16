@@ -1562,46 +1562,51 @@ fn assert_bool_to_rust_bool_consistency() -> Bool {
 // std/ file. The rows are NOT all-or-nothing — incremental landing
 // is fine and recommended (one per PR if std/* lands incrementally).
 //
-// Status of in-flight std/ PRs (snapshot, may update):
-//   - #3166 std/logic.dag (Bool)              — unlocks rust_bool row
-//   - #3165 std/nat.dag (Nat)                  — unlocks rust_u*  rows once
-//                                                 std/integer.dag composes Nat × MachineWidth
-//   - std/integer.dag                         — MISSING; unlocks rust_i* + rust_u* rows
-//   - std/machine.dag                         — MISSING; unlocks Pointer width resolution for
-//                                                 rust_isize / rust_usize
-//   - std/float.dag                           — MISSING; unlocks rust_f32 / rust_f64 rows
-//   - std/text.dag                            — MISSING; unlocks rust_char / rust_str rows
+// Status of std/ scalar carriers (snapshot 2026-05-16 post-T-3 merge):
+//   - std/logic.dag (Bool)          ✅ LANDED (#3166)  → bool_to_rust_bool LANDED above
+//   - std/nat.dag (Nat)             ✅ LANDED (#3165)  → needs std/integer.dag for u* mapping
+//   - std/integer.dag (Int + widths) ❌ MISSING — unlocks rust_i* + rust_u* rows
+//   - std/machine.dag (MachineWidth) ❌ MISSING — unlocks Pointer-width for rust_isize / rust_usize
+//   - std/float.dag (Float)          ❌ MISSING — unlocks rust_f32 / rust_f64 rows
+//   - std/text.dag (Char + Str)      ❌ MISSING — unlocks rust_char / rust_str rows
 //
-// As each std/ type lands, add a `data <name>_to_<rust>: IrToRust =
-// IrToRust { ir_carrier: <Type>, rust_repr: <rust_prim> }` row +
-// the corresponding `import v4.std.<file> { <Type> }` line. Each
-// row is one line of import + one short data block. v2-compiler
+// As each std/ scalar lands, add a one-line `data <name>_to_<rust>:
+// IrToRust<<Type>> = IrToRust { rust_repr: <rust_prim> }` row +
+// the corresponding `import v4.std.<file> { <Type> }` line. v2-compiler
 // verifies 0-diag at each landing (structural resolution check).
 //
-// Worked-example shape, fully fleshed (for ratification — comment
-// only, since std/logic.dag's Bool isn't merged yet):
+// Authoring template (use the live `bool_to_rust_bool` row above as
+// the precedent — the IrToRust<IRCarrier> type-parameter form, NOT
+// a value field):
 //
-//   import v4.std.logic { Bool }                                   // pending #3166
+//   import v4.std.<file> { <IRCarrier> }
 //
-//   // IR Bool ↔ Rust bool — the 1:1 Reference correspondence.
-//   data bool_to_rust_bool: IrToRust = IrToRust {
-//     ir_carrier: Bool,
-//     rust_repr:  rust_bool
+//   data <ir>_to_<rust>: IrToRust<<IRCarrier>> = IrToRust {
+//     rust_repr: <rust_primitive>
 //   }
 //
-// Per-row TestClaim shape (pending std/verification.dag — T-3
-// Wave-A2):
+//   // Layer-2 assertion fn (forward-anchor for Equals TestClaim):
+//   fn assert_<ir>_to_<rust>_consistency() -> Bool {
+//     match <ir>_to_<rust>.rust_repr {
+//       <expected RustScalar variant> => true
+//       <all other variants>          => false
+//     }
+//   }
 //
-//   data t_bool_to_rust_bool_roundtrip: TestClaim = TestClaim {
+// Per-row TestClaim shape (pending std/verification.dag — PR #3183
+// in flight; not yet merged):
+//
+//   data t_<ir>_to_<rust>_roundtrip: TestClaim = TestClaim {
 //     kind:     RoundTrips,
-//     label:    "IR Bool ↔ Rust bool roundtrips through emit + ingest",
-//     input:    <Bool-typed Node>,
-//     expected: <same Bool-typed Node — emit(input) → "bool",
-//                ingest("bool") → same Node by structural-identity>
+//     label:    "IR <IRCarrier> ↔ Rust <rust> roundtrips through emit + ingest",
+//     input:    <IRCarrier-typed Node>,
+//     expected: <same Node — emit(input) → Rust-source-token,
+//                ingest(token) → same Node by structural-identity>
 //   }
 //
 // The TestClaim row IS the IR ↔ Rust testcase the operator asked
-// about; it authorables once std/verification.dag merges + the
-// corresponding IrToRust row lands. The fully-instrumented testcase
-// thus rides three landings: (a) std/<scalar>.dag, (b) this PR's
-// shape (current), (c) std/verification.dag's TestClaim schema.
+// about; it becomes authorable once std/verification.dag merges +
+// the corresponding IrToRust row lands. The fully-instrumented
+// testcase thus rides three landings: (a) std/<scalar>.dag, (b)
+// this PR's shape (live for Bool now), (c) std/verification.dag's
+// TestClaim schema (#3183).
