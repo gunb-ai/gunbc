@@ -1969,13 +1969,15 @@ type NamedParameterOverride {
 // override classifier of the IEEE 1364-2005 spec.
 type ParameterOverrides
   = NoParameterOverrides
-  // OrderedParameterOverrides.actuals + NamedParameterOverrides.
-  // overrides: 🟡 spec-non-empty (§12.1.3) — deferred to
-  // std/collection.dag Wave-A2 refinement; see shared TRACKED-SCAFFOLD
-  // note above. (NoParameterOverrides already covers the omitted-
-  // clause form, so an empty present-clause is structurally redundant
-  // AND spec-illegal.)
+  // OrderedParameterOverrides.actuals: 🟡 spec-non-empty (§12.1.3) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where non_empty`
+  // refinement; see shared TRACKED-SCAFFOLD note above.
+  // (NoParameterOverrides covers the omitted-clause form, so an
+  // empty present-clause is structurally redundant AND spec-illegal.)
   | OrderedParameterOverrides { actuals: List<String> }
+  // NamedParameterOverrides.overrides: 🟡 spec-non-empty (§12.1.3) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where non_empty`
+  // refinement; see shared TRACKED-SCAFFOLD note above.
   | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
 
 
