@@ -112,7 +112,9 @@
 //     STRUCTURALLY UNREPRESENTABLE, because each variant carries
 //     exactly the sub-classifier its category admits)
 //   - Python per-target cost-realization carrier shape: PythonCost
-//     (per-bytecode-op + per-allocation components — the per-target
+//     (per-spec-operation + per-allocation components per Reference
+//     §6/§8 — NOT per CPython bytecode op, which is implementation
+//     detail per the `dis` module disclaimer — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
 //     pre-T-3 / pre-D2)
 //
@@ -224,14 +226,18 @@
 //     (PEP 3141 ABC hierarchy is part of the language reference, not
 //     a library protocol); user-defined protocols ride T-4 grammar.
 //
-//   - Python per-bytecode cost INSTANCE-VALUES (concrete
-//     `PythonCost { bytecode_cost: 1, allocation_cost: 0 }` rows per
-//     operation): the carrier SHAPE is owned here (PythonCost below);
-//     concrete cost rows ride T-12 lens/cost.dag + U2 (the per-target
-//     projection of U1's `Homomorphism<…, …, PythonScalar>.map`).
-//     Pre-T-12 instance-values would parallel-represent the cost the
-//     map structurally encodes — the U1 no-engine smell (algebra.dag
-//     U1).
+//   - Python per-spec-operation cost INSTANCE-VALUES (concrete
+//     `PythonCost { operation_cost: 1, allocation_cost: 0 }` rows per
+//     spec-defined operation — the Reference §6 expressions / §8
+//     statements partition; NOT per CPython-bytecode op, which is
+//     CPython implementation detail per the `dis` module docs and
+//     varies across versions / alternative VMs (PyPy / Jython /
+//     GraalPython / MicroPython)): the carrier SHAPE is owned here
+//     (PythonCost below); concrete cost rows ride T-12 lens/cost.dag
+//     + U2 (the per-target projection of U1's `Homomorphism<…, …,
+//     PythonScalar>.map`). Pre-T-12 instance-values would parallel-
+//     represent the cost the map structurally encodes — the U1
+//     no-engine smell (algebra.dag U1).
 //
 // Consumes:
 //   - nothing — this file is closed-enum + Conj-record declarations
@@ -874,23 +880,40 @@ type PythonScalar
 // carrier shape lands now, the cost INSTANCE-VALUES land downstream
 // per "Owned ELSEWHERE"):
 //
-//   - bytecode_cost   per-bytecode-op throughput cost (the U1
+//   - operation_cost  per-spec-operation throughput cost (the U1
 //                     per-target-op cost projection — the `map` side
 //                     of `Homomorphism<…, …, PythonScalar>` carries
 //                     this; cost is read FROM the map's structure,
 //                     never stored as a parallel field per
-//                     algebra.dag's U1 no-engine discipline. Python
-//                     compiles to bytecode — Reference §6 the dis
-//                     module documents the operation set; per-
-//                     bytecode-op cost is the natural Python-side
-//                     per-instruction analog of rust.dag's
-//                     `instruction_cost` and ptx.dag's
-//                     `instruction_cost`)
+//                     algebra.dag's U1 no-engine discipline. The
+//                     operation set this measures is the Python
+//                     LANGUAGE REFERENCE's §6 expressions / §8
+//                     compound-statements partition — the spec-
+//                     level operations, NOT the CPython BYTECODE.
+//                     CPython's bytecode (the `dis` module's opcode
+//                     set) is an IMPLEMENTATION DETAIL the
+//                     standard library explicitly disclaims (the
+//                     `dis` docs: "CPython bytecode... is an
+//                     implementation detail of the CPython
+//                     interpreter. No guarantees are made that
+//                     bytecode will not be added, removed, or
+//                     changed between versions of Python"). Other
+//                     Python implementations (PyPy / Jython /
+//                     GraalPython / MicroPython) have entirely
+//                     different VMs and operation sets; modeling
+//                     CPython bytecode as the cost-authority would
+//                     violate the L-2 fidelity-to-the-LANGUAGE-
+//                     REFERENCE pin this file declares (operator
+//                     BLOCKING on PR #3180 made this precise).
+//                     The natural Python-side per-instruction
+//                     analog of rust.dag's `instruction_cost` and
+//                     ptx.dag's `instruction_cost` is the spec-
+//                     operation cost, NOT the bytecode cost.
 //   - allocation_cost per-allocation cost (the Python-specific
 //                     contribution: Python heap-allocates objects
-//                     liberally — almost every operation creates a
-//                     new object reference; the per-allocation cost
-//                     is structurally distinct from per-bytecode-op
+//                     liberally — almost every spec-operation creates
+//                     a new object reference; the per-allocation cost
+//                     is structurally distinct from per-spec-operation
 //                     throughput and the per-target shape the cost
 //                     lens T-12 reads when synthesizing a Python
 //                     realization's total cost. The rust analog is
@@ -902,7 +925,7 @@ type PythonScalar
 //
 // 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`,
 // ptx.dag's `Dim3` / `PtxCost`, and rust.dag's `RustCost`). With only
-// kernel-ambient `Int` available at the T-4 phase, `{ bytecode_cost:
+// kernel-ambient `Int` available at the T-4 phase, `{ operation_cost:
 // Int, allocation_cost: Int }` STRUCTURALLY ADMITS illegal states
 // (negative costs; nonsense magnitudes). modeling-discipline.md §2
 // (illegal-states-unrepresentable) forbids admitting them; no
@@ -916,7 +939,7 @@ type PythonScalar
 //       producer-side; a PythonCost with negative components is a
 //       producer bug, not a legal value.
 //   (c) dissolution trigger — when std/cardinality.dag's refinement
-//       substrate lands (T-3, P4 decidability), `bytecode_cost` and
+//       substrate lands (T-3, P4 decidability), `operation_cost` and
 //       `allocation_cost` become refined bounded-non-negative-Int
 //       axes, and this scaffold dissolves.
 //
@@ -926,11 +949,15 @@ type PythonScalar
 // record's components per the U2 "complexity consumes cost, never
 // re-derives" discipline. Pre-T-12, PythonCost is the declared
 // SHAPE the projection plugs into; concrete cost instance-values per
-// operation (e.g. `BINARY_OP` costs `PythonCost { bytecode_cost: 1,
+// spec-operation (e.g. an integer-binary-add per Reference §6.6
+// arithmetic-conversions costs `PythonCost { operation_cost: 1,
 // allocation_cost: 0 }` for in-place numeric ops vs `PythonCost
-// { bytecode_cost: 1, allocation_cost: 1 }` for ops that produce a
-// new object) ride T-12 + D2 per "Owned ELSEWHERE."
+// { operation_cost: 1, allocation_cost: 1 }` for ops that produce a
+// new object) ride T-12 + D2 per "Owned ELSEWHERE." Concrete cost
+// rows MUST cite a Reference §6/§8 spec operation, NOT a CPython
+// bytecode opcode — the cost authority is the language reference,
+// not any particular VM.
 type PythonCost {
-  bytecode_cost: Int
+  operation_cost: Int
   allocation_cost: Int
 }
