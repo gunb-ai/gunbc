@@ -616,9 +616,19 @@ type FloatPredicate
 //   4. Dimensional — FAILS: a constexpr has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: the closed source set
 //      `ConstantExpr` projects over (Practice 7); the dissolution target.
-// Terminal: the closed LangRef constant-expression opcode subset.
+// Terminal: the LLVM-18 LangRef constant-expression-admissible opcode
+// set. LangRef has AGGRESSIVELY REDUCED constant expressions across
+// versions (the arithmetic/logical and the integer-extend `zext`/`sext`
+// constexprs were removed by LLVM 18); this set is therefore PINNED to
+// LLVM 18 (`trunc`, `ptrtoint`, `inttoptr`, `bitcast`, `addrspacecast`,
+// `getelementptr` — the survivors). A constexpr opcode outside it is the
+// EXPLICIT `FidelityDisposition.FailClosed` boundary, never a silent
+// fabricated parse; a future LangRef revision that re-adds/removes one
+// is an edit to THIS declaration (the M3 spec-anchor analog of node.dag's
+// C1 stop-signal). (`CeZExt`/`CeSExt` were dropped here precisely because
+// they are NOT LLVM-18-admissible — the spec-faithfulness fix.)
 type ConstExprOpcode
-  = CeTrunc | CeZExt | CeSExt | CePtrToInt | CeIntToPtr | CeBitCast
+  = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
   | CeAddrSpaceCast | CeGetElementPtr
 
 
@@ -758,10 +768,15 @@ type AtomicOrdering
 //   4. Dimensional — FAILS: an atomicrmw has EXACTLY ONE sub-op.
 //   5. Parameterized family — APPLIED: the closed source set the single
 //      `AtomicRmw` shape projects over (Practice 7).
-// Terminal: the closed LangRef atomicrmw sub-operation set.
+// Terminal: the LLVM-18 LangRef `atomicrmw` sub-operation set, COMPLETE
+// for LLVM 18 (incl. `fmax`/`fmin`/`uinc_wrap`/`udec_wrap` — added here
+// as the spec-faithfulness fix; earlier cuts omitted them). A future
+// LangRef revision adding a sub-op is an edit to THIS declaration (the
+// M3 spec-anchor analog of node.dag's C1 stop-signal).
 type AtomicRmwOp
   = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
   | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
+  | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
 
 
 // ─────────────────────────────────────────────────────────────────────
