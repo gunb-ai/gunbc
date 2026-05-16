@@ -1797,8 +1797,9 @@ type IrToRust<IRCarrier> {
 // inhabiting the same BooleanAlgebra; the IR ↔ Rust correspondence
 // is 1:1, and this row encodes it.
 //
-// Spec (IR side):   https://en.wikipedia.org/wiki/Boolean_algebra
-//                   (and std/logic.dag header)
+// Spec (IR side):   std/logic.dag (single authority; its own
+//                   `Anchor:` line cites the upstream Boolean-algebra
+//                   reference — don't duplicate that anchor here)
 // Spec (Rust side): https://doc.rust-lang.org/reference/types/boolean.html
 //
 // post-T-3-Wave-A1 (std/logic.dag merged 2026-05-16): this row is
