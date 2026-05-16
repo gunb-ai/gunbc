@@ -127,10 +127,49 @@ module v4.extdeps.formats.toml
 //                      deferred parser draws over the lexeme; the
 //                      temporal interpretation is a deferred read
 //                      (🟡 below).
-//   - TomlArray     — §Array. Ordered, heterogeneous; carrier is the
-//                      kernel `List<TomlValue>` (order is the list
-//                      order — single authority, canonical per
-//                      CULTURE §8).
+//   - TomlArray     — §Array. Ordered; carrier is the kernel
+//                      `List<TomlValue>` (order is the list order —
+//                      single authority, canonical per CULTURE §8).
+//                      HETEROGENEITY IS SPEC-FAITHFUL, NOT A LEAK:
+//                      TOML v1.0.0 §Array states verbatim "Arrays can
+//                      contain values of the same data types as allowed
+//                      in key/value pairs. **Values of different types
+//                      may be mixed.**" (this is the deliberate TOML
+//                      1.0.0 relaxation of the 0.x homogeneous-array
+//                      rule). So a mixed scalar/table array such as
+//                      `x = [1, { a = 2 }]` is a LEGAL TOML 1.0.0
+//                      value — `List<TomlValue>` admits exactly the
+//                      spec's value set, no illegal state (INVARIANTS
+//                      P1/P2 satisfied: faithful to §Array, nothing
+//                      over-permitted).
+//                      §"Array of Tables" (`[[name]]`,
+//                      https://toml.io/en/v1.0.0#array-of-tables) is
+//                      NOT a distinct value type — TOML 1.0.0's value
+//                      types are exactly String/Integer/Float/Boolean/
+//                      the four date-times/Array/Inline Table/Table
+//                      (there is no "array of tables" value type). It
+//                      is a SYNTACTIC CONSTRUCTION that assembles an
+//                      `Array` whose elements are `Table`s incrementally
+//                      across the document. Modeling it as a separate
+//                      `TomlValue` variant would be UNfaithful to TOML
+//                      1.0.0 (P1) and a spurious value-level distinction
+//                      (Practice-4 pattern 2 inverse) — and would
+//                      deviate from the immutable scaffold header, which
+//                      lists `… | Array | InlineTable | Table` (`Array`
+//                      singular, no `ArrayOfTables`; deviating is a
+//                      STOP, not worker authority). Its construction
+//                      constraints (a `[[x]]`-built array's elements are
+//                      all tables; a key bound via `[[…]]` cannot be
+//                      redefined as a non-array-of-tables; no append
+//                      after an inline definition) are PARSE-TIME
+//                      key-binding constraints — enforced fail-closed by
+//                      the deferred parser (🟡 (1) below), the SAME
+//                      discipline as duplicate-key rejection, never a
+//                      value-model type invariant. Which surface syntax
+//                      to render (`[[x]]` vs inline `x = [{…},{…}]`) for
+//                      the same array-of-tables VALUE is a deferred-emit
+//                      decision, not a value distinction (direction-
+//                      agnostic model).
 //   - TomlInlineTable — §"Inline Table". A key/value table written
 //                      inline (`{ … }`); TOML 1.0 §"Inline Table":
 //                      inline tables are SELF-CONTAINED — keys/sub-
