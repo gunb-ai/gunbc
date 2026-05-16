@@ -49,11 +49,13 @@
 //     128 + Pointer for isize/usize per std/machine.dag PointerWidth),
 //     RustFloatWidth (Bits32/64 — the stable Rust IEEE-754 width set;
 //     f16/f128 are unstable per the pinned Reference), RustScalarKind
-//     (the Int/Float/Bool/Char/Unit partition)
+//     (the Int/Float/Bool/Char/Str/Never primitive-types partition
+//     per Reference §3.3-§3.6; `()` is a TupleType per §3.10 and is
+//     out-of-scope for this slice — see SCOPE NEGATIVE Tuple types)
 //   - Rust scalar typed-shape sum: RustScalar (kind × width as a Disj
 //     with named-field variant payloads — illegal kind×width pairs are
 //     STRUCTURALLY UNREPRESENTABLE: no "Bool with width=Bits32",
-//     because Bool/Char/Unit variants carry no width payload)
+//     because Bool/Char/Str/Never variants carry no width payload)
 //   - Rust reference vocabulary: RustReferenceKind (Shared / Exclusive
 //     — Rust's `&T` vs `&mut T`), and the Conj carrier RustReference
 //     attaching it to an opaque lifetime Symbol (K-1)
@@ -72,7 +74,7 @@
 //   - Rust scalar inhabitance instance-values: `data rust_i32_ring:
 //     OrderedRing<I32> = OrderedRing { ... }` and the parallel rows
 //     for the 11 other integer types, IEEE-754 widths, Bool, Char,
-//     Unit. RIDES the operator D2 form-decision (msg_640d429c —
+//     Str, Never. RIDES the operator D2 form-decision (msg_640d429c —
 //     STOP-2/STOP-3 escalated by loyal-koi-702; brief §B's per-
 //     language inhabitance form conflicts with INVARIANTS P1:42's
 //     `Compose<Int, MachineWidth<Word*>>` worked example, AND the
