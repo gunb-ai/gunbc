@@ -176,6 +176,15 @@ type FileKind
 // header/prose. The `FileSystemOperations` record is the declared
 // callable boundary a future host realization must inhabit; it is
 // intentionally only a signature bundle here, not an effect resolver.
+//
+// 🟡 TRACKED-SCAFFOLD (2026-05-16, #3209, briansrls BLOCKING):
+// `write_file` remains at the frozen `Outcome<Unit>` contract here.
+// Dissolution trigger: v4 effect-model design pass (ACTIVE — operator +
+// merry-ibex-337; canonical effect/resource-threading shape). That pass
+// owns the shared resource-threading signature for filesystem reads,
+// filesystem writes, and process effects; modeling a local Filesystem
+// resource in this file before that ruling would fork the substrate
+// effect model.
 type FileBody = FreeMonoid<Char>
 
 type ReadFileRequest {
