@@ -8,12 +8,14 @@
 // Owns:
 //   - Nat — Peano inductive: Zero | Succ { prev: Nat } (a recursive `Disj`,
 //     recursion via Node children per A1 — not a self-referential type)
-//   - inhabitance: Nat inhabits `Monoid` (under +) / `Semiring`
-//     (std/algebra.dag) — arithmetic falls out of the algebra
+//   - inhabitance: Nat inhabits `CommutativeMonoid` (under +) /
+//     `CommutativeSemiring` (std/algebra.dag) — Nat addition AND
+//     multiplication both commute, so the strongest true structures
+//     are the commutative ones; arithmetic falls out of the algebra
 //
 // Consumes:
 //   - std/node.dag: Disj
-//   - std/algebra.dag: Monoid, Semiring
+//   - std/algebra.dag: CommutativeMonoid, CommutativeSemiring
 //
 // Status: T-3 modeled 2026-05-16 (vivid-carp-663). Replaces part of the
 //   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
@@ -26,15 +28,15 @@
 module v4.std.nat
 
 
-// Constructing a `Monoid`/`Semiring` instance-value names its whole
-// refinement chain — `Monoid` nests `Semigroup` nests `Magma`, and
-// `Semiring.add` is a `CommutativeMonoid` (algebra.dag's "refinement is
-// structural nesting" decision). The scaffold header's "Consumes:
-// Monoid, Semiring" names the conceptual grounding; the nested carriers
-// are part of those structures' own definitions, so importing them is
-// the mechanical consequence of the inhabitance form, not a scope
-// expansion.
-import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring }
+// Constructing a `CommutativeMonoid`/`CommutativeSemiring` instance-value
+// names its whole refinement chain — `CommutativeMonoid` nests `Monoid`
+// nests `Semigroup` nests `Magma`, and `CommutativeSemiring` nests
+// `Semiring { add: CommutativeMonoid, mul: Monoid }` (algebra.dag's
+// "refinement is structural nesting" decision). The header's "Consumes"
+// line names the conceptual grounding; the nested carriers are part of
+// those structures' own definitions, so importing them is the
+// mechanical consequence of the inhabitance form, not a scope expansion.
+import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring, CommutativeSemiring }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -70,10 +72,11 @@ import v4.std.algebra { Magma, Semigroup, Monoid, CommutativeMonoid, Semiring }
 //   3. Algebraic form — N/A by construction: Nat is a ROOT of the
 //      numeric tower (integer widths and code points build on it —
 //      STRUCTURE.md §"scalar/numeric concept decomposition"). The
-//      algebras it inhabits below (Monoid, Semiring) are structures
-//      imposed ON Nat — their carrier IS Nat — not a richer source Nat
-//      decomposes into; pointing Nat's variants at them is circular.
-//      Peano induction is the irreducible source, not a compression.
+//      algebras it inhabits below (CommutativeMonoid, Commutative-
+//      Semiring) are structures imposed ON Nat — their carrier IS Nat
+//      — not a richer source Nat decomposes into; pointing Nat's
+//      variants at them is circular. Peano induction is the
+//      irreducible source, not a compression.
 //   4. Dimensional — FAILS: a Nat is EITHER zero OR a successor;
 //      genuine alternatives (induction base vs inductive step), never
 //      simultaneous coordinates. No value is "both".
@@ -95,9 +98,10 @@ type Nat
 //   Succ(a') + b   = Succ(a' + b)       (Succ arm)
 // Single self-recursive; the recursion descends on the `prev` sub-Node
 // of `a` (node.dag A2 IMPLICIT termination — total by construction, no
-// ranking measure needed). This IS the `op` of `nat_additive_monoid`
-// below: arithmetic is not re-declared, it falls out of the algebra
-// instance-value (epistemic stacking).
+// ranking measure needed). This IS the `op` of
+// `nat_additive_commutative_monoid` below: arithmetic is not
+// re-declared, it falls out of the algebra instance-value (epistemic
+// stacking).
 fn nat_add(a: Nat, b: Nat) -> Nat {
   match a {
     Zero => b
@@ -132,34 +136,47 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
 // field, never an `inhabits` keyword. The arithmetic operations fall
 // out by walking these instances; nothing is re-declared.
 
-// nat_additive_monoid — (Nat, +, 0) is a monoid.
+// nat_additive_commutative_monoid — (Nat, +, 0) is a COMMUTATIVE monoid.
 // `op = nat_add` is associative and `Zero` is its two-sided identity
 // (nat_add(Zero, b) == b definitionally; nat_add(a, Zero) == a by
-// induction on a). These identity/associativity axioms ARE the
-// definition of `Monoid` (algebra.dag) — grounded, not stored flags.
-// Addition is also commutative, so (Nat, +, 0) is in fact a commutative
-// monoid; that strengthening is carried structurally by the
-// `CommutativeMonoid` wrapper at `nat_semiring.add` below.
-// Anchor: Peano arithmetic / monoid theory (Wikipedia "Monoid").
-data nat_additive_monoid: Monoid<Nat> = Monoid {
-  semigroup: Semigroup { magma: Magma { op: nat_add } },
-  identity: Zero
+// induction on a); addition also commutes (nat_add(a, b) == nat_add(b,
+// a) by induction). These identity/associativity/commutativity axioms
+// ARE the definition of `CommutativeMonoid` (algebra.dag) — grounded,
+// not stored flags. Declared at the COMMUTATIVE strength because that
+// is the strongest TRUE structure: typing it as plain `Monoid` would
+// drop Nat addition's commutativity, a true fact downstream consumers
+// are entitled to (INVARIANTS P1/P2 — facts flow forward, not silently
+// weakened). Anchor: Peano arithmetic / monoid theory (Wikipedia
+// "Monoid#Commutative monoid").
+data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
+  monoid: Monoid {
+    semigroup: Semigroup { magma: Magma { op: nat_add } },
+    identity: Zero
+  }
 }
 
-// nat_semiring — (Nat, +, ×, 0, 1) is a semiring.
-// `add` is the additive `CommutativeMonoid` built directly on
-// `nat_additive_monoid` — single authority for the additive structure
-// (INVARIANTS P2: the additive monoid is declared once and referenced,
-// not re-listed). `mul` is the multiplicative `Monoid` with `op =
-// nat_mul` and identity one = `Succ { prev: Zero }`. `nat_mul`
-// distributing over `nat_add` and `Zero` annihilating are the defining
-// semiring axioms — grounded in the definition of `Semiring`
-// (algebra.dag), never stored as fields or flags.
-// Anchor: semiring theory (Wikipedia "Semiring").
-data nat_semiring: Semiring<Nat> = Semiring {
-  add: CommutativeMonoid { monoid: nat_additive_monoid },
-  mul: Monoid {
-    semigroup: Semigroup { magma: Magma { op: nat_mul } },
-    identity: Succ { prev: Zero }
+// nat_semiring — (Nat, +, ×, 0, 1) is a COMMUTATIVE semiring.
+// Declared as `CommutativeSemiring`, not `Semiring`: Nat multiplication
+// commutes (nat_mul(a, b) == nat_mul(b, a) by induction), so the
+// strongest true structure is the commutative one — declaring only
+// `Semiring` would drop that true algebra fact downstream (INVARIANTS
+// P1/P2 facts-flow-forward). `semiring.add` IS
+// `nat_additive_commutative_monoid` — single authority for the additive
+// structure (INVARIANTS P2: declared once, referenced, not re-listed).
+// `semiring.mul` is the multiplicative `Monoid` with `op = nat_mul` and
+// identity one = `Succ { prev: Zero }`; `Semiring.mul` is typed `Monoid`
+// by algebra.dag, and mul-commutativity is the grounded defining axiom
+// of the `CommutativeSemiring` wrapper itself, not a field. `nat_mul`
+// distributing over `nat_add` and `Zero` annihilating are likewise the
+// defining semiring axioms — grounded in algebra.dag's definitions,
+// never stored as flags. Anchor: semiring theory (Wikipedia
+// "Semiring#Commutative semirings").
+data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
+  semiring: Semiring {
+    add: nat_additive_commutative_monoid,
+    mul: Monoid {
+      semigroup: Semigroup { magma: Magma { op: nat_mul } },
+      identity: Succ { prev: Zero }
+    }
   }
 }
