@@ -500,63 +500,67 @@ type IncludeCard {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// SweepSourceRef — a typed reference to an independent source for
-// `.DC` sweep (PR #3168 codex review). SPICE3 §11.5.2 specifies
-// `.DC SRCNAM VSTART VSTOP VINCR`, where SRCNAM is the FULL SPICE
-// name of the swept source (e.g. `V1` or `I1`). The simulator
-// disambiguates voltage-source vs current-source sweeps by reading
-// the leading character of SRCNAM.
-//
-// Component.name strips the kind prefix (post-prefix discipline —
-// see Component declaration), so a `Symbol` payload alone cannot
-// distinguish `V1` from `I1` at the reference site (both reduce to
-// `Symbol("1")` after stripping). The codex review surfaced this:
-// the same suffix-Symbol could alias a voltage source and a current
-// source with the same suffix — `Dc.source: Symbol` is therefore not
-// faithful to SPICE3 `.DC` semantics. SweepSourceRef restores the
-// kind at the reference site via a typed sum:
-//
-//   `.DC V1 0 5 0.1`  ⇒  Dc { source: VoltageSweepSource { name = Symbol("1"), ... }, ... }
-//   `.DC I1 0 1m 0.01` ⇒  Dc { source: CurrentSweepSource { name = Symbol("1"), ... }, ... }
-//
-// Kind is carried structurally by the variant; suffix matches the
-// corresponding `Component.{VoltageSource|CurrentSource}.name`. The
-// reference's kind constrains which Component variants can satisfy
-// it (a `VoltageSweepSource` resolves only against
-// `Component.VoltageSource` instances), so cross-kind aliasing is
-// structurally unrepresentable.
+// SweepSourceKind — the closed set of independent-source kinds that
+// `.DC` can sweep (PR #3168 codex review on commit 324d26f7). SPICE3
+// §11.5.2 specifies `.DC SRCNAM VSTART VSTOP VINCR`, where SRCNAM is
+// the FULL SPICE name of the swept source (`V1` or `I1`); the
+// simulator disambiguates voltage-source vs current-source sweeps by
+// reading the leading character of SRCNAM. The kind set is closed at
+// two values per the SPICE3 spec; modeled here as a typed closed
+// enum so the dissolution discipline in `SweepSourceRef` below has a
+// proper carrier (not a `kind: Symbol` opaque-string proxy that would
+// violate M4 closed-sets-are-enums-not-strings).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
 // five patterns attempted:
-//   1. Fact placement — FAILS: every consumer of `Dc.source`
+//   1. Fact placement — FAILS: every consumer of `.DC` source
 //      branches on V-vs-I uniformly; shared classifier.
-//   2. Variant-is-data — FAILS: collapsing to `{ kind: Symbol,
-//      name: Symbol }` reduces a closed two-way enum to an opaque-
-//      string proxy (M4 closed-sets-not-strings violation; the
-//      Symbol "kind" would be the kind-prefix character "V"/"I"
-//      and would re-introduce the kind/spelling-sentinel anti-
-//      pattern the post-prefix Component name discipline removes).
-//   3. Algebraic form — N/A: the V-vs-I partition is the SPICE3
-//      spec's enumeration of independent-source kinds, not an
-//      algebra carrier.
-//   4. Dimensional — FAILS: a sweep source is EXACTLY ONE of
-//      voltage / current; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: both variants carry the same
-//      `{ name: Symbol }` payload — this LOOKS like an F<X>
-//      projection over the kind set, but the kind set is not a
-//      separately-declared source (the Component variants
-//      themselves are the closure), and collapsing them loses the
-//      kind-vs-name single-authority discipline that motivates this
-//      type. Practice-7 projection over Component variants would
-//      require admitting Component as a typeclass-like carrier,
-//      which is std/-substrate-tier; until then this two-variant
-//      shape carries the kind structurally.
-// Terminal: the irreducible binary V-vs-I partition of SPICE3
-// independent-source kinds at the `.DC` reference site.
-type SweepSourceRef
-  = VoltageSweepSource { name: Symbol }
-  | CurrentSweepSource { name: Symbol }
+//   2. Variant-is-data — FAILS: collapsing to `{ name: Symbol }`
+//      reduces a closed two-way kind to an opaque-string proxy
+//      (M4 violation).
+//   3. Algebraic form — N/A: V-vs-I is the SPICE3 spec's enumeration
+//      of independent-source kinds, not an algebra carrier.
+//   4. Dimensional — FAILS: a sweep is EXACTLY ONE of voltage /
+//      current; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the two variants are bare
+//      nullary discriminants — no `F<X>` shape, no separately-
+//      declared source set to project over (the analogue of
+//      `AcSweepKind`'s ledger). The kind set IS the source set.
+// Terminal: the irreducible binary V-vs-I partition.
+type SweepSourceKind
+  = Voltage
+  | Current
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SweepSourceRef — a typed reference to an independent source for
+// `.DC` sweep (PR #3168 codex review). Carries kind + name as
+// separate fields rather than as parallel variants of a parameterized-
+// family coproduct (the prior `= VoltageSweepSource { name } |
+// CurrentSweepSource { name }` shape was Practice-4 pattern-2
+// variant-is-data — both variants had identical structural shape
+// `{ name: Symbol }`, differing only in their label; the codex
+// review on commit 324d26f7 surfaced this and the type is now the
+// Practice-4-dissolved form). Kind is a typed closed enum
+// (`SweepSourceKind`, declared above); name is the post-prefix
+// suffix (matching `Component.{VoltageSource|CurrentSource}.name`).
+//
+//   `.DC V1 0 5 0.1`  ⇒  Dc { source: SweepSourceRef { kind = Voltage, name = Symbol("1") }, ... }
+//   `.DC I1 0 1m 0.01` ⇒  Dc { source: SweepSourceRef { kind = Current, name = Symbol("1") }, ... }
+//
+// The reference's kind structurally constrains which Component
+// variants can satisfy it: a `SweepSourceRef { kind = Voltage }`
+// resolves only against `Component.VoltageSource` instances, etc.
+// Cross-kind aliasing of name-equal-but-kind-distinct sources is
+// preserved at the type layer because kind and name travel together
+// as a single record value. This is a Conj (record), not a Disj —
+// no Practice-4 ledger applies; `SweepSourceKind` carries the kind
+// closure separately with its own ledger.
+type SweepSourceRef {
+  kind: SweepSourceKind
+  name: Symbol
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
