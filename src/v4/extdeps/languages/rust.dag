@@ -185,34 +185,42 @@
 //     for `RustVisibility.PubIn`'s SimplePath). Both are equality-
 //     only at the boundary (Symbol's K-1 discipline); Node carries
 //     its structural recursion through `children` per A1.
+//   - std/logic.dag: `Bool` (KERNEL-AMBIENT — STRUCTURE.md
+//     "Kernel-ambient types"; usable without an import, but
+//     std/logic.dag is its sole modeling authority). The live
+//     `IrToRust<Bool>` row references the type-parameter `Bool`
+//     directly via the kernel-ambient resolution; no `import`
+//     statement is needed (v2-compiler verifies 0-diag without
+//     one). Naming std/logic.dag here makes the substrate-
+//     authority dependency explicit; the absence of an `import`
+//     statement is the kernel-ambient discipline made operational.
 //   `Int` is kernel-ambient (the RustCost components' raw Int
 //   carrier per the 🟡 scaffold bridge to std/cardinality.dag);
-//   `Bool` is kernel-ambient (referenced in commentary on
-//   sum-shape arguments); `List` is kernel-ambient (used as
-//   `List<NamedSegment>` in `PubInPath.suffix` — the suffix
-//   segments are local typed-Conj values carrying an opaque
-//   `Symbol` identifier per K-1). No other module is imported —
-//   this file is closed-enum + Conj-record declarations consuming
-//   exactly `Node` + `Symbol` from std/node plus `Bool` from
-//   std/logic (for the live `IrToRust<Bool>` row).
+//   `List` is kernel-ambient (used as `List<NamedSegment>` in
+//   `PubInPath.resolved_path` — the segments are local typed-Conj
+//   values carrying an opaque `Symbol` identifier per K-1). The
+//   only `import` statements are `Node` and `Symbol` from
+//   std/node.dag — driven by the `RustReference` Conj record's
+//   `referent: Node` and `lifetime: Symbol` fields, plus the
+//   `id: Symbol` field on `NamedSegment` (Node/Symbol are NOT
+//   kernel-ambient, so they require explicit import even when
+//   used in type-parameter / field-type position).
 //   (The scaffold header's prior `std/node.dag, std/algebra.dag`
-//   Consumes line was anticipatory — std/node.dag IS imported (`Node`
-//   + `Symbol`, exactly as std/diagnostic.dag imports `Node`);
-//   std/algebra.dag is NOT imported in this slice because the
-//   inhabitance instance-values it would supply are DEFERRED per
-//   D2 (so algebra.dag returns when D2 ratifies and the
-//   inhabitance rows land here). The revised Consumes line above
-//   reflects what the file actually imports — `Node` + `Symbol`
-//   from std/node.dag — not the scaffold's anticipatory list. This
-//   Consumes correction rides the systemic operator scaffold-
-//   Consumes reconciliation, T-4 mgr synthesis msg_1fddb75c — the
-//   surface+trigger discipline lets the operator ratify all per-
-//   file Consumes strikes uniformly in one pass; this is not
-//   worker-settled. Same discipline as ptx.dag #3170, except ptx
-//   had zero imports and this file has two — driven by the
-//   RustReference Conj record's lifetime + referent fields (the
-//   IN-B effect-typed parameter and the TypeNoBounds slot that
-//   distinguishes `&'a i32` from `&'a str`).)
+//   Consumes line was anticipatory — std/node.dag IS imported
+//   (`Node` + `Symbol`, exactly as std/diagnostic.dag imports
+//   `Node`); std/algebra.dag is NOT imported in this slice because
+//   the inhabitance instance-values it would supply are DEFERRED
+//   per D2 (so algebra.dag returns when D2 ratifies and the
+//   inhabitance rows land here). The revised Consumes block
+//   reflects what the file actually depends on, distinguishing
+//   import-required (Node + Symbol) from kernel-ambient (Bool +
+//   Int + List). Consumes correction rides the systemic operator
+//   scaffold-Consumes reconciliation, T-4 mgr synthesis
+//   msg_1fddb75c — the surface+trigger discipline lets the
+//   operator ratify all per-file Consumes strikes uniformly in
+//   one pass; this is not worker-settled. The kernel-ambient vs
+//   imported framing reconciliation is per claude-opus-4-7's
+//   exploratory observation 2026-05-16T09:00:49Z.)
 //
 // Status: T-4 rust-slice modeled 2026-05-16 (loyal-koi-702); structural
 //   finding: NO STOP from the type-system surface. The I/O contract in
