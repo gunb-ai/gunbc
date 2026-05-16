@@ -397,9 +397,26 @@ import v4.std.node { Symbol }
 //     receiver argument. Spec: https://go.dev/ref/spec#Method_declarations.
 //     A Go method is a function with an extra implicit "receiver"
 //     parameter; the receiver's type is the named type the method is
-//     defined on. Structurally a Transform; method dispatch through
-//     an interface is a Branch over the interface's implementing
-//     type set, modeled at the LanguageModel grammar layer.
+//     defined on. Structurally a Transform. Interface method dispatch
+//     (`iface.Method()`) is ALSO a Transform — function application
+//     whose CALLEE is dynamically selected by the receiver's dynamic-
+//     type method-set lookup per Spec §Method_sets +
+//     §Interface_types. This is NOT a Branch (corrected 2026-05-16
+//     per cursor BLOCKING finding on PR #3182): Go interfaces are
+//     duck-typed (structurally implemented), so the implementing-
+//     type set is OPEN — ANY non-interface type whose method-set is
+//     a superset of the interface's method-set qualifies, and the
+//     set ranges over the universe of declarable types. A closed-
+//     Branch model violates INVARIANTS P1 (the spec partition is
+//     OPEN, not closed) and P4 (the implementing-type set is not
+//     decidable at compile time without whole-program analysis).
+//     The structurally honest model: a virtual-dispatch Transform
+//     whose function value is the method-set table entry resolved
+//     at the call site from the receiver's dynamic type — same
+//     shape as a function-pointer call. The dynamic method-set
+//     lookup itself is owned by the bundled T-4 LanguageModel
+//     grammar + runtime productions; this vocabulary slice declares
+//     only the Transform structure.
 //
 // CONCLUSION. The type-system half of Go's spec fits the existing
 // substrate with no new connectives, no new behaviors, no parallel
