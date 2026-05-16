@@ -419,8 +419,8 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 **Why solo**: framework substrates are conceptually rich (Component / Hook / Effect / Lifecycle); React is the load-bearing first.
 
 **Modeling decisions**:
-- Hook-as-substrate: `HookKind = Builtin(BuiltinHook) | Custom(Node)`; `BuiltinHook` = the COMPLETE react.dev built-in set (no "..." — see react.dag header); custom hooks are Node composition per Rules-of-Hooks, not a new kind
-- Effect lifecycle modeling (Mount / Unmount / DependencyChange / EveryRender)
+- Hook-as-substrate: **per-arm `ReactHookSite`** (design-r4 §4 Q2 / canvas:76) — each built-in hook is its own coproduct arm carrying only that call’s signature fields (`dependency_refs` / cleanup / refs where the pinned react.dev API admits them). Nineteen stable exports from the hooks index + `use` + boundary arm **`CustomHook { implementation_ref: ReactCrossDeclRef }`** (opaque custom body via declaration edge; not `Node` embedded in the sum — see `react.dag` header + `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md` for R4 Phase‑1.5 Custom posture).
+- Effect lifecycle: **no** standalone `Mount | Unmount | …` trigger coproduct — phases read only from the three effect arms (`UseEffect` / `UseLayoutEffect` / `UseInsertionEffect`) via `ReactOptionalEffectBody` + `dependency_refs` + `ReactEffectCleanupSite` (design-r4 §4 dissolution receipt; INVARIANTS P1/P2).
 - Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals — surface as Diagnostic)
 - Component composition (props-down, events-up; structural propagation through Node tree)
 - Server Components vs Client Components distinction (or unified via effect typing — effects intrinsic to the type signature, not an annotation)
