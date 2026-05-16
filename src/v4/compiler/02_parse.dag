@@ -44,7 +44,6 @@
 //
 // Consumes:
 //   - std/node.dag: Node, Symbol, node_well_formed
-//   - std/collection.dag: List<T>
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
 //     NoCorrectionReason
 //   - compiler/01_tokenize.dag: TokenStream
