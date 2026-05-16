@@ -4,21 +4,35 @@
 // Anchor: THESIS fail-closed discipline + INVARIANTS P3 (no Option::None in lens reads)
 //
 // Owns:
-//   - Witness<C> = Holds(C) | Violates(reason: NamedReason)
-//     (Holds CARRIES the proven fact C. A successful read must compose
-//     its result forward — a payload-less success variant would silently
-//     drop the fact it proved, violating facts-flow-forward / INVARIANTS
-//     P2 and re-importing the Option::None hole this type exists to close.)
+//   - Witness<C> = Holds(C) | Violates(diagnostic: Diagnostic)
+//     (Holds CARRIES the proven fact C; Violates CARRIES the full
+//     Diagnostic. A successful read must compose its result forward — a
+//     payload-less success variant would silently drop the fact it
+//     proved, violating facts-flow-forward / INVARIANTS P2 and re-
+//     importing the Option::None hole this type exists to close. The
+//     failure arm is symmetric: a bare reason tag would drop the `at`
+//     locus and `correction` the failing read already knows — so
+//     Violates carries the whole Diagnostic, not a name-reference.)
 //   - replaces Option::None at lens read channels
 //
 // Consumes:
 //   - std/node.dag: Disj for sum
-//   - std/diagnostic.dag: NamedReason
+//   - std/diagnostic.dag: Diagnostic (the Violates payload)
 //
-// Status: scaffold — fill per TASKS.md T-3
+// Status: T-3 modeled 2026-05-16 (quiet-deer-32).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (operator-ratified Option A, 2026-05-16). The original
+// scaffold header declared `Violates(reason: NamedReason)`, consuming
+// `std/diagnostic.dag: NamedReason`. PR #3161 deleted `NamedReason` from
+// diagnostic.dag — its `reason` is now an opaque `Symbol` name-reference,
+// and the diagnostic.dag fail-closed error type is `Diagnostic`. This
+// session STOP'd on the dangling contract; the operator ratified Option
+// A — `Violates` carries the full `Diagnostic` (reason + at + correction),
+// not a bare reason tag. The `Owns` and `Consumes` lines above reflect
+// that ratified reconcile; no other scaffold-header content changed.
 
 
 module v4.std.witness
