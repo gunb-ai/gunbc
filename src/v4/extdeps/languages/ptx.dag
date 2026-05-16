@@ -31,7 +31,7 @@
 //
 // Owns:
 //   - PTX coordinate classifiers as closed structural carriers:
-//     StateSpace (memory hierarchy), BarrierScope (CTA/GPU/system),
+//     StateSpace (memory hierarchy), BarrierScope (CTA/cluster/GPU/sys),
 //     ThreadAxis (X/Y/Z), ThreadCoordSource (thread-in-CTA / CTA-in-grid),
 //     RegisterWidth (b1/b8/b16/b32/b64/b128), RegisterScalarKind
 //     (Bits/Unsigned/Signed/Float/Predicate)
