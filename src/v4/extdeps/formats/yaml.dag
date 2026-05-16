@@ -68,7 +68,7 @@ module v4.extdeps.formats.yaml
 //     is the no-engine honesty, never a non-terminating walk or a
 //     fabricated truncation). The resolution itself is the deferred
 //     parse body's job (🟡 below); the data model needs no alias variant.
-//   - TAG RESOLUTION (YAML 1.2.2 §10.2 core schema): which scalar
+//   - TAG RESOLUTION (YAML 1.2.2 §10.3 core schema): which scalar
 //     variant a plain node resolves to (null/bool/int/float/str) is the
 //     core-schema tag-resolution rule, applied in the deferred parser;
 //     the data model carries the RESOLVED variant, not the raw node.
@@ -85,16 +85,16 @@ module v4.extdeps.formats.yaml
 
 // ─────────────────────────────────────────────────────────────────────
 // YamlValue — the YAML 1.2.2 value: the closed, recursive set of the
-// seven YAML core-schema value kinds. Anchor: YAML 1.2.2 §10.2 (core
-// schema) — https://yaml.org/spec/1.2.2/#102-core-schema — over the
+// seven YAML core-schema value kinds. Anchor: YAML 1.2.2 §10.3 (core
+// schema) — https://yaml.org/spec/1.2.2/#103-core-schema — over the
 // §2.1 representation graph (https://yaml.org/spec/1.2.2/#21-collections).
 //
-//   - YamlNull        — the `null` core-schema value (YAML 1.2.2 §10.2.2
+//   - YamlNull        — the `null` core-schema value (YAML 1.2.2 §10.3.2
 //                        `tag:yaml.org,2002:null`).
-//   - YamlBool        — `true`/`false` (§10.2.2 `…:bool`); the payload is
+//   - YamlBool        — `true`/`false` (§10.3.2 `…:bool`); the payload is
 //                        the kernel `Bool` (one authority for the truth
 //                        value — std/logic.dag).
-//   - YamlInt         — §10.2.2 `…:int`. Carries the VERBATIM source
+//   - YamlInt         — §10.3.2 `…:int`. Carries the VERBATIM source
 //                        scalar (`lexeme`), NOT a numeric value — the
 //                        json.dag `JsonNumber` lexeme-preserving decision
 //                        applied to YAML's int tag: YAML 1.2.2 separates
@@ -105,12 +105,12 @@ module v4.extdeps.formats.yaml
 //                        range/precision decision (no-fabrication) and
 //                        lose round-trip (B-6) exactness. Numeric
 //                        interpretation is a deferred read (🟡 below).
-//   - YamlFloat       — §10.2.2 `…:float` (incl. `.inf`/`.nan`). Carries
+//   - YamlFloat       — §10.3.2 `…:float` (incl. `.inf`/`.nan`). Carries
 //                        the verbatim `lexeme` for the same reason as
 //                        `YamlInt`; faithful carrier std/float.dag is
 //                        scaffold (IEEE-754 collapse = fabrication +
 //                        breaks B-6). Numeric interpretation deferred.
-//   - YamlString      — §10.2.2 `…:str`. The payload is the kernel
+//   - YamlString      — §10.3.2 `…:str`. The payload is the kernel
 //                        `String` (escape / block-scalar / quoting
 //                        decoding is the deferred parse body's concern,
 //                        not a data-model variant).
@@ -172,7 +172,7 @@ module v4.extdeps.formats.yaml
 // an alias cycle never produces a value, it produces a fail-closed
 // `Rejected`, so the recursive type stays well-founded.)
 //
-// CLOSED. The seven are YAML 1.2.2 §10.2's exhaustive core-schema value
+// CLOSED. The seven are YAML 1.2.2 §10.3's exhaustive core-schema value
 // space — no `Other` / open variant. An eighth kind would be an edit to
 // this declaration routed to ratification (it would mean the YAML core
 // schema changed), not a silent escape.
@@ -194,7 +194,7 @@ module v4.extdeps.formats.yaml
 //      elements; a YamlBool with mapping entries) — the inverse of
 //      INVARIANTS P2 (illegal states unrepresentable).
 //   3. Algebraic form — N/A by construction: a YAML value is YAML
-//      1.2.2 §10.2's core-schema value space; it is heterogeneous
+//      1.2.2 §10.3's core-schema value space; it is heterogeneous
 //      external data, not the carrier of a richer std/algebra.dag
 //      structure (no Monoid/Ring/Lattice it inhabits). The Sequence/
 //      Mapping children ground in their OWN carriers (List = FreeMonoid,
@@ -202,7 +202,7 @@ module v4.extdeps.formats.yaml
 //      YamlValue decomposes into; pointing the variants at an algebra
 //      is circular.
 //   4. Dimensional — FAILS: a YAML value is EXACTLY ONE of the seven
-//      kinds (YAML 1.2.2 §10.2 core-schema tag resolution yields one
+//      kinds (YAML 1.2.2 §10.3 core-schema tag resolution yields one
 //      tag); mutually-exclusive alternatives, never simultaneous
 //      coordinates. No value is "both an int and a sequence".
 //   5. Parameterized family — FAILS: the seven variants are
@@ -212,7 +212,7 @@ module v4.extdeps.formats.yaml
 //      separately-declared enumerable set (Practice 7). They are the
 //      irreducible constructors of the YAML 1.2.2 core-schema value
 //      space, not a mechanical copy of an enumerable set.
-// Terminal: the irreducible closed YAML 1.2.2 §10.2 core-schema value
+// Terminal: the irreducible closed YAML 1.2.2 §10.3 core-schema value
 // space; a recursive Disj whose Sequence/Mapping children recurse
 // through kernel `List`/`Map` of `YamlValue` (A1 recursion-in-children,
 // name-reference through the namespace — the std/nat.dag `Nat` shape).
@@ -243,7 +243,7 @@ type YamlValue
 //   strategy (mirrors json.dag): RECURSIVE-DESCENT single self-recursive
 //   structural walk over the input Char-sequence spine, with the YAML
 //   representation-graph phases (compose nodes → resolve `&anchor`/
-//   `*alias` against the anchor table → apply §10.2 tag resolution →
+//   `*alias` against the anchor table → apply §10.3.2 tag resolution →
 //   produce the alias-free, tag-resolved `YamlValue`); termination is
 //   the A2 IMPLICIT case (descent on a proper sub-sequence), and an
 //   alias CYCLE is a fail-closed `Rejected` (never a non-terminating
@@ -267,7 +267,7 @@ type YamlValue
 //         T-4.6 record the same dependency.
 //
 // (2) Numeric interpretation of `YamlInt.lexeme` / `YamlFloat.lexeme` —
-//   YAML 1.2.2 §10.2.2 tag resolution decides the int-vs-float VARIANT
+//   YAML 1.2.2 §10.3.2 tag resolution decides the int-vs-float VARIANT
 //   (carried above); the numeric VALUE is the implementation's concern
 //   and the faithful carriers are scaffold: the integer tower
 //   (std/integer.dag) and IEEE-754 `Float` (std/float.dag), both T-3.
@@ -306,7 +306,7 @@ type YamlValue
 //         alias-cycle and tag resolution.
 //     (c) dissolution trigger — when the tag-resolution + numeric/
 //         scalar canonicalization substrate lands (rides std/text.dag
-//         §10.2 tag resolution + std/integer.dag/std/float.dag
+//         §10.3.2 tag resolution + std/integer.dag/std/float.dag
 //         canonical forms — items (1)/(2)), a follow-up makes key
 //         canonicalization a structural normalization so §3.2.1.3
 //         uniqueness becomes carrier-enforced; this note dissolves.
