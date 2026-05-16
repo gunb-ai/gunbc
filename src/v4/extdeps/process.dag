@@ -33,7 +33,10 @@
 //   - std/collection.dag: List, Map
 //   - extdeps/file_system.dag: AbsolutePath (for Command.program)
 //
-// Status: scaffold — fill per TASKS.md T-4.5
+// Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
+//   are external realizations owned by the realization/pipeline layer;
+//   this file owns the typed carriers and fail-closed operation
+//   signatures only.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -41,3 +44,153 @@
 
 module v4.extdeps.process
 
+
+import v4.extdeps.file_system { AbsolutePath }
+import v4.std.diagnostic { Outcome }
+import v4.std.integer { Int, UInt }
+import v4.std.text { String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// HOST-PROCESS BOUNDARY IS TYPED. This file is the v4 carrier for the
+// INVARIANTS.md P2 host-process boundary discipline: command execution
+// returns structural outcomes, not string probes over shared stderr.
+// Setup/spawn failure is `Outcome.Rejected { diagnostic }`; a logical
+// child that ran and terminated returns `Termination`. The two facts are
+// not collapsed, so a wrapper failure cannot be mistaken for a child
+// exit and a signal death cannot be fabricated as an exit code.
+//
+// TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` can be `Running`,
+// `Exited`, or `Signaled`. The terminal projection `Termination`
+// deliberately excludes `Running`, and all wait/capture results return
+// `Termination`, never a bare `ExitCode`. There is no sibling
+// `exit_code` field on `Process`; consumers pattern-match the state.
+//
+// VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
+// status values are non-negative and conventionally bounded to 8 bits
+// for shell observation, and signal numbers are positive members of the
+// platform signal table. v4 currently has `Int` / `UInt` but not the
+// refined numeric subset machinery in this dependency path. The aliases
+// below are tracked scaffolds with bridge properties:
+//   (a) scaffold doc — THIS note; the aliases name the parent numeric
+//       carrier but do not yet type-enforce POSIX bounds.
+//   (b) bounds on use — producers must construct positive PIDs,
+//       non-negative exit codes, and platform-valid signal numbers.
+//       Violating those predicates is a producer bug against the model.
+//   (c) dissolution trigger — when v4 lands numeric value refinements /
+//       bounded subsets over integer carriers, replace these aliases
+//       with refined carriers and keep the surrounding sums unchanged.
+//
+// COMMAND IS DATA, NOT A SHELL STRING. `Command.program` is an
+// `AbsolutePath`; argv and env are structured carriers. This prevents
+// shell quoting, PATH lookup, env splitting, and diagnostic text from
+// becoming hidden authorities. A separate shell-language extdep can
+// model shell parsing when the program intentionally invokes a shell;
+// this process model does not smuggle one in.
+//
+// OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
+// denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
+// (DECISIONS.md I). This file declares operation contract carriers
+// instead of bodiless `fn` declarations; the external realization layer
+// performs fork/exec/wait/capture and returns through these carriers.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// POSIX numeric carriers.
+type ProcessId = UInt
+type ExitCode = UInt
+type SignalNum = UInt
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Command — the exec-family invocation surface v4 needs.
+//
+// `program` is absolute to avoid hidden PATH-search policy. `args`
+// excludes argv[0] policy: the realization supplies argv[0] from
+// `program` unless a later operator-ratified command-profile carrier
+// explicitly models custom argv[0]. `env` is a map from variable name
+// to value; duplicate variable names are structurally unrepresentable.
+type Command {
+  program: AbsolutePath
+  args: List<String>
+  env: Map<String, String>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ProcessState / Termination.
+//
+// `Running` is a live state. `Exited` and `Signaled` are terminal
+// states. `Termination` is the terminal-only projection consumed by
+// wait/capture, so those operations cannot return a still-running
+// process and cannot flatten signal death into an exit code.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟢 GREEN. Ledger:
+//   1. Fact placement — FAILS: lifecycle state is consumed uniformly by
+//      wait/capture/process inspection; not per-consumer metadata.
+//   2. Variant-is-data — FAILS: `Exited` carries `ExitCode`, `Signaled`
+//      carries `SignalNum`, and `Running` is nullary; a flat record
+//      admits running-with-exit-code and exited-with-signal states.
+//   3. Algebraic form — N/A: lifecycle state is not an algebra carrier.
+//   4. Dimensional — FAILS: a process is exactly one lifecycle state at
+//      a time, not all states as coordinates.
+//   5. Parameterized family — FAILS: the variants are not the same
+//      payload shape projected over an enumerable set.
+type ProcessState
+  = Running
+  | Exited { code: ExitCode }
+  | Signaled { signal: SignalNum }
+
+type Termination
+  = TerminatedByExit { code: ExitCode }
+  | TerminatedBySignal { signal: SignalNum }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Process — a spawned child process as known to the parent.
+//
+// `parent` is optional because v4 can model an observed process whose
+// parent is outside the current graph. It is not an exit-status escape:
+// termination remains solely in `state`.
+type Process {
+  id: ProcessId
+  command: Command
+  state: ProcessState
+  parent: Option<ProcessId>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Operation contract carriers.
+//
+// Spawn failure, wait failure, and capture failure return `Rejected`
+// with a typed `Diagnostic`; a successfully observed child termination
+// returns `Produced { value: Termination }`. stdout/stderr are captured
+// as separate byte-decoded text streams so harness/setup diagnostics
+// cannot be blended into the logical child's output channel.
+type SpawnProcessRequest {
+  command: Command
+}
+
+type SpawnProcessResult = Outcome<Process>
+
+type WaitProcessRequest {
+  process: Process
+}
+
+type WaitProcessResult = Outcome<Termination>
+
+type CapturedProcessOutput {
+  stdout: String
+  stderr: String
+  term: Termination
+}
+
+type CaptureProcessRequest {
+  process: Process
+}
+
+type CaptureProcessResult = Outcome<CapturedProcessOutput>
