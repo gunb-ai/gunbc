@@ -111,7 +111,6 @@
 module v4.lens.testgen
 
 
-import v4.std.collection { Set }
 import v4.std.node { Connective, Node, Symbol }
 import v4.std.verification { TestClaim }
 
