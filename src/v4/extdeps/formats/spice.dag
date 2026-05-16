@@ -1076,9 +1076,9 @@ type Directive
 //      kind to know what to do; shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: payloads are structurally distinct
 //      (`StmtComponent` carries a `Component`; `StmtModel` carries a
-//      `ModelCard`; `StmtInclude` carries a `String` path). Collapsing
-//      to `{ kind, component?, model?, path? }` makes illegal-shape
-//      combinations representable (the inverse of P2).
+//      `ModelCard`; `StmtInclude` carries an `IncludeCard`).
+//      Collapsing to `{ kind, component?, model?, card? }` makes
+//      illegal-shape combinations representable (the inverse of P2).
 //   3. Algebraic form — N/A: the SPICE3 subcircuit-body legality is
 //      a spec partition, not a richer std/ algebra.
 //   4. Dimensional — FAILS: a subcircuit statement is EXACTLY ONE of
@@ -1086,7 +1086,8 @@ type Directive
 //      alternatives.
 //   5. Parameterized family — FAILS: payloads are structurally
 //      distinct (one wraps `Component`, one wraps `ModelCard`, one
-//      wraps `String`) — not `F<X>` over a separately-declared set.
+//      wraps `IncludeCard`) — not `F<X>` over a separately-declared
+//      set.
 // Terminal: the closed three-way partition of legal-in-`.SUBCKT`
 // statements per SPICE3F5 §3.4. The set is closed (forbidden cards
 // are explicit in the spec); adding a fourth requires either a SPICE3
