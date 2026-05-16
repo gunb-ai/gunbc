@@ -13,7 +13,8 @@
 //         associativity/distributivity, so Float is NOT an exact Field;
 //         see std/float.dag + DECISIONS.md C5-fidelity)
 //       * BooleanAlgebra (classical logic)
-//       * FreeMonoid<T> (free constructions)
+//       * FreeMonoid<T>, GroupCompletion<T>, FieldOfFractions<T> (free
+//         / universal constructions)
 //     The "roots" (Magma/Monoid/BooleanAlgebra/FreeMonoid) are where the
 //     ontology bottoms out; the derived structures are compositions of
 //     them — but ALL are declared here, because the scalar files
@@ -324,6 +325,42 @@ type FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
+// GroupCompletion<M> — the Grothendieck group-completion carrier for a
+// commutative monoid / semiring carrier M. This is the canonical
+// construction that turns Nat into signed integers: elements are formal
+// differences of M, quotiented by the standard equivalence relation.
+//
+// The representation is intentionally opaque at this layer. The
+// algebraic fact is the construction itself: `GroupCompletion<Nat>` is
+// the carrier whose additive structure is an AbelianGroup. A sign-
+// magnitude record would fabricate two zeros unless a quotient substrate
+// landed; the opaque universal construction is the faithful v4 carrier
+// until a consumer proves it needs a concrete normal form. Anchor:
+// Wikipedia "Grothendieck group".
+//
+// Coproduct dissolution — N/A: zero-variant opaque carrier constructor,
+// not a sum.
+type GroupCompletion<M>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FieldOfFractions<R> — the fraction-field carrier of an integral-domain
+// / commutative-ring-like carrier R. For the numeric tower this gives
+// rationals as `Field<FieldOfFractions<Int>>`; approximate reals then
+// approximate that same fraction carrier through `ApproximateField`.
+//
+// Opaque for the same reason as GroupCompletion: numerator/denominator
+// records without quotient normalization make illegal duplicate values
+// representable. The universal construction is the shared fact; target
+// realization chooses a normal form when emission needs one. Anchor:
+// Wikipedia "Field of fractions".
+//
+// Coproduct dissolution — N/A: zero-variant opaque carrier constructor,
+// not a sum.
+type FieldOfFractions<R>
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Ordering — the result of a total-order comparison. Consumed by
 // OrderedRing.compare. Anchor: order theory (trichotomy: exactly one
 // of <, =, > holds).
@@ -393,11 +430,12 @@ type Ordering
 // "Holds CARRIES the proven fact"). Find (compiler/04_infer.dag T-9)
 // binds `C`; Realize/Measure/L7 read it.
 //
-// FreeMonoid: a free monoid is a monoid; its structure-preserving maps
-// are monoid homomorphisms (`C = Monoid` over the free monoid's
-// carrier). Generator↔carrier binding is an inhabitance concern,
-// struck from T-2 — kept out of this structures-only file (faithful to
-// category Mon).
+// FreeMonoid / GroupCompletion / FieldOfFractions: a free construction
+// carries its canonical algebra by construction; homomorphisms over it
+// use the corresponding algebra class (`C = Monoid`, `AbelianGroup`,
+// or `Field`) over the constructed carrier. Generator↔carrier binding
+// is an inhabitance concern, struck from T-2 — kept out of this
+// structures-only file (faithful to category Mon / Ab / Field).
 //
 // "WITH its realization cost" (U1): this is the ONE carrier all five
 // phases read — Find binds it, Realize projects it, Measure folds its
@@ -412,4 +450,3 @@ type Homomorphism<C, Source, Target> {
   target: C<Target>
   map: fn(Source) -> Target
 }
-

@@ -34,7 +34,7 @@
 //   - std/machine.dag: the bit-widths (Float32 / Float64)
 //   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+// Status: T-3 modeled 2026-05-16 (quick-ant-502). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
@@ -43,3 +43,45 @@
 
 
 module v4.std.float
+
+
+import v4.std.algebra { ApproximateField, Field, FieldOfFractions }
+import v4.std.integer { Int }
+import v4.std.machine { Compose, MachineWidth, Word32, Word64 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// FLOAT IS NOT FIELD. IEEE-754 arithmetic is rounded and includes
+// non-finite cases; exact field laws do not hold. The algebraic concept
+// therefore grounds in `ApproximateField`, not `Field`.
+//
+// RATIONAL VS REAL. `FieldOfFractions<Int>` is the exact fraction carrier.
+// `Rational` is the exact `Field` witness over that carrier. `Real` is
+// the approximate-field concept over the same carrier; fixed-width IEEE
+// floats add the independent machine-width axis through `Compose`.
+//
+// The sign/exponent/mantissa bit layout and target primitive spelling
+// are Grounding concerns over `Compose<Real, MachineWidth<Word*>>`.
+
+
+// Exact rational field witness over the fraction carrier.
+type Rational = Field<FieldOfFractions<Int>>
+
+
+// Abstract reals: approximate field over the exact rational carrier.
+type Real = ApproximateField<FieldOfFractions<Int>>
+
+
+// Fixed-width reals: abstract `Real` × machine width. Rust Grounding maps
+// these to f32 / f64; targets without equivalent IEEE support reject or
+// lower through their own declared realization facts.
+type Real32 = Compose<Real, MachineWidth<Word32>>
+type Real64 = Compose<Real, MachineWidth<Word64>>
+
+
+// Public compatibility aliases.
+type Float32 = Real32
+type Float64 = Real64
+type Float = Float64

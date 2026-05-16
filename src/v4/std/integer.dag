@@ -22,7 +22,7 @@
 //   - std/machine.dag: MachineWidth
 //   - std/algebra.dag: OrderedRing, AbelianGroup
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+// Status: T-3 modeled 2026-05-16 (quick-ant-502). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
@@ -31,3 +31,64 @@
 
 
 module v4.std.integer
+
+
+import v4.std.algebra { GroupCompletion }
+import v4.std.machine { Compose, MachineWidth, Word8, Word16, Word32, Word64, Word128, PointerWidth }
+import v4.std.nat { Nat }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// INT IS THE GROUP-COMPLETION CARRIER. The canonical construction from
+// Nat to signed integers is the Grothendieck group completion: formal
+// differences of natural numbers, quotiented by the standard equivalence
+// relation. v4 models that as the opaque universal carrier
+// `GroupCompletion<Nat>` from std/algebra.dag. This avoids the
+// sign-magnitude trap (two zeros) and avoids cementing any target
+// representation (two's-complement, bignum, etc.) into std/.
+//
+// WIDTH IS AN INDEPENDENT MACHINE AXIS. Fixed-width rows compose the
+// abstract algebraic concept (`Int` or `UInt`) with
+// `MachineWidth<Word*>`; they do not alias to Word carriers and do not
+// claim the byte-list lengths in std/machine.dag prove exact width. The
+// exact projection to i32/u32/etc. is Grounding's target authority.
+//
+// UINT IS NAT. Unsigned integers are the natural-number carrier; wrapping
+// Nat in a weaker algebra would drop true facts Nat already carries.
+// Fixed-width unsigned rows refine Nat through the same machine axis.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Abstract signed / unsigned integer carriers.
+//
+// `Int` inherits its AbelianGroup / OrderedRing grounding from the
+// group-completion construction over Nat. `UInt` is exactly Nat: the
+// non-negative integer carrier and its semiring structure are already
+// declared in std/nat.dag.
+type Int = GroupCompletion<Nat>
+type UInt = Nat
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Fixed-width signed integers: abstract `Int` × machine width.
+type Int8 = Compose<Int, MachineWidth<Word8>>
+type Int16 = Compose<Int, MachineWidth<Word16>>
+type Int32 = Compose<Int, MachineWidth<Word32>>
+type Int64 = Compose<Int, MachineWidth<Word64>>
+type Int128 = Compose<Int, MachineWidth<Word128>>
+
+
+// Fixed-width unsigned integers: abstract `UInt` (= Nat) × machine width.
+type UInt8 = Compose<UInt, MachineWidth<Word8>>
+type UInt16 = Compose<UInt, MachineWidth<Word16>>
+type UInt32 = Compose<UInt, MachineWidth<Word32>>
+type UInt64 = Compose<UInt, MachineWidth<Word64>>
+type UInt128 = Compose<UInt, MachineWidth<Word128>>
+
+
+// Pointer-width-sized integer concepts. `PointerWidth` is target-resolved
+// by Grounding; the substrate remains target-agnostic.
+type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>

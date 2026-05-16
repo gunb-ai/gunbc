@@ -10,6 +10,8 @@
 //   - Byte; Word8 / Word16 / Word32 / Word64 / Word128
 //   - MachineWidth — the width axis numeric refinements compose against
 //   - PointerWidth — the platform-dependent address width
+//   - Compose<Concept, Constraint> — the generic product of an abstract
+//     concept and an independent machine constraint (e.g. Int × Word64)
 //
 // Consumes:
 //   - std/node.dag: Conj, Cardinality
@@ -205,3 +207,19 @@ type MachineWidth<bits>
 //
 // Coproduct dissolution — N/A: zero-variant opaque nominal token; not a sum.
 type PointerWidth
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Compose<Concept, Constraint> — the generic product of an abstract
+// semantic concept with an independent realization constraint. Numeric
+// widths use it as `Compose<Int, MachineWidth<Word64>>` and
+// `Compose<Real, MachineWidth<Word64>>`: the first slot remains the
+// algebraic concept, the second slot carries the machine axis. This is
+// the v4 home for the v3 `MachineConstraint` composition pattern; it is
+// deliberately generic so integers and floats share one axis carrier
+// instead of inventing width-specific siblings.
+//
+// Coproduct dissolution — N/A: zero-variant opaque product carrier,
+// not a sum. Grounding rejects nonsensical pairings fail-closed; this
+// type declares the composition surface, not a permissive fallback.
+type Compose<Concept, Constraint>
