@@ -1259,14 +1259,26 @@ type PubInPath {
 // `PubInPath { root: PubInRoot, suffix: List<NamedSegment> }`
 // (declared above this type). `pub(in crate::outer_mod)` is
 // REPRESENTABLE (`PubInPath { root: AtCrate, suffix: [outer_mod] }`),
-// but `pub(in self)` / `pub(in self::...)` is STRUCTURALLY
-// UNREPRESENTABLE (PubInRoot has no Self anchor, and SuperHops has
-// no zero-hop case — type-level enforcement of pub(self) ≡ Private,
-// NOT a documentation-only invariant). The head-rooted shape ALSO
-// makes Reference-invalid path-qualifier orderings (empty path,
-// Super after Crate, bare Named without root, Super after Named,
-// Crate after named) structurally unrepresentable per the BLOCKING
-// operator review 2026-05-16T05:06:51Z.
+// and VALID self-prefixed source forms have NAMED canonical
+// destinations — `pub(in self)` ≡ Private (Reference equivalence);
+// `pub(in self::super)` ≡ `pub(in super)` → `PubInPath { root:
+// AtSuperChain { hops: OneSuper }, suffix: [] }`; deeper self-prefix
+// forms canonicalize per the rules table below the PubInPath
+// declaration (`self::super::M::…` → AtSuperChain chain + named
+// suffix). The carrier itself represents POST-RESOLUTION canonical
+// scope only — the parser/resolver is obligated under extdeps-
+// fidelity / P2 to canonicalize self-prefixed Rust source paths to
+// their non-self ancestor-rooted forms before constructing PubInPath
+// (the canonicalizations are NOT optional: valid aliases have a
+// REQUIRED canonical destination per the table). This is type-level
+// enforcement at the carrier (PubInRoot has no Self anchor; SuperHops
+// has no zero-hop case), NOT a documentation-only invariant. The
+// head-rooted shape ALSO makes Reference-invalid path-qualifier
+// orderings (empty path, Super after Crate, bare Named without root,
+// Super after Named, Crate after named) structurally unrepresentable
+// per BLOCKING operator review 2026-05-16T05:06:51Z. Self-prefixed
+// source-form canonicalization specified per BLOCKING operator
+// review 2026-05-16T07:30:47Z + 2026-05-16T06:26:19Z.
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 //
 //   - Private — items without a `pub` modifier (the Rust default;
@@ -1308,12 +1320,18 @@ type PubInPath {
 //               positions); bare Named without root (root required);
 //               Super after a Named segment (same — suffix
 //               keyword-free); Crate after named (same). Multi-
-//               segment paths starting with `self` (e.g.
-//               `pub(in self::outer_mod)`) are likewise out-of-scope
-//               for this carrier — PubInRoot has no Self anchor,
-//               so they cannot be constructed at all; whatever
-//               upstream parser/resolver does with such source is
-//               its concern, not modeled here.
+//               segment paths starting with `self` are HANDLED at
+//               the parser/resolver boundary per the canonicalization
+//               rules table after the PubInPath declaration —
+//               `pub(in self::super)` ≡ `pub(in super)` resolves to
+//               AtSuperChain{OneSuper} (not unrepresentable);
+//               `pub(in self::outer_mod)` where outer_mod is a
+//               descendant of current is parse-REJECTED per the
+//               ancestor-resolution rule (a child-of-current is not
+//               an ancestor; no canonical PubInPath exists). The
+//               carrier represents post-resolution canonical scope;
+//               self-prefixed source forms are canonicalized BEFORE
+//               reaching it, not silently dropped to "out-of-scope."
 //               `pub(self)` / `pub(in self)` ≡ `Private`
 //               structurally — PubInRoot has no Self variant.
 //               P2 single-authority: each Reference visibility scope
