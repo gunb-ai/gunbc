@@ -263,16 +263,19 @@ type OpenApiResponse {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiResponses — OAS 3.1.0 **Responses Object** under an Operation: HTTP
-// status-code (and `default`) entries plus **object-level** Specification
+// OpenApiResponses — OAS 3.1.0 **Responses Object** under an Operation: status
+// keys (three-digit codes, `default`, and OAS wildcard buckets **`1XX`…`5XX`**
+// — uppercase **`XX`** per the Responses Object key grammar, not HTTP “class”
+// shorthand) plus **object-level** Specification
 // Extensions (`^x-`) as siblings of those keys — distinct from each
 // `OpenApiResponse.extensions` on the nested Response Object.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record). **`by_status` keys**
-// are **`String` lexemes** (status code, `default`, wildcards) — OAS key
-// grammar + future closed-ish sum dissolve under **`openapi_parse`** structural
+// are **`String` lexemes** (three-digit status, `default`, **`1XX`/`2XX`/`3XX`/
+// `4XX`/`5XX`**) — OAS key grammar + future closed-ish sum dissolve under
+// **`openapi_parse`** structural
 // validation (Deferred (1); INVARIANTS §2 honesty — no false structural
 // guarantee of key shape at the carrier layer).
 type OpenApiResponses {
@@ -390,8 +393,9 @@ type OpenApiDocument {
 //   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
 //   lands + yaml/json parse operations land + operator pins reference
 //   substrate. Structural validation **includes** `OpenApiResponses.by_status`
-//   map keys (HTTP status code strings, `default`, and OAS wildcard buckets
-//   `1xx`/`2xx`/`3xx`/`4xx`/`5xx`): the carrier uses **`String` lexemes** today
+//   map keys (three-digit status strings, `default`, and OAS wildcard buckets
+//   **`1XX`/`2XX`/`3XX`/`4XX`/`5XX`** — uppercase **`XX`** per spec, not
+//   lowercase `xx` spellings): the carrier uses **`String` lexemes** today
 //   for faithful wire capture; lifting to a closed-ish sum (vs silent string
 //   abuse) rides the **same** parse/validation operation — not a parallel
 //   authority.
