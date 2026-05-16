@@ -104,11 +104,14 @@
 //     TwoComplementWrap, the permitted-set of Rust integer-
 //     overflow runtime actions per Reference behavior-not-considered-
 //     unsafe.html#integer-overflow),
-//     OverflowDisposition<IRCarrier> (per-language operation-
-//     semantics Conj carrying ONLY the deterministic debug_assert-
-//     required action — non-debug-assert builds are implementation-
-//     defined per Reference and NOT recorded as a structural fact;
-//     see the carrier's doc-block + BLOCKING reviewer 2026-05-16T19:26:35Z); plus
+//     OverflowDisposition<IRCarrier> (closed two-variant Disj —
+//     MustPanicOnOverflow / MayPanicOrTwoComplementWrap, the
+//     per-build-mode disposition classifier; each variant nullary
+//     so the deterministic Reference facts are structurally pinned
+//     by variant identity — no payload could carry an illegal
+//     action; addresses BLOCKING reviewers 2026-05-16T19:26:35Z
+//     + 2026-05-16T20:33:06Z + openai-pro REQUEST_CHANGES @ f2dcea63
+//     + codex BLOCKING @ 57f2f029); plus
 //     the LANDABLE NOW alias-identity row `type RustBool = Bool` +
 //     `data rust_bool_grounding: GroundingMap<RustBool> =
 //     GroundingMap { spelling: "bool" }` (std/logic.dag's Bool is
@@ -1754,50 +1757,94 @@ type OverflowAction
 
 // ─────────────────────────────────────────────────────────────────────
 // OverflowDisposition<IRCarrier> — the per-language operation-
-// semantics carrier for Rust integer arithmetic (D2a(3)). Conj
-// record (no Practice-4 ledger).
+// semantics carrier for Rust integer arithmetic (D2a(3)). Closed
+// two-variant Disj capturing the Rust Reference's two per-build-mode
+// overflow-disposition cases per behavior-not-considered-unsafe.html
+// #integer-overflow.
 //
-//   - debug_assert_required_action
-//       The OverflowAction the Rust Reference REQUIRES implementations
-//       to take when `debug_assert!` assertions are enabled (Reference
-//       behavior-not-considered-unsafe.html#integer-overflow: "...
-//       implementations must insert dynamic checks that panic on
-//       overflow"). This IS a structural language fact: canonically
-//       PanicOnOverflow.
+// Each variant is NULLARY — the disposition is structurally pinned by
+// the variant identity; there is no payload that could carry an
+// alternative action and admit an illegal state. Per BLOCKING
+// reviewer 2026-05-16T20:33:06Z (an earlier shape carried
+// `debug_assert_required_action: OverflowAction`, which made
+// `TwoComplementWrap` constructible for a fact the Reference fixes to
+// panic — INVARIANTS P2 illegal-states-unrepresentable violation; the
+// new shape forecloses that).
 //
-// The carrier deliberately does NOT carry a `release_default` (or any
-// non-debug-assert default) field — per the Reference cited above,
-// builds WITHOUT `debug_assert!` "may result in panics OR silently
-// wrapped values on overflow, at the implementation's discretion."
-// The selection between PanicOnOverflow and TwoComplementWrap in such
-// builds is therefore IMPLEMENTATION-DEFINED, not a language fact.
-// In practice the choice is commonly driven by the
-// `-C overflow-checks=on|off` rustc flag (release profile defaults to
-// `off`), but that is build-configuration tooling state, not a
-// language-spec fact suitable for an extdeps/ resolver carrier.
-// Recording one specific Action as the "release_default" would
-// over-determine the spec; recording the closed PERMITTED-SET would
-// be tautological (it is precisely the OverflowAction Disj
-// above). Per BLOCKING reviewer 2026-05-16T19:26:35Z + Reference
-// behavior-not-considered-unsafe.html#integer-overflow.
+//   - MustPanicOnOverflow
+//       Reference: "When the programmer has enabled `debug_assert!`
+//       assertions ... implementations MUST insert dynamic checks
+//       that panic on overflow." This is a deterministic spec fact;
+//       the variant has no payload (the action is pinned to panic by
+//       variant identity).
+//
+//   - MayPanicOrTwoComplementWrap
+//       Reference: "Other kinds of builds may result in panics OR
+//       silently wrapped values on overflow, at the implementation's
+//       discretion." The choice between actions IS impl-defined
+//       (commonly driven by `-C overflow-checks=on|off`, the release
+//       profile default being `off`); that selection is build-
+//       configuration tooling state, not a language fact, and is
+//       therefore NOT recorded structurally. The wrap-CONVENTION is
+//       a language fact — Reference: "implementations must provide
+//       well-defined ... results by using two's complement overflow
+//       conventions" — and is structurally encoded in the variant
+//       NAME (`TwoComplementWrap`, not just `Wrap`; no arbitrary-wrap
+//       sibling).
+//
+// CLOSED (C1 stop-signal). Reference additions to the per-build-mode
+// disposition set (e.g. a future stable saturating-default mode)
+// require an edit to THIS declaration under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Rust-integer-overflow-semantics
+//      consumer reads the per-build-mode disposition uniformly;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform record
+//      `{ kind: <closed-enum>, ... }` reintroduces the readable-string
+//      -as-tag K-1 anti-pattern; carrying an OverflowAction payload
+//      on the MustPanic variant ALSO reopens the BLOCKING the prior
+//      shape was rejected for (the action would become variable; the
+//      illegal value "MustPanic with action=TwoComplementWrap" would
+//      be constructible). Two nullary structural alternatives IS the
+//      faithful form.
+//   3. Algebraic form — N/A by construction: MustPanicOnOverflow vs
+//      MayPanicOrTwoComplementWrap is a Reference-defined per-build-
+//      mode disposition partition; it doesn't trace to a richer std/
+//      algebraic structure. No richer std/ source.
+//   4. Dimensional — FAILS: at a given build configuration EXACTLY
+//      ONE of these dispositions applies; mutually-exclusive
+//      alternatives, not simultaneous coordinates. A Rust integer
+//      type's overflow semantics enumerates BOTH dispositions across
+//      build modes, but each individual overflow event is governed
+//      by exactly one disposition at a time.
+//   5. Parameterized family — FAILS: the two are Reference-defined
+//      per-build-mode classification primitives; NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The build-mode axis (debug_assert enabled vs
+//      disabled) is the partition discriminant, not a separately-
+//      declared source set the dispositions parameterize over.
+// Terminal: the closed two-element Rust-Reference per-build-mode
+// integer-overflow-disposition classifier.
 //
 // Per the D2 row D2.5: overflow/UB/arbitrary-precision are DISTINCT
 // std/ carriers selected by the alias target + the per-language
 // OverflowDisposition carrier, never a re-declared semantics. This
-// record carries Rust's debug-assert REQUIREMENT (the deterministic
-// fact); the abstract-vs-bounded-integer-semantics axis is selected
-// via the alias target (e.g. RustI32 → Int32 vs an arbitrary-
-// precision Int — the former is bounded and overflow-disposed, the
-// latter is arbitrary-precision and overflow-impossible).
+// classifier carries Rust's per-build-mode disposition rules; the
+// abstract-vs-bounded-integer-semantics axis is selected via the
+// alias target (e.g. RustI32 → Int32 vs an arbitrary-precision Int
+// — the former is bounded and overflow-disposed, the latter is
+// arbitrary-precision and overflow-impossible).
 //
 // Floats use a separate operation-semantics carrier (NaN/Inf
 // handling per IEEE-754) — that one lands when the float aliases
 // land (pending std/float.dag T-3 Wave-A3). The integer-overflow
 // case is the canonical instance of the D2a(3) shape; the float
-// case mirrors structurally with different fields.
-type OverflowDisposition<IRCarrier> {
-  debug_assert_required_action: OverflowAction
-}
+// case mirrors structurally with different variants.
+type OverflowDisposition<IRCarrier>
+  = MustPanicOnOverflow
+  | MayPanicOrTwoComplementWrap
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1842,14 +1889,26 @@ data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
 //     (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`).
 //   - `data rust_<x>_grounding: GroundingMap<Rust<X>> =
 //     GroundingMap { spelling: "<token>" }` row (D2a(2)).
-//   - for integer aliases: `data rust_<x>_overflow:
-//     OverflowDisposition<Rust<X>> = OverflowDisposition {
-//     debug_assert_required_action: PanicOnOverflow }` row (D2a(3);
-//     per Reference behavior-not-considered-unsafe.html#integer-
-//     overflow the debug_assert requirement applies uniformly to
-//     all integer widths; non-debug-assert builds are
-//     implementation-defined and not recorded — see the
-//     OverflowDisposition declaration's note).
+//   - for integer aliases: two D2a(3) overflow-disposition rows
+//     per integer type, capturing the Reference's per-build-mode
+//     dispositions uniformly across all integer widths (the
+//     Reference fact does not vary by width):
+//        `data rust_<x>_overflow_under_debug_assert:
+//             OverflowDisposition<Rust<X>> = MustPanicOnOverflow`
+//        `data rust_<x>_overflow_without_debug_assert:
+//             OverflowDisposition<Rust<X>> = MayPanicOrTwoComplementWrap`
+//     SECONDARY DEFERRAL: each of these data rows has a TOP-LEVEL
+//     SUM-VARIANT body (`= MustPanicOnOverflow` etc.) which falls
+//     into Class-5-Gap-3 (ROADMAP.md:418, ValueBody::Unparsed for
+//     top-level sum-variant literal bodies; substrate items
+//     #920/#1017/#1068). Named owner: R2/R3 ValueBody substrate
+//     work. Trigger: Class-5-Gap-3 closes (top-level
+//     ValueBody::Unparsed → structural-validation lands). So these
+//     instance rows are DOUBLE-deferred: pending (a) std/integer.dag
+//     ladder for the alias-target Rust<X> AND (b) Class-5-Gap-3
+//     closure for the body shape. Either gating order is fine.
+//     The TYPE shape (OverflowDisposition Disj above) is canonical
+//     regardless of the instance landing.
 //   - for float aliases: a NaN/Inf disposition carrier row
 //     (the carrier itself lands with std/float.dag's
 //     ApproximateField<Float> inhabitance — same 🟡 TRACKED-
