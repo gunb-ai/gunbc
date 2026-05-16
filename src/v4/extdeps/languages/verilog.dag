@@ -657,27 +657,90 @@ type Signedness
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NetDeclaration — a Verilog net (`wire foo;`, `wire [7:0] bus;`,
-// `wire signed [15:0] s;`, `wand x;`). Conj record (no Practice-4
+// NetDeclaration — a Verilog net declaration (`wire foo;`,
+// `wire [7:0] bus;`, `wire signed [15:0] s;`, `wand x;`,
+// `wire (strong0, weak1) #5 a = expr_a, b, c = expr_c;`).
+// IEEE 1364-2005 §3.10 / §A.2.1.3. Conj record (no Practice-4
 // ledger).
 //
-//   - net_type     which net-type (wire / wand / wor / tri / …)
-//   - name         the net identifier (K-1-opaque Symbol)
-//   - packing      scalar or `[msb:lsb]` packed bit-vector
-//   - signedness   `signed` keyword present / absent (IEEE 1364-2005
-//                  §5.6; the spec admits `signed` on any net-type;
-//                  for a scalar (single-bit) net the signedness fact
-//                  is semantically vacuous but the spec preserves it
-//                  syntactically — parse ∘ emit must preserve the
-//                  writer's keyword choice. Added 2026-05-16 per
-//                  codex BLOCKING review on PR #3176 to preserve the
-//                  IEEE signedness boundary fact for downstream
-//                  arithmetic/emission consumers, INVARIANTS P2.)
+// A net_declaration declares ONE OR MORE nets sharing a common
+// (net_type, packing, signedness, drive_strength, delay) — each
+// individual net is a NetDeclarator carrying its own name + optional
+// initializer expression. Per spec §A.2.1.3 grammar:
+//
+//   net_declaration ::= net_type [drive_strength | charge_strength]
+//                       [vectored | scalared] [signed] [range]
+//                       [delay3] list_of_net_decl_assignments ;
+//
+// The vectored/scalared modifier is a synthesis hint (rare); not
+// modeled in this initial cut — the lexeme captures it via
+// drive_strength_lexeme (the parser collapses it into the strength
+// lexeme position by §A.2.2). The charge_strength applies only to
+// `trireg` per spec §7.10; admitted alongside drive_strength via the
+// shared lexeme.
+//
+//   - net_type                 which net-type (wire / wand / wor /
+//                              tri / … per the closed NetType set)
+//   - packing                  scalar or `[msb:lsb]` packed
+//                              bit-vector (the shared range applies
+//                              to all declarators in the list)
+//   - signedness               `signed` keyword present / absent
+//                              (IEEE 1364-2005 §5.6)
+//   - drive_strength_lexeme    the optional drive_strength /
+//                              charge_strength clause as a verbatim
+//                              lexeme (`(strong0, weak1)`,
+//                              `(small)`, etc.); "" = absent.
+//                              Sub-grammar deferred — the strength
+//                              keyword set is the spec's closed set
+//                              owned by the bundled T-4
+//                              LanguageModel.
+//   - delay_lexeme             the optional delay3 clause as a
+//                              verbatim lexeme (`#5`, `#(2:3:4)`,
+//                              etc.); "" = absent. Sub-grammar
+//                              deferred to T-4 LanguageModel per
+//                              the body_lexeme precedent.
+//   - declarators              the list_of_net_decl_assignments —
+//                              each NetDeclarator carries a name +
+//                              optional initializer expression.
+//                              Per spec a net_declaration must have
+//                              at least one declarator; the empty
+//                              list is structurally representable
+//                              but is a producer-side bug
+//                              (well-formedness joint check in the
+//                              T-4 LanguageModel).
+//
+// Multi-declarator + strength + delay + initializer added per codex
+// BLOCKING review on PR #3176 2026-05-16 — the prior {net_type, name,
+// packing, signedness} shape collapsed the spec's declaration-
+// boundary facts (strength, delay, dimensions, initializer,
+// declarator-list) into name-only.
 type NetDeclaration {
   net_type: NetType
-  name: Symbol
   packing: PackingShape
   signedness: Signedness
+  drive_strength_lexeme: String
+  delay_lexeme: String
+  declarators: List<NetDeclarator>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetDeclarator — one (name, optional-initializer) pair in a
+// net_declaration's list_of_net_decl_assignments (IEEE 1364-2005
+// §A.2.4 / §3.10). A single net_declaration like `wire [7:0] a = ex1,
+// b, c = ex2;` carries THREE NetDeclarators. Conj record (no
+// Practice-4 ledger).
+//
+//   - name                  the net identifier (K-1-opaque Symbol)
+//   - initializer_lexeme    the net_decl_assignment initializer
+//                           expression as a verbatim lexeme; ""
+//                           denotes the absent-initializer form
+//                           (`wire a;` vs `wire a = expr;`). Sub-
+//                           grammar deferred to T-4 LanguageModel via
+//                           the established body_lexeme precedent.
+type NetDeclarator {
+  name: Symbol
+  initializer_lexeme: String
 }
 
 
@@ -781,11 +844,45 @@ type NetDeclaration {
 // classifier; illegal kind×packing AND kind×signedness combinations
 // are unrepresentable by construction.
 type VariableDeclaration
-  = RegVariable { name: Symbol, packing: PackingShape, signedness: Signedness }
-  | IntegerVariable { name: Symbol }
-  | RealVariable { name: Symbol }
-  | TimeVariable { name: Symbol }
-  | RealTimeVariable { name: Symbol }
+  = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
+  | IntegerVariable { declarators: List<VariableDeclarator> }
+  | RealVariable { declarators: List<VariableDeclarator> }
+  | TimeVariable { declarators: List<VariableDeclarator> }
+  | RealTimeVariable { declarators: List<VariableDeclarator> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VariableDeclarator — one (name, optional-unpacked-dimensions,
+// optional-initializer) triple in a variable declaration's
+// list_of_variable_decl_assignments (IEEE 1364-2005 §A.2.4 / §3.10).
+// A single declaration like `reg [7:0] a = 8'h00, mem[0:1023], c =
+// 4'hF;` carries THREE VariableDeclarators (the second of which has
+// an unpacked-array dimensions clause). Conj record (no Practice-4
+// ledger).
+//
+//   - name                         the variable identifier (K-1-
+//                                  opaque Symbol)
+//   - unpacked_dimensions_lexeme   the optional unpacked-array
+//                                  dimensions as a verbatim lexeme
+//                                  (`[0:1023]`, `[0:15][0:7]`); ""
+//                                  denotes a scalar (no unpacked
+//                                  array). Per spec §7.4 a variable
+//                                  can carry both PACKED dimensions
+//                                  (on the type — RegVariable's
+//                                  shared packing field) and UNPACKED
+//                                  dimensions (per-declarator —
+//                                  this field). Sub-grammar deferred
+//                                  to T-4 LanguageModel.
+//   - initializer_lexeme           the variable_decl_assignment
+//                                  initializer expression as a
+//                                  verbatim lexeme; "" denotes the
+//                                  absent-initializer form. Sub-
+//                                  grammar deferred.
+type VariableDeclarator {
+  name: Symbol
+  unpacked_dimensions_lexeme: String
+  initializer_lexeme: String
+}
 
 
 // (PortDeclarationStyle has been dissolved into ModulePortsList's
@@ -1080,10 +1177,14 @@ type AnsiNetPortType
 //   - AnsiInputPort { name: Symbol, net: AnsiNetPortType }
 //       — input ports are net-typed only (the spec forbids
 //       `input reg`).
-//   - AnsiOutputPort { name: Symbol, type_kind: PortAnsiTypeKind }
-//       — output ports admit the full PortAnsiTypeKind set (net or
-//       any variable kind; output is the only direction that
-//       admits reg/integer/real/time/realtime).
+//   - AnsiOutputPort { name: Symbol, type_kind: OutputPortAnsiTypeKind }
+//       — output ports admit the OutputPortAnsiTypeKind subset (net,
+//       reg, integer, time per §12.3.3 — REAL / REALTIME outputs
+//       are excluded per spec). The closed 4-way subset is structural
+//       per the OutputPortAnsiTypeKind ledger below; corrected per
+//       codex BLOCKING on PR #3176 2026-05-16 — the prior reuse of
+//       the full 6-way PortAnsiTypeKind admitted spec-forbidden
+//       `output real` / `output realtime`.
 //   - AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
 //       — inout ports are net-typed only (bidirectional requires
 //       nets; `inout reg` is a spec violation).
