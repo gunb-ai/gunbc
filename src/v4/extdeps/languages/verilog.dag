@@ -521,24 +521,35 @@ type ProceduralAssignKind
 // 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`
 // and ptx Dim3 raw-Int axes). With only kernel-ambient `Int`
 // available at the T-4.9 phase, `{ msb: Int, lsb: Int }`
-// STRUCTURALLY ADMITS illegal states (negative indices; widths
-// exceeding the IEEE 1364-2005 declared maximum; gaps; non-
-// monotonic ranges — `[7:0]` is little-endian, `[0:7]` is big-
-// endian, BOTH legal per spec, but `[7:7]` requires width=1 and
-// `[8:0]` requires width=9). modeling-discipline.md §2 (illegal-
-// states-unrepresentable) forbids admitting them; no bounded-
-// Cardinality refinement substrate exists yet to exclude them. It
-// is a TRACKED scaffold, declared with the three bridge properties
-// (the precedent diagnostic.dag established 2026-05-15):
-//   (a) scaffold doc — THIS note; the carrier is provisional, not
-//       the terminal bounded-axis shape.
-//   (b) bounds on use — a producer MUST construct only valid
-//       Verilog vector ranges; until the substrate enforces it the
-//       invariant is producer-side, and a VectorRange violating it
-//       is a producer bug, not a legal value.
+// STRUCTURALLY ADMITS some states the substrate cannot reject
+// (extreme magnitudes far beyond any plausible bus width; degenerate
+// gaps the spec doesn't formally forbid in the type system but that
+// no synthesizable design uses). PER IEEE 1364-2005 §3.10, msb and
+// lsb constant expressions ARE ALLOWED to be positive, negative, or
+// zero — the spec explicitly admits `reg [-1:4] b;` as a legal
+// example. Negative indices are NOT illegal; the prior scaffold
+// bound forbidding them was a misstatement of the spec (openai-pro
+// REQUEST_CHANGES on PR #3176 corrected this). The remaining
+// scaffold property is that the refined substrate (when it lands)
+// can carry per-axis precision and any synthesizable-subset checks
+// the consumer tooling needs, while the spec-level value space —
+// signed Int for msb/lsb — stays admissible. `[7:0]` is little-
+// endian, `[0:7]` is big-endian, `[-1:4]` is signed-msb;
+// all legal. It is a TRACKED scaffold, declared with the three
+// bridge properties (the precedent diagnostic.dag established
+// 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional. The
+//       bounded-Cardinality refinement is the terminal shape; for
+//       now the spec's full Int range is the producer-side bound.
+//   (b) bounds on use — a producer MUST construct only ranges
+//       admitted by IEEE 1364-2005 §3.10 (msb and lsb are any
+//       signed Int per spec; negative values are legal); until the
+//       substrate enforces additional per-synthesis-tool bounds,
+//       those tighter bounds (if any) are producer-side.
 //   (c) dissolution trigger — when std/cardinality.dag's refinement
 //       substrate lands (T-3, P4 decidability), `msb` / `lsb` become
-//       refined bounded-Int axes, and this scaffold dissolves.
+//       refined signed-Int axes (admitting the spec's full range
+//       including negatives), and this scaffold dissolves.
 type VectorRange {
   msb: Int
   lsb: Int
@@ -778,34 +789,209 @@ type VariableDeclaration
 
 
 // ─────────────────────────────────────────────────────────────────────
+// PortDeclarationStyle — the closed Verilog port-declaration-style
+// classifier (IEEE 1364-2005 §12.3.3, §12.3.4). The spec admits TWO
+// port-declaration styles and they place the type-fact in
+// STRUCTURALLY DIFFERENT loci — a single-authority constraint that
+// only works when the model captures the style choice (openai-pro
+// REQUEST_CHANGES on PR #3176 surfaced this gap; the prior
+// "type-fact lives EXCLUSIVELY in matching body declaration" framing
+// was correct for non-ANSI style but WRONG for ANSI-style ports,
+// where the spec says the port declaration is "completely declared"
+// and a redeclaration in the body is an ERROR per §12.3.3).
+//
+//   - NonAnsiStyle
+//       — `module M (a, b, c); input wire [7:0] a; output reg b; …`
+//       (legacy / Verilog-1995 style). The header lists port names
+//       only; the type, direction, width, and signedness facts come
+//       from MATCHING NetDeclaration / VariableDeclaration items
+//       inside the module body. The port's authority for type/width/
+//       signedness is the matching body declaration.
+//   - AnsiStyle { net_kind: PortAnsiTypeKind, packing: PackingShape,
+//                 signedness: Signedness }
+//       — `module M (input wire [7:0] a, output reg b, …);`
+//       (Verilog-2001 / 1364-2005 §12.3.3 ANSI style). The header
+//       carries the port's type, width, and signedness directly;
+//       the port declaration is "completely declared" per spec.
+//       Redeclaring in the body is a SYNTAX ERROR per §12.3.3 —
+//       the spec's single-authority constraint, structurally
+//       enforced because an AnsiStyle port has the type-fact ON
+//       this variant and consumers do not look up a matching body
+//       declaration.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
+// port-declaration styles; SystemVerilog adds further forms (e.g.
+// `interface` ports) — a future language-version model EDITS this
+// Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every port-emission consumer and
+//      every type-resolution walker reads the style uniformly to
+//      know WHERE the type-fact lives (header for ANSI / body
+//      lookup for non-ANSI); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `{ ansi: Bool, type:
+//      Option<…> }` would let `ansi=true` co-exist with `type=None`
+//      (ANSI without inline type — a spec violation) or `ansi=
+//      false` with `type=Some(…)` (non-ANSI port carrying its own
+//      type — a spec violation since non-ANSI ports get types from
+//      the body). The Disj-with-named-payloads makes both illegal
+//      states structurally unrepresentable.
+//   3. Algebraic form — N/A by construction: the two styles are
+//      IEEE 1364-2005 spec's primitive port-declaration partition;
+//      they do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single port declaration is EXACTLY
+//      ONE style; mutually-exclusive alternatives. (The spec
+//      forbids mixing styles within one module — §12.3.4.)
+//   5. Parameterized family — FAILS: NonAnsiStyle is nullary
+//      (type-fact deferred to the body lookup); AnsiStyle carries
+//      net-kind + packing + signedness payload (type-fact in the
+//      header) — structurally heterogeneous, NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7).
+// Terminal: the closed two-way Verilog port-declaration-style
+// classifier of the IEEE 1364-2005 spec.
+type PortDeclarationStyle
+  = NonAnsiStyle
+  | AnsiStyle { net_kind: PortAnsiTypeKind, packing: PackingShape, signedness: Signedness }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PortAnsiTypeKind — the closed Verilog ANSI-port-type-kind
+// classifier (IEEE 1364-2005 §12.3.3). An ANSI-style port carrying
+// its own type declares EITHER a net-type or a variable-type; per
+// spec a port with `output reg` is a register-typed port (procedural-
+// assignable from within the module), while a port with `output
+// wire` is a net-typed port.
+//
+//   - AnsiNetType { net_type: NetType }
+//       — `input wire`, `output wand`, etc. The port's type is a
+//       net resolution from the closed NetType set.
+//   - AnsiVariableType { var_kind: AnsiVariableKind }
+//       — `output reg`, `output integer`, `output real`, `output
+//       time`, `output realtime`. The port's type is a variable
+//       kind from the closed AnsiVariableKind set below (excludes
+//       the per-variant payload fields of the body-side
+//       VariableDeclaration — those payloads represent body-side
+//       declarations, while AnsiVariableType is the port-side
+//       declaration's type-kind only; the port's packing /
+//       signedness live on the enclosing AnsiStyle, not here).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits these two
+// ANSI-port-type-kind partitions; a future language-version model
+// would EDIT this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: ANSI-port consumers branch on the
+//      kind uniformly to know whether the port is net-typed (wire
+//      family) or variable-typed (reg family); shared classifier,
+//      not scattered.
+//   2. Variant-is-data — FAILS: a `{ kind: Symbol }` proxy reopens
+//      K-1's foreclosed readable-string heuristic surface (a
+//      `match kind { "net" => … }` smell). The enum IS the M4-
+//      faithful form.
+//   3. Algebraic form — N/A by construction: the two kinds are
+//      the net-vs-variable distinction of the IEEE 1364-2005
+//      type system; they do not trace to a richer std/ algebraic
+//      structure.
+//   4. Dimensional — FAILS: an ANSI port has EXACTLY ONE type-kind;
+//      mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: each variant carries a
+//      DIFFERENT payload type (NetType vs AnsiVariableKind) —
+//      structurally heterogeneous, NOT one generic `F<X>` /
+//      projection over a single source set (Practice 7).
+// Terminal: the closed two-way Verilog ANSI-port-type-kind
+// classifier of the IEEE 1364-2005 spec.
+type PortAnsiTypeKind
+  = AnsiNetType { net_type: NetType }
+  | AnsiVariableType { var_kind: AnsiVariableKind }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AnsiVariableKind — the closed Verilog ANSI-variable-port-type
+// classifier (IEEE 1364-2005 §12.3.3). The variable-type set valid
+// for ANSI ports matches the VariableDeclaration kind set; this
+// nullary enum carries the KIND only (the per-kind payloads — name,
+// packing, signedness for RegVariable — are factored into the
+// enclosing AnsiStyle to keep cross-form (NonAnsi vs Ansi) packing/
+// signedness reuse single-authority).
+//
+//   - AnsiReg       — `output reg name`
+//   - AnsiInteger   — `output integer name`
+//   - AnsiReal      — `output real name`
+//   - AnsiTime      — `output time name`
+//   - AnsiRealTime  — `output realtime name`
+//
+// CLOSED (C1 stop-signal). Matches the VariableDeclaration variant
+// kind set per spec §12.3.3.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every ANSI-variable-port consumer
+//      reads the kind uniformly to dispatch emission / type-check
+//      legality; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
+//      reopens the readable-string heuristic surface K-1
+//      forecloses. The enum IS the M4-faithful form.
+//   3. Algebraic form — PARTIAL: each variant grounds in the same
+//      std/algebra structure its body-side VariableDeclaration
+//      counterpart grounds in (AnsiReg → Semiring/OrderedRing per
+//      packing×signedness; AnsiInteger → OrderedRing<Int<32>>;
+//      AnsiReal/AnsiRealTime → ApproximateField<Float>; AnsiTime
+//      → Semiring<UInt<64>>); D2-deferred per "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: an ANSI variable port has EXACTLY ONE
+//      kind; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the five are structurally
+//      heterogeneous in their underlying std/algebra grounding
+//      (same argument as VariableDeclaration's ledger) — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7).
+// Terminal: the closed five-way ANSI-variable-port-kind
+// classifier; mirrors VariableDeclaration's kind-partition under
+// the IEEE 1364-2005 §12.3.3 ANSI-port admissibility rules.
+type AnsiVariableKind
+  = AnsiReg
+  | AnsiInteger
+  | AnsiReal
+  | AnsiTime
+  | AnsiRealTime
+
+
+// ─────────────────────────────────────────────────────────────────────
 // PortDeclaration — a Verilog module port (`input clk`, `output [7:0]
-// data`, `inout wire bidir_bus`). Conj record (no Practice-4 ledger).
+// data`, `output reg signed [3:0] count`, …). Conj record (no
+// Practice-4 ledger).
 //
 //   - direction  input / output / inout
 //   - name       the port identifier (K-1-opaque Symbol)
+//   - style      which port-declaration style applies (non-ANSI =
+//                type comes from a matching body NetDeclaration /
+//                VariableDeclaration; ANSI = type carried inline on
+//                this declaration, per the AnsiStyle payload).
 //
-// Per IEEE 1364-2005 §12.3.3 a port can carry a per-port net-type or
-// variable-type modifier (`output reg [7:0] data` makes the port
-// BOTH a port and a procedural-assignment destination); that modifier
-// is the MATCHING `NetDeclaration` or `VariableDeclaration` in the
-// module body's items list. SINGLE-AUTHORITY DISCIPLINE (INVARIANTS
-// P2, codex BLOCKING review on PR #3176): the width / packing /
-// type-fact lives EXCLUSIVELY in the matching declaration, NOT
-// duplicated as a `packing: PackingShape` field here. The port's
-// `name` is the cross-reference; downstream consumers (the bundled
-// T-4 LanguageModel grammar productions for emission; the well-
-// formedness check that every port has exactly one matching
-// declaration) resolve the type through the name lookup. The prior
-// `packing: PackingShape` field on this record was a parallel
-// representation of the width that the matching Net/Variable
-// declaration ALSO carries — exactly the P2 cost-of-change ≥ 2
-// duplicate-authority anti-pattern the codex review surfaced. The
-// inline form `input wire [7:0] data` is a parser convenience that
-// produces TWO items in the module body (the port declaration here
-// + the matching NetDeclaration), preserving single-authority.
+// IEEE 1364-2005 §12.3.3 — §12.3.4 admit two port-declaration styles
+// with STRUCTURALLY DIFFERENT type-locus rules (corrected per openai-
+// pro REQUEST_CHANGES on PR #3176; the prior "type-fact lives
+// EXCLUSIVELY in matching body declaration" framing was over-applied
+// — it's correct for non-ANSI, but ANSI-style ports declare their
+// type INLINE and per §12.3.3 a body redeclaration is a syntax
+// error). The PortDeclarationStyle Disj makes the locus partition
+// structural:
+//   - NonAnsiStyle → the type/packing/signedness facts come from
+//     the matching body NetDeclaration / VariableDeclaration; the
+//     port's `name` is the cross-reference (the prior single-
+//     authority discipline applied to this style).
+//   - AnsiStyle { net_kind, packing, signedness } → the type/
+//     packing/signedness facts are CARRIED INLINE on this port
+//     declaration; per spec §12.3.3 a body redeclaration is an
+//     error (the spec's structural single-authority enforcement).
+// Either style preserves INVARIANTS P2 single-authority — just at
+// different loci per spec.
 type PortDeclaration {
   direction: PortDirection
   name: Symbol
+  style: PortDeclarationStyle
 }
 
 
