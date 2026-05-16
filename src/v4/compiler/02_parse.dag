@@ -25,8 +25,8 @@
 //   - Grammar, ParseTree (= Node), parse: (TokenStream, Grammar) -> Outcome<ParseTree>
 //
 // Consumes:
-//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Connective,
-//     Conj, Symbol, node_well_formed
+//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
+//     Symbol, node_well_formed
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, PortLocus, Correction,
 //     NoCorrectionReason
 //   - compiler/01_tokenize.dag: TokenStream
