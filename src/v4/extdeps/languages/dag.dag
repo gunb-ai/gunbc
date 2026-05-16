@@ -54,7 +54,7 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.node { Node }
+import v4.std.node { Conj, Node, NodeKind, TypeNode }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -65,4 +65,39 @@ import v4.std.node { Node }
 type DagLanguageModel {
   lex: Node
   grammar: Node
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Wave-1 **E0 / G0** canonical roots — zero-production `Conj` leaves.
+//
+// These are the **data** instances `compiler/01_tokenize.dag` and
+// `compiler/02_parse.dag` recognize structurally (empty `TypeNode{Conj}`
+// child list). They are not special-cased in the walkers beyond that
+// shared shape; any LanguageModel may reuse E0/G0 for empty fragments.
+fn dag_wave1_e0_void_lex() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: []
+  }
+}
+
+
+fn dag_wave1_g0_void_grammar() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: []
+  }
+}
+
+
+fn dag_language_model_wave1_void() -> DagLanguageModel {
+  DagLanguageModel {
+    lex: dag_wave1_e0_void_lex(),
+    grammar: dag_wave1_g0_void_grammar()
+  }
 }

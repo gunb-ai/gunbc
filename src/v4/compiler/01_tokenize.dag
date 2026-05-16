@@ -9,26 +9,35 @@
 // A .dag-only character class hardcoded here reintroduces the N×M trap =
 // STOP. See 00_compile.dag B2-OMNI for the pivot.
 //
+// Wave-1 **encoding contract** (grammar-as-data over `Node`, not prose):
+//   **E0 — void lexical fragment**: `LexRules` root is a **type** `Node`
+//   whose connective is **`Conj` with zero children** — exactly zero
+//   lexical productions. The walker recognizes this shape **structurally**
+//   (discriminant + `count(children)==0`), never by `Symbol` spelling.
+//   E0 + empty `String` (`FreeMonoid` spine `Empty`) ⇒ `Produced` empty
+//   `TokenStream`. E0 + non-empty source ⇒ `Rejected` (source not exhausted
+//   — fail-closed; no fabricated tokens).
+//   Further encodings (E1+, keywords, …) land as additional **data**
+//   shapes ratified with the LanguageModel carrier; the walker grows by
+//   `match` on those shapes, not by hardcoding `.dag` surface spellings.
+//
 // Owns:
 //   - Token, TokenStream carriers
-//   - LexRules — declarative lexical authority as a `Node` tree (B2:
-//     grammar-as-data; the generic walker reads this substrate, never a
-//     language-specific hardcoded recognizer)
+//   - LexRules — declarative lexical authority as a finite `Node` tree
 //   - tokenize: (String, file: Symbol, LexRules) -> Outcome<TokenStream>
-//     (DECISIONS.md **I** — fail-closed stage seam beside `Diagnostic`)
 //
 // Consumes:
-//   - std/text.dag: String (= FreeMonoid<Char> per text.dag)
-//   - std/node.dag: Node, Symbol, node_well_formed
+//   - std/text.dag: String (= FreeMonoid<Char>)
+//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Connective,
+//     Conj, Symbol, node_well_formed
 //   - std/collection.dag: List<T>
-//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
-//     NoCorrectionReason
-//   - extdeps/languages/dag.dag: language-#1 `DagLanguageModel.lex` authority
-//     (B2-OMNI — binds here as `LexRules`/`Node`, never special-cased in-body)
+//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Textual, WholeFile,
+//     Correction, NoCorrectionReason
+//   - extdeps/languages/dag.dag: language-#1 model binds E0 instances (see
+//     `dag_wave1_e0_void_lex`); this file stays encoding-generic.
 //
-// Status: Wave-1 generic machinery — lexical **walk** not realized on the
-// v2 bridge (honest `Rejected`); structural carriers + contracts are
-// authoritative for downstream T-6/T-7 consumers.
+// Status: Wave-1 — E0 void-lex path is **realized** (`Produced`); richer
+// encodings ⇒ honest `Rejected { … walk_not_realized }` until ratified.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -44,27 +53,30 @@ import v4.std.diagnostic {
   Locus,
   NoCorrectionReason,
   Outcome,
+  Textual,
+  WholeFile,
 }
-import v4.std.node { Node, Symbol, node_well_formed }
-import v4.std.text { String }
+import v4.std.algebra { FreeMonoid }
+import v4.std.node {
+  ComputationNode,
+  Conj,
+  Node,
+  NodeKind,
+  Symbol,
+  TypeNode,
+  node_well_formed,
+}
+import v4.std.text { Char, String }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // LexRules — declarative lexical specification as a finite `Node` tree
-// (B2-OMNI grammar-as-data). Language #1 binds a concrete instance when
-// the ratified LanguageModel carrier path exists; this file stays generic.
+// (B2-OMNI grammar-as-data).
 type LexRules = Node
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Token — one classified lexeme in source order.
-//
-// `class` is an opaque `Symbol` naming the token class **as declared by
-// the LanguageModel's lexical data** — the kernel does not interpret the
-// spelling (K-1). `lexeme` is the matched surface text (boundary carrier).
-// Offsets are half-open `[start, end)` byte indices into `text` (same
-// scaffold honesty as `Extent.ByteRange` in diagnostic.dag — producer
-// bounds; refinement substrate is T-3 cardinality work elsewhere).
 type Token {
   class: Symbol
   lexeme: String
@@ -87,6 +99,8 @@ data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_real
 
 data tokenize_lex_rules_not_well_formed: Symbol = tokenize_lex_rules_not_well_formed
 
+data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
+
 
 fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -106,26 +120,72 @@ fn tokenize_lex_rules_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
+fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: tokenize_lex_e0_source_not_exhausted,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// free_monoid_char_len — walk the `FreeMonoid<Char>` spine (`String` alias).
+fn free_monoid_char_len(xs: FreeMonoid<Char>) -> Int {
+  match xs {
+    Empty => 0
+    Cons { head: _, tail: t } => 1 + free_monoid_char_len(xs: t)
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// string_is_empty — `String` = `FreeMonoid<Char>` (std/text.dag).
+fn string_is_empty(s: String) -> Bool {
+  free_monoid_char_len(xs: s) == 0
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// lex_rules_node_is_conj_empty_root — structural E0 predicate (Wave-1).
+fn lex_rules_node_is_conj_empty_root(rules: Node) -> Bool {
+  match rules.kind {
+    TypeNode { connective: Conj } => count(rules.children) == 0
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────────────
 // tokenize — GENERIC lexical ingest (B2-OMNI).
 //
-// `rules` is the only lexical authority; there is no language-keyed
-// branch on `file` or `text` spelling here. Bridge-era note: the full
-// walk is not executed in the v2 seed — this entry point fail-closes with
-// a typed `Diagnostic` until the walker lowers; ill-formed `LexRules`
-// trees reject before that staged work.
+// Discriminates on **declared** `LexRules` shape; only E0 is realized in
+// Wave-1. No `file` or `text` content branches on language identity.
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
   let at = Textual {
     file: file,
     extent: WholeFile
   }
-  if node_well_formed(n: rules) {
+  if !node_well_formed(n: rules) {
     Rejected {
-      diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
+      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
+    }
+  } else if lex_rules_node_is_conj_empty_root(rules: rules) {
+    if string_is_empty(s: text) {
+      Produced {
+        value: TokenStream {
+          tokens: []
+        }
+      }
+    } else {
+      Rejected {
+        diagnostic: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)
+      }
     }
   } else {
     Rejected {
-      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
+      diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
     }
   }
 }

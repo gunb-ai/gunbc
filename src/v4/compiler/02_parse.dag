@@ -3,57 +3,36 @@
 // Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 //
-// B2-OMNI (operator-ratified 2026-05-15): parse is NOT a .dag parser. It
-// is the GENERIC walker over a `LanguageModel`'s declarative grammar
-// (B2). Parsing .dag is `parse(tokens, dag_model.grammar)` — `.dag` is
-// language #1, never hardcoded/special-cased. The same generic walker
-// ingests other **Shape A languages** (Rust/Python/…) via their models.
-// Shape B data formats (JSON, SPICE netlists) are NOT LanguageModels and
-// do NOT pass through this compiler-language parser — they ingest via
-// the formats data-model path (THESIS Shape A / Shape B is a hard
-// boundary; conflating them here re-blurs the ingest boundary = STOP).
-// This is the load-bearing enabler of the O(N+M) pivot (see
-// 00_compile.dag B2-OMNI). A `.dag`-specific production hardcoded here =
-// the N×M trap creeping back = STOP.
+// B2-OMNI (operator-ratified 2026-05-15): parse is the GENERIC walker over a
+// `LanguageModel`'s declarative grammar (`Grammar` as `Node`); `.dag` is
+// language #1 at the **data** layer (`extdeps/languages/dag.dag`), never
+// special-cased in-body here.
 //
-// PARSE-1 (operator-ratified 2026-05-15): the `.dag` LanguageModel
-// grammar MUST admit a BODILESS SIGNATURE declaration as a first-class
-// production (an `fn name(args) -> T` with NO body — the
-// contract-as-checked-signature surface). This graduates the "immutable
-// I/O contract for the worker" (the scaffold-header convention) from
-// comment-prose into compiler-enforced structure: a later filled body
-// must conform to the frozen signature, divergence = a fail-closed type
-// error (structural, per no-annotations). NOT a v2-bridge feature —
-// verified: frozen v2's parser REJECTS bodiless `fn` (`expected LBrace`)
-// while cleanly parsing the full ratified kernel shape WITH bodies
-// (40k-line src/v2 corpus + constructive kernel probe, zero syntax
-// errors). So bridge-era substrate contracts stay comment-prose (current
-// scaffold form) and the fail-closed parse-class gate is safe (v2 is
-// never asked to parse bodiless fn); the bodiless-signature production
-// is a v4-self-parser-era surface only. This is the conditional that
-// makes the bridge-era deferral acceptable — supportable by construction
-// (it is v4's own grammar; nothing external constrains it). Per B2-OMNI
-// this is a grammar-DATA production in the `.dag` model, not a
-// production hardcoded in this generic walker.
+// Wave-1 **encoding contract** (mirrors `01_tokenize.dag` E0):
+//   **G0 — void syntactic fragment**: `Grammar` root is **type** `Node` with
+//   connective **`Conj` + zero children**. With an **empty** `TokenStream`,
+//   the parse result is `Produced { value: grammar }` — the grammar root is
+//   itself the (degenerate) `ParseTree` spine for the empty sentence (A1:
+//   `ParseTree = Node`). Non-empty tokens against G0 ⇒ `Rejected`
+//   (tokens unconsumed). Empty tokens against non-G0 grammar ⇒ not realized
+//   until additional productions are ratified in data.
+//
+// PARSE-1 bodiless-`fn` remains a **grammar-data** obligation on the
+// LanguageModel file, not a special case in this walker (see header in
+// `extdeps/languages/dag.dag`).
 //
 // Owns:
-//   - Grammar — declarative syntactic authority as a finite `Node` tree
-//   - ParseTree — surface syntax tree prior to normalize (carrier = `Node`)
-//   - parse: (TokenStream, Grammar) -> Outcome<ParseTree>
-//     (DECISIONS.md **I**)
+//   - Grammar, ParseTree (= Node), parse: (TokenStream, Grammar) -> Outcome<ParseTree>
 //
 // Consumes:
-//   - std/node.dag: Node, Symbol, node_well_formed
-//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
+//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Connective,
+//     Conj, Symbol, node_well_formed
+//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, PortLocus, Correction,
 //     NoCorrectionReason
 //   - compiler/01_tokenize.dag: TokenStream
-//   - extdeps/languages/dag.dag: language-#1 `DagLanguageModel.grammar`
-//     authority (B2-OMNI + PARSE-1 — data-carried, not walker-special-cased)
 //
-// Status: Wave-1 generic machinery — syntactic **walk** not realized on
-// the v2 bridge (honest `Rejected`); PARSE-1 bodiless-fn production is a
-// constraint on `DagLanguageModel.grammar` **data** in `extdeps/languages/dag.dag`,
-// not encoded in this generic walker.
+// Status: Wave-1 — G0 void-grammar + empty tokens path **realized**; else
+// honest `Rejected` per encoding coverage.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -69,30 +48,33 @@ import v4.std.diagnostic {
   Locus,
   NoCorrectionReason,
   Outcome,
+  PortLocus,
 }
-import v4.std.node { Node, Symbol, node_well_formed }
+import v4.std.node {
+  ComputationNode,
+  Conj,
+  Connective,
+  Node,
+  NodeKind,
+  Symbol,
+  TypeNode,
+  node_well_formed,
+}
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Grammar — declarative syntactic specification as a finite `Node` tree
-// (B2-OMNI). Productions (including PARSE-1 bodiless signature rows) are
-// DATA in the LanguageModel instance, never special-cased here.
 type Grammar = Node
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ParseTree — stage-2 output; the syntax tree is a `Node` forest spine
-// (A1) until normalize dissolves sugar (T-8).
 type ParseTree = Node
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Reason symbols — owned by this dimension (diagnostic.dag owns schema).
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
 data parse_walk_not_realized: Symbol = parse_walk_not_realized
 
 data parse_grammar_not_well_formed: Symbol = parse_grammar_not_well_formed
+
+data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
 
 
 fn parse_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -113,26 +95,54 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
+fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_g0_tokens_remain,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// grammar_node_is_conj_empty_root — structural G0 predicate (Wave-1).
+fn grammar_node_is_conj_empty_root(g: Node) -> Bool {
+  match g.kind {
+    TypeNode { connective: Conj } => count(g.children) == 0
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────────────
 // parse — GENERIC syntactic ingest (B2-OMNI).
-//
-// `grammar` is the only syntactic authority. `tokens` is threaded so the
-// entry point composes with stage 1; there is no token-shape hardcoding
-// beyond the shared `TokenStream` carrier. Bridge-era note: the full
-// walk is not executed in the v2 seed — fail-closed `Rejected` until the
-// walker lowers.
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = PortLocus {
     port: parse_stage_locus_port
   }
-  let _toks = tokens.tokens
-  if node_well_formed(n: grammar) {
+  let ntok = count(tokens.tokens)
+  if !node_well_formed(n: grammar) {
+    Rejected {
+      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
+    }
+  } else if grammar_node_is_conj_empty_root(g: grammar) {
+    if ntok == 0 {
+      Produced {
+        value: grammar
+      }
+    } else {
+      Rejected {
+        diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
+      }
+    }
+  } else if ntok == 0 {
     Rejected {
       diagnostic: parse_walk_not_realized_diagnostic(at: at)
     }
   } else {
     Rejected {
-      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
+      diagnostic: parse_walk_not_realized_diagnostic(at: at)
     }
   }
 }
