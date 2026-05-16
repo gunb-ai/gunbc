@@ -43,3 +43,335 @@
 
 
 module v4.std.float
+
+
+import v4.std.algebra { ApproximateField, Ordering, Less, Equal, Greater }
+import v4.std.diagnostic {
+  Diagnostic,
+  Outcome,
+  PortLocus,
+  Produced,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+}
+import v4.std.logic { Bool }
+import v4.std.machine { Bit, Word32, Word64 }
+import v4.std.nat { Nat, nat_add, nat_mul }
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// WIDTH NOMINALS — `Float32` / `Float64` are distinct nominal wrappers
+// around ONE shared semantic carrier `FloatBody` (IEEE-754 *semantic*
+// classification: finite sign + biased exponent + trailing significand
+// as Peano `Nat`, vs non-finite tags). Binary32/binary64 **bit layout**
+// (interchange formats) remain the authority of `Word32` / `Word64` in
+// std/machine.dag — Grounding maps `Float*` ↔ interchange words; this
+// file does not duplicate width-correct bit lists (same 🟡 list-length
+// scaffold class as machine.dag's `Word*` fields).
+//
+// NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
+// unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
+// 11+52 binary64) are NOT type-enforced here — the same honest deferral
+// pattern as machine.dag's `List<Bit>` width scaffold. Producers must
+// respect nominal widths; the dissolution trigger is the same bounded
+// refinement substrate named in machine.dag's modeling notes.
+//
+// APPROXIMATEFIELD OPS — `add` / `mul` below are **componentwise** on the
+// three finite `Nat` fields when BOTH operands are `Finite` (NOT IEEE-754
+// floating-point rounding — that realization is explicitly downstream of
+// this substrate, at Grounding / host numerics). They are nevertheless a
+// **total** structural definition on this carrier (no silent `none` on
+// the success path). `compare` is a **deterministic total order** on the
+// semantic carrier (lexicographic on sign-rank, exponent, significand,
+// then non-finite tag ordering) — NOT the IEEE `<` relation; it exists so
+// `ApproximateField.compare` stays total while **Tier-2**
+// `float_ordered_compare_tier2` carries the fail-closed **unordered**
+// surface for NaN via `Outcome<Ordering>` (STRUCTURE.md commitment #2).
+//
+// SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
+// `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
+// (K-1: no Symbol mint in data literals). The dimension that surfaces the
+// rejection binds the anchor at a declaration site; float.dag supplies
+// only the schema-shaped carrier.
+//
+// INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
+// interchange authorities for Grounding edges (P2 single place for words).
+type Float32Interchange = Word32
+type Float64Interchange = Word64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FloatSpecial — the closed non-finite discriminant (quiet / signaling
+// NaN; ±∞). Anchor: IEEE 754 non-finite classes.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every float classifier matches these tags
+//      uniformly; not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: four nullary variants — no `{kind,…}`
+//      fold without inventing a readable label space (M4).
+//   3. Algebraic form — N/A: exceptional-value classification is not an
+//      algebra carrier in std/.
+//   4. Dimensional — FAILS: a non-finite value is EXACTLY ONE of these
+//      alternatives — not simultaneous coordinates.
+//   5. Parameterized family — FAILS: the four variants are not one generic
+//      `F<X>` / projection over a separately-declared source set (Practice 7).
+// Terminal: the irreducible IEEE non-finite partition at semantic float scope.
+type FloatSpecial
+  = QuietNan
+  | SignalingNan
+  | PosInfinity
+  | NegInfinity
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FloatBody — finite IEEE semantic record vs non-finite tagged class.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every float consumer folds finite vs
+//      non-finite; shared substrate fact, not per-site.
+//   2. Variant-is-data — FAILS: `Finite` carries a Conj; `NonFinite` a tag;
+//      a flat `{kind,…}` record admits illegal mutual states (P2 inverse).
+//   3. Algebraic form — N/A: this is the float semantic carrier, not a
+//      compression of a richer algebra row.
+//   4. Dimensional — FAILS: a float semantic value is EITHER finite with
+//      fields OR non-finite — mutually exclusive, not coordinates.
+//   5. Parameterized family — FAILS: `Finite` vs `NonFinite` are not a
+//      mechanical `F<X>` family over one source set (Practice 7).
+// Terminal: the irreducible finite / non-finite split for IEEE semantics.
+type FloatBody
+  = Finite {
+      sign: Bit
+      biased_exponent: Nat
+      trailing_significand: Nat
+    }
+  | NonFinite { tag: FloatSpecial }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Float32 / Float64 — nominal width wrappers over the shared semantic body.
+type Float32 {
+  body: FloatBody
+}
+
+type Float64 {
+  body: FloatBody
+}
+
+
+// Default scalar float is binary64 (same default spirit as dsl/std/float.dag).
+type Float = Float64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Peano compare — reused for lexicographic float compare (carrier-local;
+// nat.dag owns `Nat`; this is float-local scaffolding, not a second Nat).
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  match a {
+    Zero => match b {
+      Zero => Equal
+      Succ { prev: _ } => Less
+    }
+    Succ { prev: ap } => match b {
+      Zero => Greater
+      Succ { prev: bp } => nat_compare(a: ap, b: bp)
+    }
+  }
+}
+
+
+// sign_rank_lex — total deterministic rank for lex ordering: negative (True)
+// sorts before non-negative (False) at the first lex key (NOT IEEE value <).
+fn sign_rank_lex(s: Bit) -> Nat {
+  match s {
+    true => Zero
+    false => Succ { prev: Zero }
+  }
+}
+
+
+fn float_special_rank(t: FloatSpecial) -> Nat {
+  match t {
+    NegInfinity => Zero
+    PosInfinity => Succ { prev: Zero }
+    QuietNan => Succ { prev: Succ { prev: Zero } }
+    SignalingNan => Succ { prev: Succ { prev: Succ { prev: Zero } } }
+  }
+}
+
+
+fn float_body_is_nan(x: FloatBody) -> Bool {
+  match x {
+    NonFinite { tag: QuietNan } => true
+    NonFinite { tag: SignalingNan } => true
+    _ => false
+  }
+}
+
+
+fn float_body_negate(x: FloatBody) -> FloatBody {
+  match x {
+    Finite { sign: s, biased_exponent: e, trailing_significand: m } => Finite {
+      sign: match s {
+        false => true
+        true => false
+      },
+      biased_exponent: e,
+      trailing_significand: m,
+    }
+    NonFinite { tag: t } => match t {
+      PosInfinity => NonFinite { tag: NegInfinity }
+      NegInfinity => NonFinite { tag: PosInfinity }
+      QuietNan => x
+      SignalingNan => x
+    }
+  }
+}
+
+
+fn float_body_add(a: FloatBody, b: FloatBody) -> FloatBody {
+  match a {
+    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
+      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
+        sign: sa,
+        biased_exponent: nat_add(a: ea, b: eb),
+        trailing_significand: nat_add(a: fa, b: fb),
+      }
+      NonFinite { tag: tb } => NonFinite { tag: tb }
+    }
+    NonFinite { tag: ta } => NonFinite { tag: ta }
+  }
+}
+
+
+fn float_body_mul(a: FloatBody, b: FloatBody) -> FloatBody {
+  match a {
+    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
+      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
+        sign: sa,
+        biased_exponent: nat_mul(a: ea, b: eb),
+        trailing_significand: nat_mul(a: fa, b: fb),
+      }
+      NonFinite { tag: tb } => NonFinite { tag: tb }
+    }
+    NonFinite { tag: ta } => NonFinite { tag: ta }
+  }
+}
+
+
+fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
+  match a {
+    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
+      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
+        let o = nat_compare(a: sign_rank_lex(sa), b: sign_rank_lex(sb))
+        match o {
+          Less => Less
+          Greater => Greater
+          Equal => {
+            let o2 = nat_compare(a: ea, b: eb)
+            match o2 {
+              Less => Less
+              Greater => Greater
+              Equal => nat_compare(a: fa, b: fb)
+            }
+          }
+        }
+      }
+      NonFinite { tag: tb } => match tb {
+        NegInfinity => Greater
+        _ => Less
+      }
+    }
+    NonFinite { tag: ta } => match b {
+      Finite {
+        sign: sb
+        biased_exponent: eb
+        trailing_significand: fb
+      } => match ta {
+        NegInfinity => Less
+        _ => Greater
+      }
+      NonFinite { tag: tb } => nat_compare(
+        a: float_special_rank(ta),
+        b: float_special_rank(tb)
+      )
+    }
+  }
+}
+
+
+// float_ordered_compare_tier2 — Tier-2 totalization for **unordered** `<|Equal|Greater>`
+// in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
+// `Produced` with the semantic-carrier total compare (NOT IEEE `<`; see modeling notes).
+fn float_ordered_compare_tier2(a: Float64, b: Float64, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
+  if float_body_is_nan(a.body) {
+    Rejected {
+      diagnostic: Diagnostic {
+        reason: diagnostic_anchor,
+        at: PortLocus { port: diagnostic_anchor },
+        correction: Unavailable { reason: UserInputBoundary },
+      }
+    }
+  } else {
+    if float_body_is_nan(b.body) {
+      Rejected {
+        diagnostic: Diagnostic {
+          reason: diagnostic_anchor,
+          at: PortLocus { port: diagnostic_anchor },
+          correction: Unavailable { reason: UserInputBoundary },
+        }
+      }
+    } else {
+      Produced { value: float_body_compare_total(a.body, b.body) }
+    }
+  }
+}
+
+
+fn float_alg_add(a: Float, b: Float) -> Float {
+  Float64 { body: float_body_add(a.body, b.body) }
+}
+
+fn float_alg_negate(x: Float) -> Float {
+  Float64 { body: float_body_negate(x.body) }
+}
+
+fn float_alg_mul(a: Float, b: Float) -> Float {
+  Float64 { body: float_body_mul(a.body, b.body) }
+}
+
+fn float_alg_compare(a: Float, b: Float) -> Ordering {
+  float_body_compare_total(a.body, b.body)
+}
+
+
+// float_approximate_field — machine-readable inhabitance: `Float64`
+// (`Float` is `Float64`; v2 resolves `ApproximateField` method bodies against
+// the concrete carrier name here).
+data float_approximate_field: ApproximateField<Float> = ApproximateField {
+  add: float_alg_add,
+  zero: Float64 {
+    body: Finite {
+      sign: false
+      biased_exponent: Zero
+      trailing_significand: Zero
+    }
+  },
+  negate: float_alg_negate,
+  mul: float_alg_mul,
+  one: Float64 {
+    body: Finite {
+      sign: false
+      biased_exponent: Zero
+      trailing_significand: Succ { prev: Zero }
+    }
+  },
+  compare: float_alg_compare,
+}
