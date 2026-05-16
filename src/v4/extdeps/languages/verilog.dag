@@ -209,7 +209,8 @@ import v4.std.node { Symbol }
 // correct partition: (a) INTRA-program concurrency (multiple
 // `always`-blocks within one Verilog module sharing signal nets) is
 // what this file models — the effect-typing carriers are the
-// signal-type declarations (`NetType` / `VariableType` / `PackingShape`)
+// signal-type declarations (`NetType` / `VariableDeclaration` variants /
+// `PackingShape`)
 // declared HERE, in this language file; (b) CROSS-program coordination
 // (one program's output deployed to host A, another to host B,
 // communicating via Endpoint / DeploymentUnit / sync-async-stream-
@@ -330,10 +331,14 @@ type PortDirection
 //
 //   - Wire     — `wire`     standard net; resolves to X if multiply
 //                           driven with conflicting values
-//   - Wand     — `wand`     wired-AND resolution
-//   - Wor      — `wor`      wired-OR resolution
 //   - Tri      — `tri`      identical to `wire` semantically;
 //                           designer-intent marker for tri-state nets
+//   - Wand     — `wand`     wired-AND resolution
+//   - TriAnd   — `triand`   identical to `wand` semantically;
+//                           designer-intent marker pairing with `tri`
+//   - Wor      — `wor`      wired-OR resolution
+//   - TriOr    — `trior`    identical to `wor` semantically;
+//                           designer-intent marker pairing with `tri`
 //   - Tri0     — `tri0`     pull-down (resolves to 0 if undriven)
 //   - Tri1     — `tri1`     pull-up (resolves to 1 if undriven)
 //   - TriReg   — `trireg`   stores last driven value (capacitive)
@@ -355,29 +360,37 @@ type PortDirection
 //      reopens the readable-string heuristic surface K-1 forecloses
 //      (a `match keyword { "wire" => … }` smell); a
 //      `{ resolution_kind: Int }` proxy replaces a closed
-//      10-valued exhaustive sum with an unbounded Int — both
+//      12-valued exhaustive sum with an unbounded Int — both
 //      violate P2 + M4 (algebra.dag:332 `Ordering` precedent).
-//   3. Algebraic form — N/A by construction: the ten net-types are
-//      the IEEE 1364-2005 spec's primitive resolution-function set;
-//      they do not trace to a richer std/ algebraic structure (one
-//      could attempt a `Lattice<Resolution>` for the wand/wor
+//   3. Algebraic form — N/A by construction: the twelve net-types
+//      are the IEEE 1364-2005 spec's primitive resolution-function
+//      set; they do not trace to a richer std/ algebraic structure
+//      (one could attempt a `Lattice<Resolution>` for the wand/wor
 //      sublattice, but that would be a parallel representation of
 //      the per-net-type resolution function, not a richer source).
 //   4. Dimensional — FAILS: a net declaration carries EXACTLY ONE
 //      net-type; `wire wand x` is a syntax error in Verilog itself.
 //      Mutually-exclusive alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the ten are structurally
+//   5. Parameterized family — FAILS: the twelve are structurally
 //      distinct resolution / pull / supply / unresolved variants —
 //      NOT one generic `F<X>` / projection over a separately-
-//      declared source set (Practice 7). They are the spec's
-//      irreducible net-type partition for IEEE 1364-2005.
-// Terminal: the closed ten-way net-type classifier of the
+//      declared source set (Practice 7). The Wire/Tri,
+//      Wand/TriAnd, Wor/TriOr designer-intent pairs are
+//      SEMANTICALLY-equivalent partner variants the spec keeps
+//      DISTINCT at the syntactic surface (parse ∘ emit must
+//      preserve the writer's intent); collapsing the pairs into
+//      `{ resolution: Symbol, tri_intent: Bool }` would be a
+//      parallel-representation of the spec's enumeration and lose
+//      the K-1-opaque keyword discrimination.
+// Terminal: the closed twelve-way net-type classifier of the
 // IEEE 1364-2005 spec.
 type NetType
   = Wire
-  | Wand
-  | Wor
   | Tri
+  | Wand
+  | TriAnd
+  | Wor
+  | TriOr
   | Tri0
   | Tri1
   | TriReg
@@ -386,66 +399,17 @@ type NetType
   | Uwire
 
 
-// ─────────────────────────────────────────────────────────────────────
-// VariableType — the closed Verilog variable-type classifier
-// (IEEE 1364-2005 §3.7.2, §5.7). A variable stores a value assigned by
-// a procedural statement; the variable-type fixes the storage shape.
-//
-//   - Reg       — `reg`       general-purpose variable (any width;
-//                             the procedural-assignment destination)
-//   - Integer   — `integer`   32-bit signed (host integer; the spec
-//                             pins integer to >= 32 bits)
-//   - Real      — `real`      double-precision floating point (IEEE
-//                             754)
-//   - Time      — `time`      64-bit unsigned (simulation-time
-//                             carrier)
-//   - RealTime  — `realtime`  alias for `real`, designer-intent
-//                             marker for simulation-time-valued
-//                             reals (kept distinct at the syntactic
-//                             surface per IEEE 1364-2005 §3.7.2)
-//
-// CLOSED (C1 stop-signal). A new variable-type is an edit to THIS
-// declaration under the L-2 pin discipline (SystemVerilog adds
-// `logic` / `bit` / typed enums — a future language-version model
-// would EDIT this enum explicitly).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every variable-declaration emitter
-//      and every procedural-assignment legality check reads the
-//      variable-type tag uniformly; shared classifier, not
-//      scattered.
-//   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
-//      reopens the readable-string heuristic surface K-1
-//      forecloses. The enum IS the faithful form (algebra.dag:332
-//      `Ordering` precedent).
-//   3. Algebraic form — PARTIAL: each variable-type grounds in a
-//      std/algebra structure (Reg→`Semiring<UInt<N>>` or
-//      `OrderedRing<Int<N>>` per declared width; Integer→
-//      `OrderedRing<Int<32>>`; Real / RealTime→`ApproximateField<Float>`;
-//      Time→`Semiring<UInt<64>>`). That grounding is INHABITANCE —
-//      owned by the inhabiting carrier file (std/integer.dag,
-//      std/float.dag) per P2, and DEFERRED to the operator-pending
-//      D2 STOP. The variable-type enum itself stays a closed
-//      classifier; the "type → algebra" map IS the future
-//      inhabitance walk, not a richer std/ source to collapse this
-//      enum INTO.
-//   4. Dimensional — FAILS: a variable declaration has EXACTLY ONE
-//      type; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the five are structurally
-//      distinct storage shapes (bit-vector / signed integer /
-//      floating-point / unsigned 64-bit time / aliased floating-
-//      point) — NOT one generic `F<X>` / projection over a
-//      separately-declared source set (Practice 7). The closed set
-//      is the IEEE 1364-2005 variable-type partition.
-// Terminal: the closed five-way variable-type classifier of the
-// IEEE 1364-2005 spec.
-type VariableType
-  = Reg
-  | Integer
-  | Real
-  | Time
-  | RealTime
+// (VariableType has been dissolved into VariableDeclaration's
+// Disj-with-named-payloads below — the spec couples kind × packing
+// admissibility (only `reg` accepts a `[msb:lsb]` packing per IEEE
+// 1364-2005 §5.7), and modeling kind and packing as independent
+// coordinates ratified the illegal state "Integer with Packed
+// range" — the INVARIANTS P2 illegal-states-unrepresentable anti-
+// pattern (codex BLOCKING review on PR #3176). The 5-pattern ledger
+// for the dissolved partition lives on VariableDeclaration; the
+// reasoning is identical except that "Variant-is-data" now FAILS
+// for the additional reason that uniform `{ kind, packing }` ratifies
+// the illegal state.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -639,23 +603,90 @@ type NetDeclaration {
 
 // ─────────────────────────────────────────────────────────────────────
 // VariableDeclaration — a Verilog variable (`reg foo;`, `reg [31:0]
-// counter;`, `integer i;`). Conj record (no Practice-4 ledger).
+// counter;`, `integer i;`, `real x;`, `time t;`, `realtime rt;`).
+// IEEE 1364-2005 §3.7.2, §5.7 partitions variable declarations into
+// five kinds, where ONLY `reg` admits a `[msb:lsb]` packing — the
+// other four (`integer` / `real` / `time` / `realtime`) have spec-
+// fixed widths and forbid a vector range (`[N:M] integer i;` is a
+// syntax error per §5.7). The kind × packing admissibility is
+// modeled STRUCTURALLY: only `RegVariable` carries a `packing`
+// payload, so "Integer with Packed range" is unrepresentable — not
+// "rejected by a check" — the INVARIANTS P2 illegal-states-
+// unrepresentable shape (same design choice as node.dag's EdgeLabel,
+// rust.dag's RustScalar Disj-with-named-payloads, and go.dag's
+// GoScalar). The prior `{ var_type: VariableType, packing:
+// PackingShape }` Conj-record-with-independent-coordinates form was
+// the codex BLOCKING-review anti-pattern on PR #3176; this Disj-
+// with-payloads form is the dissolution.
 //
-//   - var_type   which variable-type (reg / integer / real / time /
-//                realtime)
-//   - name       the variable identifier (K-1-opaque Symbol)
-//   - packing    scalar or `[msb:lsb]` packed bit-vector (note:
-//                `integer` / `real` / `time` / `realtime` accept only
-//                Scalar; `[N:M] integer i;` is a syntax error per IEEE
-//                1364-2005 §5.7 — the per-variable-type packing-
-//                admissibility joint check is the T-4 LanguageModel's
-//                concern, same shape as ptx's RegisterScalarKind-×-
-//                RegisterWidth admissibility)
-type VariableDeclaration {
-  var_type: VariableType
-  name: Symbol
-  packing: PackingShape
-}
+//   - RegVariable        — `reg [msb:lsb] name;` / `reg name;`
+//                          general-purpose variable; the procedural-
+//                          assignment destination; THE ONLY
+//                          variable-kind that admits a packing
+//   - IntegerVariable    — `integer name;` 32-bit signed (the spec
+//                          pins integer to >= 32 bits); no packing
+//   - RealVariable       — `real name;` double-precision IEEE-754
+//                          floating-point; no packing
+//   - TimeVariable       — `time name;` 64-bit unsigned simulation-
+//                          time carrier; no packing
+//   - RealTimeVariable   — `realtime name;` aliased to `real`,
+//                          designer-intent marker for simulation-
+//                          time-valued reals (the spec keeps it
+//                          distinct at the syntactic surface per
+//                          IEEE 1364-2005 §3.7.2 — parse ∘ emit
+//                          must preserve the keyword choice); no
+//                          packing
+//
+// CLOSED (C1 stop-signal). A new variable-kind is an edit to THIS
+// declaration under the L-2 pin discipline (SystemVerilog adds
+// `logic` / `bit` / typed enums — a future language-version model
+// would EDIT this Disj explicitly).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every variable-declaration emitter,
+//      every procedural-assignment legality check (only RegVariable
+//      is a legal procedural-assignment destination), and the per-
+//      kind algebra inhabitance walk all read the variant tag
+//      uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `{ kind:
+//      VariableType, packing: PackingShape }` ratifies the illegal
+//      state "Integer with Packed range" the spec forbids (§5.7);
+//      collapsing to `{ keyword: Symbol, packing?: PackingShape }`
+//      additionally reopens the readable-string heuristic surface
+//      K-1 forecloses. The Disj-with-heterogeneous-payloads IS the
+//      dissolved form (P2 + Practice 2/6 + M4) — same shape as
+//      rust.dag's RustScalar and go.dag's GoScalar.
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (RegVariable → `Semiring<UInt<N>>` or
+//      `OrderedRing<Int<N>>` per declared packing; IntegerVariable
+//      → `OrderedRing<Int<32>>`; RealVariable / RealTimeVariable →
+//      `ApproximateField<Float>`; TimeVariable → `Semiring<UInt<64>>`).
+//      That grounding is INHABITANCE — owned by the inhabiting
+//      carrier file (std/integer.dag, std/float.dag) per P2, and
+//      DEFERRED to the operator-pending D2 STOP. The variant set
+//      itself stays a closed classifier.
+//   4. Dimensional — FAILS: a single variable declaration IS
+//      EXACTLY ONE variant; mutually-exclusive alternatives. The
+//      shapes differ across variants (RegVariable carries a
+//      packing; the rest do not) — they cannot be coordinates of a
+//      single record without the illegal-state smell.
+//   5. Parameterized family — FAILS: the five are structurally
+//      heterogeneous (RegVariable carries packing; the rest are
+//      packing-less; the algebraic groundings are five distinct
+//      std/algebra structures — Semiring / OrderedRing<Int<32>> /
+//      ApproximateField / Semiring<UInt<64>> / aliased
+//      ApproximateField) — NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7).
+// Terminal: the closed five-variant Verilog variable-declaration
+// classifier; illegal kind×packing combinations are unrepresentable
+// by construction.
+type VariableDeclaration
+  = RegVariable { name: Symbol, packing: PackingShape }
+  | IntegerVariable { name: Symbol }
+  | RealVariable { name: Symbol }
+  | TimeVariable { name: Symbol }
+  | RealTimeVariable { name: Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -664,20 +695,29 @@ type VariableDeclaration {
 //
 //   - direction  input / output / inout
 //   - name       the port identifier (K-1-opaque Symbol)
-//   - packing    scalar or `[msb:lsb]` packed bit-vector
 //
-// IEEE 1364-2005 §12.3.3 also admits a per-port net-type or variable-
-// type modifier (`output reg [7:0] data` makes the port BOTH a port
-// and a procedural-assignment destination); that modifier is a
-// MATCHING `VariableDeclaration` or `NetDeclaration` in the module
-// body's items list (Practice 7 single-authority — the type-fact lives
-// in the declaration, not duplicated on the port). The port's `name`
-// is the cross-reference; the type modifier is consumed via the
-// matching item, never a parallel field here.
+// Per IEEE 1364-2005 §12.3.3 a port can carry a per-port net-type or
+// variable-type modifier (`output reg [7:0] data` makes the port
+// BOTH a port and a procedural-assignment destination); that modifier
+// is the MATCHING `NetDeclaration` or `VariableDeclaration` in the
+// module body's items list. SINGLE-AUTHORITY DISCIPLINE (INVARIANTS
+// P2, codex BLOCKING review on PR #3176): the width / packing /
+// type-fact lives EXCLUSIVELY in the matching declaration, NOT
+// duplicated as a `packing: PackingShape` field here. The port's
+// `name` is the cross-reference; downstream consumers (the bundled
+// T-4 LanguageModel grammar productions for emission; the well-
+// formedness check that every port has exactly one matching
+// declaration) resolve the type through the name lookup. The prior
+// `packing: PackingShape` field on this record was a parallel
+// representation of the width that the matching Net/Variable
+// declaration ALSO carries — exactly the P2 cost-of-change ≥ 2
+// duplicate-authority anti-pattern the codex review surfaced. The
+// inline form `input wire [7:0] data` is a parser convenience that
+// produces TWO items in the module body (the port declaration here
+// + the matching NetDeclaration), preserving single-authority.
 type PortDeclaration {
   direction: PortDirection
   name: Symbol
-  packing: PackingShape
 }
 
 
