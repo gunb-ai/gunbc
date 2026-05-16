@@ -1,0 +1,96 @@
+// src/v4/test/v2_run_preflight/probes.dag
+//
+// Scope: constructive v2-interpreter pre-flight (T-20 residual / PARSE-1
+//        precedent). Entry points for `v2-compiler run --source-root src/v4`.
+// Anchor: src/v4/DECISIONS.md T-20 + parent brief (Move 1)
+//
+// Status: probe fixtures — test/ only; not production substrate.
+
+module v4.test.v2_run_preflight.probes
+
+import v4.test.v2_run_preflight.process_exit_shim {
+  ProcessExit,
+  ExitSuccess,
+  ExitFailure,
+  exit_code_general_error,
+}
+import v4.std.nat { Nat, Zero, Succ, nat_add, nat_mul }
+import v4.std.logic { Bool, True, False, bool_boolean_algebra }
+import v4.std.node {
+  Node,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Conj,
+  Edge,
+  List,
+  node_locally_well_formed,
+  node_well_formed,
+}
+
+
+// Literals + Peano recursion (nat_add / nat_mul) + match (Branch discipline).
+
+func run_probe_nat_literals_and_recursion() -> ProcessExit {
+  let two: Nat = Succ { prev: Succ { prev: Zero } }
+  let three: Nat = Succ { prev: two }
+  let five = nat_add(a: two, b: three)
+  let six = nat_mul(a: two, b: three)
+  let check_add = nat_add(a: Zero, b: five) == five
+  let check_mul_zero = nat_mul(a: Zero, b: three) == Zero
+  let expect_six: Nat = Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } }
+  if check_add && check_mul_zero && six == expect_six {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "nat probe: unexpected arithmetic result"
+    }
+  }
+}
+
+
+// Bool + function application to algebra-carried meet (Transform discipline).
+
+func run_probe_bool_branch() -> ProcessExit {
+  let x: Bool = True
+  let y: Bool = False
+  let m = bool_boolean_algebra.bounded_lattice.lattice.meet(a: x, b: y)
+  if m == False {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "bool meet(True,False) expected False"
+    }
+  }
+}
+
+
+// Type-node connective: empty Conj (connective / edge-discipline probe).
+
+func run_probe_empty_conj_wellformed() -> ProcessExit {
+  let n: Node = Node {
+    kind: TypeNode { connective: Conj },
+    children: Empty
+  }
+  if node_locally_well_formed(n: n) && node_well_formed(n: n) {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "empty Conj node should be locally and globally well-formed"
+    }
+  }
+}
+
+
+func run_v2_preflight_all() -> ProcessExit {
+  match run_probe_nat_literals_and_recursion() {
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+    ExitSuccess => match run_probe_bool_branch() {
+      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+      ExitSuccess => run_probe_empty_conj_wellformed()
+    }
+  }
+}
