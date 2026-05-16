@@ -30,8 +30,10 @@
 //
 // Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
 // scope/env/lookup/name binding for the front-end, including method-name
-// lookup through the same canonical Symbol boundary. It canonicalizes Atom
-// use-sites to the exact binder Symbol when a local binding exists, and
+// lookup through the same canonical Symbol boundary. It consumes explicit
+// Namespace bindings; it does NOT infer binders from `EdgeLabel.Named`,
+// because Named is also the structural field-label carrier in node.dag.
+// It canonicalizes Atom use-sites when a Namespace binding exists, and
 // preserves already-canonical external/std/import Symbols at the declared
 // namespace boundary. 04_infer preserves these Symbols and owns only type
 // inference, algebra Find, cardinality propagation, and diagnostics.
@@ -67,24 +69,29 @@ import v4.std.node {
 type ResolvedTree = Node
 
 
-data resolve_reason_duplicate_binding: Symbol = resolve_reason_duplicate_binding
 data resolve_reason_malformed_tree: Symbol = resolve_reason_malformed_tree
+data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 
 
-// A scope maps an authored use-site Symbol to its canonical declaration
-// Symbol. Symbol equality is the only operation K-1 grants and is enough
-// for B-4's node-precise binding contract. A miss is not a fabricated
-// local binding: without an import/prelude table input in CP-1b, Atoms not
-// introduced by local Named edges are preserved as already-canonical
-// external/std/import Symbols from the frozen parse/namespace boundary.
-type Scope {
+// Namespace is the explicit binding authority for this stage: authored
+// use-site Symbol -> canonical declaration Symbol. It is separate from
+// `EdgeLabel`, so record fields / variant fields / declaration names do
+// not collapse into one implicit binder channel. Imports, prelude/std
+// names, method names, and local declaration binders all enter resolve
+// through this one carrier when the parser/namespace producer supplies
+// them. CP-1b's public `resolve` entry uses an empty Namespace and
+// therefore rejects unresolved Atoms fail-closed rather than fabricating
+// bindings from structural labels. A producer that has already proven an
+// external/std/import Symbol canonical records it in `canonical_symbols`.
+type Namespace {
   bindings: Map<Symbol, Symbol>
+  canonical_symbols: Map<Symbol, Bool>
 }
 
 
-type ScopeInsertResult
-  = ScopeInserted { scope: Scope }
-  | ScopeInsertRejected { diagnostic: Diagnostic }
+type Scope {
+  namespace: Namespace
+}
 
 
 type ResolveResult
@@ -98,16 +105,22 @@ type ResolveChildrenResult
 
 
 fn empty_scope() -> Scope {
-  Scope { bindings: empty_map() }
+  Scope {
+    namespace: empty_namespace()
+  }
 }
 
 
-fn duplicate_binding_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: resolve_reason_duplicate_binding,
-    at: NodeLocus { node: n },
-    correction: Unavailable { reason: AmbiguousIntent }
+fn empty_namespace() -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_map()
   }
+}
+
+
+fn scope_from_namespace(namespace: Namespace) -> Scope {
+  Scope { namespace: namespace }
 }
 
 
@@ -120,46 +133,25 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
 }
 
 
+fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: resolve_reason_unbound_symbol,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
 fn lookup_binding(scope: Scope, name: Symbol) -> Symbol? {
-  map_get(scope.bindings, name)
+  map_get(scope.namespace.bindings, name)
 }
 
 
-fn insert_binding(scope: Scope, authored: Symbol, canonical: Symbol, at: Node) -> ScopeInsertResult {
-  match lookup_binding(scope: scope, name: authored) {
-    Some { value: _ } =>
-      ScopeInsertRejected { diagnostic: duplicate_binding_diagnostic(n: at) }
-    None =>
-      ScopeInserted {
-        scope: Scope {
-          bindings: map_insert(scope.bindings, authored, canonical)
-        }
-      }
+fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
+  match map_get(namespace.canonical_symbols, name) {
+    Some { value: _ } => true
+    None => false
   }
-}
-
-
-// Named edges introduce declarations for their child subtrees. The edge
-// label's Symbol is the binder identity; after resolve, any use-site Atom
-// that refers to it carries this exact Symbol.
-fn extend_scope_with_edge(scope: Scope, e: Edge) -> ScopeInsertResult {
-  match e.label {
-    Named { name: binder } =>
-      insert_binding(scope: scope, authored: binder, canonical: binder, at: e.target)
-    Positional => ScopeInserted { scope: scope }
-  }
-}
-
-
-fn extend_scope_with_children(scope: Scope, children: List<Edge>) -> ScopeInsertResult {
-  fold(children, init: ScopeInserted { scope: scope }, f: fn(acc, e) {
-    match acc {
-      ScopeInsertRejected { diagnostic: d } =>
-        ScopeInsertRejected { diagnostic: d }
-      ScopeInserted { scope: current } =>
-        extend_scope_with_edge(scope: current, e: e)
-    }
-  })
 }
 
 
@@ -178,7 +170,11 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
         node: canonical_atom(identity: canonical)
       }
     None =>
-      ResolvedNode { node: canonical_atom(identity: identity) }
+      if namespace_has_canonical_symbol(namespace: scope.namespace, name: identity) {
+        ResolvedNode { node: canonical_atom(identity: identity) }
+      } else {
+        ResolveRejected { diagnostic: unbound_symbol_diagnostic(n: n) }
+      }
   }
 }
 
@@ -188,51 +184,43 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
     TypeNode { connective: Atom { identity: _ } } =>
       ResolvedChildren { children: [] }
     TypeNode { connective: _ } =>
-      match extend_scope_with_children(scope: scope, children: n.children) {
-        ScopeInsertRejected { diagnostic: d } => ResolveChildrenRejected { diagnostic: d }
-        ScopeInserted { scope: child_scope } =>
-          fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-            match acc {
-              ResolveChildrenRejected { diagnostic: d } =>
+      fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+        match acc {
+          ResolveChildrenRejected { diagnostic: d } =>
+            ResolveChildrenRejected { diagnostic: d }
+          ResolvedChildren { children: done } =>
+            match resolve_node(n: e.target, scope: scope) {
+              ResolveRejected { diagnostic: d } =>
                 ResolveChildrenRejected { diagnostic: d }
-              ResolvedChildren { children: done } =>
-                match resolve_node(n: e.target, scope: child_scope) {
-                  ResolveRejected { diagnostic: d } =>
-                    ResolveChildrenRejected { diagnostic: d }
-                  ResolvedNode { node: resolved_target } =>
-                    ResolvedChildren {
-                      children: list_push(done, Edge {
-                        label: e.label,
-                        target: resolved_target
-                      })
-                    }
+              ResolvedNode { node: resolved_target } =>
+                ResolvedChildren {
+                  children: list_push(done, Edge {
+                    label: e.label,
+                    target: resolved_target
+                  })
                 }
             }
-          })
-      }
+        }
+      })
     ComputationNode { behavior: _ } =>
-      match extend_scope_with_children(scope: scope, children: n.children) {
-        ScopeInsertRejected { diagnostic: d } => ResolveChildrenRejected { diagnostic: d }
-        ScopeInserted { scope: child_scope } =>
-          fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
-            match acc {
-              ResolveChildrenRejected { diagnostic: d } =>
+      fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+        match acc {
+          ResolveChildrenRejected { diagnostic: d } =>
+            ResolveChildrenRejected { diagnostic: d }
+          ResolvedChildren { children: done } =>
+            match resolve_node(n: e.target, scope: scope) {
+              ResolveRejected { diagnostic: d } =>
                 ResolveChildrenRejected { diagnostic: d }
-              ResolvedChildren { children: done } =>
-                match resolve_node(n: e.target, scope: child_scope) {
-                  ResolveRejected { diagnostic: d } =>
-                    ResolveChildrenRejected { diagnostic: d }
-                  ResolvedNode { node: resolved_target } =>
-                    ResolvedChildren {
-                      children: list_push(done, Edge {
-                        label: e.label,
-                        target: resolved_target
-                      })
-                    }
+              ResolvedNode { node: resolved_target } =>
+                ResolvedChildren {
+                  children: list_push(done, Edge {
+                    label: e.label,
+                    target: resolved_target
+                  })
                 }
             }
-          })
-      }
+        }
+      })
   }
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -264,8 +252,13 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
 
 
 fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
+  resolve_with_namespace(tree: tree, namespace: empty_namespace())
+}
+
+
+fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
   if node_well_formed(n: tree) {
-    match resolve_node(n: tree, scope: empty_scope()) {
+    match resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace)) {
       ResolveRejected { diagnostic: d } => Rejected { diagnostic: d }
       ResolvedNode { node: resolved } => Produced { value: resolved }
     }
