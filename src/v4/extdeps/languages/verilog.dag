@@ -1621,38 +1621,75 @@ type OutputPortAnsiVariableTypeKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NonAnsiPort — a non-ANSI-style Verilog module-HEADER port entry
-// (`module M (a, b, c);` — the header lists port-EXPRESSIONS only;
-// direction lives in BODY port_declaration items per IEEE 1364-2005
-// §12.3.2). Conj record (no Practice-4 ledger).
+// NonAnsiPort — one entry in a non-ANSI-style Verilog module-HEADER
+// port list (`module M (a, b, c);` / `module M (.ext(internal));` /
+// `module M (a, , c);`). IEEE 1364-2005 §12.3.2 / §A.1.3:
 //
-//   - port_expression_lexeme   the port_expression as a verbatim
-//                              lexeme (per spec grammar the
-//                              port_expression can be a bare
-//                              identifier `a`, a bit/part-select
-//                              `a[3:0]`, a concatenation `{a, b[3:0]}`,
-//                              or a renamed-port form
-//                              `.external_name(internal_expression)`).
-//                              Sub-grammar deferred to the T-4
-//                              LanguageModel via the established
-//                              body_lexeme precedent — at the
-//                              vocabulary-slice layer the slice
-//                              carries the port-expression text
-//                              losslessly; downstream
-//                              port-binding resolution is the
-//                              LanguageModel grammar's concern.
+//   port ::= [port_expression]
+//          | .port_identifier ( [port_expression] )
 //
-// Per IEEE 1364-2005 §12.3.2 the non-ANSI header carries port-
-// expressions ONLY — port direction (input/output/inout) and any
-// inline type/packing/signedness facts live in BODY
-// `port_declaration` items (see PortDeclaration below + the
-// PortDeclarationItem ModuleItem variant). The prior
-// `PortDeclaration { direction, name }` on the header port-list
-// collapsed this spec-boundary; corrected per codex BLOCKING on
-// PR #3176 2026-05-16.
-type NonAnsiPort {
-  port_expression_lexeme: String
-}
+// The spec admits TWO port forms (regular-position vs external-named-
+// binding), each with an OPTIONAL inner port_expression (the brackets
+// in both alternatives) — yielding FOUR closed alternatives. The
+// prior single-String shape collapsed all four into one mandatory
+// lexeme, losing the blank-port + external-named-binding spec forms
+// and forcing empty-string sentinel for blanks (openai-pro
+// REQUEST_CHANGES on PR #3176 sha f9159ce8b at line 1654).
+//
+// Per §12.3.2 the non-ANSI header carries port-EXPRESSIONS only —
+// port direction (input/output/inout) and any inline
+// type/packing/signedness facts live in BODY `port_declaration` items
+// (see PortDeclaration below + the PortDeclarationItem ModuleItem
+// variant). The prior `PortDeclaration { direction, name }` on the
+// header port-list collapsed this spec-boundary; corrected per codex
+// BLOCKING on PR #3176 2026-05-16. The 4-way alternative split per
+// §A.1.3 is the structural completion of that prior correction.
+//
+//   - BlankNonAnsiPort
+//       — `module M (a, , c);` — the empty header position
+//       (port_expression absent on the regular form).
+//   - ExpressionNonAnsiPort { expression_lexeme: String }
+//       — `module M (a);` — port_expression present on the regular
+//       form (bare identifier, bit/part-select, or concatenation;
+//       sub-grammar deferred via the body_lexeme precedent).
+//   - ExternalNamedBlankPort { external_name: Symbol }
+//       — `module M (.ext());` — external-named-binding form with
+//       blank inner port_expression.
+//   - ExternalNamedExpressionPort { external_name: Symbol, expression_lexeme: String }
+//       — `module M (.ext(internal));` — external-named-binding form
+//       with port_expression present.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.1.3 admits exactly these
+// four port-list-entry alternatives.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every header-port-list emitter +
+//      port-binding resolver branches on the form (blank / regular /
+//      external-named-blank / external-named-expr) uniformly; shared
+//      classifier at the port-list-entry boundary.
+//   2. Variant-is-data — FAILS: collapsing to one mandatory lexeme
+//      reintroduces the empty-string sentinel for blank ports AND
+//      drops the spec's external-named-binding form as a distinct
+//      structural fact — exactly the §A.1.3 illegal-collapse
+//      INVARIANTS P2 concern this Disj exists to dissolve.
+//   3. Algebraic form — N/A by construction: the four alternatives
+//      are the §A.1.3 spec's irreducible port-form partition.
+//   4. Dimensional — FAILS: a single port-list entry is EXACTLY ONE
+//      form; mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: the four variants carry
+//      heterogeneous payloads — BlankNonAnsiPort is nullary;
+//      ExpressionNonAnsiPort carries `{ expression_lexeme }`;
+//      ExternalNamedBlankPort carries `{ external_name }`;
+//      ExternalNamedExpressionPort carries
+//      `{ external_name, expression_lexeme }`. Practice 7.
+// Terminal: the closed four-way Verilog non-ANSI port-list-entry
+// classifier of the IEEE 1364-2005 §A.1.3 spec.
+type NonAnsiPort
+  = BlankNonAnsiPort
+  | ExpressionNonAnsiPort { expression_lexeme: String }
+  | ExternalNamedBlankPort { external_name: Symbol }
+  | ExternalNamedExpressionPort { external_name: Symbol, expression_lexeme: String }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3662,10 +3699,20 @@ type AnsiModuleItem
   | LocalParameterDeclarationItem { attributes: AttributeInstanceClause, local_parameter: LocalParameterDeclaration }
   | ModuleInstantiationItem { attributes: AttributeInstanceClause, instantiation: ModuleInstantiation }
   | DefparamDeclarationItem { attributes: AttributeInstanceClause, defparam: DefparamDeclaration }
-  | GenerateRegionItem { attributes: AttributeInstanceClause, generate_region: GenerateRegion }
+  // GenerateRegionItem carries NO attributes field — per §A.1.4
+  // generate_region is one of the module_items without an
+  // {attribute_instance} prefix in the spec grammar (openai-pro
+  // REQUEST_CHANGES on PR #3176 sha f9159ce8b — the 4ccc62675
+  // uniform-application over-admitted attributes on this variant).
+  | GenerateRegionItem { generate_region: GenerateRegion }
   | LoopGenerateConstructItem { attributes: AttributeInstanceClause, loop_generate: LoopGenerateConstruct }
   | ConditionalGenerateConstructItem { attributes: AttributeInstanceClause, conditional_generate: ConditionalGenerateConstruct }
-  | SpecifyBlockItem { attributes: AttributeInstanceClause, specify_block: SpecifyBlock }
+  // SpecifyBlockItem carries NO attributes field — per §A.1.4
+  // specify_block is one of the module_items without an
+  // {attribute_instance} prefix in the spec grammar (openai-pro
+  // REQUEST_CHANGES on PR #3176 sha f9159ce8b — same over-application
+  // correction as GenerateRegionItem above).
+  | SpecifyBlockItem { specify_block: SpecifyBlock }
   | TaskDeclarationItem { attributes: AttributeInstanceClause, task: TaskDeclaration }
   | FunctionDeclarationItem { attributes: AttributeInstanceClause, function_decl: FunctionDeclaration }
   | EventDeclarationItem { attributes: AttributeInstanceClause, event_decl: EventDeclaration }
