@@ -37,9 +37,13 @@ TestClaim CI lane.
 Interim CI (Move 3)
 -------------------
 Per brief: **DEFERRED** — no required `v2-compiler run` gate on TestClaim
-execution until T-22. CI adds an **informational** step (continue-on-error)
-that runs `scripts/v2-run-preflight.sh` (compile re-check + notice) so the
-deferral is visible in logs, not a silent drop.
+execution until T-22. The `v4` workflow adds a **non-blocking informational**
+step after bootstrap viability (`.github/workflows/ci.yml`): it sets
+`V2_PREFLIGHT_SKIP_COMPILE=1` and runs `scripts/v2-run-preflight.sh`, which
+**skips** a second `v2-compiler compile` (the prior step already compiled
+`src/v4`) and only emits the GitHub `::notice::` tying deferral to **T-22** —
+visible in logs, not a silent drop. The step is **not** `continue-on-error`
+(the script always exits 0; the flag was redundant and removed).
 
 Atom-shaped manual TestClaims
 -----------------------------
