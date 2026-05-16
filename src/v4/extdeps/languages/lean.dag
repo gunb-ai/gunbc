@@ -60,6 +60,7 @@ module v4.extdeps.languages.lean
 
 
 import v4.std.integer { Int, UInt }
+import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
