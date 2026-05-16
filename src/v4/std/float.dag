@@ -34,6 +34,24 @@
 //   - std/machine.dag: the bit-widths (Float32 / Float64)
 //   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
 //
+// D2b (operator-ratified 2026-05-16; see DECISIONS.md D2) — Float's
+//   algebra inhabitance is NOT constructive the way the integer chain is
+//   (Peano `Nat` → GroupCompletion → … fills `Int`'s inhabitance with no
+//   primitive). IEEE-754 round-to-nearest arithmetic is a genuine SPEC
+//   PRIMITIVE — irreducible, an open-system fact gunbc consumes (the
+//   open-system case INVARIANTS P1 explicitly names; not a heuristic).
+//   Each such primitive operation is modeled HERE as an **anchored
+//   primitive-operation declaration**: an opaque `Symbol` plus an
+//   `Anchor:` to the exact IEEE-754 §, referenced by name from the
+//   `ApproximateField` inhabitance's operation fields. It is DATA, not a
+//   bodiless `fn` (PARSE-1-safe — v2's frozen parser never sees a
+//   bodiless fn), and it is NOT a kernel/A1 extension: no new connective
+//   or behavior — the anchored-primitive is how an irreducible foreign
+//   operation is represented as data. A language `extdeps` file alias-
+//   identifies its `f32` / `f64` to `Float32` / `Float64` here and adds
+//   its own operation-semantics siblings (NaN/Inf handling); it does NOT
+//   re-declare the `ApproximateField` inhabitance.
+//
 // Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
