@@ -122,7 +122,6 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.lens.cost { SymbolicCost }
 import v4.std.cardinality { DescentEvidence }
 import v4.std.diagnostic { Outcome }
 import v4.std.node { Node, Symbol }

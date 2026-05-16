@@ -34,24 +34,9 @@
 module v4.lens.cost
 
 
-import v4.std.node { Symbol }
-
-
-// SymbolicCost — the single U1 realization-cost carrier. It is declared
-// here because infer records the chosen homomorphism's cost and
-// complexity projects from this value; no stage re-derives the same fact.
-//
-// `UnknownCost` is the lattice top/fail-closed floor for a genuinely
-// unmodeled research-tier class, and it carries a reason Symbol. It is
-// not a routine collapse target for textbook classes named below.
-type SymbolicCost
-  = ConstantCost
-  | LinearCost
-  | PolynomialCost { degree: Int }
-  | PolyLogCost { exponent: Int }
-  | ExponentialCost { base: Int }
-  | FactorialCost
-  | LogCost
-  | SumCost { terms: List<SymbolicCost> }
-  | ProductCost { factors: List<SymbolicCost> }
-  | UnknownCost { reason: Symbol }
+// Bridge-era note: `SymbolicCost` is already in the bootstrap-loaded
+// cost algebra (`src/v3/std/algebra.dag`). This v4 file owns the terminal
+// cost-lens authority, but it must not redeclare the same type name while
+// the v3 seed loads both std sets into one namespace. T-12 replaces this
+// note with the v4-native carrier when the old authority is no longer in
+// the same compiler namespace.
