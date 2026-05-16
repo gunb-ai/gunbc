@@ -57,9 +57,9 @@
 //   `Arrow` reached canonically via `Transform → FunctionRef → Arrow`;
 //   the `Arrow`'s `body` is *a realization declaration in `extdeps/`*
 //   (THESIS:203's primitive case — contrast the L1-sub-DAG body of a
-//   constructive op). The `ApproximateField` inhabitance declared HERE
-//   holds `FunctionRef`s to the op `Arrow` signatures; the realizations
-//   — anchored to the exact IEEE-754 § — are the per-target
+//   constructive op). A future **grounded** `ApproximateField<Float>` data
+//   witness will hold `FunctionRef`s to those op `Arrow` signatures; the
+//   realizations — anchored to the exact IEEE-754 § — are the per-target
 //   `extdeps/languages/*` resolvers (the D2.2 resolver). This file does
 //   NOT home a separate `Symbol`+`Anchor` primitive carrier referenced
 //   directly by the inhabitance — that would be the second external-
