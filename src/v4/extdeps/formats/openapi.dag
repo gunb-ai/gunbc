@@ -67,9 +67,11 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 //
 // CANONICAL-MIRROR — `Outcome<T>` seam for parse/emit (json.dag #3184
 // seam #3): when `openapi_parse` / `openapi_emit` land, they are fail-
-// closed BOTH directions using std/diagnostic.dag `Outcome<T>` (DECISIONS
-// **I**). The immutable header's `parse -> Result<…>` / `emit -> String`
-// lines reconcile the same way as csv/json/yaml (total emit superseded).
+// closed BOTH directions using std/diagnostic.dag **`Outcome<T>`** (**D1**
+// DECISIONS **I**, PR #3181). The immutable header's `parse -> Result<…>` /
+// `emit -> String` lines reconcile the same way as csv/json/yaml (total
+// emit superseded). **D2** resolver shape ratified #3195 — import/consume
+// discipline applies when operation bodies close the yaml/json surface loop.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
 // the document root, info, paths, operations, responses, media types, and
@@ -83,6 +85,15 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiHttpMethod — Path Item Object operation names (OAS 3.1.0 §Path
 // Item Object). Closed set; extension methods are NOT silently folded here.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
+// Ledger — five patterns: (1) fact placement FAILS — HTTP verb is uniform
+// across routing/emit; (2) variant-is-data FAILS — eight distinct nullary
+// constructors vs a flat tag+payload record admitting impossible mixes;
+// (3) algebraic N/A; (4) dimensional FAILS — exactly one HTTP method per
+// map slot; (5) parameterized family FAILS — not `F<X>` over one index set.
 type OpenApiHttpMethod
   = OpenApiGet
   | OpenApiPut
@@ -98,6 +109,12 @@ type OpenApiHttpMethod
 // OpenApiOptionalString — optional descriptive string fields (summary,
 // description slices) without using bare `Option<String>` (diagnostic.dag
 // P2 discipline class — prefer explicit sums for semantic optionality).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
+// five-pattern scan as `CsvEscapeSpec`-class present/absent sums (two
+// distinct shapes; no illegal mixed state in a flat record).
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
   | OpenApiStringAbsent
@@ -106,6 +123,8 @@ type OpenApiOptionalString
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiInfo — OAS Info Object (title + version are required strings at
 // the JSON surface; modeled here as mandatory fields).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 type OpenApiInfo {
   title: String,
   summary: OpenApiOptionalString,
@@ -118,6 +137,8 @@ type OpenApiInfo {
 // OpenApiMediaType — Media Type Object (OAS 3.1.0). `schema` is JSON Schema
 // (single authority: json_schema.dag). `examples`/`example` overflow and
 // encoding objects stay as JSON in `extras` until decomposed (🟡 Deferred).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#media-type-object
 type OpenApiMediaType {
   schema_shape: OpenApiMediaTypeSchemaSlot,
   extras: Map<String, JsonValue>,
@@ -126,6 +147,12 @@ type OpenApiMediaType {
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiMediaTypeSchemaSlot — schema MAY be omitted on a media type object.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#media-type-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
+// vs absent schema are genuine alternatives; flat Bool+optional record would
+// admit illegal paired states (P2 violation).
 type OpenApiMediaTypeSchemaSlot
   = OpenApiMediaSchemaPresent { schema: JsonSchema }
   | OpenApiMediaSchemaAbsent
@@ -143,9 +170,9 @@ type OpenApiResponse {
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiOperation — Operation Object slice modeled here: `operationId`,
 // `responses` map (required by OAS rules once the operation exists — empty
-// map is structurally representable but spec-invalid; validation is 🟡
-// deferred parse authority, same csv rectangularity pattern). Parameters,
-// requestBody, callbacks, security live in `extensions` until decomposed.
+// map may be structurally representable; OAS-level validity is 🟡 deferred
+// parse authority). Parameters, requestBody, callbacks, security live in
+// `extensions` until decomposed.
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
   responses: Map<String, OpenApiResponse>,
