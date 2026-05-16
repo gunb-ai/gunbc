@@ -3,8 +3,13 @@
 // Scope: hand-authored TestClaim regression anchors for the six type
 //        connectives (Atom excluded — K-1 forbids minting a Symbol value
 //        in data literals; Atom-shaped claims wait on T-22 / boundary
-//        table). v2 `compile` indexes this module today; `run` host in
-//        host.dag checks node_well_formed on each claim.input.
+//        table). v2 `compile` indexes this module today; v2 `run` claim
+//        execution is deferred per MOVE1_COVERAGE.txt until T-22.
+//        The five L1 *behaviors* (Value/Transform/Branch/Loop/Bind) are
+//        carried on computation `Node`s; authoring representative
+//        computation-node claims without pipeline-produced graphs is the
+//        same Atom/Symbol gap — tracked in MOVE1_COVERAGE.txt, not papered
+//        over here.
 // Anchor: src/v4/TASKS.md T-14 + std/node.dag + std/verification.dag
 
 module v4.test.claim.manual.connective_anchors
