@@ -155,8 +155,8 @@
 //     pins `GroundingMap`'s home under escalation (do NOT re-declare
 //     `GroundingMap` in this file — five copies = P2 parallel-declaration
 //     violation). D2a(3) operation-semantics: **this file declares none**
-//     (peer-(a)) — principal Python `int` is unbounded (docs.python.org/3/
-//     reference, datamodel numeric types) ⇒ aliases std unbounded `Int`
+//     (peer-(a)) — principal Python `int` is unbounded (https://docs.python.org/3.14/reference/
+//     datamodel.html#numeric-types-int-integers-of-unlimited-size) ⇒ aliases std unbounded `Int`
 //     when it lands ⇒ **no** `OverflowAction` / `OverflowDisposition` (not
 //     for principal `int`, not rust-carrier re-exports, not for hypothetical
 //     future rows in this fan-out). Any future primitive-specific semantics
@@ -1008,8 +1008,9 @@ type PythonCost {
 // D2a(3) THIS FILE: **zero** operation-semantics carriers (mgr brief peer-
 //   (a)) — principal Python `int` is UNBOUNDED (https://docs.python.org/3.14/reference/
 //   datamodel.html#numeric-types-int-integers-of-unlimited-size — "Integers have
-//   unbounded `Int` when that ladder lands — **no** overflow event ⇒ **no**
-//   `OverflowAction` / `OverflowDisposition` declared in python.dag at all.
+//   unlimited precision"); it aliases std unbounded `Int` when that ladder lands
+//   — **no** overflow event ⇒ **no** `OverflowAction` / `OverflowDisposition`
+//   declared in python.dag at all.
 //
 // D2.2–D2.5 / scope: encoded DECISIONS.md D2 row; B2-OMNI coercion reads
 // resolver data once D2a(2) exists; C5-1 round-trip via TestClaims — not
@@ -1020,8 +1021,9 @@ type PythonCost {
 // PythonScalar tower fact (`BoolLevel` ⊑ `IntegralLevel`); std `Bool` is the
 // abstract bivalent carrier for D2a(1).
 //
-// D2a(3) anchor (language reference — operator brief): https://docs.python.org/3/reference/
-// Spec (`bool` / numeric context): https://docs.python.org/3/reference/datamodel.html#the-standard-type-hierarchy
+// D2a(3) anchor (pinned same as file header — mgr brief reconciled to L-2):
+//   https://docs.python.org/3.14/reference/
+// Spec (`bool` / numeric context): https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 // PEP 285 (bool ⊑ int): https://peps.python.org/pep-0285/
 type PyBool = Bool
 
@@ -1035,7 +1037,7 @@ type PyBool = Bool
 // (std/integer.dag | std/float.dag ladder, T-3 Wave-A3 trigger).
 //
 // D2a(3) forward rule: any operation-semantics carrier this language needs
-// must be authored from **docs.python.org/3/reference** + Practice-4 in
+// must be authored from **https://docs.python.org/3.14/reference/** + Practice-4 in
 // substrate — **not** by copying rust.dag overflow enums into python.dag
 // (B3 parallel taxonomy).
 //
