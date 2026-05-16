@@ -231,23 +231,65 @@ type Parameter {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Component — one element instance in a SPICE netlist. Closed coproduct,
-// one variant per SPICE3 element kind (Quarles 1993 §11). Each variant
-// carries NAMED terminal slots fixing its arity by construction (P2
-// illegal states unrepresentable: a `Resistor` with three terminals is
-// not a representable value of this type). See modeling notes
+// Component — one element instance in a SPICE netlist. Coproduct over a
+// supported subset of the SPICE3 element kinds (Quarles 1993 §11). Each
+// variant carries NAMED terminal slots fixing its arity by construction
+// (P2 illegal states unrepresentable: a `Resistor` with three terminals
+// is not a representable value of this type). See modeling notes
 // "WHY CLOSED `Component` COPRODUCT" for the design rationale.
 //
-// Closed-set coverage: passives (R/C/L), independent sources (V/I),
-// semiconductor devices (D/Q/M), mutual inductance (K), subcircuit
-// invocation (X). Controlled sources (E/F/G/H), JFETs (J), transmission
-// lines (T), and switches (S/W) are not enumerated in this initial cut
-// (see modeling notes "CLOSED-SET COVERAGE"). Adding them is one
-// variant each; the ledger does not change.
+// HONESTY NOTE (PR #3168 codex review). The 10 variants below are a
+// SUBSET of SPICE3 elements, AND each enumerated variant carries only
+// the MANDATORY-positional facts for its element — not the full per-
+// element statement grammar (the optional parameters/source-spec
+// transient forms). These are two distinct coverage gaps tracked in
+// the dissolution trigger below:
+//   (a) ELEMENT-KIND COVERAGE — enumerated: R, C, L (passives);
+//       V, I (independent sources); D, Q, M (semiconductor devices);
+//       K (mutual inductance); X (subcircuit invocation). NOT yet
+//       enumerated: E, F, G, H (controlled sources), J (JFET), T
+//       (transmission line), S, W (switches). Quarles 1993 §11.
+//   (b) PER-VARIANT GRAMMAR COVERAGE — each enumerated variant is a
+//       MANDATORY-FIELDS-ONLY shape; the spec's optional facts are
+//       not yet modeled:
+//         - Resistor / Capacitor / Inductor: optional `TC=...`
+//           temperature coefficients, `TEMP=...`, IC / initial-current
+//           for L; optional `.MODEL` reference (R/C/L can be model-
+//           referenced in SPICE3 §11.1).
+//         - Diode: optional `AREA`, `OFF`, `IC=Vd`.
+//         - Bjt: optional fourth terminal (substrate), `AREA`, `OFF`,
+//           `IC=Vbe,Vce`.
+//         - Mosfet: optional `L`/`W` (already in `parameters`),
+//           `AD`/`AS`/`PD`/`PS`/`NRD`/`NRS`/`OFF`/`IC=Vds,Vgs,Vbs` —
+//           current `parameters: List<Parameter>` admits these by
+//           lexeme but does not type-enforce their names.
+//         - VoltageSource / CurrentSource: SPICE3 §11.2 transient
+//           source spec — `DC`/`AC` magnitude+phase + `PULSE`/`SIN`/
+//           `EXP`/`PWL`/`SFFM` parameterized waveforms. The current
+//           `value: SpiceValue` slot carries only the DC magnitude
+//           lexeme.
+//         - MutualInductance: complete for the basic form (linear
+//           mutual inductance, no `.MODEL` reference); SPICE3 also
+//           supports nonlinear-core model-referenced form.
+//         - SubcircuitCall: complete by construction (the `terminals`
+//           list + `parameters` list span the syntax).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
+// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
+// structural shape (one variant per SPICE3 element kind with named
+// terminal slots) is the right form; what makes it YELLOW is the two
+// coverage gaps enumerated above — the richer source (the full
+// SPICE3 §11 element grammar) exists in the spec but is not yet
+// modeled here.
+//   Named trigger: when (a) all SPICE3 elements (E/F/G/H/J/T/S/W) are
+//   added as variants AND (b) each enumerated variant carries its
+//   full SPICE3 §11 statement grammar (optional parameters made
+//   structural rather than lexeme-only; transient source specs as
+//   typed sub-coproducts; optional terminals via per-variant named
+//   slots — NOT by `Option<NodeRef>` or sentinel value), the SUM
+//   reclassifies 🟢 GREEN. Tied to `ModelKind`'s 🟡 trigger above
+//   (the two dissolve as one sweep — same SPICE3 authority).
+// Five patterns attempted on the SUM (all FAIL to dissolve it):
 //   1. Fact placement — FAILS: every netlist consumer (well-formedness
 //      check, simulator-driver, emit) dispatches on ALL kinds (a
 //      netlist walker handles each element type uniformly); kind is a
@@ -279,10 +321,10 @@ type Parameter {
 //      illegal arities representable — Practice-7 fails on the same
 //      structural-heterogeneity ground that Practice-2 (variant-is-
 //      data) does.
-// Terminal: the closed SPICE3 element set as a coproduct with per-kind
-// terminal-arity enforced structurally; a 7th element kind (E/F/G/H/J/
-// T/S/W or a spec extension) is a one-variant addition, cost-of-change
-// = 1, no parallel representation forced elsewhere.
+// On dissolution (when the trigger fires) the SUM IS the closed SPICE3
+// element set as a coproduct with per-kind terminal-arity AND per-kind
+// statement-grammar enforced structurally; cost-of-change is 1 (per-
+// variant edit), no parallel representation forced elsewhere.
 type Component
   = Resistor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Capacitor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
@@ -402,22 +444,48 @@ type AcSweepKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Directive — a SPICE control statement (the dot-prefixed cards;
-// Quarles 1993 §11.5). Closed coproduct over the core analysis +
-// control set; each variant carries the parameters the spec requires
-// for that directive.
+// Directive — a SPICE analysis or control statement (the dot-prefixed
+// cards; Quarles 1993 §11.5). Each variant carries the parameters the
+// spec requires for that directive.
+//
+// `.END` IS NOT A `Directive` VARIANT (PR #3168 codex review). `.END`
+// is the SPICE3 FILE TERMINATOR (Quarles 1993 §2.4): exactly one,
+// always last, never repeatable. Placing it as a `Directive` variant
+// + carrying it in a `directives: List<Directive>` admits illegal
+// states (zero `.End`s, multiple `.End`s, `.End` not in tail
+// position) — INVARIANTS P2 violation, the same shape modeling-
+// discipline.md Practice 2/6 forbid in `Component`. The file
+// terminator is owned by the parse/emit DISCIPLINE, not the data
+// model: parse success structurally requires exactly one trailing
+// `.END` (absence / duplication / mid-position is a Diagnostic);
+// emit always appends `.END` after the last directive. There is no
+// data shape it could correctly take here.
 //
 // Closed-set coverage (initial cut): `.OP`, `.TRAN`, `.DC`, `.AC`,
-// `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`, `.END`. The remaining
-// SPICE3 directives (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`,
-// `.PRINT`, `.PLOT`, `.SAVE`, `.LIB`) are not enumerated in this
-// initial cut for the same reason as `Component`'s subset coverage
-// (modeling notes "CLOSED-SET COVERAGE") — adding them is one variant
-// each, ledger unchanged.
+// `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`. The remaining SPICE3
+// directives (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`, `.PRINT`,
+// `.PLOT`, `.SAVE`, `.LIB`) are not enumerated in this initial cut —
+// the same subset-coverage concern as `Component` / `ModelKind`,
+// tracked by the YELLOW classification + named trigger below.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
+// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
+// structural shape (one variant per SPICE3 analysis/control directive
+// with mandatory-parameter slots) is the right form; what makes it
+// YELLOW is the INCOMPLETE COVERAGE of the closed SPICE3 directive
+// authority — the richer source (the remaining nine directives
+// enumerated above) exists in the spec but is not yet modeled here.
+// `.End`'s absence is NOT part of the YELLOW debt — by construction
+// it does not belong in this SUM at all (header note above).
+//   Named trigger: when the remaining SPICE3 §11.5 directives
+//   (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`, `.PRINT`, `.PLOT`,
+//   `.SAVE`, `.LIB`) are added as variants — each with its mandatory-
+//   parameter slots typed structurally, no `parameters: List<
+//   Parameter>` catch-all — the SUM reclassifies 🟢 GREEN. Tied
+//   conceptually to `Component`'s 🟡 trigger (same SPICE3 authority),
+//   but a separate sweep because the directive set is disjoint from
+//   the element set.
+// Five patterns attempted on the SUM (all FAIL to dissolve it):
 //   1. Fact placement — FAILS: every netlist consumer (analysis-driver,
 //      emitter) dispatches on the directive kind to know what to do
 //      (run a transient analysis, set an initial condition, include a
@@ -437,9 +505,10 @@ type AcSweepKind
 //   5. Parameterized family — FAILS: the variants are structurally
 //      heterogeneous (different field counts and shapes), not `F<X>`
 //      over a declared set; not a Practice-7 projection.
-// Terminal: the closed SPICE3 directive set as a coproduct, per-kind
-// payload shape enforced structurally; a new directive is one variant,
-// no parallel representation forced elsewhere.
+// On dissolution (when the trigger fires) the SUM IS the closed
+// SPICE3 directive set as a coproduct with per-kind payload shape
+// enforced structurally; cost-of-change is 1 (per-variant edit), no
+// parallel representation forced elsewhere.
 type Directive
   = Op
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
@@ -449,7 +518,6 @@ type Directive
   | NodeSet { node: NodeRef, value: SpiceValue }
   | Options { parameters: List<Parameter> }
   | Include { path: String }
-  | End
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -481,6 +549,16 @@ type SubcircuitDefinition {
 // SpiceNetlist — the top-level deck. The title is the first line of
 // any SPICE deck (Quarles 1993 §2); the spec treats it as a required
 // label, not a comment.
+//
+// `.END` IS NOT A FIELD HERE (PR #3168 codex review). The SPICE3
+// file terminator is a STRUCTURAL fact owned by parse/emit, not
+// netlist data: parse success structurally requires exactly one
+// trailing `.END` (absence / duplication / mid-position = Diagnostic);
+// emit always appends `.END` after the last directive. Carrying it as
+// a `Directive` variant in `directives: List<Directive>` or as a
+// `terminator: End` field would admit zero / multiple / misplaced
+// terminators as representable values — INVARIANTS P2. See the
+// `Directive` declaration's header note for the full rationale.
 //
 // Lists are non-empty by no structural constraint at this layer —
 // SPICE3 admits empty body sections (a deck with only directives is
