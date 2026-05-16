@@ -8,8 +8,8 @@
 //         the floating `/3/` (per operator BLOCKING review on PR #3180:
 //         extdeps.md requires a declared spec version so upstream
 //         Python changes cannot silently mutate this substrate). The
-//         carriers below — PythonNumericTower, PythonStringKind,
-//         PythonSingletonKind, PythonScalar — are pinned to this
+//         carriers below — PythonNumericTower, PythonSingletonKind,
+//         PythonScalar — are pinned to this
 //         release; when a future Python release modifies the standard
 //         type hierarchy (a new singleton type joins; the numeric-tower
 //         ABC partition is revised; a new sequence-kind enters the
@@ -77,12 +77,18 @@
 //       (NotImplementedType), `Ellipsis` (EllipsisType). Each has
 //       exactly one inhabitant per the spec; the empty-cardinality
 //       fact rides std/cardinality.dag (T-3 wave A3).
-//   (d) MUTABILITY DEGENERATE AT SCALAR LAYER. Among Python's scalar
-//       kinds, only `bytearray` is mutable; the other nine are
-//       structurally immutable per the Reference. A separate
-//       PythonMutability axis would be degenerate at the scalar
-//       layer — only meaningful at the container layer (list / set
-//       / dict, scope-negative for this slice).
+//   (d) SCALARS ARE NUMERIC + SINGLETON ONLY (no sequences).
+//       Reference 3.14 §3.2.5.1 / §3.2.5.2 partition `str` / `bytes`
+//       / `bytearray` (and `tuple` / `list` / `range`) as
+//       SEQUENCES, not scalars. Python's scalar primitive partition
+//       at the type-vocabulary layer is therefore exactly Numeric
+//       (§3.2.4) + Singleton (§3.2.1 / §3.2.2 / §3.2.3). The earlier
+//       inclusion of a String-sequence category in PythonScalar
+//       collapsed the sequence/container boundary into the scalar
+//       vocabulary — operator BLOCKING on PR #3180 corrected this
+//       2026-05-16 per Reference 3.14 fidelity. Mutability admits
+//       no scalar-layer axis (no scalar is mutable; bytearray is a
+//       sequence, scope-negative); see SCOPE NEGATIVE below.
 //
 // Owns (this slice — REVISED from scaffold; scaffold's "Python
 //   primitives + data model" + "emission rules" + "cost realization
@@ -94,25 +100,25 @@
 //     Integral / Real / Complex — the closed 4-level PEP 285 + PEP 3141
 //     partition, with the partial-order Bool ⊑ Integral ⊑ Real ⊑
 //     Complex structurally derived from the closed enum)
-//   - Python string/byte-sequence kind: PythonStringKind (Str / Bytes /
-//     Bytearray — the closed 3-way Reference §3.2 textual / byte-
-//     sequence partition; mutability is fixed per variant —
-//     Str/Bytes immutable, Bytearray mutable — STRUCTURALLY
-//     UNREPRESENTABLE to mix)
 //   - Python singleton kind: PythonSingletonKind (NoneT /
-//     NotImplementedT / EllipsisT — the closed 3-way Reference §3.2
-//     singleton-types partition; each has exactly one inhabitant)
-//   - Python typed-scalar sum: PythonScalar (the 3-variant Disj with
-//     named-field nested-kind payloads — Numeric / String /
-//     Singleton; serves BOTH the top-level 3-category kind
-//     classifier role AND the typed-value role in one carrier
-//     because Python's spec has no orthogonal width axis for the
-//     typed-value layer to add — see PythonScalar's modeling note
-//     for the Python-vs-rust structural-difference rationale.
-//     Illegal cross-category combinations like "a Singleton with a
-//     numeric tower level" are STRUCTURALLY UNREPRESENTABLE, because
-//     each variant carries exactly the sub-classifier its category
-//     admits)
+//     NotImplementedT / EllipsisT — the closed 3-way Reference 3.14
+//     §3.2.1 / §3.2.2 / §3.2.3 singleton-types partition; each has
+//     exactly one inhabitant)
+//   - Python typed-scalar sum: PythonScalar (the 2-variant Disj with
+//     named-field nested-kind payloads — Numeric / Singleton; serves
+//     BOTH the top-level 2-category kind classifier role AND the
+//     typed-value role in one carrier because Python's spec has no
+//     orthogonal width axis for the typed-value layer to add — see
+//     PythonScalar's modeling note for the Python-vs-rust
+//     structural-difference rationale. Illegal cross-category
+//     combinations like "a Singleton with a numeric tower level"
+//     are STRUCTURALLY UNREPRESENTABLE, because each variant carries
+//     exactly the sub-classifier its category admits. SEQUENCE
+//     types — `str` / `bytes` / `bytearray` per Reference 3.14
+//     §3.2.5.1 / §3.2.5.2 — are NOT scalars and are scope-negative
+//     for this slice; see SCOPE NEGATIVE in modeling notes for the
+//     fidelity correction landed 2026-05-16 per operator codex
+//     BLOCKING.)
 //   - Python per-target cost-realization carrier shape: PythonCost
 //     (per-spec-operation + per-allocation components per Reference
 //     §6/§8 — NOT per CPython bytecode op, which is implementation
@@ -326,9 +332,14 @@ module v4.extdeps.languages.python
 //     binding-level structural fact like Rust's `let mut`) means the
 //     BINDING-LEVEL mutability axis Rust carries (`let` vs `let mut`)
 //     COLLAPSES in Python — every binding is mutable at the
-//     binding-level. The OBJECT-LEVEL mutability (which scalar kinds
-//     admit in-place mutation: bytearray vs str/bytes) is a structural
-//     fact on the OBJECT's type, declared via PythonStringKind below.
+//     binding-level. The OBJECT-LEVEL mutability (which built-in
+//     types admit in-place mutation — `bytearray` / `list` / `set` /
+//     `dict` vs immutable `str` / `bytes` / `tuple` / `frozenset`)
+//     is a STRUCTURAL fact on the OBJECT's type per Reference 3.14
+//     §3.2.5.1 (Immutable sequences) / §3.2.5.2 (Mutable sequences)
+//     — modeled at the future sequence-carrier layer (scope-negative
+//     for this slice; see SCOPE NEGATIVE), NOT here on PythonScalar
+//     since sequences are not scalars.
 //
 //   - MATCH (`match expr: case pat: ...`, PEP 634 / Python 3.10+) ↦
 //     Branch. Python's match against a value is structural pattern
@@ -404,10 +415,12 @@ module v4.extdeps.languages.python
 //     rust analog (RustReferenceKind + RustReference, lifetime
 //     Symbol) DOES NOT APPLY to Python — no PythonReferenceKind
 //     carrier is declared, by spec. The OBJECT-level mutability
-//     surfaces as the PythonStringKind partition (Str / Bytes
-//     immutable vs Bytearray mutable) and at the container layer
-//     (list / tuple / set / frozenset / dict — scope-negative for
-//     this slice).
+//     surfaces at the sequence/container layer per Reference 3.14
+//     §3.2.5 (immutable `str` / `bytes` / `tuple` / `frozenset` vs
+//     mutable `bytearray` / `list` / `set` / `dict`) — scope-
+//     negative for this slice; lands via a future PythonSequence /
+//     PythonContainer carrier when sequence/container types are
+//     needed.
 //
 // CONCLUSION. The type-system half of Python's spec fits the
 // existing substrate with no new connectives, no new behaviors, no
@@ -418,19 +431,34 @@ module v4.extdeps.languages.python
 // contract of THIS file immutable.
 //
 // SCOPE NEGATIVE (operator-tier, do not work around).
-//   - Container types (`list`, `tuple`, `set`, `frozenset`, `dict`,
-//     `range`). Per the Reference §3.2 these are the SEQUENCE / SET /
-//     MAPPING categories — NOT primitive scalars. Modeling them
-//     requires a generic container-type carrier (Conj over an
-//     element-type list + mutability tag + a Cardinality bound),
-//     which composes over std/cardinality.dag's refinement substrate
-//     (T-3) when that lands. Until then container types are out-of-
-//     scope for this slice; emitting `[]` / `()` / `{}` as Value
-//     literals is fine (they are Value Nodes) but the type carriers
-//     are deferred to the container-types substrate. (Tuples in
-//     particular: rust.dag #3174 declared its tuple-types
-//     scope-negative under exactly this framing; Python tuples sit
-//     in the same scope-negative bucket.)
+//   - Sequence types (`str`, `bytes`, `bytearray`, `tuple`, `list`,
+//     `range`) AND set types (`set`, `frozenset`) AND mapping types
+//     (`dict`). Per Reference 3.14 §3.2.5.1 (Immutable sequences:
+//     str / bytes / tuple) / §3.2.5.2 (Mutable sequences: bytearray
+//     / list) / §3.2.5 (range — semantically immutable sequence) /
+//     §3.2.6 (Set types: set / frozenset) / §3.2.7 (Mappings: dict)
+//     these are SEQUENCE / SET / MAPPING categories — NOT scalars.
+//     The Reference partitions them in a section structurally
+//     SEPARATE from scalars (§3.2.4 numerics + §3.2.1-3 singletons),
+//     and conflating them with scalars gives downstream consumers
+//     the wrong built-in type shape (operator BLOCKING on PR #3180
+//     codex 2026-05-16 corrected the earlier String-in-PythonScalar
+//     drift; INVARIANTS P1 modeling-faithfulness restored).
+//     Modeling sequences/sets/mappings requires a generic carrier
+//     (Conj over element-type + mutability tag + Cardinality bound,
+//     plus per-kind sub-classifiers like character-codomain for
+//     str/bytes), which composes over std/cardinality.dag's
+//     refinement substrate (T-3) when that lands. Until then these
+//     types are out-of-scope; emitting `[]` / `()` / `{}` / `""` /
+//     `b""` as Value literals is fine (they are Value Nodes) but
+//     the type carriers ride a future PythonSequence /
+//     PythonContainer carrier — separate from PythonScalar.
+//     (Rust.dag #3174 declared its tuple-types scope-negative under
+//     exactly this framing; Python's sequences sit in the same
+//     scope-negative bucket. The difference vs rust: rust's `str`
+//     is in the Rust Reference's "primitive types" section §3.5,
+//     so rust groups `str` with primitives; Python's spec puts
+//     `str` in §3.2.5.1 sequences, so Python does NOT.)
 //   - The full Python GRAMMAR production set (statement syntax,
 //     expression syntax, comprehensions, pattern syntax, decorator
 //     syntax, type-annotation syntax). Owned by the bundled T-4
@@ -595,87 +623,21 @@ type PythonNumericTower
   | ComplexLevel
 
 
-// ─────────────────────────────────────────────────────────────────────
-// PythonStringKind — the closed Python textual / byte-sequence kind
-// classifier. Per Reference §3.2 the-standard-type-hierarchy
-// sequences section, Python's primitive string-like types partition
-// into exactly three kinds; the mutability tag is FIXED per kind by
-// spec (Str and Bytes are immutable sequence types; Bytearray is the
-// only mutable byte-sequence primitive), so this enum's variants
-// encode mutability admissibility STRUCTURALLY — a "Bytes that is
-// mutable" combination is unrepresentable.
-//
-//   - Str        — `str`       Unicode string (immutable;
-//                              FreeMonoid<UnicodeScalarValue> per the
-//                              Reference §3.2 textual-types section
-//                              and PEP 3100; `str` was unified to
-//                              Unicode in Python 3)
-//   - Bytes      — `bytes`     immutable byte sequence
-//                              (FreeMonoid<Byte>)
-//   - Bytearray  — `bytearray` mutable byte sequence (the ONLY
-//                              mutable scalar primitive in Python's
-//                              spec; the structural mutability fact
-//                              that distinguishes this variant from
-//                              Bytes)
-//
-// CLOSED (C1 stop-signal). A fourth string-kind primitive (e.g.
-// memoryview promoted to primitive — currently a built-in but
-// modeled as a view / buffer-protocol carrier, not a primitive byte
-// sequence) is an edit to THIS declaration under the L-2 pin
-// discipline.
-//
-// Spec: https://docs.python.org/3.14/reference/datamodel.html#types
-//       (Reference §3.2 textual / sequence types — Str / Bytes /
-//       Bytearray subsections) + https://peps.python.org/pep-3100/
-//       (Python 3 str/bytes unification).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every string-typed-value consumer
-//      (literal parsing — the `"…"` / `b"…"` / `bytearray(b"…")`
-//      productions; emission of textual / byte-sequence syntax;
-//      cost-realization for sequence operations) reads the string
-//      kind uniformly; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ kind: Symbol, mutable: Bool }`
-//      proxy reintroduces TWO illegal states the closed Disj
-//      forbids: (a) a readable-string-as-tag heuristic surface K-1
-//      forecloses (a `match kind { "str" => … }` smell), and (b)
-//      the "Bytes with mutable=true" combination that the Reference
-//      partitions as a separate type (Bytearray). The 3-variant
-//      Disj with FIXED-mutability-per-variant IS the dissolved form
-//      (P2 + Practice 2/6 + M4).
-//   3. Algebraic form — PARTIAL: each kind grounds in a free-monoid
-//      construction (Str → FreeMonoid<UnicodeScalarValue> per the
-//      Reference's Unicode textual semantics; Bytes / Bytearray →
-//      FreeMonoid<Byte>, with Bytearray additionally inhabiting
-//      MutableSequence — a Cardinality + interior-mutation
-//      structural fact). That grounding IS the inhabitance walk
-//      owned by std/text.dag / std/cardinality.dag (T-3 wave A3)
-//      per P2; the kind enum stays a closed classifier; the "kind
-//      → algebra" map is the future inhabitance walk, not a richer
-//      std/ source to collapse this enum INTO.
-//   4. Dimensional — FAILS: a single Python string-typed value has
-//      EXACTLY ONE kind; `b"raw"` is Bytes (not Str-with-mutable-
-//      view); `bytearray(…)` is Bytearray (not Bytes-with-mutability-
-//      flag). The kind × mutability admissibility is structurally
-//      determined by the kind alone (mutability is fixed per kind);
-//      there are no simultaneous coordinates.
-//   5. Parameterized family — FAILS: the three kinds are the
-//      Python Reference's primitive-string-like partition; they are
-//      NOT one generic `F<X>` / projection over a separately-
-//      declared source set (Practice 7). The variants correspond to
-//      STRUCTURALLY DISTINCT character-codomains (UnicodeScalarValue
-//      for Str; Byte for Bytes / Bytearray) AND structurally
-//      distinct mutability disciplines (immutable for Str / Bytes;
-//      mutable for Bytearray) — they are not projection-uniform
-//      over any richer source.
-// Terminal: the closed three-way Python primitive-string-kind
-// classifier with structural mutability discrimination; the
-// Reference §3.2 partition is irreducible at this scalar layer.
-type PythonStringKind
-  = Str
-  | Bytes
-  | Bytearray
+// (PythonStringKind REMOVED 2026-05-16 per operator BLOCKING review
+// codex on PR #3180: Python Reference 3.14 §3.2.5.1 / §3.2.5.2
+// partitions `str` / `bytes` / `bytearray` as SEQUENCES — `str` and
+// `bytes` under "Immutable sequences", `bytearray` under "Mutable
+// sequences" — NOT as scalars. The prior PythonStringKind enum and
+// its inclusion in PythonScalar collapsed the sequence/container
+// boundary into the scalar vocabulary, giving downstream consumers
+// the wrong built-in type shape (INVARIANTS P1 modeling-faithfulness
+// / extdeps fidelity violated against the pinned 3.14 spec). Sequences
+// (str / bytes / bytearray / tuple / list / range / set / frozenset
+// / dict / etc.) are now uniformly scope-negative for this slice; see
+// SCOPE NEGATIVE in the header. A future PythonSequence carrier will
+// model them per the Reference §3.2.5 / §3.2.6 / §3.2.7 partitions
+// when sequence/container types are needed — separate from
+// PythonScalar.)
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -768,31 +730,27 @@ type PythonSingletonKind
 
 // ─────────────────────────────────────────────────────────────────────
 // PythonScalar — the closed Python top-level primitive-scalar
-// typed-value Disj. Per Reference §3.2 the-standard-type-hierarchy
-// the BUILT-IN primitive scalars partition into exactly three
-// categories — Numeric (the four numeric-tower levels), String (the
-// three textual / byte-sequence kinds), and Singleton (the three
-// spec-defined one-inhabitant types).
+// typed-value Disj. Per Python Reference 3.14 §3.2 the-standard-type-
+// hierarchy the BUILT-IN scalar primitives partition into exactly
+// two categories: §3.2.4 numeric types (the four numeric-tower
+// levels) and §3.2.1 / §3.2.2 / §3.2.3 singleton types (the three
+// spec-defined one-inhabitant types None / NotImplemented /
+// Ellipsis).
 //
-// SINGLE-CARRIER CONSOLIDATION (the Python-vs-rust structural
-// difference, naming-drift correction per operator BLOCKING review
-// codex on PR #3180). The rust.dag #3174 precedent declares TWO
-// scalar carriers — RustScalarKind (the flat 6-way meta-enum
-// classifier) and RustScalar (the Disj-with-payloads typed-value
-// form with kind×width admissibility). Those two are at different
-// layers in rust because the typed-value form needs WIDTH payloads
-// the meta-classifier doesn't. Python has NO orthogonal width axis
-// (see header Python-particulars (a) — int is arbitrary-precision,
-// float is machine-level double precision, no per-kind width
-// discriminator). So the meta-classifier and the typed-value form
-// COLLAPSE INTO ONE Disj in Python: PythonScalar's variants
-// (Numeric / String / Singleton) ARE the 3-category meta-tags AND
-// the typed-value variants in one — there is no separate
-// `PythonScalarKind` because there is no orthogonal axis for it
-// to factor across. The earlier doc references to a separate
-// `PythonScalarKind` were doc-vs-code drift; PythonScalar is the
-// single canonical carrier (P1 modeling-faithfulness / live-state
-// documentation per the codex finding that drove this correction).
+// SEQUENCES ARE NOT SCALARS (refactored 2026-05-16 per operator
+// BLOCKING review codex on PR #3180): Python Reference 3.14 §3.2.5.1
+// (Immutable sequences) partitions `str` and `bytes` as sequences;
+// §3.2.5.2 (Mutable sequences) partitions `bytearray` as a sequence.
+// The prior `String { kind: PythonStringKind }` variant of
+// PythonScalar collapsed the sequence/container boundary into the
+// scalar vocabulary, giving downstream consumers the wrong built-in
+// type shape (INVARIANTS P1 modeling-faithfulness / extdeps fidelity
+// violated against the pinned 3.14 spec). Sequences (str / bytes /
+// bytearray / tuple / list / range) are now uniformly scope-negative
+// for this slice and named in SCOPE NEGATIVE in the header; a future
+// PythonSequence carrier will model them per the Reference §3.2.5
+// partition when sequence/container types are needed — separate from
+// PythonScalar.
 //
 // The variant payloads carry the sub-classifier kind, making the
 // Cartesian product of "category × in-category-kind" STRUCTURALLY
@@ -808,10 +766,6 @@ type PythonSingletonKind
 //                  `int`; Numeric { tower: BoolLevel } is `bool` —
 //                  whose subtype relationship to IntegralLevel is
 //                  the tower's structural fact, not a parallel kind.
-//   - String     — { kind: PythonStringKind }
-//                  e.g. String { kind: Str } is Python's `str`;
-//                  String { kind: Bytearray } is `bytearray` — whose
-//                  mutability is the kind's structural fact.
 //   - Singleton  — { kind: PythonSingletonKind }
 //                  e.g. Singleton { kind: NoneT } is the type of
 //                  `None`; Singleton { kind: EllipsisT } is the type
@@ -820,41 +774,48 @@ type PythonSingletonKind
 // The structural argument for the Disj-with-payloads (vs rust's
 // `RustScalarKind` flat 6-way enum and ptx's `RegisterScalarKind`
 // flat 5-way enum): rust and ptx have FLAT primitive partitions
-// where every variant's structural shape is the same kind tag (rust's
-// Int / Float / Bool / Char / Str / Never; ptx's Bits / Unsigned /
-// Signed / Float / Predicate). Python's primitive partition is
-// HIERARCHICAL — a three-category top with structurally distinct
-// sub-classifiers per category (numeric tower / string kind /
-// singleton kind). A flat 10-variant enum (Int / Float / Bool /
-// Complex / Str / Bytes / Bytearray / NoneT / NotImplementedT /
-// EllipsisT) would lose the category structure the Reference makes
-// explicit; a Conj record `{ category, tower?, string_kind?,
-// singleton_kind? }` would ratify illegal cross-category
-// combinations. The 3-category Disj-with-payloads is the dissolved
+// where every variant's structural shape is the same kind tag
+// (rust's Int / Float / Bool / Char / Str / Never; ptx's Bits /
+// Unsigned / Signed / Float / Predicate). Python's primitive scalar
+// partition is HIERARCHICAL — a two-category top with structurally
+// distinct sub-classifiers per category (numeric tower / singleton
+// kind). A flat 7-variant enum (Int / Float / Bool / Complex /
+// NoneT / NotImplementedT / EllipsisT) would lose the category
+// structure the Reference makes explicit; a Conj record `{ category,
+// tower?, singleton_kind? }` would ratify illegal cross-category
+// combinations. The 2-category Disj-with-payloads is the dissolved
 // form: each variant carries EXACTLY the sub-classifier its category
 // admits, and no illegal cross-category combination is constructible.
 //
-// CLOSED (C1 stop-signal). A fourth top-level category is an edit
-// to THIS declaration under the L-2 pin discipline (the Reference's
-// SCALAR partition has been stable at Numeric / String / Singleton +
-// the SEQUENCE / SET / MAPPING / CALLABLE / MODULE / CLASS / INSTANCE
-// container categories — the latter scope-negative for this slice;
-// container types are not scalars).
+// SINGLE-CARRIER CONSOLIDATION (the Python-vs-rust structural
+// difference). The rust.dag #3174 precedent declares TWO scalar
+// carriers — RustScalarKind (flat meta-enum) and RustScalar (Disj-
+// with-payloads typed-value). Python has no orthogonal width axis
+// (header Python-particulars (a)), so the meta-classifier and typed-
+// value form collapse into PythonScalar — its variants are both the
+// category meta-tags AND the typed values. No separate
+// `PythonScalarKind` exists because no orthogonal axis to factor
+// across exists.
+//
+// CLOSED (C1 stop-signal). A third top-level scalar category is an
+// edit to THIS declaration under the L-2 pin discipline (Reference
+// 3.14 §3.2.4 / §3.2.1-3 partition the scalar primitives as Numeric
+// + Singleton; SEQUENCE / SET / MAPPING / CALLABLE / MODULE / CLASS
+// / INSTANCE categories are scope-negative — they are not scalars).
 //
 // Spec: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 //       (Reference §3.2 the standard type hierarchy — the top-level
-//       partition this enum encodes).
+//       partition this enum encodes; specifically §3.2.4 for
+//       numerics and §3.2.1 / §3.2.2 / §3.2.3 for singletons).
 //
 // SEAM (where D2 inhabitance plugs in). When the D2 form decision
 // lands (operator-pending, msg_640d429c), the per-variant
 // inhabitance instance-values land in this file with these typed
 // variants as their carriers — Numeric { tower: IntegralLevel } is
 // the carrier for Python's `int` inhabitance into Integral (or its
-// v4-equivalent per the D2-ratified form); String { kind: Str } is
-// the carrier for `str` → FreeMonoid<UnicodeScalarValue>; Singleton
-// { kind: NoneT } is the carrier for `None` → one-cardinality. The
-// seam itself is the typed variant; the inhabitance value is the
-// deferred row.
+// v4-equivalent per the D2-ratified form); Singleton { kind: NoneT }
+// is the carrier for `None` → one-cardinality. The seam itself is
+// the typed variant; the inhabitance value is the deferred row.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -865,29 +826,27 @@ type PythonSingletonKind
 //      not scattered.
 //   2. Variant-is-data — FAILS: collapsing the variants to a
 //      uniform record `{ category: PythonCategory, tower:
-//      Option<…>, string_kind: Option<…>, singleton_kind:
-//      Option<…> }` reintroduces illegal cross-category
-//      combinations (a Singleton carrying a numeric tower level;
-//      a Numeric with no tower set) the 3-variant Disj-with-
-//      payloads exists to forbid. The 3-variant Disj IS the
-//      dissolved form (P2 + Practice 2/6 + M4 — same argument as
-//      rust.dag RustScalar).
+//      Option<…>, singleton_kind: Option<…> }` reintroduces
+//      illegal cross-category combinations (a Singleton carrying
+//      a numeric tower level; a Numeric with no tower set) the
+//      2-variant Disj-with-payloads exists to forbid. The
+//      2-variant Disj IS the dissolved form (P2 + Practice 2/6 +
+//      M4 — same argument as rust.dag RustScalar).
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
 //      algebra or cardinality structure (Numeric → per-tower-level
-//      algebra per the PythonNumericTower ledger; String → free-
-//      monoid construction per the PythonStringKind ledger;
-//      Singleton → one-cardinality per std/cardinality.dag). That
-//      grounding IS the inhabitance walk owned ELSEWHERE per P2;
-//      the Disj structure here is the closed surface, not a
-//      collapsing target.
+//      algebra per the PythonNumericTower ledger; Singleton →
+//      one-cardinality per std/cardinality.dag). That grounding IS
+//      the inhabitance walk owned ELSEWHERE per P2; the Disj
+//      structure here is the closed surface, not a collapsing
+//      target.
 //   4. Dimensional — FAILS: a single Python scalar value IS
 //      EXACTLY ONE variant of this Disj; mutually-exclusive
 //      alternatives. The shapes differ across variants (each
 //      carries its category-specific sub-classifier; the categories
 //      are disjoint) — they cannot be coordinates of a single
 //      record without the illegal-state smell.
-//   5. Parameterized family — FAILS: the three category variants
-//      are NOT one generic `F<X>` / projection over a separately-
+//   5. Parameterized family — FAILS: the two category variants are
+//      NOT one generic `F<X>` / projection over a separately-
 //      declared source set (Practice 7). The PTX RegisterScalar
 //      pattern (Conj-record over (kind, width, state_space)) was
 //      projection-uniform; the rust RustScalar pattern (Disj-with-
@@ -895,19 +854,21 @@ type PythonSingletonKind
 //      kind enum; Python's PythonScalar pattern is projection-
 //      non-uniform over a HIERARCHICAL category × sub-kind
 //      structure — each category's sub-classifier is structurally
-//      distinct (PythonNumericTower / PythonStringKind /
-//      PythonSingletonKind ground in three different
-//      std/ structures: algebra-tower / free-monoid / cardinality).
-//      The Disj-with-heterogeneous-payloads is the irreducible
-//      faithful form for the Reference's hierarchical partition.
-// Terminal: the closed three-category Python primitive-scalar
-// typed-value sum; illegal cross-category combinations are
-// unrepresentable by construction; container types (list / tuple /
-// set / frozenset / dict / range) are out-of-scope for this slice
-// (SCOPE NEGATIVE container types in the header).
+//      distinct (PythonNumericTower / PythonSingletonKind ground
+//      in two different std/ structures: algebra-tower /
+//      cardinality). The Disj-with-heterogeneous-payloads is the
+//      irreducible faithful form for the Reference's hierarchical
+//      scalar partition.
+// Terminal: the closed two-category Python primitive-scalar
+// typed-value sum (Numeric + Singleton per Reference 3.14 §3.2.4 /
+// §3.2.1-3); illegal cross-category combinations are unrepresentable
+// by construction; SEQUENCE / SET / MAPPING / CALLABLE / MODULE /
+// CLASS / INSTANCE types are scope-negative for this slice and
+// land via a separate future carrier (str / bytes / bytearray /
+// tuple / list / range / set / frozenset / dict / etc., named in
+// SCOPE NEGATIVE in the header).
 type PythonScalar
   = Numeric { tower: PythonNumericTower }
-  | String { kind: PythonStringKind }
   | Singleton { kind: PythonSingletonKind }
 
 
