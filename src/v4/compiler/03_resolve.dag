@@ -46,6 +46,7 @@ module v4.compiler.resolve
 
 
 import v4.compiler.normalize { NormalizedTree }
+import v4.std.collection { Set }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
@@ -85,7 +86,7 @@ data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 // external/std/import Symbol canonical records it in `canonical_symbols`.
 type Namespace {
   bindings: Map<Symbol, Symbol>
-  canonical_symbols: Map<Symbol, Bool>
+  canonical_symbols: Set<Symbol>
 }
 
 
@@ -114,7 +115,16 @@ fn empty_scope() -> Scope {
 fn empty_namespace() -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: empty_map()
+    canonical_symbols: empty_canonical_symbol_set()
+  }
+}
+
+
+fn empty_canonical_symbol_set() -> Set<Symbol> {
+  Set {
+    member: fn(_) {
+      false
+    }
   }
 }
 
@@ -148,10 +158,7 @@ fn lookup_binding(scope: Scope, name: Symbol) -> Symbol? {
 
 
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
-  match map_get(namespace.canonical_symbols, name) {
-    Some { value: _ } => true
-    None => false
-  }
+  namespace.canonical_symbols.member(name)
 }
 
 
