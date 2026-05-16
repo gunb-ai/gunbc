@@ -1,14 +1,22 @@
 // src/v4/extdeps/languages/python.dag
 //
 // Scope: Python target language spec — primitives, syntax, codegen rules.
-// Anchor: https://docs.python.org/3/reference/ (The Python Language
-//         Reference) — the versioned upstream specification (L-2
-//         fidelity authority). The Reference is the spec the carriers
-//         below are pinned to; when the Reference changes (a new
-//         singleton type joins the standard hierarchy; the numeric
-//         tower's ABC partition is revised; a new sequence-kind enters
-//         the textual-types section), the change is a visible C1 edit
-//         to the relevant declaration below, never a silent extension.
+// Anchor: https://docs.python.org/3.14/reference/ (The Python Language
+//         Reference, version 3.14 — pinned at the current stable
+//         release as of work date; the L-2 versioned fidelity
+//         authority). The pinned `/3.14/` form is REQUIRED rather than
+//         the floating `/3/` (per operator BLOCKING review on PR #3180:
+//         extdeps.md requires a declared spec version so upstream
+//         Python changes cannot silently mutate this substrate). The
+//         carriers below — PythonNumericTower, PythonStringKind,
+//         PythonSingletonKind, PythonScalar — are pinned to this
+//         release; when a future Python release modifies the standard
+//         type hierarchy (a new singleton type joins; the numeric-tower
+//         ABC partition is revised; a new sequence-kind enters the
+//         textual-types section), the change is a visible C1 edit to
+//         the relevant declaration below + a coordinated version-pin
+//         bump on THIS line, never a silent extension via the floating
+//         URL. The per-carrier `// Spec:` URLs below mirror the pin.
 // Unifies: (per THESIS:188) language spec = transport spec = interpreter
 //         runtime. ONE substrate carrier for all three roles. Different
 //         lenses read different facts from the same data (emission
@@ -480,7 +488,7 @@ module v4.extdeps.languages.python
 // programs in the modeled language = Node per L-2, NOT additional
 // tower levels).
 //
-// Spec: https://docs.python.org/3/reference/datamodel.html#numeric-types
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#numeric-types
 //       (Reference §3.2 numeric-types) + PEP 3141
 //       https://peps.python.org/pep-3141/ (Number ABC hierarchy)
 //       + PEP 285 https://peps.python.org/pep-0285/ (`bool` as int
@@ -572,7 +580,7 @@ type PythonNumericTower
 // sequence) is an edit to THIS declaration under the L-2 pin
 // discipline.
 //
-// Spec: https://docs.python.org/3/reference/datamodel.html#types
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#types
 //       (Reference §3.2 textual / sequence types — Str / Bytes /
 //       Bytearray subsections) + https://peps.python.org/pep-3100/
 //       (Python 3 str/bytes unification).
@@ -660,7 +668,7 @@ type PythonStringKind
 // `Missing` sentinel promoted to spec) is an edit to THIS
 // declaration under the L-2 pin discipline.
 //
-// Spec: https://docs.python.org/3/reference/datamodel.html#the-standard-type-hierarchy
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 //       (Reference §3.2 — None / NotImplemented / Ellipsis
 //       subsections) + Reference §6.2.1 atom-identifiers for the
 //       singleton-identifier resolution rules.
@@ -767,7 +775,7 @@ type PythonSingletonKind
 // container categories — the latter scope-negative for this slice;
 // container types are not scalars).
 //
-// Spec: https://docs.python.org/3/reference/datamodel.html#the-standard-type-hierarchy
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
 //       (Reference §3.2 the standard type hierarchy — the top-level
 //       partition this enum encodes).
 //
