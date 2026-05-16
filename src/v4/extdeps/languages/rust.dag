@@ -263,14 +263,37 @@ import v4.std.node { Node, Symbol }
 // here because the fit IS the deliverable (per the slice's structural
 // finding above):
 //
-//   - FUNCTION (`fn name(args) -> T { body }`) ↦ Transform.
-//     A Rust `fn` is a typed function — `(args) -> T` — whose body is a
-//     sub-DAG of behaviors. That is exactly Transform (the typed-
-//     total-λ fragment INVARIANTS:72; node.dag:209 "Transform =
-//     application"). The function call site is also Transform: the
-//     callee is a function value, the args are operands, the result
-//     binds at the call site. No Rust-specific behavior surfaces;
-//     `fn` IS Transform.
+//   - FUNCTION declarations and applications split across the two
+//     substrate axes per A1's two-coordinated-substrate framing:
+//
+//     A Rust `fn name(args) -> T { body }` DECLARATION ↦ Arrow
+//     (the type-substrate connective; node.dag's TypeNode with
+//     connective: Arrow). The declaration introduces a typed
+//     function — `(args) -> T` — whose body is a sub-DAG of L1
+//     behaviors (Value / Transform / Branch / Loop / Bind),
+//     referenced from the Arrow's children. The function's
+//     IDENTITY (a FunctionRef the call site refers to) is the
+//     Arrow declaration.
+//
+//     A Rust function APPLICATION (call site `f(x, y)`) ↦ Transform
+//     (the computation-substrate behavior; node.dag's
+//     ComputationNode with behavior: Transform). Transform IS the
+//     application behavior of the typed-total-λ fragment per
+//     INVARIANTS:72 (Curry-Howard / System F lineage): the callee
+//     is a function value (resolved to the Arrow it references),
+//     the args are operands, and the application yields the
+//     result. node.dag:209 names this explicitly: "Transform =
+//     application."
+//
+//     The distinction matters per the substrate's
+//     two-coordinated-axes discipline (THESIS §198-203): a Node
+//     belongs to EXACTLY one substrate at a time — either type-
+//     side (with a connective) or computation-side (with a
+//     behavior). A `fn` declaration and its call site are
+//     DIFFERENT Nodes: the declaration is a type Node (Arrow
+//     connective), the call site is a computation Node (Transform
+//     behavior). Conflating them was the earlier doc's defect,
+//     surfaced by openai-pro REQUEST_CHANGES 2026-05-16T11:15:38Z.
 //
 //   - LET-BINDING (`let x: T = expr;` and `let mut x: T = expr;`) ↦
 //     Bind. A Rust `let` introduces a name into a scope with a value;
