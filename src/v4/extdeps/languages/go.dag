@@ -1,13 +1,19 @@
 // src/v4/extdeps/languages/go.dag
 //
 // Scope: Go target language spec — primitives, syntax, codegen rules.
-// Anchor: https://go.dev/ref/spec (Go Programming Language Specification)
-//         — the versioned upstream specification (L-2 fidelity authority).
-//         The Specification is the spec the carriers below are pinned
-//         to; when the Specification changes (a new language version
-//         adds / renames a primitive, adds a numeric width, adds a
-//         visibility scope), the change is a visible C1 edit to the
-//         relevant declaration below, never a silent extension.
+// Anchor: https://go.dev/ref/spec — Go Programming Language Specification,
+//         **pinned to Go language version go1.26** (the L-2 versioned
+//         fidelity authority the carriers below are pinned to, per
+//         dsl/extdeps/extdeps.md rule #3 "Declare the version"). The
+//         `https://go.dev/ref/spec` URL itself is mutable (it always
+//         redirects to the current spec); the pinned VERSION is the
+//         authority. When the Specification changes between releases
+//         (a new language version adds / renames a primitive, adds a
+//         numeric width, adds a visibility scope), the change is a
+//         visible C1 edit to BOTH (a) the version pin on this line
+//         and (b) the relevant declaration below, never a silent
+//         extension. (Pin added 2026-05-16 per cursor/composer-2
+//         BLOCKING review on PR #3182 — extdeps fidelity rule #3.)
 // Unifies: (per THESIS:188) language spec = transport spec = interpreter
 //         runtime. ONE substrate carrier for all three roles. Different
 //         lenses read different facts from the same data (emission
