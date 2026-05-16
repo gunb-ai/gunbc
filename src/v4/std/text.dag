@@ -5,23 +5,46 @@
 //         (Char = a Unicode scalar value / code point)
 //
 // Owns:
-//   - Char — a Unicode scalar value: a `Cardinality`-bounded `Nat` over the
-//     valid code-point range (excludes the surrogate range)
+//   - Char — a Unicode scalar value carrier, delivered as unrefined `Nat`
+//     with the code-point-range / surrogate-exclusion refinement tracked as
+//     a bounded scaffold below
 //   - String — `FreeMonoid<Char>`
 //   - inhabitance: String inhabits `FreeMonoid<Char>` (std/algebra.dag) —
 //     concatenation / empty fall out of the free monoid
 //
 // Consumes:
-//   - std/node.dag: Cardinality
 //   - std/nat.dag: Nat (a code point is a bounded Nat)
 //   - std/algebra.dag: FreeMonoid
+//   (The original scaffold's `std/node.dag: Cardinality` entry is
+//   superseded by the header reconcile below: text.dag does not consume
+//   node.dag's Cardinality connective today.)
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Status: T-3 modeled 2026-05-16 (wise-dove-896). Replaces part of the
+//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
+//   concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (worker-tier Extent-🟡 value-refinement class,
+// 2026-05-16). The frozen scaffold header named `Char` as a
+// `Cardinality`-bounded `Nat` excluding surrogates and listed
+// `std/node.dag: Cardinality` as a consumed dependency. The delivered
+// carrier is intentionally `type Char = Nat`: v2 syntax plus this file's
+// settled deps (`nat` + `algebra`) cannot express the Unicode scalar set
+// U+0000..U+D7FF ∪ U+E000..U+10FFFF as a type-enforced value refinement,
+// and a single upper-bound interval would admit surrogate code points
+// (fabricated Char). This follows the diagnostic.dag `Extent.ByteRange`
+// 🟡 precedent: keep the honest carrier, document the illegal states the
+// current substrate cannot exclude, bound producer use, and name the
+// dissolution trigger. It also follows the operator-ratified
+// collection.dag b2 header reconcile pattern: when a frozen Cardinality
+// wording names an unbuildable refinement, reconcile the header to the
+// actual carrier and mark the refinement deferred-out rather than
+// pretending to consume node.dag's Cardinality connective. The `Owns`,
+// `Consumes`, and `Status` lines above reflect this reconcile; the
+// `String = FreeMonoid<Char>` alias edge remains the machine-readable
+// inhabitance authority.
 
 
 module v4.std.text
