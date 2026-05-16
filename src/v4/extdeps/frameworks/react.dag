@@ -15,7 +15,7 @@
 //
 // Owns:
 //   - ReactModuleSurface (client vs React Server Components module capability)
-//   - ReactFunctionComponent (surface + props + render root)
+//   - ReactFunctionComponent (surface + props + `render_root_ref` declaration edge)
 //   - ReactPropsSite (props type + value sites — `DeclarationRef` edges; same
 //     structural role as K-1 `Symbol` name-refs in std/node.dag, but resolvable
 //     under `compile_to_dag` today because `v3.spec.v3_l1::DeclarationRef` is
@@ -26,14 +26,18 @@
 //     fragment + text partition)
 //   - ReactContextBinding (`createContext` site identity)
 //   - ReactHook, ReactHookKind, ReactBuiltinHook (closed hook API partition)
-//   - ReactComponentEffect (trigger + effect body as `Node`)
+//   - ReactComponentEffect (trigger + `effect_body_ref` — declaration edge to the
+//     lowered effect closure; same `DeclarationRef` scaffold as props/children)
 //   - ReactEffectTrigger (closed scheduling-class partition)
 //
 // Consumes (traceability):
-//   - std/node.dag: Node (program spine; kernel carrier for closures / render)
-//   - v3.spec.v3_l1: DeclarationRef (bootstrap-seeded declaration edges until
-//     v4 `Symbol` resolves in isolated `compile_to_dag` — scaffold above)
-//   - std/collection.dag: List<T> (traceability for `List<DeclarationRef>`)
+//   - v3.spec.v3_l1: DeclarationRef (bootstrap-seeded; carries every cross-decl
+//     edge in this file under isolated `compile_to_dag` — see modeling notes)
+//   - std/node.dag: Node + Symbol (authoritative K-1 program spine once import
+//     lowering wires `import v4.std.node { … }`; ratchet replaces `DeclarationRef`
+//     program-site fields with `Node` / `Symbol` per STRUCTURE.md)
+//   - std/collection.dag: List<T> (kernel-ambient `List` needs no import for use;
+//     listed for single-authority traceability to FreeMonoid modeling)
 //   - std/diagnostic.dag: Outcome<T> (D1 / DECISIONS.md **I**) — commentary only
 //
 // Owned ELSEWHERE: JSX/TSX grammar, portals, Suspense, class components, Next.js
@@ -47,18 +51,19 @@ module v4.extdeps.frameworks.react
 
 
 import v3.spec.v3_l1 { DeclarationRef }
-import v4.std.node { Node }
-import v4.std.collection { List }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
-// A1 / ordered children + dependency lists. `List<DeclarationRef>` is the
-// substrate’s ordered spine of declaration identities (bootstrap-resolvable in
-// `compile_to_dag`); React lenses read it as **dependency-array order** or **child
-// order**, not as arbitrary expression forests (those lower to `Node` at grammar
-// sites elsewhere).
+// A1 / ordered children + dependency lists. `List<DeclarationRef>` is the ordered
+// spine of declaration identities (bootstrap-resolvable in `compile_to_dag`);
+// React lenses read it as **dependency-array order** or **child order**.
+//
+// Program-shaped sites (custom hook body, effect closure, render root) also use
+// `DeclarationRef` here: each names the **declaration** whose body is the lowered
+// `Node` tree in the full compiler bundle — an honest forward model under M1(2.7)
+// import no-op for `v4.std.node`, not a second recursive type.
 //
 // `DeclarationRef` vs `Symbol` (🟡 scaffold). `Symbol` is the v4 K-1 opaque name
 // identity (std/node.dag). Isolated `compile_to_dag` on this file does not yet
@@ -129,13 +134,14 @@ type ReactBuiltinHook
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
 //   1. Fact placement — FAILS: shared built-in vs custom discriminant.
 //   2. Variant-is-data — FAILS: Bool+ref admits built-in ∧ custom simultaneously.
-//   3. Algebraic form — PARTIAL: custom body is `Node` composition of hooks.
+//   3. Algebraic form — PARTIAL: custom hook body resolves to a `DeclarationRef`
+//      target whose body composes other hooks (grammar proof ELSEWHERE).
 //   4. Dimensional — FAILS: XOR at one site.
 //   5. Parameterized family — FAILS: heterogeneous payloads, not uniform `F<X>`.
 // Terminal: built-in vs custom-hook partition.
 type ReactHookKind
   = BuiltIn { hook: ReactBuiltinHook }
-  | Custom { implementation: Node }
+  | Custom { implementation_ref: DeclarationRef }
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -172,7 +178,7 @@ type ReactEffectTrigger
 // Anchor: https://react.dev/reference/react/useEffect
 type ReactComponentEffect {
   trigger: ReactEffectTrigger
-  effect_body: Node
+  effect_body_ref: DeclarationRef
 }
 
 
@@ -191,7 +197,7 @@ type ReactPropsSite {
 type ReactFunctionComponent {
   surface: ReactModuleSurface
   props: ReactPropsSite
-  render_root: Node
+  render_root_ref: DeclarationRef
 }
 
 
