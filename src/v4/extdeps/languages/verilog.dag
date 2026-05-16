@@ -1859,7 +1859,14 @@ type SpecparamDeclaration {
 // is structurally equivalent to ANSI per §12.3.4). The body port_
 // declaration is itself a §12.2 module_item the spec lists; the
 // prior 18-way cut missed both body forms.
-type ModuleItem
+// AnsiModuleItem — the closed Verilog module-body item classifier
+// for ANSI-style modules (IEEE 1364-2005 §12.2 — the 18 items spec-
+// admitted in any module body, EXCLUDING body port_declarations).
+// ANSI ports are "completely declared" per §12.3.3, so body port_
+// declarations (`PortDeclarationItem` / `BodyPortDeclarationItem`)
+// are a SYNTAX ERROR in ANSI-style modules — they are admitted only
+// in the NonAnsiModuleItem set below.
+type AnsiModuleItem
   = ContinuousAssignItem { assign: ContinuousAssign }
   | AlwaysBlockItem { always_block: AlwaysBlock }
   | InitialBlockItem { initial_block: InitialBlock }
@@ -1878,8 +1885,23 @@ type ModuleItem
   | GateInstantiationItem { gate: GateInstantiation }
   | UdpInstantiationItem { udp_instance: UdpInstantiation }
   | SpecparamDeclarationItem { specparam: SpecparamDeclaration }
-  | PortDeclarationItem { port_decl: PortDeclaration }
-  | BodyPortDeclarationItem { body_port: AnsiPortDeclaration }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NonAnsiModuleItem — the closed Verilog module-body item classifier
+// for non-ANSI-style modules. Non-ANSI bodies admit ALL AnsiModuleItem
+// variants PLUS body port_declarations (PortDeclarationItem +
+// BodyPortDeclarationItem) per IEEE 1364-2005 §12.3.4 — port direction
+// + (optional) type live in body items in the non-ANSI form. The
+// Disj-with-named-payloads makes "ANSI port-list module with body
+// PortDeclarationItem" structurally unrepresentable (codex BLOCKING
+// fix on PR #3176 2026-05-16: items list was previously
+// `List<ModuleItem>` regardless of port style, admitting the §12.3.3
+// "ANSI ports are completely declared" violation).
+type NonAnsiModuleItem
+  = NonAnsiAnsiCompatItem { item: AnsiModuleItem }
+  | NonAnsiPortDeclarationItem { port_decl: PortDeclaration }
+  | NonAnsiBodyPortDeclarationItem { body_port: AnsiPortDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1976,12 +1998,19 @@ type ModuleParameterPortList
 // in the items list". There is no `concurrent: Bool` flag; the
 // parallelism is read FROM the list-of-siblings shape (
 // feedback_no_annotations).
-type VerilogModule {
-  name: Symbol
-  parameter_port_list: ModuleParameterPortList
-  ports: ModulePortsList
-  items: List<ModuleItem>
-}
+type VerilogModule
+  = NonAnsiVerilogModule {
+      name: Symbol,
+      parameter_port_list: ModuleParameterPortList,
+      header_ports: List<NonAnsiPort>,
+      items: List<NonAnsiModuleItem>
+    }
+  | AnsiVerilogModule {
+      name: Symbol,
+      parameter_port_list: ModuleParameterPortList,
+      header_ports: List<AnsiPortDeclaration>,
+      items: List<AnsiModuleItem>
+    }
 
 
 // ─────────────────────────────────────────────────────────────────────
