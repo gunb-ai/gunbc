@@ -1,20 +1,35 @@
 // src/v4/std/collection.dag
 //
-// Scope: bounded containers — every collection grounds structurally in
-//        an algebra from std/algebra.dag, so the container-side
-//        operations are reads of that algebra, never an enumerated
-//        per-op table (the NO-ENGINE STOP per std/algebra.dag header
-//        U1). Cardinality is INTRINSIC to the carrier (length-of-
-//        FreeMonoid for List; count-of-`true`-elements for Set), read
-//        by pipeline-stage / lens consumers — not declared as a
-//        refinement parameter on the type (per b2 ratification, this
-//        header note).
+// Scope: container carriers grounded in algebras from std/algebra.dag —
+//        the container-side operations are reads of those algebras,
+//        never an enumerated per-op table (the NO-ENGINE STOP per
+//        std/algebra.dag header U1). The two carriers have DIFFERENT
+//        cardinality stories — read them honestly:
+//          - List<T> = FreeMonoid<T>: a structurally finite sequence;
+//            its cardinality (length) IS intrinsic to the carrier,
+//            read by walking the Empty|Cons spine to bottom.
+//          - Set<T> = characteristic function fn(T) -> Bool: a
+//            subset-of-T carrier inhabiting BooleanAlgebra<Set<T>>. It
+//            does NOT structurally encode finiteness — the universe
+//            and complement constructions in the BooleanAlgebra grounding
+//            are deliberately representable (BooleanAlgebra requires
+//            them), so a `Set<Int>` such as "all positive ints" is a
+//            valid value. Finite-cardinality is a REFINEMENT layer —
+//            tracked as deferred (Wave-A2, see scaffold note below)
+//            and out of scope for the carrier in this PR.
+//        This honest split was surfaced by the codex BLOCKING review
+//        (#3169) flagging an earlier "finite subsets / count `true`
+//        elements" over-claim on Set; the carrier is unchanged, the
+//        framing here is tightened to match it (P1/P4/Practice-2).
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid (List) +
 //         https://en.wikipedia.org/wiki/Algebra_of_sets (Set)
 //
 // Owns:
-//   - List<T> — finite sequences (the free-monoid carrier over T)
-//   - Set<T>  — membership-predicate carrier
+//   - List<T> — finite sequences (the free-monoid carrier over T;
+//     finiteness is STRUCTURAL — every value bottoms out at Empty)
+//   - Set<T>  — subset-of-T carrier (characteristic function;
+//     inhabits BooleanAlgebra<Set<T>>; finite-cardinality refinement
+//     is NOT in this carrier, see "Deferred to Wave-A2" below)
 //   - operations defined as algebra-grounding, not enumerated
 //
 // Deferred (split out per operator-ratified Option A, 2026-05-16 —
@@ -22,6 +37,9 @@
 //   - Map<K, V> — gated on std/witness.dag landing; an honest
 //     PartialFunction<K, V> shape requires fn(K) -> Witness<V> so
 //     duplicate keys are structurally unrepresentable.
+//   - FiniteSet<T> (or Set<T, n: Multiplicity>) — gated on the
+//     cardinality / enumerability substrate landing; the bare Set<T>
+//     here is the unrefined BooleanAlgebra carrier, by design.
 //
 // Consumes:
 //   - std/node.dag: Cardinality, Instantiation — the type-substrate
@@ -52,7 +70,8 @@
 //   STOP write-up lives in #3169 issuecomment-4464775997.
 //
 // Deferred to Wave-A2 — TRACKED SCAFFOLD (🟡):
-//   `Map<K, V>` is split out of this Wave-A1 PR per operator-ratified
+//
+// (1) `Map<K, V>` — split out of this Wave-A1 PR per operator-ratified
 //   Option A (2026-05-16). The honest PartialFunction<K, V> form is
 //   `Map<K, V> { lookup: fn(K) -> Witness<V> }` (Witness = Holds(V) |
 //   Violates(absence-proof) — the K → 1+V structural codomain). That
@@ -60,7 +79,7 @@
 //   function maps each K to exactly one outcome), which the prior
 //   FreeMonoid<MapEntry> draft did not — the BLOCKING reviews from
 //   briansrls (operator) and codex on #3169 surfaced exactly this
-//   gap. The three bridge properties:
+//   gap. Three bridge properties:
 //     (a) scaffold doc — THIS note; Map<K, V> is intentionally
 //         absent from collection.dag today.
 //     (b) bounds on use — no consumer reads `Map<K, V>` from
@@ -72,6 +91,32 @@
 //         consumers need it as a return-pair carrier) and this note
 //         dissolves. TASKS.md T-3 dependency note records the same
 //         dependency.
+//
+// (2) `FiniteSet<T>` (or `Set<T, n: Multiplicity>`) — a
+//   finite-cardinality refinement of the bare Set<T> below. Codex
+//   BLOCKING review (#3169, 2026-05-16) correctly observed that
+//   `Set<T> = { member: fn(T) -> Bool }` denotes ARBITRARY subsets
+//   (including universe / complement-of-finite for infinite T) and
+//   does not encode finiteness or witness `T`'s enumerability;
+//   counting `true` elements requires an enumeration of T that the
+//   carrier does not carry. The honest move (this PR): keep the bare
+//   Set<T> as the BooleanAlgebra carrier (universe + complement must
+//   be representable for BooleanAlgebra closure — they are not
+//   "illegal states" against THIS carrier's spec), and DEFER the
+//   finite-cardinality refinement. Three bridge properties:
+//     (a) scaffold doc — THIS note; finite-cardinality is not
+//         claimed by Set<T> below.
+//     (b) bounds on use — pipeline stages / lenses needing a finite
+//         subset wait on the refinement; bare Set<T> is for the
+//         membership-as-predicate use case, not the bounded-finite
+//         one.
+//     (c) dissolution trigger — when the cardinality / enumerability
+//         substrate lands (std/cardinality.dag's `Multiplicity` +
+//         a `Witness`-typed enumerability witness on T, both Wave-A2),
+//         a follow-up PR adds a `FiniteSet<T>` carrier that pairs
+//         `member` with that witness; bare Set<T> remains as the
+//         arbitrary-subset BooleanAlgebra carrier. (Tracking the
+//         same operator-ratified deferral pattern as Map.)
 //
 // NO ENGINE — NO ENUMERATED OPS. There is deliberately no
 // `list_concat` / `set_union` table here: those would be a parallel
@@ -168,10 +213,20 @@ type List<T> = FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Set<T> — finite subsets of T, modeled as a membership-predicate
-// carrier. A `Set<T>` IS its `member` function: x ∈ S iff
-// `S.member(x) == true`. This is the textbook denotational form
-// (Wikipedia "Algebra of sets"): a set is a function T → Bool.
+// Set<T> — a subset of T, modeled as a characteristic function. A
+// `Set<T>` IS its `member` function: x ∈ S iff `S.member(x) == true`.
+// This is the textbook denotational form (Wikipedia "Algebra of
+// sets"): a subset is a function T → Bool.
+//
+// This carrier denotes ARBITRARY subsets, not "finite subsets" —
+// `universe` and `complement` below are deliberately representable
+// (BooleanAlgebra closure requires them), so a value like "all
+// positive ints" is a valid `Set<Int>`. Finite-cardinality is a
+// REFINEMENT layer deferred to Wave-A2 (see the "Deferred to
+// Wave-A2 — TRACKED SCAFFOLD" block in the file header — codex
+// BLOCKING review on #3169 surfaced this distinction). The bare
+// Set<T> here is the unrefined BooleanAlgebra carrier; consumers
+// needing a guaranteed-finite subset wait on the refinement.
 //
 // Algebra grounding — Set<T> inhabits BooleanAlgebra<Set<T>> by
 // POINTWISE EXTENSION of Bool's BooleanAlgebra:
@@ -192,10 +247,13 @@ type List<T> = FreeMonoid<T>
 // modeling notes). The pointwise lift IS the inhabitance, exactly
 // the algebra.dag "aliasing is the inhabitant's concern" pattern.
 //
-// Cardinality (number of `true` elements) is INTRINSIC to the
-// carrier: against an enumerable T, fold `member` and count the
-// `true` returns — not declared as a refinement parameter on this
-// type (per the operator-ratified b2 header note).
+// Cardinality is NOT intrinsic to Set<T>: counting `true` elements
+// requires an enumeration of T, and this carrier does not witness
+// `T`'s enumerability. A finite-cardinality refinement
+// (`FiniteSet<T>` or `Set<T, n: Multiplicity>`) is deferred to
+// Wave-A2 alongside the cardinality / enumerability substrate (the
+// header's "Deferred to Wave-A2 — TRACKED SCAFFOLD" block (2) has
+// the three bridge properties).
 //
 // Conj record (one field, `member`); not a coproduct — no Practice-4
 // ledger applies.
