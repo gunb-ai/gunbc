@@ -1019,9 +1019,10 @@ type RustVisibility
   | PubIn { path: List<Symbol> }
 
 
-// rust_visibility_well_formed — the producer-side invariant
-// preserving P2 single-authority for the no-modifier visibility
-// scope (BLOCKING operator review 2026-05-16T02:26:00Z).
+// RustVisibility producer-side invariant — DOCUMENTED-ONLY (NOT a
+// stub fn, per the FORBIDDEN-deferral discipline; operator review
+// 2026-05-16T02:26:00Z + claude-opus-4-7 review observation
+// 2026-05-16T02:35:05Z).
 //
 // A `RustVisibility` value is well-formed iff: when it is the
 // `PubIn` variant, its `path` is NOT a single-segment path whose
@@ -1032,33 +1033,36 @@ type RustVisibility
 // the P2 duplicate-authority bug (two authorities for one
 // visibility scope) this carrier exists to prevent.
 //
-// 🟡 SCAFFOLD invariant — same producer-obligation shape as
-// `Dim3` / `RustCost` (raw-Int components admit illegal states
-// the substrate doesn't yet enforce). Until refined types over
-// `List<Symbol>` exist (a future substrate extension, likely
-// composing over std/cardinality.dag's refinement carriers), the
-// invariant is producer-side; the well-formedness fn here is the
-// check downstream consumers (emission, ingest, ownership lens)
-// evaluate before reading a `PubIn`.
+// NO `fn rust_visibility_well_formed(v) -> Bool` is declared here.
+// The check `path == [self-symbol]` requires comparing the path's
+// first Symbol to a known `self` Symbol — but K-1 forbids minting
+// Symbol values in data literals (Symbols come from the boundary
+// intern table, never authored inline). A fn that returns `true`
+// unconditionally would assert an invariant it doesn't enforce —
+// exactly the stub-to-keep-moving anti-pattern the manager
+// reinforcement msg_8b477982 named as the FORBIDDEN deferral, AND
+// the false-sense-of-validation smell flagged by claude-opus-4-7's
+// review observation.
 //
-// PRE-T-3 LIMITATION: the actual check `path == [self-symbol]`
-// requires comparing the path's first Symbol to a known `self`
-// Symbol — but K-1 forbids minting Symbol values in data literals
-// (`Symbol`s come from the boundary intern table, never authored
-// inline). Until the std/ substrate exposes a canonical
-// `self_symbol` value (or until the parser's intern table is
-// available as a typed surface), this fn returns `true`
-// unconditionally; the invariant is documented and producer-
-// obligated. Dissolution trigger: std/integer.dag / std/text.dag
-// landing the canonical-Symbol surface OR std/cardinality.dag
-// landing a refined-path carrier admitting only non-[self] paths.
-fn rust_visibility_well_formed(v: RustVisibility) -> Bool {
-  match v {
-    Private => true
-    Pub => true
-    PubIn { path: _ } => true
-  }
-}
+// The invariant lives as PRODUCER OBLIGATION in this doc-comment
+// only, until either:
+//   (a) std/ exposes a canonical `self_symbol` value through a
+//       typed boundary surface (e.g. a `KnownSymbols` carrier in
+//       std/parse.dag or similar), at which point a real
+//       `rust_visibility_well_formed(v) -> Bool` can be declared
+//       with a working check; or
+//   (b) std/cardinality.dag lands a refined-path carrier admitting
+//       only non-[self] paths, at which point the invariant is
+//       type-level (illegal states unrepresentable) and no fn is
+//       needed at all.
+//
+// Same shape as the Dim3 / RustCost 🟡 scaffold bridges, but
+// applied at the documentation layer — NOT a noop fn. When the
+// substrate can actually enforce, the fn lands; until then, the
+// obligation is on producers (emitters / ingest / lens consumers
+// constructing RustVisibility values) and a downstream consumer
+// reading a PubIn MUST NOT assume a well-formedness check has
+// validated the path.
 
 
 // ─────────────────────────────────────────────────────────────────────
