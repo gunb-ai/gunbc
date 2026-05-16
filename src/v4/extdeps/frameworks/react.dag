@@ -16,28 +16,23 @@
 // Owns:
 //   - ReactModuleSurface (client vs React Server Components module capability)
 //   - ReactFunctionComponent (surface + props + `render_root_ref` declaration edge)
-//   - ReactPropsSite (props type + value sites — `DeclarationRef` edges; same
-//     structural role as K-1 `Symbol` name-refs in std/node.dag, but resolvable
-//     under `compile_to_dag` today because `v3.spec.v3_l1::DeclarationRef` is
-//     bootstrap-seeded — 🟡 TRACKED-SCAFFOLD: when v4 import wiring loads
-//     `v4.std.node::Symbol` in single-file compiles, these fields ratchet to
-//     `Symbol` per STRUCTURE.md K-1; trigger = import/M1 substrate closes.)
+//   - ReactCrossDeclRef (opaque cross-declaration edge — v4-local; same epistemic
+//     role as `std/node.dag::Symbol` / `v3.spec.v3_l1::DeclarationRef`, but defined
+//     HERE so single-file `compile_to_dag` smoke and `v2-compiler`’s `src/v4`-only
+//     stage1 closure both succeed without forbidden `v3.*` imports or unresolved
+//     `v4.std.node` merge under M1(2.7) import no-op — bundle time aligns carriers.)
+//   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
 //     fragment + text partition)
 //   - ReactContextBinding (`createContext` site identity)
 //   - ReactHook, ReactHookKind, ReactBuiltinHook (closed stable `react` call-site
 //     partition: built-in Hooks from /reference/react/hooks plus the separate
 //     `use` resource API — see `ReactBuiltinHook` anchors)
-//   - ReactComponentEffect (trigger + `effect_body_ref` — declaration edge to the
-//     lowered effect closure; same `DeclarationRef` scaffold as props/children)
+//   - ReactComponentEffect (trigger + `effect_body_ref` — `ReactCrossDeclRef` edge
+//     to the lowered effect closure declaration; same spine as props/children)
 //   - ReactEffectTrigger (closed scheduling-class partition)
 //
 // Consumes (traceability):
-//   - v3.spec.v3_l1: DeclarationRef (bootstrap-seeded; carries every cross-decl
-//     edge in this file under isolated `compile_to_dag` — see modeling notes)
-//   - std/node.dag: Node + Symbol (authoritative K-1 program spine once import
-//     lowering wires `import v4.std.node { … }`; ratchet replaces `DeclarationRef`
-//     program-site fields with `Node` / `Symbol` per STRUCTURE.md)
 //   - std/collection.dag: List<T> (kernel-ambient `List` needs no import for use;
 //     listed for single-authority traceability to FreeMonoid modeling)
 //   - std/diagnostic.dag: Outcome<T> (D1 / DECISIONS.md **I**) — commentary only
@@ -52,28 +47,28 @@
 module v4.extdeps.frameworks.react
 
 
-import v3.spec.v3_l1 { DeclarationRef }
+// ═════════════════════════════════════════════════════════════════════
+// ReactCrossDeclRef
+//
+// Opaque cross-declaration identity for every `*_ref` / `*_refs` field in this
+// module. Body-less like `std/node.dag::Symbol` (K-1); declared locally because
+// `v2-compiler` indexes `src/v4` without `v3.*`, and isolated `compile_to_dag`
+// does not yet merge `import v4.std.node { Symbol }` (M1(2.7) — see TASKS / M1
+// substrate notes). Downstream bundling aligns `ReactCrossDeclRef` with the
+// single-authority K-1 / L1 carrier at link time.
+type ReactCrossDeclRef
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
-// A1 / ordered children + dependency lists. `List<DeclarationRef>` is the ordered
-// spine of declaration identities (bootstrap-resolvable in `compile_to_dag`);
-// React lenses read it as **dependency-array order** or **child order**.
+// A1 / ordered children + dependency lists. `List<ReactCrossDeclRef>` is the ordered
+// spine of declaration identities; React lenses read it as **dependency-array
+// order** or **child order**.
 //
-// Program-shaped sites (custom hook body, effect closure, render root) also use
-// `DeclarationRef` here: each names the **declaration** whose body is the lowered
-// `Node` tree in the full compiler bundle — an honest forward model under M1(2.7)
-// import no-op for `v4.std.node`, not a second recursive type.
-//
-// `DeclarationRef` vs `Symbol` (🟡 scaffold). `Symbol` is the v4 K-1 opaque name
-// identity (std/node.dag). Isolated `compile_to_dag` on this file does not yet
-// resolve `import v4.std.node { Symbol }` into the declaration table (import lowering
-// is currently a no-op at M1(2.7) — see v3-compiler `lower_item` on `Import`).
-// `DeclarationRef` is the bootstrap-seeded stand-in so the model compiles and CI
-// can ratchet structure now; the ratchet to `Symbol` is operator-owned when import
-// wiring lands (header trigger).
+// Program-shaped sites (custom hook body, effect closure, render root) use
+// `ReactCrossDeclRef` for the **declaration** carrying the lowered `Node` body —
+// not a second recursive program type in this file.
 //
 // D1. Future `parse_* -> Outcome<…>` seams reference `v4.std.diagnostic.Outcome<T>`;
 // no operation rows here (DECLARATIVE-NOW).
@@ -146,14 +141,14 @@ type ReactBuiltinHook
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
 //   1. Fact placement — FAILS: shared built-in vs custom discriminant.
 //   2. Variant-is-data — FAILS: Bool+ref admits built-in ∧ custom simultaneously.
-//   3. Algebraic form — PARTIAL: custom hook body resolves to a `DeclarationRef`
+//   3. Algebraic form — PARTIAL: custom hook body resolves to a `ReactCrossDeclRef`
 //      target whose body composes other hooks (grammar proof ELSEWHERE).
 //   4. Dimensional — FAILS: XOR at one site.
 //   5. Parameterized family — FAILS: heterogeneous payloads, not uniform `F<X>`.
 // Terminal: built-in vs custom-hook partition.
 type ReactHookKind
   = BuiltIn { hook: ReactBuiltinHook }
-  | Custom { implementation_ref: DeclarationRef }
+  | Custom { implementation_ref: ReactCrossDeclRef }
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -162,7 +157,7 @@ type ReactHookKind
 //         https://react.dev/reference/react/useEffect#parameters
 type ReactHook {
   kind: ReactHookKind
-  dependency_refs: List<DeclarationRef>
+  dependency_refs: List<ReactCrossDeclRef>
 }
 
 
@@ -190,7 +185,7 @@ type ReactEffectTrigger
 // Anchor: https://react.dev/reference/react/useEffect
 type ReactComponentEffect {
   trigger: ReactEffectTrigger
-  effect_body_ref: DeclarationRef
+  effect_body_ref: ReactCrossDeclRef
 }
 
 
@@ -198,8 +193,8 @@ type ReactComponentEffect {
 // ReactPropsSite
 // Anchor: https://react.dev/learn/passing-props-to-a-component
 type ReactPropsSite {
-  props_type_ref: DeclarationRef
-  props_value_ref: DeclarationRef
+  props_type_ref: ReactCrossDeclRef
+  props_value_ref: ReactCrossDeclRef
 }
 
 
@@ -209,7 +204,7 @@ type ReactPropsSite {
 type ReactFunctionComponent {
   surface: ReactModuleSurface
   props: ReactPropsSite
-  render_root_ref: DeclarationRef
+  render_root_ref: ReactCrossDeclRef
 }
 
 
@@ -217,9 +212,9 @@ type ReactFunctionComponent {
 // ReactHostElement
 // Anchor: https://react.dev/reference/react-dom/components
 type ReactHostElement {
-  tag_ref: DeclarationRef
+  tag_ref: ReactCrossDeclRef
   props: ReactPropsSite
-  child_refs: List<DeclarationRef>
+  child_refs: List<ReactCrossDeclRef>
 }
 
 
@@ -227,9 +222,9 @@ type ReactHostElement {
 // ReactCompositeElement
 // Anchor: https://react.dev/reference/react/createElement
 type ReactCompositeElement {
-  component_ref: DeclarationRef
+  component_ref: ReactCrossDeclRef
   props: ReactPropsSite
-  child_refs: List<DeclarationRef>
+  child_refs: List<ReactCrossDeclRef>
 }
 
 
@@ -249,8 +244,8 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { child_refs: List<DeclarationRef> }
-  | Text { text_value_ref: DeclarationRef }
+  | Fragment { child_refs: List<ReactCrossDeclRef> }
+  | Text { text_value_ref: ReactCrossDeclRef }
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -258,5 +253,5 @@ type ReactElement
 // Anchor: https://react.dev/reference/react/createContext +
 //         https://react.dev/learn/passing-data-deeply-with-context
 type ReactContextBinding {
-  context_pair_ref: DeclarationRef
+  context_pair_ref: ReactCrossDeclRef
 }
