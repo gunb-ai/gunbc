@@ -11,8 +11,8 @@
 // Owns:
 //   - Diagnostic { reason: Symbol, at: Locus, correction: Correction }
 //   - Outcome<T> = Produced { value: T } | Rejected { diagnostic: Diagnostic }
-//     (operator-ratified decision I 2026-05-16 — fail-closed success|failure
-//     carrier for pipeline stages and verification; co-located with Diagnostic.)
+//     (DECISIONS.md **I** 2026-05-16 — fail-closed success|failure carrier for
+//     pipeline stages and verification; co-located with Diagnostic.)
 //   - Locus = Textual | NodeLocus | PortLocus  (WHERE a diagnostic
 //     points; a `Textual` locus carries a file identity AND an Extent,
 //     so "a span in a specific file" is ONE boundary fact — P2 facts-
@@ -335,9 +335,11 @@ type Diagnostic {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Outcome<T> — operator-ratified decision I (2026-05-16). The shared
+// Outcome<T> — ratified as v4/DECISIONS.md **I** (2026-05-16). The shared
 // fail-closed carrier for "produced value vs rejected with Diagnostic"
-// (TASKS.md `Result<…, Diagnostic>` prose maps to this substrate shape;
+// (`TASKS.md` / `STRUCTURE.md` `Result<…, Diagnostic>` **prose** names this
+// same surface — the `.dag` authority is `Outcome<…>` here; no parallel
+// `Result<ok, err>` type in `std/`; see **I** for M6/P2 reconciliation.
 // variant names `Produced` / `Rejected` and field names `value` /
 // `diagnostic` are binding for downstream: verification.dag TestClaim
 // expectations, Tier-2 numeric carriers, collection partial-access, etc.)
