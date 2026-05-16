@@ -13,6 +13,13 @@
 //     walker over LanguageModel's declarative grammar (B2) — NOT
 //     .dag-specific. Self-parse is just `ingest(src, dag_model)`; Rust is
 //     `ingest(src, rust_model)`. `.dag` is language #1, never hardcoded.
+//     (A non-text agent does NOT enter here: its change is already
+//     Node, so it does NOT pass `ingest` — it enters at `core` below
+//     as the D1 `apply_diff:(Node,Diff)->Result<Node,Diagnostic>`, a
+//     SIBLING of ingest (which is itself `->Result<Node,Diagnostic>`).
+//     An agent-supplied Diff is external/possibly-stale ⇒ FAIL-CLOSED
+//     typed Diagnostic, never a total `->Node`. See
+//     lens/application.dag AGENT-SURFACE; DECISIONS.md AGENT-1.)
 //
 //   core   : Node -> Result<InferredTree, Diagnostic>
 //     Language-agnostic: normalize (C3 — dissolve the 4 sugar forms)
