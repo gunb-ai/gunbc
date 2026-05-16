@@ -5801,6 +5801,38 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     }
 }
 
+/// Multi-module lowering for v4 extdeps smoke tests (D2-style same-crate
+/// symbol merge). **Unsupported for general use** — `compile_to_dag` remains
+/// the single-module entry; this exists only so dependent `src/v4/` modules
+/// that `import` sibling files can be validated in one diagnostic sweep.
+#[doc(hidden)]
+#[allow(clippy::result_large_err)]
+pub fn compile_to_dag_module_chain(modules: &[(&str, &str)]) -> Result<Dag, CompileError> {
+    assert!(
+        !modules.is_empty(),
+        "compile_to_dag_module_chain: at least one module"
+    );
+    let mut dag = dag::Dag::new();
+    let user_start = dag.declarations().len();
+    let mut last_source = modules[0].0;
+    let mut last_file = modules[0].1;
+    for (source, file) in modules {
+        last_source = source;
+        last_file = file;
+        let tokens = tokenize::tokenize(source, *file).map_err(CompileError::Tokenize)?;
+        let surface = parse::parse(&tokens, *file).map_err(CompileError::Parse)?;
+        lower::lower_into(&mut dag, &surface);
+    }
+    lower::finalize_strict_user_lower_range(&mut dag, user_start);
+    infer::infer(&mut dag);
+    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, last_source, last_file);
+    if dag.diagnostics().is_empty() {
+        Ok(dag)
+    } else {
+        Err(CompileError::Semantic(dag))
+    }
+}
+
 /// Structural witness for integer literal range narrowing: the
 /// `IntegerAlgebra` and `TargetCarrier` variant payload [`dag::DeclarationId`]s
 /// used to match rows in `rust_pilot_primitives`, derived from std
