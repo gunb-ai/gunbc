@@ -29,11 +29,12 @@
 //   - compiler/03_normalize.dag: NormalizedTree
 //
 // Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
-// scope/env/lookup/name binding for the front-end. It canonicalizes Atom
+// scope/env/lookup/name binding for the front-end, including method-name
+// lookup through the same canonical Symbol boundary. It canonicalizes Atom
 // use-sites to the exact binder Symbol when a local binding exists, and
 // preserves already-canonical external/std/import Symbols at the declared
-// namespace boundary. It deliberately leaves type inference, method
-// lookup, and algebra Find to 04_infer.dag.
+// namespace boundary. 04_infer preserves these Symbols and owns only type
+// inference, algebra Find, cardinality propagation, and diagnostics.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
