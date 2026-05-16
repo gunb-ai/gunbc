@@ -36,13 +36,14 @@
 //   - D2a(2) **entire facet DEFERRED** — no `GroundingMap` type, no
 //     `data ts_*_grounding` rows (operator escalation: pin shared
 //     `GroundingMap` home before fan-out repeats N declarations).
-//   - D2a(3) **TypeScript-native** operation-semantics carriers for
-//     primitives where ECMA-262 supplies a disposition (IEEE-754 `Number`;
-//     exact unbounded `BigInt`). **No** Rust `OverflowAction` /
-//     `OverflowDisposition` superset (peer-confirmed (a) — TS `number`
-//     has no fixed-width integer-overflow event; `bigint` is unbounded).
-//     Each closed carrier carries its own Practice-4 ledger anchored to
-//     Handbook + ECMA-262 sections.
+//   - D2a(3) **TypeScript-native** operation-semantics — one closed `Disj`
+//     (`TsEcma262PrimitiveOperationSemantics`) whose variants are the
+//     three ECMA-262 primitive-semantics tracks (IEEE-754 `Number`
+//     arithmetic; `Number` bitwise ToInt32/ToUint32 mod 2³²; exact
+//     unbounded `BigInt`). **No** Rust `OverflowAction` /
+//     `OverflowDisposition` superset. One 🟢 Practice-4 ledger on that
+//     coproduct (v2-compiler: a unary `type T = V` is parsed as a type
+//     alias — `Disj` carriers need `|` between ≥2 variants).
 //   - Minimal **numeric primitive vocabulary** — ECMAScript's `number` vs
 //     `bigint` partition (Handbook "Everyday Types" + ECMA-262 language
 //     types), distinct from Rust's fixed-width `i*` / `u*` ladder.
@@ -142,95 +143,48 @@ type TsBoolean = Bool
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2a(3) — ECMA-262 `Number` primitive semantics (NOT integer overflow)
+// D2a(3) — ECMA-262 primitive operation-semantics (TS-native; NOT Rust int
+// overflow)
 //
-// ECMA-262 defines two standard **axes** on the `Number` type value domain:
-//   (A) Additive / multiplicative / division / remainder on Number values
-//       follow IEEE-754 binary64 (including NaN / ±∞ propagation), not
-//       two's-complement fixed-width wrap.
-//   (B) Bitwise operators coerce via ToInt32 / ToUint32 — results are
-//       integers mod 2³² in two's-complement / unsigned binary32 layout
-//       per ECMA-262 — a **different** spec surface from (A).
+// ECMA-262 exposes three **distinct** primitive-semantics obligations the
+// resolver must not conflate:
+//   (1) `Number` — additive / multiplicative / division / remainder follows
+//       IEEE-754 binary64 (NaN / ±∞ propagation), not fixed-width int wrap.
+//       Spec: https://tc39.es/ecma262/#sec-numeric-types-number-type
+//   (2) `Number` — bitwise operators use ToInt32 / ToUint32; results are
+//       integers mod 2³² (a different spec surface from (1)).
+//       Spec: https://tc39.es/ecma262/#sec-numberbitwiseop
+//   (3) `BigInt` — exact unbounded integers; invalid ops throw per ECMA-262,
+//       not silent modular wrap on a Rust-style fixed width.
+//       Spec: https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
 //
-// These are modeled as **two singleton carriers** (each N=1) so each axis
-// carries its own 🟢 terminal Practice-4 ledger without falsely merging
-// distinct spec obligations into one ambiguous coproduct value.
+// v2-compiler parses `type T = V` (no `|`) as a **type alias** to an
+// existing type `V`. A `Disj` therefore needs ≥2 variants joined by `|`.
+// The three obligations above are one closed coproduct (not Rust's
+// Panic|Wrap axis).
 //
-// Spec (A): https://tc39.es/ecma262/#sec-numeric-types-number-type
-// Spec (B): https://tc39.es/ecma262/#sec-numberbitwiseop (Number::BitwiseOp)
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every numeric / emit consumer reads the same
+//      three-way partition when dispatching ECMA primitive semantics.
+//   2. Variant-is-data — FAILS: nullary tags from a closed ECMA-262
+//      obligation set; no Bool / numeric proxy.
+//   3. Algebraic form — PARTIAL: IEEE-754 / `Int` bodies land in std/
+//      (float.dag / integer.dag) + D2b `Arrow` realizations; this `Disj`
+//      names which ECMA track applies at the resolver boundary.
+//   4. Dimensional — FAILS: a resolver row selects exactly ONE semantics
+//      track per modeled obligation site (mutually exclusive classifier
+//      rows, not simultaneous coordinates on one value).
+//   5. Parameterized family — FAILS: the three are not `Semantics<Width>` /
+//      Practice-7 projection over a declared width set.
+type TsEcma262PrimitiveOperationSemantics
+  = TsNumberIeee754Binary64Semantics
+  | TsNumberBitwiseInt32Uint32Semantics
+  | TsBigIntExactUnboundedSemantics
 
 
-// ─────────────────────────────────────────────────────────────────────
-// TsNumberAdditiveMultiplicativeSemantics — axis (A).
-//
-// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: shared by every additive/multiplicative
-//      Number consumer uniformly.
-//   2. Variant-is-data — N/A (N=1 exhaustive for this axis in ECMA-262).
-//   3. Algebraic form — PARTIAL: IEEE-754 structure is std/float.dag +
-//      `ApproximateField` (D2b); this tag names the ECMA **Number-type**
-//      commitment to that axis, not the full float algebra body.
-//   4. Dimensional — N/A (singleton).
-//   5. Parameterized family — FAILS: not an indexed family over widths.
-//
-// N=1 note: ECMA-262 admits exactly one standard behavior class for (A) on
-// `Number` values; a second variant would fabricate a distinction the spec
-// does not own.
-type TsNumberAdditiveMultiplicativeSemantics
-  = Ieee754Binary64Ecma262NumberType
-
-
-// Instance `data` rows for singleton enum bodies are M1(2.8)-blocked as
-// "opaque bodies" until the class-5 structural-validation gap closes
-// (DOWNSTREAM_REQUIREMENTS.md). The **type** above is the D2a(3) carrier;
-// canonical instance-values land with that substrate work, not as
-// unvalidated opaque enum literals here.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// TsNumberBitwiseSemantics — axis (B).
-//
-// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: shared by every bitwise Number consumer.
-//   2. Variant-is-data — N/A (N=1 for this axis).
-//   3. Algebraic form — PARTIAL: modular 2³² arithmetic is a finite ring
-//      side-effect of ToInt32/ToUint32 coercion — the authoritative numeric
-//      story remains IEEE-754 for non-bitwise Number ops; this tag isolates
-//      the bitwise coercion track per ECMA-262.
-//   4. Dimensional — N/A (singleton).
-//   5. Parameterized family — FAILS: not parameterized over machine widths
-//      at the TS language-primitive layer (`number` is not `i32`).
-type TsNumberBitwiseSemantics
-  = Int32Uint32ModuloTwoPow32Ecma262
-
-
-// (No `data` instance — same M1(2.8) opaque-body discipline as additive/
-// multiplicative axis above.)
-
-
-// ═════════════════════════════════════════════════════════════════════
-// D2a(3) — ECMA-262 `BigInt` primitive semantics
-//
-// `bigint` is an exact, unbounded integer primitive — no Rust-style
-// fixed-width overflow/wrap axis; invalid operations throw (e.g. division
-// by zero) per ECMA-262, not silent modular wrap on a bounded width.
-//
-// Spec: https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
-//       https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
-//
-// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: shared classifier for all BigInt consumers.
-//   2. Variant-is-data — N/A (N=1 for the primitive's core semantics class).
-//   3. Algebraic form — PARTIAL: exact integer algebra is std/integer.dag
-//      (`Int` chain) reached via **future** D2a(1) alias — this tag names the
-//      ECMA **BigInt-type** exact-unbounded commitment, not the `Int` body.
-//   4. Dimensional — N/A (singleton).
-//   5. Parameterized family — FAILS: not `BigInt<Width>`.
-type TsBigIntPrimitiveSemantics
-  = ExactUnboundedIntegerEcma262BigIntType
-
-
-// (No `data` instance — M1(2.8) opaque-body discipline; see Number axes.)
+// (No `data` rows — M1(2.8) opaque-body discipline on enum literals until the
+// class-5 structural-validation gap closes; the **type** is the D2a(3) carrier.)
 
 
 // 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
