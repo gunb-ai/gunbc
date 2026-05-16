@@ -15,36 +15,35 @@
 //            are deliberately representable (BooleanAlgebra requires
 //            them), so a `Set<Int>` such as "all positive ints" is a
 //            valid value. Finite-cardinality is a REFINEMENT layer —
-//            tracked as deferred (Wave-A2, see scaffold note below)
-//            and out of scope for the carrier in this PR.
+//            tracked as deferred (Wave-A2 scaffold item (2) below) and
+//            out of scope for the carrier in this file.
 //        This honest split was surfaced by the codex BLOCKING review
 //        (#3169) flagging an earlier "finite subsets / count `true`
-//        elements" over-claim on Set; the carrier is unchanged, the
-//        framing here is tightened to match it (P1/P4/Practice-2).
+//        elements" over-claim on Set; the carrier is unchanged in
+//        denotation (still T → Bool), the framing here is tightened to
+//        match it (P1/P4/Practice-2).
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid (List) +
 //         https://en.wikipedia.org/wiki/Algebra_of_sets (Set)
 //
 // Owns:
 //   - List<T> — finite sequences (the free-monoid carrier over T;
 //     finiteness is STRUCTURAL — every value bottoms out at Empty)
-//   - Set<T>  — subset-of-T carrier (characteristic function;
-//     inhabits BooleanAlgebra<Set<T>>; finite-cardinality refinement
-//     is NOT in this carrier, see "Deferred to Wave-A2" below)
-//   - operations defined as algebra-grounding, not enumerated
+//   - Set<T>  — subset-of-T carrier, the characteristic function
+//     fn(T) -> Bool (alias); inhabits BooleanAlgebra<Set<T>> via the
+//     machine-readable `set_boolean_algebra` declaration below
+//     (operator-ratified Wave-A2 Set grounding; Wave-A1 used an
+//     equivalent Conj { member: fn(T)->Bool } spelling — dissolved
+//     here to the callable carrier so pointwise lift lowers without
+//     Prereq-X1.b call-on-field-of-parameter substrate debt).
+//   - Map<K, V> — partial function K → 1+V with fail-closed lookup
+//     (operator-ratified Wave-A2 Map split, Option A — #3169).
+//   - set_boolean_algebra<T>() — the single BooleanAlgebra<Set<T>>
+//     witness (generic fn, one authority per op — INVARIANTS P2).
 //
-// Deferred (split out per operator-ratified Option A, 2026-05-16 —
-// see "Deferred to Wave-A2" scaffold note below):
-//   - Map<K, V> — gated on std/witness.dag landing; an honest
-//     PartialFunction<K, V> shape requires fn(K) -> Witness<V> so
-//     duplicate keys are structurally unrepresentable.
-//   - FiniteSet<T> (or Set<T, n: Multiplicity>) — gated on the
-//     cardinality / enumerability substrate landing; the bare Set<T>
-//     here is the unrefined BooleanAlgebra carrier, by design.
-//   - Machine-readable BooleanAlgebra<Set<T>> inhabitance edge —
-//     gated on parametric `data` instances OR a pipeline-level
-//     structural-grounding-reader landing; the BooleanAlgebra
-//     grounding for Set<T> lives in prose today (pointwise-lift
-//     derivation), not as a substrate-readable edge.
+// Deferred (tracked scaffold (🟡) — operator scope excludes these):
+//   - FiniteSet<T> (or Set<T, n: Multiplicity>) — finite-cardinality
+//     refinement; needs cardinality / enumerability substrate
+//     (std/cardinality.dag Multiplicity + enumerability witness).
 //
 // Consumes:
 //   - std/node.dag: Cardinality, Instantiation — the type-substrate
@@ -53,121 +52,26 @@
 //     refinement-type carrier `Multiplicity` lives in std/cardinality.dag
 //     — UNMERGED at #3163 — and is NOT consumed by collection.dag
 //     today per the operator-ratified b2 decision.)
-//   - std/algebra.dag: FreeMonoid<T> (the recursive carrier List
-//     grounds in by carrier identity). BooleanAlgebra<Set<T>> grounds
-//     Set by pointwise lift but appears here only as a header
-//     reference, not as a parametric data instance (see modeling
-//     notes — there is no v2 parametric-instance form).
+//   - std/algebra.dag: FreeMonoid<T>, BooleanAlgebra, BoundedLattice,
+//     Lattice (List aliases FreeMonoid; Set's BooleanAlgebra witness
+//     nests those structures per algebra.dag's refinement nesting).
+//   - std/logic.dag: bool_boolean_algebra (pointwise lift source for
+//     Set<T>'s meet/join/complement — epistemic stacking, not a second
+//     truth-table authority).
+//   - std/witness.dag: Witness<V> (Map.lookup codomain — fail-closed
+//     partial function discipline per operator Option A, #3169).
 //   (Bool and the type parameters T, K, V are kernel-ambient; Symbol
 //   is substrate-ambient per std/node.dag K-1 — none is imported.)
 //
-// Header reconciliation — OPERATOR-RATIFIED b2, 2026-05-16:
-//   The prior scaffold header named `List<T, n: Cardinality>,
-//   Set<T, n>, Map<K, V, n>` with `Cardinality` from node.dag — but
-//   `Cardinality` in node.dag is a Connective VARIANT, not a usable
-//   refinement type, and the real refinement type lives in
-//   std/cardinality.dag as `Multiplicity` (unmerged #3163). The
-//   contract as originally written was unbuildable. The operator
-//   ratified option b2 (plain carriers — for List<T> = FreeMonoid<T>,
-//   cardinality (length) IS intrinsic via the FreeMonoid spine; for
-//   Set<T> as a characteristic function fn(T) -> Bool, finite-
-//   cardinality is NOT intrinsic to the carrier and is a deferred
-//   refinement — see scaffold item (2) below) + option A (Map<K,V>
-//   split to Wave-A2, gated on witness.dag); this header is the
-//   reconciled b2 form. The original frozen-header STOP write-up
-//   lives in #3169 issuecomment-4464775997.
-//
-// Deferred to Wave-A2 — TRACKED SCAFFOLD (🟡):
-//
-// (1) `Map<K, V>` — split out of this Wave-A1 PR per operator-ratified
-//   Option A (2026-05-16). The honest PartialFunction<K, V> form is
-//   `Map<K, V> { lookup: fn(K) -> Witness<V> }` (Witness = Holds(V) |
-//   Violates(absence-proof) — the K → 1+V structural codomain). That
-//   shape makes duplicate keys STRUCTURALLY UNREPRESENTABLE (a
-//   function maps each K to exactly one outcome), which the prior
-//   FreeMonoid<MapEntry> draft did not — the BLOCKING reviews from
-//   briansrls (operator) and codex on #3169 surfaced exactly this
-//   gap. Three bridge properties:
-//     (a) scaffold doc — THIS note; Map<K, V> is intentionally
-//         absent from collection.dag today.
-//     (b) bounds on use — no consumer reads `Map<K, V>` from
-//         collection.dag in Wave-A1; pipeline stages and lenses that
-//         need an association carrier wait on the follow-up PR.
-//     (c) dissolution trigger — when std/witness.dag (T-3 Wave-A2)
-//         lands, a follow-up PR adds `Map<K, V> { lookup: fn(K) ->
-//         Witness<V> }` (plus a MapEntry<K, V> record if downstream
-//         consumers need it as a return-pair carrier) and this note
-//         dissolves. TASKS.md T-3 dependency note records the same
-//         dependency.
-//
-// (2) `FiniteSet<T>` (or `Set<T, n: Multiplicity>`) — a
-//   finite-cardinality refinement of the bare Set<T> below. Codex
-//   BLOCKING review (#3169, 2026-05-16) correctly observed that
-//   `Set<T> = { member: fn(T) -> Bool }` denotes ARBITRARY subsets
-//   (including universe / complement-of-finite for infinite T) and
-//   does not encode finiteness or witness `T`'s enumerability;
-//   counting `true` elements requires an enumeration of T that the
-//   carrier does not carry. The honest move (this PR): keep the bare
-//   Set<T> as the BooleanAlgebra carrier (universe + complement must
-//   be representable for BooleanAlgebra closure — they are not
-//   "illegal states" against THIS carrier's spec), and DEFER the
-//   finite-cardinality refinement. Three bridge properties:
-//     (a) scaffold doc — THIS note; finite-cardinality is not
-//         claimed by Set<T> below.
-//     (b) bounds on use — pipeline stages / lenses needing a finite
-//         subset wait on the refinement; bare Set<T> is for the
-//         membership-as-predicate use case, not the bounded-finite
-//         one.
-//     (c) dissolution trigger — when the cardinality / enumerability
-//         substrate lands (std/cardinality.dag's `Multiplicity` +
-//         a `Witness`-typed enumerability witness on T, both Wave-A2),
-//         a follow-up PR adds a `FiniteSet<T>` carrier that pairs
-//         `member` with that witness; bare Set<T> remains as the
-//         arbitrary-subset BooleanAlgebra carrier. (Tracking the
-//         same operator-ratified deferral pattern as Map.)
-//
-// (3) `BooleanAlgebra<Set<T>>` inhabitance — PROSE-ONLY grounding,
-//   pending a machine-readable substrate edge. Codex BLOCKING review
-//   on #3169 (sha bc10dfb3) correctly observed that Set<T>'s
-//   BooleanAlgebra grounding (the pointwise-lift section in the
-//   Set<T> docstring below) lives only in COMMENTS — not as a
-//   substrate-readable inhabitance edge a downstream pipeline /
-//   lens consumer can mechanically traverse. This is genuinely an
-//   expressiveness gap, NOT a one-off omission:
-//     - List<T> = FreeMonoid<T> grounds by TYPE ALIAS — the
-//       inhabitance IS machine-readable via the alias edge (the
-//       type IS the FreeMonoid carrier).
-//     - Set<T> = { member: fn(T) -> Bool } is NOT an alias to
-//       BooleanAlgebra's carrier (BooleanAlgebra is a STRUCTURE
-//       record, not a carrier); the inhabitance is by POINTWISE
-//       LIFT — a derivation, not an alias. No type-alias edge to
-//       read, no `data` instance encoded (parametric `data
-//       set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>` has no
-//       precedent in the v2 seed; and even if it did, a stored
-//       instance would be a second authority for the algebra the
-//       carrier already structurally is — the INVARIANTS P2 +
-//       algebra.dag U1 "engine debt" the modeling notes below
-//       cite for declining the data-instance route).
-//   Three bridge properties:
-//     (a) scaffold doc — THIS note; the BooleanAlgebra<Set<T>>
-//         inhabitance is documented prose under the Set<T> type
-//         below, and is NOT machine-readable as a substrate edge.
-//     (b) bounds on use — Wave-A1 consumers that need Set's
-//         BooleanAlgebra ops compose them from `Bool`'s
-//         BooleanAlgebra by pointwise lift at the call site,
-//         using the prose-documented constructions; no consumer
-//         reads a `BooleanAlgebra<Set<T>>` instance edge today
-//         because none exists.
-//     (c) dissolution trigger — when EITHER the v2/seed gains a
-//         parametric `data` instance form (so we can author
-//         `data set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>`
-//         without breaking P2 / engine-debt by also making it the
-//         single authority), OR the pipeline / lens framework
-//         lands a structural-grounding-reader that mechanically
-//         derives BooleanAlgebra instances from pointwise-lift
-//         declarations, this note dissolves and the inhabitance
-//         becomes machine-readable. Until then the gap is named
-//         here, bounded as above, and not silently expanded.
+// Header reconciliation — OPERATOR-RATIFIED b2 + Wave-A2, 2026-05-16:
+//   Plain carriers List<T>, Set<T> (b2). Map<K,V> lands Wave-A2 after
+//   witness.dag (Option A split, #3169). Set's carrier is spelled as
+//   the function alias fn(T)->Bool so `set_boolean_algebra<T>()` can
+//   lower the pointwise BooleanAlgebra witness without parametric
+//   `data` (no v2 precedent) and without Prereq-X1.b (call-on-field of
+//   a Set parameter). Wave-A1's Conj { member } record was modeling-
+//   equivalent; dissolution here is carrier-shaping only, not a second
+//   algebra authority.
 //
 // NO ENGINE — NO ENUMERATED OPS. There is deliberately no
 // `list_concat` / `set_union` table here: those would be a parallel
@@ -178,16 +82,18 @@
 // carrier shapes here; ops are reads of that one authority, not
 // table rows.
 //
-// Status: T-3 Wave-A1 modeled 2026-05-16 (witty-dove-121); header
-// reconciled to operator-ratified b2 + Option A in the same round.
-// Splitting this file requires explicit operator ratification
-// (substrate extension = stop signal).
+// Status: T-3 Wave-A1 modeled 2026-05-16 (#3169); Wave-A2 follow-up
+//   2026-05-16 (snappy-stag-679): Map<K,V> + machine-readable Set
+//   BooleanAlgebra witness. Splitting this file requires explicit
+//   operator ratification (substrate extension = stop signal).
 
 
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid }
+import v4.std.algebra { BooleanAlgebra, BoundedLattice, FreeMonoid, Lattice }
+import v4.std.logic { bool_boolean_algebra }
+import v4.std.witness { Witness }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -196,44 +102,33 @@ import v4.std.algebra { FreeMonoid }
 // CARRIERS, NOT STRUCTURES. This file owns CONTAINER CARRIERS. The
 // algebra structures they ground in (Monoid, BooleanAlgebra) are owned
 // by std/algebra.dag; the inhabitant owns its OWN grounding here per
-// std/algebra.dag's SCOPE note. The grounding is the structural
-// alias / pointwise lift — there is no per-carrier `data
-// <name>: <Algebra><Carrier> = <Algebra> { … }` instance, for two
-// reasons that compose:
-//   (i)  v2-data instance-values are not parametric — no precedent
-//        for `data list_T_monoid<T>: Monoid<List<T>> = Monoid { … }`
-//        in the v2 seed (the closest precedent is concrete-typed
-//        `data timing_lens_monoid: Monoid<TimingMeasurement>` in v3
-//        timing_lens.dag), and a parametric instance would need a
-//        substrate the seed doesn't yet have.
-//   (ii) Even if it did, a stored instance would be a SECOND
-//        AUTHORITY for the algebra the carrier already IS
-//        (INVARIANTS P2 — the std/algebra.dag header U1's "engine
-//        debt" — a name-keyed table lookup mirroring the structure
-//        it traces).
-// The aliasing IS the inhabitance — the same pattern std/text.dag
-// uses for `String = FreeMonoid<Char>`.
+// std/algebra.dag's SCOPE note. List<T> grounds by TYPE ALIAS onto
+// FreeMonoid<T> (the alias IS the Monoid inhabitance). Set<T> grounds
+// as fn(T)->Bool with a MACHINE-READABLE witness `set_boolean_algebra`:
+// a generic function declaration whose return type is
+// BooleanAlgebra<Set<T>> — traversable by passes/lenses as the single
+// authority for pointwise meet/join/complement/top/bottom (P2).
 //
-// NO NEW COPRODUCTS. The two declarations below are a TYPE ALIAS
-// onto a coproduct owned elsewhere (List → FreeMonoid in algebra.dag)
-// and a Conj record (Set). No new Disj declared here means no new
-// Practice-4 5-pattern ledger applies — the FreeMonoid<T> ledger
-// already lives in algebra.dag and is the one authority.
+// NO NEW COPRODUCTS in this file for Wave-A2: Map<K,V> is a Conj
+// record (Practice-4 ledger: N/A — not a Disj). List/Set introduce no
+// new sum-type variants here.
 //
 // OPS FALL OUT OF GROUNDING — illustrated, not enumerated. The
 // header names which algebra each carrier grounds in and how the
 // ops project. Authoring those projections as concrete functions
 // here would be the per-op table the brief forbids; they are
 // pipeline-stage / lens reads of (carrier shape) ⊗ (algebra
-// structure), consumed at the use site.
+// structure), consumed at the use site — except the single
+// `set_boolean_algebra` witness, which IS the declared inhabitance
+// edge (same role as `bool_boolean_algebra` in std/logic.dag).
 //
 // PARTIAL-ACCESS OPS — STOP on Outcome<T>. Any List / Set operation
 // that would need the value-or-Diagnostic carrier (Outcome<T>) —
 // e.g. an `unsafe_head` returning either a value or a
 // "list-was-empty" Diagnostic — is a STOP per the operator-ratified
 // pending-carrier substrate (not yet in v4). The CARRIERS themselves
-// (List<T>, Set<T>) are Wave-A1-clean; no such op is authored here.
-// Consumers needing partial access wait on Outcome<T> landing.
+// (List<T>, Set<T>) are Wave-A1-clean; Map<K,V> uses Witness<V> at
+// the intentional partial channel (lookup) per Option A.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -264,56 +159,97 @@ type List<T> = FreeMonoid<T>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Set<T> — a subset of T, modeled as a characteristic function. A
-// `Set<T>` IS its `member` function: x ∈ S iff `S.member(x) == true`.
-// This is the textbook denotational form (Wikipedia "Algebra of
-// sets"): a subset is a function T → Bool.
+// Set<T> — a subset of T, modeled as a characteristic function T → Bool.
+// Write `s(x)` for membership: x ∈ s iff `s(x) == true`. This is the
+// textbook denotational form (Wikipedia "Algebra of sets"): a subset
+// is a predicate on T.
+//
+// Spelled as the function carrier directly (not a Conj wrapper) so the
+// pointwise BooleanAlgebra witness in `set_boolean_algebra<T>()` lowers
+// under the existing v2 surface: parameters of type Set<T> are Arrow-
+// typed, so they appear in callable_scope and `a(x)` invokes the
+// characteristic function without Prereq-X1.b field-call substrate.
+// Modeling equivalence: Wave-A1's `type Set<T> { member: fn(T)->Bool }`
+// is the same carrier with a named field; the alias is the dissolution
+// of that syntactic sugar for inhabitance lowering, not a semantic
+// change.
 //
 // This carrier denotes ARBITRARY subsets, not "finite subsets" —
 // `universe` and `complement` below are deliberately representable
 // (BooleanAlgebra closure requires them), so a value like "all
 // positive ints" is a valid `Set<Int>`. Finite-cardinality is a
-// REFINEMENT layer deferred to Wave-A2 (see the "Deferred to
-// Wave-A2 — TRACKED SCAFFOLD" block in the file header — codex
-// BLOCKING review on #3169 surfaced this distinction). The bare
-// Set<T> here is the unrefined BooleanAlgebra carrier; consumers
-// needing a guaranteed-finite subset wait on the refinement.
-//
-// Algebra grounding — Set<T> inhabits BooleanAlgebra<Set<T>> by
-// POINTWISE EXTENSION of Bool's BooleanAlgebra:
-//
-//   union(a, b)              ≡ member: λx. a.member(x) || b.member(x)
-//   intersect(a, b)          ≡ member: λx. a.member(x) && b.member(x)
-//   complement(a)            ≡ member: λx. ! a.member(x)
-//   empty                    ≡ member: λ_. false                (bottom)
-//   universe                 ≡ member: λ_. true                 (top)
-//   is_subset(a, b)          ≡ ∀x. a.member(x) → b.member(x)
-//   difference(a, b)         ≡ intersect(a, complement(b))
-//   symmetric_difference     ≡ union(difference(a,b), difference(b,a))
-//
-// Every one of these falls out of the Bool BooleanAlgebra owned by
-// std/algebra.dag composed with this carrier — there is deliberately
-// no `data set_T_boolean_algebra: BooleanAlgebra<Set<T>>` instance
-// here (the parametric-data + single-authority reasoning in the
-// modeling notes). The pointwise lift IS the inhabitance, exactly
-// the algebra.dag "aliasing is the inhabitant's concern" pattern —
-// BUT note that this grounding lives in PROSE here, not as a
-// substrate-readable inhabitance edge a pipeline / lens consumer
-// can mechanically traverse; that prose-only-grounding gap is
-// itself a tracked scaffold (see "Deferred to Wave-A2 — TRACKED
-// SCAFFOLD" block (3) in the file header for bounds + dissolution
-// trigger).
+// REFINEMENT layer deferred to scaffold item (2) (codex BLOCKING
+// review on #3169 surfaced this distinction).
 //
 // Cardinality is NOT intrinsic to Set<T>: counting `true` elements
 // requires an enumeration of T, and this carrier does not witness
-// `T`'s enumerability. A finite-cardinality refinement
-// (`FiniteSet<T>` or `Set<T, n: Multiplicity>`) is deferred to
-// Wave-A2 alongside the cardinality / enumerability substrate (the
-// header's "Deferred to Wave-A2 — TRACKED SCAFFOLD" block (2) has
-// the three bridge properties).
+// `T`'s enumerability. A finite-cardinality refinement (`FiniteSet<T>`
+// or `Set<T, n: Multiplicity>`) is deferred alongside the cardinality /
+// enumerability substrate (scaffold item (2) in the header).
 //
-// Conj record (one field, `member`); not a coproduct — no Practice-4
-// ledger applies.
-type Set<T> {
-  member: fn(T) -> Bool
+// Coproduct dissolution — N/A: `Set<T>` is a type alias to Arrow, not
+// a Disj.
+type Set<T> = fn(T) -> Bool
+
+
+// ─────────────────────────────────────────────────────────────────────
+// set_boolean_algebra<T>() — MACHINE-READABLE BooleanAlgebra<Set<T>>
+// witness (operator-ratified Wave-A2 task (b), 2026-05-16).
+//
+// Pointwise extension of `bool_boolean_algebra` (std/logic.dag) to
+// Set<T> = fn(T)->Bool:
+//   meet(a,b)   ≡ λx. bool_boolean_algebra....meet(a(x), b(x))
+//   join(a,b)   ≡ λx. bool_boolean_algebra....join(a(x), b(x))
+//   complement  ≡ λa. λx. bool_boolean_algebra.complement(a(x))
+//   bottom      ≡ λx. false
+//   top         ≡ λx. true
+//
+// The Boolean-algebra axioms are the grounded definition of
+// BooleanAlgebra (algebra.dag); they are not re-stored here. Walking
+// the returned record's fields yields the set operations — one
+// authority each (INVARIANTS P2), same discipline as
+// `bool_boolean_algebra` for Bool.
+//
+// Coproduct dissolution — N/A (returns a Conj-shaped algebra record,
+// not a sum type).
+fn set_boolean_algebra<T>() -> BooleanAlgebra<Set<T>> = BooleanAlgebra {
+  bounded_lattice: BoundedLattice {
+    lattice: Lattice {
+      meet: fn(a, b) {
+        fn(x) {
+          bool_boolean_algebra.bounded_lattice.lattice.meet(a(x), b(x))
+        }
+      },
+      join: fn(a, b) {
+        fn(x) {
+          bool_boolean_algebra.bounded_lattice.lattice.join(a(x), b(x))
+        }
+      }
+    },
+    top: fn(x) {
+      True
+    },
+    bottom: fn(x) {
+      False
+    }
+  },
+  complement: fn(a) {
+    fn(x) {
+      bool_boolean_algebra.complement(a(x))
+    }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Map<K, V> — partial function K → 1+V (operator-ratified Wave-A2 Map
+// split, Option A / #3169). Duplicate keys are structurally
+// unrepresentable: `lookup` is a total function on K into Witness<V>;
+// absence of a value is `Violates{...}`, not a second key binding.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — N/A: Map<K,V> is a Conj record (one field), not
+// a sum type — no variant ledger applies.
+type Map<K, V> {
+  lookup: fn(K) -> Witness<V>
 }
