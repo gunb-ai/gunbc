@@ -23,6 +23,28 @@
 //   - std/algebra.dag: OrderedRing, AbelianGroup
 //   - std/diagnostic.dag: Outcome<T> for Tier-2 divide/modulo
 //
+// D2 (operator-ratified 2026-05-16; see DECISIONS.md D2) — this file is
+//   the SINGLE authority for integer algebra inhabitance. `Int` inhabits
+//   `OrderedRing` / `AbelianGroup` here, ONCE. That inhabitance is filled
+//   by the construction chain — Peano `Nat` (std/nat.dag) →
+//   `GroupCompletion` → `AbelianGroup`, and `Compose<MachineWidth>` for
+//   the fixed-width projections — so its operation `Arrow` bodies are
+//   sub-DAGs of L1 behaviors (THESIS:203's user-function case), never
+//   `extdeps/` primitive realizations: the integer chain is fully
+//   constructive (contrast std/float.dag's D2b, where IEEE-754 ops ARE
+//   primitives — `Arrow` bodies that are `extdeps/` realizations per
+//   THESIS:203).
+//   A language/format `extdeps` file does NOT re-declare an integer
+//   algebra inhabitance: per INVARIANTS P1:42 (`numeric_aliases_align_
+//   to_refinements`) a per-language `OrderedRing<<lang>Int, …>` is the
+//   forbidden parallel substrate. A language carrier instead ALIAS-
+//   IDENTIFIES to the `Int8 … Int128` / `UInt8 … UInt128` declared here
+//   (`type RustI32 = Int32`); the algebra flows through the alias.
+//   Overflow / UB / arbitrary-precision are DISTINCT carriers here (the
+//   wrapping ring, the partial/totalized op, unbounded `Int`); a language
+//   selects one via its alias target plus a sibling `OverflowDisposition`
+//   carrier declared in its own `extdeps` file.
+//
 // Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
