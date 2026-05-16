@@ -112,11 +112,14 @@ import v4.std.node { Symbol }
 // grounded IEEE 754 `totalOrder` (P1 faithfulness). Still NOT a packaged
 // `ApproximateField` witness.
 //
-// SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
-// `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
-// (K-1: no Symbol mint in data literals). The dimension that surfaces the
-// rejection binds the anchor at a declaration site; float.dag supplies
-// only the schema-shaped carrier.
+// SYMBOL ANCHORS (P2 / diagnostic.dag) — Tier-2 `Rejected` paths take **two**
+// caller-supplied opaque `Symbol`s (K-1: no Symbol mint in this file):
+// `failure_reason` binds `Diagnostic.reason` (dimension-owned failure
+// identity); `failure_at_port` binds `PortLocus.port` (**where** — a separate
+// boundary fact from `reason`, per diagnostic.dag header `reason` vs `at`).
+// Fusing both into one symbol regresses Practices 3/5 + INVARIANTS P2; callers
+// wire two declaration-site identities (they may coincide only upstream by
+// explicit dimension policy — this API does not collapse them here).
 //
 // INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
 // interchange authorities for Grounding edges (P2 single place for words).
