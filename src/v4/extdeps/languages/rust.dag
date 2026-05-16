@@ -100,11 +100,15 @@
 //     body is canonical D2a(2) SHAPE, PLACEMENT is operator-pending
 //     per T-4 mgr msg_148854d5; one decl ≠ P2 violation; fan-out
 //     files DO NOT re-declare — see resolver-block note),
-//     OverflowAction (closed two-way Disj —
-//     PanicOnOverflow / TwoComplementWrap, Rust integer runtime-
-//     dispatch classifier per Reference §numeric),
+//     OverflowAction (closed two-way Disj — PanicOnOverflow /
+//     TwoComplementWrap, the permitted-set of Rust integer-
+//     overflow runtime actions per Reference behavior-not-considered-
+//     unsafe.html#integer-overflow),
 //     OverflowDisposition<IRCarrier> (per-language operation-
-//     semantics Conj with debug_default + release_default); plus
+//     semantics Conj carrying ONLY the deterministic debug_assert-
+//     required action — non-debug-assert builds are implementation-
+//     defined per Reference and NOT recorded as a structural fact;
+//     see the carrier's doc-block + BLOCKING reviewer 2026-05-16T19:26:35Z); plus
 //     the LANDABLE NOW alias-identity row `type RustBool = Bool` +
 //     `data rust_bool_grounding: GroundingMap<RustBool> =
 //     GroundingMap { spelling: "bool" }` (std/logic.dag's Bool is
@@ -1677,22 +1681,42 @@ type GroundingMap<IRCarrier> {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OverflowAction — the closed disposition Rust applies to integer
-// arithmetic at overflow. Per Reference §types-numeric: in debug
-// builds the default is panic on overflow; in release builds the
-// default is two's-complement wrap; explicit per-op variants
-// (wrapping_*, checked_*, saturating_*, overflowing_*) opt the
-// caller into specific behavior.
-// Spec: https://doc.rust-lang.org/reference/types/numeric.html
+// OverflowAction — the closed SET of permitted runtime actions on
+// Rust integer arithmetic overflow per Rust Reference
+// behavior-not-considered-unsafe.html#integer-overflow:
 //
-//   - PanicOnOverflow      — Rust debug-build default for
-//                            arithmetic operators (`+`, `-`, `*`)
-//   - TwoComplementWrap    — Rust release-build default for the
-//                            same operators
+//   "When the programmer has enabled `debug_assert!` assertions (for
+//    example, by enabling a non-optimized build), implementations
+//    must insert dynamic checks that `panic` on overflow. Other kinds
+//    of builds may result in `panics` or silently wrapped values on
+//    overflow, at the implementation's discretion. In the case of
+//    implicitly-wrapped overflow, implementations must provide
+//    well-defined (even if still considered erroneous) results by
+//    using two's complement overflow conventions."
 //
-// CLOSED (C1 stop-signal). A third action variant (e.g. SaturatingClamp
-// for explicit saturating_* ops) is an edit to THIS declaration under
-// the L-2 pin discipline.
+// Spec: https://doc.rust-lang.org/reference/behavior-not-considered-unsafe.html#integer-overflow
+//
+//   - PanicOnOverflow     — runtime panic; the action implementations
+//                           MUST take in builds with `debug_assert!`
+//                           enabled. Also a permitted action in other
+//                           builds at implementation discretion.
+//   - TwoComplementWrap   — silently wrap using two's-complement
+//                           conventions. Permitted in builds WITHOUT
+//                           `debug_assert!` at implementation
+//                           discretion; commonly the actual choice
+//                           when `-C overflow-checks=off` (the
+//                           release-profile default).
+//
+// Explicit per-operation forms (`wrapping_*`, `checked_*`,
+// `saturating_*`, `overflowing_*`, `Wrapping<T>` newtype) opt the
+// caller into specific behavior at the call site, INDEPENDENT of
+// the build-mode default; those are method-name facts modeled
+// elsewhere (LanguageModel + the std library's integer-method
+// surface), not new OverflowAction variants.
+//
+// CLOSED (C1 stop-signal). A third variant would require a Reference
+// edit (e.g. a future stable saturating-default mode); change is a
+// visible C1 edit to THIS declaration under the L-2 pin discipline.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -1707,17 +1731,22 @@ type GroundingMap<IRCarrier> {
 //      partition; it doesn't trace to a richer std/ algebraic
 //      structure (no Monoid / Lattice on these two actions). No
 //      richer std/ source.
-//   4. Dimensional — FAILS: a single configuration applies EXACTLY
-//      ONE default action at a given runtime configuration;
-//      alternatives, not coordinates.
+//   4. Dimensional — FAILS: a single overflow event produces
+//      EXACTLY ONE of these two actions per the Reference;
+//      mutually-exclusive alternatives, not simultaneous
+//      coordinates.
 //   5. Parameterized family — FAILS: the two are distinct Rust-
-//      Reference runtime-dispatch primitives; NOT one generic
+//      Reference permitted-action primitives; NOT one generic
 //      `F<X>` / projection over a separately-declared source set
 //      (Practice 7).
-// Terminal: the closed two-way Rust integer-overflow runtime-action
-// classifier; saturating/checked are EXPLICIT-PER-OP forms recorded
-// via the OverflowDisposition record's separate availability fields
-// rather than a third default-action variant.
+// Terminal: the closed two-element permitted-set per Reference
+// behavior-not-considered-unsafe.html#integer-overflow. The
+// `wrapping_*` / `checked_*` / `saturating_*` / `overflowing_*`
+// explicit-per-op forms are method-NAME facts on the integer
+// types' library surface (modeled in the bundled T-4 LanguageModel
+// grammar work, not here), NOT additional OverflowAction
+// variants — they opt the call site into specific behavior
+// independent of the build-mode action.
 type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
@@ -1728,20 +1757,38 @@ type OverflowAction
 // semantics carrier for Rust integer arithmetic (D2a(3)). Conj
 // record (no Practice-4 ledger).
 //
-//   - debug_default     the default OverflowAction in Rust debug
-//                       builds (canonically PanicOnOverflow per
-//                       Reference §numeric)
-//   - release_default   the default OverflowAction in Rust release
-//                       builds (canonically TwoComplementWrap)
+//   - debug_assert_required_action
+//       The OverflowAction the Rust Reference REQUIRES implementations
+//       to take when `debug_assert!` assertions are enabled (Reference
+//       behavior-not-considered-unsafe.html#integer-overflow: "...
+//       implementations must insert dynamic checks that panic on
+//       overflow"). This IS a structural language fact: canonically
+//       PanicOnOverflow.
+//
+// The carrier deliberately does NOT carry a `release_default` (or any
+// non-debug-assert default) field — per the Reference cited above,
+// builds WITHOUT `debug_assert!` "may result in panics OR silently
+// wrapped values on overflow, at the implementation's discretion."
+// The selection between PanicOnOverflow and TwoComplementWrap in such
+// builds is therefore IMPLEMENTATION-DEFINED, not a language fact.
+// In practice the choice is commonly driven by the
+// `-C overflow-checks=on|off` rustc flag (release profile defaults to
+// `off`), but that is build-configuration tooling state, not a
+// language-spec fact suitable for an extdeps/ resolver carrier.
+// Recording one specific Action as the "release_default" would
+// over-determine the spec; recording the closed PERMITTED-SET would
+// be tautological (it is precisely the OverflowAction Disj
+// above). Per BLOCKING reviewer 2026-05-16T19:26:35Z + Reference
+// behavior-not-considered-unsafe.html#integer-overflow.
 //
 // Per the D2 row D2.5: overflow/UB/arbitrary-precision are DISTINCT
 // std/ carriers selected by the alias target + the per-language
 // OverflowDisposition carrier, never a re-declared semantics. This
-// record carries Rust's runtime-action selection; the abstract-vs-
-// bounded-integer-semantics axis is selected via the alias target
-// (e.g. RustI32 → Int32 vs RustNat-no-bound → Int; the former is
-// bounded and overflow-disposed, the latter is arbitrary-precision
-// and overflow-impossible).
+// record carries Rust's debug-assert REQUIREMENT (the deterministic
+// fact); the abstract-vs-bounded-integer-semantics axis is selected
+// via the alias target (e.g. RustI32 → Int32 vs an arbitrary-
+// precision Int — the former is bounded and overflow-disposed, the
+// latter is arbitrary-precision and overflow-impossible).
 //
 // Floats use a separate operation-semantics carrier (NaN/Inf
 // handling per IEEE-754) — that one lands when the float aliases
@@ -1749,8 +1796,7 @@ type OverflowAction
 // case is the canonical instance of the D2a(3) shape; the float
 // case mirrors structurally with different fields.
 type OverflowDisposition<IRCarrier> {
-  debug_default: OverflowAction
-  release_default: OverflowAction
+  debug_assert_required_action: OverflowAction
 }
 
 
@@ -1798,10 +1844,12 @@ data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
 //     GroundingMap { spelling: "<token>" }` row (D2a(2)).
 //   - for integer aliases: `data rust_<x>_overflow:
 //     OverflowDisposition<Rust<X>> = OverflowDisposition {
-//     debug_default: PanicOnOverflow,
-//     release_default: TwoComplementWrap }` row (D2a(3); Rust
-//     integer defaults per Reference §numeric apply uniformly
-//     to all widths).
+//     debug_assert_required_action: PanicOnOverflow }` row (D2a(3);
+//     per Reference behavior-not-considered-unsafe.html#integer-
+//     overflow the debug_assert requirement applies uniformly to
+//     all integer widths; non-debug-assert builds are
+//     implementation-defined and not recorded — see the
+//     OverflowDisposition declaration's note).
 //   - for float aliases: a NaN/Inf disposition carrier row
 //     (the carrier itself lands with std/float.dag's
 //     ApproximateField<Float> inhabitance — same 🟡 TRACKED-
