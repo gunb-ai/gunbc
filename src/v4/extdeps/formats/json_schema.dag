@@ -67,29 +67,59 @@ import v4.extdeps.formats.json { JsonValue }
 //
 // `JsonValue` is the validation SUBJECT and the carrier for keyword values
 // that remain JSON-first at this layer (`additional_keywords` + the
-// `JsonSchemaTypeSlot` / `JsonSchemaItemsSlot` JSON-shaped edges). **Honest
-// scope:** not every Core keyword is decomposed into a dedicated field;
-// unknown / deferred-for-now keywords remain in `additional_keywords` as
-// faithful `JsonValue` payloads keyed by their JSON member name — no
-// silent drop (M5).
+// `JsonSchemaItemsSlot` JSON-shaped edges). The **`"type"`** keyword is the
+// exception: Draft 2020-12 Validation §6.1.1 fixes a **closed seven-name**
+// vocabulary — modeled as `JsonSchemaCoreTypeName` (M4 / P2), not open
+// `String`. **Honest scope:** not every other Core keyword is decomposed;
+// unknown / deferred keywords remain in `additional_keywords` as faithful
+// `JsonValue` payloads — no silent drop (M5).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchemaCoreTypeName — closed JSON Schema 2020-12 **instance type**
+// strings for the `"type"` keyword (Validation §6.1.1: exactly the seven
+// primitive names `"null"`, `"boolean"`, `"object"`, `"array"`, `"number"`,
+// `"string"`, `"integer"` — M4 closed set, not `String`).
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
+// Ledger — five patterns: (1) fact placement FAILS — each JSON type string
+// is its own constructor; (2) variant-is-data FAILS — seven distinct nullary
+// discriminants vs one `String` admitting `"frob"`; (3) algebraic N/A;
+// (4) dimensional FAILS — exactly one core name per constructor; (5)
+// parameterized family FAILS — not `F<X>` over strings.
+type JsonSchemaCoreTypeName
+  = JsonSchemaCoreTypeNull
+  | JsonSchemaCoreTypeBoolean
+  | JsonSchemaCoreTypeObject
+  | JsonSchemaCoreTypeArray
+  | JsonSchemaCoreTypeNumber
+  | JsonSchemaCoreTypeString
+  | JsonSchemaCoreTypeInteger
 
 
 // ─────────────────────────────────────────────────────────────────────
 // JsonSchemaTypeSlot — the `"type"` keyword (Validation vocabulary §6.1.1).
-// JSON Schema permits either a string or an array of strings;
-// absent keyword is modeled as its own variant (not a fabricated default).
+// JSON Schema permits either **one** core type name **or** a JSON **array**
+// of distinct core type names; absent keyword is its own variant (not a
+// fabricated default). Single-name and array forms use **`JsonSchemaCoreTypeName`**
+// (closed seven-set — M4); **array uniqueness and non-emptiness** are not
+// structurally enforced by `List` — spec-invalid duplicates / empty arrays
+// remain **🟡 validation authority** for `json_schema_validate` (Deferred (1);
+// INVARIANTS §2 honesty — no false structural guarantee).
 //
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
 // Ledger — five patterns: (1) fact placement FAILS — uniform classifier for
-// type-keyword shape; (2) variant-is-data FAILS — absent vs one-name vs
-// name-list are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
+// type-keyword shape; (2) variant-is-data FAILS — absent vs one core vs
+// core-list are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
 // exactly one alternative; (5) parameterized family FAILS — not `F<X>`.
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
-  | JsonSchemaTypeName { name: String }
-  | JsonSchemaTypeNames { names: List<String> }
+  | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
+  | JsonSchemaTypeUnion { types: List<JsonSchemaCoreTypeName> }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -148,7 +178,8 @@ type JsonSchema
 //   `TypeNode` facts for derivation — T-3 / T-6 pipeline work, not bodiless
 //   signatures here. When authored: **fail-closed `Outcome<…>`** on every
 //   operation (json.dag seam #3); a structurally constructible but spec-
-//   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload)
+//   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload,
+//   **duplicate or empty `JsonSchemaTypeUnion.types` per Validation §6.1.1**)
 //   validates/derives `Rejected`, never a fabricated success.
 //     (a) scaffold doc — THIS note.
 //     (b) bounds on use — no symbols exported yet; consumers wait.
