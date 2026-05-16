@@ -58,11 +58,12 @@
 //   ptx.dag #3170 and rust.dag #3174):
 //
 //   - Go scalar primitive vocabulary as closed structural carriers:
-//     GoIntKind (signed / unsigned), GoIntWidth (Bits8/16/32/64 fixed
-//     + PlatformInt for int/uint + PointerSized for uintptr — three
-//     spec-distinct platform-dependent kinds preserved per Go spec
-//     §Numeric_types, NOT collapsed to one Pointer variant; the
-//     Reference's partition grounds the carrier per INVARIANTS P1),
+//     SignedIntWidth (5-way: SignedBits8/16/32/64 + SignedPlatformInt
+//     for `int`) and UnsignedIntWidth (6-way: UnsignedBits8/16/32/64
+//     + UnsignedPlatformInt for `uint` + UnsignedPointerSized for
+//     `uintptr` — Go has no signed-pointer-sized type; the per-
+//     signedness width split makes Signed × PointerSized structurally
+//     unrepresentable per cursor/composer-2 BLOCKING fix on PR #3182),
 //     GoFloatWidth (Bits32/64 — IEEE-754 binary32/binary64 per Go
 //     spec §Numeric_types), GoComplexWidth (Bits64/128 — Go's two
 //     complex types `complex64` / `complex128`, structurally distinct
@@ -140,8 +141,9 @@
 //       * `byte` (alias for `uint8`) and `rune` (alias for `int32`)
 //         are NOT separate scalar kinds — the Go spec defines them
 //         as aliases (§Numeric_types), so per P2 they ground in
-//         the existing `IntScalar { kind: Unsigned, width: Bits8 }`
-//         and `IntScalar { kind: Signed, width: Bits32 }` carriers
+//         the existing `UnsignedIntScalar { width: UnsignedBits8 }`
+//         (for `byte` ≡ `uint8`) and `SignedIntScalar { width:
+//         SignedBits32 }` (for `rune` ≡ `int32`) carriers
 //         respectively. The alias names live in the boundary
 //         intern table; kernel/lens code reads the underlying
 //         GoScalar.
@@ -437,157 +439,155 @@ import v4.std.node { Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GoIntKind — the closed Go signed-vs-unsigned integer kind. The Go
-// Specification §Numeric_types partitions integer types into exactly
-// two kinds: signed (int family) and unsigned (uint family).
+// SignedIntWidth — the closed signed-integer width classifier. The Go
+// Specification §Numeric_types admits exactly five signed widths:
+// `int8`, `int16`, `int32`, `int64`, and the platform-dependent `int`.
+// There is NO signed-pointer-sized type in Go (`uintptr` is unsigned-
+// only) — that asymmetry is the per-language fact this slice's
+// dissolution carries (cursor/composer-2 BLOCKING review on PR #3182
+// 2026-05-16: the prior `IntScalar { kind: GoIntKind, width: GoIntWidth }`
+// Cartesian-product carrier admitted `Signed × PointerSized` which has
+// no Go analogue — INVARIANTS P2 illegal-states-unrepresentable
+// anti-pattern. Splitting widths per signedness makes the missing
+// Signed × PointerSized cell structurally unrepresentable, not
+// "rejected by a check").
 // Spec: https://go.dev/ref/spec#Numeric_types.
 //
-//   - Signed   — `int8` / `int16` / `int32` / `int64` / `int`
-//                (two's-complement signed integers; `rune` is an
-//                alias for `int32` and grounds on this variant
-//                with width=Bits32 per Owned ELSEWHERE)
-//   - Unsigned — `uint8` / `uint16` / `uint32` / `uint64` / `uint` /
-//                `uintptr` (unsigned modular integers; `byte` is an
-//                alias for `uint8` and grounds on this variant with
-//                width=Bits8 per Owned ELSEWHERE)
+//   - SignedBits8         — `int8`   (1-byte signed)
+//   - SignedBits16        — `int16`  (2-byte signed)
+//   - SignedBits32        — `int32`  (4-byte signed; `rune` is an
+//                                     alias for `int32` and grounds
+//                                     on this variant per Owned
+//                                     ELSEWHERE)
+//   - SignedBits64        — `int64`  (8-byte signed)
+//   - SignedPlatformInt   — `int`    (platform-dependent default
+//                                     signed integer width; per spec
+//                                     ≥ 32 bits, typically 64 on
+//                                     64-bit platforms)
 //
-// CLOSED (C1 stop-signal). A third integer kind is an edit to THIS
-// declaration routed to operator ratification under the L-2 pin
-// discipline (a future Specification revision modifying the integer
-// kind partition is a visible diff, never a silent extension).
+// CLOSED (C1 stop-signal). A 128-bit signed width (Go has no stable
+// int128 in the pinned Specification — distinct from Rust's i128) is
+// an edit to THIS declaration under the L-2 pin discipline.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every integer-scalar consumer (the
-//      Go `LanguageModel` grammar's integer-literal production, the
-//      per-target cost-realization for integer ops, the eventual
-//      inhabitance walk for Semiring-vs-OrderedRing dispatch) reads
-//      the kind tag uniformly; shared classifier, not a per-consumer
-//      scattered fact.
-//   2. Variant-is-data — FAILS: nullary tags from a closed
-//      Specification-defined set. A `{ signed: Bool }` proxy
-//      replaces a closed 2-valued exhaustive sum with an unbounded
-//      Bool — and while Bool is 2-valued, the Bool proxy also
-//      admits the read "is the integer kind 'true' or 'false'?" —
-//      exactly the M4 "closed sets are enums, not numeric/boolean
-//      proxies" smell. The enum IS the faithful form (same as
-//      rust.dag's RustIntKind argument).
-//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
-//      structure (Signed → OrderedRing, Unsigned → Semiring — minus
-//      negate). That grounding IS the inhabitance walk owned by
-//      std/integer.dag per P2 (and rides D2 + T-3 per "Owned
-//      ELSEWHERE"); the kind enum itself stays a closed classifier.
-//   4. Dimensional — FAILS: a single Go integer type has EXACTLY ONE
-//      kind; `int32` is signed, `uint32` is unsigned, the
-//      Specification admits no "both" type. Mutually-exclusive
-//      alternatives, not simultaneous coordinates. (Kind × Width
-//      is the Cartesian product on GoScalar's IntScalar variant.)
-//   5. Parameterized family — FAILS: Signed and Unsigned are the Go
-//      Specification's integer-kind partition; they are NOT one
-//      generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7). One could attempt `IntKind<algebra:
-//      AlgebraStructure>` parameterized over a 2-element algebra
-//      subset, but the partition is the spec's irreducible kind-
-//      distinction, not a mechanical copy of a richer set.
-// Terminal: the closed two-way Go integer-kind partition; a 3rd is
-// the C1 stop-signal.
-type GoIntKind
-  = Signed
-  | Unsigned
+//   1. Fact placement — FAILS: every signed-integer-scalar consumer
+//      (emission of `int32` vs `int64`; per-target cost-realization
+//      sizes; the eventual OrderedRing inhabitance walk) reads the
+//      width tag uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
+//      64/<platform>) replaces a closed 5-valued exhaustive sum
+//      with an unbounded Int (bits=42 representable), AND fails to
+//      express SignedPlatformInt as a STRUCTURALLY platform-dependent
+//      kind. The widths are NOT free Int values; they are the
+//      Go-Specification-admitted signed subset, so a free-Int
+//      carrier would ratify illegal widths (P2 illegal-states-
+//      unrepresentable shape, same as ptx.dag RegisterWidth).
+//   3. Algebraic form — N/A by construction: the five widths
+//      structurally inhabit the SAME algebra (OrderedRing — signed
+//      two's-complement); they do not partition into distinct
+//      algebraic structures. The inhabitance ride D2 per "Owned
+//      ELSEWHERE".
+//   4. Dimensional — FAILS: a single typed signed integer has
+//      EXACTLY ONE width; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the five widths are the Go-
+//      stable-signed-integer set; they are NOT one generic `F<X>` /
+//      projection over a separately-declared source set (Practice 7).
+//      The fixed widths' bit-count is the discriminant for the
+//      fixed variants; SignedPlatformInt is a different-shaped
+//      variant (platform-dependent, not a fixed count) — they are
+//      not all `F<bit-count: Int>`.
+// Terminal: the closed five-way Go signed-integer-width classifier
+// for the pinned Go Specification.
+type SignedIntWidth
+  = SignedBits8
+  | SignedBits16
+  | SignedBits32
+  | SignedBits64
+  | SignedPlatformInt
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GoIntWidth — the closed Go integer bit-width classifier. The Go
-// Specification §Numeric_types admits four fixed widths and two
-// platform-dependent widths.
+// UnsignedIntWidth — the closed unsigned-integer width classifier.
+// The Go Specification §Numeric_types admits exactly six unsigned
+// widths: `uint8`, `uint16`, `uint32`, `uint64`, the platform-
+// dependent `uint`, and the pointer-sized `uintptr`. The asymmetry
+// vs SignedIntWidth (six unsigned widths vs five signed) is the
+// per-language fact this slice surfaces: `uintptr` exists but
+// `intptr` does not — there is no signed-pointer-sized type in Go.
+// This structural fact is faithfully reflected by giving UnsignedInt-
+// Width one more variant than SignedIntWidth (rather than collapsing
+// the Cartesian product across a shared GoIntKind × GoIntWidth pair
+// the way Rust's RustIntKind × RustIntWidth would suggest — Rust has
+// symmetric isize/usize, Go does not).
 // Spec: https://go.dev/ref/spec#Numeric_types.
 //
-//   - Bits8         — `int8`  / `uint8` / `byte`    (1-byte; `byte`
-//                                                    is an alias for
-//                                                    `uint8`)
-//   - Bits16        — `int16` / `uint16`           (2-byte integers)
-//   - Bits32        — `int32` / `uint32` / `rune`  (4-byte; `rune`
-//                                                    is an alias for
-//                                                    `int32`)
-//   - Bits64        — `int64` / `uint64`           (8-byte integers)
-//   - PlatformInt   — `int`   / `uint`             (the platform-
-//                                                    dependent default
-//                                                    integer width;
-//                                                    per spec ≥ 32
-//                                                    bits, typically
-//                                                    64 on 64-bit
-//                                                    platforms)
-//   - PointerSized  — `uintptr`                    (an unsigned
-//                                                    integer large
-//                                                    enough to hold
-//                                                    the bit pattern
-//                                                    of any pointer;
-//                                                    structurally
-//                                                    DISTINCT from
-//                                                    PlatformInt per
-//                                                    the spec)
+//   - UnsignedBits8         — `uint8`  (1-byte; `byte` is an alias
+//                                       for `uint8` and grounds on
+//                                       this variant per Owned
+//                                       ELSEWHERE)
+//   - UnsignedBits16        — `uint16` (2-byte unsigned)
+//   - UnsignedBits32        — `uint32` (4-byte unsigned)
+//   - UnsignedBits64        — `uint64` (8-byte unsigned)
+//   - UnsignedPlatformInt   — `uint`   (platform-dependent default
+//                                       unsigned integer width; per
+//                                       spec ≥ 32 bits, paired with
+//                                       SignedPlatformInt)
+//   - UnsignedPointerSized  — `uintptr` (unsigned integer large
+//                                        enough to hold the bit
+//                                        pattern of any pointer;
+//                                        structurally DISTINCT from
+//                                        UnsignedPlatformInt per spec
+//                                        — the spec does not equate
+//                                        them even on platforms where
+//                                        they happen to be the same
+//                                        width)
 //
-// CLOSED (C1 stop-signal). A 128-bit width (Go has no stable int128
-// in the pinned Specification — distinct from Rust's i128/u128) is
-// an edit to THIS declaration under the L-2 pin discipline.
+// CLOSED (C1 stop-signal). A 128-bit unsigned width is an edit to
+// THIS declaration under the L-2 pin discipline (Go has no stable
+// uint128 in the pinned Specification).
 //
 // SPEC FAITHFULNESS NOTE (INVARIANTS P1). The Go Specification
-// §Numeric_types preserves `int`/`uint` and `uintptr` as STRUCTURALLY
-// DISTINCT types (the spec does not equate them, even on platforms
-// where they happen to be the same width). The partition above
-// reflects this: PlatformInt and PointerSized are separate variants,
-// NOT collapsed into one Pointer variant. This is the Go-vs-Rust
-// per-language fact — Rust's `isize`/`usize` are spec-equated to
-// pointer-width (one Pointer variant in rust.dag #3174); Go's
-// `int`/`uint` and `uintptr` are NOT equated by the spec (two
-// variants here). Grounding the partition in the spec partition is
-// what INVARIANTS P1 modeling-faithfulness requires.
+// §Numeric_types preserves `uint` and `uintptr` as STRUCTURALLY
+// DISTINCT types (the spec does not equate them). UnsignedPlatformInt
+// and UnsignedPointerSized are separate variants reflecting this.
+// Grounding the partition in the spec partition is what INVARIANTS
+// P1 modeling-faithfulness requires.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every integer-scalar consumer reads
-//      the width to size representations (emission of `int32` vs
-//      `int64`; per-target cost-realization sizes); shared
-//      classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
-//      64/<platform>/<pointer>) replaces a closed 6-valued
-//      exhaustive sum with an unbounded Int (bits=42 representable),
-//      AND fails to express PlatformInt and PointerSized as
-//      STRUCTURALLY DISTINCT platform-dependent kinds. The widths
-//      are NOT free Int values; they are the Go-Specification-
-//      admitted subset, so a free-Int carrier would ratify illegal
-//      widths (P2 illegal-states-unrepresentable shape, same as
-//      ptx.dag RegisterWidth and rust.dag RustIntWidth).
-//   3. Algebraic form — partially N/A: the bit-counts form an
-//      ordered set (8 < 16 < 32 < … with PlatformInt and
-//      PointerSized reading the host pointer-width / platform-int
-//      width on common targets), but the ORDER is derived FROM the
-//      closed enum (and the platform-dependent values resolve at
-//      the boundary), not a richer source — pointing to a
-//      `Lattice<GoIntWidth>` would parallel-represent the
-//      enumeration the order is defined over (algebra.dag U1
-//      engine-debt smell).
-//   4. Dimensional — FAILS: a single typed integer has EXACTLY ONE
-//      width; mutually-exclusive alternatives. The kind × width
-//      Cartesian product lives on GoScalar's IntScalar variant
-//      (Disj-with-payload), not on this enum.
-//   5. Parameterized family — FAILS: the six widths are the Go
-//      Specification's stable-integer-width set; they are NOT one
-//      generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7). The fixed widths' bit-count is the
-//      discriminant for the fixed variants; PlatformInt and
+//   1. Fact placement — FAILS: every unsigned-integer-scalar consumer
+//      reads the width to size representations (emission of `uint32`
+//      vs `uint64` vs `uintptr`; per-target cost-realization sizes);
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy replaces a
+//      closed 6-valued exhaustive sum with an unbounded Int, AND
+//      fails to express UnsignedPlatformInt vs UnsignedPointerSized
+//      as STRUCTURALLY DISTINCT platform-dependent kinds (P2
+//      illegal-states-unrepresentable shape).
+//   3. Algebraic form — N/A by construction: the six widths
+//      structurally inhabit the SAME algebra (Semiring — unsigned
+//      modular); they do not partition into distinct algebraic
+//      structures. The inhabitance ride D2 per "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: a single typed unsigned integer has
+//      EXACTLY ONE width; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the six widths are the Go-
+//      stable-unsigned-integer set; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The fixed widths' bit-count is the discriminant
+//      for the fixed variants; UnsignedPlatformInt and Unsigned-
 //      PointerSized are DIFFERENT-SHAPED variants (platform-
 //      dependent, not a fixed count, AND structurally distinct from
 //      each other per spec) — they are not all `F<bit-count: Int>`.
-// Terminal: the closed six-way Go integer-width classifier for the
-// pinned Go Specification; a 7th is the C1 stop-signal.
-type GoIntWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
-  | PlatformInt
-  | PointerSized
+// Terminal: the closed six-way Go unsigned-integer-width classifier
+// for the pinned Go Specification.
+type UnsignedIntWidth
+  = UnsignedBits8
+  | UnsignedBits16
+  | UnsignedBits32
+  | UnsignedBits64
+  | UnsignedPlatformInt
+  | UnsignedPointerSized
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -615,7 +615,8 @@ type GoIntWidth
 //      Int — and floating-point widths are NOT free Int values;
 //      they are the IEEE-754-binary-format-admitted subset Go
 //      stabilizes (P2 illegal-states-unrepresentable; same shape
-//      as GoIntWidth and rust.dag RustFloatWidth).
+//      as SignedIntWidth / UnsignedIntWidth and rust.dag
+//      RustFloatWidth).
 //   3. Algebraic form — N/A by construction: the two widths
 //      structurally inhabit the SAME algebra (std/algebra.dag
 //      `ApproximateField` per the rounding-aware framing —
@@ -713,7 +714,8 @@ type GoComplexWidth
 // Spec: https://go.dev/ref/spec#Types.
 //
 //   - Int      — integer scalars (Spec §Numeric_types — both signed
-//                and unsigned, all widths — see GoIntKind × GoIntWidth)
+//                and unsigned, all widths — see SignedIntWidth /
+//                UnsignedIntWidth)
 //   - Float    — floating-point scalars (Spec §Numeric_types —
 //                float32 / float64 stable — see GoFloatWidth)
 //   - Complex  — complex-number scalars (Spec §Numeric_types —
@@ -736,9 +738,10 @@ type GoComplexWidth
 // them as aliases — they are the SAME types as their targets, not
 // new kinds. Per P2 single-authority, alias names live in the
 // boundary intern table (resolved at parse time); kernel/lens code
-// reads the underlying `IntScalar { kind: Unsigned, width: Bits8 }`
-// (for `byte`) or `IntScalar { kind: Signed, width: Bits32 }` (for
-// `rune`). The alias spelling never appears in this partition.
+// reads the underlying `UnsignedIntScalar { width: UnsignedBits8 }`
+// (for `byte` ≡ `uint8`) or `SignedIntScalar { width: SignedBits32 }`
+// (for `rune` ≡ `int32`). The alias spelling never appears in this
+// partition.
 //
 // `error` (Go's standard error interface) is DELIBERATELY NOT in
 // this partition: it is an INTERFACE TYPE, not a primitive scalar
@@ -763,7 +766,8 @@ type GoComplexWidth
 //      regression the K-1 opacity discipline structurally
 //      prevents). The enum IS the faithful form.
 //   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
-//      structure (Int → OrderedRing-or-Semiring per GoIntKind, Float
+//      structure (Int → OrderedRing for SignedIntScalar / Semiring
+//      for UnsignedIntScalar, Float
 //      → ApproximateField, Complex → ApproximateField over a Conj
 //      of two same-width floats, Bool → BooleanAlgebra, String →
 //      FreeMonoid<Byte> per the spec's byte-sequence semantics).
@@ -775,9 +779,13 @@ type GoComplexWidth
 //      RegisterScalarKind and rust.dag RustScalarKind.
 //   4. Dimensional — FAILS: a single Go scalar value has EXACTLY
 //      ONE kind; mutually-exclusive alternatives. (Kind × Width is
-//      a Cartesian product on GoScalar's IntScalar / FloatScalar /
-//      ComplexScalar variants — that IS the dimensional model for
-//      the width-bearing kinds.)
+//      the per-variant width carrier on GoScalar's SignedIntScalar /
+//      UnsignedIntScalar / FloatScalar / ComplexScalar variants —
+//      that IS the dimensional model for the width-bearing kinds.
+//      The Signed/Unsigned partition is structurally split across
+//      two integer variants rather than carried as a shared
+//      GoIntKind axis, because the Cartesian product is ASYMMETRIC
+//      — see GoScalar header.)
 //   5. Parameterized family — FAILS: the five kinds are the Go-
 //      Specification primitive-type partition; they are NOT one
 //      generic `F<X>` / projection over a separately-declared
@@ -799,108 +807,132 @@ type GoScalarKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// GoScalar — a typed Go primitive-scalar value: kind × (width if
-// applicable). Disj sum with NAMED-FIELD VARIANT PAYLOADS so that
-// the kind × width admissibility is STRUCTURALLY ENFORCED — Bool /
-// String carry no width payload, so "Bool with width=Bits32" is
-// unrepresentable (not "rejected by a check" — unrepresentable, the
-// INVARIANTS P2 illegal-states-unrepresentable shape, exactly the
-// same design choice node.dag took with EdgeLabel's `Positional`,
-// algebra.dag took with the Field type's omitted total `reciprocal`,
-// and rust.dag #3174 took with RustScalar).
+// GoScalar — a typed Go primitive-scalar value. Disj sum with NAMED-
+// FIELD VARIANT PAYLOADS so that ALL admissibility constraints are
+// STRUCTURALLY ENFORCED, not "rejected by a check":
+//   * Bool / String carry no width payload — "Bool with width=Bits32"
+//     is unrepresentable.
+//   * Signed and unsigned integers are SEPARATE variants carrying
+//     SEPARATE width sums — "Signed × PointerSized" (which has no
+//     Go analogue — `uintptr` is unsigned-only per spec
+//     §Numeric_types) is unrepresentable. This is the cursor/composer-
+//     2 BLOCKING-review fix on PR #3182 2026-05-16: the prior unified
+//     `IntScalar { kind: GoIntKind, width: GoIntWidth }` Cartesian-
+//     product carrier admitted the missing Signed × PointerSized
+//     cell — INVARIANTS P2 illegal-states-unrepresentable anti-pattern.
+//     The dissolution splits widths per signedness; the rust.dag
+//     #3174 unified-IntScalar pattern works for Rust because Rust's
+//     Cartesian product is COMPLETE (isize/usize are symmetric); Go's
+//     is asymmetric and requires the per-signedness split. Per-language
+//     dissolution shape, same INVARIANTS P2 principle.
 // Spec: https://go.dev/ref/spec#Types.
 //
-//   - IntScalar      — { kind: GoIntKind, width: GoIntWidth }
-//                      e.g. IntScalar { kind: Signed, width: Bits32 }
-//                      is Go's `int32`; IntScalar { kind: Unsigned,
-//                      width: PointerSized } is `uintptr`;
-//                      IntScalar { kind: Signed, width: PlatformInt }
-//                      is `int`.
-//   - FloatScalar    — { width: GoFloatWidth }
-//                      e.g. FloatScalar { width: Bits64 } is `float64`.
-//   - ComplexScalar  — { width: GoComplexWidth }
-//                      e.g. ComplexScalar { width: Bits128 } is
-//                      `complex128`; the COMPONENT widths (binary32
-//                      for complex64, binary64 for complex128) are
-//                      DERIVED from the complex width per spec
-//                      §Numeric_types — not a separate payload.
-//   - BoolScalar     — Go's `bool` (the two-valued type — there is
-//                      no width variant; the Specification does not
-//                      expose bool's storage width as a kind-level
-//                      discriminator).
-//   - StringScalar   — Go's `string` (immutable byte sequence; Spec
-//                      §String_types. No width variant; the byte-
-//                      sequence length is a value-level fact, not a
-//                      kind-level discriminator).
+//   - SignedIntScalar    — { width: SignedIntWidth }
+//                          e.g. SignedIntScalar { width: SignedBits32 }
+//                          is Go's `int32`; SignedIntScalar { width:
+//                          SignedPlatformInt } is `int`. There is no
+//                          SignedPointerSized variant — Go has no
+//                          signed-pointer-sized type.
+//   - UnsignedIntScalar  — { width: UnsignedIntWidth }
+//                          e.g. UnsignedIntScalar { width: UnsignedBits32 }
+//                          is Go's `uint32`; UnsignedIntScalar { width:
+//                          UnsignedPointerSized } is `uintptr`.
+//   - FloatScalar        — { width: GoFloatWidth }
+//                          e.g. FloatScalar { width: Bits64 } is `float64`.
+//   - ComplexScalar      — { width: GoComplexWidth }
+//                          e.g. ComplexScalar { width: Bits128 } is
+//                          `complex128`; the COMPONENT widths
+//                          (binary32 for complex64, binary64 for
+//                          complex128) are DERIVED from the complex
+//                          width per spec §Numeric_types — not a
+//                          separate payload.
+//   - BoolScalar         — Go's `bool` (the two-valued type — there
+//                          is no width variant).
+//   - StringScalar       — Go's `string` (immutable byte sequence;
+//                          Spec §String_types. No width variant; the
+//                          byte-sequence length is a value-level fact,
+//                          not a kind-level discriminator).
 //
-// The structural argument for the Disj-with-payloads (vs ptx's Conj-
-// record `RegisterScalar { kind, width, state_space }`): in PTX every
-// typed register has a (kind, width, state_space), so the three-
-// coordinate Conj is the natural form. In Go (as in Rust), the five
-// scalar kinds have DIFFERENT structural shapes — Int has (kind,
-// width), Float / Complex have (width), Bool / String have nothing
-// beyond the kind. A Conj record `{ kind, width? }` would force a
-// width Option for Bool/String, ratifying the illegal state "Bool
-// with width=Bits32" — exactly the M4 / Practice-2/6 / P2 pattern
-// those disciplines structurally forbid. The Disj-with-payloads is
-// the dissolved form: each variant carries EXACTLY the structural
+// The structural argument for the Disj-with-heterogeneous-payloads
+// (vs ptx's Conj-record `RegisterScalar { kind, width, state_space }`):
+// in PTX every typed register has a (kind, width, state_space), so
+// the three-coordinate Conj is the natural form. In Go the six scalar
+// variants have DIFFERENT structural shapes — Signed/Unsigned integers
+// carry their own per-signedness width sum, Float / Complex carry a
+// single width, Bool / String have nothing beyond the variant tag. A
+// Conj record `{ kind, width? }` would force a width Option for
+// Bool/String AND would re-admit the Signed × PointerSized illegal
+// state the per-signedness split exists to forbid — exactly the M4 /
+// Practice-2/6 / P2 pattern those disciplines structurally forbid.
+// The Disj-with-heterogeneous-payloads + per-signedness-width split
+// is the dissolved form: each variant carries EXACTLY the structural
 // data its kind admits, and no illegal kind×width combination is
-// constructible. This is the rust.dag #3174 precedent applied to Go.
+// constructible.
 //
 // SEAM (where D2 inhabitance plugs in). When the D2 form decision
 // lands, the per-variant inhabitance instance-values land in this
-// file with these typed variants as their carriers — IntScalar
-// { kind: Signed, width: Bits32 } is the carrier for Go's `int32`
-// inhabitance into OrderedRing (or its v4-equivalent per the D2-
-// ratified form); FloatScalar { width: Bits32 } is the carrier for
-// `float32` → ApproximateField; ComplexScalar { width: Bits128 } is
-// the carrier for `complex128` → ApproximateField over a Conj of
-// two binary64 floats; StringScalar is the carrier for `string` →
-// FreeMonoid<Byte>. The seam itself is the typed variant; the
-// inhabitance value is the deferred row.
+// file with these typed variants as their carriers — SignedIntScalar
+// { width: SignedBits32 } is the carrier for Go's `int32` inhabitance
+// into OrderedRing (or its v4-equivalent per the D2-ratified form);
+// UnsignedIntScalar { width: UnsignedPointerSized } is the carrier
+// for `uintptr` → Semiring; FloatScalar { width: Bits32 } is the
+// carrier for `float32` → ApproximateField; ComplexScalar { width:
+// Bits128 } is the carrier for `complex128` → ApproximateField over
+// a Conj of two binary64 floats; StringScalar is the carrier for
+// `string` → FreeMonoid<Byte>. The seam itself is the typed variant;
+// the inhabitance value is the deferred row.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every Go-typed value consumer
 //      (literal parsing, expression typing, emission to source,
 //      cost-realization, eventual inhabitance dispatch) reads the
-//      scalar's kind + width-if-applicable through this carrier;
+//      scalar's variant + width-if-applicable through this carrier;
 //      shared, not scattered.
-//   2. Variant-is-data — FAILS: collapsing the variants to a
-//      uniform record `{ kind: GoScalarKind, width: Option<…> }`
-//      reintroduces the illegal state "Bool with width=Bits32"
-//      this Disj-with-payloads design exists to forbid. The five-
-//      variant Disj IS the dissolved form (P2 + Practice 2/6 + M4).
+//   2. Variant-is-data — FAILS (twice): (a) collapsing to a uniform
+//      `{ kind: GoScalarKind, width: Option<…> }` reintroduces the
+//      illegal state "Bool with width=Bits32" the heterogeneous-
+//      payload design exists to forbid. (b) collapsing the integer
+//      variants back to a unified `IntScalar { kind: GoIntKind,
+//      width: GoIntWidth }` reintroduces "Signed × PointerSized" —
+//      the Cartesian-product anti-pattern this PR specifically
+//      dissolves. The six-variant Disj IS the dissolved form
+//      (P2 + Practice 2/6 + M4).
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
-//      algebra or cardinality structure (IntScalar → OrderedRing
-//      / Semiring per GoIntKind; FloatScalar → ApproximateField;
-//      ComplexScalar → ApproximateField over a Conj of two same-
-//      width floats; BoolScalar → BooleanAlgebra; StringScalar →
-//      FreeMonoid<Byte> per the spec's byte-sequence semantics).
-//      That grounding IS the inhabitance walk owned ELSEWHERE per
-//      P2; the Disj structure here is the closed surface, not a
-//      collapsing target.
+//      algebra or cardinality structure (SignedIntScalar →
+//      OrderedRing; UnsignedIntScalar → Semiring; FloatScalar →
+//      ApproximateField; ComplexScalar → ApproximateField over a
+//      Conj of two same-width floats; BoolScalar → BooleanAlgebra;
+//      StringScalar → FreeMonoid<Byte> per the spec's byte-sequence
+//      semantics). That grounding IS the inhabitance walk owned
+//      ELSEWHERE per P2; the Disj structure here is the closed
+//      surface, not a collapsing target.
 //   4. Dimensional — FAILS: a single Go scalar value IS EXACTLY ONE
 //      variant of this Disj; mutually-exclusive alternatives. The
-//      shapes differ across variants (IntScalar carries two
-//      coordinates; FloatScalar / ComplexScalar one; the rest none)
-//      — they cannot be coordinates of a single record without the
-//      illegal-state smell.
-//   5. Parameterized family — FAILS: the five variants are NOT one
+//      shapes differ across variants (Signed/Unsigned integer
+//      variants carry their own per-signedness width sum; Float /
+//      Complex carry one width; Bool / String carry no payload) —
+//      they cannot be coordinates of a single record without the
+//      illegal-state smells.
+//   5. Parameterized family — FAILS: the six variants are NOT one
 //      generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). The Disj has heterogeneous
-//      structural shapes (kind partitions across structurally-
-//      distinct value spaces, with three distinct algebraic
-//      groundings — OrderedRing/Semiring, ApproximateField, and
-//      ApproximateField-over-Conj-of-floats — plus BooleanAlgebra
-//      and FreeMonoid<Byte>). The Disj-with-heterogeneous-payloads
-//      is the irreducible faithful form, same as rust.dag's
-//      RustScalar argument.
-// Terminal: the closed five-variant Go primitive-scalar typed-value
-// sum; illegal kind×width combinations are unrepresentable by
-// construction; composite types are scope-negative for this slice.
+//      structural shapes (the per-signedness width split makes
+//      SignedIntScalar and UnsignedIntScalar carry STRUCTURALLY
+//      DIFFERENT width sums — SignedIntWidth has 5 variants,
+//      UnsignedIntWidth has 6 — they cannot be projected over a
+//      single source width set, AND the algebraic groundings span
+//      four distinct std/algebra structures plus BooleanAlgebra
+//      plus FreeMonoid<Byte>). The Disj-with-heterogeneous-payloads
+//      is the irreducible faithful form for Go's asymmetric
+//      integer partition.
+// Terminal: the closed six-variant Go primitive-scalar typed-value
+// sum; illegal kind×width combinations (Bool×width, Signed×Pointer-
+// Sized) are unrepresentable by construction; composite types are
+// scope-negative for this slice.
 type GoScalar
-  = IntScalar { kind: GoIntKind, width: GoIntWidth }
+  = SignedIntScalar { width: SignedIntWidth }
+  | UnsignedIntScalar { width: UnsignedIntWidth }
   | FloatScalar { width: GoFloatWidth }
   | ComplexScalar { width: GoComplexWidth }
   | BoolScalar
