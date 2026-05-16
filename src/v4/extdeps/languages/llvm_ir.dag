@@ -619,20 +619,34 @@ type FloatPredicate
 //   4. Dimensional — FAILS: a constexpr has EXACTLY ONE opcode.
 //   5. Parameterized family — APPLIED: the closed source set
 //      `ConstantExpr` projects over (Practice 7); the dissolution target.
-// Terminal: the LLVM-18 LangRef constant-expression-admissible opcode
-// set. LangRef has AGGRESSIVELY REDUCED constant expressions across
-// versions (the arithmetic/logical and the integer-extend `zext`/`sext`
-// constexprs were removed by LLVM 18); this set is therefore PINNED to
-// LLVM 18 (`trunc`, `ptrtoint`, `inttoptr`, `bitcast`, `addrspacecast`,
-// `getelementptr` — the survivors). A constexpr opcode outside it is the
-// EXPLICIT `FidelityDisposition.FailClosed` boundary, never a silent
-// fabricated parse; a future LangRef revision that re-adds/removes one
-// is an edit to THIS declaration (the M3 spec-anchor analog of node.dag's
-// C1 stop-signal). (`CeZExt`/`CeSExt` were dropped here precisely because
-// they are NOT LLVM-18-admissible — the spec-faithfulness fix.)
+// Terminal: the LLVM-18.1.8 LangRef constant-expression-admissible
+// opcode set, PINNED to that version. Authority = the spec itself
+// (L-2), specifically
+// https://releases.llvm.org/18.1.8/docs/LangRef.html#constant-expressions
+// — NOT re-derived from memory. (Honest correction: an earlier cut of
+// this file asserted "the arithmetic/logical constexprs were removed by
+// LLVM 18" and modeled only the 6 pointer/cast survivors. That was an
+// over-narrowing INVERSE-error — the exact failure-direction the
+// `ConstExprOpcode`/`AtomicRmwOp` sweep was meant to guard against,
+// committed from imperfect memory rather than the spec. The codex
+// finding, citing the LangRef URL above, surfaced the actual 18.1.8
+// admissible set; that cited spec authority is adopted here. LangRef
+// HAS reduced constexprs across versions — `zext`/`sext` and the
+// fp/div/select forms are gone — but `add`/`sub`/`mul`/`shl`/`xor`,
+// `icmp`/`fcmp`, and `extractelement`/`insertelement`/`shufflevector`
+// remain valid in 18.1.8 alongside the `trunc`/`ptrtoint`/`inttoptr`/
+// `bitcast`/`addrspacecast`/`getelementptr` core.) A constexpr opcode
+// OUTSIDE this version-pinned set is the EXPLICIT
+// `FidelityDisposition.FailClosed` boundary — declared, never a silent
+// fabricated parse or silent exclusion; a future LangRef revision that
+// adds/removes one is an edit to THIS declaration against the pinned
+// spec URL (the M3 spec-anchor analog of node.dag's C1 stop-signal).
 type ConstExprOpcode
   = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
   | CeAddrSpaceCast | CeGetElementPtr
+  | CeAdd | CeSub | CeMul | CeShl | CeXor
+  | CeICmp | CeFCmp
+  | CeExtractElement | CeInsertElement | CeShuffleVector
 
 
 // ─────────────────────────────────────────────────────────────────────
