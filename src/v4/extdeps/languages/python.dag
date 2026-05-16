@@ -1,18 +1,309 @@
 // src/v4/extdeps/languages/python.dag
 //
 // Scope: Python target language spec — primitives, syntax, codegen rules.
-// Anchor: https://docs.python.org/3/reference/datamodel.html (Python Data Model)
-// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
+// Anchor: https://docs.python.org/3.14/reference/ (The Python Language
+//         Reference, version 3.14 — pinned at the current stable
+//         release as of work date; the L-2 versioned fidelity
+//         authority). The pinned `/3.14/` form is REQUIRED rather than
+//         the floating `/3/` (per operator BLOCKING review on PR #3180:
+//         extdeps.md requires a declared spec version so upstream
+//         Python changes cannot silently mutate this substrate). The
+//         carriers below — PythonNumericTower, PythonSingletonKind,
+//         PythonScalar — are pinned to this
+//         release; when a future Python release modifies the standard
+//         type hierarchy (a new singleton type joins; the numeric-tower
+//         ABC partition is revised; a new sequence-kind enters the
+//         textual-types section), the change is a visible C1 edit to
+//         the relevant declaration below + a coordinated version-pin
+//         bump on THIS line, never a silent extension via the floating
+//         URL. The per-carrier `// Spec:` URLs below mirror the pin.
+// SPEC-vs-IMPLEMENTATION (codex BLOCKING PR #3180 @51b26132 — verified on
+//         HEAD): declaration-class carriers in THIS file cite **only** the
+//         pinned Language Reference (`/3.14/…`). CPython-only facts (bytecode
+//         tables, object memory layout, a particular IEEE-754 realization) are
+//         **not** encoded as authoritative fields on these classifiers — they
+//         appear only as explicit implementation contrast where the Reference
+//         admits caveats, or land in a **future versioned implementation slice**
+//         / LanguageModel data (Owned ELSEWHERE) when ratified; never folded
+//         silently into floating-reference "spec" authority.
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter
+//         runtime. ONE substrate carrier for all three roles. Different
+//         lenses read different facts from the same data (emission
+//         reads syntax; transport reads serialization; interpreter
+//         reads execution semantics). A worker needing transport or
+//         runtime extends this file, not a new "transport spec" file.
 //
-// Owns:
-//   - Python primitives + data model
-//   - emission rules
-//   - cost realization for Python
+// STRUCTURAL FINDING (this slice's deliverable, manager directive
+//   msg_4f7e1280 fan-out — same shape as PR #3174 rust slice
+//   established 2026-05-16).
+//   Python's TYPE-SYSTEM SURFACE — scalar primitive vocabulary, numeric
+//   subtype tower, singleton types — fits the substrate's existing
+//   classifier shape (closed Disj + Conj records) without modification.
+//   No 7th connective, no 6th behavior is surfaced by this slice. The
+//   slice declares the Python type VOCABULARY as Node-shaped
+//   declaration-class data; it deliberately STOPS at the carrier-
+//   shaped seams where D1 (parse/emit operations — ratified
+//   `Outcome<T> = Produced { value: T } | Rejected { diagnostic:
+//   Diagnostic }`, NOT YET LANDED in std/diagnostic.dag) and the
+//   bundled LanguageModel / pipeline-stage operations plug in.
 //
-// Consumes:
-//   - std/node.dag, std/algebra.dag (same as rust.dag)
+//   D2 (per-language primitive resolver — DECISIONS.md D2 row, encoded
+//   2026-05-16) is RATIFIED. This file applies the **partial fan-out** the
+//   canonical-first directive mandates after T-4 mgr brief (msg_37f72108):
+//   D2a(1) alias-identity lands here where std/ carriers exist; D2a(2)
+//   **entire facet deferred** — `GroundingMap` is operator-pending shared
+//   substrate (P2: do NOT re-declare per language-file); D2a(3) follows
+//   **this** spec (https://docs.python.org/3.14/reference/ — Python `int` is
+//   UNBOUNDED ⇒ no overflow disposition; NOT rust's `OverflowAction` /
+//   `OverflowDisposition`, which would be a B3 parallel-taxonomy leak).
+//   Discipline: mirror #3174's **dissolution** of improvised IrTo/registry/
+//   assert cementing — NOT a literal copy of rust-only carriers. D2 does
+//   NOT subsume D1; parse/emit ops remain Owned ELSEWHERE until
+//   std/diagnostic.dag lands Outcome<T>.
 //
-// Status: scaffold — fill per TASKS.md T-4
+//   The remaining seams are NAMED in "Owned ELSEWHERE" below with their
+//   owners and dissolution triggers. Authoring D1 ops or per-primitive
+//   algebra-inhabitance `data` rows here pre-substrate would improvise
+//   past ratified boundaries — the keen-wren-419 (T-4.6) /
+//   loyal-koi-702 STOP precedent. Deferral-with-named-trigger, never
+//   improvisation.
+//
+//   PYTHON-SPECIFIC STRUCTURAL NOTE (the substrate fit's Python
+//   particulars vs the rust analog):
+//   (a) NO WIDTH AXIS. Python `int` is arbitrary-precision (Reference
+//       §3.2 numeric-types-int — "Integers have unlimited precision");
+//       `float` is "machine-level double precision" with
+//       IMPLEMENTATION CAVEATS the spec explicitly names (Reference
+//       §3.2 numeric-types-float — "You are at the mercy of the
+//       underlying machine architecture (and C or Java implementation)
+//       for the accepted range and handling of overflow") — the spec
+//       does NOT mandate IEEE-754 binary64, only the canonical
+//       CPython realization does; modeling `float` as a fixed
+//       IEEE-754 width would over-promise spec fidelity (operator
+//       BLOCKING on PR #3180 made this precise); `complex` is a pair
+//       of `float` carrying the same machine-level caveat. The kind
+//       × width admissibility axis that drove rust.dag's RustScalar
+//       Disj-with-payloads design (Bits8/16/32/64/128/Pointer × Signed/
+//       Unsigned) DOES NOT EXIST in Python. The Python typed-scalar
+//       axis collapses to the kind alone, structurally simpler than
+//       rust by spec design.
+//   (b) NUMERIC SUBTYPE TOWER. Python's numerics have a STRUCTURALLY
+//       PARTIAL-ORDERED hierarchy (PEP 285 — `bool` is a subtype of
+//       `int`; PEP 3141 — Integral ⊆ Rational ⊆ Real ⊆ Complex). The
+//       admissibility axis Python ADDS (vs rust which has no such
+//       subtype relationship between scalar kinds) is the numeric-
+//       tower partition, declared below as a closed 4-way classifier.
+//   (c) THREE SINGLETON TYPES. Reference §3.2 names exactly three
+//       singleton scalars — `None` (NoneType), `NotImplemented`
+//       (NotImplementedType), `Ellipsis` (EllipsisType). Each has
+//       exactly one inhabitant per the spec; the empty-cardinality
+//       fact rides std/cardinality.dag (T-3 wave A3).
+//   (d) SCALARS ARE NUMERIC + SINGLETON ONLY (no sequences).
+//       Reference 3.14 §3.2.5.1 / §3.2.5.2 partition `str` / `bytes`
+//       / `bytearray` (and `tuple` / `list` / `range`) as
+//       SEQUENCES, not scalars. Python's scalar primitive partition
+//       at the type-vocabulary layer is therefore exactly Numeric
+//       (§3.2.4) + Singleton (§3.2.1 / §3.2.2 / §3.2.3). The earlier
+//       inclusion of a String-sequence category in PythonScalar
+//       collapsed the sequence/container boundary into the scalar
+//       vocabulary — operator BLOCKING on PR #3180 corrected this
+//       2026-05-16 per Reference 3.14 fidelity. Mutability admits
+//       no scalar-layer axis (no scalar is mutable; bytearray is a
+//       sequence, scope-negative); see SCOPE NEGATIVE below.
+//
+// Owns (this slice — REVISED from scaffold; scaffold's "Python
+//   primitives + data model" + "emission rules" + "cost realization
+//   for Python" lines are PRESERVED AS GOALS in the Owns→ELSEWHERE
+//   table below; the slice-vs-bundled split is explicit, not silent —
+//   same revision discipline as rust.dag #3174 and ptx.dag #3170):
+//
+//   - Python numeric subtype tower: PythonNumericTower (Bool /
+//     Integral / Real / Complex — the closed 4-level PEP 285 + PEP 3141
+//     partition, with the partial-order Bool ⊑ Integral ⊑ Real ⊑
+//     Complex structurally derived from the closed enum)
+//   - Python singleton kind: PythonSingletonKind (NoneT /
+//     NotImplementedT / EllipsisT — the closed 3-way Reference 3.14
+//     §3.2.1 / §3.2.2 / §3.2.3 singleton-types partition; each has
+//     exactly one inhabitant)
+//   - Python typed-scalar sum: PythonScalar (the 2-variant Disj with
+//     named-field nested-kind payloads — Numeric / Singleton; serves
+//     BOTH the top-level 2-category kind classifier role AND the
+//     typed-value role in one carrier because Python's spec has no
+//     orthogonal width axis for the typed-value layer to add — see
+//     PythonScalar's modeling note for the Python-vs-rust
+//     structural-difference rationale. Illegal cross-category
+//     combinations like "a Singleton with a numeric tower level"
+//     are STRUCTURALLY UNREPRESENTABLE, because each variant carries
+//     exactly the sub-classifier its category admits. SEQUENCE
+//     types — `str` / `bytes` / `bytearray` per Reference 3.14
+//     §3.2.5.1 / §3.2.5.2 — are NOT scalars and are scope-negative
+//     for this slice; see SCOPE NEGATIVE in modeling notes for the
+//     fidelity correction landed 2026-05-16 per operator codex
+//     BLOCKING.)
+//   - Python per-target cost-realization carrier shape: PythonCost
+//     (per-spec-operation + per-allocation components per Reference
+//     §6/§8 — NOT per CPython bytecode op, which is implementation
+//     detail per the `dis` module disclaimer — the per-target
+//     projection U1 reads; the carrier SHAPE only, no instance-values
+//     pre-T-3 / pre-D2)
+//   - Python D2 **partial** resolver (DECISIONS.md D2 row + T-4 mgr brief
+//     msg_37f72108): D2a(1) `type PyBool = Bool` (std/logic.dag `Bool`
+//     landed #3166; `Bool` is kernel-ambient per STRUCTURE.md — resolves
+//     without import; sole authority remains std/logic.dag). D2a(2) the
+//     **entire** grounding-map facet (the shared `GroundingMap` type AND
+//     all `data *_grounding` rows) is 🟡 TRACKED-SCAFFOLD — trigger: operator
+//     pins `GroundingMap`'s home under escalation (do NOT re-declare
+//     `GroundingMap` in this file — five copies = P2 parallel-declaration
+//     violation). D2a(3) operation-semantics: **this file declares none**
+//     (peer-(a)) — principal Python `int` is unbounded (https://docs.python.org/3.14/reference/
+//     datamodel.html#numeric-types-int-integers-of-unlimited-size) ⇒ aliases std unbounded `Int`
+//     when it lands ⇒ **no** `OverflowAction` / `OverflowDisposition` (not
+//     for principal `int`, not rust-carrier re-exports, not for hypothetical
+//     future rows in this fan-out). Any future primitive-specific semantics
+//     carrier is its own Python-spec + Practice-4 authoring when a std/
+//     alias needs it — never a literal rust type-copy (B3).
+//
+// Owned ELSEWHERE (deliberately NOT in this slice — named owners +
+//   dissolution triggers per directive item 3 "DEFER explicitly, with
+//   named owner + dissolution trigger"; precedent: rust.dag #3174,
+//   ptx.dag #3170):
+//
+//   - Python scalar resolver completion — D2 RATIFIED 2026-05-16 (encoded
+//     DECISIONS.md D2 row). The RATIFIED FORM is NOT per-language `data
+//     python_int: OrderedRing<…> = …` rows (INVARIANTS P1:42 forbids). The
+//     three D2a facts are: (1) alias-identity to std/, (2) grounding map,
+//     (3) per-language operation-semantics. **This slice lands (1) only
+//     where substrate exists** (`PyBool = Bool`); **defers (2) in full**
+//     until operator pins shared `GroundingMap` (see Owns + D2 block);
+//     **lands no (3) carriers** in this file (peer-(a); D2a(3) anchor:
+//     https://docs.python.org/3.14/reference/). The seven retired
+//     `data python_*: PythonScalar = …` registry rows and the `IrToPython<>`
+//     correspondence + Layer-2 assert dissolved per #3174 @0328bee9 deletion provenance
+//     (INVARIANTS P1 parallel-cementing path). Remaining D2a(1) aliases for
+//     int/float/singletons 🟡 TRACKED-SCAFFOLD to std/integer.dag |
+//     std/float.dag | std/cardinality.dag (T-3 Wave-A3); D2a(2) rows co-
+//     land when `GroundingMap` home is pinned.
+//     SUBSTRATE SINGLE-AUTHORITY GUARD (mirror rust msg_2c2716dd):
+//     python.dag MUST NOT mint std/ Int / UInt / Float / Nat / text
+//     carriers locally; alias-identity to the existing std/ source is
+//     the only legitimate landing.
+//     STOP-TRIGGER (named, binding): authoring a placeholder `data
+//     python_*: <algebra-carrier> = …` inhabitance row here pre-std/
+//     landing is the FORBIDDEN deferral. SEAM: the closed `PythonScalar`
+//     Disj below remains the spec-surface vocabulary through which D2
+//     alias targets parameterize emission/coercion once std/ carriers
+//     exist; the vocabulary record is not a second inhabitance authority.
+//
+//   - Bidirectional Python LanguageModel substrate (grammar
+//     productions as declarative B2-OMNI data — Python's PEG grammar
+//     per Reference §10 full-grammar; C5-fidelity disposition tags
+//     per surface feature, esp. SIGNIFICANT-WHITESPACE-IS-BLOCK
+//     `Modeled` since Python indentation IS block structure per
+//     TASKS.md T-4 authoring contract; ingest∘emit roundtrip
+//     carrier): the BUNDLED work of T-4 across all 5 Shape A source
+//     languages, where "the SHAPE is the work" (TASKS.md T-4
+//     authoring contract). RIDES the operator D1 value-or-Diagnostic
+//     carrier — `Outcome<T> = Produced { value: T } | Rejected
+//     { diagnostic: Diagnostic }`, RATIFIED 2026-05-16 (manager
+//     reinforcement msg_8b477982, ratified shape), NOT YET LANDED in
+//     std/diagnostic.dag. Parse / emit operations cannot type their
+//     failure mode without it. When the carrier lands AND the
+//     bundled LanguageModel shape lands, this file's classifiers
+//     slot into the Python `LanguageModel` instance without
+//     revision; their I/O contract is the immutable header above.
+//     STOP-TRIGGER (named, binding): the temptation to STUB an
+//     `emit_python : Node -> Outcome<PythonSource>` op here while
+//     D1 is unlanded is the FORBIDDEN deferral (the v3 failure
+//     mode the value-or-Diagnostic-STOP precedent foreclosed) —
+//     STOP and surface, never stub. Stub-to-keep-moving is the
+//     exact shape that broke v3; the named "Owned ELSEWHERE" note
+//     is the legitimate deferral form (rust #3174 / ptx #3170
+//     precedent).
+//     SEAM: the Python grammar production data attaches as Node
+//     trees in the LanguageModel file (B2-OMNI: grammar is data,
+//     not code); the carriers declared here are the type-system
+//     structure the grammar references when productions resolve
+//     type expressions.
+//
+//   - Pipeline emission/ingest operations (`.dag` Node → Python
+//     source; Python source → Node ingest with C5-fidelity
+//     classification per surface feature, esp. indentation-as-block-
+//     structure per the T-4 authoring contract). RIDES the ratified
+//     `Outcome<T>` D1 carrier directly (when it lands in
+//     std/diagnostic.dag). Owners: compiler/05_emit.dag (T-10),
+//     compiler/02_parse.dag (T-7) — emission and ingest are
+//     pipeline-stage operations, NOT facts of this language file.
+//     The LanguageModel data DECLARES the bidirectional rules; the
+//     pipeline stages EXECUTE them.
+//     STOP-TRIGGER (named, binding): pre-D1 authoring of
+//     `emit_python : Node -> Outcome<PythonSource>` here would
+//     parallel-represent the Outcome carrier across every language
+//     file — exactly the v3 cross-layer-drift failure mode the
+//     keen-wren-419 STOP (T-4.6 formats, msg_0da56c18) foreclosed.
+//     Defer-with-named-trigger, never stub.
+//
+//   - Python async / await semantics (`async def`, `.await`,
+//     coroutines, async generators, async iterators): the COROUTINE
+//     and ASYNC-ITERATION carriers compose over the type-system
+//     declarations here (an `async def` returns a coroutine-typed
+//     value), but the coordination-effect typing is owned by
+//     extdeps/coordination.dag (T-4.8, IN-B effect-typed Bind
+//     carriers — the same substrate that owns Rust's async / Verilog
+//     concurrency / ptx SIMT-Bind effect typing); not authored here.
+//
+//   - Python exception flow (`raise` / `try / except / finally`):
+//     RIDES the ratified `Outcome<T>` D1 carrier — Python's
+//     exception is a structural error path on a typed return, and
+//     the carrier is exactly the Outcome shape D1 ratifies. The
+//     pipeline-stage operations (T-7 parse / T-10 emit) plug the
+//     exception flow into Outcome when D1 lands; not authored here.
+//
+//   - Python duck-typing / structural-typing surface (protocols per
+//     PEP 544, `typing.Protocol`). Python's nominal class hierarchy
+//     is what `class X:` declares; structural typing through
+//     protocols is RUNTIME structural-compatibility, modeled at the
+//     LanguageModel grammar layer (T-4 bundled work) when type
+//     annotations parse. The numeric-tower partition declared here
+//     IS a structural sub-typing fact at the BUILT-IN-spec layer
+//     (PEP 3141 ABC hierarchy is part of the language reference, not
+//     a library protocol); user-defined protocols ride T-4 grammar.
+//
+//   - Python per-spec-operation cost INSTANCE-VALUES (concrete
+//     `PythonCost { operation_cost: 1, allocation_cost: 0 }` rows per
+//     spec-defined operation — the Reference §6 expressions / §8
+//     statements partition; NOT per CPython-bytecode op, which is
+//     CPython implementation detail per the `dis` module docs and
+//     varies across versions / alternative VMs (PyPy / Jython /
+//     GraalPython / MicroPython)): the carrier SHAPE is owned here
+//     (PythonCost below); concrete cost rows ride T-12 lens/cost.dag
+//     + U2 (the per-target projection of U1's `Homomorphism<…, …,
+//     PythonScalar>.map`). Pre-T-12 instance-values would parallel-
+//     represent the cost the map structurally encodes — the U1
+//     no-engine smell (algebra.dag U1).
+//
+// Consumes (traceability / authority naming — STRUCTURE.md kernel-ambient
+//   discipline: `Bool` / `Int` / `String` / `Char` / `List` / `Map` resolve
+//   WITHOUT an import when used as type parameters / field types; the std/
+//   file remains sole authority. Non-kernel std/ types used in alias-
+//   identity MUST use explicit `import` when those rows land — not yet
+//   for Int8..Float64 ladder (🟡 TRACKED-SCAFFOLD).):
+//   - std/logic.dag: `Bool` — sole authority for the bivalent carrier
+//     referenced by `type PyBool = Bool` (D2a(1)); merged 2026-05-16
+//     (T-3 Wave-A1, PR #3163). No `import` required: `Bool` is kernel-
+//     ambient; this line is **traceability only** per T-4 mgr brief.
+//   - std/integer.dag | std/float.dag — **not consumed yet** (ladder T-3
+//     Wave-A3); named owners for deferred `PythonInt` / bounded aliases.
+//   DELETION PROVENANCE (D2 reshape, PR #3180): `IrToPython<>`, seven
+//   `data python_*: PythonScalar` registry rows, `assert_bool_to_python_
+//   bool_consistency` — dissolved per DECISIONS D2 row + #3174 @0328bee9
+//   discipline (no IrTo/registry/assert cementing). `Int` is kernel-
+//   ambient (PythonCost `Int` fields per 🟡 cardinality bridge).
+//
+// Status: T-4 python-slice modeled 2026-05-16 (gentle-deer-446);
+//   structural finding: NO STOP from the type-system surface. The I/O
+//   contract in this header is immutable for downstream workers.
+//   Splitting this file requires explicit operator ratification
+//   (substrate extension = stop signal).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -20,3 +311,756 @@
 
 module v4.extdeps.languages.python
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// THE SLICE-VS-BUNDLED FRAMING (T-4, manager directive msg_4f7e1280
+// fan-out from PR #3174). T-4 is the bundled work across the 5 Shape
+// A source languages: "the SHAPE is the work" — establish the
+// canonical declarative LanguageModel shape on one language (rust),
+// then fan out to the other 4 (python is this fan-out instance).
+// THIS slice is the python HALF of fix-the-shape-once: the type-
+// system VOCABULARY and Python-side carrier shapes, with the D1-
+// dependent pieces (parse/emit operations) and remaining D2 per-
+// primitive alias rows (TRACKED-SCAFFOLD until std/ carriers land)
+// explicitly DEFERRED to their named owners. Deferral ≠ improvisation: every deferred item is named in
+// "Owned ELSEWHERE" with its owner and dissolution trigger. The
+// canonical-rust shape (PR #3174 loyal-koi-702) is mirrored here
+// section-by-section; differences are STRUCTURAL Python-spec facts
+// (no width axis; numeric subtype tower; three singletons; no
+// reference-kind / no lifetime parameter), not improvisations.
+//
+// THE PYTHON → SUBSTRATE STRUCTURAL FIT. Each Python surface concept
+// maps to a member of the closed substrate axes (node.dag's 6
+// connectives + 5 L1 behaviors). The mapping, member-by-member —
+// recording it here because the fit IS the deliverable (per the
+// slice's structural finding above):
+//
+//   - FUNCTION (`def name(args) -> T: body`) ↦ Transform.
+//     A Python `def` is a typed function — `(args) -> T` — whose
+//     body is a sub-DAG of behaviors. That is exactly Transform (the
+//     typed-total-λ fragment INVARIANTS:72; node.dag:209 "Transform
+//     = application"). The function call site is also Transform:
+//     the callee is a function value, the args are operands, the
+//     result binds at the call site. No Python-specific behavior
+//     surfaces; `def` IS Transform. (`async def`, generator functions
+//     and async generators are DEFERRED — see "Owned ELSEWHERE"
+//     coordination.dag T-4.8 ownership.)
+//
+//   - ASSIGNMENT (`x = expr`, `x: T = expr`) ↦ Bind. A Python
+//     assignment introduces a name into a scope with a value; that is
+//     exactly Bind (node.dag:209 "Bind = let"). Python's UNIVERSAL
+//     name-binding semantics (a name in a scope is always rebindable;
+//     `final` from `typing.Final` is a type-hint convention, not a
+//     binding-level structural fact like Rust's `let mut`) means the
+//     BINDING-LEVEL mutability axis Rust carries (`let` vs `let mut`)
+//     COLLAPSES in Python — every binding is mutable at the
+//     binding-level. The OBJECT-LEVEL mutability (which built-in
+//     types admit in-place mutation — `bytearray` / `list` / `set` /
+//     `dict` vs immutable `str` / `bytes` / `tuple` / `frozenset`)
+//     is a STRUCTURAL fact on the OBJECT's type per Reference 3.14
+//     §3.2.5.1 (Immutable sequences) / §3.2.5.2 (Mutable sequences)
+//     — modeled at the future sequence-carrier layer (scope-negative
+//     for this slice; see SCOPE NEGATIVE), NOT here on PythonScalar
+//     since sequences are not scalars.
+//
+//   - MATCH (`match expr: case pat: ...`, PEP 634 / Python 3.10+) ↦
+//     Branch. Python's match against a value is structural pattern
+//     matching over class hierarchies, sequences, mappings, literals
+//     — that is Branch over the value's structural coordinates
+//     (node.dag:209 "Branch = sums"). Per Python Reference §8.6
+//     `match` statements, match is NOT exhaustiveness-required —
+//     when no case pattern matches, the spec says "the entire match
+//     statement falls through" with no statement executed (this is
+//     a deliberate contrast with rust's exhaustiveness-required
+//     match, and a STRUCTURAL spec difference the model must
+//     preserve: Python `match` does NOT enforce totality at the
+//     spec level). The mapping to Branch is honest: Python `match`
+//     is a Branch over the value's coordinates WITH an implicit
+//     fall-through tail (the "no case matched" path — a no-op per
+//     §8.6). A2 totality, when desired, is a CONSUMER property the
+//     LanguageModel grammar layer (T-4 bundled) may opt into via a
+//     match-exhaustiveness lens read or via a `case _:` wildcard
+//     production — but the spec itself does NOT mandate it, and a
+//     Python `match` without a wildcard is well-formed by the spec
+//     even if no case fires. Predicated execution (`if cond: ...
+//     elif: ... else: ...`) folds into the same Branch over a two-
+//     variant `bool` Disj.
+//     (Refactored 2026-05-16 per operator BLOCKING review on PR
+//     #3180: the prior text claimed "match requires exhaustive
+//     patterns" which is rust's spec, not Python's — INVARIANTS P1
+//     modeling-faithfulness / L-2 extdeps fidelity violated. Python
+//     Reference §8.6 explicitly admits fall-through.)
+//
+//   - LOOP (`for x in iter`, `while cond:`) ↦ Loop with BOUNDED
+//     descent (node.dag:42-68, the A2 discipline). `for x in iter`
+//     is bounded by the iterator's cardinality (a finite measure
+//     when the iterator is bounded — a list / tuple / generator
+//     with a known yield count); `while cond:` is bounded by a
+//     ranking dimension that decreases on each iteration. Python
+//     does NOT have a `loop { … break …; }` analog (no native
+//     unbounded loop primitive; `while True:` is the idiom but it
+//     is structurally `while` with a constant `True` condition —
+//     under A2 it requires a break that makes the effective descent
+//     bounded, otherwise STOP). The v4 Python model reads bounded
+//     loops, fail-closes on structurally-unbounded ones.
+//
+//   - LITERAL / VALUE (`42`, `3.14`, `"hello"`, `True`, `None`,
+//     `b"raw"`, `...`) ↦ Value (node.dag:209). A Python literal IS
+//     a Value. The literal's typed interpretation (its scalar kind:
+//     Int / Float / Bool / Complex / Str / Bytes / NoneT /
+//     NotImplementedT / EllipsisT — the partition encoded by
+//     PythonScalar below) is the inhabitance walk that RIDES the
+//     D2 resolver (alias + grounding + operation-semantics per DECISIONS
+//     D2a) once each primitive's std/ carrier + alias rows land; the
+//     Value carrier itself is just a Node until those rows exist.
+//
+//   - CONTEXT MANAGER (`with cm as x: body`) ↦ Bind composed with
+//     Branch (the cleanup path). The `with` statement is structural
+//     sequencing — Bind-binding the context manager's __enter__
+//     return value, then Branch'ing on the body's exit reason
+//     (normal vs exception) to invoke __exit__. The exception-flow
+//     half rides D1 (Outcome<T>) per "Owned ELSEWHERE." No Python-
+//     specific behavior surfaces; `with` IS Bind + Branch.
+//
+//   - EXCEPTION FLOW (`raise`, `try / except / finally`) ↦ Bind +
+//     Branch over Outcome<T>. Python's exception is a structural
+//     error path on a typed return; once D1 (Outcome<T>) lands, a
+//     function that `raise`s is one whose typed return is the
+//     Rejected variant. `try: A except E: B` is Branch on the
+//     Outcome: Produced -> A continuation, Rejected -> B with the
+//     diagnostic bound. `finally:` is Bind over the cleanup. No new
+//     behavior surfaces. The full mapping LANDS when D1 lands; this
+//     slice declares the structural FIT only.
+//
+//   - REFERENCES (Python has no `&T` / `&mut T` distinction). Every
+//     Python name is a reference; mutability is a property of the
+//     OBJECT (the referent's type), not of the reference. The
+//     rust analog (RustReferenceKind + RustReference, lifetime
+//     Symbol) DOES NOT APPLY to Python — no PythonReferenceKind
+//     carrier is declared, by spec. The OBJECT-level mutability
+//     surfaces at the sequence/container layer per Reference 3.14
+//     §3.2.5 (immutable `str` / `bytes` / `tuple` / `frozenset` vs
+//     mutable `bytearray` / `list` / `set` / `dict`) — scope-
+//     negative for this slice; lands via a future PythonSequence /
+//     PythonContainer carrier when sequence/container types are
+//     needed.
+//
+// CONCLUSION. The type-system half of Python's spec fits the
+// existing substrate with no new connectives, no new behaviors, no
+// parallel taxonomies. The classifiers declared below are the closed
+// Python-side surface; their composition with grammar productions
+// (Owned ELSEWHERE) and inhabitance instance-values (Owned ELSEWHERE
+// — rides D2) lands when those dependencies dissolve, with the I/O
+// contract of THIS file immutable.
+//
+// SCOPE NEGATIVE (operator-tier, do not work around).
+//   - Sequence types (`str`, `bytes`, `bytearray`, `tuple`, `list`,
+//     `range`) AND set types (`set`, `frozenset`) AND mapping types
+//     (`dict`). Per Reference 3.14 §3.2.5.1 (Immutable sequences:
+//     str / bytes / tuple) / §3.2.5.2 (Mutable sequences: bytearray
+//     / list) / §3.2.5 (range — semantically immutable sequence) /
+//     §3.2.6 (Set types: set / frozenset) / §3.2.7 (Mappings: dict)
+//     these are SEQUENCE / SET / MAPPING categories — NOT scalars.
+//     The Reference partitions them in a section structurally
+//     SEPARATE from scalars (§3.2.4 numerics + §3.2.1-3 singletons),
+//     and conflating them with scalars gives downstream consumers
+//     the wrong built-in type shape (operator BLOCKING on PR #3180
+//     codex 2026-05-16 corrected the earlier String-in-PythonScalar
+//     drift; INVARIANTS P1 modeling-faithfulness restored).
+//     Modeling sequences/sets/mappings requires a generic carrier
+//     (Conj over element-type + mutability tag + Cardinality bound,
+//     plus per-kind sub-classifiers like character-codomain for
+//     str/bytes), which composes over std/cardinality.dag's
+//     refinement substrate (T-3) when that lands. Until then these
+//     types are out-of-scope; emitting `[]` / `()` / `{}` / `""` /
+//     `b""` as Value literals is fine (they are Value Nodes) but
+//     the type carriers ride a future PythonSequence /
+//     PythonContainer carrier — separate from PythonScalar.
+//     (Rust.dag #3174 declared its tuple-types scope-negative under
+//     exactly this framing; Python's sequences sit in the same
+//     scope-negative bucket. The difference vs rust: rust's `str`
+//     is in the Rust Reference's "primitive types" section §3.5,
+//     so rust groups `str` with primitives; Python's spec puts
+//     `str` in §3.2.5.1 sequences, so Python does NOT.)
+//   - The full Python GRAMMAR production set (statement syntax,
+//     expression syntax, comprehensions, pattern syntax, decorator
+//     syntax, type-annotation syntax). Owned by the bundled T-4
+//     LanguageModel shape — same framing as rust's "full Rust
+//     GRAMMAR production set" and ptx's "warp-level intrinsics +
+//     tensor cores" scope-negative. Not authored here. The
+//     significant-whitespace-IS-block-structure C5-fidelity tag
+//     (Reference §2.1.8 indentation; the canonical example in
+//     TASKS.md T-4 authoring contract — "Python indentation IS
+//     block structure") lands in the LanguageModel grammar
+//     productions when that bundle lands.
+//   - Python async / await semantics (`async def`, `.await`,
+//     `Future`, coroutines, async iterators). These compose over the
+//     type-system carriers declared here (an `async def` returns a
+//     coroutine-typed value), but the coordination-effect typing is
+//     owned by extdeps/coordination.dag (T-4.8, IN-B effect-typed
+//     Bind carriers); not authored here.
+//   - Python class hierarchies (`class X:` declarations, inheritance,
+//     mixins, MRO, ABCs, metaclasses). Modeled at the LanguageModel
+//     grammar layer (T-4 bundled work); the NOMINAL class-typed
+//     value surface lands when grammar productions for class
+//     declarations resolve. The numeric-tower partition declared
+//     below IS the BUILT-IN-spec ABC hierarchy (PEP 3141), not the
+//     general class-hierarchy carrier.
+//   - Python type-annotation syntax (PEP 484 `typing` module, PEP
+//     604 union types, PEP 612 ParamSpec, PEP 695 type parameter
+//     syntax). These compose over the type-system carriers declared
+//     here (annotations resolve to type-Node references), but the
+//     SYNTAX is owned by the LanguageModel grammar layer (T-4
+//     bundled); not authored here.
+//   - Python protocols / structural typing (PEP 544
+//     `typing.Protocol`). Runtime structural-compatibility checking
+//     is a property of the LanguageModel grammar's type-annotation
+//     productions, not of this scalar-vocabulary slice. The numeric
+//     tower IS the BUILT-IN spec-ABC hierarchy; user-defined
+//     protocols ride T-4 grammar.
+//   - GIL / thread / multiprocessing semantics. Concurrency is owned
+//     by extdeps/coordination.dag (T-4.8); not authored here.
+//
+// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj carrier below
+// carries the full 🟢/🟡/🔴 + all five patterns (Fact-placement /
+// Variant-is-data / Algebraic-form / Dimensional / Parameterized-
+// family-Practice-7) per modeling-discipline.md §4 (operator-ratified
+// binding 2026-05-15, gate (b) — #3163 made the 4-pattern miss the
+// proof case; do not omit Practice-7). Conj records carry no ledger
+// (only coproducts dissolve); scaffold-residual Conj fields
+// (PythonCost raw Int components) carry a 🟡 bridge note mirroring
+// std/diagnostic.dag's `Extent.ByteRange`, ptx.dag's `Dim3` /
+// `PtxCost`, and rust.dag's `RustCost` precedent.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PythonNumericTower — the closed Python numeric-subtype-tower
+// classifier. Per Reference §3.2 numeric.Number ABC hierarchy (PEP
+// 3141) the Python numeric tower has four levels; PEP 285 establishes
+// `bool` as a subtype of `int` (so `True` and `False` are int values
+// 1 and 0 respectively, and `bool` is the bottom of the tower).
+//
+//   - BoolLevel      — `bool` (the 2-valued numeric; PEP 285 — a
+//                      strict subtype of Integral, NOT a parallel
+//                      kind; True == 1 and False == 0 by spec)
+//   - IntegralLevel  — `int` (arbitrary-precision integer; PEP 3141
+//                      numbers.Integral)
+//   - RealLevel      — `float` ("machine-level double precision" per
+//                      Reference §3.2 the-standard-type-hierarchy
+//                      — implementation-defined per the spec's
+//                      "you are at the mercy of the underlying
+//                      machine architecture" caveat; CPython
+//                      realizes this as IEEE-754 binary64 but the
+//                      spec does NOT mandate that fixed width.
+//                      PEP 3141
+//                      numbers.Real; the `Rational` ABC level lies
+//                      between Integral and Real but has no built-in
+//                      Python carrier — `fractions.Fraction` is
+//                      stdlib not a primitive, and Decimal is
+//                      explicitly NOT in the tower per PEP 3141; so
+//                      the BUILT-IN primitive partition the spec
+//                      pins is 4-level, not 5-level)
+//   - ComplexLevel   — `complex` (a pair of `float` per Reference
+//                      §3.2 — inheriting the same machine-level
+//                      double precision + implementation caveat;
+//                      CPython realizes it as a pair of IEEE-754
+//                      binary64 but the spec does NOT mandate that
+//                      fixed format. PEP 3141
+//                      numbers.Complex; the top of the tower)
+//
+// The partial-order Bool ⊑ Integral ⊑ Real ⊑ Complex is
+// STRUCTURALLY DERIVED from this closed enum (per the algebraic-form
+// ledger entry below — pointing it elsewhere would parallel-represent
+// the enumeration the order is defined over). The order is the
+// numeric coercion path Python's arithmetic resolves through
+// (Reference §6.16.1 arithmetic-conversions).
+//
+// CLOSED (C1 stop-signal). A fifth level (e.g. promoting
+// `fractions.Fraction` from stdlib library to primitive, or adding
+// Decimal to the tower) is an edit to THIS declaration routed to
+// operator ratification under the L-2 pin discipline (the
+// `Wrapping<T>` / `Saturating<T>` rust analog — libraries are
+// programs in the modeled language = Node per L-2, NOT additional
+// tower levels).
+//
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#numeric-types
+//       (Reference §3.2 numeric-types) + PEP 3141
+//       https://peps.python.org/pep-3141/ (Number ABC hierarchy)
+//       + PEP 285 https://peps.python.org/pep-0285/ (`bool` as int
+//       subtype).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every numeric-typed value consumer
+//      (the Python `LanguageModel` grammar's numeric-literal
+//      production, the per-target cost-realization for arithmetic
+//      ops, the eventual inhabitance walk for Integral-vs-Real-vs-
+//      Complex algebra dispatch) reads the tower level uniformly;
+//      shared classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: a `{ level: Int }` proxy (0 / 1 / 2
+//      / 3) replaces a closed 4-valued exhaustive sum with an
+//      unbounded Int (level=42 representable) — violates P2 + M4
+//      (closed sets are enums, not numeric proxies). Same shape as
+//      algebra.dag's `Ordering` ledger and rust.dag's RustIntKind /
+//      RustVisibility arguments.
+//   3. Algebraic form — PARTIAL: the four levels form the CONTAINMENT
+//      partial-order Bool ⊑ Integral ⊑ Real ⊑ Complex (the
+//      numeric-coercion order Reference §6.16.1 names); but the
+//      partial-order is DERIVED FROM this closed enum, not a richer
+//      source — pointing to a `BoundedLattice<PythonNumericTower>`
+//      would parallel-represent the enumeration the order is defined
+//      over (algebra.dag U1 engine-debt smell — the same argument
+//      ptx.dag's BarrierScope and rust.dag's RustIntWidth /
+//      RustVisibility ledgers make). The per-level algebra grounding
+//      (BoolLevel → BooleanAlgebra; IntegralLevel → OrderedRing or
+//      Semiring per the integer.dag carrier; RealLevel →
+//      ApproximateField per the float.dag carrier; ComplexLevel →
+//      ApproximateField over `Complex` extension) IS the inhabitance
+//      walk owned by std/integer.dag / std/float.dag / std/logic.dag
+//      per P2 (rides D2 + T-3); the tower enum itself stays a closed
+//      classifier.
+//   4. Dimensional — FAILS: a single Python numeric value has
+//      EXACTLY ONE tower level; PEP 285's subtype relationship
+//      (`bool` is-a `int`) is a SUBTYPE fact at the spec layer, not
+//      a co-coordinate (a value typed `bool` IS a `bool` whose
+//      subtype-tower view yields `Integral`; the bottom-most-level
+//      principal type is unique). Mutually-exclusive alternatives,
+//      not simultaneous coordinates.
+//   5. Parameterized family — FAILS: the four levels are the PEP
+//      3141 + PEP 285 built-in-primitive tower partition; they are
+//      NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7). The tower levels correspond
+//      to STRUCTURALLY DISTINCT algebraic groundings (BooleanAlgebra
+//      / OrderedRing / ApproximateField over Real / ApproximateField
+//      over Complex), not projection-uniform over any richer source.
+//      The four levels are the spec's irreducible numeric-tower
+//      partition for the built-in primitive set.
+// Terminal: the closed four-level Python built-in numeric-tower
+// partition for the pinned Python Reference; a 5th is the C1
+// stop-signal (a visible ratified edit to this declaration,
+// STRUCTURE.md commitment #1).
+type PythonNumericTower
+  = BoolLevel
+  | IntegralLevel
+  | RealLevel
+  | ComplexLevel
+
+
+// (PythonStringKind REMOVED 2026-05-16 per operator BLOCKING review
+// codex on PR #3180: Python Reference 3.14 §3.2.5.1 / §3.2.5.2
+// partitions `str` / `bytes` / `bytearray` as SEQUENCES — `str` and
+// `bytes` under "Immutable sequences", `bytearray` under "Mutable
+// sequences" — NOT as scalars. The prior PythonStringKind enum and
+// its inclusion in PythonScalar collapsed the sequence/container
+// boundary into the scalar vocabulary, giving downstream consumers
+// the wrong built-in type shape (INVARIANTS P1 modeling-faithfulness
+// / extdeps fidelity violated against the pinned 3.14 spec). Sequences
+// (str / bytes / bytearray / tuple / list / range / set / frozenset
+// / dict / etc.) are now uniformly scope-negative for this slice; see
+// SCOPE NEGATIVE in the header. A future PythonSequence carrier will
+// model them per the Reference §3.2.5 / §3.2.6 / §3.2.7 partitions
+// when sequence/container types are needed — separate from
+// PythonScalar.)
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PythonSingletonKind — the closed Python singleton-type classifier.
+// Per Reference §3.2 the-standard-type-hierarchy, Python defines
+// exactly three singleton types — each has its own type (NoneType,
+// NotImplementedType, EllipsisType) with EXACTLY ONE inhabitant
+// each. The empty-inhabitance fact (each singleton-type's inhabitant
+// count is structurally 1) RIDES std/cardinality.dag's
+// one-cardinality carrier (T-3 wave A3) when that lands.
+//
+//   - NoneT             — `None` (the absence-of-value singleton;
+//                         `NoneType`); used as the default return
+//                         value of a `def` without explicit return
+//                         and as the absence-of-value placeholder
+//                         in Python's standard-library APIs
+//   - NotImplementedT   — `NotImplemented` (the
+//                         operator-method-fallback singleton; an
+//                         arithmetic / comparison dunder method
+//                         returns `NotImplemented` to signal the
+//                         operation is not implemented for the
+//                         given operand types, prompting Python's
+//                         reverse-method-dispatch / fallback chain
+//                         per Reference §3.3.7
+//                         numeric-coercion-rules)
+//   - EllipsisT         — `...` / `Ellipsis` (the
+//                         slice-placeholder / type-annotation
+//                         singleton; used in slicing syntax
+//                         `arr[...]`, in type annotations like
+//                         `Callable[..., T]`, and in stub files for
+//                         placeholder bodies per PEP 484)
+//
+// CLOSED (C1 stop-signal). A fourth singleton primitive (e.g. a new
+// `Missing` sentinel promoted to spec) is an edit to THIS
+// declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
+//       (Reference §3.2 — None / NotImplemented / Ellipsis
+//       subsections) + Reference §6.2.1 atom-identifiers for the
+//       singleton-identifier resolution rules.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every singleton-typed-value consumer
+//      (literal parsing — the `None` / `NotImplemented` / `...`
+//      productions; emission of singleton syntax; reverse-method-
+//      dispatch on `NotImplemented` return; slicing-syntax
+//      `Ellipsis` handling) reads the singleton kind uniformly;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses (a
+//      `match name { "None" => … }` smell, exactly the v3
+//      regression the K-1 opacity discipline structurally
+//      prevents). The enum IS the faithful form. AND collapsing
+//      the three singletons to a single `Singleton { which: Symbol
+//      }` carrier ratifies arbitrary user-introduced singletons —
+//      the Reference partitions exactly THREE, and additional
+//      sentinels are library / user code (e.g. `unittest.mock
+//      .DEFAULT`), NOT spec primitives.
+//   3. Algebraic form — N/A by construction: the three singletons
+//      do not trace to a richer std/ algebraic structure (each is
+//      a one-inhabitant Cardinality fact, owned by
+//      std/cardinality.dag's one-cardinality carrier per P2). The
+//      structural fact "exactly one inhabitant" is a CARDINALITY
+//      witness on each singleton; the kind enum itself is the
+//      partition the witnesses ride, not a richer collapsing
+//      source.
+//   4. Dimensional — FAILS: a single Python singleton value has
+//      EXACTLY ONE kind; `None` is `NoneT`-typed, never
+//      simultaneously `NotImplementedT`-typed. Mutually-exclusive
+//      alternatives.
+//   5. Parameterized family — FAILS: the three singletons are the
+//      Python Reference's three spec-defined singleton-type
+//      partition; they are NOT one generic `F<X>` / projection over
+//      a separately-declared source set (Practice 7). One could
+//      attempt `Singleton<role: SingletonRole>` parameterized over a
+//      3-element role set, but the roles are
+//      STRUCTURALLY-DISTINCT spec-defined sentinels with
+//      heterogeneous purposes (absence-of-value /
+//      operator-fallback / slice-placeholder) — not projection-
+//      uniform over any richer source. The three are the spec's
+//      irreducible singleton partition.
+// Terminal: the closed three-way Python primitive-singleton-kind
+// classifier; a 4th is the C1 stop-signal.
+type PythonSingletonKind
+  = NoneT
+  | NotImplementedT
+  | EllipsisT
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PythonScalar — the closed Python top-level primitive-scalar
+// typed-value Disj. Per Python Reference 3.14 §3.2 the-standard-type-
+// hierarchy the BUILT-IN scalar primitives partition into exactly
+// two categories: §3.2.4 numeric types (the four numeric-tower
+// levels) and §3.2.1 / §3.2.2 / §3.2.3 singleton types (the three
+// spec-defined one-inhabitant types None / NotImplemented /
+// Ellipsis).
+//
+// SEQUENCES ARE NOT SCALARS (refactored 2026-05-16 per operator
+// BLOCKING review codex on PR #3180): Python Reference 3.14 §3.2.5.1
+// (Immutable sequences) partitions `str` and `bytes` as sequences;
+// §3.2.5.2 (Mutable sequences) partitions `bytearray` as a sequence.
+// The prior `String { kind: PythonStringKind }` variant of
+// PythonScalar collapsed the sequence/container boundary into the
+// scalar vocabulary, giving downstream consumers the wrong built-in
+// type shape (INVARIANTS P1 modeling-faithfulness / extdeps fidelity
+// violated against the pinned 3.14 spec). Sequences (str / bytes /
+// bytearray / tuple / list / range) are now uniformly scope-negative
+// for this slice and named in SCOPE NEGATIVE in the header; a future
+// PythonSequence carrier will model them per the Reference §3.2.5
+// partition when sequence/container types are needed — separate from
+// PythonScalar.
+//
+// The variant payloads carry the sub-classifier kind, making the
+// Cartesian product of "category × in-category-kind" STRUCTURALLY
+// ENFORCED — an illegal cross-category combination like "a
+// Singleton with a numeric tower level" is unrepresentable (the
+// INVARIANTS P2 illegal-states-unrepresentable shape, the same
+// design choice rust.dag's RustScalar took with kind×width payloads
+// and ptx.dag's RegisterScalar took with kind × width ×
+// state_space).
+//
+//   - Numeric    — { tower: PythonNumericTower }
+//                  e.g. Numeric { tower: IntegralLevel } is Python's
+//                  `int`; Numeric { tower: BoolLevel } is `bool` —
+//                  whose subtype relationship to IntegralLevel is
+//                  the tower's structural fact, not a parallel kind.
+//   - Singleton  — { kind: PythonSingletonKind }
+//                  e.g. Singleton { kind: NoneT } is the type of
+//                  `None`; Singleton { kind: EllipsisT } is the type
+//                  of `...`.
+//
+// The structural argument for the Disj-with-payloads (vs rust's
+// `RustScalarKind` flat 6-way enum and ptx's `RegisterScalarKind`
+// flat 5-way enum): rust and ptx have FLAT primitive partitions
+// where every variant's structural shape is the same kind tag
+// (rust's Int / Float / Bool / Char / Str / Never; ptx's Bits /
+// Unsigned / Signed / Float / Predicate). Python's primitive scalar
+// partition is HIERARCHICAL — a two-category top with structurally
+// distinct sub-classifiers per category (numeric tower / singleton
+// kind). A flat 7-variant enum (Int / Float / Bool / Complex /
+// NoneT / NotImplementedT / EllipsisT) would lose the category
+// structure the Reference makes explicit; a Conj record `{ category,
+// tower?, singleton_kind? }` would ratify illegal cross-category
+// combinations. The 2-category Disj-with-payloads is the dissolved
+// form: each variant carries EXACTLY the sub-classifier its category
+// admits, and no illegal cross-category combination is constructible.
+//
+// SINGLE-CARRIER CONSOLIDATION (the Python-vs-rust structural
+// difference). The rust.dag #3174 precedent declares TWO scalar
+// carriers — RustScalarKind (flat meta-enum) and RustScalar (Disj-
+// with-payloads typed-value). Python has no orthogonal width axis
+// (header Python-particulars (a)), so the meta-classifier and typed-
+// value form collapse into PythonScalar — its variants are both the
+// category meta-tags AND the typed values. No separate
+// `PythonScalarKind` exists because no orthogonal axis to factor
+// across exists.
+//
+// CLOSED (C1 stop-signal). A third top-level scalar category is an
+// edit to THIS declaration under the L-2 pin discipline (Reference
+// 3.14 §3.2.4 / §3.2.1-3 partition the scalar primitives as Numeric
+// + Singleton; SEQUENCE / SET / MAPPING / CALLABLE / MODULE / CLASS
+// / INSTANCE categories are scope-negative — they are not scalars).
+//
+// Spec: https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
+//       (Reference §3.2 the standard type hierarchy — the top-level
+//       partition this enum encodes; specifically §3.2.4 for
+//       numerics and §3.2.1 / §3.2.2 / §3.2.3 for singletons).
+//
+// SEAM (where D2 resolver plugs into spec vocabulary). D2 is ratified
+// (DECISIONS.md D2 row); per-primitive **alias-identity + grounding +
+// operation-semantics** rows land per the D2 RESOLVER block below, not
+// as parallel `data …: PythonScalar = …` algebra stubs. `PythonScalar`
+// remains the closed Reference §3.2 scalar-surface partition (Numeric /
+// Singleton); Numeric { tower: IntegralLevel } classifies Python `int`;
+// Singleton { kind: NoneT } classifies `None` — the D2 alias rows
+// wire each to std/ carriers when T-3 lands.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Python-typed value consumer
+//      (literal parsing, expression typing, emission to source,
+//      cost-realization, eventual inhabitance dispatch) reads the
+//      scalar category + sub-kind through this carrier; shared,
+//      not scattered.
+//   2. Variant-is-data — FAILS: collapsing the variants to a
+//      uniform record `{ category: PythonCategory, tower:
+//      Option<…>, singleton_kind: Option<…> }` reintroduces
+//      illegal cross-category combinations (a Singleton carrying
+//      a numeric tower level; a Numeric with no tower set) the
+//      2-variant Disj-with-payloads exists to forbid. The
+//      2-variant Disj IS the dissolved form (P2 + Practice 2/6 +
+//      M4 — same argument as rust.dag RustScalar).
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra or cardinality structure (Numeric → per-tower-level
+//      algebra per the PythonNumericTower ledger; Singleton →
+//      one-cardinality per std/cardinality.dag). That grounding IS
+//      the inhabitance walk owned ELSEWHERE per P2; the Disj
+//      structure here is the closed surface, not a collapsing
+//      target.
+//   4. Dimensional — FAILS: a single Python scalar value IS
+//      EXACTLY ONE variant of this Disj; mutually-exclusive
+//      alternatives. The shapes differ across variants (each
+//      carries its category-specific sub-classifier; the categories
+//      are disjoint) — they cannot be coordinates of a single
+//      record without the illegal-state smell.
+//   5. Parameterized family — FAILS: the two category variants are
+//      NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7). The PTX RegisterScalar
+//      pattern (Conj-record over (kind, width, state_space)) was
+//      projection-uniform; the rust RustScalar pattern (Disj-with-
+//      width-payload-per-kind) was projection-non-uniform over the
+//      kind enum; Python's PythonScalar pattern is projection-
+//      non-uniform over a HIERARCHICAL category × sub-kind
+//      structure — each category's sub-classifier is structurally
+//      distinct (PythonNumericTower / PythonSingletonKind ground
+//      in two different std/ structures: algebra-tower /
+//      cardinality). The Disj-with-heterogeneous-payloads is the
+//      irreducible faithful form for the Reference's hierarchical
+//      scalar partition.
+// Terminal: the closed two-category Python primitive-scalar
+// typed-value sum (Numeric + Singleton per Reference 3.14 §3.2.4 /
+// §3.2.1-3); illegal cross-category combinations are unrepresentable
+// by construction; SEQUENCE / SET / MAPPING / CALLABLE / MODULE /
+// CLASS / INSTANCE types are scope-negative for this slice and
+// land via a separate future carrier (str / bytes / bytearray /
+// tuple / list / range / set / frozenset / dict / etc., named in
+// SCOPE NEGATIVE in the header).
+type PythonScalar
+  = Numeric { tower: PythonNumericTower }
+  | Singleton { kind: PythonSingletonKind }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PythonCost — the per-target cost-realization carrier shape for the
+// Python `LanguageModel`. Conj record (no Practice-4 ledger).
+//
+// This declares the SHAPE the U1 spine reads when computing Python-
+// side realization cost — both components per the scaffold header's
+// "cost realization for Python" claim (preserved as a goal; the
+// carrier shape lands now, the cost INSTANCE-VALUES land downstream
+// per "Owned ELSEWHERE"):
+//
+//   - operation_cost  per-spec-operation throughput cost (the U1
+//                     per-target-op cost projection — the `map` side
+//                     of `Homomorphism<…, …, PythonScalar>` carries
+//                     this; cost is read FROM the map's structure,
+//                     never stored as a parallel field per
+//                     algebra.dag's U1 no-engine discipline. The
+//                     operation set this measures is the Python
+//                     LANGUAGE REFERENCE's §6 expressions / §8
+//                     compound-statements partition — the spec-
+//                     level operations, NOT the CPython BYTECODE.
+//                     CPython's bytecode (the `dis` module's opcode
+//                     set) is an IMPLEMENTATION DETAIL the
+//                     standard library explicitly disclaims (the
+//                     `dis` docs: "CPython bytecode... is an
+//                     implementation detail of the CPython
+//                     interpreter. No guarantees are made that
+//                     bytecode will not be added, removed, or
+//                     changed between versions of Python"). Other
+//                     Python implementations (PyPy / Jython /
+//                     GraalPython / MicroPython) have entirely
+//                     different VMs and operation sets; modeling
+//                     CPython bytecode as the cost-authority would
+//                     violate the L-2 fidelity-to-the-LANGUAGE-
+//                     REFERENCE pin this file declares (operator
+//                     BLOCKING on PR #3180 made this precise).
+//                     The natural Python-side per-instruction
+//                     analog of rust.dag's `instruction_cost` and
+//                     ptx.dag's `instruction_cost` is the spec-
+//                     operation cost, NOT the bytecode cost.
+//   - allocation_cost per-allocation cost (the Python-specific
+//                     contribution: Python heap-allocates objects
+//                     liberally — almost every spec-operation creates
+//                     a new object reference; the per-allocation cost
+//                     is structurally distinct from per-spec-operation
+//                     throughput and the per-target shape the cost
+//                     lens T-12 reads when synthesizing a Python
+//                     realization's total cost. The rust analog is
+//                     `RustCost.allocation_cost` — Python and Rust
+//                     both carry an allocation-cost component but
+//                     with very different magnitudes per operation;
+//                     the SHAPE is the same, the instance-values
+//                     differ per target.)
+//
+// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`,
+// ptx.dag's `Dim3` / `PtxCost`, and rust.dag's `RustCost`). With only
+// kernel-ambient `Int` available at the T-4 phase, `{ operation_cost:
+// Int, allocation_cost: Int }` STRUCTURALLY ADMITS illegal states
+// (negative costs; nonsense magnitudes). modeling-discipline.md §2
+// (illegal-states-unrepresentable) forbids admitting them; no
+// bounded-Cardinality refinement substrate exists yet to exclude
+// them. It is a TRACKED scaffold, declared with the three bridge
+// properties (the precedent diagnostic.dag established 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       the terminal refined-positive shape.
+//   (b) bounds on use — a producer MUST construct only non-negative
+//       costs; until the substrate enforces it the invariant is
+//       producer-side; a PythonCost with negative components is a
+//       producer bug, not a legal value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (T-3, P4 decidability), `operation_cost` and
+//       `allocation_cost` become refined bounded-non-negative-Int
+//       axes, and this scaffold dissolves.
+//
+// SEAM (where T-12 cost-lens reads). When lens/cost.dag (T-12, U2)
+// lands, its `SymbolicCost` lattice carrier composes over the per-
+// target projections; the Python projection is read from this Conj
+// record's components per the U2 "complexity consumes cost, never
+// re-derives" discipline. Pre-T-12, PythonCost is the declared
+// SHAPE the projection plugs into; concrete cost instance-values per
+// spec-operation (e.g. an integer-binary-add per Reference §6.6
+// arithmetic-conversions costs `PythonCost { operation_cost: 1,
+// allocation_cost: 0 }` for in-place numeric ops vs `PythonCost
+// { operation_cost: 1, allocation_cost: 1 }` for ops that produce a
+// new object) ride T-12 + D2 per "Owned ELSEWHERE." Concrete cost
+// rows MUST cite a Reference §6/§8 spec operation, NOT a CPython
+// bytecode opcode — the cost authority is the language reference,
+// not any particular VM.
+type PythonCost {
+  operation_cost: Int
+  allocation_cost: Int
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2 RESOLVER — partial fan-out (DECISIONS.md D2 row, commit 44a37ad46 on
+// origin/main; discipline mirror rust.dag PR #3174 @0328bee9 — NOT a
+// literal rust type-copy).
+//
+// DELETION PROVENANCE (same dissolution as #3174 @0328bee9):
+//   - retired seven `data python_*: PythonScalar = …` registry rows
+//   - retired `IrToPython<IRCarrier>` + `bool_to_python_bool` +
+//     `assert_bool_to_python_bool_consistency`
+//
+// D2a(1) LANDED HERE: alias-identity to std/ where the carrier exists.
+// D2a(2) DEFERRED IN FULL: shared `GroundingMap` has no pinned home — do
+//   NOT declare `GroundingMap` or any `data *_grounding` rows in this file
+//   (🟡 TRACKED-SCAFFOLD; trigger = operator pins `GroundingMap` home under
+//   escalation; import-never-redeclare-carriers / P2).
+// D2a(3) THIS FILE: **zero** operation-semantics carriers (mgr brief peer-
+//   (a)) — principal Python `int` is UNBOUNDED (https://docs.python.org/3.14/reference/
+//   datamodel.html#numeric-types-int-integers-of-unlimited-size — "Integers have
+//   unlimited precision"); it aliases std unbounded `Int` when that ladder lands
+//   — **no** overflow event ⇒ **no** `OverflowAction` / `OverflowDisposition`
+//   declared in python.dag at all.
+//
+// D2.2–D2.5 / scope: encoded DECISIONS.md D2 row; B2-OMNI coercion reads
+// resolver data once D2a(2) exists; C5-1 round-trip via TestClaims — not
+// stubbed here.
+
+// D2a(1) — Python `bool` ↔ std/logic.dag `Bool` (#3166). `Bool` is kernel-
+// ambient (STRUCTURE.md) — no `import`. PEP 285 (`bool` ⊑ `int`) remains a
+// PythonScalar tower fact (`BoolLevel` ⊑ `IntegralLevel`); std `Bool` is the
+// abstract bivalent carrier for D2a(1).
+//
+// D2a(3) anchor (pinned same as file header — mgr brief reconciled to L-2):
+//   https://docs.python.org/3.14/reference/
+// Spec (`bool` / numeric context): https://docs.python.org/3.14/reference/datamodel.html#the-standard-type-hierarchy
+// PEP 285 (bool ⊑ int): https://peps.python.org/pep-0285/
+type PyBool = Bool
+
+
+// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding map + remaining D2a(1) aliases
+//
+// When operator pins the shared `GroundingMap` home: import that module;
+// add `data …_grounding` rows **only** there (never re-declare the type in
+// each language file). Co-land D2a(1) `type Python<X> = <StdCarrier>` rows
+// here with explicit `import` for every NON-kernel-ambient std/ carrier
+// (std/integer.dag | std/float.dag ladder, T-3 Wave-A3 trigger).
+//
+// D2a(3) forward rule: any operation-semantics carrier this language needs
+// must be authored from **https://docs.python.org/3.14/reference/** + Practice-4 in
+// substrate — **not** by copying rust.dag overflow enums into python.dag
+// (B3 parallel taxonomy).
+//
+// ─── DEFERRED ROWS — TRACKED ───────────────────────────────────────
+//
+// Principal `int` (unbounded) — `type PythonInt = Int` (name TBD) when
+//   std/integer.dag exposes kernel unbounded `Int`; owner std/integer.dag.
+// `float` / `complex` — std/float.dag; anchor Reference §3.2 numeric caveats.
+// Singletons `None` / `NotImplemented` / `Ellipsis` — std/cardinality.dag +
+//   ratified unit pattern; anchor Reference §3.2 singleton partitions.
+//
+// SUBSTRATE SINGLE-AUTHORITY GUARD — never mint std/ Int / UInt / Float /
+// Nat / text carriers in extdeps; alias-identity to std/ source only.
+
+
+// ═════════════════════════════════════════════════════════════════════
+// v4 verification posture (mirror #3174 @0328bee9 dissolution; mgr brief
+// msg_37f72108).
+//
+// Layer 1 — 0-diag: `type PyBool = Bool` is structurally checked by the
+//   v2-compiler bridge on every PR.
+// Layer 2 — IrTo-style assert fns: **dissolved** (no parallel cementing).
+// Layer 3 — TestClaim data (std/verification.dag gate): C5-1 / D2.4 when
+//   T-7 + T-10 land; not stubbed here.
+//
+// flag-for-verify: intersects operator-flagged D2a(2) `GroundingMap` deferral.
