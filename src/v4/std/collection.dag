@@ -193,6 +193,26 @@ type Set<T> = fn(T) -> Bool
 
 
 // ─────────────────────────────────────────────────────────────────────
+// Pointwise Bool algebra at a single element x ∈ T — top-level fns so
+// nested `fn(x) { ... }` bodies can call them with named arguments
+// (`f(a: a, …)`) without relying on callee=`a` resolution for outer
+// lambda parameters (the v2 lowerer's nested-lambda + Call interaction).
+//
+// Coproduct dissolution — N/A (not sum types).
+fn set_pointwise_meet<T>(ma: fn(T) -> Bool, mb: fn(T) -> Bool, x: T) -> Bool {
+  bool_boolean_algebra.bounded_lattice.lattice.meet(ma(x), mb(x))
+}
+
+fn set_pointwise_join<T>(ma: fn(T) -> Bool, mb: fn(T) -> Bool, x: T) -> Bool {
+  bool_boolean_algebra.bounded_lattice.lattice.join(ma(x), mb(x))
+}
+
+fn set_pointwise_complement<T>(ma: fn(T) -> Bool, x: T) -> Bool {
+  bool_boolean_algebra.complement(ma(x))
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // set_boolean_algebra<T>() — MACHINE-READABLE BooleanAlgebra<Set<T>>
 // witness (operator-ratified Wave-A2 task (b), 2026-05-16).
 //
@@ -218,25 +238,25 @@ fn set_boolean_algebra<T>() -> BooleanAlgebra<Set<T>> {
       lattice: Lattice {
         meet: fn(a, b) {
           fn(x) {
-            bool_boolean_algebra.bounded_lattice.lattice.meet(a(x), b(x))
+            set_pointwise_meet(a: a, b: b, x: x)
           }
         },
         join: fn(a, b) {
           fn(x) {
-            bool_boolean_algebra.bounded_lattice.lattice.join(a(x), b(x))
+            set_pointwise_join(a: a, b: b, x: x)
           }
         }
       },
       top: fn(x) {
-        True
+        true
       },
       bottom: fn(x) {
-        False
+        false
       }
     },
     complement: fn(a) {
       fn(x) {
-        bool_boolean_algebra.complement(a(x))
+        set_pointwise_complement(a: a, x: x)
       }
     }
   }
