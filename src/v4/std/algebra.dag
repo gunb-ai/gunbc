@@ -56,7 +56,9 @@
 //   the consuming lens in its own file — algebra.dag declares structures
 //   only and references no Diagnostic)
 //
-// Status: scaffold — fill per TASKS.md T-2
+// Status: T-2 modeled; D1 header reconcile 2026-05-16 adds
+//   PointwisePower<T> per the operator D1-D ruling (alias-identity
+//   power BooleanAlgebra construction for Set<T>).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
