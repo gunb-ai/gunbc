@@ -284,12 +284,31 @@ type ByteSequence {
 }
 
 
-// EncodedInstruction — one decoded instruction with its raw byte witness.
-// The opcode is an opaque Symbol resolved through the ISA grammar table.
-type EncodedInstruction {
+// InstructionProductionRef — opaque reference to a declared ISA grammar
+// production. `opcode` is not a free spelling authority; it is resolved
+// in the namespace of the pinned `isa` production table.
+type InstructionProductionRef {
   isa: Isa
   opcode: Symbol
-  operands: List<Operand>
+}
+
+
+// OperandBinding — decoded operand value tied to a named slot in the
+// instruction production. Slot names are opaque Symbols resolved through
+// `production`, not independent readable labels.
+type OperandBinding {
+  slot: Symbol
+  value: Operand
+}
+
+
+// EncodedInstruction — one decoded instruction with its raw byte witness.
+// The production reference is the authority for opcode and operand-slot
+// legality; operand bindings instantiate that production rather than
+// forming a free opcode/list pair.
+type EncodedInstruction {
+  production: InstructionProductionRef
+  operands: List<OperandBinding>
   encoding: ByteSequence
 }
 
