@@ -264,8 +264,10 @@ type FloatKind
 // token/metadata + the integer/float/pointer scalar core + the
 // aggregate/vector/function/named constructors. A LangRef type OUTSIDE
 // this modeled set (e.g. `x86_amx`, a `target("…")` target-extension
-// type) is the EXPLICIT `FidelityDisposition.FailClosed` boundary —
-// declared, diagnosed, never a silent fabricated parse (no-engine):
+// type) is the EXPLICIT `FidelityDisposition.FailClosed` boundary, the
+// concrete machine-consumable `FidelityFeature.UnmodeledType`
+// (`feature_disposition` maps it to `FailClosed`) — declared,
+// diagnosed, never a silent fabricated parse (no-engine):
 // completeness of F is declared, not over-claimed. Extending the modeled
 // core is an upstream-LangRef-revision edit to THIS declaration (the M3
 // spec-anchor analog of node.dag's C1 stop-signal), never a silent open
@@ -637,8 +639,10 @@ type FloatPredicate
 // remain valid in 18.1.8 alongside the `trunc`/`ptrtoint`/`inttoptr`/
 // `bitcast`/`addrspacecast`/`getelementptr` core.) A constexpr opcode
 // OUTSIDE this version-pinned set is the EXPLICIT
-// `FidelityDisposition.FailClosed` boundary — declared, never a silent
-// fabricated parse or silent exclusion; a future LangRef revision that
+// `FidelityDisposition.FailClosed` boundary, the concrete
+// machine-consumable `FidelityFeature.UnmodeledConstExpr`
+// (`feature_disposition` maps it to `FailClosed`) — declared, never a
+// silent fabricated parse or silent exclusion; a future LangRef revision that
 // adds/removes one is an edit to THIS declaration against the pinned
 // spec URL (the M3 spec-anchor analog of node.dag's C1 stop-signal).
 type ConstExprOpcode
@@ -1673,9 +1677,19 @@ type FidelityDisposition
 // bullets above, promoted to substrate so the generic ingest/emit
 // walker reads DATA, not comments — the codex BLOCKING: P2/P3, a
 // machine-consumable boundary, no opaque-Symbol/prose-only smell).
-// Closed: a LangRef surface feature outside this set is itself the
-// `MalformedStructure`/`UnmodeledSemanticAttribute` fail-closed case (no
-// silent escape). Not Symbol-keyed: a disposition TABLE/projection is
+// Closed, and EXHAUSTIVE over the FailClosed boundaries the rest of the
+// file routes here: the "valid-but-unmodeled LangRef X" surfaces that
+// `LlvmType` / `LlvmInstruction` / `ConstExprOpcode` comments declare as
+// the explicit FailClosed boundary are FIRST-CLASS variants here —
+// `UnmodeledType` / `UnmodeledInstruction` / `UnmodeledConstExpr` —
+// alongside `UnmodeledSemanticAttribute` / `UnmodeledInlineAsm` /
+// `MalformedStructure`. So every "outside the modeled set ⇒ FailClosed"
+// cross-reference resolves to a concrete `FidelityFeature` the
+// `feature_disposition` projection maps — the generic walker reads a
+// machine-consumable disposition for those boundaries (P2/P3), not a
+// dangling prose route (the codex finding: a closed set is not enough
+// unless it actually ENUMERATES the boundary classes the model defers
+// to it). Not Symbol-keyed: a disposition TABLE/projection is
 // authored data, and K-1 forbids minting a `Symbol` VALUE in a data
 // literal — so a Symbol-keyed table is un-authorable (distinct from a
 // declaration-class `result: Symbol` FIELD, which is a name-reference,
@@ -1695,8 +1709,10 @@ type FidelityDisposition
 //      class at a decision point; alternatives, not coordinates.
 //   5. Parameterized family — FAILS: the classes are heterogeneous
 //      (spelling / order / trivia / token / metadata / asm / attribute /
+//      unmodeled-type / unmodeled-instruction / unmodeled-constexpr /
 //      malformed / structural-core), NOT one `F<X>` over a declared set.
-// Terminal: the closed C5 surface-feature-class set; its disposition is
+// Terminal: the closed C5 surface-feature-class set, EXHAUSTIVE over
+// every FailClosed boundary the model routes here; its disposition is
 // the total `feature_disposition` projection (single authority, M7).
 type FidelityFeature
   = StructuralCore
@@ -1707,6 +1723,9 @@ type FidelityFeature
   | AdvisoryMetadata
   | UnmodeledInlineAsm
   | UnmodeledSemanticAttribute
+  | UnmodeledType
+  | UnmodeledInstruction
+  | UnmodeledConstExpr
   | MalformedStructure
 
 
@@ -1726,6 +1745,9 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
     AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
     UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
     UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType => FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction => FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr => FailClosed { feature: UnmodeledConstExpr }
     MalformedStructure => FailClosed { feature: MalformedStructure }
   }
 }
