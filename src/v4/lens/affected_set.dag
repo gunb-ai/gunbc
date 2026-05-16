@@ -137,7 +137,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List }
-import v4.std.node { Diff, Node }
+import v4.std.node { Diff, Node, Path }
 import v4.std.witness { Witness }
 
 
@@ -151,18 +151,31 @@ import v4.std.witness { Witness }
 type Dag = Node
 
 
-// ReExecFrontier — the finite node frontier that must re-execute after a
-// structural Diff. This is a List<Node>, not Set<Node>: collection.dag's
-// bare Set<T> intentionally denotes arbitrary subsets and does not encode
-// finiteness, while a frontier over a finite Dag must be finite. The
-// eventual read emits each Node at most once in deterministic traversal
-// order; that uniqueness/minimality proof belongs to the read fold, not
-// to a bare Set carrier. File/module affectedness remains a later
-// projection over these nodes, never a second tier. Cache reuse is the
-// complement read through B1 content_hash and the same Dag, so it is not
-// duplicated as another field here.
+// ReExecNode — one affected occurrence in the Dag. `at` carries the D1
+// Path identity forward from the Diff seed / graph traversal; consumers
+// must not rediscover the occurrence for a bare Node value. `node` is the
+// subtree to re-execute or project from. The pair preserves P2 facts-flow-
+// forward while staying finite via the enclosing List.
+type ReExecNode {
+  at: Path
+  node: Node
+}
+
+
+// ReExecFrontier — the finite node-occurrence frontier that must
+// re-execute after a structural Diff. This is a List<ReExecNode>, not
+// Set<Node>: collection.dag's bare Set<T> intentionally denotes arbitrary
+// subsets and does not encode finiteness, while a frontier over a finite
+// Dag must be finite; a bare Node would also drop the occurrence/path
+// identity D1 already provides. The eventual read emits each Path at most
+// once in deterministic traversal order; that uniqueness/minimality proof
+// belongs to the read fold, not to a bare Set carrier. File/module
+// affectedness remains a later projection over these node occurrences,
+// never a second tier. Cache reuse is the complement read through B1
+// content_hash and the same Dag, so it is not duplicated as another field
+// here.
 type ReExecFrontier {
-  rerun: List<Node>
+  rerun: List<ReExecNode>
 }
 
 
