@@ -188,8 +188,9 @@ import v4.std.diagnostic { Diagnostic }
 //       ledger on the type below explains why this is terminal: the
 //       variants are STRUCTURALLY heterogeneous (different named terminal
 //       slots; Diode/Bjt/Mosfet additionally carry model name-refs) —
-//       they are NOT `F<X>` over a separately-declared set (Practice 5
-//       fails by inspection of the payloads).
+//       they are NOT `F<X>` over a separately-declared set (Practice-4
+//       parameterized-family pattern — pattern 5 — fails by inspection
+//       of the payloads).
 //   The tension was apparent, not real: Practice 7's bite is on parallel
 //   representations of a SECOND authority. The coproduct dissolution IS
 //   the authority — there is no second table the variants mirror.
