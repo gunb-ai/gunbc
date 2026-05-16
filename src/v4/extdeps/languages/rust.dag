@@ -58,7 +58,10 @@
 //     because Bool/Char/Str/Never variants carry no width payload)
 //   - Rust reference vocabulary: RustReferenceKind (Shared / Exclusive
 //     — Rust's `&T` vs `&mut T`), and the Conj carrier RustReference
-//     attaching it to an opaque lifetime Symbol (K-1)
+//     attaching it to an opaque lifetime Symbol (K-1) AND the
+//     referent Node (the Reference's TypeNoBounds slot) — three
+//     coordinates total per `&'lifetime mut? TypeNoBounds`, so
+//     `&'a i32` and `&'a str` are distinct facts (P1/P2 fidelity)
 //   - Rust visibility scope: RustVisibility (Private / Pub / PubIn
 //     { path: List<Symbol> }) — the three-way visibility partition
 //     reflecting the Reference's fundamental form
@@ -167,34 +170,39 @@
 //     structurally encodes — the U1 no-engine smell (algebra.dag U1).
 //
 // Consumes:
-//   - std/node.dag: `Symbol` only — the K-1 opaque kernel identity
-//     used as the lifetime tag on `RustReference`. Equality-only,
-//     no spelling accessor (the human-readable `'a` / `'static`
-//     spellings live in a boundary intern table, never in kernel /
-//     lens code — node.dag:70-86 K-1 discipline).
+//   - std/node.dag: `Node` (the bounded kernel's single recursive
+//     type per A1; the `referent: Node` field on `RustReference`
+//     carries the reference's TypeNoBounds per Reference §types-
+//     pointer) and `Symbol` (the K-1 opaque kernel identity used
+//     as the lifetime tag on `RustReference` + the segment carrier
+//     for `RustVisibility.PubIn`'s SimplePath). Both are equality-
+//     only at the boundary (Symbol's K-1 discipline); Node carries
+//     its structural recursion through `children` per A1.
 //   `Int` is kernel-ambient (the RustCost components' raw Int
 //   carrier per the 🟡 scaffold bridge to std/cardinality.dag);
 //   `Bool` is kernel-ambient (referenced in commentary on
-//   sum-shape arguments). No other module is imported — this file
-//   is closed-enum + Conj-record + one-import-of-Symbol
-//   declarations only.
+//   sum-shape arguments); `List` is kernel-ambient (used as
+//   `List<Symbol>` in `RustVisibility.PubIn`'s path). No other
+//   module is imported — this file is closed-enum + Conj-record
+//   declarations consuming exactly `Node` + `Symbol` from std/node.
 //   (The scaffold header's prior `std/node.dag, std/algebra.dag`
-//   Consumes line was anticipatory — std/node.dag was named because
-//   "this is target SPEC" (correct: I do import `Symbol` from it,
-//   exactly as std/diagnostic.dag imports `Node` from it); and
-//   std/algebra.dag was named for the inhabitance instance-values
-//   that this slice DEFERS per D2 (so algebra.dag is NOT imported
-//   now — it returns when D2 ratifies and the inhabitance rows land
-//   here). The revised Consumes line above reflects what the file
-//   actually imports — `Symbol` from std/node.dag — not the
-//   scaffold's anticipatory list. This Consumes correction rides
-//   the systemic operator scaffold-Consumes reconciliation, T-4 mgr
-//   synthesis msg_1fddb75c — the surface+trigger discipline lets
-//   the operator ratify all per-file Consumes strikes uniformly in
-//   one pass; this is not worker-settled. Same discipline as
-//   ptx.dag #3170, except ptx had zero imports and this file has
-//   one — driven by the RustReference Conj record's lifetime field,
-//   the IN-B effect-typed parameter that the ownership lens reads.)
+//   Consumes line was anticipatory — std/node.dag IS imported (`Node`
+//   + `Symbol`, exactly as std/diagnostic.dag imports `Node`);
+//   std/algebra.dag is NOT imported in this slice because the
+//   inhabitance instance-values it would supply are DEFERRED per
+//   D2 (so algebra.dag returns when D2 ratifies and the
+//   inhabitance rows land here). The revised Consumes line above
+//   reflects what the file actually imports — `Node` + `Symbol`
+//   from std/node.dag — not the scaffold's anticipatory list. This
+//   Consumes correction rides the systemic operator scaffold-
+//   Consumes reconciliation, T-4 mgr synthesis msg_1fddb75c — the
+//   surface+trigger discipline lets the operator ratify all per-
+//   file Consumes strikes uniformly in one pass; this is not
+//   worker-settled. Same discipline as ptx.dag #3170, except ptx
+//   had zero imports and this file has two — driven by the
+//   RustReference Conj record's lifetime + referent fields (the
+//   IN-B effect-typed parameter and the TypeNoBounds slot that
+//   distinguishes `&'a i32` from `&'a str`).)
 //
 // Status: T-4 rust-slice modeled 2026-05-16 (loyal-koi-702); structural
 //   finding: NO STOP from the type-system surface. The I/O contract in
@@ -209,7 +217,7 @@
 module v4.extdeps.languages.rust
 
 
-import v4.std.node { Symbol }
+import v4.std.node { Node, Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -986,19 +994,48 @@ type RustVisibility
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RustReference — a typed Rust reference: reference-kind × lifetime
-// identity. Conj record (no Practice-4 ledger — only coproducts
-// dissolve).
+// RustReference — a typed Rust reference. Per Reference §types-pointer,
+// a reference type is `&'lifetime mut? TypeNoBounds` — THREE structural
+// coordinates: lifetime × reference-kind × referent type. All three
+// are CARRIED here so `&'a i32` and `&'a str` are distinct facts
+// (P1 modeling-faithfulness + P2 boundary-discipline). Conj record
+// (no Practice-4 ledger — only coproducts dissolve).
 // Spec: https://doc.rust-lang.org/reference/types/pointer.html
 //
 //   - kind          which reference kind (Shared / Exclusive — the
-//                   borrow-kind partition the borrow checker reads)
+//                   borrow-kind partition the borrow checker reads;
+//                   the `mut?` slot in the Reference grammar)
 //   - lifetime      the reference's lifetime identity (an opaque
 //                   K-1 Symbol — equality only, no spelling
 //                   accessor; the human-readable `'a` / `'static`
 //                   spellings live in a boundary intern table, never
 //                   in kernel/lens code, exactly as Symbol's K-1
-//                   discipline forecloses — node.dag:70-86)
+//                   discipline forecloses — node.dag:70-86; the
+//                   `'lifetime` slot in the Reference grammar)
+//   - referent      the type the reference points to (the Reference's
+//                   `TypeNoBounds` slot). Carried as a `Node` — the
+//                   bounded kernel's single recursive type per
+//                   node.dag A1 ("recursion lives SOLELY in Node
+//                   children") — same shape as `Edge.target: Node`
+//                   and `Diagnostic.correction Suggested(Node)`: any
+//                   type expression IS a Node (a subtree of Nodes
+//                   IS a Node; there is no separate "TypeNoBounds
+//                   alias" the compiler sees through, per
+//                   feedback_nodes_are_nodes /
+//                   feedback_naming_is_aliasing). Whether the
+//                   referent is in fact a TypeNode (a kind=TypeNode
+//                   Node) is a structural well-formedness invariant
+//                   the LanguageModel grammar enforces — the same
+//                   discipline node.dag's `node_well_formed`
+//                   applies to a connective's child shapes, not a
+//                   type-level constraint here.
+//
+// (Corrected 2026-05-16 per BLOCKING operator review on PR #3174:
+// the prior `{ kind, lifetime }`-only shape dropped the referent
+// fact, so `&'a i32` and `&'a str` collapsed to one structural
+// fact. INVARIANTS P1 modeling-faithfulness AND P2 boundary-
+// discipline violations — the Reference's ReferenceType rule
+// CARRIES all three coordinates. Faithful form restored.)
 //
 // The `lifetime` Symbol IS the generic-lifetime-parameter surface
 // the bundled T-4 LanguageModel grammar productions resolve. A
@@ -1014,12 +1051,19 @@ type RustVisibility
 // IN-B framing applied to Rust). Memory access through a reference
 // is a Transform whose operand type CARRIES this record in its
 // signature; the ownership lens (lens/ownership.dag, T-13) READS
-// the (kind, lifetime) coordinates directly from the typed
-// signature and validates well-scopedness as a structural property
-// — there is no separate "borrow-fact annotation" layer.
+// the (kind, lifetime, referent) coordinates directly from the
+// typed signature and validates well-scopedness as a structural
+// property — there is no separate "borrow-fact annotation" layer.
+// The referent's own type-Node structure is recursively read by the
+// lens as needed (since `referent: Node` admits the full type-
+// expression grammar — array types, generic instantiations, function
+// pointer types, further references — without this file declaring
+// each shape separately; that grammar is the bundled T-4
+// LanguageModel work, this Conj is the carrier shape).
 type RustReference {
   kind: RustReferenceKind
   lifetime: Symbol
+  referent: Node
 }
 
 
