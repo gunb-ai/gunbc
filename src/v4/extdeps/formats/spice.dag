@@ -35,23 +35,28 @@
 //     parent positional offset — a documented secondary fidelity
 //     concession tracked as 🟡 YELLOW debt with a named consumer
 //     trigger (see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
-//     in the SpiceNetlist declaration's header). FLAG-FORM
-//     PARAMETER NORMALIZATION (PR #3168 claude exploratory): bare-
-//     flag SPICE3 instance modifiers like `Q1 c b e m OFF` are
-//     parsed into `Parameter { name = OFF, value = SpiceValue
-//     { lexeme = "" } }`; `parse ∘ emit` may normalize the bare
-//     flag to the `name=` form (`OFF=`) on the output side. Two
-//     distinct surface forms (`OFF` and `OFF=`) thus map to the
-//     same modeled value; emit's choice of surface form is one of
-//     the two equally-valid SPICE3 spellings, not a round-trip
-//     mismatch. A byte-exact flag-form-preservation consumer would
-//     dissolve this with the same trigger as the typed `Modifier =
-//     Flag(Symbol) | KeyValue(Symbol, SpiceValue)` sub-coproduct
-//     mentioned in `Parameter`'s FLAG-FORM INSTANCE MODIFIERS note.
-//     The contract promised here is therefore "top-level interleave
-//     round-trip" + "nested-SUBCKT parent-identity preservation" +
-//     "instance-modifier semantic-equivalent round-trip (modulo
-//     bare-flag vs `name=` form)", not "byte-exact deck round-trip". The original scaffold Owns line read
+//     in the SpiceNetlist declaration's header). INSTANCE-MODIFIER
+//     FLAG-VS-KEYVALUE FIDELITY (PR #3168 codex review on commit
+//     9a477536 — the prior "equally-valid SPICE3 spellings" framing
+//     was overstated and is retracted). Instance modifiers are now
+//     a typed `Modifier = Flag { name } | KeyValue { name, value }`
+//     sub-coproduct on the variants that carry them (`Mosfet`,
+//     `Bjt`); a bare-flag `OFF` parses into `Flag { name = OFF }`
+//     and a parameter `AREA=2` parses into `KeyValue { name = AREA,
+//     value = ... }`. `parse ∘ emit` preserves the flag-vs-key-value
+//     distinction byte-exact (no normalization between forms); the
+//     two surface forms have distinct grammar and semantics in
+//     SPICE3 and the type system now models that distinction
+//     directly. (`Parameter` remains the carrier for contexts that
+//     admit ONLY the `name=value` form — .MODEL cards, .OPTIONS
+//     directive, HSPICE-extension X-element params.) The contract
+//     promised here is therefore "top-level interleave round-trip" +
+//     "nested-SUBCKT parent-identity preservation" + "instance-
+//     modifier byte-exact round-trip (Flag vs KeyValue
+//     distinguished structurally)", not "byte-exact deck round-trip"
+//     (which still excludes lifted-nested-SUBCKT within-parent
+//     position — see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
+//     in SpiceNetlist's header for the residual concession). The original scaffold Owns line read
 //     `{components, nodes, models, directives}`; the `nodes` field
 //     is dropped per Practice 7 (the set of referenced nodes is a
 //     projection over component terminals — a parallel `nodes:
@@ -387,42 +392,81 @@ type SpiceValue {
 
 // ─────────────────────────────────────────────────────────────────────
 // Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=2`).
-// Used by the parameterized component variants that carry a
-// `parameters: List<Parameter>` slot in this cut (`Mosfet`, `Bjt`,
-// `SubcircuitCall`), by `.MODEL` parameter sets, and by `.OPTIONS`
-// directives (Quarles 1993 §11.3, §15). The remaining variants without
-// a `parameters` slot (`Resistor`, `Capacitor`, `Inductor`, `Diode`,
-// `VoltageSource`, `CurrentSource`) are part of the same follow-up
-// that enumerates the missing-list (E, F, G, H, J, O, S, T, U, W, Z)
-// — see `Component`'s 🟡 trigger; the
-// `Parameter` carrier is ready for them. `name` is a `Symbol`
-// (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar deferred
-// per `SpiceValue`).
+// Used by contexts that admit ONLY the name=value form (no bare
+// flags): `.MODEL` parameter sets, `.OPTIONS` directives (Quarles 1993
+// §11.3, §15), and the HSPICE-extension X-element `parameters` slot.
+// Instance-modifier slots on component variants that ALSO admit bare-
+// flag modifiers (`Mosfet`, `Bjt`) use the dedicated `Modifier`
+// typed-sum carrier instead — see the `Modifier` declaration below
+// for that flag-vs-key-value distinction. The remaining variants
+// without any modifier slot (`Resistor`, `Capacitor`, `Inductor`,
+// `Diode`, `VoltageSource`, `CurrentSource`) are part of the same
+// follow-up that enumerates the missing-list (E, F, G, H, J, O, S, T,
+// U, W, Z) — see `Component`'s 🟡 trigger. `name` is a `Symbol`
+// (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar
+// deferred per `SpiceValue`).
 //
 // PARAMETER-NAME SCHEMA AS PROJECTION (Practice 7). Which names are
-// valid for which element kind is a CONSUMER-SIDE check, not a parallel
-// field here — schema is a projection over the closed (Component-kind,
-// SPICE3 §11) axis. So `parameters: List<Parameter>` carries the
-// LEXICAL-SURFACE instance modifiers losslessly; an invalid name (e.g.
-// `Bjt { parameters: [Parameter{name=NONSENSE, ...}] }`) is rejected
+// valid for which context is a CONSUMER-SIDE check, not a parallel
+// field here — schema is a projection over the closed (context,
+// SPICE3 spec) axis. So `Parameter` (and `Modifier`) carries the
+// LEXICAL-SURFACE pairs losslessly; an invalid name is rejected
 // by the spec-projection check, not by the type system. A typed sub-
 // coproduct per element kind enumerating its valid parameter names is
 // the eventual 🟢 destination (tied to `Component`'s 🟡 trigger);
 // `List<Parameter>` is the intermediate scaffold consistent across
 // every variant that carries instance modifiers.
 //
-// FLAG-FORM INSTANCE MODIFIERS (`OFF`, etc.) — SPICE3 §11 spells some
-// instance modifiers as BARE FLAGS (`Q1 c b e m OFF`) rather than
-// `name=value`. The intermediate scaffold encodes a flag as
-// `Parameter { name = OFF (Symbol), value = SpiceValue { lexeme = "" } }`
-// — an admissible workaround at the lexeme layer, surfaced honestly
-// here. A typed `Modifier = Flag(Symbol) | KeyValue(Symbol, SpiceValue)`
-// sub-coproduct is the same dissolution destination as the parameter-
-// name schema, deferred to the same trigger.
+// FLAG-FORM INSTANCE MODIFIERS — handled by the dedicated `Modifier`
+// sum (declared below); see that declaration for the typed-sum
+// rationale. `Parameter` carries only `name=value` pairs and is used
+// for contexts where SPICE3 admits ONLY the `name=value` form (the
+// .MODEL and .OPTIONS cards, the HSPICE-extension X-element params
+// — none of these accept bare-flag modifiers).
 type Parameter {
   name: Symbol
   value: SpiceValue
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modifier — an instance-modifier carried by a component element
+// declaration. SPICE3 §11 spells some instance modifiers as BARE FLAGS
+// (`Q1 c b e m OFF` — no value associated with `OFF`) and others as
+// `name=value` (`AREA=2`). These are GENUINELY DISTINCT surface forms
+// with distinct semantics: `OFF` declares a flag-style state; `AREA=2`
+// passes a parameter value. PR #3168 codex review surfaced that an
+// earlier scaffold encoded bare flags as `Parameter { name = ..., value
+// = SpiceValue { lexeme = "" } }` and claimed `OFF` and `OFF=`
+// (parameter-with-empty-value) were "equivalent SPICE3 spellings" —
+// which they are NOT; the two surface forms have distinct grammar
+// rules and distinct semantic interpretations, and conflating them
+// loses the structural fact. The typed sum below makes the
+// distinction first-class.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every instance-modifier consumer
+//      (parameter-schema check, emit) dispatches on flag-vs-key-value;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: `Flag` carries only a name; `KeyValue`
+//      carries a name AND a value. Collapsing to `{ name: Symbol,
+//      value?: SpiceValue }` makes "flag with a value" and "key-value
+//      missing a value" representable as the same illegal state — the
+//      conflation this declaration exists to forbid.
+//   3. Algebraic form — N/A: the flag-vs-key-value distinction is a
+//      SPICE3 spec partition, not an algebra carrier.
+//   4. Dimensional — FAILS: an instance modifier is EXACTLY ONE of
+//      Flag / KeyValue at the syntactic surface; mutually-exclusive.
+//   5. Parameterized family — FAILS: payloads are structurally
+//      distinct (one carries a `Symbol`, the other carries a
+//      `Symbol` + `SpiceValue` pair) — not `F<X>` over a declared set.
+// Terminal: the irreducible binary partition of SPICE3 instance-
+// modifier surface forms.
+type Modifier
+  = Flag { name: Symbol }
+  | KeyValue { name: Symbol, value: SpiceValue }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -526,18 +570,20 @@ type SubstrateSpec
 //           referenced in SPICE3 §11.1).
 //         - Diode: optional `AREA`, `OFF`, `IC=Vd`.
 //         - Bjt: substrate-spec (optional 4th terminal) and instance
-//           parameters (`AREA`/`OFF`/`IC=Vbe,Vce`) ADDRESSED — `Bjt`
+//           modifiers (`AREA`/`OFF`/`IC=Vbe,Vce`) ADDRESSED — `Bjt`
 //           now carries `substrate: SubstrateSpec` (typed sum; see the
 //           `SubstrateSpec` declaration above for the 5-pattern ledger)
-//           and `parameters: List<Parameter>` (matching `Mosfet`'s
-//           instance-modifier slot; flag-form `OFF` encoded as an
-//           empty-lexeme `Parameter`, see `Parameter`'s "FLAG-FORM"
-//           note). The `parameters` carrier is the lexical-surface
-//           scaffold; the typed parameter-name schema is the same
-//           per-element dissolution work as for `Mosfet`.
-//         - Mosfet: optional `L`/`W` (already in `parameters`),
+//           and `modifiers: List<Modifier>` (the typed Flag/KeyValue
+//           sum — see `Modifier`'s declaration below for the flag-
+//           vs-key-value distinction; bare-flag `OFF` is `Flag {
+//           name = OFF }`, parameter `AREA=2` is `KeyValue { name =
+//           AREA, value = ... }`). The `modifiers` carrier is the
+//           lexical-surface scaffold; the typed parameter-name
+//           schema is the same per-element dissolution work as for
+//           `Mosfet`.
+//         - Mosfet: optional `L`/`W` (already in `modifiers`),
 //           `AD`/`AS`/`PD`/`PS`/`NRD`/`NRS`/`OFF`/`IC=Vds,Vgs,Vbs` —
-//           current `parameters: List<Parameter>` admits these by
+//           current `modifiers: List<Modifier>` admits these by
 //           lexeme but does not type-enforce their names.
 //         - VoltageSource / CurrentSource: SPICE3 §11.2 transient
 //           source spec — `DC`/`AC` magnitude+phase + `PULSE`/`SIN`/
@@ -613,8 +659,8 @@ type Component
   | VoltageSource { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | CurrentSource { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Diode { name: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
-  | Bjt { name: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, parameters: List<Parameter> }
-  | Mosfet { name: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
+  | Bjt { name: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, modifiers: List<Modifier> }
+  | Mosfet { name: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, modifiers: List<Modifier> }
   | MutualInductance { name: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
   | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
@@ -945,16 +991,24 @@ type SubcircuitStatement
 // reviews). The subcircuit port carrier (`ports: SubcircuitPorts` —
 // see the `SubcircuitPorts` declaration below) enforces TWO SPICE3
 // constraints structurally:
-//   (a) NO GROUND — the carrier holds `NamedNode`s (the standalone
-//       non-ground node-identity carrier declared with `NodeRef`),
-//       not `NodeRef`s, so the global ground convention
-//       (`NodeRef.Ground`) is NOT a legal port. Using `NamedNode` as
-//       the element type makes "port-is-named-not-ground" a positive
-//       type fact (a `NamedNode` value is, by construction, not the
-//       ground variant), not an absence-by-permissiveness. Port names
-//       are LOCAL-scope identifiers the call-site connects to its own
-//       node-refs; ground is the simulator's universal reference and
-//       cannot be a formal parameter.
+//   (a) NO GROUND VARIANT — the carrier holds `NamedNode`s (the
+//       standalone non-ground node-identity carrier declared with
+//       `NodeRef`), not `NodeRef`s, so the `NodeRef.Ground` VARIANT
+//       is structurally not a legal port. Using `NamedNode` as the
+//       element type makes "port-is-the-Named-variant-not-Ground" a
+//       positive type fact. HONEST CAVEAT (PR #3168 codex review):
+//       this does NOT, at the type layer, exclude a Symbol whose
+//       parser-translation is the SPICE3-ground literal `"0"` — that
+//       ground-TOKEN rejection is PARSER DISCIPLINE (the parser
+//       never maps "0" through `NodeRef.Named`, only through
+//       `NodeRef.Ground`), not type-layer enforcement; see the
+//       `NamedNode` declaration above for the full YELLOW debt note.
+//       The parser-discipline guarantee is sound at the parse boundary
+//       (the only place ground-token data enters the model); the
+//       type-layer exclusion covers the `Ground` VARIANT specifically.
+//       Port names are LOCAL-scope identifiers the call-site connects
+//       to its own node-refs; ground is the simulator's universal
+//       reference and cannot be a formal parameter.
 //   (b) NON-EMPTY — `SubcircuitPorts` is a head+tail record
 //       (`{ first: NamedNode, rest: List<NamedNode> }`) so a zero-port
 //       subcircuit is STRUCTURALLY UNREPRESENTABLE. SPICE3F5 §2.4
