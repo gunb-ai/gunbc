@@ -21,7 +21,11 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/02_parse.dag: ParseTree
 //
-// Status: scaffold — fill per TASKS.md T-8
+// Status: T-8 modeled 2026-05-16 (bright-seal-437). This file keeps the
+// parse seam frozen by treating ParseTree as the incoming Node-shaped
+// surface tree produced by 02_parse.dag's generic grammar walker; it does
+// not declare a second ParseTree authority. The only authored classifier
+// here is the closed four-case SurfaceSugarKind that C3 already ratifies.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -29,3 +33,247 @@
 
 module v4.compiler.normalize
 
+
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+import v4.std.node {
+  Behavior,
+  Connective,
+  Edge,
+  EdgeDiscipline,
+  EdgeLabel,
+  Node,
+  NodeKind,
+  Symbol,
+  edge_is_named,
+  edge_is_positional,
+  node_well_formed
+}
+
+
+// NormalizedTree is the post-C3 Node domain. Sugar is gone; the result is
+// directly consumable by 03_resolve and by the B1-CANON post-normalize
+// content-hash domain.
+type NormalizedTree = Node
+
+
+// The four ratified surface-sugar identities. These are Symbol
+// name-references owned by normalize.dag; they are not readable strings.
+data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
+data normalize_port_surface_sugar: Symbol = normalize_port_surface_sugar
+data sugar_service: Symbol = sugar_service
+data sugar_fn: Symbol = sugar_fn
+data sugar_type: Symbol = sugar_type
+data sugar_operation: Symbol = sugar_operation
+
+
+// SurfaceSugarKind is exactly C3's closed set. It is a local classifier for
+// the normalizer fold, not a substrate extension and not a fifth sugar hook.
+type SurfaceSugarKind
+  = ServiceSugar
+  | FnSugar
+  | TypeSugar
+  | OperationSugar
+
+
+// Some parsed Nodes are sugar wrappers. Everything else is already in the
+// kernel domain and is recursively normalized as-is.
+type SugarClassification
+  = Sugar { kind: SurfaceSugarKind }
+  | NotSugar
+
+
+fn classify_sugar(n: Node) -> SugarClassification {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == sugar_service {
+        Sugar { kind: ServiceSugar }
+      } else {
+        if id == sugar_fn {
+          Sugar { kind: FnSugar }
+        } else {
+          if id == sugar_type {
+            Sugar { kind: TypeSugar }
+          } else {
+            if id == sugar_operation {
+              Sugar { kind: OperationSugar }
+            } else {
+              NotSugar
+            }
+          }
+        }
+      }
+    TypeNode { connective: _ } => NotSugar
+    ComputationNode { behavior: _ } => NotSugar
+  }
+}
+
+
+fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: normalize_reason_malformed_sugar,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn first_child(children: List<Edge>) -> Node? {
+  match children |> first {
+    Some { value: head } => Some { value: head.target }
+    None => None
+  }
+}
+
+
+fn exactly_one_child(children: List<Edge>) -> Bool {
+  count(children) == 1
+}
+
+
+fn normalize_edge(e: Edge) -> Outcome<Edge> {
+  match normalize_node(n: e.target) {
+    Produced { value: normalized_target } =>
+      Produced {
+        value: Edge {
+          label: e.label,
+          target: normalized_target
+        }
+      }
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+  }
+}
+
+
+type NormalizeChildrenResult
+  = NormalizedChildren { children: List<Edge> }
+  | NormalizeChildrenRejected { diagnostic: Diagnostic }
+
+
+fn normalize_children(children: List<Edge>) -> NormalizeChildrenResult {
+  fold(children, init: NormalizedChildren { children: [] }, f: fn(acc, e) {
+    match acc {
+      NormalizeChildrenRejected { diagnostic: d } =>
+        NormalizeChildrenRejected { diagnostic: d }
+      NormalizedChildren { children: done } =>
+        match normalize_edge(e: e) {
+          Produced { value: normalized_edge } =>
+            NormalizedChildren {
+              children: list_push(done, normalized_edge)
+            }
+          Rejected { diagnostic: d } =>
+            NormalizeChildrenRejected { diagnostic: d }
+        }
+    }
+  })
+}
+
+
+fn type_node(connective: Connective, children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: children
+  }
+}
+
+
+fn computation_node(behavior: Behavior, children: List<Edge>) -> Node {
+  Node {
+    kind: ComputationNode { behavior: behavior },
+    children: children
+  }
+}
+
+
+fn all_children_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_named(e: e)
+  })
+}
+
+
+fn all_children_positional(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    acc && edge_is_positional(e: e)
+  })
+}
+
+
+fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Outcome<Node> {
+  match kind {
+    ServiceSugar =>
+      if all_children_named(children: children) {
+        Produced { value: type_node(connective: Conj, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    FnSugar =>
+      if all_children_positional(children: children) {
+        Produced { value: type_node(connective: Arrow, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    TypeSugar =>
+      if exactly_one_child(children: children) {
+        match first_child(children: children) {
+          Some { value: lowered_type } =>
+            Produced { value: lowered_type }
+          None =>
+            Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+        }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+    OperationSugar =>
+      if all_children_positional(children: children) {
+        Produced { value: computation_node(behavior: Transform, children: children) }
+      } else {
+        Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+      }
+  }
+}
+
+
+fn normalize_node(n: Node) -> Outcome<Node> {
+  match normalize_children(children: n.children) {
+    NormalizeChildrenRejected { diagnostic: d } => Rejected { diagnostic: d }
+    NormalizedChildren { children: normalized_children } =>
+      match classify_sugar(n: n) {
+        Sugar { kind: kind } =>
+          normalize_sugar(kind: kind, n: n, children: normalized_children)
+        NotSugar =>
+          Produced {
+            value: Node {
+              kind: n.kind,
+              children: normalized_children
+            }
+          }
+      }
+  }
+}
+
+
+// Entry point for T-8 stage 3a. The input is the frozen 02_parse seam's
+// Node-shaped ParseTree; CP-1b does not author ParseTree itself.
+fn normalize(parse_tree: Node) -> Outcome<NormalizedTree> {
+  match normalize_node(n: parse_tree) {
+    Rejected { diagnostic: d } => Rejected { diagnostic: d }
+    Produced { value: normalized } =>
+      if node_well_formed(n: normalized) {
+        Produced { value: normalized }
+      } else {
+        Rejected {
+          diagnostic: Diagnostic {
+            reason: normalize_reason_malformed_sugar,
+            at: PortLocus { port: normalize_port_surface_sugar },
+            correction: Unavailable { reason: AmbiguousIntent }
+          }
+        }
+      }
+  }
+}

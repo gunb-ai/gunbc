@@ -28,7 +28,12 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/03_normalize.dag: NormalizedTree
 //
-// Status: scaffold — fill per TASKS.md T-8
+// Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
+// scope/env/lookup/name binding for the front-end. It canonicalizes Atom
+// use-sites to the exact binder Symbol when a local binding exists, and
+// preserves already-canonical external/std/import Symbols at the declared
+// namespace boundary. It deliberately leaves type inference, method
+// lookup, and algebra Find to 04_infer.dag.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -36,3 +41,234 @@
 
 module v4.compiler.resolve
 
+
+import v4.compiler.normalize { NormalizedTree }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome
+}
+import v4.std.node {
+  Connective,
+  Edge,
+  EdgeLabel,
+  Node,
+  NodeKind,
+  Symbol,
+  node_well_formed
+}
+
+
+// ResolvedTree is the same Node tree after the B-4 binding pass. The
+// forward binding carrier is the canonical Symbol inside each Atom.
+type ResolvedTree = Node
+
+
+data resolve_reason_duplicate_binding: Symbol = resolve_reason_duplicate_binding
+data resolve_reason_malformed_tree: Symbol = resolve_reason_malformed_tree
+
+
+// A scope maps an authored use-site Symbol to its canonical declaration
+// Symbol. Symbol equality is the only operation K-1 grants and is enough
+// for B-4's node-precise binding contract. A miss is not a fabricated
+// local binding: without an import/prelude table input in CP-1b, Atoms not
+// introduced by local Named edges are preserved as already-canonical
+// external/std/import Symbols from the frozen parse/namespace boundary.
+type Scope {
+  bindings: Map<Symbol, Symbol>
+}
+
+
+type ScopeInsertResult
+  = ScopeInserted { scope: Scope }
+  | ScopeInsertRejected { diagnostic: Diagnostic }
+
+
+type ResolveResult
+  = ResolvedNode { node: Node }
+  | ResolveRejected { diagnostic: Diagnostic }
+
+
+type ResolveChildrenResult
+  = ResolvedChildren { children: List<Edge> }
+  | ResolveChildrenRejected { diagnostic: Diagnostic }
+
+
+fn empty_scope() -> Scope {
+  Scope { bindings: empty_map() }
+}
+
+
+fn duplicate_binding_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: resolve_reason_duplicate_binding,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: resolve_reason_malformed_tree,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn lookup_binding(scope: Scope, name: Symbol) -> Symbol? {
+  map_get(scope.bindings, name)
+}
+
+
+fn insert_binding(scope: Scope, authored: Symbol, canonical: Symbol, at: Node) -> ScopeInsertResult {
+  match lookup_binding(scope: scope, name: authored) {
+    Some { value: _ } =>
+      ScopeInsertRejected { diagnostic: duplicate_binding_diagnostic(n: at) }
+    None =>
+      ScopeInserted {
+        scope: Scope {
+          bindings: map_insert(scope.bindings, authored, canonical)
+        }
+      }
+  }
+}
+
+
+// Named edges introduce declarations for their child subtrees. The edge
+// label's Symbol is the binder identity; after resolve, any use-site Atom
+// that refers to it carries this exact Symbol.
+fn extend_scope_with_edge(scope: Scope, e: Edge) -> ScopeInsertResult {
+  match e.label {
+    Named { name: binder } =>
+      insert_binding(scope: scope, authored: binder, canonical: binder, at: e.target)
+    Positional => ScopeInserted { scope: scope }
+  }
+}
+
+
+fn extend_scope_with_children(scope: Scope, children: List<Edge>) -> ScopeInsertResult {
+  fold(children, init: ScopeInserted { scope: scope }, f: fn(acc, e) {
+    match acc {
+      ScopeInsertRejected { diagnostic: d } =>
+        ScopeInsertRejected { diagnostic: d }
+      ScopeInserted { scope: current } =>
+        extend_scope_with_edge(scope: current, e: e)
+    }
+  })
+}
+
+
+fn canonical_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  }
+}
+
+
+fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> ResolveResult {
+  match lookup_binding(scope: scope, name: identity) {
+    Some { value: canonical } =>
+      ResolvedNode {
+        node: canonical_atom(identity: canonical)
+      }
+    None =>
+      ResolvedNode { node: canonical_atom(identity: identity) }
+  }
+}
+
+
+fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
+  let resolved_children_result = match n.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      ResolvedChildren { children: [] }
+    TypeNode { connective: _ } =>
+      match extend_scope_with_children(scope: scope, children: n.children) {
+        ScopeInsertRejected { diagnostic: d } => ResolveChildrenRejected { diagnostic: d }
+        ScopeInserted { scope: child_scope } =>
+          fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+            match acc {
+              ResolveChildrenRejected { diagnostic: d } =>
+                ResolveChildrenRejected { diagnostic: d }
+              ResolvedChildren { children: done } =>
+                match resolve_node(n: e.target, scope: child_scope) {
+                  ResolveRejected { diagnostic: d } =>
+                    ResolveChildrenRejected { diagnostic: d }
+                  ResolvedNode { node: resolved_target } =>
+                    ResolvedChildren {
+                      children: list_push(done, Edge {
+                        label: e.label,
+                        target: resolved_target
+                      })
+                    }
+                }
+            }
+          })
+      }
+    ComputationNode { behavior: _ } =>
+      match extend_scope_with_children(scope: scope, children: n.children) {
+        ScopeInsertRejected { diagnostic: d } => ResolveChildrenRejected { diagnostic: d }
+        ScopeInserted { scope: child_scope } =>
+          fold(n.children, init: ResolvedChildren { children: [] }, f: fn(acc, e) {
+            match acc {
+              ResolveChildrenRejected { diagnostic: d } =>
+                ResolveChildrenRejected { diagnostic: d }
+              ResolvedChildren { children: done } =>
+                match resolve_node(n: e.target, scope: child_scope) {
+                  ResolveRejected { diagnostic: d } =>
+                    ResolveChildrenRejected { diagnostic: d }
+                  ResolvedNode { node: resolved_target } =>
+                    ResolvedChildren {
+                      children: list_push(done, Edge {
+                        label: e.label,
+                        target: resolved_target
+                      })
+                    }
+                }
+            }
+          })
+      }
+  }
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      resolve_atom(n: n, scope: scope, identity: id)
+    TypeNode { connective: _ } =>
+      match resolved_children_result {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+    ComputationNode { behavior: _ } =>
+      match resolved_children_result {
+        ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+        ResolvedChildren { children: resolved_children } =>
+          ResolvedNode {
+            node: Node {
+              kind: n.kind,
+              children: resolved_children
+            }
+          }
+      }
+  }
+}
+
+
+fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
+  if node_well_formed(n: tree) {
+    match resolve_node(n: tree, scope: empty_scope()) {
+      ResolveRejected { diagnostic: d } => Rejected { diagnostic: d }
+      ResolvedNode { node: resolved } => Produced { value: resolved }
+    }
+  } else {
+    Rejected { diagnostic: malformed_tree_diagnostic(n: tree) }
+  }
+}
