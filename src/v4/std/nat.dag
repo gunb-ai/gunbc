@@ -141,11 +141,10 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
 // monoid; that strengthening is carried structurally by the
 // `CommutativeMonoid` wrapper at `nat_semiring.add` below.
 // Anchor: Peano arithmetic / monoid theory (Wikipedia "Monoid").
-data nat_additive_monoid: Monoid<Nat> =
-  Monoid {
-    semigroup: Semigroup { magma: Magma { op: nat_add } },
-    identity: Zero
-  }
+data nat_additive_monoid: Monoid<Nat> = Monoid {
+  semigroup: Semigroup { magma: Magma { op: nat_add } },
+  identity: Zero
+}
 
 // nat_semiring — (Nat, +, ×, 0, 1) is a semiring.
 // `add` is the additive `CommutativeMonoid` built directly on
@@ -157,11 +156,10 @@ data nat_additive_monoid: Monoid<Nat> =
 // semiring axioms — grounded in the definition of `Semiring`
 // (algebra.dag), never stored as fields or flags.
 // Anchor: semiring theory (Wikipedia "Semiring").
-data nat_semiring: Semiring<Nat> =
-  Semiring {
-    add: CommutativeMonoid { monoid: nat_additive_monoid },
-    mul: Monoid {
-      semigroup: Semigroup { magma: Magma { op: nat_mul } },
-      identity: Succ { prev: Zero }
-    }
+data nat_semiring: Semiring<Nat> = Semiring {
+  add: CommutativeMonoid { monoid: nat_additive_monoid },
+  mul: Monoid {
+    semigroup: Semigroup { magma: Magma { op: nat_mul } },
+    identity: Succ { prev: Zero }
   }
+}
