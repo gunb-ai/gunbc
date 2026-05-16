@@ -11,10 +11,10 @@
 //     representable. The state sum is the single source of truth; exit
 //     code is reached via pattern-match on state.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
-//   - ProcessState = Running | Exited(ExitCode) | Signaled(SignalNum)
+//   - ProcessState = Running | Terminated(Termination)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
-//     (the terminal projection of ProcessState — the ONLY two ways a
-//     process ends per POSIX. wait/capture return THIS, never bare
+//     (the terminal status nested inside ProcessState — the ONLY two ways
+//     a process ends per POSIX. wait/capture return THIS, never bare
 //     ExitCode: a signal-killed process has no exit code; fabricating one
 //     (or flattening signal death into a Diagnostic) loses the SignalNum
 //     and makes an illegal state representable. `Running` is structurally
@@ -59,11 +59,12 @@ import v4.std.diagnostic { Outcome }
 // not collapsed, so a wrapper failure cannot be mistaken for a child
 // exit and a signal death cannot be fabricated as an exit code.
 //
-// TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` can be `Running`,
-// `Exited`, or `Signaled`. The terminal projection `Termination`
-// deliberately excludes `Running`, and all wait/capture results return
-// `Termination`, never a bare `ExitCode`. There is no sibling
-// `exit_code` field on `Process`; consumers pattern-match the state.
+// TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` is either
+// `Running` or `Terminated { status: Termination }`. The terminal-status
+// facts (`Exited` vs `Signaled`) live only in `Termination`, and all
+// wait/capture results return that same carrier, never a bare `ExitCode`.
+// There is no sibling `exit_code` field on `Process`; consumers
+// pattern-match the state.
 //
 // VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
 // status values are non-negative and conventionally bounded to 8 bits
@@ -127,13 +128,13 @@ type Command {
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
 //
-// `Running` is a live state. `Exited` and `Signaled` are terminal
-// states. `Termination` is the terminal-only projection consumed by
-// wait/capture, so those operations cannot return a still-running
-// process and cannot flatten signal death into an exit code.
+// `Running` is a live state. `Terminated` carries the single terminal
+// status authority consumed by wait/capture, so those operations cannot
+// return a still-running process and cannot flatten signal death into an
+// exit code.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// YELLOW, first-consumer-confirmed. The POSIX wait-status partition is
+// 🟡 YELLOW, first-consumer-confirmed. The POSIX wait-status partition is
 // structurally grounded here, but the first effect/resolver consumer
 // must prove the mapping from raw wait status into `Exited` vs
 // `Signaled` without string or integer sentinels. Named trigger:
@@ -152,17 +153,16 @@ type Command {
 //      payload shape projected over an enumerable set.
 type ProcessState
   = Running
-  | Exited { code: ExitCode }
-  | Signaled { signal: SignalNum }
+  | Terminated { status: Termination }
 
 type Termination
-  = TerminatedByExit { code: ExitCode }
-  | TerminatedBySignal { signal: SignalNum }
+  = Exited { code: ExitCode }
+  | Signaled { signal: SignalNum }
 
-// `Termination` is a separate sum because it intentionally excludes the
-// live `Running` arm. Its ledger is the same POSIX wait-status partition
-// as `ProcessState` above, with one stronger illegal-state property:
-// wait/capture cannot return a non-terminal state.
+// `Termination` is the single terminal-status sum. `ProcessState`
+// references it from the `Terminated` arm rather than re-declaring exit
+// vs signal facts, so Process.state and wait/capture cannot disagree
+// about the terminal status by construction.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -191,10 +191,10 @@ type Process {
 // with a typed `Diagnostic`; a successfully observed child termination
 // returns `Produced { value: Termination }`. stdout/stderr are captured
 // as separate byte-decoded text streams so harness/setup diagnostics
-// cannot be blended into the logical child's output channel:
-//   - `spawn : SpawnProcessRequest -> Outcome<Process>`
-//   - `wait : WaitProcessRequest -> Outcome<Termination>`
-//   - `capture : CaptureProcessRequest -> Outcome<CapturedProcessOutput>`
+// cannot be blended into the logical child's output channel. The
+// `ProcessOperations` record is the declared callable boundary a future
+// host realization must inhabit; it is intentionally only a signature
+// bundle here, not an effect resolver.
 type SpawnProcessRequest {
   command: Command
 }
@@ -218,3 +218,9 @@ type CaptureProcessRequest {
 }
 
 type CaptureProcessResult = Outcome<CapturedProcessOutput>
+
+type ProcessOperations {
+  spawn: fn(SpawnProcessRequest) -> SpawnProcessResult
+  wait: fn(WaitProcessRequest) -> WaitProcessResult
+  capture: fn(CaptureProcessRequest) -> CaptureProcessResult
+}

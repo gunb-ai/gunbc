@@ -112,7 +112,7 @@ type RelativePath {
 }
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// YELLOW, first-consumer-confirmed. The POSIX absolute-vs-relative split
+// 🟡 YELLOW, first-consumer-confirmed. The POSIX absolute-vs-relative split
 // is grounded and bounded to this file's scaffold scope; the first
 // filesystem realization consumer must confirm component normalization
 // policy rather than smuggling it through strings. Ledger:
@@ -141,7 +141,7 @@ type Path
 // a string label or `Other` variant.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// YELLOW, first-consumer-confirmed. The frozen scaffold intentionally
+// 🟡 YELLOW, first-consumer-confirmed. The frozen scaffold intentionally
 // models only the file-kind partition needed by read/write/list/kind in
 // v4 self-hosting. Named trigger: the first realization consumer of
 // `file_kind` must confirm that every successful result in this bounded
@@ -173,11 +173,9 @@ type FileKind
 //
 // Each `*Request` is a pure data description of the host operation. The
 // result seam is the shared `Outcome<T>` carrier named in this file's
-// header/prose:
-//   - `read_file : ReadFileRequest -> Outcome<FileBody>`
-//   - `write_file : WriteFileRequest -> Outcome<Unit>`
-//   - `list_dir : ListDirRequest -> Outcome<List<PathComponent>>`
-//   - `file_kind : FileKindRequest -> Outcome<FileKind>`
+// header/prose. The `FileSystemOperations` record is the declared
+// callable boundary a future host realization must inhabit; it is
+// intentionally only a signature bundle here, not an effect resolver.
 type FileBody = FreeMonoid<Char>
 
 type ReadFileRequest {
@@ -204,3 +202,10 @@ type FileKindRequest {
 }
 
 type FileKindResult = Outcome<FileKind>
+
+type FileSystemOperations {
+  read_file: fn(ReadFileRequest) -> ReadFileResult
+  write_file: fn(WriteFileRequest) -> WriteFileResult
+  list_dir: fn(ListDirRequest) -> ListDirResult
+  file_kind: fn(FileKindRequest) -> FileKindResult
+}
