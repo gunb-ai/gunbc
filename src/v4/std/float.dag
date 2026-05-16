@@ -34,6 +34,32 @@
 //   - std/machine.dag: the bit-widths (Float32 / Float64)
 //   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
 //
+// D2b (operator-ratified 2026-05-16; see DECISIONS.md D2) — Float's
+//   algebra inhabitance is NOT constructive the way the integer chain is
+//   (there, Peano `Nat` → GroupCompletion → … fills `Int`'s operation
+//   `Arrow` bodies with sub-DAGs of L1 behaviors). IEEE-754 round-to-
+//   nearest arithmetic is a genuine SPEC PRIMITIVE — irreducible, an
+//   open-system fact gunbc consumes (the open-system case INVARIANTS P1
+//   explicitly names; not a heuristic).
+//   A primitive operation uses the SAME single external-primitive path
+//   THESIS:203 already defines — NOT a new one. A primitive op is an
+//   `Arrow` reached canonically via `Transform → FunctionRef → Arrow`;
+//   the `Arrow`'s `body` is *a realization declaration in `extdeps/`*
+//   (THESIS:203's primitive case — contrast the L1-sub-DAG body of a
+//   constructive op). The `ApproximateField` inhabitance declared HERE
+//   holds `FunctionRef`s to the op `Arrow` signatures; the realizations
+//   — anchored to the exact IEEE-754 § — are the per-target
+//   `extdeps/languages/*` resolvers (the D2.2 resolver). This file does
+//   NOT home a separate `Symbol`+`Anchor` primitive carrier referenced
+//   directly by the inhabitance — that would be the second external-
+//   primitive path P2 forbids. The `Arrow` HAS a body (the `extdeps/`
+//   realization), so it is not a bodiless `fn` (PARSE-1 untriggered),
+//   and it is NOT a kernel/A1 extension (no new connective or behavior).
+//   A language `extdeps` file alias-identifies its `f32` / `f64` to
+//   `Float32` / `Float64` here, supplies those `Arrow`-body realizations,
+//   and adds its own operation-semantics siblings (NaN/Inf handling); it
+//   does NOT re-declare the `ApproximateField` inhabitance.
+//
 // Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
 //   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
