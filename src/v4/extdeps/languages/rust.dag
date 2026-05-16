@@ -1,19 +1,195 @@
 // src/v4/extdeps/languages/rust.dag
 //
 // Scope: Rust target language spec — primitives, syntax, codegen rules.
-// Anchor: https://doc.rust-lang.org/reference/ (Rust Reference)
-// Unifies: (per THESIS:188) language spec = transport spec = interpreter runtime. ONE substrate carrier for all three roles. Different lenses read different facts from the same data (emission reads syntax; transport reads serialization; interpreter reads execution semantics). A worker needing transport or runtime extends this file, not a new "transport spec" file.
+// Anchor: https://doc.rust-lang.org/reference/ (Rust Reference) — the
+//         versioned upstream specification (L-2 fidelity authority).
+//         The Reference is the spec the carriers below are pinned to;
+//         when the Reference changes (a new edition adds / renames a
+//         primitive; the stable IEEE-754 width set grows; a new
+//         visibility scope), the change is a visible C1 edit to the
+//         relevant declaration below, never a silent extension.
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter
+//         runtime. ONE substrate carrier for all three roles. Different
+//         lenses read different facts from the same data (emission
+//         reads syntax; transport reads serialization; interpreter
+//         reads execution semantics). A worker needing transport or
+//         runtime extends this file, not a new "transport spec" file.
 //
-// Owns:
-//   - Rust primitives (i32, String, Vec<T>, ...) with algebra inhabitance
-//   - emission rules: .dag Node -> Rust source
-//   - cost realization: Rust-specific bounds for compositional cost lens
+// STRUCTURAL FINDING (this slice's deliverable, manager directive
+//   msg_4f7e1280 — the operator-critical-path T-4 directive, item 3).
+//   Rust's TYPE-SYSTEM SURFACE — scalar primitive vocabulary, reference
+//   kinds, visibility scopes — fits the substrate's existing
+//   classifier shape (closed Disj + Conj records) without modification.
+//   No 7th connective, no 6th behavior is surfaced by this slice. The
+//   slice declares the Rust type VOCABULARY as Node-shaped declaration-
+//   class data; it deliberately STOPS at the carrier-shaped seams where
+//   D1 (parse/emit operations — operator-pending value-or-Diagnostic
+//   carrier) and D2 (per-language primitive inhabitance instance-values
+//   — operator-pending form decision, msg_640d429c) plug in.
+//
+//   The seams are NAMED in "Owned ELSEWHERE" below with their owners
+//   and dissolution triggers. Authoring those seams here would have
+//   improvised past D1/D2 — exactly the keen-wren-419 (T-4.6) /
+//   loyal-koi-702 (T-4 languages) STOP-and-escalate precedent
+//   established 2026-05-16. Deferral-with-named-trigger, never
+//   improvisation.
+//
+// Owns (this slice — REVISED from scaffold; scaffold's "Rust primitives
+//   with algebra inhabitance" + "emission rules" + "cost realization"
+//   lines are PRESERVED AS GOALS in the Owns→ELSEWHERE table below;
+//   the slice-vs-bundled split is explicit, not silent — same revision
+//   discipline as ptx.dag #3170):
+//
+//   - Rust scalar primitive vocabulary as closed structural carriers:
+//     RustIntKind (signed / unsigned), RustIntWidth (Bits8/16/32/64/
+//     128 + Pointer for isize/usize per std/machine.dag PointerWidth),
+//     RustFloatWidth (Bits32/64 — the stable Rust IEEE-754 width set;
+//     f16/f128 are unstable per the pinned Reference), RustScalarKind
+//     (the Int/Float/Bool/Char/Unit partition)
+//   - Rust scalar typed-shape sum: RustScalar (kind × width as a Disj
+//     with named-field variant payloads — illegal kind×width pairs are
+//     STRUCTURALLY UNREPRESENTABLE: no "Bool with width=Bits32",
+//     because Bool/Char/Unit variants carry no width payload)
+//   - Rust reference vocabulary: RustReferenceKind (Shared / Exclusive
+//     — Rust's `&T` vs `&mut T`), and the Conj carrier RustReference
+//     attaching it to an opaque lifetime Symbol (K-1)
+//   - Rust visibility scope: RustVisibility (Private / Crate / Super /
+//     Pub) — the four-way visibility partition of the Rust Reference
+//     §item-visibility-and-privacy
+//   - Rust per-target cost-realization carrier shape: RustCost (per-
+//     instruction + per-allocation components — the per-target
+//     projection U1 reads; the carrier SHAPE only, no instance-values
+//     pre-T-3 / pre-D2)
+//
+// Owned ELSEWHERE (deliberately NOT in this slice — named owners +
+//   dissolution triggers per directive item 3 "DEFER explicitly, with
+//   named owner + dissolution trigger"):
+//
+//   - Rust scalar inhabitance instance-values: `data rust_i32_ring:
+//     OrderedRing<I32> = OrderedRing { ... }` and the parallel rows
+//     for the 11 other integer types, IEEE-754 widths, Bool, Char,
+//     Unit. RIDES the operator D2 form-decision (msg_640d429c —
+//     STOP-2/STOP-3 escalated by loyal-koi-702; brief §B's per-
+//     language inhabitance form conflicts with INVARIANTS P1:42's
+//     `Compose<Int, MachineWidth<Word*>>` worked example, AND the
+//     fn-value-expression form for spec-primitive operations
+//     (3a/3b/3c — name-reference Atom vs relaxed instance vs new
+//     substrate carrier) is unspecified). §0 ratifies v2-SYNTAX
+//     LEGALITY ONLY; per-target inhabitance shape is a SEPARATE
+//     operator-pending SEMANTIC decision (manager reinforcement
+//     msg_8b477982). AND rides std/integer.dag / std/float.dag /
+//     std/logic.dag / std/text.dag (T-3 wave A3) carrier landing for
+//     P2 single-authority: pre-D2 / pre-T-3 inhabitance would
+//     foreclose the eventual canonical authority.
+//     STOP-TRIGGER (named, binding): authoring even a "placeholder"
+//     `data rust_i32_ring: OrderedRing<...> = ...` row here pre-D2
+//     is the FORBIDDEN deferral (the v3 cross-layer-drift failure
+//     mode this file's restraint exists to prevent). The PR #3171
+//     improvisation-held draft is the precedent for what NOT to do
+//     (manager held it to draft for exactly this reason). Stub-to-
+//     keep-moving is forbidden; defer-with-named-trigger is the
+//     legitimate form.
+//     SEAM (where it plugs in): the closed RustScalar Disj declared
+//     below is the SURFACE through which each Rust scalar's
+//     inhabitance parameterizes — when D2 ratifies the instance-value
+//     form AND T-3 wave A3 lands, the inhabitance rows land in this
+//     file with the typed scalar variants below as their carriers.
+//
+//   - Bidirectional Rust LanguageModel substrate (grammar productions
+//     as declarative B2-OMNI data, C5-fidelity disposition tags per
+//     surface feature, ingest∘emit roundtrip carrier): the BUNDLED
+//     work of T-4 across all 5 Shape A source languages, where "the
+//     SHAPE is the work" (TASKS.md T-4 authoring contract). RIDES the
+//     operator D1 value-or-Diagnostic carrier — `Outcome<T> =
+//     Produced { value: T } | Rejected { diagnostic: Diagnostic }`,
+//     RATIFIED 2026-05-16 (manager reinforcement msg_8b477982,
+//     ratified shape), NOT YET LANDED in std/diagnostic.dag. Parse /
+//     emit operations cannot type their failure mode without it.
+//     When the carrier lands AND the bundled LanguageModel shape
+//     lands, this file's classifiers slot into the Rust
+//     `LanguageModel` instance without revision; their I/O contract
+//     is the immutable header above.
+//     STOP-TRIGGER (named, binding): the temptation to STUB an
+//     `emit_rust : Node -> Outcome<RustSource>` op here while D1 is
+//     unlanded is the FORBIDDEN deferral (the v3 failure mode the
+//     value-or-Diagnostic-STOP precedent foreclosed) — STOP and
+//     surface, never stub. Stub-to-keep-moving is the exact shape
+//     that broke v3; the named "Owned ELSEWHERE" note is the
+//     legitimate deferral form (ptx #3170 precedent).
+//     SEAM: the Rust grammar production data attaches as Node trees
+//     in this file (B2-OMNI: grammar is data, not code); the carriers
+//     declared here are the type-system structure the grammar
+//     references when productions resolve type expressions.
+//
+//   - Pipeline emission/ingest operations (`.dag` Node → Rust source;
+//     Rust source → Node ingest with C5-fidelity classification per
+//     surface feature). RIDES the ratified `Outcome<T>` D1 carrier
+//     directly (when it lands in std/diagnostic.dag). Owners:
+//     compiler/05_emit.dag (T-10), compiler/02_parse.dag (T-7) —
+//     emission and ingest are pipeline-stage operations, NOT facts
+//     of this language file. The LanguageModel data DECLARES the
+//     bidirectional rules; the pipeline stages EXECUTE them.
+//     STOP-TRIGGER (named, binding): pre-D1 authoring of
+//     `emit_rust : Node -> Outcome<RustSource>` here would parallel-
+//     represent the Outcome carrier across every language file —
+//     exactly the v3 cross-layer-drift failure mode the
+//     keen-wren-419 STOP (T-4.6 formats, msg_0da56c18) foreclosed.
+//     Defer-with-named-trigger, never stub.
+//
+//   - Rust ownership / lifetime semantic enforcement (the borrow-
+//     checker rules — single-owner, exclusive-mutable, lifetime
+//     well-scopedness): the OWNERSHIP LENS lens/ownership.dag (T-13)
+//     CONSUMES the `RustReference` carrier declared here as the
+//     structural fact it reads. Per THESIS:401 IN-B "effects are
+//     intrinsic to the type signature, not an annotation layer" —
+//     `&` / `&mut` / `'a` are STRUCTURAL Rust facts, not annotations;
+//     they are declared here as the type-system surface and READ by
+//     the ownership lens from the signature, never re-declared as a
+//     parallel ownership taxonomy.
+//
+//   - Rust per-instruction cost INSTANCE-VALUES (concrete
+//     `RustCost { instruction_cost: 1, allocation_cost: 0 }` rows per
+//     operation): the carrier SHAPE is owned here (RustCost below);
+//     concrete cost rows ride T-12 lens/cost.dag + U2 (the per-target
+//     projection of U1's `Homomorphism<…, …, RustScalar>.map`). Pre-
+//     T-12 instance-values would parallel-represent the cost the map
+//     structurally encodes — the U1 no-engine smell (algebra.dag U1).
 //
 // Consumes:
-//   - std/node.dag: all connectives + behaviors (this is target SPEC)
-//   - std/algebra.dag: inhabitance declarations
+//   - std/node.dag: `Symbol` only — the K-1 opaque kernel identity
+//     used as the lifetime tag on `RustReference`. Equality-only,
+//     no spelling accessor (the human-readable `'a` / `'static`
+//     spellings live in a boundary intern table, never in kernel /
+//     lens code — node.dag:70-86 K-1 discipline).
+//   `Int` is kernel-ambient (the RustCost components' raw Int
+//   carrier per the 🟡 scaffold bridge to std/cardinality.dag);
+//   `Bool` is kernel-ambient (referenced in commentary on
+//   sum-shape arguments). No other module is imported — this file
+//   is closed-enum + Conj-record + one-import-of-Symbol
+//   declarations only.
+//   (The scaffold header's prior `std/node.dag, std/algebra.dag`
+//   Consumes line was anticipatory — std/node.dag was named because
+//   "this is target SPEC" (correct: I do import `Symbol` from it,
+//   exactly as std/diagnostic.dag imports `Node` from it); and
+//   std/algebra.dag was named for the inhabitance instance-values
+//   that this slice DEFERS per D2 (so algebra.dag is NOT imported
+//   now — it returns when D2 ratifies and the inhabitance rows land
+//   here). The revised Consumes line above reflects what the file
+//   actually imports — `Symbol` from std/node.dag — not the
+//   scaffold's anticipatory list. This Consumes correction rides
+//   the systemic operator scaffold-Consumes reconciliation, T-4 mgr
+//   synthesis msg_1fddb75c — the surface+trigger discipline lets
+//   the operator ratify all per-file Consumes strikes uniformly in
+//   one pass; this is not worker-settled. Same discipline as
+//   ptx.dag #3170, except ptx had zero imports and this file has
+//   one — driven by the RustReference Conj record's lifetime field,
+//   the IN-B effect-typed parameter that the ownership lens reads.)
 //
-// Status: scaffold — fill per TASKS.md T-4
+// Status: T-4 rust-slice modeled 2026-05-16 (loyal-koi-702); structural
+//   finding: NO STOP from the type-system surface. The I/O contract in
+//   this header is immutable for downstream workers. Splitting this
+//   file requires explicit operator ratification (substrate extension
+//   = stop signal).
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -21,3 +197,747 @@
 
 module v4.extdeps.languages.rust
 
+
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// THE SLICE-VS-BUNDLED FRAMING (T-4, manager directive msg_4f7e1280,
+// operator-critical-path item 3). T-4 is the bundled work across the
+// 5 Shape A source languages: "the SHAPE is the work" — establish the
+// canonical declarative LanguageModel shape on one language, then fan
+// out to the other 4. THIS slice is the rust HALF of fix-the-shape-
+// once: the type-system VOCABULARY and Rust-side carrier shapes, with
+// the D1/D2-dependent pieces (parse/emit operations + scalar algebra
+// inhabitance instance-values) explicitly DEFERRED to their named
+// owners. Deferral ≠ improvisation: every deferred item is named in
+// "Owned ELSEWHERE" with its owner and dissolution trigger.
+//
+// THE RUST → SUBSTRATE STRUCTURAL FIT. Each Rust surface concept maps
+// to a member of the closed substrate axes (node.dag's 6 connectives
+// + 5 L1 behaviors). The mapping, member-by-member — recording it
+// here because the fit IS the deliverable (per the slice's structural
+// finding above):
+//
+//   - FUNCTION (`fn name(args) -> T { body }`) ↦ Transform.
+//     A Rust `fn` is a typed function — `(args) -> T` — whose body is a
+//     sub-DAG of behaviors. That is exactly Transform (the typed-
+//     total-λ fragment INVARIANTS:72; node.dag:209 "Transform =
+//     application"). The function call site is also Transform: the
+//     callee is a function value, the args are operands, the result
+//     binds at the call site. No Rust-specific behavior surfaces;
+//     `fn` IS Transform.
+//
+//   - LET-BINDING (`let x: T = expr;` and `let mut x: T = expr;`) ↦
+//     Bind. A Rust `let` introduces a name into a scope with a value;
+//     that is exactly Bind (node.dag:209 "Bind = let"). Mutability of
+//     the binding (`mut`) is a structural BINDING-LEVEL fact (the
+//     binding admits later `x = …;`), distinct from the REFERENCE-
+//     KIND-LEVEL mutability `&mut`; the latter is a TYPE-LEVEL fact
+//     carried by RustReferenceKind. The two are not the same axis,
+//     per the Rust Reference's separation of place expressions and
+//     reference types.
+//
+//   - MATCH (`match expr { pat => … }`) ↦ Branch. Rust's match against
+//     a sum-typed value (`Option<T>` / `Result<T, E>` / user `enum`s)
+//     is exactly Branch over the Disj's variants (node.dag:209
+//     "Branch = sums"). The match is total-by-construction (Rust
+//     itself rejects non-exhaustive matches over closed enums); that
+//     totality IS Branch's discipline. Predicated execution
+//     (`if cond { … } else { … }`) folds into the same Branch over a
+//     two-variant `Bool` Disj.
+//
+//   - LOOP (`for x in iter`, `while cond`, `loop { … break …; }`) ↦
+//     Loop with BOUNDED descent (node.dag:42-68, the A2 discipline).
+//     `for x in iter` is bounded by the iterator's cardinality (a
+//     finite measure when the iterator is bounded); `while cond` is
+//     bounded by a ranking dimension that decreases on each
+//     iteration; `loop { }` is structurally unbounded UNLESS the
+//     body's `break` makes the effective descent bounded. A Rust
+//     `loop {}` with no break is a STOP under A2 (the substrate
+//     refuses to claim totality it cannot prove); the v4 Rust model
+//     reads bounded loops, fail-closes on unbounded ones.
+//
+//   - LITERAL / VALUE (`42i32`, `"hello"`, `true`, `()`) ↦ Value
+//     (node.dag:209). A literal IS a Value. The literal's typed
+//     interpretation (its scalar kind + width for numerics; its
+//     UTF-8 byte sequence for strings) is the inhabitance walk that
+//     RIDES D2 — pre-D2 the Value's TYPED interpretation is
+//     unspecified; the Value carrier itself is just a Node.
+//
+//   - REFERENCES (`&T`, `&mut T`, `'a` lifetime parameters) ↦ effect-
+//     typed parameter (structural Conj field), per THESIS:401 IN-B
+//     applied to Rust. A reference is NOT a separate behavior; it is
+//     a TYPE whose `kind: RustReferenceKind` and `lifetime: Symbol`
+//     fields are structural Conj coordinates. Memory access through
+//     a reference is a Transform whose operand type CARRIES the
+//     reference kind in its signature; the borrow-checker (T-13
+//     ownership lens) READS that signature and validates well-
+//     scopedness as a structural property. This is EXACTLY the ptx
+//     IN-B precedent (`state_space: StateSpace` on RegisterScalar);
+//     references are Rust's analog of state-space tags.
+//     Tempting alternative: a `Borrow` behavior wrapping every `&T`
+//     formation. REJECTED — that would parallel-represent what the
+//     Transform's signature already says; the effect-typed parameter
+//     is the unannotated primitive (feedback_no_annotations).
+//
+// CONCLUSION. The type-system half of Rust's spec fits the existing
+// substrate with no new connectives, no new behaviors, no parallel
+// taxonomies. The classifiers declared below are the closed Rust-side
+// surface; their composition with grammar productions (Owned
+// ELSEWHERE) and inhabitance instance-values (Owned ELSEWHERE — rides
+// D2) lands when those dependencies dissolve, with the I/O contract
+// of THIS file immutable.
+//
+// SCOPE NEGATIVE (operator-tier, do not work around).
+//   - The full Rust GRAMMAR production set (item declarations,
+//     expression syntax, pattern syntax, attribute syntax, macro
+//     syntax) is owned by the bundled T-4 LanguageModel shape — same
+//     framing as ptx's "warp-level intrinsics + tensor cores"
+//     scope-negative. Not authored here.
+//   - Rust async/await semantics (`async fn`, `.await`, `Future`
+//     trait). These compose over the type-system carriers declared
+//     here (an `async fn` returns a Future-typed value), but the
+//     coordination-effect typing is owned by extdeps/coordination.dag
+//     (T-4.8, IN-B carriers); not authored here.
+//   - Trait objects (`dyn Trait`), generic bounds (`<T: Bound>`),
+//     associated types — Rust's nominal generics + bounded
+//     polymorphism. Modeled at the LanguageModel grammar layer (T-4
+//     bundled work); structural inhabitance against std/algebra.dag
+//     algebras rides D2. The reference Conj record below carries an
+//     opaque `lifetime: Symbol` field — that IS the generic-lifetime-
+//     parameter surface; richer trait-bound surfaces compose over the
+//     LanguageModel.
+//   - Const generics, type-level integers, `[T; N]` array length as a
+//     generic. Modeled at the LanguageModel layer; the `N` length
+//     surfaces as a bounded `Int` via std/cardinality.dag refinement
+//     when that lands.
+//   - `unsafe` blocks, raw pointers (`*const T` / `*mut T`), FFI. The
+//     `unsafe` surface is a STRUCTURAL boundary fact (the function /
+//     block's signature carries an `unsafe` discriminator); the
+//     ownership lens (T-13) reads that fact to admit operations the
+//     safe surface forbids. The discriminator carrier lands when
+//     T-13's brief is authored; not the rust-vocabulary layer.
+//
+// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj carrier below
+// carries the full 🟢/🟡/🔴 + all five patterns (Fact-placement /
+// Variant-is-data / Algebraic-form / Dimensional / Parameterized-
+// family-Practice-7) per modeling-discipline.md §4 (operator-ratified
+// binding 2026-05-15, gate (b) — #3163 made the 4-pattern miss the
+// proof case; do not omit Practice-7). Conj records carry no ledger
+// (only coproducts dissolve); scaffold-residual Conj fields (RustCost
+// raw Int components) carry a 🟡 bridge note mirroring std/diagnostic
+// .dag's `Extent.ByteRange` and ptx.dag's `Dim3` / `PtxCost`
+// precedent.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustIntKind — the closed Rust signed-vs-unsigned integer kind. The
+// Rust Reference §3.4 numeric-types-integer-types declares exactly
+// two integer kinds: signed (i*) and unsigned (u*). Each integer
+// scalar in Rust's spec is one of these.
+//
+//   - Signed   — `i8` / `i16` / `i32` / `i64` / `i128` / `isize`
+//                (two's-complement signed integers)
+//   - Unsigned — `u8` / `u16` / `u32` / `u64` / `u128` / `usize`
+//                (unsigned modular integers)
+//
+// CLOSED (C1 stop-signal). A third integer kind (e.g. a saturating-
+// integer family distinct from the existing wrapping `Wrapping<T>`
+// library type) is an edit to THIS declaration routed to operator
+// ratification under the L-2 pin discipline (a future Reference
+// revision modifying the integer kind partition is a visible diff,
+// never a silent extension). The `Wrapping<T>` / `Saturating<T>`
+// library types are LIBRARIES (per L-2, a library is just a program
+// in the modeled language = Node), NOT additional integer kinds.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every integer-scalar consumer (the
+//      Rust `LanguageModel` grammar's integer-literal production,
+//      the per-target cost-realization for integer ops, the
+//      eventual inhabitance walk for Semiring-vs-OrderedRing
+//      dispatch) reads the kind tag uniformly; shared classifier,
+//      not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: nullary tags from a closed
+//      Reference-defined set. A `{ signed: Bool }` proxy replaces a
+//      closed 2-valued exhaustive sum with an unbounded Bool — and
+//      while Bool is 2-valued, the Bool proxy ALSO admits the read
+//      "is the integer kind 'true' or 'false'?" — exactly the M4
+//      "closed sets are enums, not numeric/boolean proxies" smell.
+//      The enum IS the faithful form.
+//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
+//      structure (Signed → OrderedRing, Unsigned → Semiring — minus
+//      negate). That grounding IS the inhabitance walk owned by
+//      std/integer.dag per P2 (and rides D2 + T-3 per "Owned
+//      ELSEWHERE"); the kind enum itself stays a closed classifier.
+//      The "kind → algebra" map is the future inhabitance walk, not
+//      a richer std/ source to collapse this enum INTO.
+//   4. Dimensional — FAILS: a single Rust integer type has EXACTLY
+//      ONE kind; `i32` is signed, `u32` is unsigned, the Reference
+//      admits no "both" type. Mutually-exclusive alternatives, not
+//      simultaneous coordinates. (Kind × Width is the Cartesian
+//      product on RustIntScalar's IntScalar variant — that is the
+//      dimensional model.)
+//   5. Parameterized family — FAILS: Signed and Unsigned are the
+//      Rust Reference's integer-kind partition; they are NOT one
+//      generic `F<X>` / projection over a separately-declared source
+//      set (Practice 7). One could attempt `IntKind<algebra:
+//      AlgebraStructure>` parameterized over a 2-element algebra
+//      subset, but the partition is the spec's irreducible
+//      kind-distinction, not a mechanical copy of a richer set.
+// Terminal: the closed two-way Rust integer-kind partition; a 3rd is
+// the C1 stop-signal (a visible ratified edit to this declaration,
+// STRUCTURE.md commitment #1).
+type RustIntKind
+  = Signed
+  | Unsigned
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustIntWidth — the closed Rust integer bit-width classifier. The
+// Rust Reference §3.4 admits exactly six widths in the stable spec
+// (each available in both Signed and Unsigned kind, except Pointer
+// which is platform-dependent and reads the host machine's
+// pointer-width per std/machine.dag).
+//
+//   - Bits8    — `i8`  / `u8`     (1-byte integers)
+//   - Bits16   — `i16` / `u16`    (2-byte integers)
+//   - Bits32   — `i32` / `u32`    (4-byte integers; the Rust idiomatic
+//                                  default integer width)
+//   - Bits64   — `i64` / `u64`    (8-byte integers)
+//   - Bits128  — `i128` / `u128`  (16-byte integers)
+//   - Pointer  — `isize` / `usize` (platform pointer-sized integers;
+//                                   the host's pointer-width per
+//                                   std/machine.dag PointerWidth)
+//
+// CLOSED (C1 stop-signal). A 256-bit width is an edit to THIS
+// declaration under the L-2 pin discipline (a future Reference
+// revision adding an integer width is a visible diff).
+//
+// Pointer is STRUCTURALLY distinct from the fixed bit-counts — it
+// reads the host machine's pointer-width per STRUCTURE.md's
+// PointerWidth platform-dependence rule (commitment #2 referenced
+// indirectly: scalar widths declare their platform-dependence
+// structurally, not as an annotation). When std/machine.dag's
+// PointerWidth carrier lands (T-3 wave A3 dependency cited in
+// "Owned ELSEWHERE"), Pointer-width Rust integers resolve through
+// it; pre-T-3 the Pointer variant is the declared SURFACE that the
+// resolution will plug into. This is NOT a "scaffold" 🟡 bridge —
+// the variant is the terminal form; only its dependent inhabitance
+// rides T-3.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every integer-scalar consumer reads
+//      the width to size representations (emission of `i32` vs
+//      `i64`; per-target cost-realization sizes); shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy
+//      (8/16/32/64/128/<pointer-width>) replaces a closed 6-valued
+//      exhaustive sum with an unbounded Int (bits=42
+//      representable), AND fails to express Pointer's platform-
+//      dependence as a structural fact (it would force a single
+//      concrete bit-count at decl time). The widths are NOT free
+//      Int values; they are the Rust-Reference-admitted subset, so
+//      a free-Int carrier would ratify illegal widths (the
+//      INVARIANTS P2 illegal-states-unrepresentable shape, same as
+//      ptx.dag RegisterWidth).
+//   3. Algebraic form — partially N/A: the bit-counts form an
+//      ordered set (8 < 16 < 32 < … with Pointer ∈ {32, 64} on
+//      common targets), but the ORDER is derived FROM the closed
+//      enum (and Pointer's value reads machine.dag), not a richer
+//      source — pointing to a `Lattice<RustIntWidth>` would
+//      parallel-represent the enumeration the order is defined
+//      over (algebra.dag U1 engine-debt smell).
+//   4. Dimensional — FAILS: a single typed integer has EXACTLY ONE
+//      width; mutually-exclusive alternatives. The kind × width
+//      Cartesian product lives on RustScalar's IntScalar variant
+//      (Disj-with-payload), not on this enum.
+//   5. Parameterized family — FAILS: the six widths are the Rust
+//      Reference's stable-integer-width set; they are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The bit-count itself IS the
+//      discriminant for the fixed variants; Pointer is a
+//      DIFFERENT-SHAPED variant (platform-dependent, not a fixed
+//      count) — they are not all `F<bit-count: Int>`. A richer
+//      machine-width source would be std/machine.dag's
+//      MachineWidth, but that source is the inhabitance walk's
+//      target (Compose<Int, MachineWidth<Word*>>), not a
+//      collapsing source for this enum.
+// Terminal: the closed six-way Rust integer-width classifier for the
+// pinned Rust Reference; a 7th is the C1 stop-signal.
+type RustIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Bits128
+  | Pointer
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustFloatWidth — the closed Rust floating-point bit-width
+// classifier. The Rust Reference §3.4 numeric-types-floating-point
+// stable spec admits exactly two widths (both IEEE-754 binary
+// formats); f16 and f128 exist in the Reference as UNSTABLE feature
+// gates and are NOT part of the pinned stable spec this file models
+// (they are a visible C1 edit when they stabilize, never a silent
+// extension).
+//
+//   - Bits32 — `f32`  (IEEE-754 binary32 single-precision)
+//   - Bits64 — `f64`  (IEEE-754 binary64 double-precision; the Rust
+//                      idiomatic default float width)
+//
+// CLOSED (C1 stop-signal). f16 / bf16 / f128 stabilization is an
+// edit to THIS declaration under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every float-scalar consumer reads the
+//      width to size representations (emission of `f32` vs `f64`;
+//      cost-realization for floating-point ops); shared classifier,
+//      not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (32/64)
+//      replaces a closed 2-valued exhaustive sum with an unbounded
+//      Int — and floating-point widths are NOT free Int values;
+//      they are the IEEE-754-binary-format-admitted subset Rust
+//      stabilizes, so a free-Int carrier would ratify illegal
+//      widths (P2 illegal-states-unrepresentable; the same shape
+//      as RustIntWidth's argument).
+//   3. Algebraic form — N/A by construction: the two widths
+//      structurally inhabit the SAME algebra (std/algebra.dag
+//      `ApproximateField` per the rounding-aware framing —
+//      INVARIANTS:43, std/float.dag scaffold's anchor); they do
+//      not partition into distinct algebraic structures (`f32` and
+//      `f64` are both ApproximateFields, only the precision
+//      differs). No richer std/ source to collapse the enum INTO.
+//   4. Dimensional — FAILS: a single typed float has EXACTLY ONE
+//      width; mutually-exclusive alternatives. (Rust does not
+//      admit `f32 ⊓ f64` as a hybrid type.)
+//   5. Parameterized family — FAILS: the two widths are the Rust-
+//      stable-IEEE-754-binary-format set; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). A richer IEEE-754 source (the full
+//      binary16/32/64/128 set) is the spec's universe, but Rust
+//      admits only the binary32/64 subset stably — the choice of
+//      "which widths Rust stabilizes" is the partition discriminant,
+//      not a parameterization of a richer source set.
+// Terminal: the closed two-way Rust stable-float-width classifier.
+type RustFloatWidth
+  = Bits32
+  | Bits64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustScalarKind — the closed Rust scalar-type kind classifier. The
+// Rust Reference admits exactly five scalar-type kinds (the
+// non-compound primitive types, per §3.1 types-overview and the
+// numeric / boolean / textual / never sections):
+//
+//   - Int      — integer scalars (Reference §3.4 numeric-types-
+//                integer-types; both signed and unsigned, all
+//                widths — see RustIntKind × RustIntWidth)
+//   - Float    — floating-point scalars (Reference §3.4
+//                numeric-types-floating-point; f32 / f64 stable —
+//                see RustFloatWidth)
+//   - Bool     — the `bool` two-valued type (Reference §3.6
+//                boolean-type; classical-logic-inhabiting per
+//                std/logic.dag)
+//   - Char     — the `char` Unicode scalar value type (Reference
+//                §3.5 textual-types; 32-bit Unicode code-point,
+//                strictly excluding the surrogate range)
+//   - Unit     — the `()` unit type (Reference §3.10 tuple-types
+//                — `()` is the empty tuple, the single-inhabitant
+//                terminal type)
+//
+// The Rust `!` never-type is SCOPE-NEGATIVE for this slice (see
+// header SCOPE NEGATIVE — it is currently stabilization-gated in
+// the Reference and is a no-inhabitant TYPE, not a scalar in the
+// usual sense). When stabilized it is a visible C1 edit to this
+// declaration.
+//
+// CLOSED (C1 stop-signal). A sixth scalar kind is an edit to THIS
+// declaration under the L-2 pin discipline. The kind enum is the
+// meta-classifier; the typed scalar values themselves are the
+// `RustScalar` Disj below (which carries the kind × width
+// admissibility as structural variant payloads).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Rust-typed value consumer
+//      branches on the scalar kind to dispatch (which algebra
+//      applies, which width is meaningful, which emission syntax
+//      to use); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy
+//      reopens the readable-string heuristic surface K-1 forecloses
+//      (a `match name { "i32" => … }` smell, exactly the v3
+//      regression the K-1 opacity discipline structurally
+//      prevents). The enum IS the faithful form.
+//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
+//      structure (Int → OrderedRing-or-Semiring per
+//      RustIntKind, Float → ApproximateField, Bool →
+//      BooleanAlgebra, Char → no exact arithmetic algebra by
+//      design, Unit → terminal-cardinality). That grounding is the
+//      INHABITANCE walk owned by the std/ scalar files per P2
+//      (rides D2 + T-3 wave A3). The kind enum itself stays a
+//      closed classifier; the "kind → algebra" map IS the future
+//      inhabitance walk, not a richer std/ source to collapse this
+//      enum INTO. Same shape as ptx.dag RegisterScalarKind.
+//   4. Dimensional — FAILS: a single Rust scalar value has EXACTLY
+//      ONE kind; mutually-exclusive alternatives. (Kind × Width is
+//      a Cartesian product on RustScalar's IntScalar / FloatScalar
+//      variants — that IS the dimensional model for the
+//      width-bearing kinds.)
+//   5. Parameterized family — FAILS: the five kinds are the Rust-
+//      Reference scalar-type partition; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). One could attempt `RustScalarKind<algebra:
+//      AlgebraStructure>` parameterized over an algebra-structure
+//      subset, but only four of the five ground in arithmetic
+//      algebra (Char does not), and Unit grounds in a CARDINALITY
+//      structure (terminal cardinality 1, not an arithmetic
+//      algebra). The partition is the spec's irreducible scalar-
+//      kind distinction, not a copy of any enumerable source.
+// Terminal: the closed five-way Rust scalar-kind classifier.
+type RustScalarKind
+  = Int
+  | Float
+  | Bool
+  | Char
+  | Unit
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustScalar — a typed Rust scalar value: kind × (width if
+// applicable). Disj sum with NAMED-FIELD VARIANT PAYLOADS so that
+// the kind × width admissibility is STRUCTURALLY ENFORCED — Bool /
+// Char / Unit carry no width payload, so "Bool with width=Bits32"
+// is unrepresentable (not "rejected by a check" — unrepresentable,
+// the INVARIANTS P2 illegal-states-unrepresentable shape, the same
+// design choice node.dag took with EdgeLabel's `Positional` and
+// algebra.dag took with the Field type's omitted total
+// `reciprocal`).
+//
+//   - IntScalar    — { kind: RustIntKind, width: RustIntWidth }
+//                    e.g. IntScalar { kind: Signed, width: Bits32 }
+//                    is Rust's `i32`; IntScalar { kind: Unsigned,
+//                    width: Pointer } is `usize`.
+//   - FloatScalar  — { width: RustFloatWidth }
+//                    e.g. FloatScalar { width: Bits64 } is `f64`.
+//   - BoolScalar   — Rust's `bool` (the two-valued type — there is
+//                    no width variant; the Reference does not expose
+//                    bool's storage width as a discriminator).
+//   - CharScalar   — Rust's `char` (Unicode scalar value; the
+//                    32-bit representation is internal storage, not
+//                    a kind-level discriminator the Reference
+//                    exposes).
+//   - UnitScalar   — Rust's `()` (the single-inhabitant terminal
+//                    type; no width, no kind discriminator beyond
+//                    being the unit).
+//
+// The structural argument for the Disj-with-payloads (vs ptx's
+// Conj-record `RegisterScalar { kind, width, state_space }`): in
+// PTX every typed register has a (kind, width, state_space), so
+// the three-coordinate Conj is the natural form. In Rust, the
+// five scalar kinds have DIFFERENT structural shapes — Int has
+// (kind, width), Float has (width), Bool/Char/Unit have nothing
+// beyond the kind. A Conj record `{ kind, width? }` would force
+// a width Option for Bool/Char/Unit, ratifying the illegal state
+// "Bool with width=Bits32" — exactly the M4 / Practice-2/6 / P2
+// pattern those disciplines structurally forbid. The Disj-with-
+// payloads is the dissolved form: each variant carries EXACTLY
+// the structural data its kind admits, and no illegal kind×width
+// combination is constructible.
+//
+// SEAM (where D2 inhabitance plugs in). When the D2 form decision
+// lands (operator-pending, msg_640d429c), the per-variant
+// inhabitance instance-values land in this file with these typed
+// variants as their carriers — IntScalar { kind: Signed, width:
+// Bits32 } is the carrier for Rust's i32 inhabitance into
+// OrderedRing (or its v4-equivalent per the D2-ratified form);
+// FloatScalar { width: Bits32 } is the carrier for f32 →
+// ApproximateField; etc. The seam itself is the typed variant; the
+// inhabitance value is the deferred row.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Rust-typed value consumer
+//      (literal parsing, expression typing, emission to source,
+//      cost-realization, eventual inhabitance dispatch) reads the
+//      scalar's kind + width-if-applicable through this carrier;
+//      shared, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the variants to a
+//      uniform record `{ kind: RustScalarKind, width: Option<…> }`
+//      reintroduces the illegal state "Bool with width=Bits32"
+//      this Disj-with-payloads design exists to forbid. The
+//      five-variant Disj IS the dissolved form (P2 + Practice
+//      2/6 + M4).
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (IntScalar → OrderedRing / Semiring per
+//      RustIntKind; FloatScalar → ApproximateField; BoolScalar →
+//      BooleanAlgebra; CharScalar → no arithmetic algebra by
+//      design — Char's algebra is the surrogate-excluded subset
+//      of Int32 cardinality; UnitScalar → terminal cardinality 1).
+//      That grounding IS the inhabitance walk owned ELSEWHERE per
+//      P2; the Disj structure here is the closed surface, not a
+//      collapsing target.
+//   4. Dimensional — FAILS: a single Rust scalar value IS EXACTLY
+//      ONE variant of this Disj; mutually-exclusive alternatives.
+//      The shapes differ across variants (IntScalar carries two
+//      coordinates; FloatScalar one; the rest none) — they cannot
+//      be coordinates of a single record without the illegal-state
+//      smell.
+//   5. Parameterized family — FAILS: the five variants are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The PTX RegisterScalar pattern
+//      (Conj-record over (kind, width, state_space)) was projection-
+//      uniform; Rust scalars are NOT projection-uniform — they
+//      have heterogeneous structural shapes (the kind partitions
+//      across structurally-distinct value spaces). The Disj-with-
+//      heterogeneous-payloads is the irreducible faithful form.
+// Terminal: the closed five-variant Rust scalar typed-value sum;
+// illegal kind×width combinations are unrepresentable by
+// construction.
+type RustScalar
+  = IntScalar { kind: RustIntKind, width: RustIntWidth }
+  | FloatScalar { width: RustFloatWidth }
+  | BoolScalar
+  | CharScalar
+  | UnitScalar
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustReferenceKind — the closed Rust reference-kind classifier. The
+// Rust Reference §types-reference admits exactly two reference kinds
+// (the borrow-kind partition that the borrow checker enforces):
+//
+//   - Shared    — `&T`   shared / immutable reference; multiple
+//                        concurrent shared references to the same
+//                        place are admitted; the referent is
+//                        read-only through the reference.
+//   - Exclusive — `&mut T` exclusive / mutable reference; at most
+//                        one exclusive reference to a given place
+//                        exists at a time, and no shared reference
+//                        coexists; the referent is read-write
+//                        through the reference.
+//
+// CLOSED (C1 stop-signal). A third reference kind (e.g. a `&pin T`
+// distinct from the existing `Pin<&T>` library wrapper) would be an
+// edit to THIS declaration under the L-2 pin discipline. `Pin<&T>`
+// itself is a LIBRARY (per L-2, libraries are just programs in the
+// modeled language = Node), NOT a third reference kind.
+//
+// IN-B SEAM (effects intrinsic to the type signature, THESIS:401).
+// The RustReference Conj record below ATTACHES this kind to an
+// opaque lifetime Symbol, making the reference a structural Conj
+// field on a typed value (the same shape as ptx.dag's
+// `state_space: StateSpace` on RegisterScalar). The OWNERSHIP LENS
+// (lens/ownership.dag, T-13) READS this field from typed
+// signatures; the borrow-checker rules are a STRUCTURAL property
+// of the signature, not a parallel ownership taxonomy.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every reference-bearing-typed-value
+//      consumer (the ownership lens, the emission of `&` vs `&mut`,
+//      the borrow-aliasing check) reads the kind tag uniformly;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ mutable: Bool }` proxy
+//      replaces a closed 2-valued exhaustive sum with an unbounded
+//      Bool (the same M4 smell as RustIntKind's signed-vs-unsigned),
+//      AND conflates the BINDING-LEVEL mutability axis (`let mut`)
+//      with the TYPE-LEVEL reference-kind axis (`&mut`) — those are
+//      structurally distinct in the Rust Reference (place
+//      expressions vs reference types). The enum IS the faithful
+//      form on the reference-kind axis.
+//   3. Algebraic form — N/A by construction: the two reference
+//      kinds do not trace to a richer std/ algebraic structure
+//      (Shared / Exclusive are the borrow-kind partition; they
+//      are not Lattice-ordered or algebra-inhabiting in their own
+//      right — the algebras are on the REFERENT type, not the
+//      reference). No richer std/ source.
+//   4. Dimensional — FAILS: a single Rust reference has EXACTLY
+//      ONE kind; `&T` and `&mut T` are alternatives, never
+//      simultaneous coordinates (Rust forbids the co-existence at
+//      runtime — that IS the borrow-checker's exclusivity rule).
+//   5. Parameterized family — FAILS: Shared / Exclusive are the
+//      Rust borrow-kind partition; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The kinds correspond to STRUCTURALLY DISTINCT
+//      aliasing disciplines (many-reader-no-writer vs one-writer-
+//      no-reader) — they are not projection-uniform over any
+//      richer source.
+// Terminal: the closed two-way Rust reference-kind partition; the
+// borrow-checker's structural exclusivity invariant is what
+// distinguishes the two, not a property the enum compresses.
+type RustReferenceKind
+  = Shared
+  | Exclusive
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustVisibility — the closed Rust item-visibility classifier. The
+// Rust Reference §visibility-and-privacy admits exactly four
+// visibility scopes (the four-way visibility partition the Reference
+// names):
+//
+//   - Private — items without a `pub` modifier (the Rust default;
+//               visible only within the defining module and its
+//               descendants per the privacy rules)
+//   - Crate   — `pub(crate)`  visible throughout the defining crate
+//   - Super   — `pub(super)`  visible to the parent module (and the
+//               related `pub(in path)` forms; for this slice
+//               `pub(in path)` folds into the Super-or-descendant
+//               family — the richer path-scoped visibility carrier
+//               lands when the bundled T-4 LanguageModel grammar
+//               productions land)
+//   - Pub     — `pub`         publicly visible (no restriction
+//               beyond the defining crate's API surface)
+//
+// CLOSED (C1 stop-signal). A fifth visibility scope is an edit to
+// THIS declaration under the L-2 pin discipline. The `pub(in path)`
+// generalization is a STRUCTURAL refinement on Super (a Super with
+// an explicit path-Symbol parameter); when the bundled LanguageModel
+// grammar lands, that refinement composes over Super without
+// adding a fifth variant — the four-way partition stays.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Rust-item consumer (emission
+//      of the visibility modifier, the cross-module-name-resolution
+//      walk, the public-API-surface synthesis for documentation /
+//      coordination contracts) reads the visibility tag uniformly;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ level: Int }` proxy (0 / 1 /
+//      2 / 3) replaces a closed 4-valued exhaustive sum with an
+//      unbounded Int (level=42 representable) — violates P2 + M4
+//      (same shape as algebra.dag Ordering's argument), AND
+//      conflates DISTINCT scopes whose containment is partial-
+//      order, not total (Crate and Super are siblings, not nested).
+//   3. Algebraic form — PARTIAL: the four scopes form a CONTAINMENT
+//      partial-order (Private ⊑ Super ⊑ Crate ⊑ Pub for items in
+//      nested modules); but the partial-order is DERIVED FROM the
+//      closed enum, not a richer source — pointing to a
+//      `BoundedLattice<RustVisibility>` would parallel-represent
+//      the visibility taxonomy the order is defined over
+//      (algebra.dag U1 engine-debt smell — the same argument
+//      ptx.dag's BarrierScope ledger makes).
+//   4. Dimensional — FAILS: a single Rust item has EXACTLY ONE
+//      visibility modifier (the Reference admits `pub`,
+//      `pub(crate)`, `pub(super)`, or none — never a combination);
+//      mutually-exclusive alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the four scopes are the Rust-
+//      Reference visibility partition; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The richer `pub(in path)` form is a
+//      STRUCTURAL refinement on Super (Super carrying a path
+//      Symbol) — that refinement composes over Super at the
+//      grammar-production layer; it does not parameterize this
+//      four-way enum into a generic family.
+// Terminal: the closed four-way Rust item-visibility classifier; the
+// `pub(in path)` generalization composes over Super at the
+// LanguageModel grammar layer when it lands.
+type RustVisibility
+  = Private
+  | Crate
+  | Super
+  | Pub
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustReference — a typed Rust reference: reference-kind × lifetime
+// identity. Conj record (no Practice-4 ledger — only coproducts
+// dissolve).
+//
+//   - kind          which reference kind (Shared / Exclusive — the
+//                   borrow-kind partition the borrow checker reads)
+//   - lifetime      the reference's lifetime identity (an opaque
+//                   K-1 Symbol — equality only, no spelling
+//                   accessor; the human-readable `'a` / `'static`
+//                   spellings live in a boundary intern table, never
+//                   in kernel/lens code, exactly as Symbol's K-1
+//                   discipline forecloses — node.dag:70-86)
+//
+// The `lifetime` Symbol IS the generic-lifetime-parameter surface
+// the bundled T-4 LanguageModel grammar productions resolve. A
+// concrete lifetime ('a, 'static, an anonymous-region from elision)
+// resolves to a Symbol at the binding site (per node.dag's name-
+// reference resolution through the namespace); the Conj record is
+// the typed value the ownership lens reads.
+//
+// IN-B / structural-fact discipline (per the header STRUCTURAL
+// FINDING). The RustReference Conj record IS the structural surface
+// of the IN-B claim "ownership / lifetime are intrinsic to the type
+// signature, NOT an annotation layer" (THESIS:401, scaffold header
+// IN-B framing applied to Rust). Memory access through a reference
+// is a Transform whose operand type CARRIES this record in its
+// signature; the ownership lens (lens/ownership.dag, T-13) READS
+// the (kind, lifetime) coordinates directly from the typed
+// signature and validates well-scopedness as a structural property
+// — there is no separate "borrow-fact annotation" layer.
+type RustReference {
+  kind: RustReferenceKind
+  lifetime: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RustCost — the per-target cost-realization carrier shape for the
+// Rust `LanguageModel`. Conj record (no Practice-4 ledger).
+//
+// This declares the SHAPE the U1 spine reads when computing Rust-
+// side realization cost — both components per the scaffold header's
+// "cost realization: Rust-specific bounds for compositional cost
+// lens" claim (preserved as a goal; the carrier shape lands now,
+// the cost INSTANCE-VALUES land downstream per "Owned ELSEWHERE"):
+//
+//   - instruction_cost   per-operation throughput cost (the U1
+//                        per-target-op cost projection — the `map`
+//                        side of `Homomorphism<…, …, RustScalar>`
+//                        carries this; cost is read FROM the map's
+//                        structure, never stored as a parallel
+//                        field per algebra.dag's U1 no-engine
+//                        discipline)
+//   - allocation_cost    per-allocation cost (the Rust-specific
+//                        contribution: heap allocations through
+//                        `Box` / `Vec` / `String` carry a cost
+//                        distinct from per-instruction throughput;
+//                        the per-target shape that the cost lens
+//                        T-12 reads when synthesizing a Rust
+//                        realization's total cost)
+//
+// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`
+// and ptx.dag's `Dim3` / `PtxCost`). With only kernel-ambient `Int`
+// available at the T-4 phase, `{ instruction_cost: Int,
+// allocation_cost: Int }` STRUCTURALLY ADMITS illegal states
+// (negative costs; nonsense magnitudes). modeling-discipline.md §2
+// (illegal-states-unrepresentable) forbids admitting them; no
+// bounded-Cardinality refinement substrate exists yet to exclude
+// them. It is a TRACKED scaffold, declared with the three bridge
+// properties (the precedent diagnostic.dag established 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       the terminal refined-positive shape.
+//   (b) bounds on use — a producer MUST construct only non-negative
+//       costs; until the substrate enforces it the invariant is
+//       producer-side; a RustCost with negative components is a
+//       producer bug, not a legal value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (T-3, P4 decidability), `instruction_cost`
+//       and `allocation_cost` become refined bounded-non-negative-
+//       Int axes, and this scaffold dissolves.
+//
+// SEAM (where T-12 cost-lens reads). When lens/cost.dag (T-12, U2)
+// lands, its `SymbolicCost` lattice carrier composes over the per-
+// target projections; the Rust projection is read from this Conj
+// record's components per the U2 "complexity consumes cost, never
+// re-derives" discipline. Pre-T-12, RustCost is the declared SHAPE
+// the projection plugs into; concrete cost instance-values per
+// operation (e.g. `Add<Int>` costs `RustCost { instruction_cost: 1,
+// allocation_cost: 0 }`) ride T-12 + D2 per "Owned ELSEWHERE."
+type RustCost {
+  instruction_cost: Int
+  allocation_cost: Int
+}
