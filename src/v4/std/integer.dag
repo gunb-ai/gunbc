@@ -51,6 +51,7 @@ import v4.std.diagnostic {
   NoCorrectionReason,
   Outcome
 }
+import v4.std.node { Symbol }
 import v4.std.machine {
   MachineWidth,
   PointerWidth,
@@ -108,9 +109,10 @@ import v4.std.nat { Nat }
 // TIER-2 TOTALIZATION. Integer division and modulo are partial at divisor
 // zero. Per STRUCTURE.md commitment #2, the totalized operations live
 // here and return std/diagnostic.dag's ratified `Outcome<Int>` carrier
-// (DECISIONS.md I), not a new Result type. The caller supplies `at:
-// Locus`, because the scalar operation cannot faithfully invent a source
-// location; fabricating one would violate INVARIANTS P3.
+// (DECISIONS.md I), not a new Result type. The caller supplies both
+// `reason: Symbol` and `at: Locus`, because the scalar operation cannot
+// faithfully mint a declaration name-reference or invent a source
+// location; fabricating either would violate INVARIANTS P3.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -215,24 +217,21 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Diagnostic reasons owned by integer.dag. Diagnostic.reason is a
-// Symbol name-reference; these declarations are the names the
-// Diagnostic points at. diagnostic.dag owns the schema, not this reason
-// vocabulary.
-type IntegerDivideByZero
-type IntegerModuloByZero
-
-fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
+// Diagnostic construction for integer partial operations. The `reason`
+// is a Symbol name-reference owned by the calling dimension / declaration
+// namespace; integer.dag owns the totalization shape, while
+// diagnostic.dag owns the schema.
+fn integer_divide_by_zero_diagnostic(reason: Symbol, at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: IntegerDivideByZero,
+    reason: reason,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
+fn integer_modulo_by_zero_diagnostic(reason: Symbol, at: Locus) -> Diagnostic {
   Diagnostic {
-    reason: IntegerModuloByZero,
+    reason: reason,
     at: at,
     correction: Unavailable { reason: AmbiguousIntent }
   }
@@ -245,17 +244,21 @@ fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
 // `int_div` and `int_mod` are total functions: divisor zero produces a
 // typed `Rejected { diagnostic }`; all other cases produce the value.
 // There is no sentinel integer and no panic-shaped boundary.
-fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+fn int_div(a: Int, b: Int, reason: Symbol, at: Locus) -> Outcome<Int> {
   if b == 0 {
-    Rejected { diagnostic: integer_divide_by_zero_diagnostic(at: at) }
+    Rejected {
+      diagnostic: integer_divide_by_zero_diagnostic(reason: reason, at: at)
+    }
   } else {
     Produced { value: a / b }
   }
 }
 
-fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
+fn int_mod(a: Int, b: Int, reason: Symbol, at: Locus) -> Outcome<Int> {
   if b == 0 {
-    Rejected { diagnostic: integer_modulo_by_zero_diagnostic(at: at) }
+    Rejected {
+      diagnostic: integer_modulo_by_zero_diagnostic(reason: reason, at: at)
+    }
   } else {
     Produced { value: a % b }
   }
