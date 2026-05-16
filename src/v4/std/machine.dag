@@ -37,11 +37,42 @@ import v4.std.logic { Bool }
 // Cardinality” names the **Cardinality connective** (one of the six type
 // connectives), not a refinement TYPE. A `Byte` / `Word*` is a **Conj**
 // nominal record whose `List<…>` field is the substrate’s finite-sequence
-// carrier: fixed width is **documented author intent** (8 bits; 1 / 2 /
-// 4 / 8 / 16 bytes) for validators and Grounding — the same honest gap
-// dsl/std/bit.dag records until alias `where` / bounded refinements land.
-// Do **not** write `Cardinality` as a type name here; std/cardinality.dag
-// owns refinement *types* (`Multiplicity`, …) — out of this file’s deps.
+// carrier (`List` = `FreeMonoid` — std/collection.dag). Do **not** write
+// `Cardinality` as a type name here; std/cardinality.dag owns refinement
+// *types* (`Multiplicity`, …) — out of this file’s deps.
+//
+// LIST FIELD LENGTH vs NOMINAL WIDTH — TRACKED SCAFFOLD (🟡):
+// The `bits` / `bytes` fields are honest **unrefined** `List<…>` carriers:
+// nominal `Byte` / `Word*` names assert IEEE/ISO word sizes (8 bits;
+// 1 / 2 / 4 / 8 / 16 bytes), but the substrate does not yet attach a
+// structural length witness to those fields — the same class of gap
+// dsl/std/bit.dag documents for v3 study (not lifted). This is acceptable
+// ONLY as a **formal** deferral (operator-ratified collection.dag pattern:
+// Map + FiniteSet — three bridge properties + named trigger). Bridge
+// properties:
+//   (a) scaffold doc — THIS block; the types below intentionally use bare
+//       `List<Bit>` / `List<Byte>` without a fixed-length refinement.
+//   (b) bounds on use — no consumer may read `Byte` / `Word*` and treat
+//       `bits` / `bytes` spine length as **proven** to match the nominal
+//       width without an explicit validator or Grounding-side check;
+//       std/integer.dag + std/float.dag (post-#3185) MUST NOT assert
+//       width-correctness from these lists alone — they compose with
+//       `MachineWidth<Word*>` and discharge exact width at Grounding /
+//       emission, or wait on the dissolution trigger. Pipeline passes
+//       that need structurally exact bit/byte counts wait on the same
+//       trigger (or carry an explicit Witness / bounded carrier from the
+//       follow-up substrate).
+//   (c) dissolution trigger — **fixed-cardinality refinement substrate
+//       lands** (the closed-system path: std/cardinality.dag `Multiplicity`
+//       + bounded `List`/record refinements wired in the substrate grammar
+//       — e.g. alias `where` / phantom-Nat bounds / field cardinality on
+//       Conj — whichever ratified form first closes the “list length ≠
+//       nominal width” hole). A follow-up PR then either refines
+//       `Byte { bits: … }` / `Word* { bytes: … }` to carry the witness or
+//       replaces these fields with a single-authority bounded-sequence
+//       carrier and **deletes this 🟡 block** when the gap is structurally
+//       closed. STUDY precedent for the honest gap statement: dsl/std/
+//       bit.dag header (v4 does not lift v3/v2 artifacts wholesale).
 //
 // NAT (std/nat.dag). Widths are counts in the external consensus sense
 // (8, 16, … bits); this file names **nominal word witnesses** (`Word8` …)
@@ -82,10 +113,9 @@ type Bit = Bool
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Byte — an octet as a fixed-cardinality **intent** group of eight bits
-// (IEEE / ISO byte = 8 bits — INVARIANTS integer-chain anchor). Field is
-// `List<Bit>`; exact length-8 is author/validator intent until bounded
-// refinements land (see Modeling notes).
+// Byte — an octet (IEEE / ISO byte = 8 bits — INVARIANTS integer-chain
+// anchor). Field is `List<Bit>`; exact length-8 is **not** structurally
+// enforced — see Modeling notes “LIST FIELD LENGTH … TRACKED SCAFFOLD”.
 //
 // Coproduct dissolution — N/A: Conj nominal (single constructor shape),
 // not an N ≥ 2 internal sum.
@@ -95,11 +125,11 @@ type Byte {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Word8 / Word16 / Word32 / Word64 / Word128 — fixed-width machine words
-// as byte-sequences (Wikipedia “Word (computer architecture)” — anchor).
-// Author intent: 1 / 2 / 4 / 8 / 16 bytes respectively. Fields are
-// `List<Byte>`; exact lengths are the same documented-intent posture as
-// `Byte`’s bit list (see Modeling notes).
+// Word8 / Word16 / Word32 / Word64 / Word128 — machine words as byte-
+// sequences (Wikipedia “Word (computer architecture)” — anchor). Nominal
+// widths 1 / 2 / 4 / 8 / 16 bytes; fields are `List<Byte>` without
+// structural length enforcement — same 🟡 tracked scaffold as `Byte`
+// (see Modeling notes).
 //
 // Coproduct dissolution — N/A for each: Conj nominal, not a sum.
 type Word8 {
