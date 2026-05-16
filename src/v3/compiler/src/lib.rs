@@ -5819,8 +5819,8 @@ pub fn compile_to_dag_module_chain(modules: &[(&str, &str)]) -> Result<Dag, Comp
     for (source, file) in modules {
         last_source = source;
         last_file = file;
-        let tokens = tokenize::tokenize(source, *file).map_err(CompileError::Tokenize)?;
-        let surface = parse::parse(&tokens, *file).map_err(CompileError::Parse)?;
+        let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
+        let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
         lower::lower_into(&mut dag, &surface);
     }
     lower::finalize_strict_user_lower_range(&mut dag, user_start);

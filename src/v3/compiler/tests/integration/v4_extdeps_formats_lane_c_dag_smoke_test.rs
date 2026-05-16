@@ -59,10 +59,7 @@ fn v4_extdeps_formats_csv_dag_compiles() {
 
 #[test]
 fn v4_extdeps_formats_json_schema_dag_compiles() {
-    assert_zero_diagnostics_chain(&[
-        (JSON_DAG, JSON_PATH),
-        (JSON_SCHEMA_DAG, JSON_SCHEMA_PATH),
-    ]);
+    assert_zero_diagnostics_chain(&[(JSON_DAG, JSON_PATH), (JSON_SCHEMA_DAG, JSON_SCHEMA_PATH)]);
 }
 
 #[test]
