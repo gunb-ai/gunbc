@@ -864,12 +864,12 @@ type LlvmInstruction
   | Load {
       result_type: LlvmType
       pointer: LlvmValue
-      ordering: LoadStoreAtomicity
+      ordering: LoadAtomicity
     }
   | Store {
       value: LlvmValue
       pointer: LlvmValue
-      ordering: LoadStoreAtomicity
+      ordering: StoreAtomicity
     }
   | GetElementPtr {
       source_type: LlvmType
@@ -970,6 +970,14 @@ type LlvmInstruction
 //     float operands, integer opcodes integer operands.
 //   - `insert/extractelement`, `shufflevector`: element/index/mask type
 //     and length relations.
+//   - atomic-ordering op-specific validity for the ops that KEEP the
+//     full `AtomicOrdering` (Load/Store were structurally split into
+//     `LoadOrdering`/`StoreOrdering` — no longer residual): `fence`
+//     ordering ∈ {acquire,release,acq_rel,seq_cst}; `atomicrmw` ordering
+//     ≠ unordered; `cmpxchg` failure ordering ≠ {release,acq_rel} AND
+//     failure ⊑ success. The cmpxchg failure⊑success relation is a
+//     genuine CROSS-FIELD refinement (not a single-subset enum, unlike
+//     Load/Store), so it stays here rather than enumerated.
 // These are NOT collapsed-away facts — they are real LangRef invariants
 // the model currently leaves PRODUCER-SIDE because the substrate to
 // type-encode an operand-relation refinement (a dependent/refined
@@ -999,29 +1007,82 @@ type LlvmInstruction
 // without improvising refinement substrate that is not yet ratified.
 
 
-// LoadStoreAtomicity — a load/store is either plain or atomic-with-an-
-// ordering. Modeled as a sum (NOT an optional `AtomicOrdering`) so that
-// the diagnostic.dag/Correction discipline holds: "plain" is a
-// structural case, never a bare absence; a plain access carrying an
-// ordering, or an atomic access with none, is unrepresentable (P2).
+// LoadOrdering / StoreOrdering — the LangRef per-DIRECTION-valid atomic
+// memory-ordering subsets. LangRef forbids `release`/`acq_rel` on an
+// atomic LOAD and `acquire`/`acq_rel` on an atomic STORE; reusing the
+// full `AtomicOrdering` for both made those invalid accesses
+// representable (the codex BLOCKING). The fix is STRUCTURAL, no new
+// substrate: two distinct closed subset enums so an invalid
+// direction/ordering pair is UNREPRESENTABLE (P2 / modeling-discipline.md
+// §2 — illegal states unrepresentable), the same discipline as
+// ConditionalBr-vs-Br and FunctionBody entry/rest. The full six-valued
+// `AtomicOrdering` remains the authority for Fence/AtomicRmw/CmpXchg
+// (their own op-specific validity is the consolidated 🟡 note above).
 //
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — both
+// enums 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
+// attempted:
+//   1. Fact placement — FAILS: the ordering is read uniformly by the
+//      atomic-load/store lowering + the effect lens; a shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
+//      anti-pattern AND acquire/release are not linearly comparable
+//      (same rationale as `AtomicOrdering`); the named per-direction
+//      subset is the faithful form.
+//   3. Algebraic form — N/A: the constraint NAMES are the LangRef/
+//      C++-memory-model surface; the per-direction valid subset is the
+//      spec's direction restriction, not an algebra carrier.
+//   4. Dimensional — FAILS: a load/store carries EXACTLY ONE ordering;
+//      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: not one `F<X>` over a declared set
+//      (the memory model is a partial order; the per-direction subset is
+//      a spec-defined restriction, not a mechanical projection).
+// Terminal: the closed LangRef per-direction-valid ordering subsets
+// (load excludes release/acq_rel; store excludes acquire/acq_rel) —
+// invalid direction/ordering pairs structurally unrepresentable (P2),
+// which is exactly why these are distinct from the full `AtomicOrdering`.
+type LoadOrdering
+  = LoadUnordered
+  | LoadMonotonic
+  | LoadAcquire
+  | LoadSeqCst
+
+type StoreOrdering
+  = StoreUnordered
+  | StoreMonotonic
+  | StoreRelease
+  | StoreSeqCst
+
+
+// LoadAtomicity / StoreAtomicity — a load/store is either plain or
+// atomic-with-a-DIRECTION-valid-ordering. Modeled as a sum (NOT an
+// optional ordering) so the diagnostic.dag/Correction discipline holds:
+// "plain" is a structural case, never a bare absence; a plain access
+// carrying an ordering, or an atomic access with none, is
+// unrepresentable (P2).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — both
+// 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
+// attempted:
 //   1. Fact placement — FAILS: read uniformly wherever a load/store is
-//      lowered or its effects are analyzed; not scattered.
+//      lowered or its effects analyzed; not scattered.
 //   2. Variant-is-data — FAILS: the "data" reduction is exactly
-//      `Option<AtomicOrdering>`, the bare-`None`-by-convention shape
-//      INVARIANTS P2 + the diagnostic.dag `Correction` precedent forbid.
-//   3. Algebraic form — N/A: not an algebra carrier; a LangRef access-
-//      mode distinction.
+//      `Option<{Load,Store}Ordering>`, the bare-`None`-by-convention
+//      shape INVARIANTS P2 + the diagnostic.dag `Correction` forbid.
+//   3. Algebraic form — N/A: a LangRef access-mode distinction, not an
+//      algebra carrier.
 //   4. Dimensional — FAILS: an access is plain XOR atomic, never both.
 //   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
 //      vs ordering-carrying), not `F<X>` over a declared set.
-// Terminal: the plain-vs-atomic access partition; the typed-sum form is
-// the dissolved shape (an `Option` would be the un-dissolved smell).
-type LoadStoreAtomicity
-  = PlainAccess
-  | AtomicAccess { ordering: AtomicOrdering }
+// Terminal: the plain-vs-atomic access partition (per direction); the
+// typed-sum is the dissolved shape (an `Option` would be the smell).
+type LoadAtomicity
+  = PlainLoad
+  | AtomicLoad { ordering: LoadOrdering }
+
+type StoreAtomicity
+  = PlainStore
+  | AtomicStore { ordering: StoreOrdering }
 
 
 // ─────────────────────────────────────────────────────────────────────
