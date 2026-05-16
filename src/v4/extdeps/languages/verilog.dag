@@ -1514,11 +1514,15 @@ type ParameterTypeKind
 //   7. AlwaysBlockSensitivity.ExplicitEventList.items (§9.7.2)
 //   8. ParameterOverrides.OrderedParameterOverrides.actuals (§12.1.3)
 //   9. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
+//  10. ContinuousAssign.assignments                  (§6.1)
 //
 // Sites 7-9 added 2026-05-16 per codex REQUEST_CHANGES on PR #3176
-// at sha f87fdf189; same deferred-refinement disposition per the
-// RQ-3 / Wave-A2 authority above (codex's motivation is spec-correct;
-// the FORM is the deferred refinement, not a verilog-local mint).
+// at sha f87fdf189; site 10 added 2026-05-16 per codex BLOCKING on
+// PR #3176 at sha bcc6b5f89 (ContinuousAssign restructured to carry
+// drive_strength + delay + list_of_net_assignments per §6.1, with
+// the non-empty assignments list deferred under the same RQ-3
+// disposition). Codex's motivation is spec-correct in each case;
+// the FORM is the deferred refinement, not a verilog-local mint.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1599,30 +1603,50 @@ type SensitivityItem {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ContinuousAssign — a Verilog continuous-assignment statement
-// (`assign net = expr;`, `assign {a, b} = c;`, `assign x[3:0] = …`).
-// IEEE 1364-2005 §6.1. Conj record (no Practice-4 ledger).
+// NetAssignment — one (net_lvalue, expression) pair in a
+// continuous_assign's list_of_net_assignments (IEEE 1364-2005 §6.1 +
+// §A.6.1). A single `assign net1 = expr1, net2 = expr2;` carries TWO
+// NetAssignments. Conj record (no Practice-4 ledger).
 //
 //   - lhs_lexeme       the destination net_lvalue as a verbatim
-//                      lexeme. Per spec §6.1 the lvalue of a
-//                      continuous assign is a net_lvalue: an
-//                      identifier reference, a net bit-select, a
-//                      net part-select, or a concatenation/replication
-//                      of net_lvalues — NOT just a bare identifier
-//                      (corrected 2026-05-16 per codex BLOCKING on
-//                      PR #3176; the prior `lhs: Symbol` narrowed
-//                      lvalues to identifier references, excluding
-//                      valid §6.1 net_lvalue forms). Sub-grammar
-//                      deferred to the T-4 LanguageModel. Procedural
-//                      variables cannot be continuous-assignment
-//                      destinations — that joint check is the T-4
-//                      LanguageModel's concern.
+//                      lexeme (identifier ref, bit/part-select, or
+//                      concatenation/replication of net_lvalues per
+//                      §6.1). Sub-grammar deferred to T-4
+//                      LanguageModel.
 //   - rhs_lexeme       the right-hand-side expression as a verbatim
-//                      lexeme (sub-grammar deferred — same shape as
-//                      `ParameterDeclaration.default_lexeme`)
-type ContinuousAssign {
+//                      lexeme.
+type NetAssignment {
   lhs_lexeme: String
   rhs_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ContinuousAssign — a Verilog continuous-assignment statement
+// (`assign net = expr;`, `assign (strong0, weak1) #5 a = e1, b = e2;`).
+// IEEE 1364-2005 §6.1 + §A.6.1. Conj record (no Practice-4 ledger).
+//
+// Per spec §6.1 a continuous_assign carries an optional drive_strength,
+// an optional delay3, and a non-empty list_of_net_assignments —
+// declaration-boundary facts the prior single-(lhs,rhs)-pair shape
+// collapsed (codex BLOCKING on PR #3176 2026-05-16).
+//
+//   - drive_strength   optional drive_strength clause (`(strong0,
+//                      weak1)`); reuses the DriveStrengthClause Disj
+//                      shared with NetDeclaration.
+//   - delay            optional delay3 clause (`#5`, `#(2:3:4)`);
+//                      reuses the DelayClause Disj shared with
+//                      NetDeclaration.
+//   - assignments      the list_of_net_assignments per spec §A.6.1
+//                      — each NetAssignment carries a net_lvalue
+//                      lexeme + expression lexeme.
+type ContinuousAssign {
+  drive_strength: DriveStrengthClause
+  delay: DelayClause
+  // ContinuousAssign.assignments: 🟡 spec-non-empty (§6.1) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where non_empty`
+  // refinement; see shared TRACKED-SCAFFOLD note above.
+  assignments: List<NetAssignment>
 }
 
 
