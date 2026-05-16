@@ -38,12 +38,19 @@
 //   Diagnostic }`, NOT YET LANDED in std/diagnostic.dag) and the
 //   bundled LanguageModel / pipeline-stage operations plug in.
 //
-//   D2 (per-language primitive resolver — three thin facts per DECISIONS.md
-//   D2 row, encoded 2026-05-16) is RATIFIED; the resolver-shape carriers
-//   + landable alias-identity rows live in THIS file per the D2 RESOLVER
-//   block below (mirrors rust.dag #3174 @0328bee9). D2 does NOT subsume
-//   D1; parse/emit ops remain Owned ELSEWHERE until std/diagnostic.dag
-//   lands Outcome<T>.
+//   D2 (per-language primitive resolver — DECISIONS.md D2 row, encoded
+//   2026-05-16) is RATIFIED. This file applies the **partial fan-out** the
+//   canonical-first directive mandates after T-4 mgr brief (msg_37f72108):
+//   D2a(1) alias-identity lands here where std/ carriers exist; D2a(2)
+//   **entire facet deferred** — `GroundingMap` is operator-pending shared
+//   substrate (P2: do NOT re-declare per language-file); D2a(3) follows
+//   **this** spec (docs.python.org/3/reference — Python `int` is
+//   UNBOUNDED ⇒ no overflow disposition; NOT rust's `OverflowAction` /
+//   `OverflowDisposition`, which would be a B3 parallel-taxonomy leak).
+//   Discipline: mirror #3174's **dissolution** of improvised IrTo/registry/
+//   assert cementing — NOT a literal copy of rust-only carriers. D2 does
+//   NOT subsume D1; parse/emit ops remain Owned ELSEWHERE until
+//   std/diagnostic.dag lands Outcome<T>.
 //
 //   The remaining seams are NAMED in "Owned ELSEWHERE" below with their
 //   owners and dissolution triggers. Authoring D1 ops or per-primitive
@@ -130,22 +137,22 @@
 //     detail per the `dis` module disclaimer — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
 //     pre-T-3 / pre-D2)
-//   - Python D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
-//     2026-05-16 commit 44a37ad46; mirror rust.dag #3174 @0328bee9):
-//     `GroundingMap<IRCarrier>` (surface-spelling Conj),
-//     `OverflowAction` (closed two-way Disj — PanicOnOverflow /
-//     TwoComplementWrap; the Rust Reference §numeric pattern, carried
-//     here for TRACKED-SCAFFOLD parity on **future bounded-width**
-//     Python numeric aliases when std/integer.dag lands — NOT asserted
-//     for Python's principal built-in `int`, which is arbitrary-
-//     precision per Reference §3.2 numeric-types-int),
-//     `OverflowDisposition<IRCarrier>` (debug_default + release_default);
-//     plus the LANDABLE NOW alias-identity row `type PythonBool = Bool` +
-//     `data python_bool_grounding: GroundingMap<PythonBool> =
-//     GroundingMap { spelling: "bool" }` (std/logic.dag's Bool landed
-//     via #3166). Remaining per-primitive alias-identity + grounding +
-//     operation-semantics rows are 🟡 TRACKED-SCAFFOLD with named owner +
-//     dissolution trigger per the D2-resolver block below.
+//   - Python D2 **partial** resolver (DECISIONS.md D2 row + T-4 mgr brief
+//     msg_37f72108): D2a(1) `type PyBool = Bool` (std/logic.dag `Bool`
+//     landed #3166; `Bool` is kernel-ambient per STRUCTURE.md — resolves
+//     without import; sole authority remains std/logic.dag). D2a(2) the
+//     **entire** grounding-map facet (the shared `GroundingMap` type AND
+//     all `data *_grounding` rows) is 🟡 TRACKED-SCAFFOLD — trigger: operator
+//     pins `GroundingMap`'s home under escalation (do NOT re-declare
+//     `GroundingMap` in this file — five copies = P2 parallel-declaration
+//     violation). D2a(3) operation-semantics: **this file declares none**
+//     (peer-(a)) — principal Python `int` is unbounded (docs.python.org/3/
+//     reference, datamodel numeric types) ⇒ aliases std unbounded `Int`
+//     when it lands ⇒ **no** `OverflowAction` / `OverflowDisposition` (not
+//     for principal `int`, not rust-carrier re-exports, not for hypothetical
+//     future rows in this fan-out). Any future primitive-specific semantics
+//     carrier is its own Python-spec + Practice-4 authoring when a std/
+//     alias needs it — never a literal rust type-copy (B3).
 //
 // Owned ELSEWHERE (deliberately NOT in this slice — named owners +
 //   dissolution triggers per directive item 3 "DEFER explicitly, with
@@ -153,27 +160,20 @@
 //   ptx.dag #3170):
 //
 //   - Python scalar resolver completion — D2 RATIFIED 2026-05-16 (encoded
-//     DECISIONS.md D2 row, commit 44a37ad46, via PR #3195 merge). The
-//     RATIFIED FORM is NOT per-language `data python_int: OrderedRing<…>
-//     = …` rows (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`
-//     forbids parallel-substrate algebra inhabitance). The ratified form
-//     is the THREE-THIN-FACTS D2a resolver: alias-identity to the std/
-//     carrier (`type PythonI32 = Int32` when std/ lands — algebra
-//     inhabitance flows through the alias) + grounding map (surface
-//     spelling) + operation-semantics carrier (OverflowDisposition for
-//     **bounded** integer aliases; NaN/Inf / dynamic-range carriers for
-//     floats per std/float.dag; principal Python `int` is unbounded per
-//     Reference §3.2 — no fixed-width overflow row at that alias). The
-//     resolver-shape carriers (`GroundingMap`, `OverflowAction`,
-//     `OverflowDisposition`) + the bool alias-identity row LAND IN THIS
-//     SLICE (per the Owns bullet above). The seven retired `data python_*:
-//     PythonScalar = …` registry rows and the `IrToPython<>` / Layer-2
-//     assert pattern dissolved with rust.dag's `RustScalar` registry /
-//     `IrToRust<>` / `assert_bool_to_rust_bool_consistency` (#3174
-//     @0328bee9) — they were the parallel INVARIANTS P1 cementing path.
-//     Remaining per-primitive alias-identity rows are 🟡 TRACKED-SCAFFOLD
-//     deferred to named std/ targets per the resolver-block deferral
-//     table below.
+//     DECISIONS.md D2 row). The RATIFIED FORM is NOT per-language `data
+//     python_int: OrderedRing<…> = …` rows (INVARIANTS P1:42 forbids). The
+//     three D2a facts are: (1) alias-identity to std/, (2) grounding map,
+//     (3) per-language operation-semantics. **This slice lands (1) only
+//     where substrate exists** (`PyBool = Bool`); **defers (2) in full**
+//     until operator pins shared `GroundingMap` (see Owns + D2 block);
+//     **lands no (3) carriers** in this file (peer-(a); anchor docs.python.org/
+//     3/reference). The seven retired `data
+//     python_*: PythonScalar = …` registry rows and the `IrToPython<>` /
+//     Layer-2 assert dissolved per #3174 @0328bee9 deletion provenance
+//     (INVARIANTS P1 parallel-cementing path). Remaining D2a(1) aliases for
+//     int/float/singletons 🟡 TRACKED-SCAFFOLD to std/integer.dag |
+//     std/float.dag | std/cardinality.dag (T-3 Wave-A3); D2a(2) rows co-
+//     land when `GroundingMap` home is pinned.
 //     SUBSTRATE SINGLE-AUTHORITY GUARD (mirror rust msg_2c2716dd):
 //     python.dag MUST NOT mint std/ Int / UInt / Float / Nat / text
 //     carriers locally; alias-identity to the existing std/ source is
@@ -272,24 +272,23 @@
 //     represent the cost the map structurally encodes — the U1
 //     no-engine smell (algebra.dag U1).
 //
-// Consumes:
-//   - std/logic.dag: `Bool` — imported for the D2a alias-identity row
-//     `type PythonBool = Bool` (DECISIONS.md D2 row; mirror rust.dag
-//     #3174 @0328bee9 `RustBool = Bool`). std/logic.dag merged 2026-05-16
-//     (T-3 Wave-A1, PR #3163). The `IrToPython<>` correspondence carrier,
-//     the seven `data python_*: PythonScalar = …` registry rows, and
-//     the Layer-2 `assert_bool_to_python_bool_consistency` fn dissolved
-//     with rust's `IrToRust<>` / per-primitive `RustScalar` registry /
-//     assert — they were the INVARIANTS P1 parallel-cementing path #3174
-//     removed. `Int` is kernel-ambient (the PythonCost components' raw
-//     Int carrier per the 🟡 scaffold bridge to std/cardinality.dag).
-//   (The scaffold header's prior `std/node.dag, std/algebra.dag`
-//   Consumes line was anticipatory — algebra.dag is NOT imported
-//   (inhabitance flows through std/ + D2 alias-identity, not extdeps
-//   `OrderedRing<…>` rows), and std/node.dag is not imported here
-//   (Python has no lifetime `Symbol` axis). This Consumes correction
-//   rides the systemic operator scaffold-Consumes reconciliation, T-4
-//   mgr synthesis msg_1fddb75c.)
+// Consumes (traceability / authority naming — STRUCTURE.md kernel-ambient
+//   discipline: `Bool` / `Int` / `String` / `Char` / `List` / `Map` resolve
+//   WITHOUT an import when used as type parameters / field types; the std/
+//   file remains sole authority. Non-kernel std/ types used in alias-
+//   identity MUST use explicit `import` when those rows land — not yet
+//   for Int8..Float64 ladder (🟡 TRACKED-SCAFFOLD).):
+//   - std/logic.dag: `Bool` — sole authority for the bivalent carrier
+//     referenced by `type PyBool = Bool` (D2a(1)); merged 2026-05-16
+//     (T-3 Wave-A1, PR #3163). No `import` required: `Bool` is kernel-
+//     ambient; this line is **traceability only** per T-4 mgr brief.
+//   - std/integer.dag | std/float.dag — **not consumed yet** (ladder T-3
+//     Wave-A3); named owners for deferred `PythonInt` / bounded aliases.
+//   DELETION PROVENANCE (D2 reshape, PR #3180): `IrToPython<>`, seven
+//   `data python_*: PythonScalar` registry rows, `assert_bool_to_python_
+//   bool_consistency` — dissolved per DECISIONS D2 row + #3174 @0328bee9
+//   discipline (no IrTo/registry/assert cementing). `Int` is kernel-
+//   ambient (PythonCost `Int` fields per 🟡 cardinality bridge).
 //
 // Status: T-4 python-slice modeled 2026-05-16 (gentle-deer-446);
 //   structural finding: NO STOP from the type-system surface. The I/O
@@ -302,9 +301,6 @@
 
 
 module v4.extdeps.languages.python
-
-
-import v4.std.logic { Bool }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -986,166 +982,74 @@ type PythonCost {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2 RESOLVER SHAPE — per-primitive three-thin-facts declarations.
+// D2 RESOLVER — partial fan-out (DECISIONS.md D2 row, commit 44a37ad46 on
+// origin/main; discipline mirror rust.dag PR #3174 @0328bee9 — NOT a
+// literal rust type-copy).
 //
-// Per the operator-ratified DECISIONS.md D2 row (2026-05-16, encoded
-// commit 44a37ad46 via PR #3195). Mirror: rust.dag #3174 @0328bee9
-// (loyal-koi-702) — same dissolution as that commit:
+// DELETION PROVENANCE (same dissolution as #3174 @0328bee9):
 //   - retired seven `data python_*: PythonScalar = …` registry rows
-//     (parallel to rust's retired `data rust_*: RustScalar` rows)
 //   - retired `IrToPython<IRCarrier>` + `bool_to_python_bool` +
-//     `assert_bool_to_python_bool_consistency` (parallel to rust's
-//     retired `IrToRust<>` + `bool_to_rust_bool` + assert fn)
+//     `assert_bool_to_python_bool_consistency`
 //
-// D2a — three thin per-primitive declarations, NO re-declared algebra
-// inhabitance: (1) alias-identity to the std/ carrier; (2) grounding
-// map (surface spelling); (3) operation-semantics carriers.
+// D2a(1) LANDED HERE: alias-identity to std/ where the carrier exists.
+// D2a(2) DEFERRED IN FULL: shared `GroundingMap` has no pinned home — do
+//   NOT declare `GroundingMap` or any `data *_grounding` rows in this file
+//   (🟡 TRACKED-SCAFFOLD; trigger = operator pins `GroundingMap` home under
+//   escalation; import-never-redeclare-carriers / P2).
+// D2a(3) THIS FILE: **zero** operation-semantics carriers (mgr brief peer-
+//   (a)) — principal Python `int` is UNBOUNDED (docs.python.org/3/reference,
+//   datamodel — "Integers have unlimited precision"); it aliases std
+//   unbounded `Int` when that ladder lands — **no** overflow event ⇒ **no**
+//   `OverflowAction` / `OverflowDisposition` declared in python.dag at all.
 //
-// D2.2 / D2.3 / D2.4 / D2.5 / scope guard — same encoded row as rust.dag;
-// coercion = generic B2-OMNI emit fold over resolver data; compound
-// coercion composes via Node catamorphism; round-trip = C5-1 TestClaims;
-// overflow vs unboundedness are DISTINCT carriers selected by alias +
-// disposition — Python's principal built-in `int` is unbounded per
-// Reference §3.2 numeric-types-int, so bounded-width `OverflowDisposition`
-// applies only to **future** `PythonI32 = Int32`-style aliases when
-// std/integer.dag lands, not as a falsely-attached row on unbounded `int`.
+// D2.2–D2.5 / scope: encoded DECISIONS.md D2 row; B2-OMNI coercion reads
+// resolver data once D2a(2) exists; C5-1 round-trip via TestClaims — not
+// stubbed here.
+
+// D2a(1) — Python `bool` ↔ std/logic.dag `Bool` (#3166). `Bool` is kernel-
+// ambient (STRUCTURE.md) — no `import`. PEP 285 (`bool` ⊑ `int`) remains a
+// PythonScalar tower fact (`BoolLevel` ⊑ `IntegralLevel`); std `Bool` is the
+// abstract bivalent carrier for D2a(1).
 //
-// ─────────────────────────────────────────────────────────────────────
-// GroundingMap<IRCarrier> — the per-primitive surface-spelling
-// carrier. Conj record (no Practice-4 ledger).
-//
-// Per DECISIONS D2a(2): each alias pairs with a `data …_grounding:
-// GroundingMap<<Alias>> = GroundingMap { spelling: "…" }` row.
-// `spelling` is a `String` boundary value at the source-syntax edge.
-//
-// Spec: https://docs.python.org/3.14/reference/lexical_analysis.html
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
+// D2a(3) anchor (language reference — operator brief): https://docs.python.org/3/reference/
+// Spec (`bool` / numeric context): https://docs.python.org/3/reference/datamodel.html#the-standard-type-hierarchy
+// PEP 285 (bool ⊑ int): https://peps.python.org/pep-0285/
+type PyBool = Bool
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OverflowAction — closed disposition for **bounded-width** integer
-// arithmetic overflow (TRACKED-SCAFFOLD parity with rust.dag's carrier).
-// Python's principal `int` is unlimited-precision (Reference §3.2
-// numeric-types-int) — this enum does NOT classify `int` itself; it
-// classifies future std/-backed bounded aliases (e.g. fixed machine
-// widths) when those alias rows land.
+// 🟡 TRACKED-SCAFFOLD — D2a(2) grounding map + remaining D2a(1) aliases
 //
-// Spec (pattern authority, same as rust slice): Rust Reference
-// §types-numeric — https://doc.rust-lang.org/reference/types/numeric.html
+// When operator pins the shared `GroundingMap` home: import that module;
+// add `data …_grounding` rows **only** there (never re-declare the type in
+// each language file). Co-land D2a(1) `type Python<X> = <StdCarrier>` rows
+// here with explicit `import` for every NON-kernel-ambient std/ carrier
+// (std/integer.dag | std/float.dag ladder, T-3 Wave-A3 trigger).
 //
-//   - PanicOnOverflow      — debug-build default pattern (rust slice)
-//   - TwoComplementWrap    — release-build default pattern (rust slice)
-//
-// CLOSED (C1 stop-signal). A third default-action variant is an edit to
-// THIS declaration under the L-2 pin discipline.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every bounded-int-op consumer reads the
-//      disposition uniformly; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens K-1
-//      string-as-tag anti-pattern. Two nullary structural alternatives.
-//   3. Algebraic form — N/A: bounded overflow dispatch is Python-host /
-//      implementation policy on fixed-width ints, not a richer std/
-//      algebraic collapse here.
-//   4. Dimensional — FAILS: exactly ONE default action per runtime mode.
-//   5. Parameterized family — FAILS: not one generic `F<X>` over a
-//      richer source set (Practice 7).
-// Terminal: closed two-way bounded-integer-overflow action classifier.
-type OverflowAction
-  = PanicOnOverflow
-  | TwoComplementWrap
-
-
-// ─────────────────────────────────────────────────────────────────────
-// OverflowDisposition<IRCarrier> — per-language operation-semantics
-// Conj for bounded integers (D2a(3)). Same SHAPE as rust.dag #3174
-// @0328bee9; rows land only on bounded-width Python↔std/ aliases.
-//
-// Floats use a separate operation-semantics carrier when float aliases
-// land (std/float.dag — NaN/Inf / dynamic range per D2 row).
-type OverflowDisposition<IRCarrier> {
-  debug_default: OverflowAction
-  release_default: OverflowAction
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Per-primitive alias-identity + grounding (LANDABLE NOW).
-//
-// Python `bool` ↔ std/logic.dag `Bool` (LANDED #3166). PEP 285
-// (`bool` strict subtype of `int`) is a numeric-tower fact at the
-// PythonScalar vocabulary layer (`BoolLevel` ⊑ `IntegralLevel`), not
-// a contradiction to alias-identity: the std/ logic carrier is the
-// abstract bivalent value domain; Python's surface `bool` keyword
-// spells per the grounding map below.
-//
-// Spec (Python): https://docs.python.org/3.14/library/functions.html#bool
-//               + https://peps.python.org/pep-0285/
-type PythonBool = Bool
-
-data python_bool_grounding: GroundingMap<PythonBool> = GroundingMap {
-  spelling: "bool"
-}
-
-// Bool has no bounded-integer overflow runtime dispatch; no
-// OverflowDisposition row.
-
-
-// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY ROWS
-//
-// Per DECISIONS.md D2 row + substrate single-authority guard (mirror
-// rust.dag #3174 @0328bee9 TRACKED-SCAFFOLD block). Land each primitive
-// as D2a three facts when its std/ carrier exists — NEVER mint std/
-// types in extdeps.
-//
-// FORM CONTRACT — for each deferred alias:
-//   - `type Python<X> = <StdCarrier>` alias-identity (D2a(1))
-//   - `data python_<x>_grounding: GroundingMap<Python<X>> =
-//     GroundingMap { spelling: "<token>" }` (D2a(2))
-//   - for **bounded** integer aliases only: `data python_<x>_overflow:
-//     OverflowDisposition<Python<X>> = OverflowDisposition {
-//     debug_default: PanicOnOverflow, release_default: TwoComplementWrap
-//     }` or host-true defaults per the pinned implementation contract
-//     (D2a(3))
-//   - for principal unbounded `int`: overflow row absent — semantics
-//     ride the unbounded std/ carrier per D2.5 (distinct from wrap)
+// D2a(3) forward rule: any operation-semantics carrier this language needs
+// must be authored from **docs.python.org/3/reference** + Practice-4 in
+// substrate — **not** by copying rust.dag overflow enums into python.dag
+// (B3 parallel taxonomy).
 //
 // ─── DEFERRED ROWS — TRACKED ───────────────────────────────────────
 //
-// Principal built-in `int` (unbounded) — alias to std/ unbounded
-//   integer carrier when std/integer.dag exposes it (T-3 Wave-A3).
-//   Named owner: std/integer.dag. Dissolution: same as rust `RustNat` /
-//   arbitrary-precision row pattern.
+// Principal `int` (unbounded) — `type PythonInt = Int` (name TBD) when
+//   std/integer.dag exposes kernel unbounded `Int`; owner std/integer.dag.
+// `float` / `complex` — std/float.dag; anchor Reference §3.2 numeric caveats.
+// Singletons `None` / `NotImplemented` / `Ellipsis` — std/cardinality.dag +
+//   ratified unit pattern; anchor Reference §3.2 singleton partitions.
 //
-// `float` / `complex` (machine-level double / pair-of-float per Reference
-//   §3.2 caveats) — alias + grounding + float operation-semantics carrier
-//   when std/float.dag lands. Owner: std/float.dag.
-//
-// Singleton types `None` / `NotImplemented` / `Ellipsis` — alias +
-//   grounding + one-cardinality witness when std/cardinality.dag exposes
-//   the empty / unit carriers for each. Owner: std/cardinality.dag (+
-//   std/node.dag Unit pattern as ratified).
-//
-// SUBSTRATE SINGLE-AUTHORITY GUARD — python.dag MUST NOT mint std/
-// Int / UInt / Float / Nat / text carriers locally. Alias-identity to
-// std/ source only.
+// SUBSTRATE SINGLE-AUTHORITY GUARD — never mint std/ Int / UInt / Float /
+// Nat / text carriers in extdeps; alias-identity to std/ source only.
 
 
 // ═════════════════════════════════════════════════════════════════════
-// v4 verification posture (mirror rust #3174 @0328bee9 post-reshape).
+// v4 verification posture (mirror #3174 @0328bee9 dissolution; mgr brief
+// msg_37f72108).
 //
-// Layer 1 — 0-diag structural typing: `type PythonBool = Bool`,
-// `GroundingMap<PythonBool>`, and `data python_bool_grounding` are
-// checked by the v2-compiler bridge on every PR.
+// Layer 1 — 0-diag: `type PyBool = Bool` is structurally checked by the
+//   v2-compiler bridge on every PR.
+// Layer 2 — IrTo-style assert fns: **dissolved** (no parallel cementing).
+// Layer 3 — TestClaim data (std/verification.dag gate): C5-1 / D2.4 when
+//   T-7 + T-10 land; not stubbed here.
 //
-// Layer 2 — IrTo-style structural-assertion fns: **dissolved** with
-// the IrToPython retire (same as rust's `assert_bool_to_rust_bool_
-// consistency` removal — forward verification is TestClaim-shaped per
-// DECISIONS D2.4 / C5-1, not parallel cementing tables).
-//
-// Layer 3 — TestClaim data (std/verification.dag, PR #3183 gate):
-//   `RoundTrips` / `Equals` claims assert `ingest∘emit` node-level
-//   identity when T-7 + T-10 land; not stubbed here.
+// flag-for-verify: intersects operator-flagged D2a(2) `GroundingMap` deferral.
