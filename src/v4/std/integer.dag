@@ -27,9 +27,12 @@
 //   `OrderedRing` / `AbelianGroup` here, ONCE. That inhabitance is filled
 //   by the construction chain — Peano `Nat` (std/nat.dag) →
 //   `GroupCompletion` → `AbelianGroup`, and `Compose<MachineWidth>` for
-//   the fixed-width projections — so it needs NO primitive fn-body: the
-//   integer chain is fully constructive (contrast std/float.dag's D2b,
-//   where IEEE-754 ops are NOT constructive and are anchored primitives).
+//   the fixed-width projections — so its operation `Arrow` bodies are
+//   sub-DAGs of L1 behaviors (THESIS:203's user-function case), never
+//   `extdeps/` primitive realizations: the integer chain is fully
+//   constructive (contrast std/float.dag's D2b, where IEEE-754 ops ARE
+//   primitives — `Arrow` bodies that are `extdeps/` realizations per
+//   THESIS:203).
 //   A language/format `extdeps` file does NOT re-declare an integer
 //   algebra inhabitance: per INVARIANTS P1:42 (`numeric_aliases_align_
 //   to_refinements`) a per-language `OrderedRing<<lang>Int, …>` is the
