@@ -234,21 +234,51 @@ import v4.std.diagnostic { Diagnostic }
 // classification + the 5-pattern dissolution ledger (modeling-
 // discipline.md §4 — operator-ratified binding 2026-05-15; the doc
 // enumerates FIVE patterns, the fifth being Parameterized-family).
-// Records (`Conj` — `SpiceNetlist`, `ModelCard`, `Parameter`, `NodeRef`,
+// Records (`Conj` — `SpiceNetlist`, `ModelCard`, `Parameter`,
 // `SpiceValue`, `SubcircuitDefinition`) are not coproducts and carry no
 // ledger.
 
 
 // ─────────────────────────────────────────────────────────────────────
 // NodeRef — a reference to a SPICE node. A node is a connection point
-// between component terminals; SPICE identifies nodes purely by name
-// (Quarles 1993 §2). The name is a `Symbol` (K-1-opaque per
-// std/node.dag) — this file never branches on the spelling; the
-// conventional ground name `"0"` lives in the boundary intern table the
-// parser populates.
-type NodeRef {
-  identity: Symbol
-}
+// between component terminals (Quarles 1993 §2). SPICE3 distinguishes
+// the global ground convention (node `0`, the simulator's universal
+// reference) from user-named nodes: ground is a SHARED simulator-level
+// fact, not just a Symbol that happens to spell "0". Lifting that
+// distinction into the type (PR #3168 codex review) makes "is this
+// node ground?" a STRUCTURAL fact rather than a Symbol-spelling
+// branch — preserving K-1's "kernel doesn't observe Symbol content"
+// discipline at the data-model layer (no `if name == "0"` branches
+// needed because there is no Symbol named "0" in well-formed data;
+// ground is the `Ground` variant). The parser maps the literal "0" in
+// the deck to `Ground`; the emitter maps `Ground` back to "0". `Symbol`
+// content never leaves the parse/emit boundary.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every netlist consumer (well-formedness
+//      check, simulator-driver, emit) branches on ground-vs-named; a
+//      shared classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: `Ground` is nullary (a singleton fact:
+//      "this is the global reference"); `NamedNode` carries a Symbol.
+//      Collapsing to `{ identity: Symbol }` makes the ground convention
+//      a spelling-sentinel ("0") that the kernel MUST read to recognize
+//      ground — the opaque-strings-attract-heuristics anti-pattern
+//      (node.dag K-1) and the M4 closed-sets-are-enums-not-strings
+//      violation.
+//   3. Algebraic form — N/A: ground-vs-named is the SPICE3 spec's own
+//      partition of the node-name space, not a richer std/ algebra.
+//   4. Dimensional — FAILS: a node-ref is EXACTLY ONE of ground/named;
+//      mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the variants are not `F<X>` over
+//      a declared set; `Ground` is nullary and `NamedNode` carries a
+//      Symbol — structurally heterogeneous, not a mechanical copy.
+// Terminal: the irreducible binary partition of the SPICE3 node-name
+// space (global ground vs user-named).
+type NodeRef
+  = Ground
+  | NamedNode { name: Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -713,28 +743,95 @@ type Directive
 
 
 // ─────────────────────────────────────────────────────────────────────
+// SubcircuitStatement — what is legal INSIDE a `.SUBCKT/.ENDS` body
+// (PR #3168 codex review). SPICE3F5 §3.4 permits exactly three
+// statement kinds inside a subcircuit body:
+//   - Component instances (R/C/L/V/I/D/Q/M/K/X/...) — the topology.
+//   - `.MODEL` cards local to the subcircuit.
+//   - `.INCLUDE` directives — the ONLY directive legal inside a
+//     subcircuit; `.INCLUDE` is preprocessing-style (substitute the
+//     named file's contents at this position), not an analysis/
+//     control card. The earlier "all directives forbidden" framing was
+//     too coarse; it forbade `.INCLUDE` along with the genuinely-
+//     illegal analysis/control cards.
+// Nested `.SUBCKT/.ENDS` pairs are LIFTED to the top-level list with
+// `parent_scope` carrying lexical identity (modeling notes "SUBCIRCUIT
+// NESTING + LEXICAL SCOPING"); after lifting, a nested subcircuit
+// definition is NOT a `SubcircuitStatement` — it is its own top-level
+// `SubcircuitDefinition` value with a non-empty `parent_scope`.
+//
+// SubcircuitStatement is an ordered statement; a `body: List<
+// SubcircuitStatement>` preserves the original deck's interleaving of
+// component instances / `.MODEL` cards / `.INCLUDE` directives,
+// supporting `parse ∘ emit` round-trip identity at the textual surface.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every subcircuit-body consumer (well-
+//      formedness, emit, simulator-driver) dispatches on the statement
+//      kind to know what to do; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: payloads are structurally distinct
+//      (`StmtComponent` carries a `Component`; `StmtModel` carries a
+//      `ModelCard`; `StmtInclude` carries a `String` path). Collapsing
+//      to `{ kind, component?, model?, path? }` makes illegal-shape
+//      combinations representable (the inverse of P2).
+//   3. Algebraic form — N/A: the SPICE3 subcircuit-body legality is
+//      a spec partition, not a richer std/ algebra.
+//   4. Dimensional — FAILS: a subcircuit statement is EXACTLY ONE of
+//      Component / ModelCard / Include — mutually-exclusive
+//      alternatives.
+//   5. Parameterized family — FAILS: payloads are structurally
+//      distinct (one wraps `Component`, one wraps `ModelCard`, one
+//      wraps `String`) — not `F<X>` over a separately-declared set.
+// Terminal: the closed three-way partition of legal-in-`.SUBCKT`
+// statements per SPICE3F5 §3.4. The set is closed (forbidden cards
+// are explicit in the spec); adding a fourth requires either a SPICE3
+// spec change (operator-tier) or evidence of a missed legal-in-SUBCKT
+// statement (would be a worker-tier addition with named justification).
+type SubcircuitStatement
+  = StmtComponent { component: Component }
+  | StmtModel { model: ModelCard }
+  | StmtInclude { path: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // SubcircuitDefinition — a `.SUBCKT name (terminals) ... .ENDS`
 // declaration (Quarles 1993 §3.4). A subcircuit defines a NAMED
 // parameterized topology that `Component.SubcircuitCall` instances
-// invoke by name. The body carries component instances and `.MODEL`
-// cards (the two statement kinds SPICE3F5 §3.4 permits inside a
-// `.SUBCKT/.ENDS` pair).
+// invoke by name. The body is a single ordered list of
+// `SubcircuitStatement`s (the three legal-in-`.SUBCKT` statement kinds
+// per SPICE3F5 §3.4 — see `SubcircuitStatement` above for the closed
+// partition and the legality reasoning).
 //
-// NO `directives` FIELD (PR #3168 codex review). SPICE3F5 §3.4
-// forbids analysis/control cards (`.OP`, `.TRAN`, `.AC`, `.DC`, `.IC`,
-// `.NODESET`, `.OPTIONS`, `.INCLUDE`, `.PRINT`, `.NOISE`, `.TF`,
-// `.SENS`, `.DISTO`, `.FOUR`, `.PZ`, `.PLOT`, `.SAVE`, `.WIDTH`,
-// `.LIB`) inside `.SUBCKT/.ENDS` — those statements are top-level
-// only. The prior shape carried `directives: List<Directive>` here
-// and tracked the prohibition as a "consumer-side well-formedness
-// check" — but INVARIANTS P2 / modeling-discipline.md Practice 2/6
-// require illegal states UNREPRESENTABLE, not merely checked. With
-// the `directives` field removed, an `.OP` inside a `.SUBCKT` is
-// STRUCTURALLY UNREPRESENTABLE in a `SubcircuitDefinition` value —
-// the type system rejects it; no checker required (same shape as the
-// closed-set + named-terminal-slot discipline already used for
-// `Component`). The prohibition is now type-enforced, not convention-
-// enforced.
+// PORTS EXCLUDE GROUND (PR #3168 codex review). The subcircuit port
+// list (the formal-parameter terminals declared after `.SUBCKT name`)
+// is `List<Symbol>` rather than `List<NodeRef>`: a port name is a
+// LOCAL-scope identifier that the call-site connects to its own
+// node-refs; the global ground convention (`NodeRef.Ground`) is NOT a
+// legal port. Using `Symbol` directly here makes a ground-port
+// STRUCTURALLY UNREPRESENTABLE — type-enforced, not check-enforced.
+// (Inside the subcircuit body, component terminals are still `NodeRef`
+// and CAN reference ground — `V(0)` is the simulator's universal
+// reference, accessible from any scope.) Non-emptiness of the port
+// list is a separate well-formedness invariant tracked as YELLOW
+// debt; the spec admits a syntactic `.SUBCKT name` with zero ports
+// (semantically dead-end), and a non-empty-list refinement type would
+// be substrate-tier rather than worker-tier — deferred until a
+// non-empty `List` carrier exists in std/.
+//
+// PRIOR "NO `directives` FIELD" RATIONALE (PR #3168 earlier codex
+// review). The prior shape carried `directives: List<Directive>` here
+// and tracked the in-SUBCKT-prohibition as a "consumer-side well-
+// formedness check" — but INVARIANTS P2 / modeling-discipline.md
+// Practice 2/6 require illegal states UNREPRESENTABLE, not merely
+// checked. The current `body: List<SubcircuitStatement>` keeps that
+// type-enforcement (only the three legal-in-SUBCKT statement kinds
+// are representable; an `.OP` inside `.SUBCKT` is structurally
+// unrepresentable) AND correctly admits the legal-in-SUBCKT statement
+// `.INCLUDE` that the earlier "no directives" framing had over-
+// excluded. The prohibition remains type-enforced; the legal-set is
+// now SPICE3-faithful.
 //
 // NESTED `.SUBCKT` LEXICAL SCOPING (PR #3168 codex review). SPICE3F5
 // §3.4 admits nested `.SUBCKT` definitions where each name is LEXICALLY
@@ -756,8 +853,11 @@ type Directive
 // Two `.SUBCKT FOO`s in different parents now have DISTINCT
 // `(name, parent_scope)` identities at the type layer — they are no
 // longer competing authorities. `SubcircuitCall.subcircuit` resolution
-// is positional: the call's containing `components` list determines
-// the call's enclosing scope; lookup walks up the scope chain per
+// is positional: the call's containing list (the top-level
+// `SpiceNetlist.components` list, or its enclosing
+// `SubcircuitDefinition.body` list wrapping it as `StmtComponent`)
+// determines the call's enclosing scope; lookup walks up the scope
+// chain per
 // SPICE3 §3.4 shadowing rules (innermost first, then outward, then
 // top-level). This is consumer-side logic over the data model; the
 // data model preserves the facts the consumer needs.
@@ -770,9 +870,8 @@ type Directive
 type SubcircuitDefinition {
   name: Symbol
   parent_scope: List<Symbol>
-  terminals: List<NodeRef>
-  components: List<Component>
-  models: List<ModelCard>
+  terminals: List<Symbol>
+  body: List<SubcircuitStatement>
 }
 
 
