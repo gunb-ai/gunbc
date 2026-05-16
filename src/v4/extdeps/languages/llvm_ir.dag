@@ -522,6 +522,25 @@ type LlvmValue
 //      set the single `Binary` shape projects over (Practice 7); it is
 //      not itself further dissolvable — it is the dissolution target.
 // Terminal: the closed LangRef binary-opcode set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this projection set was correctly GREEN (the std/ algebra
+// inhabitance was "Owned ELSEWHERE" / not-yet-landed in pattern 3).
+// Under the post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW
+// because a namable richer source EXISTS:
+//   Richer source: std/algebra.dag carriers (Semiring/Ring/OrderedRing
+//     for the integer cases; std/float.dag ApproximateField for the fp
+//     cases; lattice/bitwise for and/or/xor/shifts). Each LangRef opcode
+//     names ONE algebra operation on the operand-type's std/ inhabitance
+//     (e.g. OpAdd ↦ Semiring.add, OpFMul ↦ ApproximateField.mul,
+//     OpXor ↦ BooleanRing/bitwise-xor on iN).
+//   Trigger: first consumer of binary-op MEANING (cost model / algebraic
+//     simplification / inhabitance dispatch — D2 pathway).
+//   Obligation: the first meaning-consumer owes the structural opcode →
+//     (algebra-carrier, algebra-op) mapping AT that consumer (a lens
+//     read), NOT a local match-over-opcode lookup in this carrier; the
+//     LangRef surface name stays the parse/emit-side authority.
 type BinaryOpcode
   = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
   | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
