@@ -192,6 +192,10 @@ type OpenApiOperation {
 // reference) is deferred 🟡 (1): until `$ref` substrate lands, a path item
 // that is ONLY a reference round-trips its JSON shape through
 // `path_extensions` / operator follow-up — not silently normalized.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiPathItem {
   routes: Map<OpenApiHttpMethod, OpenApiOperation>,
   path_extensions: Map<String, JsonValue>,
