@@ -30,10 +30,18 @@
 //     commitment #2
 //
 // Consumes:
-//   - std/node.dag: Conj (the sign/exponent/mantissa record),
-//     Disj (the finite | NaN | Inf cases)
-//   - std/machine.dag: the bit-widths (Float32 / Float64)
-//   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
+//   - std/node.dag: Conj / Disj shapes; `Symbol` for diagnostic identity
+//     wiring (Tier-2 `Rejected` — no Symbol mint here)
+//   - std/machine.dag: bit-width interchange authorities (`Bit`, `Word32` /
+//     `Word64`) for `Float*` nominal widths
+//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology (typed
+//     inhabitance target; machine-readable witness still deferred in-file)
+//   - std/diagnostic.dag: `Outcome` / `Diagnostic` / `PortLocus` — Tier-2
+//     fail-closed compare API (NaN / unavailable inputs)
+//   - std/logic.dag: `Bool` (finite sign bit and other carrier-local uses)
+//   - std/nat.dag: `Nat` for Peano exponent / significand fields on
+//     `FloatBody.Finite` (carrier-local `nat_compare` only; no duplicate
+//     numeric authority vs interchange + Grounding)
 //
 // D2b (operator-ratified 2026-05-16; see DECISIONS.md D2) — Float's
 //   algebra inhabitance is NOT constructive the way the integer chain is
