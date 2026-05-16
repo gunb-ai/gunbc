@@ -164,18 +164,31 @@ import v4.std.diagnostic { Diagnostic }
 // stays unchanged; this is the deliberate non-exhaustive scoping the
 // probe permits because it does not affect the B2-OMNI finding.
 //
-// SUBCIRCUIT RECURSION. SPICE3 permits nested `.SUBCKT` definitions
-// (Quarles 1993 §3.4). Modeling that as a recursive `SubcircuitDefinition`
-// type would introduce a self-referential type that is NOT `Node` —
-// and node.dag's A1 reserves recursion-via-type-self-reference for the
-// substrate root. The faithful flat form: top-level `SpiceNetlist`
-// carries the FLAT list of all subcircuit definitions; cross-references
-// (one subckt's `X`-element invoking another) are NAME-references
-// (`Symbol`, the cross-declaration idiom — node.dag header). Nested
-// `.SUBCKT name (...)` syntactic forms in the input are lifted to the
-// top-level list by the parser. This matches v2's flat handling of
-// nested declarations and avoids introducing a parallel-substrate
-// recursive type for a non-substrate concern.
+// SUBCIRCUIT NESTING + LEXICAL SCOPING. SPICE3F5 §3.4 permits nested
+// `.SUBCKT` definitions, and the names are LEXICALLY SCOPED to their
+// enclosing subcircuit. Two design questions:
+//   (i)  Recursive `SubcircuitDefinition` (with `subcircuits: List<
+//        SubcircuitDefinition>`) would model the nesting structurally
+//        but introduces a self-referential type that is NOT `Node` —
+//        node.dag A1 reserves recursion-via-type-self-reference for
+//        the substrate root, and adding a domain-carrier recursive
+//        type is a substrate-design call that exceeds worker authority.
+//   (ii) Flattening to a single top-level list with bare `Symbol`-keyed
+//        resolution ERASES the lexical scoping: a `.SUBCKT FOO` defined
+//        inside `.SUBCKT BAR` would collide with a top-level `.SUBCKT
+//        FOO` as competing authorities (P1 / P2 violation — PR #3168
+//        codex review surfaced this).
+// The current shape resolves both: nested `.SUBCKT name (...)` forms
+// are lifted to the top-level list by the parser BUT each
+// `SubcircuitDefinition` carries a `parent_scope: List<Symbol>`
+// (outermost-first, list-depth = nesting-depth) that preserves the
+// lexical-scope identity. Two same-named subcircuits in different
+// parents now have DISTINCT `(name, parent_scope)` identities at the
+// type layer; `SubcircuitCall` resolution is positional + walks up
+// the scope chain per SPICE3 §3.4 shadowing. See the
+// `SubcircuitDefinition` declaration's header for the full rationale.
+// `List<Symbol>` is the kernel-ambient flat carrier that captures the
+// scoping faithfully without introducing a recursive carrier type.
 //
 // EVERY COPRODUCT BELOW carries the full Practice-4 🟢/🟡/🔴
 // classification + the 5-pattern dissolution ledger (modeling-
@@ -649,14 +662,40 @@ type Directive
 // `Component`). The prohibition is now type-enforced, not convention-
 // enforced.
 //
-// NESTED `.SUBCKT` are LIFTED TO THE TOP LEVEL by the parser (modeling
-// notes "SUBCIRCUIT RECURSION"); this type carries NO `subcircuits`
-// field of its own — cross-subcircuit invocations are name-references
-// (`SubcircuitCall.subcircuit: Symbol`) resolved against the top-level
-// flat list. This avoids introducing a recursive type that parallels
-// `Node`'s substrate-root role (node.dag A1).
+// NESTED `.SUBCKT` LEXICAL SCOPING (PR #3168 codex review). SPICE3F5
+// §3.4 admits nested `.SUBCKT` definitions where each name is LEXICALLY
+// SCOPED to its enclosing subcircuit: a `.SUBCKT FOO` defined inside
+// `.SUBCKT BAR` is a different definition from a `.SUBCKT FOO` defined
+// inside `.SUBCKT QUUX` or at the top level. The prior shape lifted
+// nested subcircuits to a flat top-level list with bare `Symbol`-keyed
+// resolution — which ERASED that scoping and made same-named local
+// definitions in different parents collide as competing authorities
+// (P1 modeling-faithfulness / P2 ambiguous representable states).
+// The current shape lifts to a flat list BUT preserves the lexical
+// scope structurally via `parent_scope: List<Symbol>` on each
+// `SubcircuitDefinition`:
+//   - `parent_scope = []` ⇒ defined at top-level.
+//   - `parent_scope = [BAR]` ⇒ defined inside `.SUBCKT BAR`.
+//   - `parent_scope = [BAZ, BAR]` ⇒ defined inside `.SUBCKT BAR`
+//     inside `.SUBCKT BAZ` (outermost-first, list-depth = nesting-
+//     depth).
+// Two `.SUBCKT FOO`s in different parents now have DISTINCT
+// `(name, parent_scope)` identities at the type layer — they are no
+// longer competing authorities. `SubcircuitCall.subcircuit` resolution
+// is positional: the call's containing `components` list determines
+// the call's enclosing scope; lookup walks up the scope chain per
+// SPICE3 §3.4 shadowing rules (innermost first, then outward, then
+// top-level). This is consumer-side logic over the data model; the
+// data model preserves the facts the consumer needs.
+// This avoids introducing a recursive `SubcircuitDefinition` type
+// (which would parallel node.dag's A1 sole-recursive-type discipline
+// for a non-substrate domain carrier, and is a substrate-design call
+// that exceeds worker authority); `List<Symbol>` is the kernel-ambient
+// flat carrier that captures the scoping faithfully without that
+// commitment.
 type SubcircuitDefinition {
   name: Symbol
+  parent_scope: List<Symbol>
   terminals: List<NodeRef>
   components: List<Component>
   models: List<ModelCard>
