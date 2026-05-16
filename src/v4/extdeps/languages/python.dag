@@ -248,32 +248,40 @@
 //     no-engine smell (algebra.dag U1).
 //
 // Consumes:
-//   - nothing — this file is closed-enum + Conj-record declarations
-//     only. `Int` is kernel-ambient (the PythonCost components' raw
-//     Int carrier per the 🟡 scaffold bridge to std/cardinality.dag);
-//     `Bool` is kernel-ambient (referenced in commentary on sum-shape
-//     arguments). No module is imported — this file is closed-enum +
-//     Conj-record declarations only; unlike rust.dag #3174 which
-//     imports `Symbol` from std/node.dag for its lifetime field on
-//     RustReference, Python has no reference-kind axis and no
-//     lifetime parameter (every Python name is a reference; mutability
-//     is the OBJECT's property, not the reference's), so the
-//     `Symbol`-on-reference shape doesn't apply here.
+//   - std/logic.dag: `Bool` — used as the IRCarrier type parameter
+//     of the `IrToPython<Bool>` row (`bool_to_python_bool`) and as
+//     the return type of the Layer-2 structural-assertion fn
+//     `assert_bool_to_python_bool_consistency`. std/logic.dag
+//     merged 2026-05-16 (T-3 Wave-A1, PR #3163), enabling this
+//     first concrete IR ↔ Python correspondence row + its
+//     structural-assertion fn (the cross-PR alignment ask from
+//     loyal-koi-702 / rust slice #3174 author 2026-05-16, mirroring
+//     rust.dag's `bool_to_rust_bool` + `assert_bool_to_rust_bool_
+//     consistency` pattern for IR↔language pipeline uniformity).
+//     `Int` is kernel-ambient (the PythonCost components' raw Int
+//     carrier per the 🟡 scaffold bridge to std/cardinality.dag);
+//     `Bool` is also kernel-ambient as a return-type primitive,
+//     but the IMPORT brings the std/logic.dag-declared `Bool`
+//     type-identity into scope for IRCarrier matching — distinct
+//     from the kernel-ambient `Bool` value-shape (the import names
+//     the declaration; the kernel-ambient form is the value
+//     primitive).
 //   (The scaffold header's prior `std/node.dag, std/algebra.dag
-//   (same as rust.dag)` Consumes line was anticipatory — both were
-//   named for the inhabitance instance-values this slice DEFERS per
-//   D2 (so algebra.dag is NOT imported now — it returns when D2
-//   ratifies and the inhabitance rows land here), and std/node.dag
-//   was named because rust.dag imports `Symbol` from it for its
-//   lifetime axis (which Python doesn't have, so std/node.dag isn't
-//   imported here either). The revised Consumes line above reflects
-//   what the file actually imports — nothing. This Consumes
-//   correction rides the systemic operator scaffold-Consumes
-//   reconciliation, T-4 mgr synthesis msg_1fddb75c — the surface+
-//   trigger discipline lets the operator ratify all per-file Consumes
-//   strikes uniformly in one pass; this is not worker-settled. Same
-//   discipline as ptx.dag #3170 (zero imports) and rust.dag #3174
-//   (one import of Symbol for the lifetime axis Python lacks).)
+//   (same as rust.dag)` Consumes line was anticipatory — both
+//   originally named for the inhabitance instance-values this
+//   slice DEFERS per D2 (so algebra.dag remains NOT imported — it
+//   returns when D2 ratifies and the algebra-inhabitance rows
+//   land here), and std/node.dag was named because rust.dag
+//   imports `Symbol` from it for its lifetime axis (which Python
+//   doesn't have, so std/node.dag isn't imported here either).
+//   The revised Consumes line above reflects what the file
+//   actually imports — `Bool` from std/logic.dag, for the IR↔
+//   Python correspondence rows. This Consumes correction rides
+//   the systemic operator scaffold-Consumes reconciliation, T-4
+//   mgr synthesis msg_1fddb75c — the surface+trigger discipline
+//   lets the operator ratify all per-file Consumes strikes
+//   uniformly in one pass; this is not worker-settled. Same
+//   discipline as ptx.dag #3170 and rust.dag #3174.)
 //
 // Status: T-4 python-slice modeled 2026-05-16 (gentle-deer-446);
 //   structural finding: NO STOP from the type-system surface. The I/O
@@ -286,6 +294,9 @@
 
 
 module v4.extdeps.languages.python
+
+
+import v4.std.logic { Bool }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -962,4 +973,211 @@ type PythonScalar
 type PythonCost {
   operation_cost: Int
   allocation_cost: Int
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Per-primitive named inhabitants — 7 typed scalar values, one per
+// Python primitive (Numeric × 4 tower levels + Singleton × 3
+// spec-defined singleton types). Each is a `data` instance of
+// PythonScalar's closed-Disj variants; the category × sub-classifier
+// combinations are STRUCTURALLY enforced by PythonScalar's Disj-
+// with-payloads (Numeric carries a tower; Singleton carries a kind;
+// no illegal cross-category combinations).
+//
+// These are NOT algebra-inhabitance instance-values (D2-pending —
+// per "Owned ELSEWHERE", per-Python-primitive algebra inhabitance
+// `data python_int_integral: <Integral>(<int-carrier>) = …` rides
+// the operator D2 form-decision + T-3 wave A3 carrier landing).
+// They are just typed VALUES of the closed Disj — analogous to
+// rust.dag #3174's 18 `data rust_X: RustScalar = ...` rows.
+// Authorable today; fan-out from rust mirrors this shape.
+
+// Numerics — `bool` / `int` / `float` / `complex`
+data python_bool:            PythonScalar = Numeric { tower: BoolLevel }
+data python_int:             PythonScalar = Numeric { tower: IntegralLevel }
+data python_float:           PythonScalar = Numeric { tower: RealLevel }
+data python_complex:         PythonScalar = Numeric { tower: ComplexLevel }
+
+// Singletons — `None` / `NotImplemented` / `...`
+data python_none:            PythonScalar = Singleton { kind: NoneT }
+data python_not_implemented: PythonScalar = Singleton { kind: NotImplementedT }
+data python_ellipsis:        PythonScalar = Singleton { kind: EllipsisT }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// IrToPython<IRCarrier> — the IR-type ↔ Python-primitive
+// correspondence carrier, parameterized over the IR-side type. One
+// row per std/ canonical carrier ↔ Python primitive emission. Conj
+// record (no Practice-4 ledger).
+//
+// Spec: this carrier IS the U1 "coercion = emission" projection
+//       (algebra.dag U1 header) made concrete per language. Same
+//       shape per-language across fan-out (mirrors rust.dag
+//       #3174's `IrToRust<IRCarrier>`).
+//
+// IRCarrier (type-parameter)  the std/ canonical type this row maps
+//                             to/from (a type-level reference — e.g.
+//                             `v4.std.logic.Bool` or
+//                             `v4.std.nat.Nat`). Each row's IR side
+//                             is named at the TYPE level, not as a
+//                             value field — same shape as
+//                             `algebra.dag`'s
+//                             `Homomorphism<C, Source, Target>`
+//                             which carries the algebra class C and
+//                             the two carriers at the type-parameter
+//                             positions. Type-level keying is the
+//                             U1-canonical form; emit dispatches by
+//                             type-identity match on IRCarrier,
+//                             never by name (K-1).
+//   - python_repr             the Python-side typed scalar value —
+//                             one of the 7 per-primitive named
+//                             inhabitants above.
+//
+// SEAM (where rows land). Each row's `IrToPython<IRCarrier>` type
+// instantiation requires IRCarrier to be a declared std/ type. As
+// the T-3 wave merges land std/ scalar types, the corresponding
+// `IrToPython<...>` rows land here. The row authoring is mechanical
+// — one per std/-↔-Python correspondence — and incremental: a row
+// can land the moment its IRCarrier std/ type reaches merged state,
+// without waiting for the whole std/ wave.
+//
+// Worked example: `Bool → python_bool` (concrete, LANDED below — see
+// `data bool_to_python_bool` row after this declaration). emit
+// (T-10) consumes the row:
+//   given a Bool-typed value in InferredTree
+//   →  lookup `bool_to_python_bool` by type-identity match on the
+//      Bool IRCarrier (compile-time-typed; no runtime string match)
+//   →  read `python_repr` = `python_bool` =
+//      Numeric { tower: BoolLevel }
+//   →  emit Python source token `"bool"` (the spelling determined
+//      by the PythonScalar value via the LanguageModel grammar)
+// ingest (reverse direction, C5) walks the row backwards:
+//   parsed Python `bool` keyword
+//   →  produces Numeric { tower: BoolLevel } Node
+//   →  reverse-lookup: python_repr == python_bool ⇒ Bool IRCarrier
+//   →  Bool-typed Node into the IR
+//
+// The whole IR ↔ Python pipeline IS one declarative correspondence
+// table consumed in both directions. No name-convention dispatch,
+// no string matching — type-level identity match on IRCarrier.
+type IrToPython<IRCarrier> {
+  python_repr: PythonScalar
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bool → python_bool — the first concrete IR ↔ Python mapping row.
+//
+// std/logic.dag declares `Bool = True | False` (a closed Disj per
+// the classical-bivalent logic anchor) and the
+// `bool_boolean_algebra: BooleanAlgebra<Bool>` inhabitance. Python's
+// `bool` per Reference 3.14 §3.2.4 (Numerics) is a STRICT SUBTYPE
+// of `int` per PEP 285 (True == 1, False == 0). Modeling-wise:
+// Python's `bool` IS the BoolLevel of the numeric tower, which IS
+// PythonScalar's `Numeric { tower: BoolLevel }`. The IR Bool ↔
+// Python bool correspondence is 1:1 at the scalar layer.
+//
+// Spec (IR side):     https://en.wikipedia.org/wiki/Boolean_algebra
+//                     (and std/logic.dag header)
+// Spec (Python side): https://docs.python.org/3.14/library/functions.html#bool
+//                     (Python `bool` is a strict int-subtype per PEP
+//                     285 https://peps.python.org/pep-0285/)
+//
+// post-T-3-Wave-A1 (std/logic.dag merged 2026-05-16): this row is
+// now AUTHORED. emit (T-10) reads it; ingest (C5) reads it
+// backwards. When the LanguageModel grammar lands the Python source
+// spelling for `Numeric { tower: BoolLevel }` (the token `"bool"`),
+// the end-to-end correspondence is complete.
+data bool_to_python_bool: IrToPython<Bool> = IrToPython {
+  python_repr: python_bool
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// Layer-2 structural-assertion fns (the per-row "expectation" pattern
+// every language file mirrors during fan-out — see rust.dag #3174
+// Layer-1/2/3 doc-block for the canonical 3-layer testing pattern).
+//
+// v4 testing has THREE layers, with the gating dependencies named:
+//
+//   Layer 1 — 0-diag structural typing (live now, every PR).
+//     Every `data X: T = ...` instance is itself a type-check
+//     assertion v2-compiler verifies. The row
+//     `data bool_to_python_bool: IrToPython<Bool> = IrToPython
+//     { python_repr: python_bool }` already proves: Bool resolves,
+//     IrToPython<Bool> is a well-typed instantiation, python_bool is
+//     a real PythonScalar value, and the Conj record matches the
+//     carrier's shape. Drift breaks the build. Not a "test" in the
+//     TestClaim sense, but real structural verification.
+//
+//   Layer 2 — Structural-assertion fns (the pattern below,
+//     AUTHORABLE NOW). A `fn assert_<row>_consistency() -> Bool`
+//     exhaustive-matches on the row's `python_repr` field and
+//     asserts which PythonScalar variant + sub-tower-level it MUST
+//     be. v2-compiler's exhaustiveness check ensures all variants
+//     are covered; the fn body encodes the expected variant. Today
+//     the fn compiles via 0-diag (the match arms type-check); the
+//     BEHAVIORAL fact (the fn returns `true` when the row is
+//     correct) becomes verifiable when an interpreter exists (T-22
+//     eval) or when a TestClaim with `kind: Equals` asserts the
+//     return value (T-3 Wave-A2 + std/verification.dag, PR #3183
+//     in flight).
+//
+//     The fn is a FORWARD-ANCHOR: it documents the expected variant
+//     as a structural property, and when TestClaim infrastructure
+//     lands, the fn body becomes the `expected` side of an `Equals`
+//     TestClaim. If a future PR changes `bool_to_python_bool` to
+//     point at `python_int` instead of `python_bool`, the fn still
+//     compiles (the match exhausts) but RETURNS `false` —
+//     flag-when-runnable.
+//
+//   Layer 3 — TestClaim data (gate: PR #3183 std/verification.dag).
+//     The real "tests" in the v4 self-hosting sense are TestClaim
+//     instances:
+//
+//       data t_bool_to_python_bool_roundtrip: TestClaim = TestClaim {
+//         kind:     RoundTrips,
+//         label:    "IR Bool ↔ Python bool roundtrips",
+//         input:    <Bool-typed Node>,
+//         expected: <... same Node after emit + parse roundtrip ...>
+//       }
+//
+//     RoundTrips claims need emit (T-10) + parse (T-7) — both also
+//     gated. The DECLARATIVE TestClaim data is the first layer that
+//     unlocks the moment #3183 merges; EXECUTABLE roundtrips need
+//     #3183 + T-7 + T-10.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// assert_bool_to_python_bool_consistency — Layer-2 structural
+// assertion for the live Bool → python_bool IrToPython row.
+//
+// Verifies via exhaustive match that `bool_to_python_bool.python_repr`
+// IS the `Numeric { tower: BoolLevel }` shape, not any other
+// PythonScalar variant or numeric-tower level. If a future edit
+// changes the row to use a different per-primitive inhabitant
+// (e.g. `python_int`), the fn still compiles (the match exhausts)
+// but returns `false` — a structural change with a behavioral
+// signal.
+//
+// Forward-anchor for the `Equals` TestClaim that will assert this
+// fn returns `true` once T-3 Wave-A2 (std/verification.dag, PR
+// #3183) merges:
+//
+//   // (post-#3183 merge — comment-only sketch:)
+//   // data t_bool_to_python_bool_kind: TestClaim = TestClaim {
+//   //   kind:     Equals,
+//   //   label:    "bool_to_python_bool maps to Numeric BoolLevel",
+//   //   input:    assert_bool_to_python_bool_consistency(),
+//   //   expected: true
+//   // }
+fn assert_bool_to_python_bool_consistency() -> Bool {
+  match bool_to_python_bool.python_repr {
+    Numeric { tower: BoolLevel }     => true
+    Numeric { tower: IntegralLevel } => false
+    Numeric { tower: RealLevel }     => false
+    Numeric { tower: ComplexLevel }  => false
+    Singleton { kind: _ }            => false
+  }
 }
