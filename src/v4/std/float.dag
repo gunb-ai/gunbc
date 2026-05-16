@@ -381,7 +381,7 @@ fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
 // numeric extension (incl. `±0` ⇒ `Equal`), use `float_body_compare_ieee_ordered_outcome`.
 // NaN **unordered** IEEE `<` stays Tier-2-only (`Rejected`).
 //
-// **Dissolution / terminal (openai-pro scaffold receipt):** treating this
+// **Dissolution / terminal (tracked scaffold receipt):** treating this
 // carrier order as interchange-grounded IEEE 754 `totalOrder` (incl. NaN
 // sign/payload bits; full binary32/64 width refinement on `Finite` fields)
 // **terminates** only on `Word32`/`Word64` interchange + Grounding + the
