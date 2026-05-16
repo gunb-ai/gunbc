@@ -105,7 +105,9 @@
 //         Subject payloads referencing std/node.dag (`Connective`, `Node`,
 //         `Symbol`) and the five `fn … -> Set<TestClaim>` folds are
 //         specified in comments below until M2 module loading lowers them
-//         in one graph with std/ (see TASKS.md T-19 + MODELING.md).
+//         in one graph with std/ (see TASKS.md §T-19 + MODELING.md; forward
+//         dissolution bullets there track Int-coded manual anchors + M2
+//         uncomment acceptance for the block below).
 // Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
 // substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
 // This buys test evidence early — every Phase 2+ task gets a testgen-

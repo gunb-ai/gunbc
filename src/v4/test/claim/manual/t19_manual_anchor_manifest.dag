@@ -9,9 +9,10 @@
 //          layer: 0=Unit, 1=Integration, 2=Boundary
 //          testgen_category: 0 type_construction … 4 bidirectional_roundtrip
 //          assert_kind: 0 Equals, 1 Diagnostic, 2 Compiles, 3 RoundTrips
-// Anchor: TASKS.md T-19 + lens/testgen.dag bootstrap path + K-1 (slugs are
-//         stable string keys — upgrade to `Symbol` name-refs when wiring
-//         full `TestClaim` rows; no `Sym` mint at authoring time)
+// Anchor: src/v4/TASKS.md §T-19 "Phase-1.5 scaffolding — forward dissolution"
+//         (Int field retirement + Symbol slugs + uncomment carriers) +
+//         lens/testgen.dag bootstrap path + K-1 (slugs are stable string keys
+//         until the dissolution band; no `Sym` mint at authoring time)
 //
 // Owns:
 //   - Twelve `data …: ManualTestgenAnchor` rows covering:
