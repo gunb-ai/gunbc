@@ -46,6 +46,63 @@
 //   12-file split cannot recur (its cause — a separate recursive inferred
 //   type — is structurally gone via IR-1/A1).
 //
+// B-4 (side-session 2026-05-15; carrier corrected per a P2/Practice-3
+//   review finding on PR #3162) — the affected_set R2 minimality
+//   contract. NAMED CARRIER, not resolved_type:
+//   - The use→def fact's forward carrier is the post-resolution opaque
+//     `Symbol` (K-1) on the name-reference `Atom` — NOT `resolved_type`.
+//     `resolved_type` is the node's *type*; many declarations share a
+//     type, so it is LOSSY for binding identity (the review's point —
+//     citing it was a Practice-3/P2 error). The correct carrier already
+//     exists and is named: the `Symbol`.
+//   - AUTHORITY is compiler/03_resolve.dag (it owns "identifier binding
+//     to declarations"). Resolution canonicalizes a use-site `Atom`'s
+//     `Symbol` to be IDENTICAL to its binder declaration's `Symbol`, so
+//     binding = `Symbol` equality (the one K-1-granted op; node.dag's
+//     `name_occurrences` pattern; "resolved through the namespace" per
+//     A1/K-1). That canonical `Symbol` rides in `ResolvedTree`.
+//   - 04_infer's obligation here is PRESERVE-ONLY: infer adds
+//     `InferredFacts`; it MUST NOT alter or drop the resolved `Symbol`
+//     identity. infer neither owns nor re-carries the use→def fact (so
+//     no 5th `InferredFacts` field — IR-1-safe; the fact's authority is
+//     03_resolve, its carrier is the Symbol).
+//   - lens/affected_set.dag (T-21) DERIVES the use→def graph by
+//     `Symbol`-equality TRAVERSAL over the resolved tree (changed
+//     declaration → its binder `Symbol` → every name-ref `Atom` with
+//     that `Symbol` → enclosing declarations, transitively) — the same
+//     "derive, don't store" discipline as `content_hash` (a fold) / D1.
+//   - Binding MUST be NODE-PRECISE: a use-site's canonical `Symbol`
+//     identifies the EXACT declaration, never merely its module/scope.
+//     Coarse binding leaves affected_set correct but maximally
+//     OVER-fires — node-precision is the dominant gate on R2
+//     minimality. (Distinct axis from #3157's hash-granularity
+//     "over-fire = safe": that is content identity; THIS is
+//     dependency-edge granularity.) Authority: 03_resolve.dag B-4 note.
+//
+// T-9 (operator-ratified 2026-05-16) — the two contracts that make this
+//   the keystone, single, decidable file:
+//   A. FIND IS DECIDABLE BY CONSTRUCTION (closes C1). The
+//      algebra-homomorphism Find recurses structurally on the Node tree
+//      (A2 implicit descent — the same finite descent `node_well_formed`
+//      uses, so the inferencer itself terminates). At each node the
+//      candidate set is EXACTLY the CLOSED declared inhabitances
+//      reachable in std/* — an enumerable set, never a synthesized or
+//      open search space. So "no homomorphism" = "exhausted the finite
+//      declared set" = a DECIDABLE fail-closed Diagnostic
+//      (feedback_no_engine), not a search that may not terminate. A
+//      T-9 worker *synthesizing* candidates (vs enumerating declared
+//      inhabitances) has left the decidable fragment — STOP/escalate.
+//   B. SINGLE-FILE DISCIPLINE IS A SCOPE BOUNDARY, not willpower (why
+//      v2's 12-file split cannot recur). v2 split because env / scope /
+//      lookup / method-resolution / signature concerns tangled. In v4
+//      those are 03_resolve's job (B-4: binding = the canonical
+//      `Symbol`, authored there). So 04_infer owns ONLY { the C1 Find
+//      + cardinality propagation + diagnostic precision }. A T-9 worker
+//      writing scope / env / binding / lookup / method-resolution here
+//      has re-imported the 12-file pressure — that concern belongs in
+//      03_resolve; STOP/escalate. The single file holds because the
+//      scope is bounded, not because the file is willed small.
+//
 // Owns:
 //   - InferredTree = Node + the frozen flat `InferredFacts` coordinate
 //   - infer: ResolvedTree -> Result<InferredTree, Diagnostic>
