@@ -216,21 +216,82 @@ type SpiceValue {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`). Used by the
-// parameterized component variants that carry a `parameters: List<
-// Parameter>` slot in this cut (`Mosfet`, `SubcircuitCall`), by `.MODEL`
-// parameter sets, and by `.OPTIONS` directives (Quarles 1993 §11.3,
-// §15). Instance-parameter slots on the variants that do not carry one
-// yet (`Diode`'s optional `AREA`, `Bjt`'s optional `AREA` / `OFF` /
-// initial-condition pairs) are part of the same follow-up that
-// enumerates E/F/G/H/J/T/S/W — see modeling notes "CLOSED-SET
-// COVERAGE"; the `Parameter` carrier is ready for them. `name` is a
-// `Symbol` (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar
-// deferred per `SpiceValue`).
+// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=2`).
+// Used by the parameterized component variants that carry a
+// `parameters: List<Parameter>` slot in this cut (`Mosfet`, `Bjt`,
+// `SubcircuitCall`), by `.MODEL` parameter sets, and by `.OPTIONS`
+// directives (Quarles 1993 §11.3, §15). The remaining variants without
+// a `parameters` slot (`Resistor`, `Capacitor`, `Inductor`, `Diode`,
+// `VoltageSource`, `CurrentSource`) are part of the same follow-up
+// that enumerates E/F/G/H/J/T/S/W — see `Component`'s 🟡 trigger; the
+// `Parameter` carrier is ready for them. `name` is a `Symbol`
+// (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar deferred
+// per `SpiceValue`).
+//
+// PARAMETER-NAME SCHEMA AS PROJECTION (Practice 7). Which names are
+// valid for which element kind is a CONSUMER-SIDE check, not a parallel
+// field here — schema is a projection over the closed (Component-kind,
+// SPICE3 §11) axis. So `parameters: List<Parameter>` carries the
+// LEXICAL-SURFACE instance modifiers losslessly; an invalid name (e.g.
+// `Bjt { parameters: [Parameter{name=NONSENSE, ...}] }`) is rejected
+// by the spec-projection check, not by the type system. A typed sub-
+// coproduct per element kind enumerating its valid parameter names is
+// the eventual 🟢 destination (tied to `Component`'s 🟡 trigger);
+// `List<Parameter>` is the intermediate scaffold consistent across
+// every variant that carries instance modifiers.
+//
+// FLAG-FORM INSTANCE MODIFIERS (`OFF`, etc.) — SPICE3 §11 spells some
+// instance modifiers as BARE FLAGS (`Q1 c b e m OFF`) rather than
+// `name=value`. The intermediate scaffold encodes a flag as
+// `Parameter { name = OFF (Symbol), value = SpiceValue { lexeme = "" } }`
+// — an admissible workaround at the lexeme layer, surfaced honestly
+// here. A typed `Modifier = Flag(Symbol) | KeyValue(Symbol, SpiceValue)`
+// sub-coproduct is the same dissolution destination as the parameter-
+// name schema, deferred to the same trigger.
 type Parameter {
   name: Symbol
   value: SpiceValue
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SubstrateSpec — the optional 4th terminal of a SPICE3 Q-card. The
+// SPICE3 BJT statement permits both
+//   `Qname COLLECTOR BASE EMITTER MODEL [params...]`             (3-term)
+//   `Qname COLLECTOR BASE EMITTER SUBSTRATE MODEL [params...]`   (4-term)
+// (Quarles 1993 §11.4). The two are distinct at the SYNTACTIC surface
+// — `parse ∘ emit` must preserve the choice — even though they map to
+// the same circuit topology when SUBSTRATE = node 0 (the simulator's
+// default ground substrate, semantically). Modeling this as
+// `Option<NodeRef>` is explicitly rejected by v4 discipline
+// (std/diagnostic.dag header — `Correction = Suggested(Node) |
+// Unavailable(NoCorrectionReason)`, NOT `Option<Node>`); the closed
+// two-variant typed sum is the P2-faithful shape.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every Bjt-consumer (parse round-trip,
+//      emit, simulator-driver) dispatches on the substrate-explicit-vs-
+//      implicit fact; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: `Implicit` is nullary; `Explicit`
+//      carries a `NodeRef`. Collapsing to `{ explicit: Bool, node?:
+//      NodeRef }` makes "explicit with no node" + "implicit with a
+//      node" representable — the inverse of P2.
+//   3. Algebraic form — N/A: the substrate-presence choice is a
+//      SPICE3 syntactic-surface fact, not an algebra carrier.
+//   4. Dimensional — FAILS: a Q-card either DOES or DOES NOT spell the
+//      substrate node; mutually-exclusive alternatives, never
+//      simultaneous coordinates.
+//   5. Parameterized family — FAILS: the two variants are not `F<X>`
+//      over a declared set; `Implicit` is nullary and `Explicit`
+//      carries a `NodeRef` — structurally distinct, not a mechanical
+//      copy of any source set.
+// Terminal: the irreducible binary syntactic-surface choice of the
+// SPICE3 BJT substrate slot.
+type SubstrateSpec
+  = SubstrateImplicit
+  | SubstrateExplicit { node: NodeRef }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -260,8 +321,16 @@ type Parameter {
 //           for L; optional `.MODEL` reference (R/C/L can be model-
 //           referenced in SPICE3 §11.1).
 //         - Diode: optional `AREA`, `OFF`, `IC=Vd`.
-//         - Bjt: optional fourth terminal (substrate), `AREA`, `OFF`,
-//           `IC=Vbe,Vce`.
+//         - Bjt: substrate-spec (optional 4th terminal) and instance
+//           parameters (`AREA`/`OFF`/`IC=Vbe,Vce`) ADDRESSED — `Bjt`
+//           now carries `substrate: SubstrateSpec` (typed sum; see the
+//           `SubstrateSpec` declaration above for the 5-pattern ledger)
+//           and `parameters: List<Parameter>` (matching `Mosfet`'s
+//           instance-modifier slot; flag-form `OFF` encoded as an
+//           empty-lexeme `Parameter`, see `Parameter`'s "FLAG-FORM"
+//           note). The `parameters` carrier is the lexical-surface
+//           scaffold; the typed parameter-name schema is the same
+//           per-element dissolution work as for `Mosfet`.
 //         - Mosfet: optional `L`/`W` (already in `parameters`),
 //           `AD`/`AS`/`PD`/`PS`/`NRD`/`NRS`/`OFF`/`IC=Vds,Vgs,Vbs` —
 //           current `parameters: List<Parameter>` admits these by
@@ -335,7 +404,7 @@ type Component
   | VoltageSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | CurrentSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Diode { identity: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
-  | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, model: Symbol }
+  | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, parameters: List<Parameter> }
   | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
   | MutualInductance { identity: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
   | SubcircuitCall { identity: Symbol, terminals: List<NodeRef>, subcircuit: Symbol, parameters: List<Parameter> }
