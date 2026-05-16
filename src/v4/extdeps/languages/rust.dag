@@ -264,12 +264,14 @@ import v4.std.node { Symbol }
 //     refuses to claim totality it cannot prove); the v4 Rust model
 //     reads bounded loops, fail-closes on unbounded ones.
 //
-//   - LITERAL / VALUE (`42i32`, `"hello"`, `true`, `()`) ↦ Value
+//   - LITERAL / VALUE (`42i32`, `"hello"`, `true`) ↦ Value
 //     (node.dag:209). A literal IS a Value. The literal's typed
 //     interpretation (its scalar kind + width for numerics; its
 //     UTF-8 byte sequence for strings) is the inhabitance walk that
 //     RIDES D2 — pre-D2 the Value's TYPED interpretation is
-//     unspecified; the Value carrier itself is just a Node.
+//     unspecified; the Value carrier itself is just a Node. (`()` is
+//     a Value literal too, but it is a zero-tuple TupleType — out-of-
+//     scope for this slice; see SCOPE NEGATIVE Tuple types below.)
 //
 //   - REFERENCES (`&T`, `&mut T`, `'a` lifetime parameters) ↦ effect-
 //     typed parameter (structural Conj field), per THESIS:401 IN-B
@@ -296,6 +298,25 @@ import v4.std.node { Symbol }
 // of THIS file immutable.
 //
 // SCOPE NEGATIVE (operator-tier, do not work around).
+//   - Tuple types (`(T₁, T₂, …)`, including the zero-tuple `()` /
+//     "unit"). Per the Rust Reference §types-tuple, tuples are their
+//     own type category — NOT primitive scalars. `()` is the zero-
+//     field TupleType (the single-inhabitant terminal type by
+//     CARDINALITY, not a scalar primitive). Modeling tuples requires
+//     a generic tuple-type carrier (Conj over `arity: Cardinality`
+//     and `components: List<Type>`), which composes over
+//     std/cardinality.dag's refinement substrate (T-3) when that
+//     lands. Until then `()` and tuple types in general are out-of-
+//     scope for this slice; emitting `()` as a literal Value is
+//     fine (it is a Value Node — the modeling notes' LITERAL/VALUE
+//     mapping says so) but the type carrier is deferred to the
+//     tuple-types substrate.
+//     (Corrected 2026-05-16 per BLOCKING operator review on PR
+//     #3174: the prior slice mis-classified `()` as a `Unit` variant
+//     of `RustScalarKind`. The Reference partitions it as a tuple,
+//     and INVARIANTS P1 modeling-faithfulness requires the substrate
+//     partition to ground in the spec partition. Removed from this
+//     slice; named for tuple-types substrate.)
 //   - The full Rust GRAMMAR production set (item declarations,
 //     expression syntax, pattern syntax, attribute syntax, macro
 //     syntax) is owned by the bundled T-4 LanguageModel shape — same
@@ -537,9 +558,10 @@ type RustFloatWidth
 
 // ─────────────────────────────────────────────────────────────────────
 // RustScalarKind — the closed Rust scalar-type kind classifier. The
-// Rust Reference admits exactly five scalar-type kinds (the
-// non-compound primitive types, per §3.1 types-overview and the
-// numeric / boolean / textual / never sections):
+// Rust Reference §3 partitions the non-compound primitive types into
+// exactly six kinds, per §3.3 boolean-type, §3.4 numeric-types (the
+// Int / Float bifurcation), §3.5 textual-types (the Char / Str
+// bifurcation), and §3.6 never-type:
 //
 //   - Int      — integer scalars (Reference §3.4 numeric-types-
 //                integer-types; both signed and unsigned, all
@@ -547,25 +569,46 @@ type RustFloatWidth
 //   - Float    — floating-point scalars (Reference §3.4
 //                numeric-types-floating-point; f32 / f64 stable —
 //                see RustFloatWidth)
-//   - Bool     — the `bool` two-valued type (Reference §3.6
+//   - Bool     — the `bool` two-valued type (Reference §3.3
 //                boolean-type; classical-logic-inhabiting per
 //                std/logic.dag)
 //   - Char     — the `char` Unicode scalar value type (Reference
 //                §3.5 textual-types; 32-bit Unicode code-point,
 //                strictly excluding the surrogate range)
-//   - Unit     — the `()` unit type (Reference §3.10 tuple-types
-//                — `()` is the empty tuple, the single-inhabitant
-//                terminal type)
+//   - Str      — the `str` UTF-8 string-slice type (Reference §3.5
+//                textual-types; an UNSIZED / dynamically-sized type
+//                that only appears behind a reference like `&str` /
+//                `&mut str`. The unsized property is a STRUCTURAL
+//                Rust fact, separate from the kind classification
+//                here; a sized-vs-unsized substrate fact would be a
+//                future refinement carrier — for this slice the
+//                kind enum closes the type-classification axis, and
+//                downstream consumers reading a Str-kinded scalar
+//                must compose it with a reference type)
+//   - Never    — the `!` never type (Reference §3.6 never-type; the
+//                empty-inhabitance type a diverging computation
+//                returns. `!` IS in the pinned Reference's primitive-
+//                types section, so per L-2 "model the spec" it
+//                belongs in the partition. Specific in-position
+//                stability gates are a Reference detail, not a
+//                grounds for omitting the kind from the partition;
+//                the inhabitance of `!` rides D2 + the future
+//                empty-cardinality carrier per `std/cardinality.dag`)
 //
-// The Rust `!` never-type is SCOPE-NEGATIVE for this slice (see
-// header SCOPE NEGATIVE — it is currently stabilization-gated in
-// the Reference and is a no-inhabitant TYPE, not a scalar in the
-// usual sense). When stabilized it is a visible C1 edit to this
-// declaration.
+// `()` (the unit type) is DELIBERATELY NOT in this partition: the
+// Reference §3 partitions it as a TupleType (the zero-field tuple),
+// not a primitive scalar. Tuple types — including `()` — are
+// out-of-scope for this slice; see SCOPE NEGATIVE Tuple types in
+// the header modeling notes. (Corrected 2026-05-16 per BLOCKING
+// operator review on PR #3174: the prior slice's `Unit` variant
+// mis-classified `()` as a primitive-scalar kind. INVARIANTS P1
+// modeling-faithfulness requires the partition to ground in the
+// spec's partition; the Reference puts `()` in §3.10 TupleType, so
+// it cannot be a RustScalarKind variant under this discipline.)
 //
-// CLOSED (C1 stop-signal). A sixth scalar kind is an edit to THIS
-// declaration under the L-2 pin discipline. The kind enum is the
-// meta-classifier; the typed scalar values themselves are the
+// CLOSED (C1 stop-signal). A seventh scalar kind is an edit to
+// THIS declaration under the L-2 pin discipline. The kind enum is
+// the meta-classifier; the typed scalar values themselves are the
 // `RustScalar` Disj below (which carries the kind × width
 // admissibility as structural variant payloads).
 //
@@ -584,46 +627,56 @@ type RustFloatWidth
 //      structure (Int → OrderedRing-or-Semiring per
 //      RustIntKind, Float → ApproximateField, Bool →
 //      BooleanAlgebra, Char → no exact arithmetic algebra by
-//      design, Unit → terminal-cardinality). That grounding is the
-//      INHABITANCE walk owned by the std/ scalar files per P2
-//      (rides D2 + T-3 wave A3). The kind enum itself stays a
-//      closed classifier; the "kind → algebra" map IS the future
-//      inhabitance walk, not a richer std/ source to collapse this
-//      enum INTO. Same shape as ptx.dag RegisterScalarKind.
+//      design — Char's algebra is the surrogate-excluded subset
+//      of Int32 cardinality, Str → FreeMonoid<Char> per the Rust
+//      Reference's UTF-8 textual semantics — owned by
+//      std/text.dag's eventual inhabitance, Never → terminal
+//      empty-cardinality, owned by std/cardinality.dag). That
+//      grounding is the INHABITANCE walk owned by the std/ scalar
+//      files per P2 (rides D2 + T-3 wave A3). The kind enum itself
+//      stays a closed classifier; the "kind → algebra" map IS the
+//      future inhabitance walk, not a richer std/ source to
+//      collapse this enum INTO. Same shape as ptx.dag
+//      RegisterScalarKind.
 //   4. Dimensional — FAILS: a single Rust scalar value has EXACTLY
 //      ONE kind; mutually-exclusive alternatives. (Kind × Width is
 //      a Cartesian product on RustScalar's IntScalar / FloatScalar
 //      variants — that IS the dimensional model for the
 //      width-bearing kinds.)
-//   5. Parameterized family — FAILS: the five kinds are the Rust-
-//      Reference scalar-type partition; they are NOT one generic
+//   5. Parameterized family — FAILS: the six kinds are the Rust-
+//      Reference primitive-type partition; they are NOT one generic
 //      `F<X>` / projection over a separately-declared source set
 //      (Practice 7). One could attempt `RustScalarKind<algebra:
 //      AlgebraStructure>` parameterized over an algebra-structure
-//      subset, but only four of the five ground in arithmetic
-//      algebra (Char does not), and Unit grounds in a CARDINALITY
-//      structure (terminal cardinality 1, not an arithmetic
-//      algebra). The partition is the spec's irreducible scalar-
+//      subset, but the kinds ground in STRUCTURALLY HETEROGENEOUS
+//      algebraic structures (OrderedRing/Semiring/ApproximateField/
+//      BooleanAlgebra/FreeMonoid/empty-cardinality — five distinct
+//      std/algebra structures plus one cardinality fact), and Char
+//      grounds in a Cardinality refinement not an arithmetic
+//      algebra. The partition is the spec's irreducible primitive-
 //      kind distinction, not a copy of any enumerable source.
-// Terminal: the closed five-way Rust scalar-kind classifier.
+// Terminal: the closed six-way Rust primitive-scalar-kind
+// classifier; `()` is TupleType (Reference §3.10), out-of-scope
+// for this slice.
 type RustScalarKind
   = Int
   | Float
   | Bool
   | Char
-  | Unit
+  | Str
+  | Never
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RustScalar — a typed Rust scalar value: kind × (width if
+// RustScalar — a typed Rust primitive-scalar value: kind × (width if
 // applicable). Disj sum with NAMED-FIELD VARIANT PAYLOADS so that
 // the kind × width admissibility is STRUCTURALLY ENFORCED — Bool /
-// Char / Unit carry no width payload, so "Bool with width=Bits32"
-// is unrepresentable (not "rejected by a check" — unrepresentable,
-// the INVARIANTS P2 illegal-states-unrepresentable shape, the same
-// design choice node.dag took with EdgeLabel's `Positional` and
-// algebra.dag took with the Field type's omitted total
-// `reciprocal`).
+// Char / Str / Never carry no width payload, so "Bool with width=
+// Bits32" is unrepresentable (not "rejected by a check" —
+// unrepresentable, the INVARIANTS P2 illegal-states-unrepresentable
+// shape, the same design choice node.dag took with EdgeLabel's
+// `Positional` and algebra.dag took with the Field type's omitted
+// total `reciprocal`).
 //
 //   - IntScalar    — { kind: RustIntKind, width: RustIntWidth }
 //                    e.g. IntScalar { kind: Signed, width: Bits32 }
@@ -638,23 +691,37 @@ type RustScalarKind
 //                    32-bit representation is internal storage, not
 //                    a kind-level discriminator the Reference
 //                    exposes).
-//   - UnitScalar   — Rust's `()` (the single-inhabitant terminal
-//                    type; no width, no kind discriminator beyond
-//                    being the unit).
+//   - StrScalar    — Rust's `str` (UTF-8 unsized string slice;
+//                    Reference §3.5 textual-types. `str` only
+//                    appears behind a reference in legal Rust code
+//                    — the unsized-ness is a STRUCTURAL Rust fact
+//                    composed by surrounding the StrScalar with a
+//                    `RustReference`; there is no kind-level width
+//                    or sub-discriminator on str itself).
+//   - NeverScalar  — Rust's `!` (Reference §3.6 never-type; empty-
+//                    inhabitance type. No width, no kind sub-
+//                    discriminator; its empty-cardinality is the
+//                    grounding fact, deferred to std/cardinality
+//                    .dag's empty-cardinality carrier per "Owned
+//                    ELSEWHERE").
+//
+// `()` (the zero-tuple Unit type) is DELIBERATELY NOT a variant of
+// this Disj: per Reference §3.10 it is a TupleType, not a primitive
+// scalar. See SCOPE NEGATIVE Tuple types in the header.
 //
 // The structural argument for the Disj-with-payloads (vs ptx's
 // Conj-record `RegisterScalar { kind, width, state_space }`): in
 // PTX every typed register has a (kind, width, state_space), so
 // the three-coordinate Conj is the natural form. In Rust, the
-// five scalar kinds have DIFFERENT structural shapes — Int has
-// (kind, width), Float has (width), Bool/Char/Unit have nothing
-// beyond the kind. A Conj record `{ kind, width? }` would force
-// a width Option for Bool/Char/Unit, ratifying the illegal state
-// "Bool with width=Bits32" — exactly the M4 / Practice-2/6 / P2
-// pattern those disciplines structurally forbid. The Disj-with-
-// payloads is the dissolved form: each variant carries EXACTLY
-// the structural data its kind admits, and no illegal kind×width
-// combination is constructible.
+// six scalar kinds have DIFFERENT structural shapes — Int has
+// (kind, width), Float has (width), Bool/Char/Str/Never have
+// nothing beyond the kind. A Conj record `{ kind, width? }` would
+// force a width Option for Bool/Char/Str/Never, ratifying the
+// illegal state "Bool with width=Bits32" — exactly the M4 /
+// Practice-2/6 / P2 pattern those disciplines structurally forbid.
+// The Disj-with-payloads is the dissolved form: each variant
+// carries EXACTLY the structural data its kind admits, and no
+// illegal kind×width combination is constructible.
 //
 // SEAM (where D2 inhabitance plugs in). When the D2 form decision
 // lands (operator-pending, msg_640d429c), the per-variant
@@ -663,7 +730,9 @@ type RustScalarKind
 // Bits32 } is the carrier for Rust's i32 inhabitance into
 // OrderedRing (or its v4-equivalent per the D2-ratified form);
 // FloatScalar { width: Bits32 } is the carrier for f32 →
-// ApproximateField; etc. The seam itself is the typed variant; the
+// ApproximateField; StrScalar is the carrier for `str` →
+// FreeMonoid<Char>; NeverScalar is the carrier for `!` → empty-
+// cardinality. The seam itself is the typed variant; the
 // inhabitance value is the deferred row.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
@@ -677,40 +746,46 @@ type RustScalarKind
 //      uniform record `{ kind: RustScalarKind, width: Option<…> }`
 //      reintroduces the illegal state "Bool with width=Bits32"
 //      this Disj-with-payloads design exists to forbid. The
-//      five-variant Disj IS the dissolved form (P2 + Practice
+//      six-variant Disj IS the dissolved form (P2 + Practice
 //      2/6 + M4).
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
-//      algebra structure (IntScalar → OrderedRing / Semiring per
-//      RustIntKind; FloatScalar → ApproximateField; BoolScalar →
-//      BooleanAlgebra; CharScalar → no arithmetic algebra by
-//      design — Char's algebra is the surrogate-excluded subset
-//      of Int32 cardinality; UnitScalar → terminal cardinality 1).
-//      That grounding IS the inhabitance walk owned ELSEWHERE per
-//      P2; the Disj structure here is the closed surface, not a
-//      collapsing target.
+//      algebra or cardinality structure (IntScalar → OrderedRing
+//      / Semiring per RustIntKind; FloatScalar →
+//      ApproximateField; BoolScalar → BooleanAlgebra; CharScalar
+//      → Cardinality refinement on Int32 (the surrogate-excluded
+//      Unicode scalar value subset); StrScalar → FreeMonoid<Char>
+//      per std/text.dag's UTF-8 framing; NeverScalar → empty
+//      cardinality (the absurd-inhabitance type)). That grounding
+//      IS the inhabitance walk owned ELSEWHERE per P2; the Disj
+//      structure here is the closed surface, not a collapsing
+//      target.
 //   4. Dimensional — FAILS: a single Rust scalar value IS EXACTLY
 //      ONE variant of this Disj; mutually-exclusive alternatives.
 //      The shapes differ across variants (IntScalar carries two
 //      coordinates; FloatScalar one; the rest none) — they cannot
 //      be coordinates of a single record without the illegal-state
 //      smell.
-//   5. Parameterized family — FAILS: the five variants are NOT one
+//   5. Parameterized family — FAILS: the six variants are NOT one
 //      generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). The PTX RegisterScalar pattern
 //      (Conj-record over (kind, width, state_space)) was projection-
 //      uniform; Rust scalars are NOT projection-uniform — they
 //      have heterogeneous structural shapes (the kind partitions
-//      across structurally-distinct value spaces). The Disj-with-
-//      heterogeneous-payloads is the irreducible faithful form.
-// Terminal: the closed five-variant Rust scalar typed-value sum;
-// illegal kind×width combinations are unrepresentable by
-// construction.
+//      across structurally-distinct value spaces, with three
+//      distinct algebraic groundings + a cardinality refinement +
+//      an empty-cardinality). The Disj-with-heterogeneous-payloads
+//      is the irreducible faithful form.
+// Terminal: the closed six-variant Rust primitive-scalar typed-value
+// sum; illegal kind×width combinations are unrepresentable by
+// construction; `()` is TupleType (Reference §3.10), out-of-scope
+// for this slice.
 type RustScalar
   = IntScalar { kind: RustIntKind, width: RustIntWidth }
   | FloatScalar { width: RustFloatWidth }
   | BoolScalar
   | CharScalar
-  | UnitScalar
+  | StrScalar
+  | NeverScalar
 
 
 // ─────────────────────────────────────────────────────────────────────
