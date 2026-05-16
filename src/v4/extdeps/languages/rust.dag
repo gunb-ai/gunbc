@@ -1458,6 +1458,101 @@ data bool_to_rust_bool: IrToRust<Bool> = IrToRust {
 }
 
 
+// ═════════════════════════════════════════════════════════════════════
+// Layer-2 structural-assertion fns (the per-row "expectation" pattern
+// every language file mirrors during fan-out).
+//
+// v4 testing has THREE layers, with the gating dependencies named:
+//
+//   Layer 1 — 0-diag structural typing (live now, every PR).
+//     Every `data X: T = ...` instance is itself a type-check
+//     assertion v2-compiler verifies. The row
+//     `data bool_to_rust_bool: IrToRust<Bool> = IrToRust { rust_repr:
+//     rust_bool }` already proves: Bool resolves, IrToRust<Bool> is a
+//     well-typed instantiation, rust_bool is a real RustScalar value,
+//     and the Conj record matches the carrier's shape. Drift breaks
+//     the build. Not a "test" in the TestClaim sense, but real
+//     structural verification.
+//
+//   Layer 2 — Structural-assertion fns (the pattern below, AUTHORABLE
+//     NOW). A `fn assert_<row>_consistency() -> Bool` exhaustive-
+//     matches on the row's `rust_repr` field and asserts which
+//     RustScalar variant it MUST be. v2-compiler's exhaustiveness
+//     check ensures all variants are covered; the fn body encodes
+//     the expected variant. Today the fn compiles via 0-diag (the
+//     match arms type-check); the BEHAVIORAL fact (the fn returns
+//     `true` when the row is correct) becomes verifiable when an
+//     interpreter exists (T-22 eval) or when a TestClaim with
+//     `kind: Equals` asserts the return value (T-3 Wave-A2 +
+//     std/verification.dag, PR #3183 in flight).
+//
+//     The fn is a FORWARD-ANCHOR: it documents the expected variant
+//     as a structural property (a reader pattern-matching against
+//     each variant sees the canonical answer), and when TestClaim
+//     infrastructure lands, the fn body becomes the `expected`
+//     side of an `Equals` TestClaim. If a future PR changes
+//     `bool_to_rust_bool` to point at `rust_i32` instead of
+//     `rust_bool`, the fn still compiles (the match exhausts) but
+//     RETURNS `false` — flag-when-runnable.
+//
+//   Layer 3 — TestClaim data (gate: PR #3183 std/verification.dag).
+//     The real "tests" in the v4 self-hosting sense are TestClaim
+//     instances:
+//
+//       data t_bool_to_rust_bool_roundtrip: TestClaim = TestClaim {
+//         kind:     RoundTrips,
+//         label:    "IR Bool ↔ Rust bool roundtrips",
+//         input:    <Bool-typed Node>,
+//         expected: <... same Node after emit + parse roundtrip ...>
+//       }
+//
+//     RoundTrips claims need emit (T-10) + parse (T-7) — both also
+//     gated. The DECLARATIVE TestClaim data is the first layer that
+//     unlocks the moment #3183 merges; EXECUTABLE roundtrips need
+//     #3183 + T-7 + T-10.
+//
+// Per-language fan-out (python.dag / go.dag / cpp.dag / typescript.dag):
+//   Each language file mirrors this layer-2 shape. Their per-primitive
+//   Bool row will have an analogous `assert_bool_to_<lang>_bool_consistency`
+//   fn matching on their language's bool variant. The PATTERN is
+//   identical; only the carrier names change. Authoring this fn for
+//   Rust BEFORE fan-out establishes the template every fan-out worker
+//   copies, removing one decision-point from their slice.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// assert_bool_to_rust_bool_consistency — Layer-2 structural assertion
+// for the live Bool → rust_bool IrToRust row.
+//
+// Verifies via exhaustive match that `bool_to_rust_bool.rust_repr` IS
+// the `BoolScalar` variant, not any other RustScalar kind. If a future
+// edit changes the row to use a different per-primitive inhabitant
+// (e.g. `rust_i32`), the fn still compiles (the match exhausts) but
+// returns `false` — a structural change with a behavioral signal.
+//
+// Forward-anchor for the `Equals` TestClaim that will assert this fn
+// returns `true` once T-3 Wave-A2 (std/verification.dag, PR #3183)
+// merges:
+//
+//   // (post-#3183 merge — comment-only sketch:)
+//   // data t_bool_to_rust_bool_kind: TestClaim = TestClaim {
+//   //   kind:     Equals,
+//   //   label:    "bool_to_rust_bool maps to BoolScalar variant",
+//   //   input:    assert_bool_to_rust_bool_consistency(),
+//   //   expected: true
+//   // }
+fn assert_bool_to_rust_bool_consistency() -> Bool {
+  match bool_to_rust_bool.rust_repr {
+    BoolScalar                       => true
+    IntScalar { kind: _, width: _ }  => false
+    FloatScalar { width: _ }         => false
+    CharScalar                       => false
+    StrScalar                        => false
+    NeverScalar                      => false
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────────────
 // IrToRust row authoring — DEFERRED per row to the std/ carrier's
 // merged state.
