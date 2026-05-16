@@ -804,21 +804,26 @@ type SubcircuitStatement
 // per SPICE3F5 §3.4 — see `SubcircuitStatement` above for the closed
 // partition and the legality reasoning).
 //
-// PORTS EXCLUDE GROUND (PR #3168 codex review). The subcircuit port
-// list (the formal-parameter terminals declared after `.SUBCKT name`)
-// is `List<Symbol>` rather than `List<NodeRef>`: a port name is a
-// LOCAL-scope identifier that the call-site connects to its own
-// node-refs; the global ground convention (`NodeRef.Ground`) is NOT a
-// legal port. Using `Symbol` directly here makes a ground-port
-// STRUCTURALLY UNREPRESENTABLE — type-enforced, not check-enforced.
-// (Inside the subcircuit body, component terminals are still `NodeRef`
-// and CAN reference ground — `V(0)` is the simulator's universal
-// reference, accessible from any scope.) Non-emptiness of the port
-// list is a separate well-formedness invariant tracked as YELLOW
-// debt; the spec admits a syntactic `.SUBCKT name` with zero ports
-// (semantically dead-end), and a non-empty-list refinement type would
-// be substrate-tier rather than worker-tier — deferred until a
-// non-empty `List` carrier exists in std/.
+// PORTS EXCLUDE GROUND AND ARE NON-EMPTY (PR #3168 codex + openai-pro
+// reviews). The subcircuit port carrier (`ports: SubcircuitPorts` —
+// see the `SubcircuitPorts` declaration below) enforces TWO SPICE3
+// constraints structurally:
+//   (a) NO GROUND — the carrier holds `Symbol`s, not `NodeRef`s, so
+//       the global ground convention (`NodeRef.Ground`) is NOT a legal
+//       port. Port names are LOCAL-scope identifiers the call-site
+//       connects to its own node-refs; ground is the simulator's
+//       universal reference and cannot be a formal parameter.
+//   (b) NON-EMPTY — `SubcircuitPorts` is a head+tail record
+//       (`{ first: Symbol, rest: List<Symbol> }`) so a zero-port
+//       subcircuit is STRUCTURALLY UNREPRESENTABLE. SPICE3F5 §2.4
+//       requires `.SUBCKT` external nodes to be present; a zero-port
+//       `.SUBCKT name` is a syntactic dead-end the type system now
+//       rejects rather than admits as a well-formedness check.
+// Both constraints are type-enforced, not check-enforced — INVARIANTS
+// P2 / modeling-discipline.md Practice 2/6 (illegal states
+// unrepresentable). Inside the subcircuit BODY, component terminals
+// are still `NodeRef` and CAN reference ground — `V(0)` is the
+// simulator's universal reference, accessible from any scope.
 //
 // PRIOR "NO `directives` FIELD" RATIONALE (PR #3168 earlier codex
 // review). The prior shape carried `directives: List<Directive>` here
@@ -870,8 +875,38 @@ type SubcircuitStatement
 type SubcircuitDefinition {
   name: Symbol
   parent_scope: List<Symbol>
-  terminals: List<Symbol>
+  ports: SubcircuitPorts
   body: List<SubcircuitStatement>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SubcircuitPorts — the non-empty list of formal port names declared
+// after `.SUBCKT name` (PR #3168 openai-pro review). SPICE3F5 §2.4
+// requires a subcircuit to declare at least one external node; a
+// `.SUBCKT name` with zero ports is a syntactic dead-end (no way to
+// connect the subcircuit from a call site).
+//
+// Modeled as a head+tail record so non-emptiness is STRUCTURALLY
+// ENFORCED at the type layer rather than as a well-formedness check —
+// INVARIANTS P2 / modeling-discipline.md Practice 2/6 (illegal states
+// unrepresentable). A zero-port `SubcircuitPorts` value is
+// unconstructible because `first` is mandatory; the type system
+// rejects empty input.
+//
+// Why a record instead of a typed sum (`OnePort | MultiPort`): the
+// head+tail record is the canonical std/ non-empty-list shape and
+// adds no enumeration overhead per arity bucket; consumers iterate
+// the conceptual sequence as `cons(first, rest)`. A non-empty-list
+// REFINEMENT type in std/ would be the eventual substrate dissolution
+// (a generic `NonEmptyList<T>` carrier), but that is std/-substrate-
+// tier and not in T-4.10's scope; the inlined head+tail record is the
+// honest scaffold and uses only the kernel-ambient `List` carrier.
+// Ground is already excluded by the `Symbol` element type (per the
+// SubcircuitDefinition modeling note above).
+type SubcircuitPorts {
+  first: Symbol
+  rest: List<Symbol>
 }
 
 
