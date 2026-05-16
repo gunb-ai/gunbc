@@ -186,20 +186,33 @@ module v4.lens.testgen
 // Every testgen-emitted claim carries this cross-cut for coverage ratio
 // enforcement (lens/coverage.dag T-18 reads the same axes).
 //
-// Coproduct dissolution: both enums are 🟢 terminal closed classifiers;
-// this record is a Conj — no ledger.
+// TestgenTier — THESIS Tier1 / Tier2 / Tier3 (correctness dimension).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md enum
+// checkpoint): 🟢 GREEN — terminal three-way sum; exhaustive partition
+// of the tier axis for this lens; no Int coding, no parametric projection
+// from a larger set, no pending merge into a foreign std carrier. Ledger:
+// none (terminal).
 type TestgenTier
   = Tier1
   | Tier2
   | Tier3
 
 
+// TestgenLayer — TESTING.md Unit / Integration / Boundary test layer.
+//
+// Coproduct dissolution (Practice 4 / enum checkpoint): 🟢 GREEN —
+// terminal three-way sum; exhaustive partition of the layer axis; same
+// terminal discipline as `TestgenTier` above. Ledger: none (terminal).
 type TestgenLayer
   = Unit
   | Integration
   | Boundary
 
 
+// Coproduct dissolution: `TestClassification` is a Conj of the two terminal
+// sums above — no ledger (axes are independent coordinates, not variants
+// of one coproduct).
 type TestClassification {
   tier: TestgenTier
   layer: TestgenLayer
