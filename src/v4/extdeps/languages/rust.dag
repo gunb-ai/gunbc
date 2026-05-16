@@ -941,60 +941,69 @@ type NamedSegment {
 // variant would change the inductive shape and is a C1 ratification.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 SCAFFOLD (parallel positive-count encoding pending shared
+// substrate authority; codex BLOCKING 2026-05-16T06:26:18Z + operator
+// BLOCKING 2026-05-16T06:26:19Z naming the M9 / P5 violation:
+// 🟢-terminal classification is inappropriate while a shared
+// positive-count substrate is acknowledged as the genuine parent —
+// dsl/std/termination.dag treats the same Peano positive-count shape
+// as a scaffold pending shared numeric refinements; SuperHops
+// duplicates that state, so it is 🟡 — NOT 🟢-terminal — until the
+// shared substrate authority lands and SuperHops collapses into a
+// refinement over it). The 5-pattern ledger reads against the
+// SCAFFOLD classification: each pattern documents why the shape is
+// the LOCAL bridge (irreducible non-empty inductive form) while
+// also naming the shared-substrate parent it dissolves into.
+//
+// Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every super-chain consumer (emission
 //      of `super::super::...`; visibility-scope ancestor walk) reads
-//      the depth uniformly; shared classifier, not scattered.
+//      the depth uniformly; shared classifier, not scattered. The
+//      consumer surface is invariant under the future dissolution
+//      (replacing SuperHops with `{ hops: <shared positive-count> }`
+//      preserves the same consumer reads).
 //   2. Variant-is-data — FAILS: a `{ hops: Nat }` proxy with hops ≥ 1
 //      producer-obligation REINTRODUCES the duplicate-authority
 //      smell — `hops: Zero` would be a structurally-constructible
 //      no-super case (equivalent to `self` ≡ Private); the recursive-
 //      inductive form makes the at-least-one constraint type-
-//      enforced rather than producer-obligated. Same shape as
-//      std/nat.dag's `Nat = Zero | Succ` but with `OneSuper` as the
-//      base case (not zero), encoding "Nat ≥ 1" structurally.
-//   3. Algebraic form — N/A by construction: super-hop depth is a
-//      syntactic / namespace-walk fact, not an algebraic structure
-//      it grounds in (no Monoid / Semiring instance over super
-//      hops). No richer std/ source.
+//      enforced rather than producer-obligated. The future shared
+//      `PositiveNat` / `NonEmpty Nat` carrier would carry the same
+//      structural non-empty enforcement.
+//   3. Algebraic form — PARTIAL (not N/A as a 🟢-terminal would
+//      claim): super-hop depth IS a positive-count fact, which is
+//      the same shape dsl/std/termination.dag (v3 scaffold) and
+//      future std/cardinality.dag refinement substrate model with
+//      shared authority. SuperHops's local encoding is the bridge
+//      to that shared authority — not "no richer std/ source." Per
+//      M9, the genuine parent (positive-count substrate) exists in
+//      v3-scaffold form and is a dissolution target.
 //   4. Dimensional — FAILS: a super-chain has EXACTLY ONE shape per
 //      depth; OneSuper and MoreSuper are mutually-exclusive
 //      alternatives at each level.
-//   5. Parameterized family — FAILS: the two variants are the
-//      Peano-like inductive constructors (base + step); they are
-//      NOT one generic `F<X>` / projection over a separately-
-//      declared source set (Practice 7). This shape IS the
-//      irreducible inductive definition of "non-empty natural
-//      number" (analogous to std/nat.dag's Nat, but rooted at
-//      one rather than zero).
-// Terminal: the closed two-variant inductive non-empty super-chain
-// (a Peano-like Nat ≥ 1 specialized for the super-hop axis).
-//
-// 🟡 SCAFFOLD — local Peano-like positive-count encoding (codex
-// BLOCKING review 2026-05-16T06:26:18Z). The shape is parallel to
-// std/nat.dag's `Nat = Zero | Succ { prev: Nat }`, specialized as
-// "at-least-one" with `OneSuper` as the base case (instead of Zero).
-// A shared substrate authority for non-empty / positive-cardinality
-// counts does not yet exist (std/cardinality.dag's Multiplicity
-// carrier doesn't expose a `Positive Nat` refinement, and Nat itself
-// admits Zero which would re-introduce the zero-hop ≡ Private
-// duplicate-authority defect this carrier exists to prevent). The
-// three bridge properties (the precedent diagnostic.dag established
-// 2026-05-15 + ptx.dag's Dim3 / RustCost):
-//   (a) scaffold doc — THIS note; the carrier is provisional, not
-//       a canonical positive-count shape.
-//   (b) bounds on use — producers MUST construct only via the
-//       declared variants (OneSuper as base; MoreSuper for chain
-//       extension); the carrier already structurally enforces the
-//       non-empty invariant.
+//   5. Parameterized family — FAILS at this layer; the two variants
+//      are the Peano-like inductive constructors (base + step). The
+//      shape WOULD project from a richer `F<X>` (a refinement over a
+//      shared positive-count carrier) when that lands — that's the
+//      dissolution path, not a current projection.
+// 🟡 SCAFFOLD: the closed two-variant inductive non-empty super-
+// chain, encoding "Nat ≥ 1" as a LOCAL BRIDGE. Dissolves into a
+// refinement over a shared positive-count substrate carrier when
+// std/cardinality.dag (or its successor) exposes one. Three bridge
+// properties (codex BLOCKING fix above):
+//   (a) scaffold doc — THIS classification + the 🟡 note above the
+//       declaration.
+//   (b) bounds on use — producers construct only via the declared
+//       variants (OneSuper as base; MoreSuper for chain extension);
+//       the carrier already structurally enforces the non-empty
+//       invariant.
 //   (c) dissolution trigger — when std/cardinality.dag (or its
-//       successor refinement substrate) exposes a shared `PositiveNat`
-//       / `NonEmpty Nat` / equivalent positive-count carrier,
-//       `SuperHops` collapses into a refinement `{ hops: <shared
-//       positive-count carrier> }` (likely the same shape as Dim3 /
-//       RustCost will use for their bounded-non-negative-Int axes).
-//       The structural enforcement here is correct in shape; only
-//       the parallel-to-Nat encoding is provisional.
+//       successor refinement substrate) exposes a shared
+//       `PositiveNat` / `NonEmpty Nat` / equivalent positive-count
+//       carrier, SuperHops collapses into a refinement
+//       `{ hops: <shared positive-count carrier> }`; same shape
+//       Dim3 / RustCost will use for their bounded-non-negative-Int
+//       axes.
 type SuperHops
   = OneSuper
   | MoreSuper { outer: SuperHops }
