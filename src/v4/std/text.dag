@@ -66,8 +66,8 @@ import v4.std.nat { Nat }
 // CHAR RANGE IS A TRACKED SCAFFOLD. Unicode scalar values are exactly
 // U+0000..U+D7FF and U+E000..U+10FFFF: natural-number code points in
 // the Unicode codespace, excluding surrogate code points. The current
-// v2 syntax and this file's settled dependency set (`node`, `nat`,
-// `algebra`) cannot express that non-contiguous bounded subset as a
+// v2 syntax and this file's settled dependency set (`nat` + `algebra`)
+// cannot express that non-contiguous bounded subset as a
 // type-enforced value refinement. A single upper-bound interval would
 // admit surrogates, which would be a fabricated `Char`.
 //
@@ -84,10 +84,11 @@ import v4.std.nat { Nat }
 //       dependency path, replace this alias with the refined carrier:
 //       U+0000..U+D7FF ∪ U+E000..U+10FFFF.
 //
-// No coproduct is introduced in this file. `String` aliases a coproduct
-// owned by std/algebra.dag (`FreeMonoid<T>`), whose Practice-4 ledger
-// lives there; `Char` is an alias over `Nat`, whose ledger lives in
-// std/nat.dag. This file therefore has no new Practice-4 ledger.
+// No coproduct is introduced in this file. `String` aliases the
+// `FreeMonoid<T>` construction owned by std/algebra.dag, whose own
+// Practice-4 ledger lives there; `Char` is an alias over `Nat`, whose
+// ledger lives in std/nat.dag. This file therefore has no new
+// Practice-4 ledger.
 
 
 // ─────────────────────────────────────────────────────────────────────
