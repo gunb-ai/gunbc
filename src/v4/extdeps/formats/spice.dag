@@ -393,11 +393,12 @@ type SpiceValue {
 // ─────────────────────────────────────────────────────────────────────
 // Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=2`).
 // Used by contexts that admit ONLY the name=value form (no bare
-// flags): `.MODEL` parameter sets, `.OPTIONS` directives (Quarles 1993
-// §11.3, §15), and the HSPICE-extension X-element `parameters` slot.
-// Instance-modifier slots on component variants that ALSO admit bare-
-// flag modifiers (`Mosfet`, `Bjt`) use the dedicated `Modifier`
-// typed-sum carrier instead — see the `Modifier` declaration below
+// flags): `.MODEL` parameter sets (Quarles 1993 §11.3) and the
+// HSPICE-extension X-element `parameters` slot. Contexts that admit
+// BOTH bare flags and name=value (`Mosfet` / `Bjt` instance
+// modifiers, `.OPTIONS` directive — per PR #3168 openai-pro review
+// + ngspice §Simulator variables) use the dedicated `Modifier`
+// typed-sum carrier instead; see the `Modifier` declaration below
 // for that flag-vs-key-value distinction. The remaining variants
 // without any modifier slot (`Resistor`, `Capacitor`, `Inductor`,
 // `Diode`, `VoltageSource`, `CurrentSource`) are part of the same
