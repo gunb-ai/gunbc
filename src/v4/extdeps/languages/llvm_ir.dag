@@ -681,6 +681,42 @@ type CallArgument {
 }
 
 
+// CallResult — a `call`/`invoke` either returns void (no def-site name,
+// no result type) OR produces a value (a `result: Symbol` def-site name
+// + result type). LangRef: `call void @f(...)` has NO `%x =`;
+// `%r = call <ty> @f(...)` does. The earlier `Call { result: Symbol,
+// result_type, … }` forced a result name onto EVERY call, making the
+// LangRef-illegal "void call with a result name" representable (the
+// codex finding; P2/extdeps-fidelity). Modeled as a typed two-case —
+// the SAME alternative-forms-as-distinct-shapes discipline as
+// `RetVoid`-vs-`RetValue` / `FunctionBody.Declared`-vs-`Defined`
+// (never a sentinel/empty name by convention). Shared by `Call`
+// (instruction) and `Invoke` (terminator) — both can be void or
+// value-producing per LangRef (this also fills the prior gap where a
+// value-producing `invoke`'s result was unmodeled).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: read uniformly by every call/invoke
+//      consumer (emit, the SSA def-site resolver, cost); a shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the reduction is a nullable/sentinel
+//      result name ("" meaning void) — exactly the in-band-absence
+//      anti-pattern INVARIANTS P2 + diagnostic.dag `Correction` forbid;
+//      the typed two-case is faithful.
+//   3. Algebraic form — N/A: a LangRef call-shape distinction, not an
+//      algebra carrier; no richer std/ source.
+//   4. Dimensional — FAILS: a call is void XOR value-producing, never
+//      both — alternatives, not coordinates.
+//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
+//      vs name+type-carrying), not `F<X>` over a declared set.
+// Terminal: the void-vs-value call-result partition; the typed sum makes
+// "void call with a result name" structurally unrepresentable (P2).
+type CallResult
+  = VoidCall
+  | ValueCall { name: Symbol, result_type: LlvmType }
+
+
 // LandingPadCleanup — a `landingpad` either has the `cleanup` flag or it
 // does not (LangRef "landingpad Instruction"). A genuine closed 2-valued
 // LangRef distinction; a named sum, not a Bool (M4 — closed named
@@ -1025,10 +1061,9 @@ type LlvmInstruction
       if_false: LlvmValue
     }
   | Call {
-      result: Symbol
-      result_type: LlvmType
       callee: LlvmValue
       arguments: List<CallArgument>
+      result: CallResult
     }
   | Freeze {
       result: Symbol
@@ -1249,6 +1284,7 @@ type Terminator
   | Invoke {
       callee: LlvmValue
       arguments: List<CallArgument>
+      result: CallResult
       normal_target: Symbol
       unwind_target: Symbol
     }
@@ -1533,7 +1569,7 @@ fn block_successors(t: Terminator) -> List<Symbol> {
       concat([d], map(cs, fn(c) { c.target }))
     IndirectBr { address: _, possible_targets: ts } => ts
     Unreachable => []
-    Invoke { callee: _, arguments: _, normal_target: n, unwind_target: u } => [n, u]
+    Invoke { callee: _, arguments: _, result: _, normal_target: n, unwind_target: u } => [n, u]
     CallBr { callee: _, arguments: _, fallthrough: f, indirect_targets: it } =>
       concat([f], it)
     Resume { value: _ } => []
@@ -1770,7 +1806,7 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
     InsertElement { result: _, vector: _, element: _, index: _ } => 1
     ShuffleVector { result: _, first: _, second: _, mask: _ } => 1
     Select { result: _, condition: _, if_true: _, if_false: _ } => 1
-    Call { result: _, result_type: _, callee: _, arguments: _ } => 5
+    Call { callee: _, arguments: _, result: _ } => 5
     Freeze { result: _, value: _ } => 0
     FNeg { result: _, result_type: _, operand: _ } => 1
     VaArg { result: _, result_type: _, va_list: _, arg_type: _ } => 2
