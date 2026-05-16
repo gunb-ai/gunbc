@@ -123,6 +123,36 @@
 //   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
 //   | LensApplicability { subject: LensApplicabilitySubject }
 //   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted on the **forward** `TestgenConcept` sum above
+// (materializes with the same declaration when M2 loads v4 std in one
+// graph — this ledger is binding at that moment, not deferred):
+//   1. Fact placement — FAILS: lens/testgen.dag (producer) and
+//      lens/coverage.dag (T-18 completeness) both dispatch on the
+//      category axis; it is the shared testgen-discriminant for the five
+//      substrate folds, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the five arms carry STRUCTURALLY DISTINCT
+//      payloads (`TypeConstructionSubject` vs `AlgebraLawSubject` vs …);
+//      collapsing to `{ kind: Int, blob: … }` reintroduces illegal states
+//      and an open `kind` axis — violates P2 + closed-set discipline.
+//      The five-variant sum IS the faithful discriminant.
+//   3. Algebraic form — N/A: a testgen **category** is not an algebra
+//      carrier; categories do not trace to a single richer std/algebra.dag
+//      construction to dissolve into (algebra-law testgen *reads*
+//      algebra, it is not itself an algebra instance).
+//   4. Dimensional — FAILS: one generation unit selects EXACTLY ONE of the
+//      five categories — mutually exclusive alternatives (never
+//      simultaneous coordinates in a product of independent axes).
+//   5. Parameterized family — FAILS: the five are not one mechanical
+//      `F<X>` / projection over a separately-declared enumerable set X
+//      (Practice 7). Payload shapes are heterogeneous per arm; there is
+//      no single source set the five enumerate-and-project from.
+// Terminal: the irreducible closed partition of T-19 testgen category
+// inputs (TASKS.md T-19); a 6th category is a substrate-extension STOP
+// (operator ratification), not a silent open enum.
+//
 // fn type_construction(subject: TypeConstructionSubject) -> Set<TestClaim>
 // fn algebra_law(subject: AlgebraLawSubject) -> Set<TestClaim>
 // fn diagnostic_exhaustiveness(subject: DiagnosticExhaustivenessSubject) -> Set<TestClaim>
