@@ -421,13 +421,23 @@ type LlvmConstant
 // edge to its def-site, never a stored name (the textual `%x` spelling
 // is a `DeclaredNormalized` boundary concern — modeling notes / B2-OMNI
 // finding).
-//   - InstructionValue { instruction } — the value PRODUCED by an
+//   - InstructionValue { instruction } — the value PRODUCED by a non-phi
 //     instruction: a direct edge to the producing Node. SSA single-
 //     assignment is structural — the instruction Node is the unique
 //     authority for its value (INVARIANTS P2); a value used twice is two
 //     edges to ONE node (node.dag content-hash canonicalizes the share).
 //     No `result: Symbol` is minted anywhere (K-1: Symbols are not
 //     hand-mintable; the name is not load-bearing — see the finding).
+//   - PhiValue { phi } — the value PRODUCED by a φ. A phi result is a
+//     first-class SSA operand (it is referenced pervasively — that IS
+//     phi's purpose); the value-graph edge points at the `PhiNode`
+//     itself (same def-site-is-the-value discipline as InstructionValue).
+//     This does NOT weaken the block-start guarantee: a `PhiNode` is
+//     still ONLY constructible inside `BasicBlock.phis` (phi-after-non-
+//     phi stays unrepresentable, P2); `PhiValue` is purely a *reference*
+//     edge to it, restoring the SSA value-authority a φ defines. (Fix
+//     for the codex BLOCKING: hoisting phi to the block region must not
+//     drop its def-site value-reference — both invariants now hold.)
 //   - ArgumentValue { name } — a function parameter, by its binder
 //     `Symbol` (threaded from the function signature; a binder identity,
 //     not a minted fresh name).
@@ -441,20 +451,26 @@ type LlvmConstant
 //   1. Fact placement — FAILS: every instruction operand is resolved
 //      uniformly; the value kind is a shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: the variants carry disjoint payloads (an
-//      `LlvmInstruction`; a binder `Symbol`; an `LlvmConstant`); a flat
-//      `{ kind, instruction?, name?, constant? }` makes "an
-//      InstructionValue carrying a constant" representable — inverse P2.
+//      `LlvmInstruction`; a `PhiNode`; a binder `Symbol`; an
+//      `LlvmConstant`); a flat `{ kind, instruction?, phi?, name?,
+//      constant? }` makes "an InstructionValue carrying a constant"
+//      representable — the inverse of P2.
 //   3. Algebraic form — N/A: operand-kind is the LangRef value-use
 //      taxonomy; no richer std/ source — it is the boundary itself.
 //   4. Dimensional — FAILS: an operand is EXACTLY ONE kind; alternatives,
 //      not coordinates.
 //   5. Parameterized family — FAILS: heterogeneous payloads (a producing
-//      instruction node vs a binder Symbol vs a constant); not one
-//      `F<X>` over a declared set.
+//      instruction node / a phi node / a binder Symbol / a constant) —
+//      `InstructionValue` and `PhiValue` are NOT one `F<X>` (their
+//      payloads are the two structurally-distinct def-site shapes — a
+//      non-phi instruction vs a block-start φ — not a projection over a
+//      declared set); not one `F<X>` over a declared set.
 // Terminal: the irreducible SSA operand kinds; single-assignment is the
-// structural def-site authority (INVARIANTS P2), not a stored name/flag.
+// structural def-site authority (INVARIANTS P2), not a stored name/flag —
+// and every def-site (non-phi instruction AND φ) is now referenceable.
 type LlvmValue
   = InstructionValue { instruction: LlvmInstruction }
+  | PhiValue { phi: PhiNode }
   | ArgumentValue { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
   | GlobalValue { name: Symbol }
