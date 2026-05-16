@@ -2166,8 +2166,8 @@ type InitialBlock {
 // classifier; the expression sub-grammar is deferred to T-4
 // LanguageModel.
 type PortConnectionActual
-  = ExpressionConnection { expression_lexeme: String }
-  | BlankConnection
+  = ExpressionConnection { attributes: AttributeInstanceClause, expression_lexeme: String }
+  | BlankConnection { attributes: AttributeInstanceClause }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2188,6 +2188,7 @@ type PortConnectionActual
 //               PR #3176 to admit the full spec-mandated set of
 //               expression actuals + blank.
 type NamedPortConnection {
+  attributes: AttributeInstanceClause
   port: Symbol
   actual: PortConnectionActual
 }
@@ -2854,19 +2855,46 @@ type PrimitiveGateKind
 // ─────────────────────────────────────────────────────────────────────
 // GateInstantiation — a Verilog built-in primitive instantiation
 // (`and g1(out, a, b);` / `not n1(o, i);` / `bufif1 b1(out, in, en);`,
-// etc.). IEEE 1364-2005 §7. Conj record (no Practice-4 ledger).
+// etc.). IEEE 1364-2005 §7 / §A.5.4. Conj record (no Practice-4 ledger).
 //
 //   - gate_kind        which built-in primitive gate (PrimitiveGateKind
 //                      closed Disj; replaces the prior free-String
 //                      gate_keyword that admitted spec-illegal
 //                      keywords — M4 / INVARIANTS P2 fix per codex
-//                      BLOCKING on PR #3176)
-//   - body_lexeme      instance name + terminal list + drive-strength
-//                      + delay control as a verbatim lexeme (sub-
-//                      grammar deferred — the per-primitive terminal
-//                      arity / drive strength / delay control
-//                      admissibility lives in the bundled T-4
-//                      LanguageModel productions)
+//                      BLOCKING on PR #3176).
+//   - body_lexeme      THE ENTIRE statement body after the gate-
+//                      keyword (per-gate-class drive_strength /
+//                      delay clauses + non-empty list of
+//                      gate_instance entries, where each
+//                      gate_instance carries an optional
+//                      name_of_gate_instance (`identifier [range]`)
+//                      plus its per-instance terminal list) as a
+//                      verbatim lexeme. Sub-grammar deferred to the
+//                      bundled T-4 LanguageModel — the per-gate-
+//                      class admissibility table (cmos_switch_type
+//                      forbids drive_strength but allows delay3;
+//                      enable_gatetype allows both; pass_switchtype
+//                      forbids both; n_input_gatetype admits delay2
+//                      not delay3; etc., per §A.5.4) is exactly the
+//                      class-specific grammar productions that owner
+//                      models. The per-instance name_of_gate_
+//                      instance + range structural extraction
+//                      (codex non-blocking flag re: "name_of_instance
+//                      carrier reuse at gate boundaries") rides this
+//                      SAME sub-grammar deferral — the per-gate-
+//                      class shape matrix forbids a uniform
+//                      structural carrier at the GateInstantiation
+//                      level (it would re-introduce admit-then-check
+//                      on the gate-kind × clause admissibility
+//                      product), so the per-instance facts live
+//                      inside body_lexeme until the LanguageModel
+//                      productions structurally encode each
+//                      gate-class's instance shape. Same body_lexeme
+//                      precedent as UdpDefinition.body_lexeme +
+//                      AlwaysBlock.body_lexeme — sub-grammar
+//                      defer-via-lexeme is the established pattern
+//                      for spec sub-productions owned by the
+//                      bundled LanguageModel.
 type GateInstantiation {
   gate_kind: PrimitiveGateKind
   body_lexeme: String
