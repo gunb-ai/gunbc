@@ -577,6 +577,29 @@ import v4.std.node { Symbol }
 //      not all `F<bit-count: Int>`.
 // Terminal: the closed five-way Go signed-integer-width classifier
 // for the pinned Go Specification.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48: "yellow please" — any width-enum across the lane flips
+// 🟡 per Practice-7-projection-over-Nat richer-source):
+//   Richer source: bit-counts project from Nat — SignedBits8/16/32/64
+//     are F<bit-count: Nat> over the spec's stabilized signed widths;
+//     SignedPlatformInt is a `PlatformDependent` discriminant cell on
+//     the same axis. A future std/integer.dag width carrier would name
+//     this Nat-projection authoritatively.
+//   Trigger: first consumer of width MEANING (cost-realization sizes /
+//     std/integer.dag bounded-Int inhabitance / D2a(3) silent-wrap
+//     resolver — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (bit-count |
+//     platform-dependent) decomposition AT that consumer (a lens
+//     read), NOT a local match-over-width lookup in this carrier; the
+//     Go spec keyword (`int8` / `int`) stays the parse/emit-side
+//     authority. Per the cited operator ruling, do NOT fold this 🟡
+//     into a fresh push; track for the next review-tail commit on any
+//     touching PR.
 type SignedIntWidth
   = SignedBits8
   | SignedBits16
@@ -659,6 +682,29 @@ type SignedIntWidth
 //      each other per spec) — they are not all `F<bit-count: Int>`.
 // Terminal: the closed six-way Go unsigned-integer-width classifier
 // for the pinned Go Specification.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48):
+//   Richer source: bit-counts project from Nat — UnsignedBits8/16/32/
+//     64 are F<bit-count: Nat>; UnsignedPlatformInt and Unsigned-
+//     PointerSized are two distinct `PlatformDependent` discriminant
+//     cells on the same axis (the asymmetry vs Signed is captured by
+//     a second platform-dependent cell, not a different axis). A
+//     future std/integer.dag width carrier would name this Nat-
+//     projection authoritatively.
+//   Trigger: first consumer of width MEANING (cost-realization sizes /
+//     std/integer.dag bounded-UInt inhabitance — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (bit-count |
+//     platform-dependent-cell) decomposition AT that consumer (a lens
+//     read), NOT a local match-over-width lookup in this carrier; the
+//     Go spec keyword (`uint16` / `uintptr`) stays the parse/emit-side
+//     authority. Per the cited operator ruling, do NOT fold this 🟡
+//     into a fresh push; track for the next review-tail commit on any
+//     touching PR.
 type UnsignedIntWidth
   = UnsignedBits8
   | UnsignedBits16
@@ -713,6 +759,27 @@ type UnsignedIntWidth
 //      Go stabilizes" is the partition discriminant, not a
 //      parameterization of a richer source set.
 // Terminal: the closed two-way Go stable-float-width classifier.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48):
+//   Richer source: bit-counts project from Nat (and from the IEEE-754
+//     binaryN universe `{16, 32, 64, 128, …}`) — Bits32 / Bits64 are
+//     F<bit-count: Nat> selecting the Go-stabilized subset. A future
+//     std/float.dag width carrier (the ApproximateField partition
+//     across IEEE-754 binaryN) would name this projection
+//     authoritatively.
+//   Trigger: first consumer of float-width MEANING (cost-realization
+//     sizes / std/float.dag ApproximateField instance — D2 pathway).
+//   Obligation: the first meaning-consumer owes the bit-count
+//     decomposition AT that consumer (a lens read), NOT a local
+//     match-over-width lookup; the Go spec keyword (`float32` /
+//     `float64`) stays the parse/emit-side authority. Per the cited
+//     operator ruling, do NOT fold this 🟡 into a fresh push; track
+//     for the next review-tail commit on any touching PR.
 type GoFloatWidth
   = Bits32
   | Bits64
@@ -779,6 +846,30 @@ type GoFloatWidth
 //      projection is observed in commentary, not encoded as a
 //      Practice 7 collapse.
 // Terminal: the closed two-way Go stable-complex-width classifier.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this width classifier was correctly GREEN (pattern 5 already
+// noted the PARTIAL projection from GoFloatWidth). Under the post-
+// #3200 consumer-INDEPENDENT rule this is 🟡 YELLOW per the standing
+// width-enum-family precedent (operator ruling 2026-05-16 per T-4 mgr
+// msg_5c6cbb48):
+//   Richer source: bit-counts project from Nat AND from GoFloatWidth
+//     (Bits64 = complex-of-Bits32, Bits128 = complex-of-Bits64) —
+//     `F<X> = complex-of-float-width-X` is the namable projection
+//     pattern-5 already identified as INCIDENTAL but real. A future
+//     std/complex.dag (the ApproximateField-of-Conj-of-two-same-width-
+//     floats partition) would name this Nat/GoFloatWidth projection
+//     authoritatively.
+//   Trigger: first consumer of complex-width MEANING (cost-realization
+//     sizes — decomposed into per-component float ops; std/complex
+//     ApproximateField instance — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (component-float-
+//     width) decomposition AT that consumer (a lens read), NOT a local
+//     match-over-width lookup; the Go spec keyword (`complex64` /
+//     `complex128`) stays the parse/emit-side authority. Per the cited
+//     operator ruling, do NOT fold this 🟡 into a fresh push; track
+//     for the next review-tail commit on any touching PR.
 type GoComplexWidth
   = Bits64
   | Bits128

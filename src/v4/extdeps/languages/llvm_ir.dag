@@ -565,6 +565,24 @@ type BinaryOpcode
 //      `Conversion` shape projects over (Practice 7); the dissolution
 //      target itself.
 // Terminal: the closed LangRef conversion-opcode set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this projection set was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW because a namable richer
+// source EXISTS:
+//   Richer source: a two-axis lattice {source-domain, target-domain} ×
+//     {sign-extend, zero-extend, truncate, reinterpret, fp-narrow,
+//     fp-widen, fp↔int-saturating, address-space-cast} over std/integer
+//     .dag, std/float.dag, std/ptr.dag domains. The 13 LangRef cast
+//     opcodes are the discriminant-projection of (src-domain,
+//     dst-domain, kind) onto LangRef's enumerated names.
+//   Trigger: first consumer of conversion MEANING (cost model /
+//     numeric-precision lens / inhabitance dispatch — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (src-domain,
+//     dst-domain, kind) decomposition AT that consumer (a lens read),
+//     NOT a local match-over-opcode lookup; the LangRef surface name
+//     stays the parse/emit-side authority.
 type ConversionOpcode
   = OpTrunc | OpZExt | OpSExt
   | OpFPTrunc | OpFPExt
@@ -592,6 +610,25 @@ type ConversionOpcode
 //      separately-declared set (signed/unsigned/equality are not a
 //      single uniform projection — see pattern 2).
 // Terminal: the closed LangRef integer-comparison predicate set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this projection set was correctly GREEN (pattern 3 already noted
+// the std/algebra.dag `Ordering` grounding as "Owned ELSEWHERE"). Under
+// the post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW because
+// a namable richer source EXISTS:
+//   Richer source: {signedness ∈ Signedness, op ∈ Eq | Order-cell-set}
+//     over std/algebra.dag's `Ordering` trichotomy. icmp eq/ne project
+//     from the `Eq` view; icmp ult/ule/ugt/uge from the unsigned-Order
+//     view; icmp slt/sle/sgt/sge from the signed-Order view. The 10
+//     LangRef predicate names are the discriminant-projection.
+//   Trigger: first consumer of comparison MEANING (cost model /
+//     simplification / inhabitance dispatch — D2 pathway, std/integer
+//     .dag Ord instances on signed/unsigned iN).
+//   Obligation: the first meaning-consumer owes the (signedness,
+//     ordering-cells) decomposition AT that consumer (a lens read over
+//     `Ordering`), NOT a local match-over-predicate lookup; the LangRef
+//     surface name stays the parse/emit-side authority.
 type IntPredicate
   = IcmpEq | IcmpNe
   | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
@@ -617,6 +654,26 @@ type IntPredicate
 //   5. Parameterized family — FAILS: ordered/unordered/true/false do not
 //      form one uniform `F<X>` projection over a declared set.
 // Terminal: the closed LangRef float-comparison predicate set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this projection set was correctly GREEN (pattern 3 already noted
+// the IEEE-754 / std/float.dag ApproximateField grounding). Under the
+// post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW because a
+// namable richer source EXISTS:
+//   Richer source: {nan-policy ∈ Ordered | Unordered, op ∈ Eq | Order-
+//     cell-set | True | False} over std/float.dag's `ApproximateField`
+//     IEEE-754 comparison semantics. The 16 LangRef fcmp predicate
+//     names (fcmp false/true + the 7 ordered + 7 unordered cells) are
+//     the discriminant-projection of (nan-policy, ordering-cells).
+//   Trigger: first consumer of fp-comparison MEANING (cost model /
+//     simplification / NaN-aware lens — D2 pathway, std/float.dag
+//     ApproximateField instance).
+//   Obligation: the first meaning-consumer owes the (nan-policy,
+//     ordering-cells) decomposition AT that consumer (a lens read over
+//     `ApproximateField`'s comparison), NOT a local match-over-
+//     predicate lookup; the LangRef surface name stays the parse/emit-
+//     side authority.
 type FloatPredicate
   = FcmpFalse
   | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
@@ -829,6 +886,27 @@ type LandingClause
 //      uniform declared set (the memory model is a partial order, not a
 //      linear projection).
 // Terminal: the closed LangRef/C++-memory-model ordering set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this was correctly GREEN (pattern 3 already noted the strength
+// PARTIAL ORDER traces to lattice theory; the derived lens lives
+// elsewhere). Under the post-#3200 consumer-INDEPENDENT rule this is
+// 🟡 YELLOW because a namable richer source EXISTS:
+//   Richer source: the C++11/C11 memory-model partial-order lattice
+//     (Unordered ⊑ Monotonic ⊑ {Acquire, Release} ⊑ AcqRel ⊑ SeqCst —
+//     the canonical happens-before structure). The six LangRef names
+//     are the discriminant-projection of this lattice's elements; the
+//     strength relation IS the lattice's partial order, not a separate
+//     derivation. A future std/concurrency.dag would carry the lattice
+//     authority; this enum becomes its surface labels.
+//   Trigger: first consumer of ordering MEANING (effect lens / a
+//     happens-before reasoning consumer / cost model — D2-adjacent
+//     concurrency pathway).
+//   Obligation: the first meaning-consumer owes the lattice-element
+//     decomposition AT that consumer (a lens read over the partial
+//     order), NOT a local match-over-ordering lookup; the LangRef
+//     surface name stays the parse/emit-side authority.
 type AtomicOrdering
   = OrderingUnordered
   | OrderingMonotonic
@@ -917,6 +995,26 @@ type AtomicRmwOrdering
 // as the spec-faithfulness fix; earlier cuts omitted them). A future
 // LangRef revision adding a sub-op is an edit to THIS declaration (the
 // M3 spec-anchor analog of node.dag's C1 stop-signal).
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this projection set was correctly GREEN (pattern 3 already noted
+// xchg/add/and/or/xor/max/min trace to the `iN` ring/lattice instances,
+// "grounded THERE"). Under the post-#3200 consumer-INDEPENDENT rule
+// this is 🟡 YELLOW because a namable richer source EXISTS:
+//   Richer source: std/algebra.dag carriers — Semigroup/Monoid (xchg
+//     as the last-write identity-on-second-arg), Semiring (add/sub),
+//     BooleanRing/lattice (and/or/xor/nand), JoinSemilattice and
+//     MeetSemilattice (max/min, signed and unsigned variants),
+//     ApproximateField (fadd/fsub/fmax/fmin via std/float.dag), and
+//     wrap-counter (uinc_wrap/udec_wrap). Each LangRef sub-op names
+//     ONE algebra operation on the operand-type's std/ inhabitance.
+//   Trigger: first consumer of atomicrmw MEANING (effect lens / cost
+//     model / inhabitance dispatch — D2 pathway).
+//   Obligation: the first meaning-consumer owes the (algebra-carrier,
+//     algebra-op) mapping AT that consumer (a lens read), NOT a local
+//     match-over-sub-op lookup; the LangRef surface name stays the
+//     parse/emit-side authority.
 type AtomicRmwOp
   = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
   | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
@@ -1411,6 +1509,26 @@ type BasicBlock {
 //   5. Parameterized family — FAILS: the linkages are heterogeneous
 //      keyword spellings, not `F<X>` over a declared set.
 // Terminal: the closed LangRef linkage set.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT GREEN
+// rule this was correctly GREEN. Under the post-#3200 consumer-
+// INDEPENDENT rule this is 🟡 YELLOW because a namable richer source
+// EXISTS:
+//   Richer source: a multi-axis classifier {visibility ∈ Private |
+//     Internal | External | AvailableExternally, mergeability ∈ Unique
+//     | LinkOnce | Weak | Common | Appending, odr-strictness ∈ NonOdr |
+//     Odr, weakness ∈ Strong | Weak} over a future std/symbol.dag /
+//     linkage authority (the same partition C++/ELF/COFF rest on). The
+//     11 LangRef linkage names are the discriminant-projection of
+//     valid (visibility, mergeability, odr, weakness) cells.
+//   Trigger: first consumer of linkage MEANING (symbol-resolution lens
+//     / cross-TU dedup model / a future std/symbol.dag visibility
+//     reasoner — link-time pathway).
+//   Obligation: the first meaning-consumer owes the multi-axis
+//     decomposition AT that consumer (a lens read), NOT a local
+//     match-over-linkage lookup; the LangRef keyword stays the
+//     parse/emit-side authority.
 type Linkage
   = LinkagePrivate
   | LinkageInternal
