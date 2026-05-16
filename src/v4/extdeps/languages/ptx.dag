@@ -48,9 +48,13 @@
 //     enforced by RegisterScalar's Disj-with-payloads below, not
 //     deferred to a check), RegisterScalarKind
 //     (Bits/Unsigned/Signed/Float/Predicate)
-//   - PTX value shapes as Conj records: RegisterScalar, Dim3 (🟡 scaffold
-//     — same bridge as std/diagnostic.dag's ByteRange),
-//     ThreadHierarchyShape, ThreadCoord
+//   - PTX value shapes: RegisterScalar (Disj-with-heterogeneous-
+//     payloads, kind × admissible-width × admissible-residence
+//     STRUCTURALLY enforced — see RegisterScalar declaration);
+//     Dim3 / ThreadCoord (Conj records — Dim3 carries the 🟡 scaffold
+//     bridge to std/cardinality.dag, same as std/diagnostic.dag's
+//     ByteRange); ThreadHierarchyShape (Disj over launch shapes:
+//     FlatLaunch | ClusterLaunch)
 //   - PTX cost-realization carrier shape: PtxCost (per-instruction +
 //     occupancy components — the per-target cost projection U1 reads)
 //   - the IN-B mapping (modeling notes): SIMT → 5 behaviors, no 6th
@@ -165,19 +169,29 @@ module v4.extdeps.languages.ptx
 //     concurrent threads" is a property of the surrounding parallel
 //     Loop reading the Bind, not of the Bind itself.
 //
-//   - STATE SPACE ↦ effect-typed parameter (structural Conj field).
-//     A PTX value's `.reg` / `.shared` / `.global` / etc. tag is the
-//     `state_space: StateSpace` field on its `RegisterScalar` Conj
-//     record (`StateSpace` is the closed classifier declared below;
-//     `RegisterScalar` is the Conj record that attaches it to the
-//     typed value). Memory ops (`ld.global`, `st.shared`) are
-//     Transforms whose input/output StateSpace tags constrain valid
-//     composition. This IS the THESIS:401 IN-B claim made concrete:
-//     effects are "intrinsic to the type signature, NOT an
-//     annotation layer." Tempting alternative: a `StateSpaceTransfer`
-//     behavior wrapping every ld/st. REJECTED — it would parallel-
-//     represent what the Transform's signature already says; the
-//     effect-typed parameter is the unannotated primitive.
+//   - STATE SPACE ↦ effect-typed parameter (structural variant
+//     payload). A PTX value's `.reg` / `.shared::cta` /
+//     `.shared::cluster` / `.global` / `.const` / `.local` /
+//     `.param::entry` / `.param::func` residence is a structural
+//     payload on `RegisterScalar`'s typed variants — specifically
+//     the `state_space: RegisterStateSpace` field on
+//     BitsScalar / UnsignedScalar / SignedScalar / FloatScalar
+//     (RegisterStateSpace is the 7-variant typed-scalar-resident
+//     sub-classifier of StateSpace, excluding `.tex` since the
+//     `.tex` state space holds opaque texture/sampler descriptors
+//     per PTX 8.5 §5.1.10, not typed scalars). PredicateScalar is
+//     a BARE variant with NO state_space field — per PTX 8.5
+//     §5.1.1 predicates are virtual predicate registers (`.reg
+//     .pred`) with no memory load/store path; residence is
+//     implicit `.reg`. Memory ops (`ld.global`, `st.shared::cta`)
+//     are Transforms whose input/output state-space tags constrain
+//     valid composition. This IS the THESIS:401 IN-B claim made
+//     concrete: effects are "intrinsic to the type signature, NOT
+//     an annotation layer." Tempting alternative: a
+//     `StateSpaceTransfer` behavior wrapping every ld/st. REJECTED
+//     — it would parallel-represent what the Transform's
+//     signature already says; the effect-typed parameter is the
+//     unannotated primitive.
 //
 //   - @p PREDICATE ↦ Branch.
 //     PTX predicated execution (`@p mov.b32 r1, r2;`) is a guarded
