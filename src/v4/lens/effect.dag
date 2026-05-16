@@ -11,6 +11,48 @@
 // has created a second authority = STOP (same single-authority class as
 // the AssertKind/testgen reconciliation). One authority: the signature.
 //
+// B-5 (side-session 2026-05-15) — effect GRANULARITY is the
+// affected_set R1 usefulness contract (= #3153 Ex.R1, now encoded):
+//   - Effect is a per-`Arrow`-Node fact, derived from THAT node's
+//     signature shape (the B3 authority). It MUST NOT be aggregated to
+//     a coarser unit (one ambient `IO`, a per-module/file effect set).
+//     A coarse aggregate is exactly the parallel taxonomy B3 forbids
+//     (P2, second authority) AND it degrades affected_set R1: a coarse
+//     model ⇒ every effectful edit's re-exec cone = every effectful
+//     node ⇒ purity-skip becomes "re-run ~everything" (still CORRECT /
+//     fail-closed, but useless).
+//   - This is a GRANULARITY invariant, not effect-lens strength: per B3
+//     effects are READ off the signature (strong by construction); the
+//     only open risk is coarse modeling. So the contract is: keep the
+//     effect distinguishable per effect KIND on the signature (Stderr ≠
+//     Net ≠ FileWrite …), so affected_set R1's cone is "observers of
+//     THIS effect", not "all effectful code". Not a new field; the
+//     distinction already lives in the signature (B3) — this forbids
+//     collapsing it. Reciprocal contract: lens/affected_set.dag R1.
+//   - B-5 COROLLARY — effects-as-parameters (DI-by-construction;
+//     side-session 2026-05-16, an interesting case worth recording for
+//     later readers). An effectful function takes its effect carrier as
+//     an EXPLICIT parameter (THESIS World-threading: "effects are
+//     explicit parameters, mocking is dependency-injection-by-
+//     construction"); it never reaches an ambient/global effect. Why
+//     this matters to affected_set: a test that injects a MOCK carrier
+//     passes a *different `Node`* as that argument, so its B-4
+//     node-precise dependency edge points at the mock, NOT the real
+//     effectful function. Editing the real function's body changes its
+//     content_hash but the traversal never reaches the mock-injected
+//     unit test ⇒ it SKIPS automatically; the integration test that
+//     passed the REAL carrier has the edge ⇒ it RE-RUNS. "Affected" is
+//     thus consumer-relative WITHOUT any unit-vs-integration mode in
+//     the lens — it falls out of each test's DI-resolved graph. This
+//     ONLY holds if effects are threaded parameters; AMBIENT/global
+//     effects re-couple the cone and are the anti-pattern this corollary
+//     forbids (T-13/T-21 must not model effects ambiently). (Honest
+//     boundary: a re-run integration test whose observed behavior
+//     changed may now have a STALE expected value — affected_set
+//     surfaces "re-run", it never rewrites the expectation; updating
+//     the TestClaim is a deliberate human act, no-engine. That failure
+//     is the intended signal, not a lens defect.)
+//
 // Owns:
 //   - lens read: Node -> Witness<EffectMap>   (READS the type signature;
 //     the signature is the authority, this lens is the reader)
