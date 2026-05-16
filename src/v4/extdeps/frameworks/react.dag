@@ -2,7 +2,7 @@
 //
 // Scope: React framework substrate — module surface, function components,
 //         elements (host + composite), props sites, ordered child refs,
-//         context bindings, hook sites, effect scheduling — all declarative.
+//         context bindings, hook call sites — all declarative.
 // Anchor: React **19.1.0** (npm `react@19.1.0`) — release authority
 //   https://github.com/facebook/react/releases/tag/v19.1.0 . Rolling API index
 //   https://react.dev/reference/react (partition + hook list C1-tracked against
@@ -12,6 +12,20 @@
 //         runtime where applicable. ONE substrate carrier set per React slice;
 //         emit / ingest / eval read distinct facts from the same declarations —
 //         extend THIS file, not parallel "emit-only" mirrors.
+//
+// R4 alignment (design-r4-full-stack-omni-emission-canvas.md §4 Q2):
+//   - Hook call sites are **per-arm** `ReactHookSite` variants — each arm carries
+//     only the call-signature facts for that hook (deps / cleanup / refs live on
+//     the arms that admit them per react.dev), NOT a flat built-in tag + uniform
+//     `dependency_refs` on every hook (codex canvas:76 — avoids UseState carrying
+//     dependency slots it does not have).
+//   - **No** standalone lifecycle / “effect trigger” coproduct: mount / update /
+//     unmount / cleanup-only obligations are read from `UseEffect` /
+//     `UseLayoutEffect` / `UseInsertionEffect` arm payloads (`dependency_refs`,
+//     `NoEffectBody` vs `EffectBody`, `NoCleanup` vs `CleanupBody`) per §4
+//     dissolution receipt — INVARIANTS P1/P2 (anti-pattern §11 #12).
+//   - `CustomHook` + R4‑Phase‑1.5 Practice‑4 canvas:
+//     docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
 // Owns:
 //   - ReactModuleSurface (client vs React Server Components module capability)
@@ -25,12 +39,10 @@
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
 //     fragment + text partition)
 //   - ReactContextBinding (`createContext` site identity)
-//   - ReactHook, ReactHookKind, ReactBuiltinHook (closed stable `react` call-site
-//     partition: built-in Hooks from /reference/react/hooks plus the separate
-//     `use` resource API — see `ReactBuiltinHook` anchors)
-//   - ReactComponentEffect (trigger + `effect_body_ref` — `ReactCrossDeclRef` edge
-//     to the lowered effect closure declaration; same spine as props/children)
-//   - ReactEffectTrigger (closed scheduling-class partition)
+//   - ReactHookSite — closed hook **call-site** coproduct (react@19.1.0 pin + Custom;
+//     per-arm payloads per design-r4 §4 sketch + anchors below)
+//   - ReactOptionalEffectBody, ReactEffectCleanupSite, ReactOptRef (supporting
+//     carriers for effect-hook arms only — not alternate lifecycle authority)
 //
 // Consumes (traceability):
 //   - std/collection.dag: List<T> (kernel-ambient `List` needs no import for use;
@@ -59,16 +71,45 @@ module v4.extdeps.frameworks.react
 type ReactCrossDeclRef
 
 
+// ═════════════════════════════════════════════════════════════════════
+// ReactOptRef
+//
+// Optional operand at a hook call site (e.g. optional `getServerSnapshot`,
+// optional `useDebugValue` formatter, optional `useActionState` permalink) —
+// NOT a second program spine; encodes arity holes in the pinned API surface.
+type ReactOptRef
+  = RefPresent { ref: ReactCrossDeclRef }
+  | RefAbsent
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactOptionalEffectBody
+//
+// `useEffect` / `useLayoutEffect` / `useInsertionEffect` may be cleanup-only
+// (design-r4 §4: body absent, cleanup present ⇒ unmount-style obligation reads
+// off the arm — not a parallel `OnUnmount` sum).
+type ReactOptionalEffectBody
+  = EffectBody { effect_body_ref: ReactCrossDeclRef }
+  | NoEffectBody
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactEffectCleanupSite
+//
+// Cleanup function edge, or explicit absence (deps-only / mount-only body).
+type ReactEffectCleanupSite
+  = NoCleanup
+  | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes
 //
-// A1 / ordered children + dependency lists. `List<ReactCrossDeclRef>` is the ordered
-// spine of declaration identities; React lenses read it as **dependency-array
-// order** or **child order**.
+// A1 / ordered children + dependency lists. `List<ReactCrossDeclRef>` on each arm
+// is the ordered **dependency-array** identity spine where that hook admits deps.
 //
-// Program-shaped sites (custom hook body, effect closure, render root) use
-// `ReactCrossDeclRef` for the **declaration** carrying the lowered `Node` body —
-// not a second recursive program type in this file.
+// Program-shaped sites use `ReactCrossDeclRef` for declarations whose bodies lower
+// to the `Node` tree in the full bundle — not a second recursive program type here.
 //
 // D1. Future `parse_* -> Outcome<…>` seams reference `v4.std.diagnostic.Outcome<T>`;
 // no operation rows here (DECLARATIVE-NOW).
@@ -92,101 +133,72 @@ type ReactModuleSurface
 
 
 // ═════════════════════════════════════════════════════════════════════
-// ReactBuiltinHook
+// ReactHookSite
 // Anchor: https://react.dev/reference/react/hooks — built-in Hooks index (pin
 //         tracks https://github.com/facebook/react/releases/tag/v19.1.0 ).
-// Anchor: https://react.dev/reference/react/use — `use(resource)`; react.dev
-//         documents this as the **`use` API** (Promise/context reader), distinct
-//         in prose from “Hooks” because it may appear in loops/conditionals; still
-//         one stable `react@19.1.0` export modeled here as variant `ReactUse`.
+// Anchor: https://react.dev/reference/react/use — `use(resource)` (`use` API).
+// Anchor: https://react.dev/reference/rules/rules-of-hooks
+// Canvas: docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: shared hook discriminator for resolver/emit.
+//   1. Fact placement — FAILS: shared hook-site tag for resolver/emit.
 //   2. Variant-is-data — FAILS: Int hook_id admits illegal values (P2).
 //   3. Algebraic form — PARTIAL: per-hook algebras live std/ elsewhere.
-//   4. Dimensional — FAILS: one built-in hook per call site.
+//   4. Dimensional — FAILS: exactly one hook arm per call site.
 //   5. Parameterized family — FAILS: not `F<X>` Practice-7 over a width set.
-// Terminal: nineteen-way `react@19.1.0` classifier — **18** built-in Hooks from the
-// hooks index (including `useEffectEvent`) plus variant **`ReactUse`** for the
-// separate **`use` API** above (P1: names + anchors track react.dev, not internal
-// abbreviations like `…Api`).
-type ReactBuiltinHook
-  = ReactUseState
-  | ReactUseReducer
-  | ReactUseContext
-  | ReactUseRef
-  | ReactUseImperativeHandle
-  | ReactUseEffect
-  | ReactUseLayoutEffect
-  | ReactUseInsertionEffect
+// Terminal: twenty-way `react@19.1.0` **call-site** partition — nineteen stable
+// exports from the hooks index + `use` API + `CustomHook` boundary arm (P1 names
+// track react.dev; effect lifecycle is carried ONLY on the three effect arms).
+type ReactHookSite
+  = UseState { initial_ref: ReactCrossDeclRef }
+  | UseReducer { reducer_ref: ReactCrossDeclRef, initial_ref: ReactCrossDeclRef }
+  | UseContext { context_ref: ReactCrossDeclRef }
+  | UseRef { initial_ref: ReactCrossDeclRef }
+  | UseImperativeHandle {
+      ref_target: ReactCrossDeclRef
+      factory_ref: ReactCrossDeclRef
+      dependency_refs: List<ReactCrossDeclRef>
+    }
+  // Anchor: https://react.dev/reference/react/useEffect — deps + cleanup on-arm.
+  | UseEffect {
+      body: ReactOptionalEffectBody
+      dependency_refs: List<ReactCrossDeclRef>
+      cleanup: ReactEffectCleanupSite
+    }
+  // Anchor: https://react.dev/reference/react/useLayoutEffect
+  | UseLayoutEffect {
+      body: ReactOptionalEffectBody
+      dependency_refs: List<ReactCrossDeclRef>
+      cleanup: ReactEffectCleanupSite
+    }
+  // Anchor: https://react.dev/reference/react/useInsertionEffect
+  | UseInsertionEffect {
+      body: ReactOptionalEffectBody
+      dependency_refs: List<ReactCrossDeclRef>
+      cleanup: ReactEffectCleanupSite
+    }
   // Anchor: https://react.dev/reference/react/useEffectEvent
-  | ReactUseEffectEvent
-  | ReactUseMemo
-  | ReactUseCallback
-  | ReactUseTransition
-  | ReactUseDeferredValue
-  | ReactUseId
-  | ReactUseSyncExternalStore
-  | ReactUseDebugValue
-  | ReactUseActionState
-  | ReactUseOptimistic
+  | UseEffectEvent { callback_ref: ReactCrossDeclRef }
+  | UseMemo { factory_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
+  | UseCallback { callback_ref: ReactCrossDeclRef, dependency_refs: List<ReactCrossDeclRef> }
+  | UseTransition
+  | UseDeferredValue { value_ref: ReactCrossDeclRef }
+  | UseId
+  | UseSyncExternalStore {
+      subscribe_ref: ReactCrossDeclRef
+      get_snapshot_ref: ReactCrossDeclRef
+      get_server_snapshot: ReactOptRef
+    }
+  | UseDebugValue { value_ref: ReactCrossDeclRef, format: ReactOptRef }
+  | UseActionState {
+      action_ref: ReactCrossDeclRef
+      initial_state_ref: ReactCrossDeclRef
+      permalink: ReactOptRef
+    }
+  | UseOptimistic { state_ref: ReactCrossDeclRef, update_fn_ref: ReactCrossDeclRef }
   // Anchor: https://react.dev/reference/react/use — `use(resource)`
-  | ReactUse
-
-
-// ═════════════════════════════════════════════════════════════════════
-// ReactHookKind
-// Anchor: https://react.dev/reference/rules/rules-of-hooks
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: shared built-in vs custom discriminant.
-//   2. Variant-is-data — FAILS: Bool+ref admits built-in ∧ custom simultaneously.
-//   3. Algebraic form — PARTIAL: custom hook body resolves to a `ReactCrossDeclRef`
-//      target whose body composes other hooks (grammar proof ELSEWHERE).
-//   4. Dimensional — FAILS: XOR at one site.
-//   5. Parameterized family — FAILS: heterogeneous payloads, not uniform `F<X>`.
-// Terminal: built-in vs custom-hook partition.
-type ReactHookKind
-  = BuiltIn { hook: ReactBuiltinHook }
-  | Custom { implementation_ref: ReactCrossDeclRef }
-
-
-// ═════════════════════════════════════════════════════════════════════
-// ReactHook
-// Anchor: https://react.dev/reference/react/hooks +
-//         https://react.dev/reference/react/useEffect#parameters
-type ReactHook {
-  kind: ReactHookKind
-  dependency_refs: List<ReactCrossDeclRef>
-}
-
-
-// ═════════════════════════════════════════════════════════════════════
-// ReactEffectTrigger
-// Anchor: https://react.dev/learn/synchronizing-with-effects +
-//         https://react.dev/reference/react/useEffect
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
-//   1. Fact placement — FAILS: scheduling consumers read trigger uniformly.
-//   2. Variant-is-data — FAILS: Int bitfield admits illegal combinations.
-//   3. Algebraic form — N/A: not std/ algebra.
-//   4. Dimensional — FAILS: one trigger class per modeled obligation.
-//   5. Parameterized family — FAILS: not indexed copy of another enum.
-// Terminal: closed four-way trigger partition (TASKS.md T-4.7).
-type ReactEffectTrigger
-  = Mount
-  | Unmount
-  | DependencyChange
-  | EveryRender
-
-
-// ═════════════════════════════════════════════════════════════════════
-// ReactComponentEffect
-// Anchor: https://react.dev/reference/react/useEffect
-type ReactComponentEffect {
-  trigger: ReactEffectTrigger
-  effect_body_ref: ReactCrossDeclRef
-}
+  | UseResource { resource_ref: ReactCrossDeclRef }
+  | CustomHook { implementation_ref: ReactCrossDeclRef }
 
 
 // ═════════════════════════════════════════════════════════════════════
