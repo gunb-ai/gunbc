@@ -51,9 +51,16 @@
 //   particulars vs the rust analog):
 //   (a) NO WIDTH AXIS. Python `int` is arbitrary-precision (Reference
 //       §3.2 numeric-types-int — "Integers have unlimited precision");
-//       `float` is always IEEE-754 binary64 (Reference §3.2 numeric-
-//       types-float — "Floating point numbers are usually implemented
-//       using double in C"); `complex` is a pair of `float`. The kind
+//       `float` is "machine-level double precision" with
+//       IMPLEMENTATION CAVEATS the spec explicitly names (Reference
+//       §3.2 numeric-types-float — "You are at the mercy of the
+//       underlying machine architecture (and C or Java implementation)
+//       for the accepted range and handling of overflow") — the spec
+//       does NOT mandate IEEE-754 binary64, only the canonical
+//       CPython realization does; modeling `float` as a fixed
+//       IEEE-754 width would over-promise spec fidelity (operator
+//       BLOCKING on PR #3180 made this precise); `complex` is a pair
+//       of `float` carrying the same machine-level caveat. The kind
 //       × width admissibility axis that drove rust.dag's RustScalar
 //       Disj-with-payloads design (Bits8/16/32/64/128/Pointer × Signed/
 //       Unsigned) DOES NOT EXIST in Python. The Python typed-scalar
@@ -462,7 +469,14 @@ module v4.extdeps.languages.python
 //                      kind; True == 1 and False == 0 by spec)
 //   - IntegralLevel  — `int` (arbitrary-precision integer; PEP 3141
 //                      numbers.Integral)
-//   - RealLevel      — `float` (IEEE-754 binary64; PEP 3141
+//   - RealLevel      — `float` ("machine-level double precision" per
+//                      Reference §3.2 the-standard-type-hierarchy
+//                      — implementation-defined per the spec's
+//                      "you are at the mercy of the underlying
+//                      machine architecture" caveat; CPython
+//                      realizes this as IEEE-754 binary64 but the
+//                      spec does NOT mandate that fixed width.
+//                      PEP 3141
 //                      numbers.Real; the `Rational` ABC level lies
 //                      between Integral and Real but has no built-in
 //                      Python carrier — `fractions.Fraction` is
@@ -470,7 +484,12 @@ module v4.extdeps.languages.python
 //                      explicitly NOT in the tower per PEP 3141; so
 //                      the BUILT-IN primitive partition the spec
 //                      pins is 4-level, not 5-level)
-//   - ComplexLevel   — `complex` (IEEE-754 binary64 pair; PEP 3141
+//   - ComplexLevel   — `complex` (a pair of `float` per Reference
+//                      §3.2 — inheriting the same machine-level
+//                      double precision + implementation caveat;
+//                      CPython realizes it as a pair of IEEE-754
+//                      binary64 but the spec does NOT mandate that
+//                      fixed format. PEP 3141
 //                      numbers.Complex; the top of the tower)
 //
 // The partial-order Bool ⊑ Integral ⊑ Real ⊑ Complex is
