@@ -16,7 +16,7 @@
 //   - character-class predicates (driven by LexRules)
 //
 // Consumes:
-//   - std/primitive.dag: Char, String
+//   - std/text.dag: Char, String
 //   - std/diagnostic.dag: Diagnostic
 //   - std/witness.dag: Witness<C>
 //

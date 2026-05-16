@@ -1,0 +1,27 @@
+// src/v4/std/text.dag
+//
+// Scope: Unicode text — code points (`Char`) and strings (`String`).
+// Anchor: https://en.wikipedia.org/wiki/Unicode
+//         (Char = a Unicode scalar value / code point)
+//
+// Owns:
+//   - Char — a Unicode scalar value: a `Cardinality`-bounded `Nat` over the
+//     valid code-point range (excludes the surrogate range)
+//   - String — `FreeMonoid<Char>`
+//   - inhabitance: String inhabits `FreeMonoid<Char>` (std/algebra.dag) —
+//     concatenation / empty fall out of the free monoid
+//
+// Consumes:
+//   - std/node.dag: Cardinality
+//   - std/nat.dag: Nat (a code point is a bounded Nat)
+//   - std/algebra.dag: FreeMonoid
+//
+// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
+//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+//   §"scalar/numeric concept decomposition".
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.std.text

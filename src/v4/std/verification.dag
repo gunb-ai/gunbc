@@ -19,7 +19,7 @@
 // Consumes:
 //   - std/node.dag: Conj, Disj for claim shape
 //   - std/diagnostic.dag: Diagnostic for failure mode
-//   - std/primitive.dag: String for label
+//   (String for label is the kernel-ambient String — no import)
 //
 // Status: scaffold — fill per TASKS.md T-3
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

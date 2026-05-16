@@ -8,6 +8,8 @@
 //   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
 //   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
 //   - Symbol: opaque kernel identity (K-1, operator-ratified 2026-05-15)
+//   - Hash: opaque content-address digest (B1, operator-ratified
+//     2026-05-15; re-homed from the deleted std/primitive.dag)
 //   - Node / NodeKind / Edge: the one recursive type + its skeleton
 //   - the edge-discipline structural invariant (a connective fixes its
 //     edge shape; the illegal pairing is never silently constructible)
@@ -107,24 +109,38 @@
 //      K-1 identity (equality only). ⇒ renaming a bound local is
 //      hash-invariant by construction (the full statement of the K-1
 //      "bonus"; this is affected_set Ex.2 "rename a local ⇒ same hash").
-//   3. CHILD ORDER IS ALGEBRA-DERIVED, never hand-flagged (the subtle,
-//      highest-risk point). Whether a node's children are SEQUENCED
-//      (order is content) or COMMUTATIVE (order quotiented — canonical
-//      sorts those children by their own recursive content_hash) is
-//      DERIVED from the connective's algebra inhabitance
-//      (std/algebra.dag, T-2) — never a per-connective hand table or
-//      heuristic (feedback_lenses_not_passes: a heuristic here = missing
-//      physics). DEFAULT = SEQUENCED, and the asymmetry is deliberate +
-//      fail-closed (feedback_fail_closed_discipline): treating a
-//      commutative collection as sequenced only makes affected_set
-//      OVER-fire (wasted recompute — safe); treating a sequenced
-//      collection as commutative collapses distinct programs to one
-//      hash (a MISSED change — a silent correctness bug). A collection
-//      is commutative ONLY where the algebra PROVES it (e.g. a Conj
-//      inhabiting a Symbol-keyed product/record — projection is by
-//      Symbol, so field order is provably irrelevant; a positional
-//      tuple-Conj stays SEQUENCED). Canonical form is thus a
-//      CONSEQUENCE of algebra, not a spec of its own (closed system).
+//   3. CHILD ORDER IS `children`-LIST ORDER, UNCONDITIONALLY — never
+//      algebra-derived, never hand-flagged (B-3 correction, operator-
+//      ratified 2026-05-16). Every connective's children hash in their
+//      `children`-list order (node.dag already makes list order the
+//      single positional authority). The COMMUTATIVE/quotient branch is
+//      NOT a degraded fallback — it is STRUCTURALLY FORECLOSED, two
+//      independent ways:
+//        (a) No sort key exists. Quotienting commutative children means
+//            sorting them; the only candidate key is the child's own
+//            recursive `content_hash`, but `Hash` is opaque /
+//            equality-only ("exactly like `Symbol`", B1 / K-1-style:
+//            no content accessor, no order). "sort by content_hash" is
+//            inexpressible. (A `Hash` order would erode that opacity
+//            AND yield only an arbitrary digest order — no gain over
+//            list order.)
+//        (b) Algebra is unreachable from here. `canonical`/
+//            `content_hash` are pure folds in this consumes-nothing
+//            root; algebra inhabitance lives in std/algebra.dag (which
+//            Consumes std/node.dag — reading it back is a substrate
+//            cycle, the D1 cycle class) and is bound by infer (T-9),
+//            downstream of `canonical`'s pre-infer domain (point 1).
+//            The signal does not exist at this stage; importing it
+//            cycles.
+//      This is the correct closure of a decidable system
+//      (INVARIANTS:31 — same honest-bounding as A3/C5/U1), NOT a
+//      defect. Lost: ONLY field-permutation dedup — a memo nicety;
+//      treating a permuted record as changed only makes affected_set
+//      OVER-fire (wasted recompute — safe), never a MISSED change (the
+//      unsafe direction is foreclosed because list order is total + the
+//      hash). content_hash stays rename-invariant (opaque Symbol, the
+//      K-1 bonus). T-2 / std/algebra.dag needs NO change — its
+//      inhabitance model is fine; point 3 was MISLAYERED, not deficient.
 //   4. RECURSION IS BY-REFERENCE — hashed by Symbol identity, NEVER
 //      inlined. Recursive types/fns are (per A1) Instantiation / name-
 //      reference `Atom`s carrying an opaque Symbol. The fold treats a
@@ -143,15 +159,17 @@
 //      detection is a FREE consequence of the Merkle property, not
 //      separate machinery.
 //   6. NO INCIDENTAL ORDERING. The ONLY order that survives into the
-//      normal form is (3)'s algebra-proven SEQUENCED child order.
+//      normal form is the `children`-list order (point 3 —
+//      unconditional, no algebra qualifier).
 //      Declaration source order, import order, post-resolve binding
 //      order, whitespace/comments (gone post-normalize) — none enter
 //      `canonical`. The "no incidental ordering" requirement, precise.
 //
 // T-1 scope dispositions (operator-ratified 2026-05-15):
 //   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
-//     typing (int/string/bool literal data) is std/primitive.dag (T-3) —
-//     a different concern from identifier identity.
+//     typing (int/string/bool literal data) is owned by the scalar/numeric
+//     files — std/integer.dag, std/text.dag, std/logic.dag (T-3) — a
+//     different concern from identifier identity.
 //   - Q2: this file owns the `Loop` behavior variant + the A2 discipline
 //     above; the descent-evidence carriers (RankingDimension /
 //     TerminationProof / DescentEvidence) belong to std/cardinality.dag
@@ -161,7 +179,13 @@
 //   - `inhabits` is NOT a field of `Node`: A1 forbids non-`children`
 //     Node-recursion, and inhabitance is a cross-declaration relation
 //     expressed via name-reference `Atom`s (resolved through the
-//     namespace) — declared/owned by std/algebra.dag (T-2).
+//     namespace) — each inhabiting concrete type declares its OWN
+//     inhabitance in its own concept file (std/integer.dag,
+//     std/logic.dag, …); std/algebra.dag (T-2) owns only the algebra
+//     STRUCTURES that get inhabited, never the inhabitance instances
+//     (P2). (T-1-closeout correction 2026-05-15: the prior
+//     "declared/owned by std/algebra.dag (T-2)" wording predated the
+//     operator-ratified structures-only scope.)
 //
 // Consumes:
 //   nothing — this is the substrate root
@@ -187,6 +211,23 @@ type Symbol
 
 
 // ─────────────────────────────────────────────────────────────────────
+// Hash — opaque content-address digest (B1, operator-ratified 2026-05-15).
+//
+// Body-less and opaque, exactly like `Symbol` (the K-1 discipline):
+// equality only, no content accessor. `Hash` is the content-addressing
+// carrier — the result of `content_hash : Node -> Hash`, a Merkle
+// catamorphism over the canonical-form clause. That fold and the
+// canonical-form clause are the T-1 closeout (B1: "T-1 worker encodes
+// the clause + fold per relay"); THIS is the carrier type they produce.
+// One scheme — consumed by T-15 (fixed point) / T-20 (pinned binary) /
+// T-21 (affected-set + structural caching) / the A3 reproduction check /
+// C5 RoundTrips. (Re-homed here from the deleted std/primitive.dag —
+// `Hash` is a content identity, not a scalar; see STRUCTURE.md
+// §"Scalar/numeric concept decomposition".)
+type Hash
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Connective — the closed type-substrate classifier. Exactly six.
 //
 // `Atom` is terminal at the user-input boundary: it carries an opaque
@@ -198,6 +239,28 @@ type Symbol
 // declaration — a visible diff routed to operator ratification (per
 // STRUCTURE.md A3: the substrate does not magically refuse it; the edit
 // is loud and un-missable). There is no `Other` / open-ended variant.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every pipeline stage (parse/normalize/
+//      infer/emit) dispatches on the connective; it is the shared
+//      classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the six are structurally distinct
+//      (Atom carries a Symbol; Conj/Disj labeled; Arrow/Cardinality/
+//      Instantiation positional) — no uniform label space to fold.
+//   3. Algebraic form — N/A by construction: this IS the type-substrate
+//      root (THESIS:202); the connectives do not trace to a richer
+//      std/ algebra — they are the source other structure grounds in.
+//   4. Dimensional — FAILS: a node carries EXACTLY ONE connective;
+//      genuine alternatives, never simultaneous coordinates.
+//   5. Parameterized family — FAILS: the six are structurally
+//      heterogeneous (Atom carries a Symbol; Conj/Disj labeled;
+//      Arrow/Cardinality/Instantiation positional, distinct arities/
+//      semantics) — NOT one generic `F<X>` / projection over a source
+//      set X (Practice 7). No enumeration-to-projection collapse exists.
+// Terminal: the closed 6 type connectives; a 7th is the C1 stop-signal
+// (a visible ratified edit to this declaration, STRUCTURE.md
+// commitment #1). Irreducible substrate root.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -218,6 +281,25 @@ type Connective
 //
 // CLOSED (C1 stop-signal). A sixth behavior is an edit to THIS
 // declaration — a visible diff routed to operator ratification.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every computation-substrate consumer
+//      dispatches on the behavior; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: the five are distinct computation
+//      kinds (the typed-total-λ fragment per INVARIANTS — Transform=
+//      application, Bind=let, Branch=sums, Loop=bounded rec, Value);
+//      no uniform label space.
+//   3. Algebraic form — N/A by construction: this IS the computation-
+//      substrate root (THESIS:202); no richer std/ source.
+//   4. Dimensional — FAILS: a computation node carries EXACTLY ONE
+//      behavior; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the five are distinct computation
+//      kinds (the typed-total-λ fragment — Transform=application,
+//      Bind=let, Branch=sums, Loop=bounded rec, Value) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7).
+// Terminal: the closed 5 L1 behaviors; a 6th is the C1 stop-signal
+// (STRUCTURE.md commitment #1). Irreducible substrate root.
 type Behavior
   = Value
   | Transform
@@ -236,6 +318,25 @@ type Behavior
 // enums stay orthogonal closed sets; `NodeKind` merely selects which
 // one applies (THESIS:198-203 — computation references type by edge, it
 // does not co-locate the two coordinates on one node).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every Node consumer branches on kind
+//      to know which substrate it is in; shared, not scattered.
+//   2. Variant-is-data — FAILS: TypeNode carries a Connective,
+//      ComputationNode a Behavior — disjoint payloads, no uniform
+//      label space.
+//   3. Algebraic form — N/A by construction: the two-coordinated-
+//      substrate split IS the substrate shape (THESIS:198-203); no
+//      richer source.
+//   4. Dimensional — FAILS: Shape S — a Node is in EXACTLY ONE
+//      substrate, never both; alternatives, not coordinates (co-
+//      locating both would conflate the two independent C1 closures).
+//   5. Parameterized family — FAILS: TypeNode/ComputationNode carry
+//      disjoint payloads (Connective vs Behavior) — not one generic
+//      `F<X>` / projection over a source set (Practice 7); it is the
+//      irreducible two-coordinated-substrate selector.
+// Terminal: the binary type/computation substrate split; irreducible.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
@@ -257,6 +358,26 @@ type NodeKind
 // negative / gapped / duplicate / out-of-order indices representable.
 // With no index field those illegal states are STRUCTURALLY
 // UNREPRESENTABLE — not "rejected by a checker."
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every edge consumer branches on the
+//      label kind uniformly; shared, not scattered.
+//   2. Variant-is-data — FAILS: `Named` carries a Symbol; `Positional`
+//      is a bare marker whose identity IS list position. Folding to a
+//      uniform record means a stored index — the INVARIANTS P2
+//      duplicate-authority anti-pattern this type exists to forbid.
+//   3. Algebraic form — N/A by construction: the two child-addressing
+//      modes are the edge-discipline primitive; no richer std/ source.
+//   4. Dimensional — FAILS: an edge is EITHER named OR positional,
+//      never both; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: `Named` carries a Symbol,
+//      `Positional` is a bare marker (identity = list position) —
+//      heterogeneous, NOT one generic `F<X>` / projection over a
+//      source set (Practice 7).
+// Terminal: the two child-addressing modes; the no-stored-index design
+// makes illegal index states unrepresentable — this IS already the
+// dissolved form, not a compression of one.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -308,6 +429,27 @@ type Node {
 // stays a check here is the D3 no-redesign call, not an A3-style
 // impossibility. (Contrast: the closed `Connective` enum below — a 7th
 // connective genuinely IS the A3 case, an edit to this file.)
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: derived uniformly from the connective
+//      via `connective_edge_discipline` and consumed by
+//      `node_well_formed`; single authority, not scattered.
+//   2. Variant-is-data — FAILS: the three are distinct structural
+//      rules (no edges / labeled+distinct / positional), not a uniform
+//      label space.
+//   3. Algebraic form — N/A by construction: it is the projection of
+//      the closed `Connective` set's edge rule; it IS the rule, no
+//      richer source.
+//   4. Dimensional — FAILS: a connective fixes EXACTLY ONE discipline;
+//      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the three are distinct structural
+//      rules (no edges / labeled+distinct / positional) — NOT one
+//      generic `F<X>` / projection over a source set (Practice 7);
+//      it is the irreducible projection OF the closed `Connective` set
+//      onto its edge rule, already in dissolved form.
+// Terminal: the three connective edge-disciplines; a closed classifier
+// over the closed `Connective` set — irreducible with it.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges

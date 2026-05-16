@@ -49,8 +49,6 @@ DEFINITION OF DONE:
   - Implementation present in declared file
   - Compiles via v2 binary (bootstrap)
   - TestClaim suite covers golden + Diagnostic paths
-  - WorkerOutput instance authored: declares which substrate fact dissolves
-    which prior residual (workflow/worker_output.dag schema)
   - Round-trips through any downstream pipeline stage already implemented
 
 YOUR DECISIONS (the actual modeling work):
@@ -101,8 +99,15 @@ The shape is the structural fix to v3's failure mode. Every constraint exists be
 - **Immutable I/O contract** — v3 had drift in worker outputs because contracts were prose; here they're declared in the file header before any work begins.
 - **Substrate whitelist** — v3 workers reached into adjacent substrate ad-hoc, creating the cascade-edit problem; here the substrate surface is closed.
 - **No new files** — v3's paper-shrink V1 (template-relocation to `tools/*.rs.in`) and V2 (module-relocation to `pub mod`) both required adding files; here both are syntactically impossible because the worker has no authority to add files.
-- **WorkerOutput instance with `dissolves` field** — v3's "retirement" was a list-length ratchet; here it's a structural predicate the worker declares + the system verifies.
 - **Escalation triggers explicit** — v3 had no clear "stop and surface" discipline; here it's a list, and triggering escalation is a feature, not a failure.
+
+(The former "WorkerOutput instance with `dissolves` field" point was removed
+2026-05-15, operator-ratified: the work-direction meta-layer
+(`workflow/worker_output.dag` et al.) was cut — the project does not model
+its own work-direction, and the compiler model self-justifies. v3's
+paper-shrink failure mode is now contained by the immutable-contract +
+no-new-files + closed-substrate constraints above plus the bootstrap
+reproduction guarantee, not a worker-output substrate.)
 
 ## Authoring discipline (for the operator)
 

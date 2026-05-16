@@ -16,13 +16,18 @@ src/v4/
   TASKS.md               # the XL task plan (count drift-proof; see T-15)
   DECISIONS.md           # design-decisions ledger (RATIFIED + record)
 
-  std/                   # substrate primitives (8 files)
+  std/                   # substrate primitives (14 files)
     node.dag             # 6 type connectives + 5 L1 behaviors (substrate root)
-    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid + inhabitance
+    algebra.dag          # Magma/Monoid/BoolAlgebra/FreeMonoid (structures only)
     cardinality.dag      # cardinality refinement, P4 decidability
     witness.dag          # Witness<C> — fail-closed lens reads, no Option::None
-    diagnostic.dag       # structural Diagnostic { reason, at }
-    primitive.dag        # Int/Float/String/Char/Bool with inhabitance
+    diagnostic.dag       # structural Diagnostic { reason, at, correction }
+    logic.dag            # Bool — classical two-valued logic (Boolean algebra)
+    nat.dag              # Nat — natural numbers (Peano); numeric-tower base
+    machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr
+    integer.dag          # Int + fixed-width ints (Nat projected onto a width)
+    float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
+    text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
     verification.dag     # TestClaim schema (imported from v3)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
@@ -78,12 +83,12 @@ src/v4/
     affected_set.dag     # incremental re-exec frontier; replaces detect-affected shell (Phase 1.5)
     application.dag      # apply_lens surface — opt-in depth + ONLY advisory→fail-closed bridge
 
-  workflow/              # recursive-flex — work-direction in .dag (7 files)
-    brief.dag            # typed Brief schema
-    worker_output.dag    # WorkerOutput { dissolves: Set<HandResidual>, cited_anchor }
-    doc_anchor.dag       # typed DocAnchor pointers into authority docs
-    retirement.dag       # structural Retirement predicate (no list-length gaming)
-    cycle.dag            # work cycle as data, lens-readable
+  workflow/              # meta-process as data (2 files; the v3-derived
+                         # work-direction substrate — brief/worker_output/
+                         # cycle/retirement/doc_anchor — was cut
+                         # 2026-05-15, operator-ratified: the project does
+                         # not model its own work-direction; the compiler
+                         # model self-justifies, no meta-layer narrates it)
     bootstrap.dag        # bootstrap orchestration AS DATA (seed-once → self-host
                          # → fixed-point); v2 interprets it; no build.rs/shell
     ci.dag               # CI pipeline AS DATA; .github/workflows/ci.yml is derived
@@ -105,7 +110,49 @@ src/v4/
 
 **Total: 63 .dag files + 5 docs + 5 .gitkeep = 73 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
-a checksum, updated on every operator-ratified file addition.)
+a checksum, updated on every operator-ratified file addition/removal.
+−5 .dag 2026-05-15: work-direction meta-layer cut, operator-ratified.)
+
+## Scalar/numeric concept decomposition
+
+`std/primitive.dag` is **deleted.** It lumped five unrelated concepts
+(`Int`/`Float`/`String`/`Char`/`Bool`) under the label "primitive" — but per
+THESIS epistemic stacking the genuine primitives are the six connectives
+(`node.dag`) and the algebra roots (`algebra.dag`); `Int`/`Bool`/`String`/`Char`
+are *compositions* that attach by inhabitance, not primitives. It is replaced
+by six concept-located files, each anchored to a real external concept
+(Wikipedia / spec) — the same anchored-concept discipline `extdeps/` uses:
+
+- `std/logic.dag` — `Bool`, classical two-valued logic
+- `std/nat.dag` — `Nat`, natural numbers (Peano)
+- `std/machine.dag` — `Byte`/`Word*`/`MachineWidth`/`PointerWidth`, machine representation
+- `std/integer.dag` — `Int` + fixed-width ints (a `Nat` projected onto a machine width)
+- `std/float.dag` — `Float`, IEEE-754 (a sign/exponent/mantissa bit-record
+  inhabiting a rounding-aware algebra — *not* an exact `Field`, and *not*
+  opaque: fully grounded, only its algebra is weakened)
+- `std/text.dag` — `Char` (Unicode code point) + `String` (`FreeMonoid<Char>`)
+
+Each declares its own inhabitance (the inhabiting type owns its grounding —
+INVARIANTS P2); `algebra.dag` owns the algebra *structures* only.
+
+**`Hash` re-homing.** PR #3150's B1 entry slated the `Hash` content-address
+digest for `std/primitive.dag`. With that file deleted, `Hash` — which is
+not a scalar — re-homes to `std/node.dag`: this PR declares the opaque
+`Hash` type there (beside `Symbol`, the other K-1-opaque substrate-root
+identity) and updates `DECISIONS.md` B1's "Encoded in" column to
+`node.dag`. The `content_hash` fold and the canonical-form clause stay
+the T-1 closeout, exactly as B1 already states.
+
+**Kernel-ambient types.** `String`, `Int`, `Bool`, `Char`, `List`, `Map` are
+provided by the v2 seed and are usable in any `.dag` file *without an import*.
+This relaxes only the import edge — not single-authority: the v4 substrate
+file that *models* each type (`text.dag` for `String`/`Char`, `integer.dag`
+for `Int`, `logic.dag` for `Bool`, `collection.dag` for `List`/`Map`) remains
+its sole authority. A file's header `Consumes` line lists a scalar file only
+when it needs that type's *modeled* facts (algebra, inhabitance, totalization)
+— not when it merely needs the raw kernel value (e.g. a `String` message
+label). This is why several headers note "String … is kernel-ambient — no
+import".
 
 ## Anchor convention
 
@@ -174,15 +221,17 @@ reference this section when dispatching workers.
    `std/node.dag`), not by review process — the compiler reads the closed
    enum and refuses to compile any program that synthesizes outside it.
 
-2. **Tier 2 partial-op totalization lives in `std/primitive.dag`** (per
-   THESIS:175-176). Each primitive's partial operations (divide, modulo,
-   indexed access, force-unwrap) declare their totalization shape
-   (`Result`-return / `Witness`-return / refinement-precondition) in the
-   same file as the primitive itself. No separate "totalization registry."
+2. **Tier 2 partial-op totalization lives with each scalar type, in its
+   own file** (per THESIS:175-176). A scalar's partial operations declare
+   their totalization shape (`Result`-return / `Witness`-return /
+   refinement-precondition) in the same file as the type itself: integer
+   divide / modulo in `std/integer.dag`, NaN-producing ops in
+   `std/float.dag`, indexed access / force-unwrap where the indexed type
+   lives. No separate "totalization registry."
 
 3. **`Diagnostic` schema carries a typed `correction`** (per THESIS:103-105
    "show the correct code"). Schema:
-   `Diagnostic { reason: NamedReason, at: Locus, correction: Correction }`
+   `Diagnostic { reason: Symbol, at: Locus, correction: Correction }`
    where `Correction = Suggested(Node) | Unavailable(NoCorrectionReason)`.
    The "show the correct code" promise is structural — every Diagnostic
    site answers the fix question, and answers it with a type, not a
@@ -241,7 +290,7 @@ These are non-negotiable across all v4 work:
 3. **No file-splitting without operator ratification.** Each file is a typed pure function. If a worker thinks `04_infer.dag` should be five files, that's a substrate-design question, not a worker decision.
 4. **Cost-of-change = 1.** Adding a new type/expression/transport edits exactly one file. If a change ripples, the substrate is wrong.
 5. **Tests are TestClaim data.** Zero hand-Rust tests. Test surface lives in `test/claim/`.
-6. **Workflow substrate first.** `workflow/*.dag` is implemented BEFORE any compiler work, so worker outputs are typed Brief/WorkerOutput/Retirement instances from day 1. The recursive-flex move is structural, not aspirational.
+6. **Meta-process as data (narrowed 2026-05-15, operator-ratified).** `workflow/` is now exactly `bootstrap.dag` (the bootstrap chain — load-bearing per invariant 7) and `ci.dag` (CI pipeline) — both `.dag` data, never `build.rs`/shell/hand-authored YAML. The v3-derived **work-direction substrate** (briefs / worker-outputs / cycles / retirement / doc-anchors modeled as data — the original "recursive-flex implement-before-compiler" claim) is **retracted**: the project does not model its own work-direction, and the compiler model self-justifies (rationale emergent from composition), so no meta-layer narrates it. Lens self-application to gunbc's own build/CI pipeline survives via `bootstrap.dag`/`ci.dag`; modeling our own *process* does not.
 7. **`.dag` is the sole editable authority; Rust is never authority.**
    "Off Rust" means: no Rust is editable authority — not "no Rust exists
    anywhere" (the CPU always has a host; the seed is always *some*
@@ -274,6 +323,32 @@ These are non-negotiable across all v4 work:
    deviation changes the reproduction → conspicuous signal → STOP → human
    judgment. Not "the substrate refuses.") This surfacing structure is in
    force from scaffold time; the tasks fill behavior *under* it.
+
+   **PROOF-1 (operator-ratified 2026-05-15) — the external trust-
+   discharge for A3.** A3 is honest that the guarantee is *un-hideable*,
+   not *impossible-to-violate*, and that seed trust is a named axiom.
+   PROOF-1 is the mechanism that SHRINKS that trust surface: gunbc's
+   structural evidence — A2 termination descent, the algebra-homomorphism
+   epistemic chain, the cost bound, the effect facts — is EMITTED as a
+   machine-checkable proof term in an external proof assistant
+   (Lean/Coq); their small, independently-audited KERNEL checks it. This
+   converts "trust gunbc's internal checker + the frozen seed" into an
+   INTERSUBJECTIVE check against a trust anchor gunbc does not own. It
+   does NOT make gunbc un-gameable — the external kernel + the
+   faithfulness of the evidence→proof-term emission are the NEW named
+   axioms; PROOF-1 *moves* trust to a stronger anchor, it does not
+   eliminate it (the same `feedback_no_engine`/Trusting-Trust honesty A3
+   itself observes). Hard constraints: (i) the lens EXPORTS witnesses
+   gunbc ALREADY HAS (the descent evidence, the homomorphism) — the
+   external prover only KERNEL-CHECKS, it never SEARCHES for a proof (a
+   searching export would violate no-engine + A2 "checker not
+   discoverer"); (ii) it discharges only what is structurally GROUNDED —
+   ungroundable concepts remain fail-closed Diagnostics; PROOF-1 inherits
+   gunbc's honesty boundary, it does not paper over it. Realized as a
+   lens = (evidence read) ⊕ (B2-OMNI emit to a `lean`/`coq` language
+   model — ordinary emit targets, no new subsystem); NO new file (the
+   closed-tree invariant holds). Primary export source = A2; an agent may
+   REQUEST it (AGENT-1).
 
 8. **On-disk emitted artifacts are checked projections, not authority
    (C4, operator-ratified 2026-05-15).** Some emitted artifacts must live
