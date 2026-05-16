@@ -2,10 +2,11 @@
 //
 // Scope: TypeScript language model — direction-agnostic. Includes ES
 //         (ECMAScript) base.
-// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
-//         (TypeScript Handbook) + https://tc39.es/ecma262/ (ECMAScript
-//         specification) — the versioned upstream specifications (L-2
-//         fidelity authority).
+// Anchor (version pins — checkable L-2; extdeps declaration discipline):
+//   TypeScript **5.9**: Handbook slice https://www.typescriptlang.org/docs/handbook/2/everyday-types.html ;
+//   release stake https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html
+//   ECMA-262 **16th edition / ES2025**: fixed edition HTML (not rolling `/ecma262/` HEAD)
+//   https://tc39.es/ecma262/2025/multipage/ — spec drift = visible C1 edit to this header.
 // Unifies: (per THESIS:188) language spec = transport spec = interpreter
 //         runtime. ONE substrate carrier for all three roles. Different
 //         lenses read different facts from the same data (emission reads
