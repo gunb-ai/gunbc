@@ -11,6 +11,18 @@
 //   - THE single advisory→fail-closed bridge: Enforce { } converts a lens's
 //     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
 //     no other path from advisory to blocking exists
+//   - D1 OPERATIONS over the std/node.dag structural-delta types
+//     (Path/Edit/Diff — the DATA lives in std/node.dag):
+//       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
+//         — the subtree at a Path (term-rewriting `t|p`); a Path that
+//         does not resolve ⇒ fail-closed Diagnostic, never a guess
+//       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
+//         — fold the Diff's ORDERED Edits as SEQUENTIAL rewrites
+//         (`t[s]p` per Edit); all-or-nothing (any Edit whose Path no
+//         longer resolves ⇒ one Diagnostic, no partial application).
+//         NO independence/well-formedness predicate — any List<Edit>
+//         is a valid rewrite program (P2 finding 2, PR #3162).
+//         Consumer = CLI / test harness / user application code.
 //
 // QRY-1 (operator-corrected 2026-05-15) — there is NO "query" concept
 // and NO user-vs-kernel distinction. The earlier "query = user-defined
@@ -36,6 +48,21 @@
 // parallel authority the closed system forbids (STOP). The B2-OMNI
 // Node-pivot "one read, all ingested languages" property still holds —
 // it is a property of LENSES (any lens over Node), not of a "query".
+//
+// D1 (operator-ratified 2026-05-15; shape refined per a P2 review
+// finding, PR #3162) — this file is the OPERATION home for the
+// structural-delta vocabulary whose DATA TYPES (Path/Edit/Diff) live
+// in std/node.dag. The split is FORCED, not stylistic:
+// std/diagnostic.dag already `Consumes std/node.dag`
+// (`Correction = Suggested(Node)`), so a node.dag operation returning
+// `Result<_, Diagnostic>` would be a substrate cycle. subterm_at/
+// apply_diff are exactly the "consumers evaluate fail-closed and raise
+// the Diagnostic" discipline std/node.dag states for `node_well_formed`.
+// apply_diff applies the Diff's ORDERED Edits SEQUENTIALLY — there is
+// NO independence/well-formedness predicate (any List<Edit> is valid;
+// the prior set+predicate shape was the P2 illegal-states anti-pattern).
+// These ops are part of this file's T-23 fill; the I/O contract in
+// this header is immutable.
 //
 // AGENT-SURFACE (operator-ratified 2026-05-15) — designed early so it
 // has a structural PLACE, not bolted on later; "a very important /
@@ -89,7 +116,8 @@
 // (all scaffold today — nothing runs yet).
 //
 // Consumes:
-//   - std/node.dag, std/witness.dag, std/diagnostic.dag, std/report.dag
+//   - std/node.dag (incl. the D1 Path/Edit/Diff types),
+//     std/witness.dag, std/diagnostic.dag, std/report.dag
 //   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
 //
 // Status: scaffold — fill per TASKS.md T-23
