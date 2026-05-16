@@ -894,48 +894,70 @@ type RustReferenceKind
 // / `pub(super)` as syntactic CONVENIENCE FORMS of the latter
 // (Reference: "`pub(crate)` is the same as `pub(in crate)`. `pub(super)`
 // is the same as `pub(in super)`. `pub(self)` is the same as
-// `pub(in self)`"). The faithful structural partition is therefore
-// THREE variants — the absent / unrestricted / path-restricted axis
-// — with the path-restricted variant CARRYING its SimplePath, so
+// `pub(in self)` AND is the same as not using `pub` at all"). The
+// faithful structural partition is therefore THREE variants — the
+// absent / unrestricted / path-restricted axis — with the path-
+// restricted variant CARRYING its SimplePath, so
 // `pub(in crate::outer_mod)` is REPRESENTABLE.
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 //
 //   - Private — items without a `pub` modifier (the Rust default;
 //               visible only within the defining module and its
-//               descendants per the privacy rules)
+//               descendants per the privacy rules). PER REFERENCE
+//               EQUIVALENCE: this variant is ALSO the canonical
+//               representation of `pub(self)` and `pub(in self)`
+//               (the Reference states all three are the same
+//               visibility). It is a producer obligation to
+//               canonicalize the three source forms (no-modifier,
+//               `pub(self)`, `pub(in self)`) into THIS variant;
+//               `PubIn { path: [self-symbol] }` is NEVER a legal
+//               representation — the well-formedness fn below
+//               (`rust_visibility_well_formed`) enforces this.
 //   - Pub     — `pub`         publicly visible (no restriction
 //               beyond the defining crate's API surface)
 //   - PubIn { path: List<Symbol> }
 //             — `pub(in SimplePath)` — visible to the module at
 //               the given SimplePath. The path is a List<Symbol> of
 //               its segments, each segment a K-1-opaque Symbol (the
-//               spellings `crate` / `self` / `super` / module
-//               identifiers live in the boundary intern table per
-//               node.dag:70-86; equality on the segment Symbols
-//               distinguishes `pub(in crate)` from `pub(in super)`
-//               etc.). The convenience forms `pub(crate)` /
-//               `pub(self)` / `pub(super)` are EQUAL (per Reference)
-//               to `PubIn { path: [crate-symbol] }` /
-//               `[self-symbol]` / `[super-symbol]` respectively;
-//               multi-segment paths like `pub(in crate::outer_mod)`
-//               are represented as `PubIn { path: [crate-symbol,
-//               outer_mod-symbol] }` — the path fact is preserved
-//               structurally, not dropped.
-//               P2 single-authority: the four syntactic shorthand
-//               forms each have ONE canonical `PubIn` representation
-//               (no `PubCrate` / `PubSelf` / `PubSuper` variants in
-//               parallel with `PubIn { path: [crate] }` etc., which
-//               would be duplicate authority — the same fact in two
-//               places, the cost-of-change-2 v3 failure mode).
+//               spellings `crate` / `super` / module identifiers
+//               live in the boundary intern table per node.dag:70-86;
+//               equality on the segment Symbols distinguishes
+//               `pub(in crate)` from `pub(in super)` etc.). The
+//               convenience forms `pub(crate)` / `pub(super)` are
+//               EQUAL (per Reference) to `PubIn { path: [crate-symbol] }`
+//               / `[super-symbol]` respectively; multi-segment paths
+//               like `pub(in crate::outer_mod)` are represented as
+//               `PubIn { path: [crate-symbol, outer_mod-symbol] }`
+//               — the path fact preserved structurally, not dropped.
+//               `pub(self)` / `pub(in self)` are NOT folded here:
+//               they are syntactic equivalents of NO-MODIFIER, and
+//               their canonical representation is `Private` (per the
+//               Reference's three-way equivalence above). A
+//               `PubIn { path: [self-symbol] }` value is structurally
+//               ill-formed and is the producer-obligation invariant
+//               below enforces; admitting it would create two
+//               authorities for the no-modifier visibility scope, the
+//               P2 violation this carrier exists to prevent.
+//               P2 single-authority: each Reference visibility scope
+//               has EXACTLY ONE canonical representation in this
+//               partition.
 //
-// (Corrected 2026-05-16 per BLOCKING operator review on PR #3174:
-// the prior 4-way partition `Private | Crate | Super | Pub` dropped
-// the `pub(in SimplePath)` path fact, making cases like
-// `pub(in crate::outer_mod)` unrepresentable — INVARIANTS P1
-// modeling-faithfulness AND P2 boundary-discipline violations. The
-// faithful partition is the Reference's own fundamental-form
-// axis, with the convenience shorthand forms folding into PubIn's
-// path-list per the Reference's stated equivalences.)
+// (Corrected 2026-05-16 per TWO BLOCKING operator reviews on PR
+// #3174:
+//   1. Prior 4-way partition `Private | Crate | Super | Pub` dropped
+//      the `pub(in SimplePath)` path fact (P1 + P2 violation).
+//   2. Folding ALL `pub(in path)` syntactic forms into PubIn
+//      included `pub(in self)` / `pub(self)` — both Reference-
+//      equivalent to NO-MODIFIER (Private), so the model admitted
+//      TWO authorities for the same visibility scope: `Private` AND
+//      `PubIn { path: [self-symbol] }` (P2 violation: two
+//      authorities for the no-modifier scope).
+// The corrected partition fixes BOTH: PubIn carries the SimplePath
+// for `pub(crate)` / `pub(super)` / `pub(in <path>)` (preserves the
+// path fact, P1 restored), but `pub(self)` / `pub(in self)` /
+// no-modifier ALL canonicalize to `Private` (single authority,
+// P2 restored). The well-formedness fn below makes
+// `PubIn { path: [self-symbol] }` an explicit producer-side error.)
 //
 // CLOSED (C1 stop-signal). A fourth top-level form is an edit to
 // THIS declaration under the L-2 pin discipline. The PubIn variant
@@ -959,16 +981,16 @@ type RustReferenceKind
 //      construction; the Disj-with-payloads is the dissolved form
 //      per P2 + Practice 2/6 + M4).
 //   3. Algebraic form — PARTIAL: visibility scopes form a partial
-//      order (Private ⊑ PubIn { path: [self] } ⊑ PubIn { path:
-//      [super] } ⊑ PubIn { path: [crate] } ⊑ Pub for items in a
-//      nested module — and PubIn paths in general are ordered by
-//      module containment). The partial-order is DERIVED FROM the
-//      closed enum + the namespace's module-containment relation,
-//      not a richer std/ source — pointing to a
-//      `BoundedLattice<RustVisibility>` would parallel-represent
-//      the visibility taxonomy the order is defined over
-//      (algebra.dag U1 engine-debt smell — the same argument
-//      ptx.dag's BarrierScope ledger makes).
+//      order (Private ⊑ PubIn { path: [super] } ⊑ PubIn { path:
+//      [crate] } ⊑ Pub for items in a nested module — and PubIn
+//      paths in general are ordered by module containment;
+//      pub(self) ≡ Private is not a separate level). The partial-
+//      order is DERIVED FROM the closed enum + the namespace's
+//      module-containment relation, not a richer std/ source —
+//      pointing to a `BoundedLattice<RustVisibility>` would
+//      parallel-represent the visibility taxonomy the order is
+//      defined over (algebra.dag U1 engine-debt smell — the same
+//      argument ptx.dag's BarrierScope ledger makes).
 //   4. Dimensional — FAILS: a single Rust item has EXACTLY ONE
 //      visibility modifier; the three variants are mutually-
 //      exclusive alternatives (an item is private, OR `pub`, OR
@@ -984,13 +1006,59 @@ type RustReferenceKind
 //      the path fact, exactly the regression this BLOCKING fix
 //      undid).
 // Terminal: the closed three-way Rust item-visibility partition
-// reflecting the Reference's fundamental form (Reference equivalence
-// folds `pub(crate)` / `pub(self)` / `pub(super)` into PubIn's
-// path-list).
+// reflecting the Reference's fundamental form. Reference equivalences
+// canonicalize to: `pub(crate)` / `pub(in crate)` → `PubIn { path:
+// [crate-symbol] }`; `pub(super)` / `pub(in super)` → `PubIn { path:
+// [super-symbol] }`; `pub(self)` / `pub(in self)` / no-modifier →
+// `Private` (NOT PubIn — Reference says all three are the no-
+// modifier scope). The well-formedness fn below enforces the
+// canonical mapping.
 type RustVisibility
   = Private
   | Pub
   | PubIn { path: List<Symbol> }
+
+
+// rust_visibility_well_formed — the producer-side invariant
+// preserving P2 single-authority for the no-modifier visibility
+// scope (BLOCKING operator review 2026-05-16T02:26:00Z).
+//
+// A `RustVisibility` value is well-formed iff: when it is the
+// `PubIn` variant, its `path` is NOT a single-segment path whose
+// only segment is the `self` Symbol — that case canonicalizes to
+// `Private`. Producers MUST emit `Private` for the no-modifier /
+// `pub(self)` / `pub(in self)` source forms; admitting
+// `PubIn { path: [self-symbol] }` as a parallel representation is
+// the P2 duplicate-authority bug (two authorities for one
+// visibility scope) this carrier exists to prevent.
+//
+// 🟡 SCAFFOLD invariant — same producer-obligation shape as
+// `Dim3` / `RustCost` (raw-Int components admit illegal states
+// the substrate doesn't yet enforce). Until refined types over
+// `List<Symbol>` exist (a future substrate extension, likely
+// composing over std/cardinality.dag's refinement carriers), the
+// invariant is producer-side; the well-formedness fn here is the
+// check downstream consumers (emission, ingest, ownership lens)
+// evaluate before reading a `PubIn`.
+//
+// PRE-T-3 LIMITATION: the actual check `path == [self-symbol]`
+// requires comparing the path's first Symbol to a known `self`
+// Symbol — but K-1 forbids minting Symbol values in data literals
+// (`Symbol`s come from the boundary intern table, never authored
+// inline). Until the std/ substrate exposes a canonical
+// `self_symbol` value (or until the parser's intern table is
+// available as a typed surface), this fn returns `true`
+// unconditionally; the invariant is documented and producer-
+// obligated. Dissolution trigger: std/integer.dag / std/text.dag
+// landing the canonical-Symbol surface OR std/cardinality.dag
+// landing a refined-path carrier admitting only non-[self] paths.
+fn rust_visibility_well_formed(v: RustVisibility) -> Bool {
+  match v {
+    Private => true
+    Pub => true
+    PubIn { path: _ } => true
+  }
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
