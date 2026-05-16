@@ -629,11 +629,25 @@ type Directive
 // SubcircuitDefinition — a `.SUBCKT name (terminals) ... .ENDS`
 // declaration (Quarles 1993 §3.4). A subcircuit defines a NAMED
 // parameterized topology that `Component.SubcircuitCall` instances
-// invoke by name. The body carries its own component list, model
-// list, and directive list (most analysis directives are illegal
-// inside a `.SUBCKT`; that constraint is a consumer-side well-
-// formedness check, not a parallel-type concern at the data-model
-// layer).
+// invoke by name. The body carries component instances and `.MODEL`
+// cards (the two statement kinds SPICE3F5 §3.4 permits inside a
+// `.SUBCKT/.ENDS` pair).
+//
+// NO `directives` FIELD (PR #3168 codex review). SPICE3F5 §3.4
+// forbids analysis/control cards (`.OP`, `.TRAN`, `.AC`, `.DC`, `.IC`,
+// `.NODESET`, `.OPTIONS`, `.INCLUDE`, `.PRINT`, `.NOISE`, `.TF`,
+// `.SENS`, `.DISTO`, `.FOUR`, `.PZ`, `.PLOT`, `.SAVE`, `.WIDTH`,
+// `.LIB`) inside `.SUBCKT/.ENDS` — those statements are top-level
+// only. The prior shape carried `directives: List<Directive>` here
+// and tracked the prohibition as a "consumer-side well-formedness
+// check" — but INVARIANTS P2 / modeling-discipline.md Practice 2/6
+// require illegal states UNREPRESENTABLE, not merely checked. With
+// the `directives` field removed, an `.OP` inside a `.SUBCKT` is
+// STRUCTURALLY UNREPRESENTABLE in a `SubcircuitDefinition` value —
+// the type system rejects it; no checker required (same shape as the
+// closed-set + named-terminal-slot discipline already used for
+// `Component`). The prohibition is now type-enforced, not convention-
+// enforced.
 //
 // NESTED `.SUBCKT` are LIFTED TO THE TOP LEVEL by the parser (modeling
 // notes "SUBCIRCUIT RECURSION"); this type carries NO `subcircuits`
@@ -646,7 +660,6 @@ type SubcircuitDefinition {
   terminals: List<NodeRef>
   components: List<Component>
   models: List<ModelCard>
-  directives: List<Directive>
 }
 
 
