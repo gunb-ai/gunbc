@@ -183,14 +183,25 @@ type TsEcma262PrimitiveOperationSemantics
   | TsBigIntExactUnboundedSemantics
 
 
-// (No per-primitive INSTANCE `data` rows here — M1(2.8) opaque-body: record /
-// enum-literal bodies are what the v3 lowerer rejects until structural
-// validation exists. **Deferred** to the Class-5-Gap-3 / top-level-`ValueBody`
-// substrate work (R2/R3 lane, ROADMAP.md:416; Class-5-Gap-3 / opaque-body
-// structural validation — substrate items #920 / #1017 / #1068). **Trigger**
-// = that gap closes. The D2a(3) **TYPES** / classifiers + Practice-4 ledgers
-// above are canonical regardless; instance rows land when the substrate can
-// structurally validate them.)
+// (No per-primitive INSTANCE `data` rows here — M1(2.8) opaque-body: **TOP-LEVEL**
+// nullary **sum-variant literal** bodies are what the v3 lowerer rejects per
+// ROADMAP.md:418 (→ `ValueBody::Unparsed` until structural validation exists).
+// **Record-structural** bodies (→ `ValueBody::Structural`) **do** lower clean —
+// they are **not** part of this gap. TS per-primitive D2a(3) instances would be
+// top-level nullary-sum-variant literals (`data ts_*: TsEcma262PrimitiveOperationSemantics
+// = TsNumberIeee754Binary64Semantics`), hence this deferral. **D2a(3)**
+// disposition rows expressed as **record-structural** bodies (variant tags
+// only at **field** positions inside `Rec { … }`) are likewise class-5-SAFE.
+// **D2a(2) grounding**
+// instance rows (`GroundingMap { … }` record bodies; field-level scalars /
+// variants lower via `lower_structural_field_value`) are **class-5-SAFE** and
+// are **not** deferred on Class-5-Gap-3 — only on the orthogonal
+// `GroundingMap`-home operator-pending decision. **Deferred** to Class-5-Gap-3 /
+// top-level-`ValueBody` substrate work (R2/R3 lane, ROADMAP.md:416/#418;
+// #920 / #1017 / #1068). **Trigger** = that gap closes. The D2a(3) **TYPES** /
+// classifiers + Practice-4 ledgers above are canonical regardless; instance rows
+// land when the substrate can structurally validate **top-level** sum-variant
+// `data` bodies.)
 
 
 // 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
