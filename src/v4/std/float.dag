@@ -370,6 +370,22 @@ fn float_body_compare_ieee_ordered(a: FloatBody, b: FloatBody) -> Ordering {
 }
 
 
+// float_ordered_compare_nan_rejected — shared Tier-2 `Rejected` shape for NaN
+// on either operand (claude-opus exploratory: dedupe literal; semantics unchanged).
+fn float_ordered_compare_nan_rejected(
+  failure_reason: Symbol,
+  failure_at_port: Symbol,
+) -> Outcome<Ordering> {
+  Rejected {
+    diagnostic: Diagnostic {
+      reason: failure_reason,
+      at: PortLocus { port: failure_at_port },
+      correction: Unavailable { reason: UserInputBoundary },
+    }
+  }
+}
+
+
 // float_ordered_compare_tier2 — Tier-2 totalization for **unordered** IEEE `<`
 // in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
 // `Produced` with `float_body_compare_ieee_ordered` (numeric ordered compare on
@@ -384,22 +400,16 @@ fn float_ordered_compare_tier2(
   failure_at_port: Symbol,
 ) -> Outcome<Ordering> {
   if float_body_is_nan(a.body) {
-    Rejected {
-      diagnostic: Diagnostic {
-        reason: failure_reason,
-        at: PortLocus { port: failure_at_port },
-        correction: Unavailable { reason: UserInputBoundary },
-      }
-    }
+    float_ordered_compare_nan_rejected(
+      failure_reason: failure_reason,
+      failure_at_port: failure_at_port,
+    )
   } else {
     if float_body_is_nan(b.body) {
-      Rejected {
-        diagnostic: Diagnostic {
-          reason: failure_reason,
-          at: PortLocus { port: failure_at_port },
-          correction: Unavailable { reason: UserInputBoundary },
-        }
-      }
+      float_ordered_compare_nan_rejected(
+        failure_reason: failure_reason,
+        failure_at_port: failure_at_port,
+      )
     } else {
       Produced { value: float_body_compare_ieee_ordered(a.body, b.body) }
     }
