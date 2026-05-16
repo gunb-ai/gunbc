@@ -825,23 +825,96 @@ type Dim3 {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ThreadHierarchyShape — a PTX kernel launch's structural shape: the
-// grid's CTA-count dimensions × the per-CTA thread-count dimensions.
-// Conj record (no Practice-4 ledger).
+// ThreadHierarchyShape — a PTX kernel launch's structural shape. PTX
+// ISA 8.5 §11 admits TWO structurally distinct launch shapes — the
+// legacy flat launch (the grid is a flat collection of CTAs) and the
+// cluster-enabled launch (the grid is a collection of clusters, each
+// a collection of CTAs; PTX 7.8+, Hopper / CUDA 9.0). Each shape
+// exposes a structurally DIFFERENT dimensional carrier set; encoding
+// the launch shape as a Disj-with-payloads makes the carriers
+// admissibility STRUCTURALLY ENFORCED — a flat launch does not carry
+// cluster dims, a cluster launch does, and "a flat launch with
+// cluster_dim=(1,1,1)" is unrepresentable as a category-mistake.
+// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
+// the prior Conj record `{ grid_dim, block_dim }` had no carriers
+// for `%cluster_nctaid` / `%nclusterid` bounds, so cluster
+// coordinate-bound facts had no single authority in the model — the
+// INVARIANTS P2 single-authority shape violated for the cluster
+// half of the hierarchy.)
 //
-//   - grid_dim      number of CTAs along x/y/z in the grid
-//                   (`gridDim.{x,y,z}`)
-//   - block_dim     number of threads along x/y/z within each CTA
-//                   (`blockDim.{x,y,z}`)
+//   - FlatLaunch     — legacy non-cluster launch shape:
+//                       grid_dim   number of CTAs along x/y/z in the
+//                                  grid (`%nctaid.{x,y,z}` /
+//                                  `gridDim.{x,y,z}`)
+//                       block_dim  number of threads along x/y/z
+//                                  within each CTA (`%ntid.{x,y,z}`
+//                                  / `blockDim.{x,y,z}`)
+//   - ClusterLaunch  — cluster-enabled launch shape (PTX 7.8+):
+//                       cluster_grid_dim   number of clusters along
+//                                          x/y/z in the grid
+//                                          (`%nclusterid.{x,y,z}`)
+//                       cluster_dim        number of CTAs along
+//                                          x/y/z within each cluster
+//                                          (`%cluster_nctaid.{x,y,z}`)
+//                       block_dim          number of threads along
+//                                          x/y/z within each CTA
+//                                          (`%ntid.{x,y,z}`)
+//                       The flat grid-CTA count `%nctaid` remains
+//                       readable in cluster launches and equals
+//                       `cluster_grid_dim × cluster_dim` (element-
+//                       wise); the model RECONSTRUCTS the flat
+//                       coordinate from the hierarchical carriers
+//                       rather than redundantly carrying it
+//                       (P2 single-authority — `%nctaid` is the
+//                       cluster-grid product, not an independent
+//                       fact).
 //
-// The product `grid_dim × block_dim` is the BOUNDED CARDINALITY of
-// the thread-grid Loop per the IN-B mapping (kernel iteration runs
-// over this finite set — the A2 boundedness that lets the Loop be
-// total-by-construction).
-type ThreadHierarchyShape {
-  grid_dim: Dim3
-  block_dim: Dim3
-}
+// The product `(grid_dim × block_dim)` for FlatLaunch — or
+// `(cluster_grid_dim × cluster_dim × block_dim)` for ClusterLaunch —
+// is the BOUNDED CARDINALITY of the thread-grid Loop per the IN-B
+// mapping (kernel iteration runs over this finite set — the A2
+// boundedness that lets the Loop be total-by-construction).
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-hierarchy
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every kernel-launch consumer reads
+//      the shape to bound the thread-grid Loop's cardinality and
+//      to wire the coordinate-intrinsic reads (`%tid` / `%ctaid` /
+//      `%cluster_ctaid` / `%clusterid`) to their respective bounds;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the two variants to a
+//      single record `{ grid_dim, cluster_dim?, cluster_grid_dim?,
+//      block_dim }` reintroduces the illegal state "flat launch
+//      with cluster dims set" the Disj-with-payloads exists to
+//      forbid, AND admits the redundant state "cluster launch
+//      whose explicit grid_dim disagrees with cluster_grid_dim ×
+//      cluster_dim" — exactly the P2 single-authority violation
+//      this refactor addresses.
+//   3. Algebraic form — N/A by construction: the two launch shapes
+//      are the PTX-spec launch-mode partition; they do not trace
+//      to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single launch IS EXACTLY ONE shape
+//      — either flat (no cluster decomposition) OR cluster-enabled
+//      (explicit cluster decomposition). PTX launches the kernel
+//      with one or the other launch-mode parameter at the host-
+//      side launch site; they are mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the two variants are NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The variants carry structurally
+//      distinct dimensional-carrier sets (FlatLaunch has 2 Dim3s;
+//      ClusterLaunch has 3) — they are not projection-uniform
+//      over any richer source. Same shape as rust.dag's
+//      RustScalar Disj-with-heterogeneous-payloads.
+// Terminal: the closed two-variant PTX-launch-shape sum; the
+// cluster-launch path carries `%cluster_nctaid` and `%nclusterid`
+// bounds in single authority (no redundancy with the flat-launch
+// path); a third launch shape is the C1 stop-signal (a visible
+// ratified edit to this declaration under the L-2 pin discipline).
+type ThreadHierarchyShape
+  = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
+  | ClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
 
 // ─────────────────────────────────────────────────────────────────────
