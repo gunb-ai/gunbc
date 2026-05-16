@@ -325,6 +325,11 @@ type Hash
 // `Symbol` identity (an identifier / type-parameter name) and decomposes
 // no further. The other five connectives are pure structural
 // discriminants whose entire content is their `children` edges.
+//   Concept anchor — an `Atom` is the type-substrate analogue of an
+//   *atomic formula* in logic: a term containing NO connectives, hence
+//   irreducible. The other five variants are the "connectives" proper;
+//   the atom / connective split is borrowed from logic, not coined here.
+//   https://en.wikipedia.org/wiki/Atomic_formula
 //
 // CLOSED (C1 stop-signal). A seventh connective is an edit to THIS
 // declaration — a visible diff routed to operator ratification (per
