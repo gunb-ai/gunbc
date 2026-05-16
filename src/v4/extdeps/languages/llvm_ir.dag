@@ -1216,8 +1216,8 @@ type Terminator
       indirect_targets: List<Symbol>
     }
   | Resume { value: LlvmValue }
-  | CatchSwitch { parent_pad: LlvmValue, handlers: List<Symbol>, unwind_target: Symbol }
-  | CleanupRet { cleanup_pad: LlvmValue, unwind_target: Symbol }
+  | CatchSwitch { parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
+  | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
   | CatchRet { catch_pad: LlvmValue, successor: Symbol }
 
 
