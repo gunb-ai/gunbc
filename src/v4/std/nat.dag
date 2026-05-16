@@ -15,9 +15,9 @@
 //   - std/node.dag: Disj
 //   - std/algebra.dag: Monoid, Semiring
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Status: T-3 modeled 2026-05-16 (vivid-carp-663). Replaces part of the
+//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
+//   concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
