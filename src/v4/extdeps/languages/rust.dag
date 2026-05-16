@@ -186,9 +186,12 @@
 //   carrier per the 🟡 scaffold bridge to std/cardinality.dag);
 //   `Bool` is kernel-ambient (referenced in commentary on
 //   sum-shape arguments); `List` is kernel-ambient (used as
-//   `List<Symbol>` in `RustVisibility.PubIn`'s path). No other
+//   `List<RustPathSegment>` in `RustVisibility.PubIn`'s path — the
+//   segments themselves are local typed-Disj values, and `Named`
+//   segments carry an opaque `Symbol` identifier per K-1). No other
 //   module is imported — this file is closed-enum + Conj-record
-//   declarations consuming exactly `Node` + `Symbol` from std/node.
+//   declarations consuming exactly `Node` + `Symbol` from std/node
+//   plus `Bool` from std/logic (for the live `IrToRust<Bool>` row).
 //   (The scaffold header's prior `std/node.dag, std/algebra.dag`
 //   Consumes line was anticipatory — std/node.dag IS imported (`Node`
 //   + `Symbol`, exactly as std/diagnostic.dag imports `Node`);
@@ -1120,7 +1123,7 @@ type RustPathSegment
 //   5. Parameterized family — FAILS: the three variants are NOT
 //      one generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). Private and Pub are nullary
-//      tags; PubIn carries a List<Symbol> path. They are
+//      tags; PubIn carries a List<RustPathSegment> path. They are
 //      structurally heterogeneous (the Disj-with-payloads shape is
 //      irreducible — collapsing PubIn into Private/Pub would lose
 //      the path fact, exactly the regression this BLOCKING fix
