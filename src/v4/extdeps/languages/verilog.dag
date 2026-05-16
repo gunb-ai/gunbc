@@ -359,7 +359,10 @@ type PortDirection
 // as a distinct top-level NetType variant rather than here.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: every net-declaration emitter +
 //      every driver-resolution consumer reads the net-type tag
 //      uniformly; shared classifier.
