@@ -915,9 +915,19 @@ type RustReferenceKind
 // (`$crate` is a macro-context segment scope-negative for this
 // slice; it lands as a C1 edit to this declaration when hygienic-
 // macro support lands — see SCOPE NEGATIVE in the header notes.
-// Multi-segment paths like `self::outer_mod` are canonicalized at
-// the parse boundary to drop the leading self per Reference §paths
-// — `self::X` IS `X` from the current module's POV.)
+// Multi-segment paths starting with `self` (e.g.
+// `pub(in self::outer_mod)`) are NEVER valid path-restricted
+// visibility under the Reference's ancestor-resolution rule —
+// `pub(in path)` requires `path` to resolve to an ancestor module
+// of the item, and `self::X` resolves to a CHILD of the current
+// module (a descendant, not an ancestor). Such forms are
+// parse-REJECTED upstream and never reach this carrier (NOT
+// "canonicalized by dropping self" — that would silently equate
+// two semantically distinct scopes, P1 fidelity violation).
+// `self::super::X` paths that resolve to a valid ancestor are
+// likewise normalized at the parse boundary to their canonical
+// (Crate / Super / Named) prefix; the structural carrier only
+// ever sees the canonical ancestor-rooted form.)
 // Spec: https://doc.rust-lang.org/reference/paths.html
 //
 //   - Crate              the `crate` keyword (the current crate
@@ -1032,10 +1042,16 @@ type RustPathSegment
 //               `pub(in crate::outer_mod)` are `PubIn { path:
 //               [Crate, Named { id: outer_mod_symbol }] }`. Multi-
 //               segment paths starting with `self` (e.g.,
-//               `pub(in self::outer_mod)`) are canonicalized at the
-//               parse boundary to drop the `self` segment (per
-//               Reference §paths — `self::X` IS `X` from the current
-//               module's POV).
+//               `pub(in self::outer_mod)`) are NEVER valid under
+//               the Reference's ancestor-resolution rule for
+//               `pub(in path)` — `self::X` resolves to a descendant
+//               (a child of the current module), and `pub(in path)`
+//               requires `path` to resolve to an ANCESTOR module.
+//               Such forms are parse-REJECTED upstream and never
+//               reach this carrier (P1 fidelity: descendants are
+//               NOT equivalent to identifier paths from another
+//               position — silently dropping `self` would equate
+//               two distinct scopes).
 //               `pub(self)` / `pub(in self)` are STRUCTURALLY
 //               UNREPRESENTABLE as PubIn — RustPathSegment has no
 //               Self variant. Per Reference's three-way equivalence
@@ -1075,11 +1091,19 @@ type RustPathSegment
 // constructible segment kind, so the illegal duplicate-authority
 // state is unrepresentable by construction, NOT by documentation.
 // The `self` keyword's canonicalization to `Private` is type-
-// enforced. (Multi-segment paths involving `self` like
-// `pub(in self::outer)` canonicalize at the parse boundary by
-// dropping the leading self segment — `self::outer` IS `outer` in
-// the current module per Reference §paths; the structural carrier
-// only ever sees the non-self form.))
+// enforced for the single-segment case. (Multi-segment paths
+// starting with `self` like `pub(in self::outer)` are NEVER valid
+// path-restricted visibility: per Reference §visibility-and-privacy,
+// `pub(in path)` requires `path` to resolve to an ANCESTOR module,
+// and `self::X` resolves to a child of the current module — a
+// descendant. Such forms are parse-REJECTED upstream and never
+// reach this carrier. Earlier doc wording that claimed
+// "self::outer canonicalizes by dropping the leading self" was
+// WRONG — it would silently equate `pub(in self::outer)` with
+// `pub(in outer)`, two semantically distinct scopes; that
+// equivalence violates P1 modeling-faithfulness against the
+// Reference's ancestor-resolution rule. Corrected per BLOCKING
+// operator review 2026-05-16T03:44:50Z.))
 //
 // CLOSED (C1 stop-signal). A fourth top-level form is an edit to
 // THIS declaration under the L-2 pin discipline. The PubIn variant
