@@ -1361,37 +1361,66 @@ type VariableDeclaration
 
 
 // ─────────────────────────────────────────────────────────────────────
-// VariableDeclarator — one (name, optional-unpacked-dimensions,
-// optional-initializer) triple in a variable declaration's
+// VariableDeclarator — one entry in a variable declaration's
 // list_of_variable_decl_assignments (IEEE 1364-2005 §A.2.4 / §3.10).
-// A single declaration like `reg [7:0] a = 8'h00, mem[0:1023], c =
-// 4'hF;` carries THREE VariableDeclarators (the second of which has
-// an unpacked-array dimensions clause). Conj record (no Practice-4
-// ledger).
+// Per spec grammar `variable_type` is either `variable_identifier
+// { dimension }` (named-with-optional-unpacked-dimensions) OR
+// `variable_identifier = constant_expression` (initialized) —
+// MUTUALLY EXCLUSIVE alternatives, not independent coordinates. The
+// prior {name, unpacked_dimensions, initializer} product shape
+// admitted the spec-illegal `reg mem[0:1023] = 8'h00` combined
+// dimensions+initializer state (openai-pro REQUEST_CHANGES on
+// PR #3176 sha 4ccc6267 — VariableDeclarator product-shape admits
+// illegal states). Split into a closed Disj over the two §A.2.4
+// alternatives makes the spec-illegal combined state structurally
+// unrepresentable (INVARIANTS P2).
 //
-//   - name                         the variable identifier (K-1-
-//                                  opaque Symbol)
-//   - unpacked_dimensions_lexeme   the optional unpacked-array
-//                                  dimensions as a verbatim lexeme
-//                                  (`[0:1023]`, `[0:15][0:7]`); ""
-//                                  denotes a scalar (no unpacked
-//                                  array). Per spec §7.4 a variable
-//                                  can carry both PACKED dimensions
-//                                  (on the type — RegVariable's
-//                                  shared packing field) and UNPACKED
-//                                  dimensions (per-declarator —
-//                                  this field). Sub-grammar deferred
-//                                  to T-4 LanguageModel.
-//   - initializer_lexeme           the variable_decl_assignment
-//                                  initializer expression as a
-//                                  verbatim lexeme; "" denotes the
-//                                  absent-initializer form. Sub-
-//                                  grammar deferred.
-type VariableDeclarator {
-  name: Symbol
-  unpacked_dimensions: UnpackedDimensionsClause
-  initializer: VariableInitializerClause
-}
+// A single declaration like `reg [7:0] a, mem[0:1023], c = 4'hF;`
+// carries THREE VariableDeclarators (one NamedVariable per the first
+// two names; one InitializedVariable for the last). The §7.4 PACKED
+// dimensions stay on RegVariable's shared `packing` field at the
+// outer level — those are TYPE-level, not declarator-level.
+//
+//   - NamedVariable
+//       — `reg a;` / `reg mem[0:1023];` form: identifier with
+//       OPTIONAL unpacked-array dimensions; NO initializer.
+//   - InitializedVariable
+//       — `reg c = 4'hF;` form: identifier with REQUIRED initializer
+//       expression; NO unpacked-array dimensions.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.2.4 admits exactly the
+// two variable_type alternatives.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every variable-declaration emitter
+//      and elaboration consumer reads the per-declarator form
+//      uniformly; shared classifier.
+//   2. Variant-is-data — FAILS: a `{ unpacked_dimensions,
+//      initializer }` product (prior shape) admits the §A.2.4
+//      spec-illegal combined dimensions+initializer state — exactly
+//      the P2 illegal-states-representable concern this Disj
+//      dissolves.
+//   3. Algebraic form — N/A by construction: the two alternatives
+//      are the spec's §A.2.4 irreducible partition.
+//   4. Dimensional — FAILS: a single variable_decl_assignment is
+//      EXACTLY ONE form; mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: NamedVariable carries
+//      `unpacked_dimensions: UnpackedDimensionsClause`;
+//      InitializedVariable carries `initializer:
+//      VariableInitializerClause` — structurally heterogeneous
+//      (Practice 7).
+// Terminal: the closed two-way Verilog variable_decl_assignment
+// alternative classifier of the IEEE 1364-2005 §A.2.4 spec.
+type VariableDeclarator
+  = NamedVariable {
+      name: Symbol
+      unpacked_dimensions: UnpackedDimensionsClause
+    }
+  | InitializedVariable {
+      name: Symbol
+      initializer_lexeme: String
+    }
 
 
 // (PortDeclarationStyle has been dissolved into ModulePortsList's
@@ -1678,9 +1707,53 @@ type AnsiNetPortType
 // classifier; illegal direction × type-kind combinations are
 // unrepresentable by construction.
 type AnsiPortDeclaration
-  = AnsiInputPort { name: Symbol, net: AnsiNetPortType }
-  | AnsiOutputPort { name: Symbol, type_kind: OutputPortAnsiTypeKind }
-  | AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
+  = AnsiInputPort {
+      attributes: AttributeInstanceClause
+      net: AnsiNetPortType
+      // 🟡 spec-non-empty (§A.1.3 list_of_port_identifiers) — deferred
+      // to std/collection.dag Wave-A2 `List<T> where non_empty`
+      // refinement; see shared TRACKED-SCAFFOLD note below.
+      names: List<Symbol>
+    }
+  | AnsiOutputPort {
+      attributes: AttributeInstanceClause
+      type_kind: OutputPortAnsiTypeKind
+      // 🟡 spec-non-empty (§A.1.3 list_of_variable_port_identifiers /
+      // list_of_port_identifiers) — deferred to std/collection.dag
+      // Wave-A2 `List<T> where non_empty` refinement; see shared
+      // TRACKED-SCAFFOLD note below.
+      names: List<AnsiOutputPortDeclarator>
+    }
+  | AnsiInoutPort {
+      attributes: AttributeInstanceClause
+      net: AnsiNetPortType
+      // 🟡 spec-non-empty (§A.1.3 list_of_port_identifiers) — deferred
+      // to std/collection.dag Wave-A2 `List<T> where non_empty`
+      // refinement; see shared TRACKED-SCAFFOLD note below.
+      names: List<Symbol>
+    }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AnsiOutputPortDeclarator — one (name, optional-initializer) entry
+// in an ANSI output port's list_of_variable_port_identifiers (IEEE
+// 1364-2005 §A.1.3 / §A.2.3). Per spec list_of_variable_port_
+// identifiers ::= port_identifier [ = constant_expression ] { ,
+// port_identifier [ = constant_expression ] } — each output-port
+// identifier admits an OPTIONAL initializer. Only ANSI output ports
+// reach this carrier; input/inout ports use plain `List<Symbol>`
+// because the spec form list_of_port_identifiers does NOT admit
+// per-port initializers. Conj record (no Practice-4 ledger).
+//
+//   - name             the declared port identifier (K-1-opaque
+//                      Symbol).
+//   - initializer      the optional initializer clause (reuses
+//                      VariableInitializerClause); structurally
+//                      optional per the §A.2.3 brackets.
+type AnsiOutputPortDeclarator {
+  name: Symbol
+  initializer: VariableInitializerClause
+}
 
 
 // (The standalone ModulePortsList Disj has been dissolved into
