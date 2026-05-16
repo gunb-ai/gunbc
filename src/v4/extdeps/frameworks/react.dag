@@ -1,35 +1,262 @@
 // src/v4/extdeps/frameworks/react.dag
 //
-// Scope: React framework substrate — Component model, Hook semantics, Effect lifecycle.
-// Anchor: https://react.dev/reference/react (React official docs) + https://react.dev/learn (mental model)
+// Scope: React framework substrate — function components, Hook sites, effect
+//         lifecycle triggers, client vs React-Server-Components module surfaces.
+// Anchor (version pins — checkable L-2; extdeps declaration discipline):
+//   React **19.1.0** (npm `react@19.1.0`): API surface frozen at
+//   https://github.com/facebook/react/releases/tag/v19.1.0 and documented at
+//   https://react.dev/reference/react (rolling site — the **semver tag** is
+//   the L-2 fidelity authority; site drift = visible C1 edit to this header).
+//   Mental model / composition: https://react.dev/learn
+// Unifies: (per THESIS:188) framework spec = transport spec = interpreter
+//         runtime where applicable. ONE substrate carrier per React program
+//         slice; emission / ingest / eval lenses read distinct facts from the
+//         same Node-shaped tree — extend THIS file, not parallel "emit-only"
+//         mirrors.
 //
 // Owns:
-//   - Component { props, state, render: () -> Node }
-//   - Hook { kind: HookKind, dependencies: List<Node> }
-//   - HookKind = Builtin(BuiltinHook) | Custom(Node)
-//     (a custom hook is a composition of other hooks per Rules-of-Hooks —
-//     it is a Node, not a new kind; feedback_nodes_are_nodes. This keeps
-//     HookKind genuinely closed while still representing every React program:
-//     the built-in set is finite, custom hooks reduce to Node composition.)
-//   - BuiltinHook = UseState | UseReducer | UseContext | UseRef
-//     | UseImperativeHandle | UseEffect | UseLayoutEffect | UseInsertionEffect
-//     | UseMemo | UseCallback | UseTransition | UseDeferredValue | UseId
-//     | UseSyncExternalStore | UseDebugValue | UseActionState | UseOptimistic
-//     | Use   (closed — the complete built-in Hook set per the react.dev
-//     Anchor; NO "..." — a hook missing at fill-time is a substrate-extension
-//     STOP, not a silently-permitted open enum)
-//   - ComponentEffect { trigger: EffectTrigger, body: Behavior }
-//   - EffectTrigger = Mount | Unmount | DependencyChange | EveryRender (closed enum)
-//   - Rules-of-Hooks discipline (lens-checkable: no Hooks in conditionals)
+//   - ReactModuleSurface = ReactClientModule | ReactServerComponentsModule
+//     (closed — the exhaustive partition of **module-level** capability
+//     surfaces React 19 documents for RSC vs client bundles; per TASKS.md
+//     T-4.7 the fork is modeled HERE so hook-kind admissibility composes with
+//     effect typing instead of bolting on a stringly "use client" annotation
+//     layer — directive spelling lives in the boundary intern table, not the
+//     kernel.)
+//   - ReactFunctionComponent { surface, props_type_ref, root: Node }
+//     — props are a TypeScript-shaped type at the language boundary; modeled as
+//     an opaque `Symbol` name-reference into `v4.extdeps.languages.typescript`
+//     (traceability only — no `import` edge until a ratified shared carrier
+//     needs it; P2 single-authority).
+//   - ReactHook { kind: ReactHookKind, dependencies: List<Node> }
+//     — `dependencies` is the dependency-list spine hook consumers share
+//     (empty for hooks without a dependency array such as `useState`;
+//     ordered list matches React's array semantics).
+//   - ReactHookKind = Builtin { hook: ReactBuiltinHook }
+//     | Custom { implementation: Node }
+//     (`Custom` is Node composition per Rules-of-Hooks — not a new hook kind;
+//     feedback_nodes_are_nodes.)
+//   - ReactBuiltinHook — the COMPLETE **react**-package stable hook set
+//     enumerated at react.dev/reference/react for the pinned release (C1
+//     closure — NO "…"; a missing hook at fill-time is a substrate-extension
+//     STOP, not a silent open enum). Variant `UseApi` models the stable `use`
+//     promise/resource reader (react.dev/reference/react/use) — spelling
+//     `Use` alone is a reserved-shape hazard, so the carrier name is explicit.
+//   - ReactComponentEffect { trigger: ReactEffectTrigger, effect_body: Node }
+//     — `effect_body` is the full subtree for the effect callback + cleanup
+//     composition (not a bare `Behavior` tag: a Behavior without children
+//     cannot carry a program; INVARIANTS substrate uses `Node` as the ONE
+//     recursive program carrier — reconciles the prior scaffold sketch).
+//   - ReactEffectTrigger = Mount | Unmount | DependencyChange | EveryRender
+//     (closed enum — **when** a modeled `ReactComponentEffect` runs relative
+//     to the reconciler; maps to effect commit/cleanup scheduling facts in
+//     the reference, not wall-clock time.)
+//   - Rules-of-Hooks discipline — **lens-owned**: violations surface as
+//     `std/diagnostic.dag` `Diagnostic` values raised by a react lens /
+//     checker consuming this substrate (reason `Symbol` owned by that lens,
+//     not enumerated here — THESIS §1.5 / diagnostic.dag schema).
 //
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag
-//   - extdeps/languages/typescript.dag (React is hosted in TS)
+// Consumes (traceability):
+//   - std/node.dag: Node, Symbol (K-1 opaque identity for cross-module refs)
+//   - std/collection.dag: List<T> for dependency lists
+//   - extdeps/languages/typescript.dag: authoritative TS type graph for
+//     `props_type_ref` resolution (traceability — no hard `import` until a
+//     ratified shared carrier requires it)
 //
-// Status: scaffold — fill per TASKS.md T-4.7
+// Owned ELSEWHERE (explicit deferrals — named triggers):
+//   - JSX / TSX grammar, attribute/event emission, synthetic-event shapes —
+//     bundled T-4 LanguageModel + emit lanes (TASKS.md T-4 B2-OMNI).
+//   - Class components, Error boundaries, Suspense boundaries, concurrent
+//     features beyond hook enumeration — grammar / library layers; not
+//     duplicated here.
+//   - Next.js / framework-specific directives (`"use client"`, routing) —
+//     adjacent framework extdeps when operator-ratified; React core stops at
+//     `ReactModuleSurface`.
+//   - Per-hook algebra inhabitance (e.g. state semiring story) — composes with
+//     std/algebra.dag when a D2-style resolver slice lands; same deferral shape
+//     as language extdeps (no OrderedRing rows here pre-trigger).
+//
+// Status: T-4.7 modeled 2026-05-16 — structural carriers landed; grammar /
+//   emit / per-hook inhabitance ride named ELSEWHERE owners.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
 
+
 module v4.extdeps.frameworks.react
 
+
+import v4.std.node { Node, Symbol }
+import v4.std.collection { List }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes
+//
+// REACT VS TYPESCRIPT. Props and hook operands are ECMAScript/TypeScript
+// values at the language boundary — this file names them through `Node` trees
+// (already lowered / embedded in the program graph) and `Symbol` references
+// into the TS module graph for static props types. That keeps React's model
+// from minting parallel string / Int carriers for TS facts (P2).
+//
+// RSC VS CLIENT. `ReactServerComponentsModule` values carry only the hook + DOM
+// subsets React documents for server components; **which** hooks are illegal
+// in a server module is enforced at the grammar / checker lens that reads
+// `surface`, not by duplicating hook enums (single closed `ReactBuiltinHook`
+// authority — admissibility is relative to `ReactModuleSurface`).
+//
+// EFFECT TRIGGERS. React's real engine interleaves commit + cleanup passes; the
+// four-way `ReactEffectTrigger` sum is a modeling partition for **structural**
+// scheduling obligations the testgen / coordination lenses read — not a
+// runtime event log.
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactModuleSurface — client vs React Server Components module boundary
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every endpoint / emit / capability lens reads
+//      the same module-surface tag uniformly when composing React with
+//      coordination.dag or TS emit.
+//   2. Variant-is-data — FAILS: a `{ is_server: Bool }` proxy admits the
+//      illegal (server ∧ client) simultaneous state and loses the named
+//      partition react.dev uses for RSC vs client bundles.
+//   3. Algebraic form — N/A: the distinction is an epistemic module boundary,
+//      not an algebra inhabitant.
+//   4. Dimensional — FAILS: a compiled React module is **exactly one** of
+//      these surfaces at the authority modeled here (mixed graphs compose at
+//      the program / graph layer, not by fusing this tag).
+//   5. Parameterized family — FAILS: not `F<X>` over a richer enumerable source;
+//      the two surfaces are the irreducible React-19 module-capability story.
+// Terminal: the closed binary partition for React 19 module-level capability.
+type ReactModuleSurface
+  = ReactClientModule
+  | ReactServerComponentsModule
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactBuiltinHook — complete stable hook API of the `react` package (pinned
+// React 19.1.0) per https://react.dev/reference/react .
+//
+// ORDERING NOTE. Variants follow the **react.dev left-nav / reference index**
+// order for the Hooks section (`useState` … `use`) so external diff audits map
+// mechanically to the doc table — not alphabetical, not dependency frequency.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every resolver / emit / cost consumer branches on
+//      the built-in hook uniformly; shared classifier, not scattered string
+//      tables (K-1-safe — no readable hook-name tokens in kernel logic).
+//   2. Variant-is-data — FAILS: `{ hook_id: Int }` replaces a closed 18-way
+//      exhaustive sum with unbounded integers — illegal hook ids become
+//      representable (P2).
+//   3. Algebraic form — PARTIAL: each hook eventually composes with std/
+//      effects + algebra carriers (state monoid, transition semiring, etc.) —
+//      those are **inhabitance walks** owned ELSEWHERE; this enum stays the
+//      closed API partition, not a collapse target into a single algebra.
+//   4. Dimensional — FAILS: a single hook call site selects EXACTLY ONE built-in
+//      hook kind at a time — mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: hooks are NOT `ReactHookOp<Width>` style
+//      mechanical copies over an independent width enum (Practice 7); each
+//      variant is its own named React API surface.
+// Terminal: the closed eighteen-way stable hook classifier for React 19.1.0.
+type ReactBuiltinHook
+  = ReactUseState
+  | ReactUseReducer
+  | ReactUseContext
+  | ReactUseRef
+  | ReactUseImperativeHandle
+  | ReactUseEffect
+  | ReactUseLayoutEffect
+  | ReactUseInsertionEffect
+  | ReactUseMemo
+  | ReactUseCallback
+  | ReactUseTransition
+  | ReactUseDeferredValue
+  | ReactUseId
+  | ReactUseSyncExternalStore
+  | ReactUseDebugValue
+  | ReactUseActionState
+  | ReactUseOptimistic
+  | ReactUseApi
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactHookKind — built-in vs custom-hook body
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: lowering + lint share one discriminant for hook
+//      expansion vs user-authored hook functions.
+//   2. Variant-is-data — FAILS: collapsing to `{ is_builtin: Bool, code: Node }`
+//      admits "builtin with arbitrary implementation subtree" — contradicts
+//      React's finite built-in set + Rules-of-Hooks composition for custom
+//      hooks.
+//   3. Algebraic form — PARTIAL: custom hooks reduce to Node composition of other
+//      hooks — the `implementation` subtree is the monoid closure site, not a
+//      second parallel enum.
+//   4. Dimensional — FAILS: a hook site is EITHER a named built-in OR a custom
+//      Node body — never both simultaneously at the same call site.
+//   5. Parameterized family — FAILS: not a uniform `F<X>` / Practice-7 projection
+//      over an independent index set; the two arms carry structurally different
+//      payloads (`ReactBuiltinHook` vs `Node`).
+// Terminal: the irreducible built-in vs custom hook partition.
+type ReactHookKind
+  = Builtin { hook: ReactBuiltinHook }
+  | Custom { implementation: Node }
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactHook — hook kind + dependency list spine
+//
+// Conj record (no Practice-4 ledger).
+type ReactHook {
+  kind: ReactHookKind
+  dependencies: List<Node>
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactEffectTrigger — structural scheduling obligations for effects
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: testgen / cost / coordination consumers read the
+//      trigger uniformly when sequencing modeled effects.
+//   2. Variant-is-data — FAILS: `{ phase_bits: Int }` reopens illegal trigger
+//      combinations as representable states.
+//   3. Algebraic form — N/A: triggers are reconciler-scheduling classes, not an
+//      algebra carrier in std/.
+//   4. Dimensional — FAILS: each modeled obligation is EXACTLY ONE trigger class
+//      at the modeled site — mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: not `F<Step>` over a declared step enum;
+//      the four triggers name distinct reconciler obligations, not a uniform
+//      copy of another set.
+// Terminal: the closed four-way effect-trigger partition from the scaffold
+// contract (TASKS.md T-4.7).
+type ReactEffectTrigger
+  = Mount
+  | Unmount
+  | DependencyChange
+  | EveryRender
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactComponentEffect — effect callback subtree + trigger
+//
+// Conj record (no Practice-4 ledger).
+type ReactComponentEffect {
+  trigger: ReactEffectTrigger
+  effect_body: Node
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// ReactFunctionComponent — surface + props type ref + render tree root
+//
+// Conj record (no Practice-4 ledger).
+type ReactFunctionComponent {
+  surface: ReactModuleSurface
+  props_type_ref: Symbol
+  root: Node
+}

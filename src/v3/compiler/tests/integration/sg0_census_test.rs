@@ -827,6 +827,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
+    // T-4.7 React framework substrate: `compile_to_dag` smoke on
+    // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
+    // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
+    "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
     // T-4 typescript D2-resolver slice: `compile_to_dag` smoke on
     // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
