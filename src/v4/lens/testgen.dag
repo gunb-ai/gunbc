@@ -99,7 +99,10 @@
 //   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
 //   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
 //
-// Status: scaffold — fill per TASKS.md T-19
+// Status: T-19 modeled 2026-05-16 (still-deer-194) — Generator<C> carrier,
+//         five category subject types, TestClassification, and rule
+//         signatures. Executable fold bodies + simulator arm land with
+//         compiler/05_eval.dag (T-22) and coverage (T-18) integration.
 // Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
 // substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
 // This buys test evidence early — every Phase 2+ task gets a testgen-
@@ -107,3 +110,133 @@
 
 module v4.lens.testgen
 
+
+import v4.std.collection { Set }
+import v4.std.node { Connective, Node, Symbol }
+import v4.std.verification { TestClaim }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// PRODUCER LENS. This file owns the GENERIC CARRIER and the CLOSED FIVE-
+// category subject vocabulary testgen folds over. std/verification.dag
+// owns TestClaim SHAPE only (T-3). The five categories are NOT parallel
+// AssertKind extensions — each maps INTO the closed four (Equals |
+// Diagnostic | Compiles | RoundTrips) per the file header ledger.
+//
+// Generator<C> mirrors lens/coverage.dag's Coverage<C> pattern: one
+// record parameterized by the substrate slice `C` under generation. The
+// common case instantiates `C` as `TestgenConcept` below (the disjoint
+// union of the five category focal payloads). Specialization to a single
+// category is `Generator<TypeConstructionSubject>` etc.
+//
+// Rule functions are DECLARED here with their authoritative signatures;
+// their bodies are substrate folds over declarations (T-22 evaluates
+// claims; the fold implementation is intentionally not cemented in Rust
+// templates — see project spirit / THESIS migration discipline).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TestClassification — THESIS correctness tier × TESTING.md test layer.
+// Every testgen-emitted claim carries this cross-cut for coverage ratio
+// enforcement (lens/coverage.dag T-18 reads the same axes).
+//
+// Coproduct dissolution: both enums are 🟢 terminal closed classifiers;
+// this record is a Conj — no ledger.
+type TestgenTier
+  = Tier1
+  | Tier2
+  | Tier3
+
+
+type TestgenLayer
+  = Unit
+  | Integration
+  | Boundary
+
+
+type TestClassification {
+  tier: TestgenTier
+  layer: TestgenLayer
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Generator<C> — generic carrier: one scheduled generation unit over a
+// substrate concept slice `C`. `classification` is the Tier×Layer tag
+// applied to every TestClaim this unit contributes to the corpus.
+//
+// Coproduct dissolution: Conj record — no ledger.
+type Generator<C> {
+  classification: TestClassification
+  slot: C
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Five category SUBJECT types — inputs to the five testgen rules (the
+// substrate concepts testgen reads). Symbols are K-1 name-references to
+// declarations in their owning dimensions (never minted at use sites).
+
+
+// Closed six-connective kernel slice for type-construction testgen
+// (Compiles claims — one connective variant per generated claim family).
+type TypeConstructionSubject {
+  connective: Connective
+}
+
+
+// Algebra × inhabitant × law — each field is a declared Symbol in the
+// namespace of std/algebra.dag or the inhabiting concept file (L7).
+type AlgebraLawSubject {
+  algebra: Symbol
+  inhabitant: Symbol
+  law: Symbol
+}
+
+
+// One diagnostic-reason symbol exhaustiveness cell (the reason set is
+// owned per dimension, not enumerated in std/diagnostic.dag — this cell
+// names WHICH declared reason variant the Diagnostic claim targets).
+type DiagnosticExhaustivenessSubject {
+  reason: Symbol
+}
+
+
+// Lens applicability: declared lens module + program under test.
+type LensApplicabilitySubject {
+  lens: Symbol
+  program: Node
+}
+
+
+// Bidirectional roundtrip anchor: language + grammar production symbols.
+type BidirectionalRoundtripSubject {
+  language: Symbol
+  production: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TestgenConcept — the closed disjoint union of the five category subjects.
+// `Generator<TestgenConcept>` is the unified scheduling carrier; coverage
+// may also read this sum when checking combinatorial completeness.
+type TestgenConcept
+  = TypeConstruction { subject: TypeConstructionSubject }
+  | AlgebraLaw { subject: AlgebraLawSubject }
+  | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
+  | LensApplicability { subject: LensApplicabilitySubject }
+  | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Rule I/O contracts (authoritative signatures — bodies are substrate folds,
+// not enumerated claim matrices; land with T-22 eval + T-18 coverage):
+//   fn type_construction(subject: TypeConstructionSubject) -> Set<TestClaim>
+//   fn algebra_law(subject: AlgebraLawSubject) -> Set<TestClaim>
+//   fn diagnostic_exhaustiveness(subject: DiagnosticExhaustivenessSubject)
+//        -> Set<TestClaim>
+//   fn lens_applicability(subject: LensApplicabilitySubject) -> Set<TestClaim>
+//   fn bidirectional_roundtrip(subject: BidirectionalRoundtripSubject)
+//        -> Set<TestClaim>
