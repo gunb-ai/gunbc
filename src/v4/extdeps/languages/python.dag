@@ -90,10 +90,6 @@
 //   table below; the slice-vs-bundled split is explicit, not silent —
 //   same revision discipline as rust.dag #3174 and ptx.dag #3170):
 //
-//   - Python scalar primitive vocabulary as closed structural carriers:
-//     PythonScalarKind (the top-level 3-category partition — Numeric /
-//     String / Singleton — per Reference §3.2 the-standard-type-
-//     hierarchy)
 //   - Python numeric subtype tower: PythonNumericTower (Bool /
 //     Integral / Real / Complex — the closed 4-level PEP 285 + PEP 3141
 //     partition, with the partial-order Bool ⊑ Integral ⊑ Real ⊑
@@ -107,10 +103,16 @@
 //     NotImplementedT / EllipsisT — the closed 3-way Reference §3.2
 //     singleton-types partition; each has exactly one inhabitant)
 //   - Python typed-scalar sum: PythonScalar (the 3-variant Disj with
-//     named-field nested-kind payloads — illegal cross-category
-//     combinations like "a Singleton with a numeric tower level" are
-//     STRUCTURALLY UNREPRESENTABLE, because each variant carries
-//     exactly the sub-classifier its category admits)
+//     named-field nested-kind payloads — Numeric / String /
+//     Singleton; serves BOTH the top-level 3-category kind
+//     classifier role AND the typed-value role in one carrier
+//     because Python's spec has no orthogonal width axis for the
+//     typed-value layer to add — see PythonScalar's modeling note
+//     for the Python-vs-rust structural-difference rationale.
+//     Illegal cross-category combinations like "a Singleton with a
+//     numeric tower level" are STRUCTURALLY UNREPRESENTABLE, because
+//     each variant carries exactly the sub-classifier its category
+//     admits)
 //   - Python per-target cost-realization carrier shape: PythonCost
 //     (per-spec-operation + per-allocation components per Reference
 //     §6/§8 — NOT per CPython bytecode op, which is implementation
@@ -357,7 +359,7 @@ module v4.extdeps.languages.python
 //     a Value. The literal's typed interpretation (its scalar kind:
 //     Int / Float / Bool / Complex / Str / Bytes / NoneT /
 //     NotImplementedT / EllipsisT — the partition encoded by
-//     PythonScalarKind below) is the inhabitance walk that RIDES
+//     PythonScalar below) is the inhabitance walk that RIDES
 //     D2 — pre-D2 the Value's TYPED interpretation is unspecified;
 //     the Value carrier itself is just a Node.
 //
@@ -748,19 +750,41 @@ type PythonSingletonKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PythonScalarKind — the closed Python top-level primitive-scalar
-// category partition. Per Reference §3.2 the-standard-type-hierarchy
+// PythonScalar — the closed Python top-level primitive-scalar
+// typed-value Disj. Per Reference §3.2 the-standard-type-hierarchy
 // the BUILT-IN primitive scalars partition into exactly three
 // categories — Numeric (the four numeric-tower levels), String (the
 // three textual / byte-sequence kinds), and Singleton (the three
-// spec-defined one-inhabitant types). The variant payloads carry the
-// sub-classifier kind, making the Cartesian product of "category × in-
-// category-kind" STRUCTURALLY ENFORCED — an illegal cross-category
-// combination like "a Singleton with a numeric tower level" is
-// unrepresentable (the INVARIANTS P2 illegal-states-unrepresentable
-// shape, the same design choice rust.dag's RustScalar took with
-// kind×width payloads and ptx.dag's RegisterScalar took with kind ×
-// width × state_space).
+// spec-defined one-inhabitant types).
+//
+// SINGLE-CARRIER CONSOLIDATION (the Python-vs-rust structural
+// difference, naming-drift correction per operator BLOCKING review
+// codex on PR #3180). The rust.dag #3174 precedent declares TWO
+// scalar carriers — RustScalarKind (the flat 6-way meta-enum
+// classifier) and RustScalar (the Disj-with-payloads typed-value
+// form with kind×width admissibility). Those two are at different
+// layers in rust because the typed-value form needs WIDTH payloads
+// the meta-classifier doesn't. Python has NO orthogonal width axis
+// (see header Python-particulars (a) — int is arbitrary-precision,
+// float is machine-level double precision, no per-kind width
+// discriminator). So the meta-classifier and the typed-value form
+// COLLAPSE INTO ONE Disj in Python: PythonScalar's variants
+// (Numeric / String / Singleton) ARE the 3-category meta-tags AND
+// the typed-value variants in one — there is no separate
+// `PythonScalarKind` because there is no orthogonal axis for it
+// to factor across. The earlier doc references to a separate
+// `PythonScalarKind` were doc-vs-code drift; PythonScalar is the
+// single canonical carrier (P1 modeling-faithfulness / live-state
+// documentation per the codex finding that drove this correction).
+//
+// The variant payloads carry the sub-classifier kind, making the
+// Cartesian product of "category × in-category-kind" STRUCTURALLY
+// ENFORCED — an illegal cross-category combination like "a
+// Singleton with a numeric tower level" is unrepresentable (the
+// INVARIANTS P2 illegal-states-unrepresentable shape, the same
+// design choice rust.dag's RustScalar took with kind×width payloads
+// and ptx.dag's RegisterScalar took with kind × width ×
+// state_space).
 //
 //   - Numeric    — { tower: PythonNumericTower }
 //                  e.g. Numeric { tower: IntegralLevel } is Python's
