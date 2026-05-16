@@ -14,14 +14,194 @@
 // Consumes:
 //   - std/node.dag: Conj, Cardinality
 //   - std/logic.dag: Bool (a byte is a fixed-cardinality group of bits)
-//   - std/nat.dag: Nat (a width is a count)
+//   - std/collection.dag: List (Byte / Word* fields — `List<T>` =
+//     `FreeMonoid<T>`; the honest unrefined length scaffold is tracked in
+//     Modeling notes below)
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Status: T-3 modeled 2026-05-16 (zesty-bat-822). Replaces part of the
+//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
+//   concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// HEADER RECONCILE (T-3 manager disposition + cool-wren-237 verification,
+// 2026-05-16) — scaffold-header-drift class (same disposition family as
+// #3186 text.dag / collection.dag operator-ratified b2 + #3169 issuecomment-
+// 4464775997 precedent: frozen Consumes must match machine-evident imports).
+// (1) The original scaffold listed `std/nat.dag: Nat` under Consumes but
+//     shipped no `Nat` import — width-as-count / Nat magnitude for lowering
+//     `MachineWidth<Word*>` is **Grounding’s single authority** (INVARIANTS
+//     P2), not a machine.dag type dependency; that Consumes line is **dropped**
+//     as a non-dep (deferred-out of this file’s contract).
+// (2) The delivered `Byte` / `Word*` model uses `List<Bit>` / `List<Byte>` —
+//     the achievable v2 surface given the Cardinality **connective** cannot
+//     be written as a refinement TYPE on the field (Cardinality-connective-
+//     not-type discipline). The real edge is **std/collection.dag**’s
+//     `List<T>` (`List<T> = FreeMonoid<T>` per collection.dag). Consumes
+//     now names it; `import v4.std.collection { List }` makes the dep self-
+//     evident for reviewers and the resolver. Carriers are unchanged — header /
+//     import / Status hygiene only.
 
 
 module v4.std.machine
+
+
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CONJ + CARDINALITY (std/node.dag). The frozen header’s “Consumes …
+// Cardinality” names the **Cardinality connective** (one of the six type
+// connectives), not a refinement TYPE. A `Byte` / `Word*` is a **Conj**
+// nominal record whose `List<…>` field is the substrate’s finite-sequence
+// carrier (`List` = `FreeMonoid` — std/collection.dag). Do **not** write
+// `Cardinality` as a type name here; std/cardinality.dag owns refinement
+// *types* (`Multiplicity`, …) — out of this file’s deps.
+//
+// LIST FIELD LENGTH vs NOMINAL WIDTH — TRACKED SCAFFOLD (🟡):
+// The `bits` / `bytes` fields are honest **unrefined** `List<…>` carriers:
+// nominal `Byte` / `Word*` names assert IEEE/ISO word sizes (8 bits;
+// 1 / 2 / 4 / 8 / 16 bytes), but the substrate does not yet attach a
+// structural length witness to those fields — the same class of gap
+// dsl/std/bit.dag documents for v3 study (not lifted). This is acceptable
+// ONLY as a **formal** deferral (operator-ratified collection.dag pattern:
+// Map + FiniteSet — three bridge properties + named trigger). Bridge
+// properties:
+//   (a) scaffold doc — THIS block; the types below intentionally use bare
+//       `List<Bit>` / `List<Byte>` without a fixed-length refinement.
+//   (b) bounds on use — no consumer may read `Byte` / `Word*` and treat
+//       `bits` / `bytes` spine length as **proven** to match the nominal
+//       width without an explicit validator or Grounding-side check;
+//       std/integer.dag + std/float.dag (post-#3185) MUST NOT assert
+//       width-correctness from these lists alone — they compose with
+//       `MachineWidth<Word*>` and discharge exact width at Grounding /
+//       emission, or wait on the dissolution trigger. Pipeline passes
+//       that need structurally exact bit/byte counts wait on the same
+//       trigger (or carry an explicit Witness / bounded carrier from the
+//       follow-up substrate).
+//   (c) dissolution trigger — **fixed-cardinality refinement substrate
+//       lands** (the closed-system path: std/cardinality.dag `Multiplicity`
+//       + bounded `List`/record refinements wired in the substrate grammar
+//       — e.g. alias `where` / phantom-Nat bounds / field cardinality on
+//       Conj — whichever ratified form first closes the “list length ≠
+//       nominal width” hole). A follow-up PR then either refines
+//       `Byte { bits: … }` / `Word* { bytes: … }` to carry the witness or
+//       replaces these fields with a single-authority bounded-sequence
+//       carrier and **deletes this 🟡 block** when the gap is structurally
+//       closed. STUDY precedent for the honest gap statement: dsl/std/
+//       bit.dag header (v4 does not lift v3/v2 artifacts wholesale).
+//
+// NAT (std/nat.dag). Widths are counts in the external consensus sense
+// (8, 16, … bits); this file names **nominal word witnesses** (`Word8` …)
+// for the `MachineWidth<…>` phantom slot. Literal `Nat` magnitude in the
+// type DAG is Grounding’s job when lowering `MachineWidth<Word64>` → 64
+// — not a second Nat authority duplicated here (INVARIANTS P2). The
+// reconciled header therefore does **not** list `std/nat.dag` under
+// Consumes (see HEADER RECONCILE).
+//
+// PRACTICE 4 (modeling-discipline.md §4). This module authors **no**
+// `type T = V1 | V2 | …` sum with N ≥ 2. Carriers here are: (1) a **type
+// alias** `Bit = Bool` (the machine-traversable edge to std/logic.dag’s
+// sole classical-bit authority — INVARIANTS worked-example chain); (2)
+// **Conj** nominal records `Byte`, `Word8` … `Word128`; (3) **opaque**
+// nominal placeholders `MachineWidth<bits>`, `PointerWidth`. For each
+// arity-1 Conj / opaque: Practice-4 dissolution checkpoint **N/A** (not
+// a multi-variant coproduct). The closed set of five `Word*` names is a
+// deliberate **nominal** enumeration of the standard byte-multiple word
+// sizes — not an internal `F<N>` family that would need a `Nat` index
+// refinement type outside this file’s contract (Practice 5 / Practice 7
+// do not force dissolving these into one parameter — they are distinct
+// authorities for `MachineWidth<Word*>` arguments, same spirit as dsl/std/
+// bit.dag’s separate `Word16` / `Word32` / …).
+//
+// MACHINE-READABLE INHABITANCE (operator ruling 2026-05-16). No machine.dag
+// type inhabits an algebra in this PR — there is no prose-only Monoid/
+// Ring claim; width facts are nominal structure + phantom carriers only.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bit — one classical bit (width = 1). Alias-identity to `Bool` from
+// std/logic.dag — the v4 classical truth value IS the bit carrier
+// (epistemic stacking; dsl/std/bit.dag’s `Bit = Classical` line, refreshed
+// for v4’s `Bool` name). Downstream reads machine width through bytes
+// built from `Bit`, not a parallel bit algebra.
+//
+// Coproduct dissolution — N/A: not a new sum; `Bool`’s 🟢 ledger lives in
+// std/logic.dag. This declaration is only the substrate-visible alias edge.
+type Bit = Bool
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Byte — an octet (IEEE / ISO byte = 8 bits — INVARIANTS integer-chain
+// anchor). Field is `List<Bit>`; exact length-8 is **not** structurally
+// enforced — see Modeling notes “LIST FIELD LENGTH … TRACKED SCAFFOLD”.
+//
+// Coproduct dissolution — N/A: Conj nominal (single constructor shape),
+// not an N ≥ 2 internal sum.
+type Byte {
+  bits: List<Bit>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Word8 / Word16 / Word32 / Word64 / Word128 — machine words as byte-
+// sequences (Wikipedia “Word (computer architecture)” — anchor). Nominal
+// widths 1 / 2 / 4 / 8 / 16 bytes; fields are `List<Byte>` without
+// structural length enforcement — same 🟡 tracked scaffold as `Byte`
+// (see Modeling notes).
+//
+// Coproduct dissolution — N/A for each: Conj nominal, not a sum.
+type Word8 {
+  bytes: List<Byte>
+}
+
+type Word16 {
+  bytes: List<Byte>
+}
+
+type Word32 {
+  bytes: List<Byte>
+}
+
+type Word64 {
+  bytes: List<Byte>
+}
+
+type Word128 {
+  bytes: List<Byte>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// MachineWidth<bits> — sole machine-width **axis** carrier for composing
+// abstract numeric types with a concrete width (e.g. future
+// `Compose<Int, MachineWidth<Word64>>` in std/integer.dag). `bits` is a
+// **phantom** type parameter — documentation intent: instantiated only
+// with word nominals (`Word8` … `Word128`) or `PointerWidth`, not an
+// arbitrary type expression. Shapes like `MachineWidth<String>` are not
+// valid substrate uses; rejection is **mechanical at Grounding** (fail-
+// closed / omit per universal-substrate posture — gunbc#828), not silent
+// acceptance. Parser-parallel Nat bound on `bits` is a known P2/P5
+// scaffold gap — dissolves in the same change set that first lands bounded
+// phantom parameters or an explicit Nat-indexed width carrier; then delete
+// this paragraph’s trigger text (mirror: dsl/std/machine_constraints.dag).
+//
+// Coproduct dissolution — N/A: zero-variant opaque nominal phantom; not a
+// sum (Practice 4 applies to multi-variant coproducts only).
+type MachineWidth<bits>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PointerWidth — substrate token for the **target-resolved** pointer-width
+// axis at concept layer (orthogonal to OS “platform” identity). Consumed
+// as `MachineWidth<PointerWidth>`; Grounding projects to 32 / 64 / … per
+// target. Same constrained-inhabitance / Grounding-enforcement posture as
+// `MachineWidth<bits>` (gunbc#1739, #828 — rename rationale in dsl/std/
+// machine_constraints.dag).
+//
+// Coproduct dissolution — N/A: zero-variant opaque nominal token; not a sum.
+type PointerWidth
