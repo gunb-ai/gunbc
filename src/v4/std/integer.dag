@@ -18,7 +18,7 @@
 //
 // Consumes:
 //   - std/node.dag: Instantiation, Symbol
-//   - std/nat.dag: Nat, nat_add, nat_mul
+//   - std/nat.dag: Nat
 //   - std/machine.dag: MachineWidth, PointerWidth, Word8, Word16,
 //     Word32, Word64, Word128
 //   - std/algebra.dag: Magma, Semigroup, Monoid, Group, AbelianGroup,
@@ -51,12 +51,14 @@
 // Status: T-3 modeled 2026-05-16 (jolly-gull-889). Replaces part of the
 //   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
 //   concept decomposition".
-// HEADER RECONCILE (2026-05-16, #3190, smart-fox-602 + operator Decision 2):
+// HEADER RECONCILE (2026-05-16, #3190, smart-fox-602 + operator reason
+// ruling):
 //   the frozen scaffold header understated delivered imports and remained
 //   marked scaffold after the model landed. Consumes now names the actual
 //   machine-width, algebra-witness, diagnostic, and Symbol dependencies.
-//   Decision 2 also fixes integer-owned diagnostic reasons as Symbol name-
-//   references declared in this file, not caller-supplied values.
+//   The operator reason ruling also fixes integer-owned diagnostic reasons
+//   as Symbol name-references declared in this file, not caller-supplied
+//   values.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -92,7 +94,7 @@ import v4.std.machine {
   Word64,
   Word128
 }
-import v4.std.nat { Nat, nat_add, nat_mul }
+import v4.std.nat { Nat }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -103,25 +105,30 @@ import v4.std.nat { Nat, nat_add, nat_mul }
 // compactly, but v4's scalar files use instance-values for inhabitance
 // (see nat.dag / logic.dag): the concrete carrier is named first, then
 // the algebra value over that carrier is declared here. Consequently:
-//   - `Int` is the Nat-specialized group-completion carrier.
+//   - `GroupCompletion<M>` is the derived carrier construction.
+//   - `Int = GroupCompletion<Nat>` is the abstract signed-integer carrier.
 //   - `data int_abelian_group` and `data int_ordered_ring` are the
 //     machine-readable inhabitance edges.
 //
 // GROUP-COMPLETION IS LOCAL TO THIS CONCEPT FILE. std/algebra.dag's v4
 // scope is "structures only" and deliberately omits construction
 // carriers except FreeMonoid<T>, whose carrier shape is itself the root
-// free construction. The `Int` carrier below is the Nat-specialized
-// group completion this file needs: a formal difference `positive -
-// negative`. Equality is quotient equality; comparison below cross-adds
-// to avoid choosing a canonical normal form as a hidden second authority.
+// free construction. `GroupCompletion<M>` exists here because this file
+// is the sole v4 consumer in the closed tree: the construction is needed
+// to model integers from Nat, and exporting it from algebra.dag would
+// widen the T-2 structures file after its brief. The carrier is opaque
+// here so the quotient relation is not represented as a raw `{positive,
+// negative}` record that would make non-canonical aliases observable.
 //
-// CONSTRAINED-INHABITANCE GAP DISSOLVED LOCALLY. Denotationally the
+// CONSTRAINED-INHABITANCE GAP (tracked scaffold). Denotationally the
 // Grothendieck group completion requires a commutative monoid. v4 does
 // not yet have a parametric where-clause syntax such as
-// `<M> where M : CommutativeMonoid<_>`, so this file does not expose an
-// unconstrained generic `GroupCompletion<M>` carrier. It declares only
-// the Nat-specialized formal-difference carrier whose precondition is
-// already witnessed by nat.dag's `nat_additive_commutative_monoid`.
+// `<M> where M : CommutativeMonoid<_>`. The only authored use here is
+// `GroupCompletion<Nat>`, and nat.dag already declares Nat's additive
+// `CommutativeMonoid<Nat>` instance, so the mathematical precondition
+// holds for the actual construction. Dissolution trigger: when v4 lands
+// constrained generic parameters / inhabitance bounds, tighten
+// `GroupCompletion<M>` to require the commutative-monoid witness.
 //
 // FIXED-WIDTH INTEGERS ARE WIDTH PROJECTIONS. A machine integer is not a
 // sibling algebra authority beside abstract `Int` / `UInt`; it is the
@@ -142,18 +149,21 @@ import v4.std.nat { Nat, nat_add, nat_mul }
 
 
 // ─────────────────────────────────────────────────────────────────────
+// GroupCompletion<M> — the carrier produced by completing a commutative
+// monoid to an abelian group (Grothendieck construction). Opaque at this
+// layer: the quotient / canonical representative is the carrier's own
+// authority, not a field-level pair whose equivalence lives only in prose.
+type GroupCompletion<M>
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Int / UInt — abstract integer carriers.
 //
 // `Int` is the signed carrier obtained by group-completing Nat's
-// additive commutative monoid. A value is the formal difference
-// `positive - negative`. `UInt` is Nat itself: unsigned integers require
-// no additive inverse, so wrapping Nat would only drop facts nat.dag
-// already provides.
-type Int {
-  positive: Nat
-  negative: Nat
-}
-
+// additive commutative monoid. `UInt` is Nat itself: unsigned integers
+// require no additive inverse, so wrapping Nat would only drop facts
+// nat.dag already provides.
+type Int = GroupCompletion<Nat>
 type UInt = Nat
 
 
@@ -182,158 +192,37 @@ type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Integer algebra operations. These functions construct `Int` from
-// Nat's Peano operations, then bind those functions into the single
-// algebra instance-values below. Operations are not re-declared
-// elsewhere; consumers reach them through `int_ordered_ring`.
-fn nat_compare_for_int(a: Nat, b: Nat) -> Ordering {
-  match a {
-    Zero => match b {
-      Zero => Equal
-      Succ { prev: bp } => Less
-    }
-    Succ { prev: ap } => match b {
-      Zero => Greater
-      Succ { prev: bp } => nat_compare_for_int(a: ap, b: bp)
-    }
-  }
-}
-
-fn nat_less_for_int(a: Nat, b: Nat) -> Bool {
-  match nat_compare_for_int(a: a, b: b) {
-    Less => true
-    Equal => false
-    Greater => false
-  }
-}
-
-fn nat_sub_saturating_for_int(a: Nat, b: Nat) -> Nat {
-  match a {
-    Zero => Zero
-    Succ { prev: ap } => match b {
-      Zero => a
-      Succ { prev: bp } => nat_sub_saturating_for_int(a: ap, b: bp)
-    }
-  }
-}
-
-fn nat_div_by_nonzero_for_int(a: Nat, b: Nat) -> Nat {
-  match a {
-    Zero => Zero
-    Succ { prev: ap } => {
-      let q = nat_div_by_nonzero_for_int(a: ap, b: b)
-      let candidate = Succ { prev: q }
-      if nat_less_for_int(a: a, b: nat_mul(a: candidate, b: b)) {
-        q
-      } else {
-        candidate
-      }
-    }
-  }
-}
-
-fn nat_div_total_for_int(a: Nat, b: Nat) -> Nat {
-  match b {
-    Zero => Zero
-    Succ { prev: bp } => nat_div_by_nonzero_for_int(a: a, b: b)
-  }
-}
-
-fn nat_mod_total_for_int(a: Nat, b: Nat) -> Nat {
-  match b {
-    Zero => a
-    Succ { prev: bp } => nat_sub_saturating_for_int(
-      a: a,
-      b: nat_mul(a: nat_div_by_nonzero_for_int(a: a, b: b), b: b)
-    )
-  }
-}
-
-fn int_zero() -> Int {
-  Int { positive: Zero, negative: Zero }
-}
-
-fn int_one() -> Int {
-  Int { positive: Succ { prev: Zero }, negative: Zero }
-}
-
+// Integer algebra operations. These functions bind the kernel-ambient
+// integer operations of the opaque `GroupCompletion<Nat>` carrier into
+// the single algebra instance-values below. There is no exposed raw
+// Nat-pair quotient helper: consumers reach the operations through
+// `int_ordered_ring`, and partial divide/modulo stay behind Outcome.
 fn int_add(a: Int, b: Int) -> Int {
-  Int {
-    positive: nat_add(a: a.positive, b: b.positive),
-    negative: nat_add(a: a.negative, b: b.negative)
-  }
+  a + b
 }
 
 fn int_negate(a: Int) -> Int {
-  Int { positive: a.negative, negative: a.positive }
+  0 - a
 }
 
 fn int_mul(a: Int, b: Int) -> Int {
-  Int {
-    positive: nat_add(
-      a: nat_mul(a: a.positive, b: b.positive),
-      b: nat_mul(a: a.negative, b: b.negative)
-    ),
-    negative: nat_add(
-      a: nat_mul(a: a.positive, b: b.negative),
-      b: nat_mul(a: a.negative, b: b.positive)
-    )
-  }
+  a * b
 }
 
 fn int_compare(a: Int, b: Int) -> Ordering {
-  nat_compare_for_int(
-    a: nat_add(a: a.positive, b: b.negative),
-    b: nat_add(a: b.positive, b: a.negative)
-  )
+  if a < b {
+    Less
+  } else {
+    if a == b {
+      Equal
+    } else {
+      Greater
+    }
+  }
 }
 
 fn int_is_zero(a: Int) -> Bool {
-  match int_compare(a: a, b: int_zero()) {
-    Less => false
-    Equal => true
-    Greater => false
-  }
-}
-
-fn int_is_negative(a: Int) -> Bool {
-  match int_compare(a: a, b: int_zero()) {
-    Less => true
-    Equal => false
-    Greater => false
-  }
-}
-
-fn int_abs_nat(a: Int) -> Nat {
-  match int_compare(a: a, b: int_zero()) {
-    Less => nat_sub_saturating_for_int(a: a.negative, b: a.positive)
-    Equal => Zero
-    Greater => nat_sub_saturating_for_int(a: a.positive, b: a.negative)
-  }
-}
-
-fn int_from_nat(n: Nat) -> Int {
-  Int { positive: n, negative: Zero }
-}
-
-fn int_signs_differ(a: Int, b: Int) -> Bool {
-  if int_is_negative(a: a) {
-    if int_is_negative(a: b) {
-      false
-    } else {
-      true
-    }
-  } else {
-    int_is_negative(a: b)
-  }
-}
-
-fn int_from_signed_nat(n: Nat, negative: Bool) -> Int {
-  if negative {
-    int_negate(a: int_from_nat(n: n))
-  } else {
-    int_from_nat(n: n)
-  }
+  a == 0
 }
 
 
@@ -346,7 +235,7 @@ data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
   group: Group {
     monoid: Monoid {
       semigroup: Semigroup { magma: Magma { op: int_add } },
-      identity: Int { positive: Zero, negative: Zero }
+      identity: 0
     },
     inverse: int_negate
   }
@@ -357,7 +246,7 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
     add: int_abelian_group,
     mul: Monoid {
       semigroup: Semigroup { magma: Magma { op: int_mul } },
-      identity: Int { positive: Succ { prev: Zero }, negative: Zero }
+      identity: 1
     }
   },
   compare: int_compare
@@ -400,12 +289,7 @@ fn int_div(a: Int, b: Int, at: Locus) -> Outcome<Int> {
       diagnostic: integer_divide_by_zero_diagnostic(at: at)
     }
   } else {
-    Produced {
-      value: int_from_signed_nat(
-        n: nat_div_total_for_int(a: int_abs_nat(a: a), b: int_abs_nat(a: b)),
-        negative: int_signs_differ(a: a, b: b)
-      )
-    }
+    Produced { value: a / b }
   }
 }
 
@@ -415,11 +299,6 @@ fn int_mod(a: Int, b: Int, at: Locus) -> Outcome<Int> {
       diagnostic: integer_modulo_by_zero_diagnostic(at: at)
     }
   } else {
-    Produced {
-      value: int_from_signed_nat(
-        n: nat_mod_total_for_int(a: int_abs_nat(a: a), b: int_abs_nat(a: b)),
-        negative: int_is_negative(a: a)
-      )
-    }
+    Produced { value: a % b }
   }
 }
