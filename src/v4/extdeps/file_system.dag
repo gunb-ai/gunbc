@@ -27,7 +27,10 @@
 //   - std/algebra.dag: FreeMonoid<Char>
 //   - std/collection.dag: List, NonEmptyList
 //
-// Status: scaffold — fill per TASKS.md T-4.5
+// Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
+//   are external realizations owned by the realization/pipeline layer;
+//   this file owns the typed carriers and fail-closed operation
+//   signatures only.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -35,3 +38,141 @@
 
 module v4.extdeps.file_system
 
+
+import v4.std.algebra { FreeMonoid }
+import v4.std.diagnostic { Outcome }
+import v4.std.text { Char, String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// POSIX-FACING CARRIERS, NOT A PATH STRING. A path is structurally a
+// sequence of filename components with an absolute/relative root fact.
+// Modeling it as a readable `String` would force every consumer to
+// rediscover root-ness, component boundaries, slash exclusion, and null
+// exclusion by string inspection. The `Path` sum below is the single
+// authority: consumers pattern-match the root fact and walk components.
+//
+// VALUE-REFINEMENT SCAFFOLDS. POSIX path components exclude slash and
+// null; portable filenames further restrict the character set. v4's
+// settled dependency path has `String`/`Char` but not a machine-readable
+// predicate/refinement substrate for "non-empty string with no slash or
+// null". `PathComponent` is therefore the honest carrier with bridge
+// properties:
+//   (a) scaffold doc — THIS note; the current carrier is an unrefined
+//       `String`, not the terminal POSIX filename refinement.
+//   (b) bounds on use — producers must construct non-empty components
+//       that contain no slash and no null byte; "." / ".." are ordinary
+//       relative-directory components only when the producer intends
+//       POSIX resolution semantics.
+//   (c) dissolution trigger — when v4 lands value refinements over
+//       `String` / `Char` predicates, replace `PathComponent` with the
+//       refined non-empty no-slash no-null carrier.
+//
+// OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
+// denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
+// (DECISIONS.md I). This file does not author bodiless `fn`
+// declarations because the frozen v2 seed rejects them; instead it
+// declares operation contract carriers. The external realization layer
+// reads these carriers and binds the actual host-system effects.
+//
+// FILE CONTENT IS TEXT IN V4. `read_file` / `write_file` are scoped to
+// the compiler self-hosting need: reading and writing text `.dag`,
+// generated source, and derived workflow artifacts. Raw bytes,
+// permissions, timestamps, memory mapping, and locks remain outside this
+// v4 file's immutable scope.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PathComponent — one filename component.
+//
+// Terminal target: a non-empty `String` excluding slash and null, with
+// any portable-filename policy expressed as an explicit profile. Current
+// carrier: `String` with the tracked refinement scaffold above.
+type PathComponent = String
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AbsolutePath / RelativePath / Path.
+//
+// `AbsolutePath` carries the root fact by variant, not by a leading
+// slash in text. Its component list is intentionally the same carrier
+// shape as `RelativePath`; absolute-vs-relative is the only extra fact.
+// Empty absolute components denotes the POSIX root directory. Empty
+// relative components denotes the current directory.
+type AbsolutePath {
+  components: List<PathComponent>
+}
+
+type RelativePath {
+  components: List<PathComponent>
+}
+
+type Path
+  = Absolute { path: AbsolutePath }
+  | Relative { path: RelativePath }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FileKind — the POSIX file-kind facts v4 needs.
+//
+// This is a genuine closed sum for v4's filesystem subset: a path names
+// exactly one of regular file, directory, or symlink at the operation
+// boundary. A richer POSIX file-type set (FIFO, socket, block device,
+// character device) would be a scope expansion to this extdep file, not
+// a string label or `Other` variant.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// 🟢 GREEN for the v4 subset. Ledger:
+//   1. Fact placement — FAILS: file kind is consumed uniformly by
+//      readers deciding whether to read text, list entries, or resolve
+//      a link; it is not per-consumer metadata.
+//   2. Variant-is-data — FAILS: `Symlink` alone carries a target path;
+//      a flat `{ kind, target? }` admits illegal target-bearing regular
+//      files or target-less symlinks.
+//   3. Algebraic form — N/A: file kind is not an algebra carrier.
+//   4. Dimensional — FAILS: one directory entry has one kind in this
+//      v4 subset, not simultaneous coordinates.
+//   5. Parameterized family — FAILS: the variants are not mechanically
+//      the same payload shape over an enumerable set.
+type FileKind
+  = RegularFile
+  | Directory
+  | Symlink { target: Path }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Operation contract carriers.
+//
+// Each `*Request` is a pure data description of the host operation.
+// Each `*Result` is an `Outcome<T>` alias so failure always carries the
+// shared structural `Diagnostic`, never a sentinel value or free-form
+// stderr string. The realization that performs OS I/O lives outside this
+// declaration file and must return through these carriers.
+type FileBody = FreeMonoid<Char>
+
+type ReadFileRequest {
+  path: Path
+}
+
+type ReadFileResult = Outcome<FileBody>
+
+type WriteFileRequest {
+  path: Path
+  body: FileBody
+}
+
+type WriteFileResult = Outcome<Unit>
+
+type ListDirRequest {
+  path: Path
+}
+
+type ListDirResult = Outcome<List<PathComponent>>
+
+type FileKindRequest {
+  path: Path
+}
+
+type FileKindResult = Outcome<FileKind>
