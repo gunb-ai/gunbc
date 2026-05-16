@@ -10,17 +10,23 @@
 // STOP. See 00_compile.dag B2-OMNI for the pivot.
 //
 // Owns:
-//   - TokenStream type (output)
-//   - tokenize: (FreeMonoid<Char>, LexRules) -> Result<TokenStream, Diagnostic>
-//     (LexRules is declarative data from the LanguageModel, not code here)
-//   - character-class predicates (driven by LexRules)
+//   - Token, TokenStream carriers
+//   - LexRules — declarative lexical authority as a `Node` tree (B2:
+//     grammar-as-data; the generic walker reads this substrate, never a
+//     language-specific hardcoded recognizer)
+//   - tokenize: (String, file: Symbol, LexRules) -> Outcome<TokenStream>
+//     (DECISIONS.md **I** — fail-closed stage seam beside `Diagnostic`)
 //
 // Consumes:
-//   - std/text.dag: Char, String
-//   - std/diagnostic.dag: Diagnostic
-//   - std/witness.dag: Witness<C>
+//   - std/text.dag: String (= FreeMonoid<Char> per text.dag)
+//   - std/node.dag: Node, Symbol, node_well_formed
+//   - std/collection.dag: List<T>
+//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
+//     NoCorrectionReason, Extent
 //
-// Status: scaffold — fill per TASKS.md T-6
+// Status: Wave-1 generic machinery — lexical **walk** not realized on the
+// v2 bridge (honest `Rejected`); structural carriers + contracts are
+// authoritative for downstream T-6/T-7 consumers.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -28,3 +34,96 @@
 
 module v4.compiler.tokenize
 
+
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome,
+}
+import v4.std.node { Node, Symbol, node_well_formed }
+import v4.std.text { String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LexRules — declarative lexical specification as a finite `Node` tree
+// (B2-OMNI grammar-as-data). Language #1 binds a concrete instance when
+// the ratified LanguageModel carrier path exists; this file stays generic.
+type LexRules = Node
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Token — one classified lexeme in source order.
+//
+// `class` is an opaque `Symbol` naming the token class **as declared by
+// the LanguageModel's lexical data** — the kernel does not interpret the
+// spelling (K-1). `lexeme` is the matched surface text (boundary carrier).
+// Offsets are half-open `[start, end)` byte indices into `text` (same
+// scaffold honesty as `Extent.ByteRange` in diagnostic.dag — producer
+// bounds; refinement substrate is T-3 cardinality work elsewhere).
+type Token {
+  class: Symbol
+  lexeme: String
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TokenStream — ordered output of stage 1.
+type TokenStream {
+  tokens: List<Token>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Reason symbols — owned by this dimension (diagnostic.dag owns schema).
+data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_realized
+
+data tokenize_lex_rules_not_well_formed: Symbol = tokenize_lex_rules_not_well_formed
+
+
+fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: tokenize_lexical_walk_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn tokenize_lex_rules_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: tokenize_lex_rules_not_well_formed,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// tokenize — GENERIC lexical ingest (B2-OMNI).
+//
+// `rules` is the only lexical authority; there is no language-keyed
+// branch on `file` or `text` spelling here. Bridge-era note: the full
+// walk is not executed in the v2 seed — this entry point fail-closes with
+// a typed `Diagnostic` until the walker lowers; ill-formed `LexRules`
+// trees reject before that staged work.
+fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
+  let at = Textual {
+    file: file,
+    extent: WholeFile
+  }
+  if node_well_formed(n: rules) {
+    Rejected {
+      diagnostic: tokenize_lexical_walk_not_realized_diagnostic(at: at)
+    }
+  } else {
+    Rejected {
+      diagnostic: tokenize_lex_rules_not_well_formed_diagnostic(at: at)
+    }
+  }
+}

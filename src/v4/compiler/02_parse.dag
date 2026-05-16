@@ -37,16 +37,22 @@
 // production hardcoded in this generic walker.
 //
 // Owns:
-//   - ParseTree type
-//   - parse: (TokenStream, Grammar) -> Result<ParseTree, Diagnostic>
-//     (Grammar is declarative data from the LanguageModel, not code here)
-//   - grammar productions as Node trees
+//   - Grammar — declarative syntactic authority as a finite `Node` tree
+//   - ParseTree — surface syntax tree prior to normalize (carrier = `Node`)
+//   - parse: (TokenStream, Grammar) -> Outcome<ParseTree>
+//     (DECISIONS.md **I**)
 //
 // Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/witness.dag
+//   - std/node.dag: Node, Symbol, node_well_formed
+//   - std/collection.dag: List<T>
+//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
+//     NoCorrectionReason, Extent
 //   - compiler/01_tokenize.dag: TokenStream
 //
-// Status: scaffold — fill per TASKS.md T-7
+// Status: Wave-1 generic machinery — syntactic **walk** not realized on
+// the v2 bridge (honest `Rejected`); PARSE-1 bodiless-fn production is a
+// constraint on the ratified LanguageModel grammar **data** (operator-
+// pending file home), not encoded in this walker.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -54,3 +60,78 @@
 
 module v4.compiler.parse
 
+
+import v4.compiler.tokenize { TokenStream }
+import v4.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Locus,
+  NoCorrectionReason,
+  Outcome,
+}
+import v4.std.node { Node, Symbol, node_well_formed }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Grammar — declarative syntactic specification as a finite `Node` tree
+// (B2-OMNI). Productions (including PARSE-1 bodiless signature rows) are
+// DATA in the LanguageModel instance, never special-cased here.
+type Grammar = Node
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParseTree — stage-2 output; the syntax tree is a `Node` forest spine
+// (A1) until normalize dissolves sugar (T-8).
+type ParseTree = Node
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Reason symbols — owned by this dimension (diagnostic.dag owns schema).
+data parse_stage_locus_port: Symbol = parse_stage_locus_port
+
+data parse_walk_not_realized: Symbol = parse_walk_not_realized
+
+data parse_grammar_not_well_formed: Symbol = parse_grammar_not_well_formed
+
+
+fn parse_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_walk_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_grammar_not_well_formed,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// parse — GENERIC syntactic ingest (B2-OMNI).
+//
+// `grammar` is the only syntactic authority. `tokens` is threaded so the
+// entry point composes with stage 1; there is no token-shape hardcoding
+// beyond the shared `TokenStream` carrier. Bridge-era note: the full
+// walk is not executed in the v2 seed — fail-closed `Rejected` until the
+// walker lowers.
+fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
+  let at = PortLocus {
+    port: parse_stage_locus_port
+  }
+  let _toks = tokens.tokens
+  if node_well_formed(n: grammar) {
+    Rejected {
+      diagnostic: parse_walk_not_realized_diagnostic(at: at)
+    }
+  } else {
+    Rejected {
+      diagnostic: parse_grammar_not_well_formed_diagnostic(at: at)
+    }
+  }
+}
