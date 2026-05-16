@@ -54,7 +54,8 @@
 //     Dim3 / ThreadCoord (Conj records — Dim3 carries the 🟡 scaffold
 //     bridge to std/cardinality.dag, same as std/diagnostic.dag's
 //     ByteRange); ThreadHierarchyShape (Disj over launch shapes:
-//     FlatLaunch | ClusterLaunch)
+//     FlatLaunch | ImplicitClusterLaunch | ExplicitClusterLaunch
+//     per PTX 8.5 §11 + `%is_explicit_cluster`)
 //   - PTX cost-realization carrier shape: PtxCost (per-instruction +
 //     occupancy components — the per-target cost projection U1 reads)
 //   - the IN-B mapping (modeling notes): SIMT → 5 behaviors, no 6th
@@ -1062,94 +1063,166 @@ type Dim3 {
 // ─────────────────────────────────────────────────────────────────────
 // ThreadHierarchyShape — a PTX kernel launch's structural shape. PTX
 // ISA 8.5 §11 admits TWO structurally distinct launch shapes — the
-// legacy flat launch (the grid is a flat collection of CTAs) and the
-// cluster-enabled launch (the grid is a collection of clusters, each
-// a collection of CTAs; PTX 7.8+, Hopper / CUDA 9.0). Each shape
-// exposes a structurally DIFFERENT dimensional carrier set; encoding
-// the launch shape as a Disj-with-payloads makes the carriers
-// admissibility STRUCTURALLY ENFORCED — a flat launch does not carry
-// cluster dims, a cluster launch does, and "a flat launch with
-// cluster_dim=(1,1,1)" is unrepresentable as a category-mistake.
-// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
-// the prior Conj record `{ grid_dim, block_dim }` had no carriers
-// for `%cluster_nctaid` / `%nclusterid` bounds, so cluster
-// coordinate-bound facts had no single authority in the model — the
-// INVARIANTS P2 single-authority shape violated for the cluster
-// half of the hierarchy.)
+// THREE structurally distinct launch states per PTX ISA 8.5
+// §11 + the `%is_explicit_cluster` intrinsic semantics:
 //
-//   - FlatLaunch     — legacy non-cluster launch shape:
-//                       grid_dim   number of CTAs along x/y/z in the
-//                                  grid (`%nctaid.{x,y,z}` /
-//                                  `gridDim.{x,y,z}`)
-//                       block_dim  number of threads along x/y/z
-//                                  within each CTA (`%ntid.{x,y,z}`
-//                                  / `blockDim.{x,y,z}`)
-//   - ClusterLaunch  — cluster-enabled launch shape (PTX 7.8+):
-//                       cluster_grid_dim   number of clusters along
-//                                          x/y/z in the grid
-//                                          (`%nclusterid.{x,y,z}`)
-//                       cluster_dim        number of CTAs along
-//                                          x/y/z within each cluster
-//                                          (`%cluster_nctaid.{x,y,z}`)
-//                       block_dim          number of threads along
-//                                          x/y/z within each CTA
-//                                          (`%ntid.{x,y,z}`)
-//                       The flat grid-CTA count `%nctaid` remains
-//                       readable in cluster launches and equals
-//                       `cluster_grid_dim × cluster_dim` (element-
-//                       wise); the model RECONSTRUCTS the flat
-//                       coordinate from the hierarchical carriers
-//                       rather than redundantly carrying it
-//                       (P2 single-authority — `%nctaid` is the
-//                       cluster-grid product, not an independent
-//                       fact).
+//   (1) FlatLaunch — legacy pre-cluster launch (kernels targeting
+//       `.target` < sm_90 / pre-PTX 7.8). Cluster intrinsics are NOT
+//       readable; the kernel has only the flat (grid, block)
+//       hierarchy.
+//   (2) ImplicitClusterLaunch — cluster-capable kernel (`.target`
+//       ≥ sm_90 / PTX 7.8+) launched WITHOUT explicit cluster dims.
+//       Each CTA is its own implicit 1×1×1 cluster; cluster
+//       intrinsics ARE readable but return the degenerate values
+//       (`%cluster_nctaid` = 1×1×1; `%clusterid` = the CTA's own
+//       grid position); `%is_explicit_cluster` returns 0.
+//   (3) ExplicitClusterLaunch — cluster-capable kernel launched
+//       WITH explicit cluster dims (the launch site sets
+//       `cluster_dim`). `%cluster_nctaid` = the explicit
+//       cluster_dim; `%nclusterid` = grid_in_clusters dimensions;
+//       `%is_explicit_cluster` returns 1.
 //
-// The product `(grid_dim × block_dim)` for FlatLaunch — or
-// `(cluster_grid_dim × cluster_dim × block_dim)` for ClusterLaunch —
-// is the BOUNDED CARDINALITY of the thread-grid Loop per the IN-B
-// mapping (kernel iteration runs over this finite set — the A2
-// boundedness that lets the Loop be total-by-construction).
+// Each shape exposes a structurally DIFFERENT dimensional carrier
+// set + a different `%is_explicit_cluster` reading; encoding the
+// launch shape as a Disj-with-payloads makes the carrier
+// admissibility AND the explicit-cluster-fact STRUCTURALLY
+// ENFORCED — a flat launch does not carry cluster dims, an
+// implicit-cluster launch has the implicit (1,1,1) cluster
+// (degenerate, no explicit cluster_dim payload), and an explicit-
+// cluster launch carries the hierarchical decomposition. "A flat
+// launch with cluster_dim=(1,1,1)" or "an explicit cluster launch
+// without cluster_dim" are unrepresentable as category-mistakes.
+// (Refactored 2026-05-16 per operator BLOCKING review on PR
+// #3170:
+//   - First pass landed FlatLaunch | ClusterLaunch (commit
+//     7eb66acc1): addressed the prior Conj-record's missing
+//     `%cluster_nctaid` / `%nclusterid` carriers.
+//   - Second pass landed the implicit-vs-explicit cluster
+//     distinction (this commit): the prior 2-variant model
+//     collapsed PTX 8.5's `%is_explicit_cluster` partition
+//     (implicit 1×1×1 default vs explicit cluster decomposition);
+//     INVARIANTS P1 modeling-faithfulness / P2 spec-fidelity
+//     violated at the launch-shape boundary.)
+//
+//   - FlatLaunch              — legacy pre-cluster launch shape:
+//                                grid_dim   number of CTAs along
+//                                           x/y/z in the grid
+//                                           (`%nctaid.{x,y,z}` /
+//                                           `gridDim.{x,y,z}`)
+//                                block_dim  number of threads along
+//                                           x/y/z within each CTA
+//                                           (`%ntid.{x,y,z}` /
+//                                           `blockDim.{x,y,z}`)
+//                                Cluster intrinsics NOT readable;
+//                                `%is_explicit_cluster` does NOT
+//                                exist at the pre-sm_90 target.
+//   - ImplicitClusterLaunch   — cluster-capable kernel launched
+//                                without explicit cluster dims;
+//                                each CTA is its own implicit
+//                                1×1×1 cluster. Carries only the
+//                                flat (grid_dim, block_dim) since
+//                                the cluster decomposition is
+//                                structurally degenerate:
+//                                grid_dim   number of CTAs along
+//                                           x/y/z (`%nctaid`)
+//                                block_dim  number of threads
+//                                           (`%ntid`)
+//                                `%is_explicit_cluster` returns
+//                                0; `%cluster_nctaid` reads
+//                                (1,1,1) degenerately;
+//                                `%clusterid` reads the CTA's own
+//                                grid position; `%nclusterid` =
+//                                `%nctaid`.
+//   - ExplicitClusterLaunch   — cluster-capable kernel launched
+//                                WITH explicit cluster dims:
+//                                cluster_grid_dim  number of
+//                                                  clusters along
+//                                                  x/y/z
+//                                                  (`%nclusterid
+//                                                  .{x,y,z}`)
+//                                cluster_dim       number of CTAs
+//                                                  along x/y/z
+//                                                  within each
+//                                                  cluster
+//                                                  (`%cluster_nctaid
+//                                                  .{x,y,z}`)
+//                                block_dim         number of threads
+//                                                  along x/y/z
+//                                                  (`%ntid.{x,y,z}`)
+//                                `%is_explicit_cluster` returns 1.
+//                                The flat grid-CTA count
+//                                `%nctaid` remains readable and
+//                                equals `cluster_grid_dim ×
+//                                cluster_dim` (element-wise); the
+//                                model RECONSTRUCTS the flat
+//                                coordinate from the hierarchical
+//                                carriers rather than redundantly
+//                                carrying it (P2 single-authority
+//                                — `%nctaid` is the cluster-grid
+//                                product, not an independent
+//                                fact).
+//
+// The product `(grid_dim × block_dim)` for FlatLaunch /
+// ImplicitClusterLaunch — or `(cluster_grid_dim × cluster_dim ×
+// block_dim)` for ExplicitClusterLaunch — is the BOUNDED
+// CARDINALITY of the thread-grid Loop per the IN-B mapping (kernel
+// iteration runs over this finite set — the A2 boundedness that
+// lets the Loop be total-by-construction).
 //
 // Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#thread-hierarchy
+//       + §11 (Cluster of Cooperative Thread Arrays) +
+//       `%is_explicit_cluster` special-register definition.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every kernel-launch consumer reads
-//      the shape to bound the thread-grid Loop's cardinality and
-//      to wire the coordinate-intrinsic reads (`%tid` / `%ctaid` /
-//      `%cluster_ctaid` / `%clusterid`) to their respective bounds;
-//      shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing the two variants to a
-//      single record `{ grid_dim, cluster_dim?, cluster_grid_dim?,
-//      block_dim }` reintroduces the illegal state "flat launch
-//      with cluster dims set" the Disj-with-payloads exists to
-//      forbid, AND admits the redundant state "cluster launch
-//      whose explicit grid_dim disagrees with cluster_grid_dim ×
-//      cluster_dim" — exactly the P2 single-authority violation
-//      this refactor addresses.
-//   3. Algebraic form — N/A by construction: the two launch shapes
-//      are the PTX-spec launch-mode partition; they do not trace
-//      to a richer std/ algebraic structure.
+//      the shape to bound the thread-grid Loop's cardinality, to
+//      wire the coordinate-intrinsic reads (`%tid` / `%ctaid` /
+//      `%cluster_ctaid` / `%clusterid`) to their respective
+//      bounds, AND to know whether `%is_explicit_cluster` reads
+//      0 or 1; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the three variants to
+//      a single record `{ grid_dim, cluster_dim?,
+//      cluster_grid_dim?, block_dim, is_explicit_cluster?: Bool }`
+//      reintroduces the illegal states this Disj-with-payloads
+//      exists to forbid (a "flat launch with cluster dims set", a
+//      "cluster launch whose explicit grid_dim disagrees with
+//      cluster_grid_dim × cluster_dim", a "flat launch with
+//      is_explicit_cluster = true"). P2 single-authority
+//      restored.
+//   3. Algebraic form — N/A by construction: the three launch
+//      shapes are the PTX-spec launch-mode partition; they do
+//      not trace to a richer std/ algebraic structure (a
+//      containment order FlatLaunch ⊑ ImplicitClusterLaunch ⊑
+//      ExplicitClusterLaunch — each successive shape strictly
+//      adds carrier facts — is derived FROM the closed enum,
+//      not a richer source, same parallel-rep argument as
+//      BarrierScope's Cta ⊑ Cluster ⊑ Gpu ⊑ System).
 //   4. Dimensional — FAILS: a single launch IS EXACTLY ONE shape
-//      — either flat (no cluster decomposition) OR cluster-enabled
-//      (explicit cluster decomposition). PTX launches the kernel
-//      with one or the other launch-mode parameter at the host-
-//      side launch site; they are mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the two variants are NOT one
-//      generic `F<X>` / projection over a separately-declared
+//      per the launch-site directive's interaction with the
+//      `.target` arch. Mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the three variants are NOT
+//      one generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). The variants carry structurally
 //      distinct dimensional-carrier sets (FlatLaunch has 2 Dim3s;
-//      ClusterLaunch has 3) — they are not projection-uniform
-//      over any richer source. Same shape as rust.dag's
-//      RustScalar Disj-with-heterogeneous-payloads.
-// Terminal: the closed two-variant PTX-launch-shape sum; the
-// cluster-launch path carries `%cluster_nctaid` and `%nclusterid`
-// bounds in single authority (no redundancy with the flat-launch
-// path); a third launch shape is the C1 stop-signal (a visible
-// ratified edit to this declaration under the L-2 pin discipline).
+//      ImplicitClusterLaunch has 2 Dim3s with different cluster
+//      semantics; ExplicitClusterLaunch has 3 Dim3s) AND
+//      structurally distinct `%is_explicit_cluster` semantics
+//      (intrinsic unreadable / reads 0 / reads 1) — not
+//      projection-uniform over any richer source. Same shape as
+//      rust.dag's RustScalar Disj-with-heterogeneous-payloads.
+// Terminal: the closed three-variant PTX-launch-shape sum; the
+// explicit-cluster-launch path carries `%cluster_nctaid` /
+// `%nclusterid` bounds in single authority; the implicit-vs-
+// explicit distinction is structurally enforced (
+// `%is_explicit_cluster` reading is determined by variant
+// identity, not a field). A fourth launch shape is the C1 stop-
+// signal (a visible ratified edit to this declaration under the
+// L-2 pin discipline).
 type ThreadHierarchyShape
   = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
-  | ClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
+  | ImplicitClusterLaunch { grid_dim: Dim3, block_dim: Dim3 }
+  | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
 
 // ─────────────────────────────────────────────────────────────────────
