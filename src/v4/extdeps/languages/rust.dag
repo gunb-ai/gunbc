@@ -96,7 +96,11 @@
 //     pre-T-3 / pre-D2)
 //   - Rust D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
 //     2026-05-16 commit 44a37ad46): GroundingMap<IRCarrier>
-//     (surface-spelling Conj), OverflowAction (closed two-way Disj —
+//     (surface-spelling Conj — 🟡 TRACKED-SCAFFOLD: declaration
+//     body is canonical D2a(2) SHAPE, PLACEMENT is operator-pending
+//     per T-4 mgr msg_148854d5; one decl ≠ P2 violation; fan-out
+//     files DO NOT re-declare — see resolver-block note),
+//     OverflowAction (closed two-way Disj —
 //     PanicOnOverflow / TwoComplementWrap, Rust integer runtime-
 //     dispatch classifier per Reference §numeric),
 //     OverflowDisposition<IRCarrier> (per-language operation-
@@ -1623,6 +1627,50 @@ type RustCost {
 // Spec: https://doc.rust-lang.org/reference/types.html
 //       (per-primitive Reference URLs are on the alias-identity
 //       declarations below.)
+//
+// 🟡 TRACKED-SCAFFOLD — GroundingMap's HOME is OPERATOR-PENDING
+//
+// The encoded DECISIONS.md D2 row (commit 44a37ad46) specifies the
+// resolver SHAPE — "grounding map (surface spelling)" as D2a(2) —
+// but did not pin WHERE the shared resolver TYPE lives in the
+// closed file tree. This rust.dag declaration is PROVISIONAL:
+//
+//   - One declaration alone is NOT a P2 violation; parallel-
+//     declaration would emerge only if sibling extdeps/languages/
+//     files (python.dag / go.dag / cpp.dag / typescript.dag)
+//     re-declare an identical `type GroundingMap<IRCarrier> {
+//     spelling: String }`. Five identical declarations of the
+//     SAME convergence carrier is the parallel-declaration P2
+//     forbids (the import-never-redeclare-carriers discipline).
+//     Per-primitive INSTANCES (rust_bool_grounding,
+//     py_bool_grounding, etc.) correctly stay per-file; only the
+//     TYPE needs ONE home.
+//
+//   - The D2 RESOLVER SHAPE is CANONICAL regardless of where the
+//     type ultimately lives. The fan-out (python/go/cpp/ts) must
+//     not redeclare GroundingMap locally — that is the P2
+//     violation cascade. Fan-out files defer D2a(2) under the
+//     SAME named trigger as this declaration; per-language
+//     instance rows author when the home is pinned.
+//
+//   - NAMED OWNER: operator. Surfaced via T-4 mgr (vivid-carp-207
+//     msg_148854d5 2026-05-16) for placement decision — three
+//     candidate homes under escalation (placement-first-hold,
+//     rust-as-shared-authority, new shared extdeps resolver file).
+//     Co-drafted tradeoff analysis surfaced to T-4 mgr by
+//     loyal-koi-702 + merry-ibex-337 (D2 author).
+//
+//   - DISSOLUTION TRIGGER: operator pins GroundingMap's home. On
+//     that decision THIS declaration either STAYS (rust-as-
+//     shared-authority option — rust.dag becomes the canonical
+//     home, sibling files import from extdeps.languages.rust) or
+//     MOVES to the chosen home (new shared resolver file /
+//     elsewhere — and rust.dag adds `import <home> { GroundingMap }`).
+//
+// SCAFFOLD vs CANONICAL discipline: the declaration BODY (`{
+// spelling: String }`) is the canonical D2a(2) SHAPE per the D2
+// row; only its PLACEMENT is the operator-pending facet. A future
+// home change is a relocation + import edit, NOT a re-modeling.
 type GroundingMap<IRCarrier> {
   spelling: String
 }
