@@ -1100,8 +1100,10 @@ type Terminator
 // discipline.md §2, the std/node.dag EdgeLabel no-stored-index
 // discipline applied to block structure). Block textual order in a
 // function is NOT semantic (the CFG defines order); the entry block is
-// the FIRST element of the function's block list (positional authority =
-// list order, the node.dag `Positional` discipline — no `is_entry` flag).
+// the explicit required `FunctionBody.Defined.entry` field — a named
+// distinguished block, NOT first-of-a-list by convention (so an
+// entry-less definition is structurally unrepresentable, P2); no
+// `is_entry` flag.
 type BasicBlock {
   label: Symbol
   phis: List<PhiNode>
@@ -1141,29 +1143,43 @@ type Linkage
 
 // ─────────────────────────────────────────────────────────────────────
 // FunctionBody — a function is a declaration (no blocks) OR a definition
-// (≥1 block, the first is the entry). Modeled as a sum, NOT optional
-// blocks: "a declaration with a body" / "a definition with no blocks" is
-// unrepresentable (P2 — the diagnostic.dag `Correction` precedent: a
-// typed two-case, never a bare absence / empty list by convention).
+// with AT LEAST ONE block whose first is the entry. Modeled as a sum,
+// and the definition arm is `entry: BasicBlock, rest: List<BasicBlock>`
+// — NOT `blocks: List<BasicBlock>`. The split makes the LangRef
+// "a definition has ≥1 block, control enters the first" invariant
+// STRUCTURAL: "a definition with no entry block" (an empty block list)
+// is now UNREPRESENTABLE (P2 / modeling-discipline.md §2 — illegal
+// states unrepresentable), not merely asserted in prose. `entry` is the
+// distinguished entry block (no `is_entry` flag, no first-of-list
+// convention — the entry IS a named required field); `rest` is the
+// remaining blocks, whose textual order is not semantic (the CFG defines
+// order). This is the same illegal-state-unrepresentable discipline as
+// std/node.dag's EdgeLabel no-stored-index and diagnostic.dag's
+// `Correction` (a typed shape, never a bare absence / empty-list-by-
+// convention). (Fix for the codex BLOCKING: `List<BasicBlock>` admitted
+// the empty list — an entry-less definition — contradicting this very
+// note; the entry/rest split excludes it structurally.)
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every function consumer (emit, the call
 //      graph, cost) branches declaration-vs-definition uniformly.
-//   2. Variant-is-data — FAILS: the "data" reduction is exactly an
-//      empty-vs-nonempty `List<BasicBlock>` standing in for the
-//      distinction — the convention-enforced absence INVARIANTS P2 and
-//      the Correction precedent forbid.
+//   2. Variant-is-data — FAILS: the "data" reduction is an empty-vs-
+//      nonempty `List<BasicBlock>` standing in for the distinction —
+//      exactly the convention-enforced absence INVARIANTS P2 and the
+//      Correction precedent forbid (and which the `entry`/`rest` split
+//      now structurally excludes).
 //   3. Algebraic form — N/A: not an algebra carrier.
 //   4. Dimensional — FAILS: a function is declared XOR defined, never
 //      both.
 //   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs block-list-carrying), not `F<X>` over a declared set.
-// Terminal: the declared-vs-defined partition; the typed-sum is the
-// dissolved form (an empty-list convention would be the smell).
+//      vs entry+rest-carrying), not `F<X>` over a declared set.
+// Terminal: the declared-vs-defined partition; the typed-sum with an
+// explicit required `entry` is the dissolved form (an empty-list
+// convention would be the smell — now structurally impossible).
 type FunctionBody
   = Declared
-  | Defined { blocks: List<BasicBlock> }
+  | Defined { entry: BasicBlock, rest: List<BasicBlock> }
 
 
 // FunctionParameter — one formal parameter: its type and SSA name.
