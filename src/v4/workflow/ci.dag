@@ -37,8 +37,9 @@
 // Status: filled (declarative core — T-24 structural-gate slice). The
 // CiPipeline job/gate-DAG shape + the affected-set-selection seam are
 // present and v2-compile-clean. The C4 ci.yml projection is NOT a
-// present property of this data — it is BLOCKED on missing GHA
-// workflow-schema substrate and surfaced for operator confirmation
+// present property of this data — it is BLOCKED on the missing v4
+// counterpart of the ratified single-authority `Workflow` carrier /
+// `project_github_actions` seam, and surfaced for operator confirmation
 // (see HONEST SCOPE OF THE C4 CLAIM + TRACKED SCAFFOLD (1)); the
 // committed ci.yml stays the explicit interim hand-authored bridge
 // meanwhile. The canonical `ci_pipeline` instance models the
@@ -59,38 +60,61 @@
 // gate #98 `ci_yml_hand_authority_dissolved` was an open R3 gap and v4
 // must not reproduce it.
 //
-// HONEST SCOPE OF THE C4 CLAIM (INVARIANTS P1 — no fabrication; the
-// affected_set.dag `detect-affected-components.sh` interim-bridge
-// precedent). A FAITHFUL `.github/workflows/ci.yml` requires GitHub
-// Actions WORKFLOW-SCHEMA facts — `on:` triggers, per-job `runs-on:`
-// runners, the `steps:` list (checkout/setup/run), concurrency,
-// permissions (workflow-syntax spec) — that `CiPipeline { jobs,
-// gates }` deliberately does NOT carry: those are the GHA TRANSPORT,
-// not the gunbc job/gate DAG. A `CiPipeline -> ci.yml` projection over
-// only jobs/gates would therefore have to FABRICATE every trigger,
-// runner, and step (an INVARIANTS P1/P2 violation — the exact review
-// finding). It is NOT fabricated here because no projection is
-// authored: the GHA workflow schema is MISSING SUBSTRATE in v4 (v3's
-// `extdeps/github/actions.dag` `Workflow/Job/Step/Trigger/...` model
-// has NO v4 counterpart; minting one is a NEW extdeps file =
+// HONEST SCOPE OF THE C4 CLAIM (INVARIANTS P1 no-fabrication + P2
+// single-authority; the affected_set.dag `detect-affected-components.sh`
+// interim-bridge precedent). A FAITHFUL `.github/workflows/ci.yml`
+// requires GitHub Actions transport facts — `on:` triggers, per-job
+// `runs-on:` runners, the `steps:` list (checkout/setup/run),
+// concurrency, permissions (workflow-syntax spec) — that `CiPipeline
+// { jobs, gates }` deliberately does NOT carry: those are the GHA
+// TRANSPORT, not the gunbc job/gate DAG. A `CiPipeline -> ci.yml`
+// projection over only jobs/gates would have to FABRICATE every
+// trigger/runner/step (INVARIANTS P1/P2).
+//
+// SINGLE-AUTHORITY SEAM — DEFER to the RATIFIED T-Workflow-As-Data
+// path, do NOT mint a parallel one (INVARIANTS P2; the SELF_HOSTING
+// authority-audit precedent — review finding 2026-05-16). The ratified
+// single authority for the GHA transport is the `Workflow` carrier:
+// v3 `extdeps.github.actions { Workflow, Job, RunStep, UsesStep, … }`,
+// pinned on `gunbc.ci { CIWorkflowDag }` (regenerated from the
+// committed `ci.yml`; "sole live Actions transport for gunbc CI —
+// single authority; no hand-parallel `Workflow` mirror"), with
+// `WorkflowRuntime = YamlStatic | BinaryShim` deciding arm dispatch and
+// the seam `project_github_actions(CIWorkflowDag, WorkflowRuntime) ->
+// Workflow` (`dsl/gunbc/ci_emission.dag`). The committed
+// `.github/workflows/ci.yml` is that `Workflow` carrier serialized
+// under `WorkflowRuntime = YamlStatic` — YAML is DOWNSTREAM of
+// `Workflow`, never a parallel `CiPipeline -> YamlValue` projection.
+// (An earlier revision of this seam minted `GhaWorkflowSchema` +
+// `project_ci_yml -> YamlValue`; that was parallel authority and is
+// retracted — provenance, not silently dropped.)
+//
+// It is NOT fabricated here because no projection is authored: the
+// ratified `Workflow` carrier + `WorkflowRuntime`/`project_github_-
+// actions` seam are MISSING SUBSTRATE in v4 (v3's
+// `extdeps.github.actions` + `dsl/gunbc/ci_emission.dag` have NO v4
+// counterpart; minting the v4 counterpart is a NEW extdeps file =
 // substrate extension = operator-tier, NOT a worker add — STOP, not
-// improvise). UNTIL that substrate exists, the committed
-// `.github/workflows/ci.yml` REMAINS the explicit INTERIM HAND-AUTHORED
-// BRIDGE — exactly as `scripts/detect-affected-components.sh` is the
-// declared interim bridge for affected_set (lens/affected_set.dag
-// header) — and the `committed == emit(...)` CHECKED-PROJECTION C4
-// state is explicitly a FUTURE state gated on the named missing
-// substrate, with an owner (TRACKED SCAFFOLD (1)), not a property
-// claimed of the present `{ jobs, gates }` data.
+// improvise, and NOT a worker-invented substitute shape). UNTIL that
+// substrate exists, the committed `.github/workflows/ci.yml` REMAINS
+// the explicit INTERIM HAND-AUTHORED BRIDGE — exactly as
+// `scripts/detect-affected-components.sh` is the declared interim
+// bridge for affected_set (lens/affected_set.dag header) — and the
+// `committed == emit(...)` CHECKED-PROJECTION C4 state is explicitly a
+// FUTURE state gated on that named missing ratified substrate, with an
+// owner (TRACKED SCAFFOLD (1)), not a property claimed of the present
+// `{ jobs, gates }` data.
 //
 // HEADER TENSION — SURFACED, not silently reinterpreted. The immutable
 // scaffold header (Owns / C4) binds BOTH the `CiPipeline { jobs,
 // gates }` shape AND "committed == emit(CiPipeline) CHECKED
 // PROJECTION" of `.github/workflows/ci.yml`. Those two are in tension:
 // the projection cannot be faithful over jobs/gates alone (above).
-// Resolving it needs either a GHA-workflow-schema extdeps model (new
-// file, operator-tier) feeding the projection, or an operator decision
-// to narrow the C4-over-CiPipeline header claim. Per the
+// Resolving it needs either the v4 counterpart of the ratified
+// `extdeps.github.actions { Workflow }` carrier + `ci_emission.dag`
+// `project_github_actions`/`WorkflowRuntime` seam (new file,
+// operator-tier) feeding the projection, or an operator decision to
+// narrow the C4-over-CiPipeline header claim. Per the
 // frozen-scaffold-header ratification discipline this worker does NOT
 // edit the immutable Owns/C4 lines; the tension is flagged on the PR
 // for conscious operator confirmation. This note is the honest
@@ -117,27 +141,29 @@
 // (std/collection.dag #3169, canonical json.dag #3184). NOT improvised
 // bodies, NOT bodiless `fn` (frozen v2 rejects bodiless `fn`, DECISIONS
 // PARSE-1):
-//   (1) `project_ci_yml : (CiPipeline, GhaWorkflowSchema) ->
-//       Outcome<YamlValue>` — the C4 projection. It CANNOT be a
-//       `CiPipeline -> ci.yml` function: the gunbc job/gate DAG alone
-//       lacks the GHA workflow-schema transport (`on`/`runs-on`/
-//       `steps`/concurrency/permissions), so a faithful projection
-//       MUST also consume a GitHub Actions workflow-schema model that
-//       supplies those transport facts (the gunbc data fills the
-//       schema; it never invents it — no fabrication, INVARIANTS P1).
-//       FAIL-CLOSED (`Outcome<T>`, std/diagnostic.dag, DECISIONS item
-//       I), mirroring the ratified `yaml_emit : YamlValue ->
-//       Outcome<String>` seam #3. Then committed
-//       `.github/workflows/ci.yml` becomes a `committed == emit(...)`
-//       CHECKED PROJECTION (C4 / STRUCTURE.md invariant 7); UNTIL THEN
-//       the committed file is the explicit interim hand-authored bridge
-//       (see HONEST SCOPE OF THE C4 CLAIM above).
-//       OWNER/TRIGGER: BLOCKED on MISSING SUBSTRATE — a GitHub Actions
-//       workflow-schema extdeps model (no v4 counterpart to v3's
-//       `extdeps/github/actions.dag`; a NEW file = operator-tier
-//       substrate extension, surfaced on the PR, NOT added here). Then
-//       additionally needs extdeps/formats/yaml.dag `yaml_emit`
-//       (T-4.6) + compiler/05_emit.dag (T-10) Shape-B emission.
+//   (1) The C4 projection is the RATIFIED single-authority seam
+//       `project_github_actions(CIWorkflowDag, WorkflowRuntime) ->
+//       Workflow` (NOT a worker-invented `project_ci_yml ->
+//       YamlValue`; see SINGLE-AUTHORITY SEAM above — that parallel
+//       shape is retracted). `CiPipeline` (this file's gunbc job/gate
+//       DAG) FEEDS the ratified `CIWorkflowDag`-pinned `Workflow`
+//       carrier; it never invents transport facts (no fabrication,
+//       INVARIANTS P1; single authority, P2). The committed
+//       `.github/workflows/ci.yml` is the `Workflow` carrier under
+//       `WorkflowRuntime = YamlStatic` (YAML downstream of `Workflow`);
+//       it then becomes a `committed == emit(...)` CHECKED PROJECTION
+//       (C4 / STRUCTURE.md invariant 7). UNTIL THEN the committed file
+//       is the explicit interim hand-authored bridge (see HONEST SCOPE
+//       OF THE C4 CLAIM above).
+//       OWNER/TRIGGER: BLOCKED on MISSING SUBSTRATE — the v4 counterpart
+//       of the ratified `extdeps.github.actions { Workflow }` carrier
+//       + `dsl/gunbc/ci_emission.dag`'s `WorkflowRuntime` /
+//       `project_github_actions` seam (no v4 file exists; a NEW extdeps
+//       file = operator-tier substrate extension, surfaced on the PR,
+//       NOT added here, NOT substituted with a worker-minted shape).
+//       Then additionally needs extdeps/formats/yaml.dag `yaml_emit`
+//       (T-4.6, the `YamlStatic` serialization) + compiler/05_emit.dag
+//       (T-10) Shape-B emission.
 //   (2) `select_jobs : (CiPipeline, Diff) -> List<CiJob>` — affected-set
 //       job selection, consuming lens/affected_set.dag's `affected_set :
 //       (Dag, Diff) -> Witness<ReExecFrontier>` (this is IB-2 / what
@@ -191,10 +217,11 @@ type CiGate {
 // CiPipeline — the gunbc job/gate dependency DAG AS DATA (the
 // affected-set-selection surface). It is NOT, by itself, a present C4
 // authority for `.github/workflows/ci.yml`: the faithful projection
-// also needs a GHA workflow-schema model for the transport facts
-// jobs/gates deliberately omit (TRACKED SCAFFOLD (1) + HONEST SCOPE OF
-// THE C4 CLAIM above). Affected-set selection over `jobs` is TRACKED
-// SCAFFOLD (2).
+// feeds the ratified single-authority `Workflow` carrier via
+// `project_github_actions(CIWorkflowDag, WorkflowRuntime) -> Workflow`,
+// whose v4 counterpart is missing substrate (TRACKED SCAFFOLD (1) +
+// HONEST SCOPE OF THE C4 CLAIM above). Affected-set selection over
+// `jobs` is TRACKED SCAFFOLD (2).
 type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
