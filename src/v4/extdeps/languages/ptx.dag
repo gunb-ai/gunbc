@@ -269,19 +269,28 @@ type StateSpace
 // ─────────────────────────────────────────────────────────────────────
 // BarrierScope — the closed PTX synchronization scope classifier. The
 // scope at which a Bind-as-barrier synchronizes (`bar.sync` / `membar`
-// directives carry exactly one of three scopes).
+// / `fence` directives carry exactly one of four scopes per the
+// pinned PTX ISA 8.x §8.5 memory-consistency model).
 //
-//   - Cta     — `.cta`     within-CTA (within-block) synchronization
-//                          (`bar.sync 0;` is `.cta`-scoped by default)
-//   - Gpu     — `.gl`      device-wide (within-GPU) memory ordering
-//                          (`membar.gl`)
-//   - System  — `.sys`     system-wide (across host/device) ordering
-//                          (`membar.sys`)
+//   - Cta      — `.cta`      within-CTA (within-block) synchronization
+//                            (`bar.sync 0;` is `.cta`-scoped by default;
+//                            `membar.cta` / `fence.acq_rel.cta`)
+//   - Cluster  — `.cluster`  thread-block-cluster scope (PTX 7.8+,
+//                            Hopper / CUDA 9.0 thread block clusters;
+//                            `membar.cluster` / `fence.*.cluster` — a
+//                            cluster groups multiple CTAs that share
+//                            distributed shared memory)
+//   - Gpu      — `.gpu` (alias `.gl`)
+//                            device-wide (within-GPU) memory ordering
+//                            (`membar.gl` / `fence.*.gpu`)
+//   - System   — `.sys`      system-wide (across host/device) ordering
+//                            (`membar.sys` / `fence.*.sys`)
 //
-// CLOSED (C1 stop-signal). A fourth scope is an edit to THIS
-// declaration (the PTX spec has not added a fourth top-level scope
-// across major versions, but the L-2 pin discipline still routes a
-// hypothetical extension through operator ratification).
+// CLOSED (C1 stop-signal). A fifth scope is an edit to THIS
+// declaration routed to operator ratification under the L-2 pin
+// discipline (the pinned PTX ISA version is the fidelity authority
+// — a future ISA release introducing a fifth scope is a visible diff
+// to this enum, never a silent extension).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -289,27 +298,30 @@ type StateSpace
 //      uniformly (the synchronization radius is the same datum every
 //      consumer needs); shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: nullary tags from a closed PTX-defined
-//      set. A `{ radius: Int }` proxy (1=cta, 2=gpu, 3=sys) replaces a
-//      closed 3-valued exhaustive sum with an unbounded Int
-//      (radius=42 representable) — violates P2 + M4 (closed sets are
-//      enums, not numeric proxies). Same shape as algebra.dag's
-//      `Ordering` ledger.
-//   3. Algebraic form — N/A by construction: the three scopes are the
+//      set. A `{ radius: Int }` proxy (1=cta, 2=cluster, 3=gpu,
+//      4=sys) replaces a closed 4-valued exhaustive sum with an
+//      unbounded Int (radius=42 representable) — violates P2 + M4
+//      (closed sets are enums, not numeric proxies). Same shape as
+//      algebra.dag's `Ordering` ledger.
+//   3. Algebraic form — N/A by construction: the four scopes are the
 //      PTX memory-fence primitive radii; they do not trace to a
 //      richer std/ algebraic structure (a `BoundedLattice<Scope>`
-//      with Cta ⊑ Gpu ⊑ System would be a parallel representation of
-//      "stronger fence subsumes weaker" — a derived property of the
-//      tags, not a richer source).
+//      with Cta ⊑ Cluster ⊑ Gpu ⊑ System would be a parallel
+//      representation of "stronger fence subsumes weaker" — a derived
+//      property of the tags, not a richer source).
 //   4. Dimensional — FAILS: a single barrier directive carries
 //      EXACTLY ONE scope; `membar.cta.gl` is not a PTX construct.
 //      Mutually-exclusive alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the three are distinct
+//   5. Parameterized family — FAILS: the four are distinct
 //      synchronization-radius primitives — NOT one generic `F<X>` /
-//      projection over a source set (Practice 7). The three radii
-//      are the PTX spec's irreducible scope partition.
-// Terminal: the closed three-way synchronization scope.
+//      projection over a source set (Practice 7). The four radii are
+//      the PTX spec's irreducible scope partition for the pinned ISA
+//      version.
+// Terminal: the closed four-way synchronization scope for the pinned
+// PTX ISA 8.x §8.5 spec.
 type BarrierScope
   = Cta
+  | Cluster
   | Gpu
   | System
 
