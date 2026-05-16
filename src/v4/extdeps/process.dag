@@ -14,17 +14,18 @@
 //   - ProcessState = Running | Terminated(Termination)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
 //     (the terminal status nested inside ProcessState — the ONLY two ways
-//     a process ends per POSIX. wait/capture return THIS, never bare
-//     ExitCode: a signal-killed process has no exit code; fabricating one
-//     (or flattening signal death into a Diagnostic) loses the SignalNum
-//     and makes an illegal state representable. `Running` is structurally
-//     excluded from Termination — wait cannot return a non-terminal state.)
+//     a process ends per POSIX. wait/capture return an advanced Process
+//     whose state carries THIS, never a bare ExitCode: a signal-killed
+//     process has no exit code; fabricating one (or flattening signal
+//     death into a Diagnostic) loses the SignalNum and makes an illegal
+//     state representable. `Running` is structurally excluded from
+//     Termination — wait cannot return a non-terminal state.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
-//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
-//   - wait(pt, p)    -> Result<Process, Diagnostic>  (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr, process: Process}, Diagnostic>
+//   - spawn(cmd) -> Result<Process, Diagnostic>      (fork+exec)
+//   - wait(p)    -> Result<Process, Diagnostic>      (blocks until terminated)
+//   - capture(p) -> Result<{stdout, stderr, process: Process}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -43,9 +44,7 @@
 // HEADER RECONCILE (2026-05-16, #3209, keen-wren-663 + operator ruling):
 // wait/capture return the advanced Process (single-authority terminal
 // fact), reconciling the frozen wait/capture contract per the operator
-// P2/§2-floor BLOCKING. Process operations also take an explicit
-// ProcessTable resource parameter per ratified lens/effect.dag B3/B-5;
-// spawn returns the modified ProcessTable alongside the spawned Process.
+// P2/§2-floor BLOCKING.
 
 
 module v4.extdeps.process
@@ -62,9 +61,10 @@ import v4.std.diagnostic { Outcome }
 // INVARIANTS.md P2 host-process boundary discipline: command execution
 // returns structural outcomes, not string probes over shared stderr.
 // Setup/spawn failure is `Outcome.Rejected { diagnostic }`; a logical
-// child that ran and terminated returns `Termination`. The two facts are
-// not collapsed, so a wrapper failure cannot be mistaken for a child
-// exit and a signal death cannot be fabricated as an exit code.
+// child that ran and terminated returns an advanced `Process` whose
+// state carries `Termination`. The two facts are not collapsed, so a
+// wrapper failure cannot be mistaken for a child exit and a signal death
+// cannot be fabricated as an exit code.
 //
 // TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` is either
 // `Running` or `Terminated { status: Termination }`. The terminal-status
@@ -97,11 +97,9 @@ import v4.std.diagnostic { Outcome }
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
-// (DECISIONS.md I). Per lens/effect.dag B3/B-5, type signatures are the
-// single effect authority: effects are explicit parameters, and the
-// effect lens reads returned-modified-resource as write and
-// returned-derived-value as read. The external realization layer
-// performs fork/exec/wait/capture and returns through these carriers.
+// (DECISIONS.md I). This file declares operation contract carriers over
+// the shared Outcome seam. The external realization layer performs
+// fork/exec/wait/capture and returns through these carriers.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -194,13 +192,6 @@ type Process {
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 //
-// `ProcessTable` is the explicit resource parameter for this extdep's
-// process-table effects. It is a nominal handle, not an effect taxonomy:
-// the effect fact is read from each operation signature.
-type ProcessTable {
-  label: String
-}
-
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination
 // returns the advanced `Process` whose `state` is
@@ -211,19 +202,12 @@ type ProcessTable {
 // host realization must inhabit; it is intentionally only a signature
 // bundle here, not an effect resolver.
 type SpawnProcessRequest {
-  table: ProcessTable
   command: Command
 }
 
-type SpawnedProcess {
-  table: ProcessTable
-  process: Process
-}
-
-type SpawnProcessResult = Outcome<SpawnedProcess>
+type SpawnProcessResult = Outcome<Process>
 
 type WaitProcessRequest {
-  table: ProcessTable
   process: Process
 }
 
@@ -236,7 +220,6 @@ type CapturedProcessOutput {
 }
 
 type CaptureProcessRequest {
-  table: ProcessTable
   process: Process
 }
 
