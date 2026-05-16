@@ -188,11 +188,22 @@ module v4.lens.testgen
 //
 // TestgenTier — THESIS Tier1 / Tier2 / Tier3 (correctness dimension).
 //
-// Coproduct dissolution (Practice 4 / modeling-discipline.md enum
-// checkpoint): 🟢 GREEN — terminal three-way sum; exhaustive partition
-// of the tier axis for this lens; no Int coding, no parametric projection
-// from a larger set, no pending merge into a foreign std carrier. Ledger:
-// none (terminal).
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal — authoritative mirror of THESIS
+// correctness tiers). Ledger — five patterns on **forward** `TestgenTier`:
+//   1. Fact placement — N/A: lens-owned cross-cut; the same `tier` field tags
+//      every emission (shared with lens/coverage.dag T-18), not per-variant
+//      facts scattered to unrelated consumers.
+//   2. Variant-is-data — FAILS: Tier1/2/3 are three distinct correctness
+//      classes, not one payload shape plus a free label.
+//   3. Algebraic form — N/A: tiers classify claims; they are not intro/elim
+//      references into distinct `std/` algebraic carriers.
+//   4. Dimensional — N/A: not a coproduct masking an M-dimensional product;
+//      the three variants ARE the exhaustive named partition of the single
+//      THESIS tier axis (see THESIS §168–182).
+//   5. Parameterized family — FAILS: not `F<X>` / projection over a separate
+//      enumerable source set X (Practice 7).
+// Terminal: irreducible three-way partition ratified for this lens.
 type TestgenTier
   = Tier1
   | Tier2
@@ -201,18 +212,28 @@ type TestgenTier
 
 // TestgenLayer — TESTING.md Unit / Integration / Boundary test layer.
 //
-// Coproduct dissolution (Practice 4 / enum checkpoint): 🟢 GREEN —
-// terminal three-way sum; exhaustive partition of the layer axis; same
-// terminal discipline as `TestgenTier` above. Ledger: none (terminal).
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// classification: 🟢 GREEN (terminal — authoritative mirror of TESTING.md
+// test layers). Ledger — five patterns on **forward** `TestgenLayer`:
+//   1. Fact placement — N/A: same `layer` field on every emitted claim;
+//      coverage.dag reads the identical axis — not variant facts parked in
+//      unrelated DAG locations.
+//   2. Variant-is-data — FAILS: Unit / Integration / Boundary are three
+//      distinct layer semantics, not one record plus label.
+//   3. Algebraic form — N/A: layers are not algebraic elim/inhabitance refs.
+//   4. Dimensional — N/A: three named values exhaust the single TESTING.md
+//      layer axis (~75% / ~15% / ~10% targets); not a hidden product space.
+//   5. Parameterized family — FAILS: not mechanical `F<X>` over external X.
+// Terminal: irreducible three-way partition ratified for this lens.
 type TestgenLayer
   = Unit
   | Integration
   | Boundary
 
 
-// Coproduct dissolution: `TestClassification` is a Conj of the two terminal
-// sums above — no ledger (axes are independent coordinates, not variants
-// of one coproduct).
+// Coproduct dissolution: `TestClassification` is a Conj of two **separate**
+// terminal sums (`TestgenTier`, `TestgenLayer`) — not an N-variant coproduct
+// of its own; Practice‑4 enum checkpoint + ledger live on each sum above.
 type TestClassification {
   tier: TestgenTier
   layer: TestgenLayer
