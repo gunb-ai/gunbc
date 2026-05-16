@@ -111,3 +111,17 @@ type Char = Nat
 // reads of std/algebra.dag's `FreeMonoid<T>` shape, not operations
 // re-declared in this file.
 type String = FreeMonoid<Char>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// string_is_empty — canonical **boundary query** for `String`.
+//
+// `String` is `FreeMonoid<Char>` (alias edge above). Emptiness is the
+// structural discriminant on that carrier — a read of std/algebra.dag's
+// `Empty | Cons` spine, not a tokenizer-local length re-implementation.
+fn string_is_empty(s: String) -> Bool {
+  match s {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
