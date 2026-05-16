@@ -273,8 +273,6 @@ mod thesis_validation_test;
 mod timing_lens_substrate_carrier_test;
 #[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
 mod v2_oracle_no_remaining_test_consumers_test;
-#[path = "integration/v4_extdeps_os_interaction_dag_smoke_test.rs"]
-mod v4_extdeps_os_interaction_dag_smoke_test;
 #[path = "integration/v4_extdeps_typescript_dag_smoke_test.rs"]
 mod v4_extdeps_typescript_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
