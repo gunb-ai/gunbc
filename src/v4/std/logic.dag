@@ -24,3 +24,110 @@
 
 
 module v4.std.logic
+
+import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// SUBSTRATE — node.dag + algebra.dag only. `Bool` is a `Disj`: the
+// `type X = A | B` surface form (the same form as algebra.dag's
+// `Ordering`), so the `Disj` connective needs no import. `BooleanAlgebra`
+// / `BoundedLattice` / `Lattice` ARE imported from std/algebra.dag —
+// they are referenced by name to type and construct the inhabitance
+// instance below.
+//
+// INHABITANCE IS AN INSTANCE VALUE, NOT A CARRIER (operator-ratified).
+// `Bool`'s grounding in Boolean algebra is the `data bool_boolean_algebra`
+// value below — a concrete `BooleanAlgebra<Bool>`. There is no `inhabits`
+// keyword and no inhabitance carrier type; the grounding simply IS this
+// `data` instance. Conjunction / disjunction / negation are the
+// instance's `meet` / `join` / `complement` fields — they are NOT
+// re-declared as standalone named functions (epistemic stacking: the
+// algebra is the definition). A consumer negates a bool by walking
+// `bool_boolean_algebra.complement`.
+//
+// LAWS ARE GROUNDED DEFINITIONS, NEVER FLAGS (feedback_no_annotations).
+// The Boolean-algebra axioms — absorption, complementation
+// (a ∧ ¬a = ⊥, a ∨ ¬a = ⊤), distributivity — are the cited definition of
+// `BooleanAlgebra` (Huntington 1904); the truth tables in the instance
+// are the grounded definitions of the three operations. Neither is a
+// stored flag or a hand-built equation AST.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bool — the classical two-valued truth value: the boolean kernel every
+// predicate returns. A `Disj` of exactly two nullary variants.
+// Anchor: https://en.wikipedia.org/wiki/Boolean_algebra (classical
+// bivalent logic — the two-element Boolean algebra).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: a truth value is consumed uniformly —
+//      every predicate result and every `Branch` condition dispatches on
+//      it; it is not a scattered per-consumer fact.
+//   2. Variant-is-data — FAILS: promoting to `{ value: Int }` (1 / 0)
+//      replaces a closed 2-valued exhaustive set with an unbounded Int
+//      (`value = 42` representable) — violates P2 + the closed-set rule
+//      (a closed outcome set is an enum, never a numeric proxy).
+//   3. Algebraic form — N/A: `Bool` is the CARRIER `BooleanAlgebra` is
+//      imposed on (`bool_boolean_algebra` below), not a type derived
+//      FROM a richer std/ structure. The algebra grounds the operations;
+//      the two elements themselves are irreducible — a carrier is a root,
+//      the same status as algebra.dag's `FreeMonoid`.
+//   4. Dimensional — FAILS: a truth value is EXACTLY one of True / False
+//      — mutually exclusive by the law of non-contradiction, never
+//      simultaneous coordinates.
+//   5. Parameterized family — FAILS: True / False are not a mechanical
+//      `F<X>` shape repeated over a separately-declared set; they are two
+//      irreducible nullary constants. No generic / projection (Practice
+//      7) collapses them.
+// Terminal: the irreducible classical bivalent truth values — the
+// two-element Boolean algebra, mathematical consensus (Boole 1847).
+type Bool
+  = True
+  | False
+
+
+// ─────────────────────────────────────────────────────────────────────
+// bool_boolean_algebra — Bool's inhabitance of `BooleanAlgebra` (the
+// structure declared in T-2's std/algebra.dag). An INSTANCE VALUE: the
+// grounding IS this `data`, never a carrier or an `inhabits` relation.
+//
+// The operations fall out of the instance:
+//   - `meet`       — conjunction (∧): True ∧ b = b,  False ∧ b = False.
+//   - `join`       — disjunction (∨): True ∨ b = True, False ∨ b = b.
+//   - `complement` — negation (¬):    ¬True = False,  ¬False = True.
+//   - `top`        — True:  the meet-identity / join-absorbing element.
+//   - `bottom`     — False: the join-identity / meet-absorbing element.
+// The `match` truth tables are the grounded definitions; the absorption /
+// complement / distributivity axioms are `BooleanAlgebra`'s own cited
+// definition (Huntington 1904), satisfied by these tables.
+data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
+  bounded_lattice: BoundedLattice {
+    lattice: Lattice {
+      meet: fn(a, b) {
+        match a {
+          True => b
+          False => False
+        }
+      }
+      join: fn(a, b) {
+        match a {
+          True => True
+          False => b
+        }
+      }
+    }
+    top: True
+    bottom: False
+  }
+  complement: fn(a) {
+    match a {
+      True => False
+      False => True
+    }
+  }
+}
