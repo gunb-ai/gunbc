@@ -134,6 +134,17 @@
 //            downstream of `canonical`'s pre-infer domain (point 1).
 //            The signal does not exist at this stage; importing it
 //            cycles.
+//        (c) Even GRANTING (a)/(b), the sort is NONDETERMINISTIC by
+//            construction: distinct labeled children can share an
+//            identical child subtree (e.g. `{ a: Int, b: Int }` — both
+//            children's subtree is the same `Int` name-ref ⇒ equal
+//            child content_hash), and K-1 makes the label `Symbol`
+//            equality-only (NO order) ⇒ no deterministic tie-break ⇒
+//            the sort falls back to incidental order, exactly the
+//            INVARIANTS P2/P4 nondeterminism this clause must not admit.
+//            (Surfaced by review 2026-05-16 — a third INDEPENDENT
+//            reason the commutative-quotient is unsound; list order is
+//            the only deterministic choice.)
 //      This is the correct closure of a decidable system
 //      (INVARIANTS:31 — same honest-bounding as A3/C5/U1), NOT a
 //      defect. Lost: ONLY field-permutation dedup — a memo nicety;
