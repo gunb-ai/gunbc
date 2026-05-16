@@ -46,13 +46,15 @@
 //   - std/node.dag: Node, Symbol, node_well_formed
 //   - std/collection.dag: List<T>
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
-//     NoCorrectionReason, Extent
+//     NoCorrectionReason
 //   - compiler/01_tokenize.dag: TokenStream
+//   - extdeps/languages/dag.dag: language-#1 `DagLanguageModel.grammar`
+//     authority (B2-OMNI + PARSE-1 — data-carried, not walker-special-cased)
 //
 // Status: Wave-1 generic machinery — syntactic **walk** not realized on
 // the v2 bridge (honest `Rejected`); PARSE-1 bodiless-fn production is a
-// constraint on the ratified LanguageModel grammar **data** (operator-
-// pending file home), not encoded in this walker.
+// constraint on `DagLanguageModel.grammar` **data** in `extdeps/languages/dag.dag`,
+// not encoded in this generic walker.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).

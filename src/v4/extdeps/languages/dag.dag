@@ -1,0 +1,68 @@
+// src/v4/extdeps/languages/dag.dag
+//
+// Scope: gunbc `.dag` surface — the native **LanguageModel** for language #1
+//        (B2-OMNI). Direction-agnostic: the same declarative data authorizes
+//        ingest (`01_tokenize` ∘ `02_parse` over `lex` + `grammar`) and emit
+//        (downstream `05_emit` / targets), per THESIS:188 unification.
+// Anchor: **Repo-owned specification** (L-2 spec-first without an external
+//         standards URL): `docs/v3-spec.md` (v3 language surface + arch
+//         context carried forward as the checkable authority for the
+//         bridge-era subset) **plus** the v4 closed tree itself (`STRUCTURE.md`,
+//         `TASKS.md` T-6/T-7, `compiler/01_tokenize.dag` /
+//         `compiler/02_parse.dag` contracts, `DECISIONS.md` B2-OMNI /
+//         PARSE-1). Grammar obligations ratified in-repo supersede prose;
+//         drift = visible C1 edits to those artifacts, never silent extension.
+// Unifies: (per THESIS:188) language spec = transport spec = interpreter
+//         runtime. ONE substrate carrier for all three roles. Different
+//         lenses read different facts from the same data (emission reads
+//         syntax; transport reads serialization; interpreter reads execution
+//         semantics). A worker needing transport or runtime extends this file,
+//         not a new "transport spec" file.
+//
+// B2-OMNI (operator-ratified 2026-05-15): `.dag` is **language #1**, never
+// hardcoded into the generic tokenizer/parser walkers — those stages consume
+// **this** model's `lex` / `grammar` `Node` trees as the only lexical and
+// syntactic authority (O(N+M) pivot; same pattern as other `extdeps/languages/*`).
+//
+// PARSE-1: bodiless `fn` signature declarations are a **first-class grammar
+// production** encoded as **data** in `grammar` (v4-self-parse era). The generic
+// `02_parse` walker does not special-case them; v2-bridge preflight remains
+// safe (frozen v2 never parses bodiless `fn`). See `compiler/02_parse.dag`
+// header.
+//
+// Owns:
+//   - `DagLanguageModel` — bundles declarative `lex: Node` + `grammar: Node`
+//     (the `LexRules` / `Grammar` roles named in `compiler/01_tokenize.dag` /
+//     `compiler/02_parse.dag`; carrier = `Node` per A1)
+//   - (bundled / Wave follow-on) lexical + syntactic production tables,
+//     C5-fidelity dispositions, D2 resolver facts — same Owns/ELSEWHERE split
+//     discipline as `rust.dag` / `go.dag`; this slice lands the **admission +
+//     bundle head** only
+//
+// Consumes:
+//   - std/node.dag: Node (the grammar-as-data substrate)
+//   - cross-ref: `docs/v3-spec.md`, `STRUCTURE.md`, `TASKS.md` T-4/T-6/T-7,
+//     `DECISIONS.md` **L-5** + B2-OMNI + PARSE-1 + L-2
+//
+// Status: operator-ratified C1 closed-tree extension 2026-05-16 (Option **A**,
+// relay merry-ibex-337) — **admitted**; scaffold — fill per TASKS.md T-4 + T-6/T-7.
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
+// contract for the worker. Splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
+
+
+module v4.extdeps.languages.dag
+
+
+import v4.std.node { Node }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DagLanguageModel — gunbc `.dag` as a first-class Shape-A LanguageModel
+// (B2-OMNI language #1). `lex` / `grammar` are the lexical and syntactic rule
+// forests consumed by the generic pipeline stages; both are finite `Node`
+// trees (A1), never procedural recognizers in `compiler/*`.
+type DagLanguageModel {
+  lex: Node
+  grammar: Node
+}

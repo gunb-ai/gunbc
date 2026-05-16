@@ -22,7 +22,9 @@
 //   - std/node.dag: Node, Symbol, node_well_formed
 //   - std/collection.dag: List<T>
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Correction,
-//     NoCorrectionReason, Extent
+//     NoCorrectionReason
+//   - extdeps/languages/dag.dag: language-#1 `DagLanguageModel.lex` authority
+//     (B2-OMNI — binds here as `LexRules`/`Node`, never special-cased in-body)
 //
 // Status: Wave-1 generic machinery — lexical **walk** not realized on the
 // v2 bridge (honest `Rejected`); structural carriers + contracts are
