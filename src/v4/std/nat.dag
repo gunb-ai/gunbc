@@ -24,3 +24,141 @@
 
 
 module v4.std.nat
+
+import v4.std.algebra { Monoid, Semiring, CommutativeMonoid, Semigroup, Magma }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// SUBSTRATE — node.dag + algebra.dag only. `Nat` is a recursive `Disj`
+// (the `type X = A | B` surface form, recursion through the `Succ`
+// payload — exactly algebra.dag's `FreeMonoid` shape; no `Disj` import).
+// `Monoid` / `Semiring` and the structures they nest (`CommutativeMonoid`
+// / `Semigroup` / `Magma`) are imported from std/algebra.dag to type and
+// construct the inhabitance instances.
+//
+// INHABITANCE IS AN INSTANCE VALUE (operator-ratified). Nat's arithmetic
+// grounding is the `data nat_additive_monoid` / `data nat_semiring`
+// values below — concrete `Monoid<Nat>` / `Semiring<Nat>`. No `inhabits`
+// keyword, no inhabitance carrier.
+//
+// WHY THE OPERATIONS ARE NAMED FUNCTIONS. `nat_add` / `nat_mul` are
+// Peano-recursive, so they cannot be anonymous fn-literals — an anonymous
+// literal has no name to call itself by. They are top-level `fn`s the
+// algebra instances reference by name (the v3 `timing_lens_monoid.op`
+// precedent). This is NOT a parallel public arithmetic API: a consumer
+// adds two Nats by walking `nat_additive_monoid` — the named `fn` is the
+// algebra instance's content, declared once. (Contrast logic.dag, whose
+// finite-domain ops ARE inline fn-literals because they do not recurse.)
+//
+// TERMINATION. `nat_add` / `nat_mul` each recurse on `prev` — a proper
+// sub-Node of the matched argument. That is node.dag A2's IMPLICIT
+// structural-descent case: total by construction, no RankingDimension or
+// TerminationProof needed (those carriers are for non-structural descent).
+//
+// LAWS ARE GROUNDED DEFINITIONS, NEVER FLAGS. The monoid / semiring
+// axioms (associativity, identity, commutativity of +, distributivity,
+// annihilation) are the cited definition of `Monoid` / `Semiring`; the
+// recursive equations below are the grounded definitions of + and *.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Nat — the natural numbers, Peano-inductive: Zero, or the successor of
+// another Nat. A recursive `Disj`; recursion lives in the `Succ` payload
+// (a Node child per node.dag A1 — regular recursion, decidable).
+// Anchor: https://en.wikipedia.org/wiki/Natural_number (Peano 1889).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: Zero / Succ are not per-consumer facts;
+//      every structural fold over a Nat handles BOTH (induction base +
+//      inductive step). No consumer uses only one.
+//   2. Variant-is-data — FAILS: the variants have DIFFERENT shapes (Zero
+//      nullary; Succ { prev }). Collapsing to `{ is_zero: Bool, prev?:
+//      Nat }` makes "Zero carrying a prev" and "Succ with no prev"
+//      representable — the inverse of P2 (illegal states unrepresentable).
+//   3. Algebraic form — N/A: Zero / Succ ARE the Peano constructors —
+//      the foundational, intersubjectively-grounded definition of ℕ
+//      (Peano 1889). `Monoid` / `Semiring` are imposed ON Nat (the
+//      inhabitance instances below), not a richer source Nat derives
+//      FROM; nothing in the numeric tower sits below Nat. (Nat is
+//      isomorphic to the free monoid on one generator, but that is an
+//      equivalent encoding, not a dissolution to something richer — and
+//      the scaffold header ratifies the Peano form as the tower's base.)
+//   4. Dimensional — FAILS: a Nat is EITHER Zero OR a successor — genuine
+//      mutually-exclusive alternatives (base vs. inductive case), never
+//      simultaneous coordinates.
+//   5. Parameterized family — FAILS: Zero / Succ are not a mechanical
+//      `F<X>` shape repeated over a separately-declared set; they are the
+//      two irreducible Peano constructors. No generic / projection
+//      (Practice 7) collapses them.
+// Terminal: the irreducible Peano inductive definition of the natural
+// numbers (Peano 1889) — the root of the numeric tower.
+type Nat
+  = Zero
+  | Succ { prev: Nat }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// nat_add — addition, the Peano recursion on the first argument:
+//   0 + b = b ;  (Succ p) + b = Succ (p + b).
+// The algebra instance `nat_additive_monoid` references this as its `op`.
+// Recurses on `prev` (structural descent — terminating, node.dag A2).
+fn nat_add(a: Nat, b: Nat) -> Nat {
+  match a {
+    Zero => b
+    Succ { prev: p } => Succ { prev: nat_add(a: p, b: b) }
+  }
+}
+
+// nat_mul — multiplication, Peano recursion on the first argument:
+//   0 * b = 0 ;  (Succ p) * b = b + (p * b).
+// Referenced as the `mul` op of `nat_semiring`. Recurses on `prev`
+// (structural descent — terminating); the per-step `nat_add` is itself
+// total, so the composition is total.
+fn nat_mul(a: Nat, b: Nat) -> Nat {
+  match a {
+    Zero => Zero
+    Succ { prev: p } => nat_add(a: b, b: nat_mul(a: p, b: b))
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// nat_additive_monoid — Nat's inhabitance of `Monoid` under addition. An
+// INSTANCE VALUE: the grounding IS this `data`. `op` is `nat_add`;
+// `identity` is `Zero` (0 + b = b). Associativity and the two-sided
+// identity are `Monoid`'s cited axioms (satisfied by the Peano recursion
+// above), never stored flags.
+data nat_additive_monoid: Monoid<Nat> = Monoid {
+  semigroup: Semigroup {
+    magma: Magma {
+      op: nat_add
+    }
+  }
+  identity: Zero
+}
+
+// nat_semiring — Nat's inhabitance of `Semiring`: the additive
+// CommutativeMonoid (Nat addition commutes — the commutativity axiom is
+// `CommutativeMonoid`'s grounded definition) and the multiplicative
+// Monoid (`op` = `nat_mul`, `identity` = one = `Succ { prev: Zero }`,
+// since 1 * b = b). The additive monoid is the SAME authority as
+// `nat_additive_monoid` — referenced, not re-built (INVARIANTS P2).
+// Distributivity and annihilation (0 * b = 0) are `Semiring`'s cited
+// axioms, satisfied by the recursions above.
+data nat_semiring: Semiring<Nat> = Semiring {
+  add: CommutativeMonoid {
+    monoid: nat_additive_monoid
+  }
+  mul: Monoid {
+    semigroup: Semigroup {
+      magma: Magma {
+        op: nat_mul
+      }
+    }
+    identity: Succ { prev: Zero }
+  }
+}
