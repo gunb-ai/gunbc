@@ -213,11 +213,17 @@ type SpiceValue {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=1.5`).
-// Used by parameterized component declarations (`Mosfet`, `Diode`'s
-// optional `AREA`), `.MODEL` parameter sets, and `.OPTIONS` directives
-// (Quarles 1993 §11.3, §15). `name` is a `Symbol` (K-1-opaque); `value`
-// is a `SpiceValue` (lexeme; sub-grammar deferred per `SpiceValue`).
+// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`). Used by the
+// parameterized component variants that carry a `parameters: List<
+// Parameter>` slot in this cut (`Mosfet`, `SubcircuitCall`), by `.MODEL`
+// parameter sets, and by `.OPTIONS` directives (Quarles 1993 §11.3,
+// §15). Instance-parameter slots on the variants that do not carry one
+// yet (`Diode`'s optional `AREA`, `Bjt`'s optional `AREA` / `OFF` /
+// initial-condition pairs) are part of the same follow-up that
+// enumerates E/F/G/H/J/T/S/W — see modeling notes "CLOSED-SET
+// COVERAGE"; the `Parameter` carrier is ready for them. `name` is a
+// `Symbol` (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar
+// deferred per `SpiceValue`).
 type Parameter {
   name: Symbol
   value: SpiceValue
@@ -285,7 +291,7 @@ type Component
   | CurrentSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Diode { identity: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
   | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, model: Symbol }
-  | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source_terminal: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
+  | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
   | MutualInductance { identity: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
   | SubcircuitCall { identity: Symbol, terminals: List<NodeRef>, subcircuit: Symbol, parameters: List<Parameter> }
 
