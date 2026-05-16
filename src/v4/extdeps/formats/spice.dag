@@ -27,11 +27,21 @@
 //     never a partial parse (same fail-closed discipline as csv.dag's
 //     rectangularity). The deck body is a single ordered list of
 //     `DeckStatement`s (one of Component / ModelCard /
-//     SubcircuitDefinition / Directive) so source-order interleaving
-//     round-trips through `parse ∘ emit`. The original scaffold Owns
-//     line read `{components, nodes, models, directives}`; the `nodes`
-//     field is dropped per Practice 7 (the set of referenced nodes is
-//     a projection over component terminals — a parallel `nodes:
+//     SubcircuitDefinition / Directive). Round-trip scope (PR #3168
+//     codex review): TOP-LEVEL source-order interleaving of these
+//     four statement kinds round-trips through `parse ∘ emit`.
+//     LIFTED nested `.SUBCKT` definitions preserve their parent
+//     identity (via `parent_scope`) but NOT their original within-
+//     parent positional offset — a documented secondary fidelity
+//     concession tracked as 🟡 YELLOW debt with a named consumer
+//     trigger (see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
+//     in the SpiceNetlist declaration's header). The contract
+//     promised here is therefore "top-level interleave round-trip" +
+//     "nested-SUBCKT parent-identity preservation", not "byte-exact
+//     deck round-trip". The original scaffold Owns line read
+//     `{components, nodes, models, directives}`; the `nodes` field
+//     is dropped per Practice 7 (the set of referenced nodes is a
+//     projection over component terminals — a parallel `nodes:
 //     List<NodeRef>` field would be a second authority, cost-of-
 //     change ≥ 2; INVARIANTS P2). Node-STATE declarations (`.IC` /
 //     `.NODESET`) are NOT lost — they live as `Directive` variants
