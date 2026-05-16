@@ -1693,55 +1693,38 @@ type NonAnsiPort
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortDeclaration — a non-ANSI-style Verilog BODY port_declaration
-// (`input a;`, `output b;`, `inout c;`). IEEE 1364-2005 §12.3.4 +
-// §12.2 admit these as module-body items. Each declares port
-// direction + name; the type/packing/signedness facts come from a
-// MATCHING `NetDeclaration` / `VariableDeclaration` in the same
-// module body (the non-ANSI separated form), OR — per spec — a body
-// port_declaration may combine direction + type inline (`input wire
-// [7:0] a;`). The combined form is structurally equivalent to ANSI
-// and is admitted by the same `AnsiPortDeclaration` carrier surfaced
-// as `BodyPortDeclarationItem` in ModuleItem; this PortDeclaration
-// record covers the direction-only form.
+// (PortDeclaration was DISSOLVED on PR #3176 sha cb028c7d+ per
+// openai-pro REQUEST_CHANGES. Per spec §A.2.1.2:
 //
-//   - direction  input / output / inout
-//   - name       the port identifier (K-1-opaque Symbol; resolves
-//                through the namespace to the matching body
-//                Net/Variable declaration that carries the type-
-//                fact, when separated)
+//   input_declaration  ::= input  [net_type] [signed] [range] list_of_port_identifiers
+//   output_declaration ::= output ... (multiple forms)
+//   inout_declaration  ::= inout  [net_type] [signed] [range] list_of_port_identifiers
 //
-// Per IEEE 1364-2005 §12.3.4 / §12.2 PortDeclaration is a MODULE
-// BODY item (PortDeclarationItem in ModuleItem), NOT a module-
-// header element. The non-ANSI header carries port-EXPRESSIONS via
-// NonAnsiPort above; this body declaration carries the direction
-// fact that the non-ANSI form requires. Corrected per codex
-// BLOCKING on PR #3176 2026-05-16 — the prior shape mis-located
-// PortDeclaration on the header port-list, conflating the spec's
-// header-vs-body partition.
+// the SAME spec production covers BOTH the bare form (`input a;`)
+// AND the with-modifiers form (`input [7:0] a;`) AND the with-type
+// form (`input wire [7:0] a;`) — net_type / signed / range are all
+// independently optional. The prior partition (PortDeclaration =
+// direction+names only, AnsiPortDeclaration reused for with-type
+// forms via NonAnsiBodyPortDeclarationItem) collapsed the
+// with-modifiers-without-type form (`output [7:0] y;` followed by
+// separate `reg [7:0] y;`) — PortDeclaration path lost range/signed,
+// AnsiPortDeclaration path made the carrier "falsely complete"
+// (openai-pro REQUEST_CHANGES on PR #3176 sha cb028c7d at line 1710).
 //
-// Per spec §A.2.1.2 grammar a single direction-only port_declaration
-// admits a NON-EMPTY list of port identifiers under one shared
-// direction keyword (`input a, b, c;` is one statement declaring
-// three ports, not three statements). The prior singular-name shape
-// lost the §A.2.1.2 statement-boundary (shared direction keyword
-// across multi-identifier forms) — openai-pro REQUEST_CHANGES on
-// PR #3176 2026-05-16 at line 1429; same shape as the
-// DefparamDeclaration / EventDeclaration / GenvarDeclaration list-
-// form precedent.
-//
-//   - direction      the port-direction keyword (input | output |
-//                    inout); shared across all declared names in
-//                    this statement.
-//   - names          the non-empty list of declared port identifiers
-//                    (K-1-opaque Symbols).
-type PortDeclaration {
-  direction: PortDirection
-  // 🟡 spec-non-empty (§A.2.1.2 list_of_port_identifiers) — deferred
-  // to std/collection.dag Wave-A2 `List<T> where non_empty`
-  // refinement; see shared TRACKED-SCAFFOLD note below.
-  names: List<Symbol>
-}
+// Resolution: AnsiPortDeclaration's existing no-net-type variants
+// (AnsiInputInoutNoNetType for input/inout, OutputAnsiNoNetType for
+// output) ALREADY cover the direction+modifiers-without-type form
+// with the full {packing, signedness} payload — the bare-form
+// `input a;` is the same carrier with packing=Scalar +
+// signedness=Unsigned. PortDeclaration's direction+names shape is
+// thus a strict subset (the {packing=Scalar, signedness=Unsigned}
+// projection) of AnsiPortDeclaration's no-net-type variants.
+// Keeping PortDeclaration as a separate carrier was
+// representation-duality and a partition gap; dissolving it
+// collapses both NonAnsiPortDeclarationItem +
+// NonAnsiBodyPortDeclarationItem in NonAnsiModuleItem into one
+// variant using AnsiPortDeclaration uniformly. Single carrier,
+// single authority, full §A.2.1.2 spec form coverage.)
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3041,18 +3024,118 @@ type SpecifyBlock {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// TaskDeclaration — a Verilog `task ... endtask` declaration
-// (IEEE 1364-2005 §10.2, §12.2). A task is a procedural sub-routine
-// callable from procedural code; it can carry input/output/inout
-// arguments and contain delay/event controls (unlike `function`).
-// Conj record (no Practice-4 ledger).
+// LifetimeClause — the closed Verilog task/function lifetime
+// classifier (IEEE 1364-2005 §10.2 / §10.3 / §A.2.6): tasks and
+// functions admit an OPTIONAL `automatic` keyword:
 //
+//   task_declaration ::= task [automatic] task_identifier ; ... endtask
+//   function_declaration ::= function [automatic]
+//                              [function_range_or_type]
+//                              function_identifier ; ... endfunction
+//
+// `automatic` declares per-call storage (recursive-safe); the
+// default is `static` (single shared storage, default keyword
+// absent). Modeled as a closed Disj rather than a Bool to avoid
+// the K-1 Bool-as-keyword anti-pattern. Field added at sha
+// cb028c7d+ per openai-pro REQUEST_CHANGES — TaskDeclaration /
+// FunctionDeclaration previously collapsed this into body_lexeme,
+// losing the §10.2/§10.3 declaration-boundary fact.
+//
+//   - StaticLifetime
+//       — `task t;` / `function f;` (default; `automatic` keyword
+//       absent).
+//   - AutomaticLifetime
+//       — `task automatic t;` / `function automatic f;` (per-call
+//       storage; spec keyword present).
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Five-pattern ledger abbreviated.
+//   1. Fact placement — FAILS: shared classifier across task /
+//      function emitters + elaboration consumers.
+//   2. Variant-is-data — FAILS: collapsing to `is_automatic: Bool`
+//      reintroduces the K-1-forbidden Bool-as-keyword anti-pattern;
+//      string sentinel ditto.
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one lifetime per declaration; mutually
+//      exclusive.
+//   5. Parameterized family — FAILS: both variants are nullary —
+//      spec-distinct keyword identities (Practice 7).
+// Terminal: the closed two-way Verilog task/function lifetime
+// classifier.
+type LifetimeClause
+  = StaticLifetime
+  | AutomaticLifetime
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FunctionReturnTypeClause — the closed Verilog function return-
+// type-or-range classifier (IEEE 1364-2005 §10.3 / §A.2.6): function
+// declarations admit an OPTIONAL `function_range_or_type` between
+// `[automatic]` and the function name:
+//
+//   function_range_or_type ::= [ signed ] [ range ]
+//                            | integer | real | realtime | time
+//
+// The clause is OPTIONAL per spec; when absent, the function returns
+// a single-bit (default) result. When present, the spec form is
+// either a signed/range pair (returning a bit-vector) or one of the
+// spec-fixed-width variable types. Field added at sha cb028c7d+ per
+// openai-pro REQUEST_CHANGES — FunctionDeclaration previously
+// collapsed this declaration-boundary fact into body_lexeme. The
+// sub-grammar (signed/range distinction + variable-type keyword
+// closure) is deferred to the bundled T-4 LanguageModel via the
+// established body_lexeme precedent.
+//
+//   - NoFunctionReturnType
+//       — `function f;` form: default single-bit return.
+//   - FunctionReturnTypeLexeme { lexeme: String }
+//       — `function [7:0] f;` / `function signed [7:0] f;` /
+//       `function integer f;` / etc.; the function_range_or_type as
+//       a verbatim lexeme. Sub-grammar deferred.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Five-pattern ledger abbreviated.
+//   1. Fact placement — FAILS: shared function-emitter / return-
+//      type-resolution consumers.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected
+//      (BlankConnection precedent).
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one return-type-or-range state per
+//      function declaration.
+//   5. Parameterized family — FAILS: NoFunctionReturnType is
+//      nullary; FunctionReturnTypeLexeme carries `lexeme: String`
+//      — structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog function-return-type-clause
+// classifier.
+type FunctionReturnTypeClause
+  = NoFunctionReturnType
+  | FunctionReturnTypeLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TaskDeclaration — a Verilog `task ... endtask` declaration
+// (IEEE 1364-2005 §10.2, §12.2 / §A.2.6). A task is a procedural
+// sub-routine callable from procedural code; it can carry
+// input/output/inout arguments and contain delay/event controls
+// (unlike `function`). Conj record (no Practice-4 ledger).
+//
+//   - lifetime       the optional `automatic` keyword
+//                    (LifetimeClause); per §10.2 task admits
+//                    `[automatic]` as a declaration-boundary
+//                    modifier (added at sha cb028c7d+ per openai-pro
+//                    REQUEST_CHANGES; prior shape collapsed this
+//                    into body_lexeme).
 //   - name           the task identifier (K-1-opaque Symbol)
 //   - body_lexeme    the procedural body (port list + statements
-//                    between `task name;` and `endtask`) as a
-//                    verbatim lexeme (sub-grammar deferred to the
-//                    T-4 LanguageModel)
+//                    between `task [automatic] name;` and `endtask`)
+//                    as a verbatim lexeme (sub-grammar deferred to
+//                    the T-4 LanguageModel)
 type TaskDeclaration {
+  lifetime: LifetimeClause
   name: Symbol
   body_lexeme: String
 }
@@ -3060,19 +3143,31 @@ type TaskDeclaration {
 
 // ─────────────────────────────────────────────────────────────────────
 // FunctionDeclaration — a Verilog `function ... endfunction`
-// declaration (IEEE 1364-2005 §10.3, §12.2). A function is a pure
-// (synthesizable) sub-routine that returns a value; the spec
+// declaration (IEEE 1364-2005 §10.3, §12.2 / §A.2.6). A function is
+// a pure (synthesizable) sub-routine that returns a value; the spec
 // forbids delay/event controls inside the body (distinguishing
 // functions from tasks). Conj record (no Practice-4 ledger).
 //
+//   - lifetime       the optional `automatic` keyword
+//                    (LifetimeClause); per §10.3 function admits
+//                    `[automatic]` (added at sha cb028c7d+ per
+//                    openai-pro REQUEST_CHANGES).
+//   - return_type    the optional function_range_or_type clause
+//                    (FunctionReturnTypeClause); per §10.3 function
+//                    admits `[function_range_or_type]` between
+//                    `[automatic]` and the function name (added at
+//                    sha cb028c7d+ per openai-pro REQUEST_CHANGES;
+//                    prior shape collapsed this into body_lexeme).
 //   - name           the function identifier (K-1-opaque Symbol)
-//   - body_lexeme    the function body (return-type + arguments +
-//                    statements between `function name;` and
+//   - body_lexeme    the function body (arguments + statements
+//                    between the declaration header and
 //                    `endfunction`) as a verbatim lexeme (sub-
 //                    grammar deferred to the T-4 LanguageModel —
-//                    the return-type declaration + the pure-body
-//                    constraint enforcement live there)
+//                    the pure-body constraint enforcement lives
+//                    there)
 type FunctionDeclaration {
+  lifetime: LifetimeClause
+  return_type: FunctionReturnTypeClause
   name: Symbol
   body_lexeme: String
 }
@@ -3803,8 +3898,20 @@ type AnsiModuleItem
 // codex BLOCKING on PR #3176 2026-05-16.
 type NonAnsiModuleItem
   = NonAnsiAnsiCompatItem { item: AnsiModuleItem }
-  | NonAnsiPortDeclarationItem { attributes: AttributeInstanceClause, port_decl: PortDeclaration }
-  | NonAnsiBodyPortDeclarationItem { attributes: AttributeInstanceClause, body_port: AnsiPortDeclaration }
+  | NonAnsiPortDeclarationItem {
+      // PortDeclaration was dissolved at sha cb028c7d+ per openai-pro
+      // REQUEST_CHANGES — AnsiPortDeclaration's no-net-type variants
+      // cover the §A.2.1.2 input/output/inout [net_type] [signed]
+      // [range] list_of_port_identifiers production uniformly (bare
+      // / with-modifiers / with-type-and-modifiers), making the prior
+      // 2-variant split (PortDeclaration direction-only vs
+      // AnsiPortDeclaration with-type) a partition gap that lost
+      // range/signed on `output [7:0] y;` forms. Single AnsiPort
+      // Declaration carrier here = single authority for non-ANSI
+      // body port_declarations under §12.3.4.
+      attributes: AttributeInstanceClause,
+      port_decl: AnsiPortDeclaration
+    }
 
 
 // ─────────────────────────────────────────────────────────────────────
