@@ -76,9 +76,16 @@ import v4.std.node { Symbol }
 // NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
 // unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
 // 11+52 binary64) are NOT type-enforced here — the same honest deferral
-// pattern as machine.dag's `List<Bit>` width scaffold. Producers must
-// respect nominal widths; the dissolution trigger is the same bounded
-// refinement substrate named in machine.dag's modeling notes.
+// class as **std/machine.dag**'s `Byte` / `Word*` `List<Bit>` / `List<Byte>`
+// fields under the **"LIST FIELD LENGTH vs NOMINAL WIDTH — TRACKED SCAFFOLD
+// (🟡)"** modeling block there, including its dissolution trigger (bounded
+// refinement substrate: std/cardinality.dag `Multiplicity` + wired list /
+// record refinements — whichever ratified form lands first). The nominal
+// `Float32` / `Float64` wrappers do **not** attach a witness tying these `Nat`
+// magnitudes to binary32/64 bit-count bounds; out-of-range Peano values are
+// **producer-side bugs** until that substrate closes the hole (same bridge
+// (a)(b)(c) posture as machine.dag; INVARIANTS P2 single authority for words
+// stays in machine.dag, not duplicated here).
 //
 // APPROXIMATEFIELD OPS — `add` / `mul` below are **componentwise** on the
 // three finite `Nat` fields when BOTH operands are `Finite` (NOT IEEE-754
