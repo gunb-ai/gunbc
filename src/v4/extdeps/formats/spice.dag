@@ -436,6 +436,29 @@ type SubstrateSpec
 // is not a representable value of this type). See modeling notes
 // "WHY CLOSED `Component` COPRODUCT" for the design rationale.
 //
+// NAME / KIND SINGLE-AUTHORITY (PR #3168 codex review). SPICE3 §11.1
+// encodes the element kind in the FIRST CHARACTER of the instance
+// name: `R1` is a Resistor, `M3` is a Mosfet, `X4` is a SubcircuitCall.
+// The kind prefix is RE-EXPRESSED structurally by the `Component`
+// variant. To avoid the kind/name MISMATCH risk (a `Capacitor` value
+// whose `name: Symbol` happens to spell "R1" — kind says one thing,
+// name says another), each variant's `name: Symbol` field carries the
+// POST-PREFIX portion of the SPICE3 instance name. The kind prefix is
+// IMPLICIT in the variant; emit prepends the variant's kind letter
+// (`R` / `C` / `L` / `V` / `I` / `D` / `Q` / `M` / `K` / `X`); parse
+// strips it. Examples:
+//   `R1` ⇒ `Resistor { name = Symbol("1"), ... }`
+//   `R_LOAD` ⇒ `Resistor { name = Symbol("_LOAD"), ... }`
+//   `M3_high` ⇒ `Mosfet { name = Symbol("3_high"), ... }`
+//   `X1` ⇒ `SubcircuitCall { name = Symbol("1"), ... }`
+// Under this discipline, no kind/name mismatch is REPRESENTABLE: the
+// variant IS the kind, full stop, and the `name` field cannot
+// contradict it because the kind prefix is no longer in `name` at
+// all. There is no second authority for parse/emit to enforce
+// (M3/P2 — single-authority + illegal-states-unrepresentable). The
+// `Symbol` payload remains K-1-opaque; the kernel never observes the
+// suffix's spelling.
+//
 // HONESTY NOTE (PR #3168 codex review). The 10 variants below are a
 // SUBSET of SPICE3 elements (FIDELITY SCOPE deliverable (2) gap;
 // header top), AND each enumerated variant carries only
@@ -547,16 +570,16 @@ type SubstrateSpec
 // statement-grammar enforced structurally; cost-of-change is 1 (per-
 // variant edit), no parallel representation forced elsewhere.
 type Component
-  = Resistor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | Capacitor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | Inductor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | VoltageSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | CurrentSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | Diode { identity: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
-  | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, parameters: List<Parameter> }
-  | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
-  | MutualInductance { identity: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
-  | SubcircuitCall { identity: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
+  = Resistor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Capacitor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Inductor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | VoltageSource { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | CurrentSource { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Diode { name: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
+  | Bjt { name: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, parameters: List<Parameter> }
+  | Mosfet { name: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
+  | MutualInductance { name: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
+  | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
 
 // ─────────────────────────────────────────────────────────────────────
