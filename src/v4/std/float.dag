@@ -105,10 +105,12 @@ import v4.std.node { Symbol }
 // Until then: **Tier-2** `float_ordered_compare_tier2` carries IEEE **numeric**
 // ordered comparison on the non-NaN subset via `float_body_compare_ieee_ordered`
 // (`±0` magnitude with both `Nat` fields at Peano `Zero` ⇒ `Equal` — IEEE
-// numeric equality). That is **not** IEEE 754 **`totalOrder`**, which
-// distinguishes `-0` before `+0`; the explicit `totalOrder` carrier is
-// `float_body_compare_total_order` (split so P1 does not conflate the two).
-// Still NOT a packaged `ApproximateField` witness.
+// numeric equality). For non-finite values, **NaN sign/payload are not modeled**
+// on `FloatBody` (`FloatSpecial` is class-only); a separate deterministic
+// total compare on the carrier — `float_body_compare_semantic_total` — is used
+// only as a **scaffold** order over modeled facts, **not** full interchange-
+// grounded IEEE 754 `totalOrder` (P1 faithfulness). Still NOT a packaged
+// `ApproximateField` witness.
 //
 // SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
 // `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
