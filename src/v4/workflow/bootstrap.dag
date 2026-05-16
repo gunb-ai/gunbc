@@ -143,11 +143,14 @@
 //   structural one (it v2-compiles as well-formed data — the existing CI
 //   gate, modeled concretely in workflow/ci.dag's v2-compile job).
 //
-// This is a Conj record (`BootstrapPlan`) over a closed Disj
-// (`BootstrapStep`); no Practice-4 ledger applies to the record, and
-// `BootstrapStep`'s two variants are structurally distinct payloads
-// (a compile edge vs a fixed-point equality), not a mechanical copy of
-// an enumerable set (the diagnostic.dag `Correction` precedent).
+// `BootstrapPlan` is a Conj record — no Practice-4 ledger applies to a
+// record (records do not dissolve to a richer source; the
+// diagnostic.dag `Diagnostic` / verification.dag `TestClaim`
+// precedent). The two coproducts `Stage` and `BootstrapStep` EACH carry
+// the full Practice-4 🟢/🟡/🔴 classification + the five-pattern
+// dissolution ledger inline at their declaration below (modeling-
+// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
+// enumerates FIVE patterns, the fifth being Parameterized-family).
 
 module v4.workflow.bootstrap
 
@@ -157,6 +160,35 @@ module v4.workflow.bootstrap
 // nullary sum: `Seed` is the frozen external v2 binary (src/v2/, touched
 // EXACTLY ONCE); `Stage0/1/2` are the three self-host products. No
 // payload — a stage is its identity (STRUCTURE.md §"Bootstrap chain").
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every `BootstrapStep` and the deferred
+//      interpreter (TRACKED SCAFFOLD (1)) handle the stage identity as
+//      the shared chain-position concept; it is not a per-consumer
+//      scattered fact recoverable as a field on one site.
+//   2. Variant-is-data — FAILS: the four values carry NO payload (a
+//      stage IS its identity). There is no inner data to promote to a
+//      record; collapsing to an `Int` index would reintroduce the
+//      illegal-state hole (index 4, negative index) this closed sum
+//      forecloses by construction.
+//   3. Algebraic form — N/A by construction: the four stages are the
+//      irreducible closed set of bootstrap-chain artifacts named by
+//      STRUCTURE.md §"Bootstrap chain"; they inhabit no richer
+//      std/algebra.dag structure (there is no Monoid/Order over
+//      Seed/Stage0/1/2 — `Seed` is a different emission lineage than
+//      Stage0+, so even a successor chain is not a clean algebra).
+//   4. Dimensional — FAILS: a value is EXACTLY ONE of the four
+//      artifacts, never a simultaneous coordinate tuple; the chain
+//      position is a single discriminant, not orthogonal axes.
+//   5. Parameterized family — FAILS: the four variants are NOT a
+//      mechanical `F<X>` copy of an enumerable set declared elsewhere
+//      (no Practice-7 projection). This IS the primary, sole
+//      declaration of the bootstrap-stage identities; nothing upstream
+//      enumerates them for this type to mirror.
+// Terminal: the irreducible closed set of bootstrap-chain artifacts —
+// the once-touched external seed plus the three self-host products.
 type Stage
   = Seed
   | Stage0
@@ -175,6 +207,40 @@ type Stage
 //                Stage2 }`; the executable assertion is T-15's
 //                `RoundTrips` TestClaim consuming this step (deferred —
 //                TRACKED SCAFFOLD (2) above).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: the plan interpreter (TRACKED SCAFFOLD
+//      (1)) handles BOTH arms at the single step-dispatch site (run a
+//      compile vs assert a fixed point); it is the shared
+//      step-semantics result, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: collapsing to a flat record
+//      `{ kind, with?, produces?, left?, right? }` makes a `Compile`
+//      with a populated `left`/`right` (and a `FixedPoint` with a
+//      populated `produces`) representable — exactly the optional-hole
+//      illegal state (INVARIANTS P3 / the inverse of P2) this sum
+//      forecloses.
+//   3. Algebraic form — N/A by construction: a bootstrap step is the
+//      chain's own primitive (a production edge or an equality
+//      assertion); it is not the carrier of a richer std/algebra.dag
+//      structure and traces to no richer std/ source.
+//   4. Dimensional — FAILS: a step is EITHER a compile production OR a
+//      fixed-point assertion — mutually-exclusive operations, never
+//      simultaneous coordinates. No step both produces a stage and
+//      asserts an equality.
+//   5. Parameterized family — FAILS: although `Compile` and
+//      `FixedPoint` coincidentally share a `(Stage, Stage)` field
+//      shape, they are NOT `F<X>` over an enumerable set — they are
+//      semantically distinct operations (a directed production edge
+//      `with → produces` vs a symmetric BitIdentical equality
+//      `left == right`), not a mechanical copy of an enumerable set
+//      (not a Practice-7 projection — the witness.dag `Witness<C>`
+//      pattern-5 precedent: shared/parametric shape ≠ enumerated-copy
+//      smell).
+// Terminal: the irreducible two-case bootstrap-step kind — a stage
+// production edge vs a fixed-point equality assertion, the only two
+// things the chain does.
 type BootstrapStep
   = Compile { with: Stage, produces: Stage }
   | FixedPoint { left: Stage, right: Stage }
