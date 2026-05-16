@@ -246,18 +246,59 @@ type JsonValue
 //         intentionally absent from json.dag today.
 //     (b) bounds on use — no consumer reads `json_parse`/`json_emit`
 //         from json.dag in this PR. The carrier-shaped seam IS ratified
-//         here: when authored, `json_parse : String -> Outcome<JsonValue>`
-//         and `json_emit : JsonValue -> String`, where `Outcome<T>` is
-//         the operator-ratified D1 carrier (std/diagnostic.dag,
-//         DECISIONS item **I**) — fail-closed (every non-conforming
-//         input is `Rejected { diagnostic }`, never a partial/defaulted
-//         value; brief §C binding STOP). The other five T-4.6 formats
-//         mirror THIS seam (one carrier, not a per-file sum).
+//         here, and it is fail-closed on BOTH directions: when authored,
+//         `json_parse : String -> Outcome<JsonValue>` and
+//         **`json_emit : JsonValue -> Outcome<String>`** — NOT a total
+//         `JsonValue -> String`. `Outcome<T>` is the operator-ratified
+//         D1 carrier (std/diagnostic.dag, DECISIONS item **I**).
+//         WHY EMIT IS ALSO FAIL-CLOSED (not total): `JsonNumber`'s
+//         `lexeme` is a raw `String` and the type-level §6 guarantee is
+//         deferred (2c) — so a `JsonValue` carrying a non-§6 lexeme
+//         (`JsonNumber { lexeme: "xyz" }`) is type-constructible OUTSIDE
+//         the parser. A total `JsonValue -> String` emit would have no
+//         typed channel to reject it and would FABRICATE an invalid
+//         JSON artifact — an INVARIANTS P3 / no-fabrication violation,
+//         and (since this is the canonical seam the other five formats
+//         mirror) it would propagate that hole seam-wide. So emit
+//         returns `Outcome<String>`: a structurally-representable but
+//         spec-invalid `JsonValue` (non-§6 lexeme, or any future
+//         analogue) emits `Rejected { diagnostic }`, never a fabricated
+//         string. Every non-conforming input (parse) AND every
+//         spec-invalid value (emit) is `Rejected { diagnostic }`, never
+//         a partial/defaulted/fabricated value (brief §C binding STOP;
+//         INVARIANTS P3). The other five T-4.6 formats mirror THIS
+//         fail-closed-both-directions seam (one carrier, not a per-file
+//         sum, not a total emit).
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(JsonValue) -> String`" documents a TOTAL emit. Unlike
+//         the header's "`parse(String) -> Result<JsonValue,
+//         Diagnostic>`" (whose `…, Diagnostic` notation *denotes*
+//         `Outcome<…>` per DECISIONS item I), the emit line carries NO
+//         failure notation — it literally documents `-> String`, the
+//         not-fail-closed shape this finding correctly flags. This
+//         modeling note ratifies the fail-closed `-> Outcome<String>`
+//         seam (INVARIANTS P3); the immutable header's `-> String`
+//         therefore needs an operator/seam-gate HEADER RECONCILE (the
+//         worker may not edit the immutable header; superseding it is
+//         seam-gate/operator-tier, the csv-class authority
+//         distinction). Flagged to the T-4 seam-gate; this note is the
+//         fail-closed authority pending that reconcile, the header/note
+//         divergence tracked-not-silent here.
 //     (c) dissolution trigger — when std/text.dag (T-3) lands its
 //         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
-//         PR adds `json_parse`/`json_emit` as single self-recursive
-//         structural walks returning `Outcome<JsonValue>`; this note
-//         dissolves. The T-4 directive's "operations deferred-with-
+//         PR adds `json_parse : … -> Outcome<JsonValue>` /
+//         `json_emit : … -> Outcome<String>` as single self-recursive
+//         structural walks. The emit body MUST validate any non-parser-
+//         constructed value fail-closed (a non-§6 `JsonNumber.lexeme`,
+//         pending the 2c refined-lexeme type, is a `Rejected`, never
+//         emitted) — the trigger is NOT satisfied by a total
+//         `-> String` emit even once std/text.dag lands; the
+//         fail-closed `Outcome<String>` contract is part of THIS
+//         ratified seam, so the invalid-lexeme emission hole cannot
+//         survive the dissolution. The T-4 directive's "operations
+//         deferred-with-
 //         named-owner" + TASKS.md T-4.6 record the same dependency.
 //
 // (2) `JsonNumber.lexeme` — THREE DISTINCT concerns with THREE DISTINCT
