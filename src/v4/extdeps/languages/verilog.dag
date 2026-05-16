@@ -324,10 +324,17 @@ type PortDirection
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NetType — the closed Verilog net-type classifier (IEEE 1364-2005
-// §3.7.1, §5.6). A net carries a value continuously driven by one or
-// more drivers; the net-type fixes the resolution function and the
-// default value when undriven.
+// NonTriregNetKind — the closed Verilog net-type-keyword classifier
+// over the eleven non-`trireg` net types (IEEE 1364-2005 §3.7.1, §5.6).
+// `trireg` is partitioned OFF this Disj because it is the only spec
+// net-type that (a) carries storage (capacitive last-driven-value
+// semantics, §3.10 / §7.10) and (b) admits `charge_strength` in
+// net_declaration position while FORBIDDING `drive_strength` on the
+// identifier-only form (§A.2.1.3 grammar's third/fourth alternatives).
+// Treating that partition as STRUCTURAL — variant-of-`NetType` not
+// admit-then-check on a free field — is the dissolution of the
+// net_declaration illegal-states-representable concern openai-pro
+// REQUEST_CHANGES flagged on PR #3176 2026-05-16.
 //
 //   - Wire     — `wire`     standard net; resolves to X if multiply
 //                           driven with conflicting values
@@ -341,50 +348,35 @@ type PortDirection
 //                           designer-intent marker pairing with `tri`
 //   - Tri0     — `tri0`     pull-down (resolves to 0 if undriven)
 //   - Tri1     — `tri1`     pull-up (resolves to 1 if undriven)
-//   - TriReg   — `trireg`   stores last driven value (capacitive)
 //   - Supply0  — `supply0`  constant 0 power-rail net
 //   - Supply1  — `supply1`  constant 1 power-rail net
 //   - Uwire    — `uwire`    unresolved wire — exactly one driver
 //                           required (IEEE 1364-2005 §5.6.6)
 //
-// CLOSED (C1 stop-signal). A new net-type is an edit to THIS
-// declaration under the L-2 pin discipline; the IEEE 1364-2005 §3.7.1
-// table is the authority.
+// CLOSED (C1 stop-signal). The eleven non-trireg keywords of the
+// IEEE 1364-2005 §3.7.1 table; `trireg` is the twelfth, and lives
+// as a distinct top-level NetType variant rather than here.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every net-declaration emitter and
+//   1. Fact placement — FAILS: every net-declaration emitter +
 //      every driver-resolution consumer reads the net-type tag
-//      uniformly; shared classifier, not scattered.
+//      uniformly; shared classifier.
 //   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
-//      reopens the readable-string heuristic surface K-1 forecloses
-//      (a `match keyword { "wire" => … }` smell); a
+//      reopens the K-1-forbidden readable-string heuristic; a
 //      `{ resolution_kind: Int }` proxy replaces a closed
-//      12-valued exhaustive sum with an unbounded Int — both
-//      violate P2 + M4 (algebra.dag:332 `Ordering` precedent).
-//   3. Algebraic form — N/A by construction: the twelve net-types
-//      are the IEEE 1364-2005 spec's primitive resolution-function
-//      set; they do not trace to a richer std/ algebraic structure
-//      (one could attempt a `Lattice<Resolution>` for the wand/wor
-//      sublattice, but that would be a parallel representation of
-//      the per-net-type resolution function, not a richer source).
-//   4. Dimensional — FAILS: a net declaration carries EXACTLY ONE
-//      net-type; `wire wand x` is a syntax error in Verilog itself.
-//      Mutually-exclusive alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the twelve are structurally
-//      distinct resolution / pull / supply / unresolved variants —
-//      NOT one generic `F<X>` / projection over a separately-
-//      declared source set (Practice 7). The Wire/Tri,
-//      Wand/TriAnd, Wor/TriOr designer-intent pairs are
-//      SEMANTICALLY-equivalent partner variants the spec keeps
-//      DISTINCT at the syntactic surface (parse ∘ emit must
-//      preserve the writer's intent); collapsing the pairs into
-//      `{ resolution: Symbol, tri_intent: Bool }` would be a
-//      parallel-representation of the spec's enumeration and lose
-//      the K-1-opaque keyword discrimination.
-// Terminal: the closed twelve-way net-type classifier of the
-// IEEE 1364-2005 spec.
-type NetType
+//      exhaustive sum with an unbounded Int (algebra.dag:332
+//      `Ordering` precedent).
+//   3. Algebraic form — N/A by construction: spec primitives.
+//   4. Dimensional — FAILS: exactly one keyword per net declaration.
+//   5. Parameterized family — FAILS: eleven structurally distinct
+//      resolution / pull / supply / unresolved variants (Practice 7).
+//      The Wire/Tri, Wand/TriAnd, Wor/TriOr designer-intent pairs
+//      MUST stay distinct at the syntactic surface (parse ∘ emit
+//      preserves writer intent).
+// Terminal: the closed eleven-way non-trireg net-type-keyword
+// classifier of the IEEE 1364-2005 spec.
+type NonTriregNetKind
   = Wire
   | Tri
   | Wand
@@ -393,10 +385,59 @@ type NetType
   | TriOr
   | Tri0
   | Tri1
-  | TriReg
   | Supply0
   | Supply1
   | Uwire
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetType — the Verilog net-type classifier as the {storage-vs-non-
+// storage} structural partition over the IEEE 1364-2005 §3.7.1 table.
+// The partition is structural per spec §A.2.1.3 net_declaration
+// grammar: `trireg` admits `charge_strength` and a different declarator
+// alternative set than the other eleven net types. Modeling the
+// partition at NetType (rather than a flat twelve-way Disj) makes the
+// {trireg?} fact STRUCTURAL — consumers that need to discriminate
+// `trireg` from the others (NetDeclaration variants, future port-
+// position §12.3.3 carriers) get the partition from the type itself,
+// no admit-then-check (codex / openai-pro REQUEST_CHANGES discipline
+// on PR #3176 2026-05-16).
+//
+//   - NonTriregNet { kind: NonTriregNetKind }
+//       — one of the eleven non-`trireg` net-type keywords (see
+//       NonTriregNetKind above).
+//   - TriregNet
+//       — `trireg`; the storage net type. Nullary variant because
+//       there is only one trireg keyword (no sub-discrimination).
+//
+// CLOSED (C1 stop-signal). Two-way storage-vs-non-storage partition;
+// a new net-type with `trireg`-like behavior is an edit to TriregNet
+// (sub-Disj-with-payload, identical to NonTriregNet's shape if it
+// ever needs sub-discrimination); a new non-storage net-type extends
+// NonTriregNetKind.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: shared classifier across all net
+//      declarations + ANSI port-net carriers + driver-resolution
+//      consumers; the {trireg?} fact must be uniformly available.
+//   2. Variant-is-data — FAILS: a `{ is_trireg: Bool, keyword: ... }`
+//      proxy reintroduces the admit-then-check shape the structural
+//      partition exists to dissolve. The 2-way Disj IS the dissolution.
+//   3. Algebraic form — N/A by construction: the {storage-vs-non-
+//      storage} partition is the spec's irreducible §3.10 / §A.2.1.3
+//      structural axis, not a richer std/ algebraic source.
+//   4. Dimensional — FAILS: one net-type per declaration; mutually
+//      exclusive alternatives.
+//   5. Parameterized family — FAILS: the two variants are structurally
+//      heterogeneous (NonTriregNet carries a `kind` payload, TriregNet
+//      is nullary). The trireg keyword is the SOLE storage net-type
+//      per spec — no generic `F<X>` projection over a richer source.
+// Terminal: the closed two-way Verilog net-type {storage-vs-non-
+// storage} partition.
+type NetType
+  = NonTriregNet { kind: NonTriregNetKind }
+  | TriregNet
 
 
 // (VariableType has been dissolved into VariableDeclaration's
@@ -657,17 +698,20 @@ type Signedness
 
 
 // ─────────────────────────────────────────────────────────────────────
-// DriveStrengthClause — the closed Verilog drive-strength /
-// charge-strength clause classifier on a net_declaration (IEEE
-// 1364-2005 §A.2.1.3 / §7.10). The clause is OPTIONAL per spec —
-// present-or-absent partition modeled as a closed Disj rather than
-// an empty-string sentinel on a `String` field (openai-pro
-// REQUEST_CHANGES on PR #3176; same pattern as PortConnectionActual's
-// BlankConnection — closed sum, not sentinel).
+// DriveStrengthClause — the closed Verilog drive-strength clause
+// classifier on a net_declaration (IEEE 1364-2005 §A.2.1.3 / §7.10).
+// The clause is OPTIONAL per spec — present-or-absent partition
+// modeled as a closed Disj rather than an empty-string sentinel on
+// a `String` field (openai-pro REQUEST_CHANGES on PR #3176; same
+// pattern as PortConnectionActual's BlankConnection — closed sum,
+// not sentinel). `drive_strength` admits the §7.10 `(strength0,
+// strength1)` keyword set; `charge_strength` (for `trireg`) is a
+// DISTINCT spec set (§A.5.1 `small | medium | large`) and lives in
+// its own sibling Disj `ChargeStrengthClause` below — the two are
+// not interchangeable on the spec surface.
 //
 //   - NoDriveStrength
-//       — no `(strong0, weak1)` / `(small)` clause on the
-//       declaration.
+//       — no `(strong0, weak1)` clause on the declaration.
 //   - DriveStrengthLexeme { lexeme: String }
 //       — the clause as a verbatim lexeme (sub-grammar deferred to
 //       T-4 LanguageModel — the spec's closed strength-keyword set
@@ -699,6 +743,51 @@ type Signedness
 type DriveStrengthClause
   = NoDriveStrength
   | DriveStrengthLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ChargeStrengthClause — the closed Verilog charge-strength clause
+// classifier on a `trireg` net_declaration (IEEE 1364-2005 §A.2.1.3 /
+// §A.5.1 / §7.10). The clause is OPTIONAL per spec and applies ONLY
+// to the identifier-only `trireg` net_declaration form (§A.2.1.3
+// third alternative); on the `trireg` assignment form `drive_strength`
+// applies instead. Sibling Disj of DriveStrengthClause — kept distinct
+// because the spec keyword sets are disjoint: drive_strength = (§7.10
+// strength0, strength1 pairs), charge_strength = §A.5.1 small |
+// medium | large.
+//
+//   - NoChargeStrength
+//       — no `(small)` / `(medium)` / `(large)` clause on the
+//       trireg declaration.
+//   - ChargeStrengthLexeme { lexeme: String }
+//       — the clause as a verbatim lexeme; sub-grammar (the
+//       small/medium/large keyword closure) deferred to the bundled
+//       T-4 LanguageModel.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
+// as DriveStrengthClause; abbreviated for brevity (each pattern's
+// argument is identical modulo "drive" vs "charge").
+//   1. Fact placement — FAILS: shared classifier across trireg-form
+//      emitters / simulation-init consumers.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected
+//      (same BlankConnection precedent argument).
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one charge-strength state per trireg
+//      declaration.
+//   5. Parameterized family — FAILS: NoChargeStrength is nullary;
+//      ChargeStrengthLexeme carries a `lexeme: String` payload —
+//      structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog charge-strength clause-
+// presence classifier. Added 2026-05-16 per openai-pro REQUEST_
+// CHANGES on PR #3176 — net_declaration §A.2.1.3 grammar requires
+// charge_strength to be available on the identifier-only `trireg`
+// form distinct from `drive_strength`.
+type ChargeStrengthClause
+  = NoChargeStrength
+  | ChargeStrengthLexeme { lexeme: String }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -734,7 +823,7 @@ type DelayClause
 
 
 // ─────────────────────────────────────────────────────────────────────
-// VectoredessClause — the closed Verilog vectored/scalared
+// VectorednessClause — the closed Verilog vectored/scalared
 // declaration-boundary classifier on a net_declaration (IEEE
 // 1364-2005 §A.2.1.3 / §3.7.1). The clause is OPTIONAL per spec and
 // is DISTINCT from drive_strength: it carries a synthesizer hint
@@ -779,40 +868,24 @@ type DelayClause
 // the vectored/scalared clause is a §A.2.1.3 declaration-boundary
 // fact distinct from drive_strength; the prior commentary "collapsed
 // into the strength lexeme position" overloaded the two clauses.
-type VectoredessClause
+type VectorednessClause
   = NoVectoredness
   | VectoredNet
   | ScalaredNet
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NetInitializerClause — the closed Verilog net_decl_assignment
-// initializer-presence classifier (IEEE 1364-2005 §A.2.4). Optional
-// per spec — present-or-absent partition as a closed Disj.
-//
-//   - NoNetInitializer
-//       — `wire a;` form: no initializer expression.
-//   - NetInitializerLexeme { lexeme: String }
-//       — `wire a = expr;` form: the initializer expression as a
-//       verbatim lexeme.
-//
-// CLOSED (C1 stop-signal). Two-way present/absent partition.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every net-declaration emitter and
-//      every elaboration-time net-initialization consumer reads
-//      the clause uniformly.
-//   2. Variant-is-data — FAILS: empty-string sentinel rejected
-//      (same argument).
-//   3. Algebraic form — N/A by construction.
-//   4. Dimensional — FAILS: one initializer state per declarator.
-//   5. Parameterized family — FAILS: heterogeneous payloads.
-// Terminal: the closed two-way Verilog net-initializer-presence
-// classifier.
-type NetInitializerClause
-  = NoNetInitializer
-  | NetInitializerLexeme { lexeme: String }
+// (NetInitializerClause was DISSOLVED on PR #3176 2026-05-16 per
+// openai-pro REQUEST_CHANGES. The optional-initializer state is
+// dissolved structurally by NetDeclaration's per-form Disj split:
+// the §A.2.1.3 assignment form's declarators ALWAYS carry an
+// initializer (NetAssignmentDeclarator.rhs_lexeme), the identifier-
+// only form's declarators NEVER do (NetIdentifierDeclarator carries
+// only `name: Symbol`). The "no initializer on an assignment-form
+// declarator" and "initializer on an identifier-only declarator"
+// states are structurally unrepresentable, so a present/absent
+// initializer-presence Disj on a single declarator type became dead
+// weight. The deletion is the dissolution.)
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -893,7 +966,7 @@ type VariableInitializerClause
 //
 // The vectored/scalared modifier is a SEPARATE §A.2.1.3 declaration-
 // boundary fact distinct from drive_strength — modeled structurally
-// via the dedicated `VectoredessClause` field (NoVectoredness |
+// via the dedicated `VectorednessClause` field (NoVectoredness |
 // VectoredNet | ScalaredNet). The prior framing that collapsed
 // vectored/scalared into the drive_strength lexeme position was a
 // codex BLOCKING-fix correction on PR #3176 2026-05-16. The
@@ -942,7 +1015,7 @@ type NetDeclaration {
   packing: PackingShape
   signedness: Signedness
   drive_strength: DriveStrengthClause
-  vectoredness: VectoredessClause
+  vectoredness: VectorednessClause
   delay: DelayClause
   // 🟡 spec-non-empty (§A.2.1.3) — deferred to std/collection.dag
   // Wave-A2 `List<T> where non_empty` refinement; see shared
