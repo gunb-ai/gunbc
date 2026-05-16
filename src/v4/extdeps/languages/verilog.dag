@@ -933,8 +933,11 @@ type UnpackedDimensionsClause
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
-// as NetInitializerClause; abbreviated for brevity (each pattern's
-// argument is identical modulo "net" vs "variable").
+// as UnpackedDimensionsClause; abbreviated for brevity (each pattern's
+// argument is identical modulo "unpacked-dimensions" vs "variable-
+// initializer"). The pre-#3176-openai-pro shape pointed at
+// NetInitializerClause, which has since been dissolved structurally
+// by NetDeclaration's per-form Disj split.
 //   1. Fact placement — FAILS: shared classifier across emitters /
 //      simulation-init / elaboration consumers.
 //   2. Variant-is-data — FAILS: empty-string sentinel rejected.
@@ -951,96 +954,182 @@ type VariableInitializerClause
 // ─────────────────────────────────────────────────────────────────────
 // NetDeclaration — a Verilog net declaration (`wire foo;`,
 // `wire [7:0] bus;`, `wire signed [15:0] s;`, `wand x;`,
-// `wire (strong0, weak1) #5 a = expr_a, b, c = expr_c;`).
-// IEEE 1364-2005 §3.10 / §A.2.1.3. Conj record (no Practice-4
-// ledger).
+// `wire (strong0, weak1) #5 a = expr_a, b = expr_b;`, `trireg
+// (small) [3:0] cap_bus;`, `trireg (weak0, weak1) #2 stor = expr_s;`).
+// IEEE 1364-2005 §3.10 / §A.2.1.3.
 //
-// A net_declaration declares ONE OR MORE nets sharing a common
-// (net_type, packing, signedness, drive_strength, delay) — each
-// individual net is a NetDeclarator carrying its own name + optional
-// initializer expression. Per spec §A.2.1.3 grammar:
+// Per spec §A.2.1.3 net_declaration is a FOUR-WAY closed alternative
+// set, NOT a free product of {net_type, strength, form, declarators}:
 //
-//   net_declaration ::= net_type [drive_strength | charge_strength]
-//                       [vectored | scalared] [signed] [range]
-//                       [delay3] list_of_net_decl_assignments ;
+//   net_declaration ::=
+//     net_type [drive_strength] [vectored|scalared] [signed] [range]
+//       [delay3] list_of_net_decl_assignments ;
+//   | net_type [vectored|scalared] [signed] [range] [delay3]
+//       list_of_net_identifiers ;
+//   | trireg [charge_strength] [vectored|scalared] [signed] [range]
+//       [delay3] list_of_net_identifiers ;
+//   | trireg [drive_strength] [vectored|scalared] [signed] [range]
+//       [delay3] list_of_net_decl_assignments ;
 //
-// The vectored/scalared modifier is a SEPARATE §A.2.1.3 declaration-
-// boundary fact distinct from drive_strength — modeled structurally
-// via the dedicated `VectorednessClause` field (NoVectoredness |
-// VectoredNet | ScalaredNet). The prior framing that collapsed
-// vectored/scalared into the drive_strength lexeme position was a
-// codex BLOCKING-fix correction on PR #3176 2026-05-16. The
-// charge_strength applies only to `trireg` per spec §7.10; admitted
-// alongside drive_strength via the shared DriveStrengthClause lexeme
-// (charge_strength is itself a closed keyword set owned by the
-// bundled T-4 LanguageModel).
+// where `net_type` (per §3.7.1) is one of the eleven non-`trireg`
+// keywords; `trireg` is the fourth-row net-type with distinct
+// strength-and-form admissibility.
 //
-//   - net_type                 which net-type (wire / wand / wor /
-//                              tri / … per the closed NetType set)
-//   - packing                  scalar or `[msb:lsb]` packed
-//                              bit-vector (the shared range applies
-//                              to all declarators in the list)
-//   - signedness               `signed` keyword present / absent
-//                              (IEEE 1364-2005 §5.6)
-//   - drive_strength_lexeme    the optional drive_strength /
-//                              charge_strength clause as a verbatim
-//                              lexeme (`(strong0, weak1)`,
-//                              `(small)`, etc.); "" = absent.
-//                              Sub-grammar deferred — the strength
-//                              keyword set is the spec's closed set
-//                              owned by the bundled T-4
-//                              LanguageModel.
-//   - delay_lexeme             the optional delay3 clause as a
-//                              verbatim lexeme (`#5`, `#(2:3:4)`,
-//                              etc.); "" = absent. Sub-grammar
-//                              deferred to T-4 LanguageModel per
-//                              the body_lexeme precedent.
-//   - declarators              the list_of_net_decl_assignments —
-//                              each NetDeclarator carries a name +
-//                              optional initializer expression.
-//                              Per spec a net_declaration must have
-//                              at least one declarator; the empty
-//                              list is structurally representable
-//                              but is a producer-side bug
-//                              (well-formedness joint check in the
-//                              T-4 LanguageModel).
+// Modeling the four spec alternatives as STRUCTURAL variants makes
+// these illegal states unrepresentable (openai-pro REQUEST_CHANGES
+// on PR #3176 2026-05-16; same INVARIANTS P2 / Practice-2 discipline
+// as VariableDeclaration's kind×packing structural split below):
 //
-// Multi-declarator + strength + delay + initializer added per codex
-// BLOCKING review on PR #3176 2026-05-16 — the prior {net_type, name,
-// packing, signedness} shape collapsed the spec's declaration-
-// boundary facts (strength, delay, dimensions, initializer,
-// declarator-list) into name-only.
-type NetDeclaration {
-  net_type: NetType
-  packing: PackingShape
-  signedness: Signedness
-  drive_strength: DriveStrengthClause
-  vectoredness: VectorednessClause
-  delay: DelayClause
-  // 🟡 spec-non-empty (§A.2.1.3) — deferred to std/collection.dag
-  // Wave-A2 `List<T> where non_empty` refinement; see shared
-  // TRACKED-SCAFFOLD note above.
-  declarators: List<NetDeclarator>
+//   - drive_strength on the identifier-only form  (forbidden by spec)
+//   - charge_strength on a non-trireg net_type    (forbidden by spec)
+//   - mixed init/non-init declarator lists         (forbidden by spec)
+//   - identifier-only declarators with initializers (forbidden by spec)
+//   - assignment-form declarators without initializers (forbidden)
+//
+// The discriminating axes are STRUCTURAL per variant: {trireg?} ×
+// {form: identifier-only vs assignment}. The non-trireg-net-type
+// keyword set (`wire / tri / wand / triand / wor / trior / tri0 /
+// tri1 / supply0 / supply1 / uwire`) rides as a `NonTriregNetKind`
+// field on the two non-trireg variants; the trireg variants do NOT
+// carry a `net_type` field — the variant identity IS the net_type
+// fact. `drive_strength` and `charge_strength` PRESENCE remain inside
+// their respective Clause Disjs (DriveStrengthClause /
+// ChargeStrengthClause), not as a top-level variant axis — strength
+// is optional per spec brackets, and the existing Clause Disjs
+// already structurally encode present-vs-absent.
+//
+//   - NonTriregIdentifierForm — `wire [7:0] a, b, c;` (no drive_
+//                               strength permitted on this spec
+//                               alternative; declarators are
+//                               name-only).
+//   - NonTriregAssignForm     — `wire (strong0, weak1) [7:0] a =
+//                               e1, b = e2;` (optional drive_
+//                               strength; declarators carry
+//                               required initializers).
+//   - TriregIdentifierForm    — `trireg (small) [3:0] cap_bus;`
+//                               (optional charge_strength;
+//                               declarators are name-only).
+//   - TriregAssignForm        — `trireg (weak0, weak1) #2 stor =
+//                               e_s;` (optional drive_strength;
+//                               declarators carry required
+//                               initializers).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter +
+//      every elaboration / well-formedness consumer reads the
+//      net_declaration uniformly; not a scattered fact.
+//   2. Variant-is-data — FAILS: collapsing into `{ is_trireg: Bool,
+//      has_assignments: Bool, drive_strength, charge_strength, … }`
+//      reintroduces the admit-then-check shape this Disj exists to
+//      dissolve (non-trireg + charge_strength becomes representable;
+//      identifier-form + drive_strength becomes representable).
+//      Structural Disj forecloses.
+//   3. Algebraic form — N/A by construction: the {trireg?} × {form}
+//      partition is the spec's §A.2.1.3 irreducible structural axis,
+//      not a richer std/ algebraic source.
+//   4. Dimensional — FAILS: a net_declaration is EXACTLY ONE of
+//      the four spec forms; mutually exclusive alternatives.
+//   5. Parameterized family — FAILS: the four variants are
+//      structurally heterogeneous (kind-vs-no-kind, drive-vs-charge-
+//      vs-neither strength, assignment-vs-identifier declarators) —
+//      no generic `F<X>` projection over a richer source set
+//      (Practice 7).
+// Terminal: the closed four-way IEEE 1364-2005 §A.2.1.3
+// net_declaration alternative set.
+//
+// Prior shape (single Conj-record with free {net_type, drive_strength,
+// declarators: List<NetDeclarator>}) was the codex BLOCKING-fix shape
+// on PR #3176 2026-05-16; openai-pro REQUEST_CHANGES at sha 6f587e6c
+// correctly flagged that it admitted the five spec-illegal states
+// above as a free product. This four-variant structural split is
+// the dissolution.
+type NetDeclaration
+  = NonTriregIdentifierForm {
+      kind: NonTriregNetKind
+      vectoredness: VectorednessClause
+      signedness: Signedness
+      packing: PackingShape
+      delay: DelayClause
+      // 🟡 spec-non-empty (§A.2.1.3 list_of_net_identifiers) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      identifiers: List<NetIdentifierDeclarator>
+    }
+  | NonTriregAssignForm {
+      kind: NonTriregNetKind
+      drive_strength: DriveStrengthClause
+      vectoredness: VectorednessClause
+      signedness: Signedness
+      packing: PackingShape
+      delay: DelayClause
+      // 🟡 spec-non-empty (§A.2.1.3 list_of_net_decl_assignments) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      assignments: List<NetAssignmentDeclarator>
+    }
+  | TriregIdentifierForm {
+      charge_strength: ChargeStrengthClause
+      vectoredness: VectorednessClause
+      signedness: Signedness
+      packing: PackingShape
+      delay: DelayClause
+      // 🟡 spec-non-empty (§A.2.1.3 list_of_net_identifiers) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      identifiers: List<NetIdentifierDeclarator>
+    }
+  | TriregAssignForm {
+      drive_strength: DriveStrengthClause
+      vectoredness: VectorednessClause
+      signedness: Signedness
+      packing: PackingShape
+      delay: DelayClause
+      // 🟡 spec-non-empty (§A.2.1.3 list_of_net_decl_assignments) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note above.
+      assignments: List<NetAssignmentDeclarator>
+    }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetAssignmentDeclarator — one (net_identifier, initializer-
+// expression) pair in a net_declaration's list_of_net_decl_assignments
+// (IEEE 1364-2005 §A.2.4: `net_decl_assignment ::= net_identifier =
+// expression`). A single `wire [7:0] a = e_a, b = e_b;` carries TWO
+// NetAssignmentDeclarators. The initializer is REQUIRED on every
+// element of the assignment-form (no `[]` brackets in the spec
+// production) — it is structurally non-optional here, dissolving the
+// prior optional-initializer Disj on a unified NetDeclarator type
+// (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16). Conj record
+// (no Practice-4 ledger).
+//
+//   - name             the declared net identifier (K-1-opaque
+//                      Symbol).
+//   - rhs_lexeme       the initializer expression as a verbatim
+//                      lexeme. Sub-grammar deferred to the bundled
+//                      T-4 LanguageModel via the established
+//                      body_lexeme precedent.
+type NetAssignmentDeclarator {
+  name: Symbol
+  rhs_lexeme: String
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// NetDeclarator — one (name, optional-initializer) pair in a
-// net_declaration's list_of_net_decl_assignments (IEEE 1364-2005
-// §A.2.4 / §3.10). A single net_declaration like `wire [7:0] a = ex1,
-// b, c = ex2;` carries THREE NetDeclarators. Conj record (no
-// Practice-4 ledger).
+// NetIdentifierDeclarator — one element of a net_declaration's
+// list_of_net_identifiers (IEEE 1364-2005 §A.2.3 / §A.2.1.3
+// identifier-only form). Carries ONLY the net identifier: the
+// identifier-only spec form forbids initializers structurally
+// (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 — making
+// "identifier-only-with-initializer" unrepresentable rather than a
+// runtime check). A single `wire [7:0] a, b, c;` carries THREE
+// NetIdentifierDeclarators. Conj record (no Practice-4 ledger).
 //
-//   - name                  the net identifier (K-1-opaque Symbol)
-//   - initializer_lexeme    the net_decl_assignment initializer
-//                           expression as a verbatim lexeme; ""
-//                           denotes the absent-initializer form
-//                           (`wire a;` vs `wire a = expr;`). Sub-
-//                           grammar deferred to T-4 LanguageModel via
-//                           the established body_lexeme precedent.
-type NetDeclarator {
+//   - name             the declared net identifier (K-1-opaque
+//                      Symbol).
+type NetIdentifierDeclarator {
   name: Symbol
-  initializer: NetInitializerClause
 }
 
 
@@ -1598,12 +1687,13 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Six sites in this file carry `List<T>` payloads where IEEE 1364-2005
-// requires AT LEAST ONE entry — the spec-illegal empty state is
-// structurally representable, the same INVARIANTS P2 illegal-states-
-// unrepresentable concern codex correctly flagged. The MOTIVATION is
-// real and spec-grounded. The CANONICAL FIX is NOT a worker-minted
-// `NonEmptyList<T>` generic carrier:
+// Fourteen sites in this file carry `List<T>` payloads where IEEE
+// 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
+// state is structurally representable, the same INVARIANTS P2
+// illegal-states-unrepresentable concern codex / openai-pro
+// correctly flagged. The MOTIVATION is real and spec-grounded. The
+// CANONICAL FIX is NOT a worker-minted `NonEmptyList<T>` generic
+// carrier:
 //
 //   - `docs/coercion-design.md` RQ-3 (ratified): "refinements of
 //     base containers, NOT separate inhabitant families.
@@ -1624,40 +1714,55 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the six spec-non-empty sites keeps `List<T>` for now.
+// - Each of the fourteen spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
 // - DISSOLUTION TRIGGER: when `std/collection.dag` Wave-A2 lands the
-//   non-empty refinement, the six sites adopt
+//   non-empty refinement, the fourteen sites adopt
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The six spec-non-empty sites (back-pointers to this note):
-//   1. NetDeclaration.declarators                    (§A.2.1.3)
-//   2. VariableDeclaration.{Reg,Integer,Real,Time,RealTime}Variable.declarators
+// The fourteen spec-non-empty sites (back-pointers to this note):
+//   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
+//   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
+//   3. NetDeclaration.TriregIdentifierForm.identifiers    (§A.2.1.3)
+//   4. NetDeclaration.TriregAssignForm.assignments        (§A.2.1.3)
+//   5. VariableDeclaration.{Reg,Integer,Real,Time,RealTime}Variable.declarators
 //                                                    (§A.2.4 / §7.4)
-//   3. ParameterDeclaration.assignments              (§A.2.1.1)
-//   4. LocalParameterDeclaration.assignments         (§A.2.1.1)
-//   5. SpecparamDeclaration.assignments              (§A.2.1.1)
-//   6. ModuleParameters.parameters                   (§12.1)
-//   7. AlwaysBlockSensitivity.ExplicitEventList.items (§9.7.2)
-//   8. ParameterOverrides.OrderedParameterOverrides.actuals (§12.1.3)
-//   9. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
-//  10. ContinuousAssign.assignments                  (§6.1)
-//  11. ModuleInstantiation.instances                 (§A.4.1.1)
+//   6. ParameterDeclaration.assignments              (§A.2.1.1)
+//   7. LocalParameterDeclaration.assignments         (§A.2.1.1)
+//   8. SpecparamDeclaration.assignments              (§A.2.1.1)
+//   9. ModuleParameters.parameters                   (§12.1)
+//  10. AlwaysBlockSensitivity.ExplicitEventList.items (§9.7.2)
+//  11. ParameterOverrides.OrderedParameterOverrides.actuals (§12.1.3)
+//  12. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
+//  13. ContinuousAssign.assignments                  (§6.1)
+//  14. ModuleInstantiation.instances                 (§A.4.1.1)
 //
-// Sites 7-9 added 2026-05-16 per codex REQUEST_CHANGES on PR #3176
-// at sha f87fdf189; site 10 added 2026-05-16 per codex BLOCKING on
-// PR #3176 at sha bcc6b5f89 (ContinuousAssign restructured to carry
-// drive_strength + delay + list_of_net_assignments per §6.1, with
-// the non-empty assignments list deferred under the same RQ-3
-// disposition); site 11 added 2026-05-16 per codex BLOCKING on
-// PR #3176 at sha 2bf0024ba (ModuleInstantiation restructured to
-// carry shared module_name + parameter_overrides + non-empty
-// instances per §A.4.1.1 multi-instance form). Codex's motivation
-// is spec-correct in each case; the FORM is the deferred refinement,
-// not a verilog-local mint.
+// Sites previously numbered 7-9 added 2026-05-16 per codex
+// REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
+// added 2026-05-16 per codex BLOCKING on PR #3176 at sha bcc6b5f89
+// (ContinuousAssign restructured to carry drive_strength + delay +
+// list_of_net_assignments per §6.1, with the non-empty assignments
+// list deferred under the same RQ-3 disposition); site previously 11
+// added 2026-05-16 per codex BLOCKING on PR #3176 at sha 2bf0024ba
+// (ModuleInstantiation restructured to carry shared module_name +
+// parameter_overrides + non-empty instances per §A.4.1.1 multi-
+// instance form). Sites 1-4 (formerly the single site
+// `NetDeclaration.declarators`) added 2026-05-16 per openai-pro
+// REQUEST_CHANGES on PR #3176 at sha 6f587e6c — NetDeclaration
+// dissolved into the IEEE 1364-2005 §A.2.1.3 four-way
+// {trireg?}×{form} structural Disj making spec-impossible states
+// (drive_strength on the identifier-only form, charge_strength on
+// a non-trireg form, mixed init/non-init declarator lists,
+// identifier-only-with-initializer, assignment-form-without-
+// initializer) unrepresentable; the four per-variant
+// list_of_net_decl_assignments / list_of_net_identifiers fields
+// inherit the §A.2.1.3 spec-non-empty constraint and ride the same
+// RQ-3 deferral. Codex's / openai-pro's motivation is spec-correct
+// in each case; the FORM is the deferred refinement, not a verilog-
+// local mint.
 
 
 // ─────────────────────────────────────────────────────────────────────
