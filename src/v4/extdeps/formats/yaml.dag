@@ -21,3 +21,353 @@
 
 module v4.extdeps.formats.yaml
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CANONICAL-MIRROR (T-4.6 fan-out). This file EXACT-mirrors the ratified
+// canonical src/v4/extdeps/formats/json.dag seam (PR #3184, T-4 mgr
+// seam-review ratification msg_f5971a8a): the format's closed recursive
+// value sum + node.dag A1 name-reference recursion + the Practice-4
+// five-pattern ledger; the parse/emit carrier seam is the ratified
+// corrected seam #3 — fail-closed BOTH directions: `yaml_parse :
+// String -> Outcome<YamlValue>` AND `yaml_emit : YamlValue ->
+// Outcome<String>` (the ONE operator-ratified D1 carrier `Outcome<T>`,
+// std/diagnostic.dag DECISIONS item **I** — NOT a per-file sum);
+// operations deferred-with-named-owner. (Single authority for this
+// seam: the Deferred (1) block below; this summary states it, the
+// block specifies it — no divergence.)
+// Same discipline, YAML-anchored facts.
+//
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
+// `YamlValue` data model — declaration-class, substrate-faithful. DEFERRED
+// (🟡, named owner + dissolution trigger, NEVER improvised, NEVER a
+// bodiless `fn` — the frozen v2 seed rejects bodiless `fn`, DECISIONS
+// PARSE-1): the parse/emit bodies (incl. YAML anchor/alias + tag
+// resolution) and the numeric interpretation of int/float lexemes. The
+// operator-sanctioned pattern verified on std/collection.dag #3169 and
+// the canonical json.dag.
+//
+// CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
+// fail-closed BOTH directions (single authority = the Deferred (1)
+// block below; this is the summary, not a second authority):
+//   - `yaml_parse : String -> Outcome<YamlValue>`
+//   - `yaml_emit  : YamlValue -> Outcome<String>`  (NOT a total
+//      `-> String`; a spec-invalid YamlValue → `Rejected{diagnostic}`,
+//      never a fabricated artifact — the #3184 P3 finding, ratified
+//      seam-gate-active-propagated, msg_c7704bd6).
+// Both use the ONE operator-ratified D1 carrier `Outcome<T> = Produced
+// { value: T } | Rejected { diagnostic: Diagnostic }` (std/diagnostic.
+// dag, DECISIONS item **I**). The immutable scaffold header's
+// `parse(String) -> Result<YamlValue, Diagnostic>` prose denotes
+// `Outcome<YamlValue>`; its `emit(YamlValue) -> String` line is the
+// total-emit shape superseded by this ratified fail-closed seam — the
+// literal header-line edit is the operator-tier batched header-reconcile
+// (csv-class; tracked-not-silent, see the Deferred (1) block). No
+// parallel `Result<ok, err>` in std/. The SAME fail-closed-both-
+// directions carrier all six T-4.6 formats consume.
+//
+// FAIL-CLOSED, NO FABRICATION (YAML 1.2.2; brief §C binding STOP). Every
+// non-conforming input is `Rejected { diagnostic }` — never a partial
+// parse, never a defaulted/guessed YamlValue. Two YAML-specific
+// structural guarantees, both the json.dag dup-key discipline applied to
+// YAML:
+//   - ANCHOR/ALIAS (YAML 1.2.2 §3.2.2 / §7.1): `&anchor`/`*alias` is
+//     structure-SHARING, resolved DURING parse — a produced `YamlValue`
+//     is alias-free BY CONSTRUCTION (the data model has no alias node;
+//     aliases are resolved against their anchors while building the
+//     typed value, exactly as json's `Map` makes a parsed object
+//     dup-free by construction). An UNRESOLVABLE alias (no matching
+//     anchor) or an alias CYCLE is a fail-closed parse `Rejected`
+//     (a cyclic YAML graph is not a finite `YamlValue` — surfacing it
+//     is the no-engine honesty, never a non-terminating walk or a
+//     fabricated truncation). The resolution itself is the deferred
+//     parse body's job (🟡 below); the data model needs no alias variant.
+//   - TAG RESOLUTION (YAML 1.2.2 §10.3 core schema): which scalar
+//     variant a plain node resolves to (null/bool/int/float/str) is the
+//     core-schema tag-resolution rule, applied in the deferred parser;
+//     the data model carries the RESOLVED variant, not the raw node.
+//
+// `Bool`/`String` are kernel-ambient (v2 seed; STRUCTURE.md "Kernel-
+// ambient types"); `List<T>`/`Map<K,V>` are kernel container types
+// (node.dag uses `List` unimported). That relaxes only the import edge —
+// this file remains YAML's sole modeling authority (the std/logic.dag
+// kernel-ambient discipline). No std/ import is needed: the data model
+// uses only kernel-ambient carriers + self-recursion; the deferred
+// carrier seam is named in prose, not structurally referenced (an
+// unused import would itself fail 0-diagnostics).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// YamlValue — the YAML 1.2.2 value: the closed, recursive set of the
+// seven YAML core-schema value kinds. Anchor: YAML 1.2.2 §10.3 (core
+// schema) — https://yaml.org/spec/1.2.2/#103-core-schema — over the
+// §2.1 representation graph (https://yaml.org/spec/1.2.2/#21-collections).
+//
+//   - YamlNull        — the `null` core-schema value (YAML 1.2.2 §10.3.2
+//                        `tag:yaml.org,2002:null`).
+//   - YamlBool        — `true`/`false` (§10.3.2 `…:bool`); the payload is
+//                        the kernel `Bool` (one authority for the truth
+//                        value — std/logic.dag).
+//   - YamlInt         — §10.3.2 `…:int`. Carries the VERBATIM source
+//                        scalar (`lexeme`), NOT a numeric value — the
+//                        json.dag `JsonNumber` lexeme-preserving decision
+//                        applied to YAML's int tag: YAML 1.2.2 separates
+//                        tag RESOLUTION (which decides this is the `int`
+//                        variant) from numeric INTERPRETATION; the
+//                        faithful integer carrier (std/integer.dag) is
+//                        scaffold, so collapsing now would fabricate a
+//                        range/precision decision (no-fabrication) and
+//                        lose round-trip (B-6) exactness. Numeric
+//                        interpretation is a deferred read (🟡 below).
+//   - YamlFloat       — §10.3.2 `…:float` (incl. `.inf`/`.nan`). Carries
+//                        the verbatim `lexeme` for the same reason as
+//                        `YamlInt`; faithful carrier std/float.dag is
+//                        scaffold (IEEE-754 collapse = fabrication +
+//                        breaks B-6). Numeric interpretation deferred.
+//   - YamlString      — §10.3.2 `…:str`. The payload is the kernel
+//                        `String` (escape / block-scalar / quoting
+//                        decoding is the deferred parse body's concern,
+//                        not a data-model variant).
+//   - YamlSequence    — YAML 1.2.2 §2.1 sequence. An ordered series of
+//                        YamlValue; carrier is the kernel
+//                        `List<YamlValue>` (order is the list order —
+//                        the single authority, canonical/deterministic
+//                        per CULTURE §8).
+//   - YamlMapping     — YAML 1.2.2 §2.1 mapping. An unordered set of
+//                        key/value pairs; YAML permits NON-STRING keys
+//                        (§2.2), so the carrier is the kernel
+//                        `Map<YamlValue, YamlValue>` (per the immutable
+//                        scaffold header — key AND value are `YamlValue`).
+//                        KEY-UNIQUENESS — HONEST SCOPE (do NOT over-
+//                        claim): `Map` structurally dedups by `YamlValue`
+//                        STRUCTURAL equality (lexeme-sensitive). But
+//                        YAML 1.2.2 §3.2.1.3 (node comparison) defines
+//                        mapping-key uniqueness by TAG + CANONICAL
+//                        content, NOT by surface lexeme — so two
+//                        lexeme-DISTINCT but canonically-EQUAL scalar
+//                        keys under the same tag (e.g. `0x10` and `16`,
+//                        both `!!int`; `1.0` and `1.0e0`, both
+//                        `!!float`) are §3.2.1.3 DUPLICATES yet are
+//                        DISTINCT `YamlValue`s here (the lexeme-
+//                        preserving decision: `YamlInt`/`YamlFloat`
+//                        carry the verbatim lexeme because the numeric/
+//                        tag CANONICALIZATION rides the deferred
+//                        integer/float substrate). Therefore `Map` does
+//                        NOT make §3.2.1.3-duplicate keys structurally
+//                        unrepresentable; it only forecloses lexeme-
+//                        IDENTICAL duplicates. Full §3.2.1.3 key
+//                        uniqueness (canonicalize each key by its
+//                        resolved tag, reject canonically-equal
+//                        duplicates as a fail-closed `Rejected`) is a
+//                        DEFERRED-PARSER invariant — 🟡 (3) below — not
+//                        a structural carrier guarantee; honestly
+//                        scoped here per the std/collection.dag #3169
+//                        "do not over-claim what the carrier provides"
+//                        precedent (no silent last-wins = no-engine;
+//                        the parser is the §3.2.1.3 authority until the
+//                        canonicalization substrate lands). String-keyed
+//                        formats (json.dag `Map<String,..>`, toml.dag
+//                        `Map<String,..>`) do NOT have this gap — their
+//                        keys are byte-strings, so Map dedup IS the
+//                        spec's key equality; this is YAML-specific
+//                        (non-string keys + lexeme-preserved scalars),
+//                        not a canonical-seam defect.
+//
+// Recursion lives in the `elements` / `entries` children (node.dag A1:
+// the one recursive type is `Node`; this recursive `Disj` is a finite
+// Node tree whose recursive occurrence is the name-reference `YamlValue`
+// resolved through the namespace — never a self-referential type slot,
+// the std/nat.dag `Succ { prev: Nat }` shape; `YamlMapping` recurses in
+// BOTH key and value position, both `YamlValue`). REGULAR recursion
+// (the recursive occurrence is `YamlValue` itself) ⇒ unconditionally
+// admissible per A1; structural descent on a proper sub-YamlValue is the
+// A2 IMPLICIT termination case, total by construction, no ranking
+// measure. (A finite `YamlValue` is alias-RESOLVED — see Modeling notes;
+// an alias cycle never produces a value, it produces a fail-closed
+// `Rejected`, so the recursive type stays well-founded.)
+//
+// CLOSED. The seven are YAML 1.2.2 §10.3's exhaustive core-schema value
+// space — no `Other` / open variant. An eighth kind would be an edit to
+// this declaration routed to ratification (it would mean the YAML core
+// schema changed), not a silent escape.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — 🟢 GREEN (terminal). Ledger — five patterns
+// attempted:
+//   1. Fact placement — FAILS: the value kind is consumed UNIFORMLY by
+//      every YAML consumer (the deferred parse builds it, emit walks it,
+//      any pipeline ingest dispatches on it). It is the shared
+//      classifier of the whole YAML value space, not a per-consumer
+//      scattered fact.
+//   2. Variant-is-data — FAILS: the seven carry structurally DISTINCT
+//      payloads (YamlNull nullary; a `Bool`; an int `lexeme` String; a
+//      float `lexeme` String; a `String`; a `List<YamlValue>`; a
+//      `Map<YamlValue, YamlValue>`). Collapsing to a flat `{ kind,
+//      bool?, int?, float?, string?, seq?, map? }` record makes illegal
+//      mixed states representable (a YamlNull carrying sequence
+//      elements; a YamlBool with mapping entries) — the inverse of
+//      INVARIANTS P2 (illegal states unrepresentable).
+//   3. Algebraic form — N/A by construction: a YAML value is YAML
+//      1.2.2 §10.3's core-schema value space; it is heterogeneous
+//      external data, not the carrier of a richer std/algebra.dag
+//      structure (no Monoid/Ring/Lattice it inhabits). The Sequence/
+//      Mapping children ground in their OWN carriers (List = FreeMonoid,
+//      Map) owned by std/collection.dag — not a richer single source
+//      YamlValue decomposes into; pointing the variants at an algebra
+//      is circular.
+//   4. Dimensional — FAILS: a YAML value is EXACTLY ONE of the seven
+//      kinds (YAML 1.2.2 §10.3 core-schema tag resolution yields one
+//      tag); mutually-exclusive alternatives, never simultaneous
+//      coordinates. No value is "both an int and a sequence".
+//   5. Parameterized family — FAILS: the seven variants are
+//      structurally heterogeneous (nullary; `Bool`; int `lexeme`;
+//      float `lexeme`; `String`; `List<YamlValue>`; `Map<YamlValue,
+//      YamlValue>`) — NOT one generic `F<X>` / projection over a
+//      separately-declared enumerable set (Practice 7). They are the
+//      irreducible constructors of the YAML 1.2.2 core-schema value
+//      space, not a mechanical copy of an enumerable set.
+// Terminal: the irreducible closed YAML 1.2.2 §10.3 core-schema value
+// space; a recursive Disj whose Sequence/Mapping children recurse
+// through kernel `List`/`Map` of `YamlValue` (A1 recursion-in-children,
+// name-reference through the namespace — the std/nat.dag `Nat` shape).
+type YamlValue
+  = YamlNull
+  | YamlBool { value: Bool }
+  | YamlInt { lexeme: String }
+  | YamlFloat { lexeme: String }
+  | YamlString { value: String }
+  | YamlSequence { elements: List<YamlValue> }
+  | YamlMapping { entries: Map<YamlValue, YamlValue> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡). The operations ride substrate that
+// is scaffold today. Per the operator-ratified declarative-now /
+// operations-deferred-with-owner discipline (verified on std/collection.
+// dag #3169 + canonical json.dag #3184) these are NOT authored here —
+// not improvised bodies, not bodiless `fn` (the frozen v2 seed rejects
+// bodiless `fn`, DECISIONS PARSE-1). Each carries the three bridge
+// properties (scaffold doc / bounds on use / dissolution trigger).
+//
+// (1) `yaml_parse` / `yaml_emit` — the parse and emit operation bodies.
+//   A YAML parser is a Char-STREAM structural walk over the YAML 1.2.2
+//   §5–§9 productions and emit builds a String from structure; both
+//   require std/text.dag's `Char` + a `String` ↔ sequence-of-`Char`
+//   decomposition — std/text.dag is T-3 SCAFFOLD. RATIFIED parse
+//   strategy (mirrors json.dag): RECURSIVE-DESCENT single self-recursive
+//   structural walk over the input Char-sequence spine, with the YAML
+//   representation-graph phases (compose nodes → resolve `&anchor`/
+//   `*alias` against the anchor table → apply §10.3.2 tag resolution →
+//   produce the alias-free, tag-resolved `YamlValue`); termination is
+//   the A2 IMPLICIT case (descent on a proper sub-sequence), and an
+//   alias CYCLE is a fail-closed `Rejected` (never a non-terminating
+//   walk — the no-engine honesty).
+//     (a) scaffold doc — THIS note; `yaml_parse`/`yaml_emit` are
+//         intentionally absent from yaml.dag today.
+//     (b) bounds on use — no consumer reads `yaml_parse`/`yaml_emit`
+//         from yaml.dag in this PR. The carrier seam is fixed and
+//         fail-closed in BOTH directions (the T-4 seam-gate-ratified
+//         corrected seam #3 — propagated from canonical json.dag
+//         #3184): when authored, `yaml_parse : String ->
+//         Outcome<YamlValue>` AND **`yaml_emit : YamlValue ->
+//         Outcome<String>`** — NOT a total `YamlValue -> String`.
+//         `Outcome<T>` is the operator-ratified D1 carrier
+//         (std/diagnostic.dag, DECISIONS item **I**). WHY EMIT IS ALSO
+//         FAIL-CLOSED (not total): `YamlInt`/`YamlFloat` carry a raw
+//         `String` lexeme and the type-level §10.3.2 guarantee is
+//         deferred (the canonical-key / refined-lexeme substrate, 🟡
+//         (3) + numeric (2)) — so a `YamlValue` carrying a
+//         non-§10.3.2 scalar lexeme is type-constructible OUTSIDE the
+//         parser. A total `YamlValue -> String` emit would have no
+//         typed channel to reject it and would FABRICATE an invalid
+//         YAML artifact — an INVARIANTS P3 / no-fabrication violation
+//         (the canonical json.dag #3184 finding, propagated here as
+//         the ratified seam #3). So emit returns `Outcome<String>`: a
+//         structurally-representable but spec-invalid `YamlValue`
+//         emits `Rejected { diagnostic }`, never a fabricated string.
+//         Every non-conforming input / unresolvable/cyclic alias
+//         (parse) AND every spec-invalid value (emit) is `Rejected
+//         { diagnostic }`, never partial/defaulted/fabricated. The
+//         other five T-4.6 formats mirror THIS
+//         fail-closed-both-directions seam.
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(YamlValue) -> String`" documents a TOTAL emit. The
+//         T-4 seam-gate ratified the fail-closed `-> Outcome<String>`
+//         seam (correctness-tightening of seam #3, INVARIANTS P3); the
+//         literal immutable-header line edit is operator-tier (worker
+//         may not edit the immutable header — csv-class authority),
+//         batched into the operator header-reconcile (flagged by the
+//         T-4 mgr). This note is the fail-closed authority pending
+//         that reconcile; the header/note divergence is
+//         tracked-not-silent here.
+//     (c) dissolution trigger — when std/text.dag (T-3) lands its
+//         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
+//         PR adds `yaml_parse : … -> Outcome<YamlValue>` /
+//         `yaml_emit : … -> Outcome<String>` (with anchor/alias + tag
+//         resolution) as single self-recursive structural walks. The
+//         emit body MUST validate any non-parser-constructed value
+//         fail-closed (a non-§10.3.2 scalar lexeme, pending the
+//         refined-lexeme substrate, is a `Rejected`, never emitted) —
+//         the trigger is NOT satisfied by a total `-> String` emit
+//         even once std/text.dag lands; the fail-closed
+//         `Outcome<String>` contract is part of THIS ratified seam #3,
+//         so the invalid-lexeme emission hole cannot survive the
+//         dissolution. The T-4 directive's "operations deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
+//
+// (2) Numeric interpretation of `YamlInt.lexeme` / `YamlFloat.lexeme` —
+//   YAML 1.2.2 §10.3.2 tag resolution decides the int-vs-float VARIANT
+//   (carried above); the numeric VALUE is the implementation's concern
+//   and the faithful carriers are scaffold: the integer tower
+//   (std/integer.dag) and IEEE-754 `Float` (std/float.dag), both T-3.
+//     (a) scaffold doc — THIS note; `YamlInt`/`YamlFloat` carry the
+//         lexeme, not a numeric value; no interpretation is claimed.
+//     (b) bounds on use — a consumer needing the numeric value waits on
+//         the interpretation read. The lexeme is round-trip-exact
+//         (B-6): emit reproduces the source scalar with zero precision
+//         loss, which a premature numeric collapse could not.
+//     (c) dissolution trigger — when std/integer.dag + std/float.dag
+//         land, a follow-up adds `yaml_int_value`/`yaml_float_value :
+//         … -> Outcome<…>`; this note dissolves.
+//
+// (3) YAML 1.2.2 §3.2.1.3 canonical mapping-key uniqueness — the
+//   honest scope of the `YamlMapping` key dedup (see the YamlMapping
+//   bullet above). §3.2.1.3 (node comparison,
+//   https://yaml.org/spec/1.2.2/#3213-node-comparison) defines mapping
+//   keys as duplicate iff equal by TAG + CANONICAL content. The
+//   `Map<YamlValue, YamlValue>` carrier only forecloses lexeme-
+//   IDENTICAL duplicate keys; **SAME-TAG** canonically-equal-but-
+//   lexeme-distinct scalar keys (e.g. `0x10`/`16` both `!!int`;
+//   `1.0`/`1.0e0` both `!!float`) are §3.2.1.3 DUPLICATES yet remain
+//   representable because canonicalization needs the resolved tag +
+//   numeric value that is deferred (item (2)). (Precision, per review:
+//   §3.2.1.3 equality requires MATCHING tags AND equal canonical
+//   content — so a TAG-DISTINCT same-content pair, e.g. `!!str "1"`
+//   vs `!!int 1`, is NOT a §3.2.1.3 duplicate; it is an ALLOWED
+//   distinct key, and the carrier correctly keeps it distinct. Only
+//   the same-tag canonically-equal case above is the deferred gap.)
+//   This is surfaced honestly, NOT over-claimed as a structural
+//   guarantee (the std/collection.dag #3169 over-claim-correction
+//   precedent).
+//     (a) scaffold doc — THIS note + the YamlMapping bullet; the
+//         carrier's structural dedup is lexeme-scoped, explicitly not
+//         the full §3.2.1.3 relation.
+//     (b) bounds on use — no consumer may assume a `YamlMapping` is
+//         §3.2.1.3-dup-free from the type alone. The deferred parser
+//         is the §3.2.1.3 authority: it resolves each key's tag,
+//         canonicalizes, and rejects canonically-equal duplicates as a
+//         fail-closed `Rejected` (no silent last-wins = no-engine) —
+//         the same fail-closed parse-construction discipline as
+//         alias-cycle and tag resolution.
+//     (c) dissolution trigger — when the tag-resolution + numeric/
+//         scalar canonicalization substrate lands (rides std/text.dag
+//         §10.3.2 tag resolution + std/integer.dag/std/float.dag
+//         canonical forms — items (1)/(2)), a follow-up makes key
+//         canonicalization a structural normalization so §3.2.1.3
+//         uniqueness becomes carrier-enforced; this note dissolves.
+//         A structural key-canonicalization that would need a new
+//         substrate concept is a STOP, not a worker workaround.
+
