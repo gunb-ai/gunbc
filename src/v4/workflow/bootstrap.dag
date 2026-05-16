@@ -87,9 +87,10 @@
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
 //
-// DATA, not a runner. This file declares the bootstrap chain AS DATA: an
-// ordered `BootstrapPlan` of `BootstrapStep`s that v2's `run`
-// interpreter walks. There is deliberately NO orchestration body here —
+// DATA, not a runner. This file declares the bootstrap chain AS DATA: a
+// fixed `BootstrapPlan` record of named `CompileStep` / `FixedPointStep`
+// slots that v2's `run` interpreter walks. There is deliberately NO
+// orchestration body here —
 // no fn that spawns processes, reads the filesystem, or shells out. That
 // is exactly the v3 regression door (build.rs / bootstrap.sh = editable
 // Rust/script authority). The plan is inert structured data; the
@@ -201,10 +202,11 @@ module v4.workflow.bootstrap
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
 // five patterns attempted:
-//   1. Fact placement — FAILS: every `BootstrapStep` and the deferred
-//      interpreter (TRACKED SCAFFOLD (1)) handle the stage identity as
-//      the shared chain-position concept; it is not a per-consumer
-//      scattered fact recoverable as a field on one site.
+//   1. Fact placement — FAILS: every chain step (`CompileStep` /
+//      `FixedPointStep`) and the deferred interpreter (TRACKED SCAFFOLD
+//      (1)) handle the stage identity as the shared chain-position
+//      concept; it is not a per-consumer scattered fact recoverable as
+//      a field on one site.
 //   2. Variant-is-data — FAILS: the four values carry NO payload (a
 //      stage IS its identity). There is no inner data to promote to a
 //      record; collapsing to an `Int` index would reintroduce the
