@@ -17,38 +17,35 @@ import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiati
 // Shared stub: empty labeled Conj (no Symbol / Atom).
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: Empty
+  children: []
 }
 
 
 // Arrow domain/codomain: two positional edges to duplicate stubs (no Atom).
 data stub_arrow_pair: Node = Node {
   kind: TypeNode { connective: Arrow },
-  children: Cons {
-    head: Edge { label: Positional, target: stub_empty_conj },
-    tail: Cons {
-      head: Edge { label: Positional, target: stub_empty_conj },
-      tail: Empty
-    }
-  }
+  children: [
+    Edge { label: Positional, target: stub_empty_conj },
+    Edge { label: Positional, target: stub_empty_conj }
+  ]
 }
 
 
 data stub_empty_disj: Node = Node {
   kind: TypeNode { connective: Disj },
-  children: Empty
+  children: []
 }
 
 
 data stub_empty_cardinality: Node = Node {
   kind: TypeNode { connective: Cardinality },
-  children: Empty
+  children: []
 }
 
 
 data stub_empty_instantiation: Node = Node {
   kind: TypeNode { connective: Instantiation },
-  children: Empty
+  children: []
 }
 
 

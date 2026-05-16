@@ -15,7 +15,7 @@ import v4.test.v2_run_preflight.process_exit_shim {
   exit_code_general_error,
 }
 import v4.std.nat { Zero, Succ, nat_add, nat_mul }
-import v4.std.logic { True, False, bool_boolean_algebra }
+import v4.std.logic { bool_boolean_algebra }
 import v4.std.node {
   Node,
   TypeNode,
@@ -47,18 +47,33 @@ func run_probe_nat_literals_and_recursion() -> ProcessExit {
 }
 
 
-// Bool + function application to algebra-carried meet (Transform discipline).
+// Kernel literal + equality (Value / structural compare probe).
 
-func run_probe_bool_branch() -> ProcessExit {
-  let x = True
-  let y = False
-  let m = bool_boolean_algebra.bounded_lattice.lattice.meet(a: x, b: y)
+func run_probe_kernel_int_eq() -> ProcessExit {
+  match 1 == 1 {
+    True => ExitSuccess
+    False =>
+      ExitFailure {
+        code: exit_code_general_error,
+        reason: "kernel int equality probe failed"
+      }
+  }
+}
+
+
+// Algebra-carried meet: use lattice top/bottom (exported Bool values) — not raw True/False tokens,
+// which the v2 seed does not surface as cross-module expression constants in this probe module.
+
+func run_probe_bool_meet_via_algebra() -> ProcessExit {
+  let top = bool_boolean_algebra.bounded_lattice.top
+  let bottom = bool_boolean_algebra.bounded_lattice.bottom
+  let m = bool_boolean_algebra.bounded_lattice.lattice.meet(a: top, b: bottom)
   match m {
     False => ExitSuccess
     True =>
       ExitFailure {
         code: exit_code_general_error,
-        reason: "bool meet(True,False) expected False"
+        reason: "bool meet(top,bottom) expected False"
       }
   }
 }
@@ -69,7 +84,7 @@ func run_probe_bool_branch() -> ProcessExit {
 func run_probe_empty_conj_wellformed() -> ProcessExit {
   let n = Node {
     kind: TypeNode { connective: Conj },
-    children: Empty
+    children: []
   }
   let w = node_locally_well_formed(n: n) && node_well_formed(n: n)
   match w {
@@ -86,9 +101,12 @@ func run_probe_empty_conj_wellformed() -> ProcessExit {
 func run_v2_preflight_all() -> ProcessExit {
   match run_probe_nat_literals_and_recursion() {
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-    ExitSuccess => match run_probe_bool_branch() {
+    ExitSuccess => match run_probe_kernel_int_eq() {
       ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-      ExitSuccess => run_probe_empty_conj_wellformed()
+      ExitSuccess => match run_probe_bool_meet_via_algebra() {
+        ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+        ExitSuccess => run_probe_empty_conj_wellformed()
+      }
     }
   }
 }
