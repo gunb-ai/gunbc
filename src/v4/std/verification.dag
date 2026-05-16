@@ -100,14 +100,29 @@ import v4.std.diagnostic { Outcome }
 //                   equals `input` (emit∘ingest fixed point / self-host
 //                   bit-identity). `expected` carries that produced
 //                   `≈input` value.
-// One total `expected` field with `kind`-driven comparison keeps illegal
-// states unrepresentable: there is no "Compiles claim with a dangling
-// value-expectation" because the discriminant the runner reads is
-// `kind`, and `expected` is always a well-formed `Outcome<Node>`.
-// Folding `expected` into per-kind AssertKind payloads was REJECTED: it
-// contradicts the frozen scaffold's payload-less closed-4 `AssertKind`
-// and would re-instantiate the value-or-Diagnostic spine per-file (the
-// carrier-STOP's exact prohibition).
+// KNOWN STRUCTURAL TENSION (api-review #3183, openai-pro — surfaced,
+// not claimed away). `kind` and `expected` are INDEPENDENT fields, so
+// the frozen scaffold shape `TestClaim { kind, label, input, expected }`
+// + payload-less closed-4 `AssertKind` DOES admit the kind×expected
+// cross-product: e.g. `kind: Diagnostic` with `expected: Produced{…}`,
+// or `kind: Compiles` with an arbitrary/`Rejected` expectation, is
+// representable. The kind↔expected-variant correspondence (Equals/
+// RoundTrips ⟹ `Produced`; Diagnostic ⟹ `Rejected`; Compiles ⟹
+// `Produced`-discriminant, value vestigial) is therefore an EVALUATOR-
+// ENFORCED semantic contract (compiler/05_eval.dag, T-22), NOT
+// structurally enforced at this schema boundary. This file does not
+// claim otherwise. The structurally-enforcing form folds the
+// expectation into a single assertion sum so malformed states are
+// unconstructable — but that (a) changes the FROZEN scaffold's
+// `TestClaim`/`AssertKind` shape (operator-tier; not a unilateral
+// worker edit — the header is the immutable contract), and (b) is
+// entangled with the carrier-STOP (a `Produced`/`Rejected`-shaped
+// per-variant expectation risks re-instantiating the value-or-
+// Diagnostic spine this file was explicitly required to consume, not
+// re-derive — prior api-review APPROVE blessed exactly the consume-
+// Outcome shape). The two api-reviews conflict on this exact point.
+// Resolution is escalated to the T-3 manager / operator; this note is
+// the honest tracked statement of the gap, not a silent convention.
 //
 // The one coproduct below (`AssertKind`) carries the full Practice-4
 // 🟢/🟡/🔴 classification + the five-pattern dissolution ledger
