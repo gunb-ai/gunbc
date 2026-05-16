@@ -101,14 +101,19 @@
 //   - std/node.dag (incl. the D1 Diff type), std/witness.dag
 //   - lens/effect.dag (B-5): per-Arrow-Node effect granularity is the
 //     R1 usefulness contract (Ex.R1) — coarse effects ⇒ useless cone
-//   - compiler/04_infer.dag: the typed dependency graph (Dag) — the
+//   - compiler/04_infer.dag: the typed dependency graph (Dag). The
 //     use→def edges are NOT a stored field (IR-1 freezes InferredFacts
-//     at 4); per the 04_infer.dag B-4 contract they are DERIVED BY
-//     TRAVERSAL over already-resolved name-references. Minimality of
-//     this lens's frontier depends on that resolution being
-//     NODE-PRECISE (use-site → exact def Node, not module/scope);
-//     coarse resolution = correct but maximally over-firing. This lens
-//     folds the traversal; it stores no dependency-edge set.
+//     at 4) and NOT carried by `resolved_type` (that is the node's
+//     type — lossy for binding). Per B-4 the named carrier is the
+//     post-resolution opaque `Symbol` (K-1) on each name-ref `Atom`,
+//     AUTHORED by compiler/03_resolve.dag (binding = `Symbol`
+//     equality) and preserved unchanged through 04_infer. This lens
+//     DERIVES the graph by `Symbol`-equality TRAVERSAL over the
+//     resolved tree (node.dag `name_occurrences` pattern); it stores
+//     no dependency-edge set. Frontier minimality depends on that
+//     binding being NODE-PRECISE (exact declaration, not
+//     module/scope); coarse binding = correct but maximally
+//     over-firing.
 //
 // Status: scaffold — fill per TASKS.md T-21
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable

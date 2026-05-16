@@ -46,28 +46,38 @@
 //   12-file split cannot recur (its cause — a separate recursive inferred
 //   type — is structurally gone via IR-1/A1).
 //
-// B-4 (side-session 2026-05-15) — resolution is NODE-PRECISE (the
-//   affected_set R2 minimality contract):
-//   - A use-site is a name-reference `Atom`; its binding MUST resolve to
-//     the EXACT declaration `Node` it refers to — never merely that
-//     declaration's module/scope. Node-precise binding originates at
-//     compiler/03_resolve.dag and is preserved through `resolved_type`.
-//   - This is NOT a 5th `InferredFacts` field (that would be the IR-1
-//     STOP). The use→def dependency graph is DERIVED BY TRAVERSAL over
-//     the already-resolved name-references — the resolved reference IS
-//     the edge — the same "derive, don't store" discipline as
-//     `content_hash` (a fold) and D1 (no new field). lens/affected_set.dag
-//     (T-21) folds that traversal (changed Node → name-refs resolving to
-//     it → enclosing declarations, transitively) for the MINIMAL re-exec
-//     frontier.
-//   - Why a CONTRACT, not an option: coarse (module/scope) resolution
-//     leaves affected_set correct but maximally OVER-fires (any change in
-//     a module re-runs every importer). Node-precise resolution is the
-//     dominant gate on affected_set R2 minimality — a precision INVARIANT
-//     on this stage, not a T-21 concern. (Distinct axis from #3157's
-//     hash-granularity "over-fire = safe" tolerance: that is content
-//     identity; THIS is dependency-edge granularity — correctness-
-//     preserving but minimality-critical.)
+// B-4 (side-session 2026-05-15; carrier corrected per a P2/Practice-3
+//   review finding on PR #3162) — the affected_set R2 minimality
+//   contract. NAMED CARRIER, not resolved_type:
+//   - The use→def fact's forward carrier is the post-resolution opaque
+//     `Symbol` (K-1) on the name-reference `Atom` — NOT `resolved_type`.
+//     `resolved_type` is the node's *type*; many declarations share a
+//     type, so it is LOSSY for binding identity (the review's point —
+//     citing it was a Practice-3/P2 error). The correct carrier already
+//     exists and is named: the `Symbol`.
+//   - AUTHORITY is compiler/03_resolve.dag (it owns "identifier binding
+//     to declarations"). Resolution canonicalizes a use-site `Atom`'s
+//     `Symbol` to be IDENTICAL to its binder declaration's `Symbol`, so
+//     binding = `Symbol` equality (the one K-1-granted op; node.dag's
+//     `name_occurrences` pattern; "resolved through the namespace" per
+//     A1/K-1). That canonical `Symbol` rides in `ResolvedTree`.
+//   - 04_infer's obligation here is PRESERVE-ONLY: infer adds
+//     `InferredFacts`; it MUST NOT alter or drop the resolved `Symbol`
+//     identity. infer neither owns nor re-carries the use→def fact (so
+//     no 5th `InferredFacts` field — IR-1-safe; the fact's authority is
+//     03_resolve, its carrier is the Symbol).
+//   - lens/affected_set.dag (T-21) DERIVES the use→def graph by
+//     `Symbol`-equality TRAVERSAL over the resolved tree (changed
+//     declaration → its binder `Symbol` → every name-ref `Atom` with
+//     that `Symbol` → enclosing declarations, transitively) — the same
+//     "derive, don't store" discipline as `content_hash` (a fold) / D1.
+//   - Binding MUST be NODE-PRECISE: a use-site's canonical `Symbol`
+//     identifies the EXACT declaration, never merely its module/scope.
+//     Coarse binding leaves affected_set correct but maximally
+//     OVER-fires — node-precision is the dominant gate on R2
+//     minimality. (Distinct axis from #3157's hash-granularity
+//     "over-fire = safe": that is content identity; THIS is
+//     dependency-edge granularity.) Authority: 03_resolve.dag B-4 note.
 //
 // Owns:
 //   - InferredTree = Node + the frozen flat `InferredFacts` coordinate
