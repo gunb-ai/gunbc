@@ -1883,20 +1883,92 @@ type ModuleItem
 
 
 // ─────────────────────────────────────────────────────────────────────
-// VerilogModule — a top-level Verilog module (`module Name (ports);
-// items endmodule`). IEEE 1364-2005 §12.1. Conj record (no
-// Practice-4 ledger).
+// ModuleParameterPortList — the closed Verilog module-header
+// parameter-port-list classifier (IEEE 1364-2005 §12.1). A module
+// declaration may carry an OPTIONAL `#(parameter W = 8, parameter
+// D = 16)` clause between the module name and the port list. Per
+// spec grammar the clause is module_parameter_port_list and admits
+// parameter_declarations only (not localparam — localparams must
+// live in the body). The optional-presence is structural and
+// modeled via a closed Disj rather than a nullable field.
 //
-//   - name      the module identifier (K-1-opaque Symbol)
-//   - ports     the port-declaration list as a ModulePortsList Disj
-//               (NonAnsiPorts OR AnsiPorts per spec §12.3.4;
-//               uniform per module — mixing styles in one module is
-//               a syntax error). Corrected from `List<PortDeclaration>`
-//               per codex BLOCKING on PR #3176: the prior per-port
-//               style encoding admitted the spec-forbidden mixed
-//               state.
-//   - items     the module-body items list (the Conj of parallel
-//               siblings — the IN-B parallel-composition surface)
+//   - NoModuleParameterPortList
+//       — `module M (a, b);` — no `#(...)` clause; the module
+//       takes no header-overridable parameters. (Body
+//       ParameterDeclarationItem may still appear, but those
+//       parameters are body-scoped and not part of the header-
+//       overridable surface; a ModuleInstance's
+//       ParameterOverrides bind to the HEADER parameter port list
+//       per §12.1.3.)
+//   - ModuleParameters { parameters: List<ParameterDeclaration> }
+//       — `module M #(parameter W = 8, parameter D = 16) (a, b);`
+//       — the header carries the parameter port list. These
+//       parameters are externally overridable via instantiation
+//       `#(...)` syntax (the ParameterOverrides Disj's actuals
+//       bind positionally or by name to THESE header parameters,
+//       not to body ParameterDeclarations).
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.1 admits exactly the
+// present-or-absent partition; SystemVerilog adds type parameters
+// and parameterized class declarations — a future language-version
+// model would EDIT this Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every module-instantiation /
+//      parameter-resolution consumer reads the header parameter
+//      port list to know which parameters are externally
+//      overridable; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{
+//      parameters: List<ParameterDeclaration> }` where empty-list
+//      = "no clause" conflates "explicitly `#()` empty" (a syntax
+//      no Verilog admits) with "no `#(...)` clause at all" — the
+//      Disj makes the present-vs-absent partition structural.
+//   3. Algebraic form — N/A by construction: the two variants are
+//      the spec's primitive clause-presence partition; not a
+//      richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single module declaration has
+//      EXACTLY ONE parameter-port-list-presence state; mutually-
+//      exclusive alternatives.
+//   5. Parameterized family — FAILS: NoModuleParameterPortList is
+//      nullary; ModuleParameters carries
+//      `List<ParameterDeclaration>` — structurally heterogeneous,
+//      NOT one generic `F<X>` / projection over a single source
+//      set (Practice 7).
+// Terminal: the closed two-way Verilog module-header parameter-
+// port-list classifier of the IEEE 1364-2005 spec §12.1.
+type ModuleParameterPortList
+  = NoModuleParameterPortList
+  | ModuleParameters { parameters: List<ParameterDeclaration> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VerilogModule — a top-level Verilog module (`module Name
+// #(parameters) (ports); items endmodule`). IEEE 1364-2005 §12.1.
+// Conj record (no Practice-4 ledger).
+//
+//   - name              the module identifier (K-1-opaque Symbol)
+//   - parameter_port_list
+//                       the OPTIONAL header `#(...)` parameter
+//                       port list (ModuleParameterPortList Disj —
+//                       NoModuleParameterPortList | ModuleParameters
+//                       per spec §12.1). These header parameters
+//                       are externally overridable via
+//                       instantiation `#(...)` syntax
+//                       (ParameterOverrides on ModuleInstance).
+//                       Added per codex BLOCKING on PR #3176 — the
+//                       prior shape had no carrier for `module M
+//                       #(parameter W = 8) (...)` headers,
+//                       collapsing the §12.1 partition with body
+//                       ParameterDeclarationItem (which is body-
+//                       scoped only).
+//   - ports             the port-declaration list as a
+//                       ModulePortsList Disj (NonAnsiPorts OR
+//                       AnsiPorts per spec §12.3.4; uniform per
+//                       module — mixing styles is a syntax error).
+//   - items             the module-body items list (the Conj of
+//                       parallel siblings — the IN-B parallel-
+//                       composition surface)
 //
 // Per the IN-B PROBE FINDING: the `items` field IS the parallel-
 // Conj surface; the structural concurrency of multiple always-blocks
@@ -1906,6 +1978,7 @@ type ModuleItem
 // feedback_no_annotations).
 type VerilogModule {
   name: Symbol
+  parameter_port_list: ModuleParameterPortList
   ports: ModulePortsList
   items: List<ModuleItem>
 }
