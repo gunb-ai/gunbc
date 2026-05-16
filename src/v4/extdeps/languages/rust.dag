@@ -48,14 +48,19 @@
 //     RustIntKind (signed / unsigned), RustIntWidth (Bits8/16/32/64/
 //     128 + Pointer for isize/usize per std/machine.dag PointerWidth),
 //     RustFloatWidth (Bits32/64 — the stable Rust IEEE-754 width set;
-//     f16/f128 are unstable per the pinned Reference), RustScalarKind
-//     (the Int/Float/Bool/Char/Str/Never primitive-types partition
-//     per Reference §3.3-§3.6; `()` is a TupleType per §3.10 and is
-//     out-of-scope for this slice — see SCOPE NEGATIVE Tuple types)
-//   - Rust scalar typed-shape sum: RustScalar (kind × width as a Disj
-//     with named-field variant payloads — illegal kind×width pairs are
-//     STRUCTURALLY UNREPRESENTABLE: no "Bool with width=Bits32",
-//     because Bool/Char/Str/Never variants carry no width payload)
+//     f16/f128 are unstable per the pinned Reference)
+//   - Rust scalar typed-shape sum: RustScalar — the SINGLE
+//     authority for Rust's six-way primitive-type partition per
+//     Reference §3.3-§3.6 (Int/Float/Bool/Char/Str/Never), with
+//     heterogeneous variant payloads so illegal kind×width pairs
+//     are STRUCTURALLY UNREPRESENTABLE: IntScalar { kind, width };
+//     FloatScalar { width }; BoolScalar / CharScalar / StrScalar /
+//     NeverScalar carry no width payload. (`()` is a TupleType per
+//     §3.10 — out-of-scope for this slice; see SCOPE NEGATIVE
+//     Tuple types.) A prior `RustScalarKind` enum was deleted as
+//     a P2 duplicate-authority partition over the same six kinds
+//     (openai-pro REQUEST_CHANGES 2026-05-16T15:30:41Z — Practice 7
+//     projection-over-enumeration discipline).
 //   - Rust reference vocabulary: RustReferenceKind (Shared / Exclusive
 //     — Rust's `&T` vs `&mut T`), and the Conj carrier RustReference
 //     attaching it to an opaque lifetime Symbol (K-1) AND the
@@ -382,8 +387,8 @@ import v4.std.node { Node, Symbol }
 //     tuple-types substrate.
 //     (Corrected 2026-05-16 per BLOCKING operator review on PR
 //     #3174: the prior slice mis-classified `()` as a `Unit` variant
-//     of `RustScalarKind`. The Reference partitions it as a tuple,
-//     and INVARIANTS P1 modeling-faithfulness requires the substrate
+//     of `RustScalar`. The Reference partitions it as a tuple, and
+//     INVARIANTS P1 modeling-faithfulness requires the substrate
 //     partition to ground in the spec partition. Removed from this
 //     slice; named for tuple-types substrate.)
 //   - The full Rust GRAMMAR production set (item declarations,
@@ -677,7 +682,14 @@ type RustFloatWidth
 // this Disj: per Reference §3.10 it is a TupleType, not a primitive
 // scalar. See SCOPE NEGATIVE Tuple types in the header.
 // Spec: https://doc.rust-lang.org/reference/types.html
-//   (Per-variant Spec URLs on RustScalarKind above; this Disj is the
+//   Per-variant spec URLs:
+//     Bool / BoolScalar:     https://doc.rust-lang.org/reference/types/boolean.html
+//     Int / IntScalar:       https://doc.rust-lang.org/reference/types/numeric.html
+//     Float / FloatScalar:   https://doc.rust-lang.org/reference/types/numeric.html
+//     Char / CharScalar:     https://doc.rust-lang.org/reference/types/textual.html
+//     Str / StrScalar:       https://doc.rust-lang.org/reference/types/textual.html
+//     Never / NeverScalar:   https://doc.rust-lang.org/reference/types/never.html
+//   (this Disj is the
 //   typed-value carrier composing kind × width over those.)
 //
 // The structural argument for the Disj-with-payloads (vs ptx's
@@ -714,11 +726,15 @@ type RustFloatWidth
 //      scalar's kind + width-if-applicable through this carrier;
 //      shared, not scattered.
 //   2. Variant-is-data — FAILS: collapsing the variants to a
-//      uniform record `{ kind: RustScalarKind, width: Option<…> }`
+//      uniform record `{ kind: <closed-enum>, width: Option<…> }`
 //      reintroduces the illegal state "Bool with width=Bits32"
 //      this Disj-with-payloads design exists to forbid. The
 //      six-variant Disj IS the dissolved form (P2 + Practice
-//      2/6 + M4).
+//      2/6 + M4). Such a separate `kind` enum would ALSO be a
+//      P2 duplicate-authority partition over the same six kinds
+//      this Disj already partitions on (the prior `RustScalarKind`
+//      enum landed in an earlier iteration and was deleted per
+//      Practice 7 / P2 — see header Owns block).
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
 //      algebra or cardinality structure (IntScalar → OrderedRing
 //      / Semiring per RustIntKind; FloatScalar →
