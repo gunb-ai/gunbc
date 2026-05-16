@@ -63,23 +63,20 @@
 //     coordinates total per `&'lifetime mut? TypeNoBounds`, so
 //     `&'a i32` and `&'a str` are distinct facts (P1/P2 fidelity)
 //   - Rust visibility scope: RustVisibility (Private / Pub / PubIn
-//     { path: PubInPath }) + the head-rooted path carrier shape
-//     (PubInPath { root: PubInRoot, suffix: List<NamedSegment> },
-//     PubInRoot { AtCrate | AtSuperChain { hops: SuperHops } },
-//     SuperHops { OneSuper | MoreSuper { outer: SuperHops } },
-//     NamedSegment { id: Symbol }) — the three-way visibility
-//     partition reflecting the Reference's fundamental form
-//     (§visibility-and-privacy), with `pub(crate)` / `pub(super)`
-//     canonicalizing to specific PubInPath values per the Reference's
-//     stated equivalences AND ALL of the following illegal path
-//     shapes structurally unrepresentable (per BLOCKING operator
-//     review 2026-05-16T05:06:51Z): empty path; Super after Crate
-//     root; bare Named without root; Super after a Named segment;
-//     Self root in any form (`pub(self)` ≡ Private); zero super
-//     hops (≡ Private). Path-restricted visibility CARRIES its
-//     SimplePath structurally; `pub(in crate::outer_mod)` is
-//     representable; the Reference's path-qualifier ordering rules
-//     are TYPE-ENFORCED, not documented-only.
+//     { path: PubInPath }) + PubInPath { resolved_path:
+//     List<NamedSegment> } + NamedSegment { id: Symbol } — the
+//     three-way visibility partition reflecting the Reference's
+//     fundamental form (§visibility-and-privacy). PubInPath carries
+//     an ABSOLUTE PATH FROM CRATE ROOT (empty = `pub(crate)`; non-
+//     empty = `pub(in crate::...)`); ONE canonical PubInPath value
+//     per resolved ancestor scope (P2 single-authority TYPE-
+//     ENFORCED — same resolved module = same structural value).
+//     `pub(crate)`, `pub(super)`, `pub(in <SimplePath>)` source
+//     forms all canonicalize to their absolute-from-crate-root
+//     resolved path at parse/resolve time; the carrier represents
+//     the post-resolution canonical form only. Reference-invalid
+//     and reflexive-current-module cases canonicalize to Private
+//     upstream and never reach this carrier.
 //   - Rust per-target cost-realization carrier shape: RustCost (per-
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
@@ -917,232 +914,57 @@ type NamedSegment {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SuperHops — a closed structural classifier for a non-empty chain
-// of `super` keywords. Used inside `PubInRoot.AtSuperChain.hops` to
-// represent paths like `super` / `super::super` / `super::super::super`.
-// The "non-empty" property is TYPE-ENFORCED via the base case
-// `OneSuper`: there is NO Zero variant, so `super::...` with zero
-// super hops is unrepresentable (which would semantically be the
-// current module ≡ `self` ≡ Private — duplicating the no-modifier
-// scope; P2 violation).
-// Spec: https://doc.rust-lang.org/reference/paths.html
+// ──────────────────────────────────────────────────────────────────
+// PubInPath — a typed Rust `pub(in path)` resolved-scope carrier.
+// Conj record (no Practice-4 ledger).
 //
-//   - OneSuper                            the single `super` (base case)
-//   - MoreSuper { outer: SuperHops }      `super::<outer>` — recursive
-//                                         chain (super::super,
-//                                         super::super::super, …);
-//                                         outer is itself a SuperHops,
-//                                         so the chain is always
-//                                         non-empty by construction
+// CANONICAL SHAPE: an ABSOLUTE PATH FROM CRATE ROOT, expressed as a
+// `List<NamedSegment>`. Empty list `[]` denotes the crate root itself
+// (equivalent to `pub(crate)`); a non-empty list `[A, B, ...]` denotes
+// the module at `crate::A::B::...`. ONE canonical PubInPath value per
+// resolved ancestor scope — INVARIANTS P2 single-authority TYPE-
+// ENFORCED.
 //
-// CLOSED (C1 stop-signal). The two-variant inductive shape is the
-// Peano-like representation of "at least one super hop"; a third
-// variant would change the inductive shape and is a C1 ratification.
+// (Corrected 2026-05-16 per openai-pro/gpt-5.5-pro BLOCKING review
+// 2026-05-16T08:36:04Z. Prior head-rooted shape
+// `{ root: PubInRoot, suffix: List<NamedSegment> }` with PubInRoot =
+// AtCrate | AtSuperChain admitted TWO structural values for the SAME
+// resolved scope: `pub(super)` for an item in `crate::a::b` would
+// canonicalize to `PubInPath { root: AtSuperChain { hops: OneSuper },
+// suffix: [] }` while `pub(in crate::a)` for the same item would
+// canonicalize to `PubInPath { root: AtCrate, suffix: [a] }` — both
+// denoting the parent-module scope. Same resolved scope, two
+// structural authorities = P2 violation. The earlier SuperHops +
+// PubInRoot carriers were SOURCE-SPELLING artifacts — absolute-from-
+// crate vs relative-from-current — not canonical forms. Per the
+// openai-pro finding: the canonical carrier should key the resolved
+// module once, not preserve absolute-vs-relative source spelling in
+// the canonical value. Refactored to a single absolute-path-from-
+// crate-root form; SuperHops + PubInRoot deleted as non-canonical. A
+// future slice may want a separate pre-resolution syntactic carrier
+// for IDE / diagnostic-span use cases; that lives alongside this one,
+// not in place of it.)
 //
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟡 SCAFFOLD (parallel positive-count encoding pending shared
-// substrate authority; codex BLOCKING 2026-05-16T06:26:18Z + operator
-// BLOCKING 2026-05-16T06:26:19Z naming the M9 / P5 violation:
-// 🟢-terminal classification is inappropriate while a shared
-// positive-count substrate is acknowledged as the genuine parent —
-// dsl/std/termination.dag treats the same Peano positive-count shape
-// as a scaffold pending shared numeric refinements; SuperHops
-// duplicates that state, so it is 🟡 — NOT 🟢-terminal — until the
-// shared substrate authority lands and SuperHops collapses into a
-// refinement over it). The 5-pattern ledger reads against the
-// SCAFFOLD classification: each pattern documents why the shape is
-// the LOCAL bridge (irreducible non-empty inductive form) while
-// also naming the shared-substrate parent it dissolves into.
+//   - resolved_path   the absolute path FROM CRATE ROOT to the
+//                     visibility-restriction module. Empty = crate
+//                     root (= `pub(crate)`); `[a]` = `crate::a`;
+//                     `[a, b, c]` = `crate::a::b::c`. The parser/
+//                     resolver canonicalizes every valid `pub(in
+//                     <SimplePath>)` source form to its absolute
+//                     path before constructing this carrier.
 //
-// Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every super-chain consumer (emission
-//      of `super::super::...`; visibility-scope ancestor walk) reads
-//      the depth uniformly; shared classifier, not scattered. The
-//      consumer surface is invariant under the future dissolution
-//      (replacing SuperHops with `{ hops: <shared positive-count> }`
-//      preserves the same consumer reads).
-//   2. Variant-is-data — FAILS: a `{ hops: Nat }` proxy with hops ≥ 1
-//      producer-obligation REINTRODUCES the duplicate-authority
-//      smell — `hops: Zero` would be a structurally-constructible
-//      no-super case (equivalent to `self` ≡ Private); the recursive-
-//      inductive form makes the at-least-one constraint type-
-//      enforced rather than producer-obligated. The future shared
-//      `PositiveNat` / `NonEmpty Nat` carrier would carry the same
-//      structural non-empty enforcement.
-//   3. Algebraic form — PARTIAL (not N/A as a 🟢-terminal would
-//      claim): super-hop depth IS a positive-count fact, which is
-//      the same shape dsl/std/termination.dag (v3 scaffold) and
-//      future std/cardinality.dag refinement substrate model with
-//      shared authority. SuperHops's local encoding is the bridge
-//      to that shared authority — not "no richer std/ source." Per
-//      M9, the genuine parent (positive-count substrate) exists in
-//      v3-scaffold form and is a dissolution target.
-//   4. Dimensional — FAILS: a super-chain has EXACTLY ONE shape per
-//      depth; OneSuper and MoreSuper are mutually-exclusive
-//      alternatives at each level.
-//   5. Parameterized family — FAILS at this layer; the two variants
-//      are the Peano-like inductive constructors (base + step). The
-//      shape WOULD project from a richer `F<X>` (a refinement over a
-//      shared positive-count carrier) when that lands — that's the
-//      dissolution path, not a current projection.
-// 🟡 SCAFFOLD: the closed two-variant inductive non-empty super-
-// chain, encoding "Nat ≥ 1" as a LOCAL BRIDGE. Dissolves into a
-// refinement over a shared positive-count substrate carrier when
-// std/cardinality.dag (or its successor) exposes one. Three bridge
-// properties (codex BLOCKING fix above):
-//   (a) scaffold doc — THIS classification + the 🟡 note above the
-//       declaration.
-//   (b) bounds on use — producers construct only via the declared
-//       variants (OneSuper as base; MoreSuper for chain extension);
-//       the carrier already structurally enforces the non-empty
-//       invariant.
-//   (c) dissolution trigger — when std/cardinality.dag (or its
-//       successor refinement substrate) exposes a shared
-//       `PositiveNat` / `NonEmpty Nat` / equivalent positive-count
-//       carrier, SuperHops collapses into a refinement
-//       `{ hops: <shared positive-count carrier> }`; same shape
-//       Dim3 / RustCost will use for their bounded-non-negative-Int
-//       axes.
-type SuperHops
-  = OneSuper
-  | MoreSuper { outer: SuperHops }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// PubInRoot — the closed structural classifier for the ROOT anchor
-// of a `pub(in path)` visibility's SimplePath. Per the Reference's
-// ancestor-resolution rule for `pub(in path)`, the root must be one
-// of: the crate root, or a non-empty chain of super hops. (The
-// `self` root is canonicalized to `RustVisibility.Private` and is
-// not representable here.)
+// Reference's invalid-path cases — empty source path; non-ancestor
+// modules; the SimplePath resolving to the item's current module
+// (which is no-modifier visibility, canonicalizes to Private, not
+// PubIn) — are parse/resolver-rejected or canonicalized upstream;
+// the carrier represents only legitimate strict-ancestor canonical
+// destinations + the crate-root case. P2 enforced structurally: a
+// given resolved ancestor scope has EXACTLY ONE structural
+// representation here (the absolute List<NamedSegment> from crate
+// root to the target module).
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
-//
-//   - AtCrate                          the `crate` keyword root —
-//                                      represents `pub(in crate)`
-//                                      (and `pub(crate)` shorthand)
-//   - AtSuperChain { hops: SuperHops } a non-empty chain of `super`
-//                                      hops at the root — represents
-//                                      `pub(in super)` / `pub(in
-//                                      super::super)` / …; the
-//                                      non-emptiness is type-
-//                                      enforced via SuperHops (no
-//                                      zero-hop case)
-//
-// THE PATH-RESTRICTED VISIBILITY STRUCTURAL DISCIPLINE the operator
-// BLOCKING review 2026-05-16T05:06:51Z required:
-//
-//   `PubIn { path: List<RustPathSegment> }` admits arbitrary
-//   sequences of (Crate | Super | Named) — including illegal
-//   shapes per the Rust Reference path-qualifier rules: `[]`
-//   (empty), `[Crate, Super]` (super after crate; no parent of
-//   crate root), `[Named]` alone (bare named without root), and
-//   `Super` after a named segment (e.g. `[Crate, Named, Super]`
-//   = `crate::foo::super`, an invalid super-position).
-//
-//   The corrected head-rooted shape: `PubInPath { root: PubInRoot,
-//   suffix: List<NamedSegment> }` STRUCTURALLY excludes all four:
-//     - `[]` (empty)                — no root supplied;
-//                                      unrepresentable (root is
-//                                      required by PubInPath shape).
-//     - `[Crate, Super]`            — Super not in suffix
-//                                      (NamedSegment doesn't admit
-//                                      Super); unrepresentable.
-//     - `[Named]` alone             — root required; bare named
-//                                      without prefix
-//                                      unrepresentable.
-//     - `Super after named` (e.g.   — Super not in suffix;
-//        `crate::foo::super`)         unrepresentable.
-//     - `Super after Crate`         — only one root coordinate;
-//        (e.g. `crate::super::X`)     after AtCrate, suffix is
-//                                      only NamedSegments;
-//                                      unrepresentable.
-//
-//   The PubInRoot Disj has no Self variant (per the prior P2-
-//   enforcement reasoning) AND SuperHops has no Zero variant (per
-//   the same P2 reasoning extended to super-chain depth — zero
-//   super hops would be ≡ Private). All illegal states the
-//   operator BLOCKING listed are unrepresentable, NOT documented-
-//   only.
-//
-// CLOSED (C1 stop-signal). A third root form (e.g. a `$crate`
-// macro-context root) is an edit to THIS declaration under the L-2
-// pin discipline.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every path-restricted visibility
-//      consumer reads the root uniformly to determine the ancestor
-//      anchor; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ kind: Symbol, hops: Nat? }`
-//      proxy reopens the K-1 readable-string anti-pattern AND
-//      admits the `hops: 0` / `kind: super` illegal state. The
-//      Disj-with-typed-payloads is the dissolved form.
-//   3. Algebraic form — N/A by construction: the two root forms
-//      are the Reference's ancestor-resolution primitives; they
-//      don't trace to a richer std/ algebraic structure. No
-//      richer std/ source.
-//   4. Dimensional — FAILS: a path's root is EXACTLY ONE form;
-//      mutually-exclusive alternatives (a path is rooted at crate
-//      OR at a super-chain, never both).
-//   5. Parameterized family — FAILS: AtCrate is nullary while
-//      AtSuperChain carries SuperHops — structurally heterogeneous
-//      shapes; NOT one generic `F<X>` / projection over a source
-//      set (Practice 7). The crate-root and super-chain-root forms
-//      represent structurally distinct ancestor-anchoring modes.
-// Terminal: the closed two-way Rust `pub(in path)` root-anchor
-// classifier; Self root unrepresentable by construction; empty
-// super-chain unrepresentable via SuperHops's non-empty inductive
-// shape.
-type PubInRoot
-  = AtCrate
-  | AtSuperChain { hops: SuperHops }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// PubInPath — a typed Rust `pub(in path)` SimplePath: an ancestor-
-// rooted path with zero or more named-segment continuations. Conj
-// record (no Practice-4 ledger).
-//
-//   - root      which ancestor anchor (AtCrate or AtSuperChain with
-//               a non-empty super-hop chain). The Self anchor is
-//               structurally excluded (PubInRoot has no Self
-//               variant). This is NOT a claim that all
-//               self-prefixed Rust source paths are
-//               unrepresentable visibilities — Rust does admit
-//               `self` as the first SimplePath segment, and the
-//               combinations starting with `self` resolve to
-//               canonical non-self forms per Reference §paths:
-//               `pub(in self)` ≡ Private (Reference equivalence);
-//               `pub(in self::super)` ≡ `pub(in super)` (self::super
-//               resolves to super at name-resolution time);
-//               `pub(in self::super::super::M)` ≡
-//               `pub(in super::super::M)`; etc. Each VALID self-
-//               prefixed source form has a REQUIRED canonical
-//               PubInPath / Private destination, enumerated in the
-//               canonicalization rules table below this declaration.
-//               The PARSER/RESOLVER is obligated under extdeps-
-//               fidelity / P2 to apply those canonicalizations
-//               before constructing this carrier; the carrier
-//               itself represents the post-resolution canonical
-//               scope (NOT the source SimplePath syntax).
-//   - suffix    zero or more module-identifier segments that follow
-//               the root; `pub(in crate::outer::inner)` has
-//               `suffix = [outer, inner]`; `pub(in super::super)`
-//               has `suffix = []`. The suffix only carries
-//               NamedSegments — `Super` and `Crate` segments
-//               cannot appear in the suffix, so all post-root
-//               keyword-segment positions (super-after-crate,
-//               super-after-named, crate-after-named, etc.) are
-//               structurally unrepresentable.
-//
-// Reference's invalid-path cases all dissolve to unrepresentable
-// PubInPath values; the carrier shape IS the structural rejection
-// per modeling-discipline.md Practices 2/6. (BLOCKING operator
-// review 2026-05-16T05:06:51Z required this structural form.)
 type PubInPath {
-  root: PubInRoot
-  suffix: List<NamedSegment>
+  resolved_path: List<NamedSegment>
 }
 
 
