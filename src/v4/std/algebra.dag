@@ -296,7 +296,7 @@ type BooleanAlgebra<T> {
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). The two
 // variants are the constructors of an inductive type (base + cons),
-// not compressed structure. Ledger — four patterns attempted:
+// not compressed structure. Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: Empty/Cons are not per-consumer facts;
 //      every structural fold over a FreeMonoid handles BOTH (induction
 //      base + step). No consumer uses only one.
@@ -311,6 +311,11 @@ type BooleanAlgebra<T> {
 //   4. Dimensional — FAILS: a sequence is EITHER empty OR head+tail;
 //      genuine alternatives (recursion base vs inductive case), never
 //      simultaneous coordinates. No value is "both".
+//   5. Parameterized family — FAILS: Empty/Cons are the base/step
+//      constructors of an inductive type (Peano-shaped), NOT N
+//      mechanically-repeated variants that are one generic `F<X>` /
+//      projection over a source set (Practice 7) — there is no source
+//      set to project from; this IS the canonical free construction.
 // Terminal: irreducible inductive definition of the free monoid; a
 // root primitive grounded in monoid theory.
 type FreeMonoid<T>
@@ -325,7 +330,7 @@ type FreeMonoid<T>
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// four patterns attempted:
+// five patterns attempted:
 //   1. Fact placement — FAILS: a comparison result is consumed
 //      uniformly (every `compare` consumer branches on all three); not
 //      a scattered per-consumer fact.
@@ -339,6 +344,10 @@ type FreeMonoid<T>
 //   4. Dimensional — FAILS: a comparison yields EXACTLY ONE of three
 //      (total-order trichotomy: exactly one of a<b, a=b, a>b holds) —
 //      mutually-exclusive alternatives, not simultaneous coordinates.
+//   5. Parameterized family — FAILS: Less/Equal/Greater are the fixed
+//      trichotomy outcomes, NOT one generic `F<X>` / projection over a
+//      source set (Practice 7); there is no X to project from — it is
+//      the irreducible 3-valued comparison codomain.
 // Terminal: irreducible trichotomy codomain of a total order.
 type Ordering
   = Less
