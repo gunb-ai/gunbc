@@ -27,3 +27,180 @@
 
 module v4.extdeps.formats.csv
 
+
+import v4.std.nat { Nat }
+import v4.std.text { Char }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CANONICAL-MIRROR (T-4.6 fan-out). EXACT-mirrors the ratified canonical
+// src/v4/extdeps/formats/json.dag seam (PR #3184, T-4 mgr seam-review
+// ratification msg_f5971a8a): the format's value carriers + node.dag A1
+// discipline + the Practice-4 five-pattern ledger where a sum applies;
+// the parse/emit carrier seam is the ratified corrected seam #3 —
+// fail-closed BOTH directions: `csv_parse : String -> Outcome<CsvDocument>`
+// AND **`csv_emit : CsvDocument -> Outcome<String>`** (with dialect
+// supplied as an explicit parameter — the CSV surface is NOT pure
+// `String -> …` like JSON; the ratified `Outcome<T>` carrier is still the
+// ONE D1 carrier from std/diagnostic.dag DECISIONS item **I**). Operations
+// deferred-with-named-owner. (Single authority = the Deferred (1) block
+// below; this summary states it, the block specifies it — no divergence.)
+//
+// L-2 VERSION PIN (C5 / extdeps discipline): RFC 4180 is the normative
+// CSV grammar for this file; `datatracker.ietf.org` HTML for RFC 4180 is
+// the checkable anchor revision. Spec drift = visible C1 edit to this
+// header's Anchor URL + receipt note.
+//
+// RECTANGULARITY — OPERATOR-PENDING STRUCTURAL CARRIER (T-4.6 Lane C
+// brief; supersedes the immutable header's "STRUCTURALLY == width" claim
+// for the PRE-RECONCILE body below — tracked-not-silent, csv-class). RFC
+// 4180 §1 states each record "should" contain the same number of fields;
+// the fail-closed PARSE profile the operator ratified for gunbc is
+// STRICTER (same arity across header + records, no ragged representable
+// document). A type-level "`Row` length == `width`" indexed family is NOT
+// expressible in the settled v2/v4 substrate today (no length-indexed
+// vector refinement — the same class of gap as toml.dag's `NonEmptyStr`
+// header vs `Map<String, …>` carrier). The delivered model is therefore
+// HONESTLY SCOPED like yaml.dag's `YamlMapping` §3.2.1.3 note: `CsvRow`
+// carries `List<String>`; **arity == `width` is NOT structurally enforced
+// by the carriers** — it is a PARSE-TIME + downstream-validation invariant
+// owned by the deferred `csv_parse` body (🟡 (2) below), fail-closed
+// `Rejected` on mismatch, never silent padding/truncation (INVARIANTS P3).
+// Full structural rectangularity (illegal ragged states unrepresentable)
+// waits the operator-pinned **length-indexed row / PositiveInt width**
+// substrate + the batched immutable-header reconcile where `Row`/`width`/
+// `PositiveInt` prose matches the machine-readable carriers (operator-
+// tier; worker does not edit the immutable header block above).
+//
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: `CsvRow`,
+// `CsvDocument`, `CsvDialect`, and the escape/header presence sums.
+// DEFERRED (🟡, named owner + dissolution trigger, NEVER improvised, NEVER
+// a bodiless `fn` — the frozen v2 seed rejects bodiless `fn`, DECISIONS
+// PARSE-1): `csv_parse`/`csv_emit` bodies, dialect validation (delimiter
+// must not equal quote except where the deferred grammar explicitly
+// permits RFC edge cases), and Char-range validation on dialect code
+// points (std/text.dag `Char` scaffold). Verified pattern: std/collection.
+// dag #3169 + canonical json.dag #3184.
+//
+// CARRIER SEAM — fail-closed BOTH directions (authority = Deferred (1)):
+//   - `csv_parse : (source: String, dialect: CsvDialect) -> Outcome<CsvDocument>`
+//   - `csv_emit  : (doc: CsvDocument, dialect: CsvDialect) -> Outcome<String>`
+// Immutable scaffold header's `parse(String, Dialect) -> Result<…>` /
+// `emit(CsvDocument, Dialect) -> String` lines: the `Result<…, Diagnostic>`
+// prose denotes `Outcome<…>` per DECISIONS **I**; the `-> String` emit line
+// is the superseded total-emit shape — operator-tier header-reconcile
+// (csv-class; tracked-not-silent in Deferred (1)), same json.dag #3184
+// finding.
+//
+// HEADER `Option<Char>` / `Option<Row>` — delivered as explicit sums
+// (`CsvEscapeSpec`, `CsvHeaderPresence`) per v4 P2 discipline (diagnostic.
+// dag: no bare `Option<Node>` class of encodings for semantic presence).
+// The immutable header's `Option<…>` spelling is the conceptual contract;
+// the mechanical carriers below are the reconciled explicit form pending
+// a literal header edit batch.
+//
+// `Bool`/`String` kernel-ambient; `List`/`Map` kernel containers (STRUCTURE.
+// md). `Nat`/`Char` are imported as modeled authorities (width metadata;
+// dialect code points).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CsvEscapeSpec — CSV Dialect escape character presence (immutable-header
+// `escape: Option<Char>`).
+type CsvEscapeSpec
+  = CsvEscapeChar { escape: Char }
+  | CsvEscapeAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CsvHeaderPresence — optional header row (immutable-header `header:
+// Option<Row>`). `HeaderPresent.row` is ONE logical header record; RFC
+// profile: its arity participates in the deferred rectangularity check
+// against every body row (🟡 (2)).
+type CsvHeaderPresence
+  = HeaderPresent { row: CsvRow }
+  | HeaderAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CsvDialect — RFC 4180–oriented delimiter/quote/escape/line-break
+// parameters. Anchor: RFC 4180 (comma default; double-quote field
+// enclosure). **Field-level escape rules** inside quoted fields are
+// parse-body work (🟡 Deferred (1)); the carriers hold the parameters only.
+type CsvDialect {
+  delimiter: Char,
+  quote: Char,
+  escape: CsvEscapeSpec,
+  line_terminator: String,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CsvRow — one logical record as an ordered field list. The immutable
+// header names this authority `Row`; v4 declares it as `CsvRow` for grep
+// stability (operator header-reconcile may alias the spelling).
+//
+// Coproduct dissolution (Practice 4) — N/A (this is a `Conj` record, not a
+// sum). The row is not a recursive JSON-like value space; it is a single
+// product carrying `List<String>` (A1: recursion is through `List`, not
+// through `CsvRow`).
+type CsvRow {
+  fields: List<String>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CsvDocument — a header slot + body records + the logical field-count
+// metadata `width` from the immutable scaffold header (`PositiveInt` in
+// prose). Delivered `width: Nat` is the honest counting carrier (Peano
+// `Nat` from std/nat.dag — the same non-negative counting discipline as
+// the rest of the numeric tower); **strict positive width** (`PositiveInt`)
+// is refinement-substrate operator-pending — surfaced here, not fabricated
+// as a pretend `PositiveInt` type. Until refinement lands, arity checks
+// against `width == Zero` are part of the same deferred parse authority
+// as rectangularity (🟡 (2)).
+//
+// RECTANGULARITY (HONEST SCOPE — see modeling notes): `records` MAY
+// structurally contain rows whose `fields` length differs from `width`
+// AND from each other; such a value is either (a) not constructible from
+// a conforming deferred `csv_parse`, or (b) a producer bug / invalid
+// manual construction — emit MUST fail-closed (`Outcome`) per json.dag
+// seam #3, never fabricate a normalizing CSV artifact.
+type CsvDocument {
+  width: Nat,
+  header: CsvHeaderPresence,
+  records: List<CsvRow>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡). Operations + dialect grammar ride
+// substrate that is scaffold today. NOT authored here — not improvised
+// bodies, not bodiless `fn` (DECISIONS PARSE-1).
+//
+// (1) `csv_parse` / `csv_emit` — Char-stream structural walks over the
+//   RFC 4180 grammar parameterized by `CsvDialect`; require std/text.dag
+//   `String` ↔ `List<Char>` decomposition (T-3). RATIFIED strategy:
+//   single-pass scan with quoted-field sub-machine (RFC 4180 §2) —
+//   termination is input consumption (A2 implicit), not a ranking measure.
+//     (a) scaffold doc — THIS note; no `csv_parse`/`csv_emit` in this file.
+//     (b) bounds on use — no consumer reads these symbols here yet.
+//         When authored: `csv_parse` / `csv_emit` use `Outcome<…>` fail-
+//         closed BOTH directions (json.dag #3184 seam #3).
+//     (c) dissolution trigger — std/text.dag Char-stream substrate lands
+//         ⇒ follow-up adds the operations + fail-closed emit validation
+//         (invalid dialect pairing, non-Unicode-scalar `Char` in dialect,
+//         rectangularity violations, etc.).
+//
+// (2) RFC 4180 rectangularity + `width` consistency — PARSE/VALIDATION
+//   authority until the length-indexed row substrate lands (see modeling
+//   notes). The deferred `csv_parse` computes `width` from the header row
+//   (if `HeaderPresent`) or the first data row (`HeaderAbsent`), then
+//   rejects any row with a different field count as `Rejected { diagnostic
+//   }` — never pads, never truncates, never normalizes away the mismatch
+//   (INVARIANTS P3). **Named trigger:** operator pins structural
+//   `Row<W>` / `PositiveInt` width refinement + immutable-header reconcile
+//   (csv-class) ⇒ illegal ragged states become unrepresentable at the type
+//   layer and this deferral dissolves.

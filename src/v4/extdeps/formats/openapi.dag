@@ -23,3 +23,198 @@
 
 module v4.extdeps.formats.openapi
 
+
+import v4.extdeps.formats.json { JsonValue }
+import v4.extdeps.formats.json_schema { JsonSchema }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// L-2 VERSION PIN (C5): OpenAPI **3.1.0** (`spec.openapis.org/oas/v3.1.0`)
+// is the normative document revision for this file. The `openapi` field
+// value is carried as a **verbatim** `String` (`openapi_version_lexeme`) —
+// the json.dag lexeme-preserving / yaml.dag scalar discipline — so patch
+// levels (`3.1.1`, tooling quirks) remain round-trip-visible until a
+// dedicated version-refinement substrate lands (🟡 Deferred (2)).
+//
+// PARSE SURFACE (immutable header: YAML or JSON). The **wire instance** of
+// an OpenAPI document is a UTF-8 text file in JSON or YAML encoding; the
+// typed `OpenApiDocument` below is the **semantic** carrier after surface
+// parse + reference resolution (deferred — 🟡 (1)). This file does not
+// re-declare `yaml_parse` / `json_parse`; it **consumes** those seams from
+// `yaml.dag` / `json.dag` once they exist, then runs OpenAPI-specific
+// structural validation (also deferred). Cross-file Consumes authority for
+// the YAML/JSON surface remains the format modules (header lines above);
+// no `import` edge is required until an operation body closes the loop
+// (unused import = 0-diagnostics failure) — same json.dag pattern.
+//
+// JSON SCHEMA ALIGNMENT (OAS 3.1). `components.schemas` values are JSON
+// Schemas per the OAS 3.1 spec; this file **imports** `JsonSchema` from
+// json_schema.dag (single authority — INVARIANTS P2). Schema-to-type
+// derivation delegates to json_schema.dag's future `schema_to_type` —
+// not re-declared here.
+//
+// HTTP METHOD MAP (immutable header `Map<HttpMethod, Operation>`). The v4
+// kernel does not yet host a shared transport-level `HttpMethod` enum in
+// std/ (dsl `extdeps/transports/rest.dag` references legacy `std.types` —
+// not v4). This file therefore declares **`OpenApiHttpMethod`** as the
+// closed OAS Path Item Object operation set (get/put/post/delete/options/
+// head/patch/trace) — M4 closed set as a sum, not strings. **Extension
+// verbs** (`x-` object members and non-OAS methods) remain in
+// `path_extensions` / `operation_extensions` as `JsonValue` until an
+// operator-pinned extension policy lands (🟡 (3)).
+//
+// CANONICAL-MIRROR — `Outcome<T>` seam for parse/emit (json.dag #3184
+// seam #3): when `openapi_parse` / `openapi_emit` land, they are fail-
+// closed BOTH directions using std/diagnostic.dag `Outcome<T>` (DECISIONS
+// **I**). The immutable header's `parse -> Result<…>` / `emit -> String`
+// lines reconcile the same way as csv/json/yaml (total emit superseded).
+//
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
+// the document root, info, paths, operations, responses, media types, and
+// component schemas; **$ref** resolution, parameter objects, callbacks,
+// security schemes, servers, and the full Components object beyond `schemas`
+// are 🟡 deferred with named triggers — not silently omitted without a
+// receipt: overflow lives in `components_extras` / `path_extensions` /
+// `operation_extensions` as faithful `JsonValue` maps (M5).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiHttpMethod — Path Item Object operation names (OAS 3.1.0 §Path
+// Item Object). Closed set; extension methods are NOT silently folded here.
+type OpenApiHttpMethod
+  = OpenApiGet
+  | OpenApiPut
+  | OpenApiPost
+  | OpenApiDelete
+  | OpenApiOptions
+  | OpenApiHead
+  | OpenApiPatch
+  | OpenApiTrace
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiOptionalString — optional descriptive string fields (summary,
+// description slices) without using bare `Option<String>` (diagnostic.dag
+// P2 discipline class — prefer explicit sums for semantic optionality).
+type OpenApiOptionalString
+  = OpenApiStringPresent { value: String }
+  | OpenApiStringAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiInfo — OAS Info Object (title + version are required strings at
+// the JSON surface; modeled here as mandatory fields).
+type OpenApiInfo {
+  title: String,
+  summary: OpenApiOptionalString,
+  description: OpenApiOptionalString,
+  version: String,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiMediaType — Media Type Object (OAS 3.1.0). `schema` is JSON Schema
+// (single authority: json_schema.dag). `examples`/`example` overflow and
+// encoding objects stay as JSON in `extras` until decomposed (🟡 Deferred).
+type OpenApiMediaType {
+  schema_shape: OpenApiMediaTypeSchemaSlot,
+  extras: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiMediaTypeSchemaSlot — schema MAY be omitted on a media type object.
+type OpenApiMediaTypeSchemaSlot
+  = OpenApiMediaSchemaPresent { schema: JsonSchema }
+  | OpenApiMediaSchemaAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiResponse — Response Object (description required at JSON surface).
+type OpenApiResponse {
+  description: String,
+  content: Map<String, OpenApiMediaType>,
+  extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiOperation — Operation Object slice modeled here: `operationId`,
+// `responses` map (required by OAS rules once the operation exists — empty
+// map is structurally representable but spec-invalid; validation is 🟡
+// deferred parse authority, same csv rectangularity pattern). Parameters,
+// requestBody, callbacks, security live in `extensions` until decomposed.
+type OpenApiOperation {
+  operation_id: OpenApiOptionalString,
+  responses: Map<String, OpenApiResponse>,
+  operation_extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiPathItem — Path Item Object: concrete path (`routes` map) with
+// faithful extension capture. **`$ref` sibling form** (Path Item Object
+// reference) is deferred 🟡 (1): until `$ref` substrate lands, a path item
+// that is ONLY a reference round-trips its JSON shape through
+// `path_extensions` / operator follow-up — not silently normalized.
+type OpenApiPathItem {
+  routes: Map<OpenApiHttpMethod, OpenApiOperation>,
+  path_extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiComponents — Components Object `schemas` map (JSON Schema values).
+// Other component keys (`responses`, `parameters`, …) stay in
+// `components_extras` as faithful `JsonValue` until a pinned decomposition
+// lands (MODELING.md M10 — proper homes before variant explosion).
+type OpenApiComponents {
+  schemas: Map<String, JsonSchema>,
+  components_extras: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiComponentsSlot — the entire `components` object is optional on the
+// root OpenAPI document.
+type OpenApiComponentsSlot
+  = OpenApiComponentsPresent { components: OpenApiComponents }
+  | OpenApiComponentsAbsent
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). `servers`
+// / `webhooks` / `security` / `tags` / `externalDocs` remain in
+// `root_extensions` as JSON until decomposed (🟡). `jsonSchemaDialect` is
+// modeled verbatim when present as a string (OAS 3.1 feature) — absence is
+// explicit.
+type OpenApiDocument {
+  openapi_version_lexeme: String,
+  json_schema_dialect: OpenApiOptionalString,
+  info: OpenApiInfo,
+  paths: Map<String, OpenApiPathItem>,
+  components: OpenApiComponentsSlot,
+  root_extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡).
+//
+// (1) `openapi_parse` / `openapi_emit` — surface decode (JSON per json.dag
+//   seam; YAML per yaml.dag seam) + OpenAPI structural validation + `$ref`
+//   resolution graph + Path Item reference normalization. Requires std/text.
+//   dag + the json/yaml parse bodies. Fail-closed `Outcome<OpenApiDocument>`
+//   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
+//   lands + yaml/json parse operations land + operator pins reference
+//   substrate.
+//
+// (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
+//   comparison against supported spec revisions; trigger = operator version
+//   lattice + semver substrate.
+//
+// (3) Extension HTTP methods / non-OAS verbs — policy for whether they lift
+//     into a dedicated sum or remain JSON-tagged; trigger = operator transport
+//     layer pin (`HttpMethod` shared home).

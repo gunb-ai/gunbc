@@ -21,3 +21,121 @@
 
 module v4.extdeps.formats.json_schema
 
+
+import v4.extdeps.formats.json { JsonValue }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CANONICAL-MIRROR (T-4.6 fan-out). Mirrors the ratified json.dag seam
+// family for **fail-closed outcomes** on any future operation symbols
+// (PR #3184 / msg_f5971a8a): when `json_schema_validate` /
+// `json_schema_emit` / `schema_to_type` land, they return `Outcome<…>` /
+// `Outcome<Node>` per std/diagnostic.dag DECISIONS **I** — NOT parallel
+// `Result<ok, err>` spellings and NOT total `emit -> JsonSchema` from an
+// ill-typed `Node` (json.dag #3184 P3 / seam #3 propagated). Single
+// authority = Deferred (1) below.
+//
+// L-2 VERSION PIN (C5): Draft **2020-12** core document is the normative
+// JSON Schema release modeled here; the Anchor URL is the checkable
+// revision. Migration to a newer JSON Schema release is a visible C1
+// edit to this header + a Practice-4 re-ledger pass, not a silent drift.
+//
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
+// closed recursive **`JsonSchema`** sum + typed carriers for the highest-
+// traffic Core vocabulary slice (`type`, `properties`, `required`, `items`)
+// + an `additional_keywords` map for spec-faithful extension without
+// inventing a closed keyword enum that would rot on every Core appendix
+// change (MODELING.md M3: extdeps model specs — the keyword set is
+// open-ended at the JSON surface; closed-keyword modeling lands as a
+// follow-up with an operator pin, not an improvised partial enum).
+// DEFERRED (🟡): validation walk, `schema_to_type`, emit-from-`TypeNode`,
+// `$ref` / `$dynamicRef` resolution graph, unevaluatedProperties/items
+// evaluation, numeric-string `"type"` union edge cases, and annotation
+// collection. NEVER bodiless `fn` (DECISIONS PARSE-1).
+//
+// BOOLEAN SCHEMA (Core §4.2.1). JSON Schema instances may be `true` or
+// `false` booleans at the JSON value level — not objects. They are their
+// own sum variants here (`JsonSchemaTrue` / `JsonSchemaFalse`), NOT
+// `JsonValue` wrappers, so schema composition stays explicitly typed.
+//
+// RECURSION (node.dag A1). `JsonSchema` references itself through
+// `Map<String, JsonSchema>` (`properties`) and `JsonSchemaItemsSlot`
+// (`items`) — regular recursion ⇒ admissible; termination for walks is
+// the implicit JSON value / schema tree descent (same class as `JsonValue`).
+//
+// `JsonValue` is the validation SUBJECT and the carrier for keyword values
+// that remain JSON-first at this layer (`additional_keywords` + the
+// `JsonSchemaTypeSlot` / `JsonSchemaItemsSlot` JSON-shaped edges). **Honest
+// scope:** not every Core keyword is decomposed into a dedicated field;
+// unknown / deferred-for-now keywords remain in `additional_keywords` as
+// faithful `JsonValue` payloads keyed by their JSON member name — no
+// silent drop (M5).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchemaTypeSlot — the `"type"` keyword (Core §4.2.1 + applicator
+// vocabulary). JSON Schema permits either a string or an array of strings;
+// absent keyword is modeled as its own variant (not a fabricated default).
+type JsonSchemaTypeSlot
+  = JsonSchemaTypeAbsent
+  | JsonSchemaTypeName { name: String }
+  | JsonSchemaTypeNames { names: List<String> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchemaItemsSlot — the `"items"` keyword (2020-12 applicator slice
+// modeled here). `prefixItems` / `unevaluatedItems` / tuple forms remain
+// in `additional_keywords` until a pinned decomposition PR (named in
+// Deferred (1)) — not silently conflated with `items`.
+type JsonSchemaItemsSlot
+  = JsonSchemaItemsAbsent
+  | JsonSchemaItemsSchema { item_schema: JsonSchema }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonSchema — JSON Schema 2020-12 schema document: boolean form OR object
+// form carrying the typed keyword bundle + faithful keyword overflow map.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
+// Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: schema kind is uniform across validation,
+//      emit, and OpenAPI `components.schemas` ingestion.
+//   2. Variant-is-data — FAILS: boolean schemas are nullary; object schemas
+//      carry a large structured payload — a flat record would admit illegal
+//      mixes (boolean + object fields).
+//   3. Algebraic form — N/A: JSON Schema is external-spec data, not an
+//      algebra inhabitant in the std/algebra.dag sense.
+//   4. Dimensional — FAILS: a schema is exactly one of boolean true / false /
+//      object form at the JSON value grammar level for this subset.
+//   5. Parameterized family — FAILS: variants are heterogeneous, not `F<X>`
+//      over one enumerable index set.
+type JsonSchema
+  = JsonSchemaTrue
+  | JsonSchemaFalse
+  | JsonSchemaInstance {
+      instance_type: JsonSchemaTypeSlot,
+      properties: Map<String, JsonSchema>,
+      required: List<String>,
+      items: JsonSchemaItemsSlot,
+      additional_keywords: Map<String, JsonValue>,
+    }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡).
+//
+// (1) Operations — `json_schema_validate`, `schema_to_type`, `json_schema_
+//   emit_from_type_node`, plus full applicator vocabulary decomposition
+//   (`prefixItems`, `contains`, `unevaluated*`, `$ref` graph, annotation
+//   collection). All require std/text.dag stream substrate + std/node.dag
+//   `TypeNode` facts for derivation — T-3 / T-6 pipeline work, not bodiless
+//   signatures here. When authored: **fail-closed `Outcome<…>`** on every
+//   operation (json.dag seam #3); a structurally constructible but spec-
+//   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload)
+//   validates/derives `Rejected`, never a fabricated success.
+//     (a) scaffold doc — THIS note.
+//     (b) bounds on use — no symbols exported yet; consumers wait.
+//     (c) dissolution trigger — operator pins the remaining Core keyword
+//         carriers + lands parser/typecheck substrate for the operations.
