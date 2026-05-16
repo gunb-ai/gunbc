@@ -40,7 +40,10 @@
 //     StateSpace (memory hierarchy), BarrierScope (CTA/cluster/GPU/sys),
 //     ThreadAxis (X/Y/Z), ThreadCoordSource (thread / CTA-in-cluster /
 //     cluster / CTA-in-grid hierarchy per PTX ISA 8.5),
-//     RegisterWidth (b1/b8/b16/b32/b64/b128), RegisterScalarKind
+//     BitsWidth / IntegerWidth / FloatWidth (per-kind admissible-
+//     width sub-enums — kind × width admissibility is structurally
+//     enforced by RegisterScalar's Disj-with-payloads below, not
+//     deferred to a check), RegisterScalarKind
 //     (Bits/Unsigned/Signed/Float/Predicate)
 //   - PTX value shapes as Conj records: RegisterScalar, Dim3 (🟡 scaffold
 //     — same bridge as std/diagnostic.dag's ByteRange),
@@ -74,8 +77,9 @@
 //
 // Consumes:
 //   - nothing — this file is closed-enum + Conj-record declarations
-//     only. `Int` is kernel-ambient (Dim3 component, RegisterWidth bit-
-//     count surface). No algebra instance-values are declared at this
+//     only. `Int` is kernel-ambient (Dim3 component; the per-kind
+//     width sub-enums BitsWidth/IntegerWidth/FloatWidth are closed
+//     enums, not Int-carrying). No algebra instance-values are declared at this
 //     phase (see "Owned ELSEWHERE" — PTX scalar inhabitance is
 //     downstream of T-3 wave A3 + T-4's LanguageModel shape).
 //   (The scaffold header's prior `std/node.dag, std/algebra.dag,
@@ -448,52 +452,43 @@ type ThreadCoordSource
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RegisterWidth — the closed PTX bit-width classifier for typed
-// registers. Exactly six widths admitted by the PTX scalar type
-// system (`.b{n}` / `.u{n}` / `.s{n}` / `.f{n}`):
+// BitsWidth — the closed PTX untyped-bits-vector width classifier.
+// The PTX ISA 8.5 §5.2 fundamental-types section admits exactly five
+// untyped `.b{n}` widths (a `.b1` form does NOT exist; the 1-bit
+// register is `.pred` only).
 //
-//   - Bits1   — `.pred`        the 1-bit predicate register width
-//                              (only the Predicate kind admits this)
-//   - Bits8   — `.{b,u,s}8`
-//   - Bits16  — `.{b,u,s,f}16` (`.f16` is IEEE-754 half-precision)
-//   - Bits32  — `.{b,u,s,f}32`
-//   - Bits64  — `.{b,u,s,f}64`
-//   - Bits128 — `.b128`        (untyped only at this width)
+//   - Bits8    — `.b8`
+//   - Bits16   — `.b16`
+//   - Bits32   — `.b32`
+//   - Bits64   — `.b64`
+//   - Bits128  — `.b128`    (untyped 128-bit value used by `mov.b128`
+//                            and vector load/store instructions)
 //
-// CLOSED (C1 stop-signal). A 256-bit / 512-bit / bf16-distinct
-// addition is an edit to THIS declaration (and the kind-width
-// admissibility table) under the L-2 pin discipline.
+// CLOSED (C1 stop-signal). A `.b256` / `.b512` is an edit to THIS
+// declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every RegisterScalar consumer that
-//      emits or sizes a register reads the width tag; shared
-//      classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (1/8/16/…)
-//      replaces a closed 6-valued exhaustive sum with an unbounded
-//      Int (bits=42 representable) — violates P2 + M4. The widths
-//      are NOT free Int values; they are the PTX-admitted subset,
-//      so a free-Int carrier would ratify illegal widths (the
-//      INVARIANTS P2 illegal-states-unrepresentable shape).
+//   1. Fact placement — FAILS: every `BitsScalar` consumer reads the
+//      width to size the value; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
+//      64/128) replaces a closed 5-valued exhaustive sum with an
+//      unbounded Int (bits=42 representable) — violates P2 + M4.
 //   3. Algebraic form — partially N/A: the bit-counts form an
-//      ordered set (1 < 8 < 16 < …), but the ORDER is derived FROM
-//      the closed enum, not a richer source — pointing to a
-//      `Lattice<RegisterWidth>` would parallel-represent the
-//      enumeration the order is defined over (algebra.dag U1 engine-
-//      debt smell).
-//   4. Dimensional — FAILS: a single typed register has EXACTLY ONE
-//      width; mutually-exclusive alternatives. The kind × width
-//      Cartesian product lives on `RegisterScalar` (Conj), not on
-//      this enum.
-//   5. Parameterized family — FAILS: the six widths are the PTX-
+//      ordered set, but the ORDER is derived FROM the closed enum
+//      (algebra.dag U1 engine-debt smell — same argument as
+//      rust.dag's RustIntWidth).
+//   4. Dimensional — FAILS: a single typed bits-vector has EXACTLY
+//      ONE width; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the five widths are the PTX-
 //      admitted bit-counts; they are NOT one generic `F<X>` /
 //      projection over a separately-declared source set (Practice
-//      7). The bit-count itself IS the discriminant; there is no
-//      richer X to project from.
-// Terminal: the closed six-way PTX register-width classifier.
-type RegisterWidth
-  = Bits1
-  | Bits8
+//      7).
+// Terminal: the closed five-way PTX untyped-bits-width classifier.
+type BitsWidth
+  = Bits8
   | Bits16
   | Bits32
   | Bits64
@@ -501,38 +496,152 @@ type RegisterWidth
 
 
 // ─────────────────────────────────────────────────────────────────────
+// IntegerWidth — the closed PTX typed-integer (signed / unsigned)
+// width classifier. The PTX ISA 8.5 §5.2 fundamental-types section
+// admits exactly four typed-integer widths: `.u8/.u16/.u32/.u64` and
+// `.s8/.s16/.s32/.s64`. A `.u128` / `.s128` form does NOT exist (the
+// 128-bit width is `.b128`-only — untyped); a `.u1` / `.s1` form does
+// NOT exist (the 1-bit register is `.pred` only).
+//
+//   - Bits8   — `.u8`  / `.s8`
+//   - Bits16  — `.u16` / `.s16`
+//   - Bits32  — `.u32` / `.s32`
+//   - Bits64  — `.u64` / `.s64`
+//
+// CLOSED (C1 stop-signal). A `.u128` / `.s128` (currently NOT in PTX
+// 8.5) is an edit to THIS declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every `UnsignedScalar` / `SignedScalar`
+//      consumer reads the width to size the integer; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/64)
+//      replaces a closed 4-valued exhaustive sum with an unbounded
+//      Int (bits=42 representable; bits=1 / bits=128 would also be
+//      admitted, but PTX 8.5 doesn't define `.u1` / `.s1` / `.u128`
+//      / `.s128`) — violates P2 + M4.
+//   3. Algebraic form — partially N/A: the bit-counts form an
+//      ordered set, but the ORDER is derived FROM the closed enum
+//      (same argument as BitsWidth).
+//   4. Dimensional — FAILS: a single typed integer has EXACTLY ONE
+//      width.
+//   5. Parameterized family — FAILS: the four widths are the PTX-
+//      admitted typed-integer bit-counts; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). One could attempt a projection from BitsWidth's
+//      five-element set by removing Bits128, but the partition is
+//      defined by the PTX spec's choice of which widths to admit
+//      for typed-integer interpretation — that choice IS the
+//      discriminant, not a mechanical projection.
+// Terminal: the closed four-way PTX typed-integer-width classifier.
+type IntegerWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FloatWidth — the closed PTX typed-float width classifier. The PTX
+// ISA 8.5 §5.2 fundamental-types section admits exactly three typed-
+// float widths: `.f16` (IEEE-754 binary16 half-precision), `.f32`
+// (IEEE-754 binary32 single-precision), and `.f64` (IEEE-754 binary64
+// double-precision). `.bf16` (brain-float-16) is a SEPARATE kind in
+// PTX 8.5 (not a width of `.f`); it is scope-negative for this slice
+// pending the bf16-kind declaration (see header SCOPE NEGATIVE).
+// `.f8` / `.f128` do NOT exist in PTX 8.5.
+//
+//   - Bits16  — `.f16`    (IEEE-754 binary16 half-precision)
+//   - Bits32  — `.f32`    (IEEE-754 binary32 single-precision)
+//   - Bits64  — `.f64`    (IEEE-754 binary64 double-precision)
+//
+// CLOSED (C1 stop-signal). An `.f128` / `.f256` (currently NOT in
+// PTX 8.5) is an edit to THIS declaration under the L-2 pin
+// discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every `FloatScalar` consumer reads
+//      the width to size the float; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (16/32/64)
+//      replaces a closed 3-valued exhaustive sum with an unbounded
+//      Int — violates P2 + M4.
+//   3. Algebraic form — N/A by construction: the three widths
+//      structurally inhabit the SAME algebra (ApproximateField per
+//      std/float.dag scaffold's anchor); they do not partition into
+//      distinct algebraic structures (.f16 / .f32 / .f64 are all
+//      ApproximateFields, only the precision differs).
+//   4. Dimensional — FAILS: a single typed float has EXACTLY ONE
+//      width.
+//   5. Parameterized family — FAILS: the three widths are the PTX-
+//      admitted typed-float bit-counts (the IEEE-754 binary-format
+//      subset PTX 8.5 stabilizes); they are NOT one generic `F<X>` /
+//      projection over a separately-declared source set (Practice
+//      7). The richer IEEE-754 source (binary16/32/64/128) is the
+//      spec's universe, but PTX admits the binary16/32/64 subset
+//      typed — the choice of "which widths PTX stabilizes as `.f`"
+//      is the partition discriminant.
+// Terminal: the closed three-way PTX typed-float-width classifier.
+type FloatWidth
+  = Bits16
+  | Bits32
+  | Bits64
+
+
+// ─────────────────────────────────────────────────────────────────────
 // RegisterScalarKind — the closed PTX scalar-type kind classifier.
-// PTX scalar types decompose as KIND × WIDTH (the kind names the
-// interpretation; the width sizes it):
+// PTX scalar types partition into exactly five kinds per the PTX ISA
+// 8.5 §5.2 fundamental-types section:
 //
 //   - Bits      — `.b{w}`   untyped bit-vector (width-only, no
-//                           arithmetic semantics)
-//   - Unsigned  — `.u{w}`   unsigned modular integer (Semiring)
+//                           arithmetic semantics; admissible widths
+//                           BitsWidth = {8/16/32/64/128})
+//   - Unsigned  — `.u{w}`   unsigned modular integer (Semiring;
+//                           admissible widths IntegerWidth =
+//                           {8/16/32/64})
 //   - Signed    — `.s{w}`   signed two's-complement integer
-//                           (OrderedRing)
+//                           (OrderedRing; admissible widths
+//                           IntegerWidth = {8/16/32/64})
 //   - Float     — `.f{w}`   IEEE-754 floating-point (ApproximateField;
-//                           w ∈ {16, 32, 64})
+//                           admissible widths FloatWidth =
+//                           {16/32/64})
 //   - Predicate — `.pred`   1-bit boolean (BooleanAlgebra; width is
-//                           always Bits1, so the kind alone
-//                           determines width)
+//                           always 1, no width payload — the kind
+//                           alone determines the value's shape)
 //
-// The KIND × WIDTH admissibility (e.g. `.f8` is invalid; `.b128` is
-// the only Bits-kind width above 64; `.pred` admits only Bits1) is a
-// `RegisterScalar`-record-level structural invariant, evaluated
-// fail-closed by a `register_scalar_well_formed` check whose home is
-// the LanguageModel grammar substrate (T-4). The kind enum here
-// closes the K dimension; widths close the W dimension; the cross-
-// product admissibility is the joint check, not a separate carrier.
+// THIS ENUM IS A META-CLASSIFIER (Owns the K-dimension partition only,
+// not the cross-product); the kind × admissible-width admissibility
+// is STRUCTURALLY ENFORCED by the `RegisterScalar` Disj-with-payloads
+// declaration below — each Disj variant carries EXACTLY its kind-
+// admissible width sub-enum (or no width payload, for `Predicate`),
+// so illegal kind × width pairs like `Predicate + Bits64` or `Float +
+// Bits8` are unrepresentable (the INVARIANTS P2 illegal-states-
+// unrepresentable shape; the same design choice rust.dag #3174 took
+// with RustScalar's Disj-with-payloads, and the operator review on
+// PR #3170 that drove this refactor: the prior Conj-record
+// `RegisterScalar { kind, width, state_space }` made illegal combos
+// CONSTRUCTIBLE pending a "future check" — exactly the v3 fail-open
+// failure mode INVARIANTS P2 + Practice 2/6 + the
+// `feedback_dissolve_then_check` discipline forbid).
 //
 // CLOSED (C1 stop-signal). A sixth kind (e.g. brain-float `bf` as a
-// kind distinct from Float) is an edit to THIS declaration under the
-// L-2 pin discipline.
+// kind distinct from Float — PTX 8.5 does have `.bf16` as a separate
+// type, scope-negative for this slice; see header SCOPE NEGATIVE) is
+// an edit to THIS declaration under the L-2 pin discipline.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#fundamental-types
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every RegisterScalar consumer reads
-//      the kind to dispatch to the right algebra instance (which
-//      operations apply); shared classifier, not scattered.
+//      the kind via the Disj-variant tag to dispatch (which algebra
+//      instance applies; which width sub-enum is admissible); shared
+//      classifier, not scattered.
 //   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
 //      the readable-string heuristic surface K-1 forecloses (a
 //      `match name { "u32" => … }` smell). The enum IS the faithful
@@ -542,23 +651,26 @@ type RegisterWidth
 //      Float→ApproximateField, Predicate→BooleanAlgebra, Bits→no
 //      arithmetic algebra by design). That grounding is an
 //      INHABITANCE relation — owned by the inhabiting carrier file
-//      (std/integer.dag for Unsigned/Signed at width w,
-//      std/float.dag for Float, std/logic.dag for Predicate) per
-//      P2. The kind enum itself stays a closed classifier; the
-//      "kind → algebra" map IS the future inhabitance walk, not a
-//      richer std/ source to collapse this enum INTO.
+//      (std/integer.dag for Unsigned/Signed, std/float.dag for
+//      Float, std/logic.dag for Predicate) per P2. The kind enum
+//      itself stays a closed classifier.
 //   4. Dimensional — FAILS: a single scalar register has EXACTLY
-//      ONE kind; mutually-exclusive alternatives. (Kind × Width is
-//      a Cartesian product on `RegisterScalar`, which IS the
-//      dimensional model — these are the K coordinates.)
-//   5. Parameterized family — FAILS: the five are the PTX-spec
-//      kind partition; they are NOT one generic `F<X>` / projection
-//      over a separately-declared source set (Practice 7). One
-//      could attempt `Kind<algebra: AlgebraStructure>` parameterized
-//      over an algebra-structure set, but only four of the five
-//      ground in algebra (Bits has no arithmetic algebra by design);
-//      the partition does not project from a single source set.
-// Terminal: the closed five-way PTX scalar-kind classifier.
+//      ONE kind; mutually-exclusive alternatives. (Kind × width is
+//      the Cartesian product on `RegisterScalar`, but the cross-
+//      product is HETEROGENEOUS by kind — each kind admits a
+//      DIFFERENT width sub-enum, so the product is NOT a flat
+//      grid; it is the Disj-with-payloads below.)
+//   5. Parameterized family — FAILS: the five kinds are the PTX-
+//      spec kind partition; they are NOT one generic `F<X>` /
+//      projection over a separately-declared source set (Practice
+//      7). One could attempt `Kind<algebra: AlgebraStructure>`
+//      parameterized over an algebra-structure set, but only four
+//      of the five ground in algebra (Bits has no arithmetic
+//      algebra by design); the partition does not project from a
+//      single source set.
+// Terminal: the closed five-way PTX scalar-kind classifier; this
+// enum is the meta-tag the RegisterScalar Disj's variants are
+// projections of, not a separate axis.
 type RegisterScalarKind
   = Bits
   | Unsigned
@@ -568,32 +680,112 @@ type RegisterScalarKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RegisterScalar — a typed PTX scalar register carrier: kind × width
-// × state-space residence. Conj record (no Practice-4 ledger — only
-// coproducts dissolve).
+// RegisterScalar — the typed PTX scalar register carrier: kind ×
+// (kind-admissible width) × state-space residence. Disj-with-named-
+// field-variant-payloads so that the kind × width admissibility is
+// STRUCTURALLY ENFORCED — illegal pairs like `Predicate + Bits64`,
+// `Float + Bits8`, `Unsigned + Bits128`, or `Bits + Bits1` are
+// unrepresentable (not "rejected by a check" — UNREPRESENTABLE; the
+// INVARIANTS P2 illegal-states-unrepresentable shape, same design
+// choice rust.dag #3174 took for RustScalar). The state_space tag is
+// repeated on every variant: every typed register lives in some
+// state space (no scalar is "state-space-less"), and putting
+// state_space on each variant rather than wrapping a Conj record
+// AROUND the Disj keeps the carrier flat — same shape rust.dag chose
+// for declaring kind-admissibility per variant. (The prior Conj-
+// record `{ kind: RegisterScalarKind, width: RegisterWidth,
+// state_space: StateSpace }` made illegal kind × width combinations
+// constructible pending a "future check" — refactored 2026-05-16 per
+// operator BLOCKING review on PR #3170 to the Disj-with-payloads
+// shape that makes the admissibility STRUCTURAL.)
 //
-//   - kind          which scalar-type kind (`.b` / `.u` / `.s` / `.f`
-//                   / `.pred`)
-//   - width         which bit-width (`.b8` / `.b16` / … / `.b128`)
-//                   — the kind × width admissibility (e.g. `.pred`
-//                   admits only Bits1; `.f8` is invalid) is the
-//                   T-4-owned `register_scalar_well_formed` joint
-//                   check (see RegisterScalarKind note above)
-//   - state_space   where the register-bound value lives in the
-//                   memory hierarchy (the effect-typed parameter per
-//                   the IN-B mapping — see header IN-B FINDING)
+//   - BitsScalar      — { width: BitsWidth, state_space: StateSpace }
+//                       e.g. `.b32` in `.global` is BitsScalar { width:
+//                       Bits32, state_space: Global }
+//   - UnsignedScalar  — { width: IntegerWidth, state_space: StateSpace }
+//                       e.g. `.u32` in `.reg` is UnsignedScalar
+//                       { width: Bits32, state_space: Reg }
+//   - SignedScalar    — { width: IntegerWidth, state_space: StateSpace }
+//                       e.g. `.s64` in `.shared` is SignedScalar
+//                       { width: Bits64, state_space: Shared }
+//   - FloatScalar     — { width: FloatWidth, state_space: StateSpace }
+//                       e.g. `.f32` in `.const` is FloatScalar { width:
+//                       Bits32, state_space: Const }
+//   - PredicateScalar — { state_space: StateSpace }
+//                       Predicate is intrinsically 1-bit per PTX 8.5;
+//                       the width is implicit and carries no payload.
+//                       e.g. a `.pred` register in `.reg` is
+//                       PredicateScalar { state_space: Reg }
 //
-// The state_space FIELD on this record is the structural surface of
+// `.bf16` is DELIBERATELY NOT a variant of this Disj: PTX 8.5 §5.2
+// treats `.bf16` as a separate kind distinct from `.f`, and modeling
+// it requires a sixth `BitsBrain` / `BFloat` kind variant — scope-
+// negative for this slice (header SCOPE NEGATIVE; a future C1 edit
+// when the bf16 surface lands).
+//
+// The state_space FIELD on every variant is the structural surface of
 // the IN-B claim "state space is an effect-typed parameter, intrinsic
 // to the type signature, NOT an annotation layer" (THESIS:401,
 // scaffold header IN-B note). Memory-op Transforms read this field
 // directly from operand types; there is no separate state-space-
 // annotation layer.
-type RegisterScalar {
-  kind: RegisterScalarKind
-  width: RegisterWidth
-  state_space: StateSpace
-}
+//
+// SEAM (where D2 inhabitance plugs in). When the D2 form decision
+// lands (operator-pending), the per-variant inhabitance instance-
+// values land in this file with these typed variants as their
+// carriers — UnsignedScalar { width: Bits32, ... } is the carrier
+// for PTX `.u32` inhabitance into Semiring (or its v4-equivalent per
+// the D2-ratified form); FloatScalar { width: Bits32, ... } is the
+// carrier for `.f32` → ApproximateField; PredicateScalar is the
+// carrier for `.pred` → BooleanAlgebra. The seam itself is the typed
+// variant; the inhabitance value is the deferred row.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every PTX-typed register consumer
+//      (operand typing for instructions, emission of `.b32` /
+//      `.u32` / `.f32` / `.pred` syntax, cost-realization, eventual
+//      inhabitance dispatch) reads the scalar's kind + kind-
+//      admissible width through this carrier; shared, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the variants to a
+//      uniform record `{ kind: RegisterScalarKind, width:
+//      Option<…>, state_space }` reintroduces exactly the illegal
+//      states this Disj-with-payloads design exists to forbid
+//      (Predicate-with-width, Float-with-Bits8, Unsigned-with-
+//      Bits128, etc.). The 5-variant Disj IS the dissolved form
+//      (P2 + Practice 2/6 + M4).
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (Unsigned → Semiring; Signed →
+//      OrderedRing; Float → ApproximateField; Predicate →
+//      BooleanAlgebra; Bits → no arithmetic algebra by design).
+//      That grounding IS the inhabitance walk owned ELSEWHERE per
+//      P2; the Disj structure here is the closed surface, not a
+//      collapsing target.
+//   4. Dimensional — FAILS: a single typed PTX scalar IS EXACTLY
+//      ONE variant of this Disj; mutually-exclusive alternatives.
+//      The shapes differ across variants (PredicateScalar has only
+//      state_space; the typed variants each carry their kind-
+//      admissible width sub-enum) — they cannot be coordinates of
+//      a single record without the illegal-state smell.
+//   5. Parameterized family — FAILS: the five variants are the PTX
+//      spec's primitive-kind partition; they are NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7). The variants correspond to STRUCTURALLY
+//      DISTINCT admissible-width sub-enums (BitsWidth /
+//      IntegerWidth / FloatWidth / no-width) and structurally
+//      distinct algebraic groundings — they are not projection-
+//      uniform over any richer source. The rust.dag #3174 precedent
+//      established this Disj-with-heterogeneous-payloads form for
+//      exactly this reason.
+// Terminal: the closed five-variant PTX scalar-register typed-value
+// sum with kind × admissible-width admissibility STRUCTURALLY
+// enforced; illegal pairs are unrepresentable by construction.
+type RegisterScalar
+  = BitsScalar { width: BitsWidth, state_space: StateSpace }
+  | UnsignedScalar { width: IntegerWidth, state_space: StateSpace }
+  | SignedScalar { width: IntegerWidth, state_space: StateSpace }
+  | FloatScalar { width: FloatWidth, state_space: StateSpace }
+  | PredicateScalar { state_space: StateSpace }
 
 
 // ─────────────────────────────────────────────────────────────────────
