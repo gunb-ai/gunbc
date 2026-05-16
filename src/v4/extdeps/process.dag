@@ -1,8 +1,7 @@
 // src/v4/extdeps/process.dag
 //
 // Scope: process model — child process invocation, lifecycle, exit codes, signals.
-// Anchor: https://en.wikipedia.org/wiki/Process_(computing)
-//         (POSIX/SUS process model — fork/exec/wait, exit codes, signal handling)
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/ (POSIX.1-2024 / IEEE Std 1003.1-2024)
 //
 // Owns:
 //   - Process { id, command, state, parent }
@@ -95,6 +94,8 @@ module v4.extdeps.process
 
 // ─────────────────────────────────────────────────────────────────────
 // POSIX numeric carriers.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
 type ProcessId = Int
 type ExitCode = Int
 type SignalNum = Int
@@ -102,6 +103,7 @@ type SignalNum = Int
 
 // ─────────────────────────────────────────────────────────────────────
 // Command — the exec-family invocation surface v4 needs.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 //
 // `program` is an absolute filesystem path. The machine-readable
 // cross-file edge to extdeps/file_system.dag's `AbsolutePath` is named
@@ -123,6 +125,8 @@ type Command {
 
 // ─────────────────────────────────────────────────────────────────────
 // ProcessState / Termination.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
 //
 // `Running` is a live state. `Exited` and `Signaled` are terminal
 // states. `Termination` is the terminal-only projection consumed by
@@ -130,7 +134,13 @@ type Command {
 // process and cannot flatten signal death into an exit code.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// 🟢 GREEN. Ledger:
+// YELLOW, first-consumer-confirmed. The POSIX wait-status partition is
+// structurally grounded here, but the first effect/resolver consumer
+// must prove the mapping from raw wait status into `Exited` vs
+// `Signaled` without string or integer sentinels. Named trigger:
+// T-4.5 effect/resolver seam lands fork/exec/wait realization; that PR
+// must either confirm this partition or amend this carrier under review.
+// Ledger:
 //   1. Fact placement — FAILS: lifecycle state is consumed uniformly by
 //      wait/capture/process inspection; not per-consumer metadata.
 //   2. Variant-is-data — FAILS: `Exited` carries `ExitCode`, `Signaled`
@@ -150,14 +160,37 @@ type Termination
   = TerminatedByExit { code: ExitCode }
   | TerminatedBySignal { signal: SignalNum }
 
+// `Termination` is a separate sum because it intentionally excludes the
+// live `Running` arm. Its ledger is the same POSIX wait-status partition
+// as `ProcessState` above, with one stronger illegal-state property:
+// wait/capture cannot return a non-terminal state.
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Process — a spawned child process as known to the parent.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
 //
 // `parent` is a typed sum rather than `Option<ProcessId>` because the
 // reason for absence is structural: v4 can model an observed process
 // whose parent is outside the current graph. It is not an exit-status
 // escape: termination remains solely in `state`.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// YELLOW, first-consumer-confirmed. Parent presence is a genuine
+// observed-process boundary fact, but the first process-table consumer
+// must confirm whether `ParentOutsideGraph` is sufficient or whether
+// POSIX parent/session/process-group facts need a richer carrier. Named
+// trigger: first consumer that models process groups, sessions, or
+// orphan reparenting. Ledger:
+//   1. Fact placement — FAILS: parent knowledge is consumed uniformly by
+//      process provenance and child-management logic.
+//   2. Variant-is-data — FAILS: a flat `{ has_parent, id? }` admits
+//      missing ids for known parents or ids for outside-graph parents.
+//   3. Algebraic form — N/A: parent observation is not algebraic.
+//   4. Dimensional — FAILS: parent is known in-graph OR outside graph,
+//      not both.
+//   5. Parameterized family — FAILS: variants are not the same payload
+//      family over an enumerated set.
 type ParentProcess
   = KnownParent { id: ProcessId }
   | ParentOutsideGraph
@@ -172,6 +205,9 @@ type Process {
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 //
 // Spawn failure, wait failure, and capture failure return `Rejected`
 // with a typed `Diagnostic`; a successfully observed child termination

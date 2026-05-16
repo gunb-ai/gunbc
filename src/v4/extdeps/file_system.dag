@@ -1,8 +1,7 @@
 // src/v4/extdeps/file_system.dag
 //
 // Scope: file system model — paths, file kinds, read/write/list operations.
-// Anchor: https://en.wikipedia.org/wiki/File_system
-//         + https://pubs.opengroup.org/onlinepubs/9699919799/ (POSIX File and Directory Operations)
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/ (POSIX.1-2024 / IEEE Std 1003.1-2024)
 //
 // Owns:
 //   - Path = AbsolutePath | RelativePath
@@ -82,6 +81,7 @@ module v4.extdeps.file_system
 
 // ─────────────────────────────────────────────────────────────────────
 // PathComponent — one filename component.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
 // Terminal target: a non-empty `String` excluding slash and null, with
 // any portable-filename policy expressed as an explicit profile. Current
@@ -91,6 +91,7 @@ type PathComponent = String
 
 // ─────────────────────────────────────────────────────────────────────
 // AbsolutePath / RelativePath / FileSystemPath.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 //
 // `AbsolutePath` carries the root fact by variant, not by a leading
 // slash in text. Its component list is intentionally the same carrier
@@ -112,6 +113,23 @@ type RelativePath {
 // `FileSystemPath` is THE filesystem path carrier. Dissolution trigger:
 // when v4 module namespaces are load-bearing in the bootstrap resolver,
 // this can return to the header spelling `Path` without colliding.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
+// YELLOW, namespace-scaffold only. The POSIX absolute-vs-relative split
+// is terminal for the path root fact, but the declaration name differs
+// from the scaffold/header spelling `Path` solely because the bootstrap
+// resolver has a global preloaded `Path`. Named trigger: v4 module
+// namespaces become load-bearing in the resolver; rename
+// `FileSystemPath` to `Path` and keep these variants. Ledger:
+//   1. Fact placement — FAILS: root-ness is consumed uniformly by path
+//      resolution and operation realization.
+//   2. Variant-is-data — FAILS: a flat `{ absolute: Bool, components }`
+//      admits policy drift around root encoding and duplicates the
+//      POSIX partition as a flag.
+//   3. Algebraic form — N/A: root-ness is not an algebra carrier.
+//   4. Dimensional — FAILS: a path is absolute OR relative, not both.
+//   5. Parameterized family — FAILS: the variants are not projected
+//      over a separately-declared enumerable payload family.
 type FileSystemPath
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
@@ -119,6 +137,7 @@ type FileSystemPath
 
 // ─────────────────────────────────────────────────────────────────────
 // FileKind — the POSIX file-kind facts v4 needs.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
 //
 // This is a genuine closed sum for v4's filesystem subset: a path names
 // exactly one of regular file, directory, or symlink at the operation
@@ -127,7 +146,13 @@ type FileSystemPath
 // a string label or `Other` variant.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// 🟢 GREEN for the v4 subset. Ledger:
+// YELLOW, scope-limited by the frozen scaffold header. POSIX `stat`
+// exposes additional file types (`S_IFIFO`, `S_IFBLK`, `S_IFCHR`,
+// `S_IFSOCK`) beyond the v4 scaffold's regular/directory/symlink
+// subset. Named first-consumer trigger: the first v4 consumer that
+// needs complete POSIX `stat` classification must extend this carrier
+// under the manager-ratified header-scope decision rather than mapping
+// those kinds to `RegularFile` or a string label. Ledger:
 //   1. Fact placement — FAILS: file kind is consumed uniformly by
 //      readers deciding whether to read text, list entries, or resolve
 //      a link; it is not per-consumer metadata.
@@ -147,6 +172,10 @@ type FileKind
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/stat.html
 //
 // Each `*Request` is a pure data description of the host operation. The
 // result seam is the shared `Outcome<T>` carrier named in this file's
