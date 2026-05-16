@@ -110,8 +110,10 @@
 //      hash-invariant by construction (the full statement of the K-1
 //      "bonus"; this is affected_set Ex.2 "rename a local ⇒ same hash").
 //   3. CHILD ORDER IS `children`-LIST ORDER, UNCONDITIONALLY — never
-//      algebra-derived, never hand-flagged (B-3 correction, operator-
-//      ratified 2026-05-16). Every connective's children hash in their
+//      algebra-derived, never hand-flagged (B-3 — an AMENDMENT to the
+//      2026-05-15 B1-CANON clause above, NOT a separate ratification;
+//      B-3 itself operator-ratified 2026-05-16). Every connective's
+//      children hash in their
 //      `children`-list order (node.dag already makes list order the
 //      single positional authority). The COMMUTATIVE/quotient branch is
 //      NOT a degraded fallback — it is STRUCTURALLY FORECLOSED, two

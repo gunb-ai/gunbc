@@ -127,7 +127,8 @@ parent. Each is confirm-or-redirect, not a fresh fork.
   the total deterministic normal form as a 6-point contract: (1)
   post-normalize domain; (2) α-equivalence via K-1 De Bruijn for bound /
   opaque identity for free; (3) **child order is unconditional
-  `children`-list order** (B-3, operator-ratified 2026-05-16) — the
+  `children`-list order** (B-3 — an amendment 2026-05-16 to this
+  2026-05-15 B1-CANON clause, not a separate ratification) — the
   commutative-quotient is structurally foreclosed (no order on opaque
   `Hash`; algebra unreachable from the consumes-nothing root, the D1
   cycle class), the correct closure of a decidable system not a defect;
