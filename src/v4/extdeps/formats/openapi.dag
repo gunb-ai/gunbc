@@ -220,6 +220,12 @@ type OpenApiComponents {
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiComponentsSlot — the entire `components` object is optional on the
 // root OpenAPI document.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger:
+// `Present` vs `Absent` are genuine alternatives; a nullable single
+// `OpenApiComponents?` would collapse structural facts (P2 / Practice-7).
 type OpenApiComponentsSlot
   = OpenApiComponentsPresent { components: OpenApiComponents }
   | OpenApiComponentsAbsent
@@ -231,6 +237,10 @@ type OpenApiComponentsSlot
 // `root_extensions` as JSON until decomposed (🟡). `jsonSchemaDialect` is
 // modeled verbatim when present as a string (OAS 3.1 feature) — absence is
 // explicit.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#openapi-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiDocument {
   openapi_version_lexeme: String,
   json_schema_dialect: OpenApiOptionalString,
