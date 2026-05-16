@@ -331,15 +331,32 @@ module v4.extdeps.languages.python
 //     fact on the OBJECT's type, declared via PythonStringKind below.
 //
 //   - MATCH (`match expr: case pat: ...`, PEP 634 / Python 3.10+) ↦
-//     Branch. Python's match against a sum-typed value (structural
-//     pattern matching over class hierarchies, sequences, mappings,
-//     literals) is exactly Branch over the value's structural
-//     coordinates (node.dag:209 "Branch = sums"). Total-by-
-//     construction match requires exhaustive patterns; the
-//     LanguageModel grammar layer (T-4 bundled) declares pattern-
-//     exhaustiveness as part of the match-statement production.
-//     Predicated execution (`if cond: ... elif: ... else: ...`)
-//     folds into the same Branch over a two-variant `bool` Disj.
+//     Branch. Python's match against a value is structural pattern
+//     matching over class hierarchies, sequences, mappings, literals
+//     — that is Branch over the value's structural coordinates
+//     (node.dag:209 "Branch = sums"). Per Python Reference §8.6
+//     `match` statements, match is NOT exhaustiveness-required —
+//     when no case pattern matches, the spec says "the entire match
+//     statement falls through" with no statement executed (this is
+//     a deliberate contrast with rust's exhaustiveness-required
+//     match, and a STRUCTURAL spec difference the model must
+//     preserve: Python `match` does NOT enforce totality at the
+//     spec level). The mapping to Branch is honest: Python `match`
+//     is a Branch over the value's coordinates WITH an implicit
+//     fall-through tail (the "no case matched" path — a no-op per
+//     §8.6). A2 totality, when desired, is a CONSUMER property the
+//     LanguageModel grammar layer (T-4 bundled) may opt into via a
+//     match-exhaustiveness lens read or via a `case _:` wildcard
+//     production — but the spec itself does NOT mandate it, and a
+//     Python `match` without a wildcard is well-formed by the spec
+//     even if no case fires. Predicated execution (`if cond: ...
+//     elif: ... else: ...`) folds into the same Branch over a two-
+//     variant `bool` Disj.
+//     (Refactored 2026-05-16 per operator BLOCKING review on PR
+//     #3180: the prior text claimed "match requires exhaustive
+//     patterns" which is rust's spec, not Python's — INVARIANTS P1
+//     modeling-faithfulness / L-2 extdeps fidelity violated. Python
+//     Reference §8.6 explicitly admits fall-through.)
 //
 //   - LOOP (`for x in iter`, `while cond:`) ↦ Loop with BOUNDED
 //     descent (node.dag:42-68, the A2 discipline). `for x in iter`
