@@ -270,9 +270,10 @@ import v4.std.node { Symbol }
 // discipline.md §4 (operator-ratified binding 2026-05-15, gate (b);
 // PR #3163 made the 4-pattern miss the proof case — do not omit
 // Practice-7). Conj records carry no ledger (only coproducts
-// dissolve); scaffold-residual raw-Int fields (VectorRange, VerilogCost)
-// carry a 🟡 bridge note mirroring the std/diagnostic.dag /
-// ptx Dim3 precedent.
+// dissolve); scaffold-residual fields (VectorRange's lexeme-pair
+// bridge to the constant_expression sub-grammar, VerilogCost's
+// raw-Int axes) carry a 🟡 bridge note mirroring the std/
+// diagnostic.dag / ptx Dim3 precedent.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -889,6 +890,57 @@ type ChargeStrengthClause
 type DelayClause
   = NoDelay
   | DelayLexeme { lexeme: String }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AttributeInstanceClause — the closed Verilog attribute_instance-
+// list-presence classifier (IEEE 1364-2005 §A.9.1 / §A.1.4). Most
+// syntactic constructs in §A.1.4 (module_items, generate_items,
+// statements, declarations, port_declarations, expression operators)
+// admit an OPTIONAL list of attribute_instance prefixes:
+//
+//   attribute_instance ::= (* attr_spec { , attr_spec } *)
+//   attr_spec          ::= attr_name [ = constant_expression ]
+//
+// Examples: `(* keep *) assign x = y;`, `(* synthesis_full_case *)
+// always @(...) ...`, `(* dont_touch *) Adder a1 (...)`. The prior
+// shape made attribute_instances unrepresentable on structured
+// module_item carriers — they could only leak into unrelated lexeme
+// payloads (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 at
+// line 2884). The fix carries this Disj per-variant on
+// AnsiModuleItem / NonAnsiModuleItem.
+//
+//   - NoAttributeInstances
+//       — no `(* … *)` prefix on the item.
+//   - AttributeInstanceLexeme { lexeme: String }
+//       — one or more `(* attr_spec, … *)` prefixes as a verbatim
+//       lexeme; sub-grammar (the attr_name + constant_expression
+//       internal structure of each attribute_instance) deferred to
+//       the bundled T-4 LanguageModel via the established body_lexeme
+//       precedent. Multiple `(* a *)(* b *)` prefixes per spec are
+//       carried as one concatenated lexeme — the parser splits.
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
+// as DriveStrengthClause / DelayClause; abbreviated for brevity.
+//   1. Fact placement — FAILS: shared across every module-item /
+//      generate-item / statement / declaration carrier; not
+//      scattered.
+//   2. Variant-is-data — FAILS: empty-string sentinel rejected
+//      (same BlankConnection precedent argument).
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one attribute-instance-list state per
+//      item; mutually exclusive (present vs absent at the boundary).
+//   5. Parameterized family — FAILS: NoAttributeInstances is
+//      nullary; AttributeInstanceLexeme carries a `lexeme: String`
+//      payload — structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog attribute_instance-list
+// classifier of the IEEE 1364-2005 §A.9.1 spec.
+type AttributeInstanceClause
+  = NoAttributeInstances
+  | AttributeInstanceLexeme { lexeme: String }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1701,7 +1753,7 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Twenty sites in this file carry `List<T>` payloads where IEEE
+// Twenty-one sites in this file carry `List<T>` payloads where IEEE
 // 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
 // state is structurally representable, the same INVARIANTS P2
 // illegal-states-unrepresentable concern codex / openai-pro
@@ -1728,16 +1780,16 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the twenty spec-non-empty sites keeps `List<T>` for now.
+// - Each of the twenty-one spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
 // - DISSOLUTION TRIGGER: when `std/collection.dag` Wave-A2 lands the
-//   non-empty refinement, the twenty sites adopt
+//   non-empty refinement, the twenty-one sites adopt
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The twenty spec-non-empty sites (back-pointers to this note):
+// The twenty-one spec-non-empty sites (back-pointers to this note):
 //   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
 //   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
 //   3. NetDeclaration.TriregIdentifierForm.identifiers    (§A.2.1.3)
@@ -1759,6 +1811,7 @@ type ParameterTypeKind
 //  18. EventDeclaration.event_names                  (§A.2.1.4)
 //  19. GenvarDeclaration.genvar_names                (§A.2.1.1)
 //  20. UdpInstantiation.instances                    (§A.5.2)
+//  21. PortDeclaration.names                          (§A.2.1.2)
 //
 // Sites previously numbered 7-9 added 2026-05-16 per codex
 // REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
@@ -1800,7 +1853,12 @@ type ParameterTypeKind
 // (udp_name, drive_strength, delay) clause + per-instance
 // (instance_name, body_lexeme) UdpInstance entries. Codex's /
 // openai-pro's motivation is spec-correct in each case; the FORM
-// is the deferred refinement, not a verilog-local mint.
+// is the deferred refinement, not a verilog-local mint. Site 21
+// added 2026-05-16 per openai-pro REQUEST_CHANGES on PR #3176 at
+// sha cba903a3e (inline BLOCKING at line 1429): PortDeclaration
+// reshape from singular-name to list-form mirrors the Defparam/
+// Event/Genvar list-form precedent under §A.2.1.2 list_of_port_
+// identifiers; the non-empty list rides the same RQ-3 deferral.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2366,19 +2424,69 @@ type ParameterOverrides
 
 
 // ─────────────────────────────────────────────────────────────────────
+// InstanceRangeClause — the closed Verilog instance-array range
+// classifier on a module / UDP instance (IEEE 1364-2005 §A.4.1.1 /
+// §A.5.2): a single instance identifier may optionally carry a
+// `[msb:lsb]` range to declare an ARRAY of instances (`Adder a[7:0]
+// (...)`), elaborated to multiple bit-replicated instances at compile
+// time. Sibling Disj of DriveStrengthClause / DelayClause / etc. —
+// optional-clause present/absent partition.
+//
+//   - NoInstanceRange
+//       — `Adder a1 (...)` form: single-instance declaration.
+//   - InstanceRange { range: VectorRange }
+//       — `Adder a[7:0] (...)` form: instance-array; the range
+//       drives elaboration-time instance replication. Reuses the
+//       VectorRange carrier (constant_expression-pair via lexeme).
+//
+// CLOSED (C1 stop-signal). Two-way present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
+// as DriveStrengthClause / DelayClause; abbreviated for brevity.
+//   1. Fact placement — FAILS: shared classifier across module-
+//      instance / UDP-instance emitters + elaboration-time
+//      replication consumers.
+//   2. Variant-is-data — FAILS: empty-VectorRange sentinel
+//      reintroduces the spec-illegal "zero-width array" state and
+//      mixes the no-range form with a degenerate range form.
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one instance-range state per instance
+//      name; mutually exclusive.
+//   5. Parameterized family — FAILS: NoInstanceRange is nullary;
+//      InstanceRange carries a `range: VectorRange` payload —
+//      structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog instance-array-range-presence
+// classifier. Added 2026-05-16 per openai-pro REQUEST_CHANGES on
+// PR #3176 — the prior shape dropped the optional range, making
+// instance arrays unrepresentable.
+type InstanceRangeClause
+  = NoInstanceRange
+  | InstanceRange { range: VectorRange }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // ModuleInstance — one instance within a module_instantiation
-// statement (`a1 (.a(x), .b(y), .sum(z))`). IEEE 1364-2005 §12.1 +
-// §A.4.1.1. A single module_instantiation can declare MULTIPLE
-// instances sharing a common (module_name, parameter_overrides);
-// each instance carries its own (instance_name, port_connections).
+// statement (`a1 (.a(x), .b(y), .sum(z))`, `a[7:0] (...)`). IEEE
+// 1364-2005 §12.1 + §A.4.1.1. A single module_instantiation can
+// declare MULTIPLE instances sharing a common (module_name,
+// parameter_overrides); each instance carries its own (instance_name,
+// optional instance-array range, port_connections). Per spec
+// §A.4.1.1 `name_of_module_instance ::= module_instance_identifier
+// [range]` — the prior shape dropped the optional range, making
+// spec-legal `Adder a[7:0] (...)` instance arrays unrepresentable
+// (openai-pro REQUEST_CHANGES on PR #3176 2026-05-16 at line 2247).
 // Conj record (no Practice-4 ledger).
 //
 //   - instance_name   this instance's local name (K-1-opaque Symbol)
+//   - instance_range  optional instance-array range
+//                     (NoInstanceRange | InstanceRange{range})
 //   - connections     the port-binding list per spec §12.1.2
 //                     (PositionalConnections OR NamedConnections;
 //                     uniform per instance).
 type ModuleInstance {
   instance_name: Symbol
+  instance_range: InstanceRangeClause
   connections: PortConnections
 }
 
@@ -2766,20 +2874,70 @@ type GateInstantiation {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// UdpInstance — one (instance_name, port-list body) entry in a UDP
-// instantiation's udp_instance list (IEEE 1364-2005 §A.5.2:
-// `udp_instance ::= name_of_udp_instance ( output_terminal ,
-// input_terminal { , input_terminal } )`). Conj record (no Practice-4
-// ledger).
+// UdpInstanceName — the closed Verilog UDP-instance name-of-instance
+// classifier (IEEE 1364-2005 §A.5.2):
 //
-//   - instance_name    this instance's local name (K-1-opaque Symbol)
+//   udp_instance ::= [ name_of_udp_instance ] ( output_terminal ,
+//                                               input_terminal
+//                                               { , input_terminal } )
+//   name_of_udp_instance ::= udp_instance_identifier [ range ]
+//
+// the brackets around `name_of_udp_instance` make the entire name
+// clause OPTIONAL — unnamed UDP instances are legal spec syntax
+// (`xor ( o, a, b )` without an instance name). When present, the
+// name itself may carry an optional instance-array range. The prior
+// shape required `instance_name: Symbol` and dropped the range,
+// making both spec-legal forms unrepresentable (openai-pro
+// REQUEST_CHANGES on PR #3176 2026-05-16 at line 2648).
+//
+//   - NoUdpInstanceName
+//       — `xor ( o, a, b )` form: no instance name; the spec's
+//       bracket-absent form.
+//   - NamedUdpInstance { name: Symbol, instance_range: InstanceRangeClause }
+//       — `xor x1 ( o, a, b )` / `xor x[7:0] ( o, a, b )` form:
+//       instance name present, optionally with an array range
+//       (reuses the shared InstanceRangeClause Disj).
+//
+// CLOSED (C1 stop-signal). Two-way name-present/absent partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted: same shape
+// as the optional-clause Disj family.
+//   1. Fact placement — FAILS: shared across UDP-emitter +
+//      elaboration consumers reading the optional name.
+//   2. Variant-is-data — FAILS: empty-Symbol sentinel rejected
+//      (same K-1 readable-string heuristic surface concern).
+//   3. Algebraic form — N/A by construction.
+//   4. Dimensional — FAILS: one name-of-udp-instance state per
+//      udp_instance; mutually exclusive.
+//   5. Parameterized family — FAILS: NoUdpInstanceName is nullary;
+//      NamedUdpInstance carries `{ name, instance_range }` payload —
+//      structurally heterogeneous (Practice 7).
+// Terminal: the closed two-way Verilog UDP-instance name-of-instance
+// classifier of the IEEE 1364-2005 §A.5.2 spec.
+type UdpInstanceName
+  = NoUdpInstanceName
+  | NamedUdpInstance { name: Symbol, instance_range: InstanceRangeClause }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// UdpInstance — one (optional-instance-name, port-list body) entry
+// in a UDP instantiation's udp_instance list (IEEE 1364-2005 §A.5.2:
+// `udp_instance ::= [name_of_udp_instance] ( output_terminal ,
+// input_terminal { , input_terminal } )`). The optional name (with
+// optional array range when present) is carried via the
+// UdpInstanceName Disj above. Conj record (no Practice-4 ledger).
+//
+//   - instance_name    optional name-of-udp-instance per §A.5.2
+//                      (NoUdpInstanceName | NamedUdpInstance{name,
+//                      instance_range}).
 //   - body_lexeme      the per-instance terminal list (`( out , in1,
 //                      in2, ... )`) as a verbatim lexeme; sub-grammar
 //                      (output_terminal + input_terminal_list per
 //                      §A.5.4) deferred to the bundled T-4
 //                      LanguageModel.
 type UdpInstance {
-  instance_name: Symbol
+  instance_name: UdpInstanceName
   body_lexeme: String
 }
 
@@ -3015,27 +3173,42 @@ type SpecparamDeclaration {
 // declarations (`PortDeclarationItem` / `BodyPortDeclarationItem`)
 // are a SYNTAX ERROR in ANSI-style modules — they are admitted only
 // in the NonAnsiModuleItem set below.
+//
+// Per spec §A.1.4 / §A.6.1 most module_or_generate_items admit an
+// `{ attribute_instance }` prefix (`(* keep *) assign net = expr;`,
+// `(* synthesis_full_case *) always @(...) ...`, `(* dont_touch *)
+// Adder a1 (...);`). The prior shape collapsed this fact —
+// attribute_instances were unrepresentable except by leaking into
+// unrelated lexeme payloads (openai-pro REQUEST_CHANGES on PR #3176
+// 2026-05-16 at line 2884). The fix: each variant carries an
+// `attributes: AttributeInstanceClause` first field (closed Disj
+// over the §A.9.1 attribute_instance-list-present/absent partition).
+// Carried per-variant (rather than as a wrapping Conj outside the
+// Disj) keeps the structural per-variant payload-heterogeneity that
+// the Practice-4 ledger relies on, and mirrors the established
+// per-variant clause-field convention (drive_strength, delay,
+// etc.).
 type AnsiModuleItem
-  = ContinuousAssignItem { assign: ContinuousAssign }
-  | AlwaysBlockItem { always_block: AlwaysBlock }
-  | InitialBlockItem { initial_block: InitialBlock }
-  | NetDeclarationItem { net: NetDeclaration }
-  | VariableDeclarationItem { variable: VariableDeclaration }
-  | ParameterDeclarationItem { parameter: ParameterDeclaration }
-  | LocalParameterDeclarationItem { local_parameter: LocalParameterDeclaration }
-  | ModuleInstantiationItem { instantiation: ModuleInstantiation }
-  | DefparamDeclarationItem { defparam: DefparamDeclaration }
-  | GenerateRegionItem { generate_region: GenerateRegion }
-  | LoopGenerateConstructItem { loop_generate: LoopGenerateConstruct }
-  | ConditionalGenerateConstructItem { conditional_generate: ConditionalGenerateConstruct }
-  | SpecifyBlockItem { specify_block: SpecifyBlock }
-  | TaskDeclarationItem { task: TaskDeclaration }
-  | FunctionDeclarationItem { function_decl: FunctionDeclaration }
-  | EventDeclarationItem { event_decl: EventDeclaration }
-  | GenvarDeclarationItem { genvar_decl: GenvarDeclaration }
-  | GateInstantiationItem { gate: GateInstantiation }
-  | UdpInstantiationItem { udp_instance: UdpInstantiation }
-  | SpecparamDeclarationItem { specparam: SpecparamDeclaration }
+  = ContinuousAssignItem { attributes: AttributeInstanceClause, assign: ContinuousAssign }
+  | AlwaysBlockItem { attributes: AttributeInstanceClause, always_block: AlwaysBlock }
+  | InitialBlockItem { attributes: AttributeInstanceClause, initial_block: InitialBlock }
+  | NetDeclarationItem { attributes: AttributeInstanceClause, net: NetDeclaration }
+  | VariableDeclarationItem { attributes: AttributeInstanceClause, variable: VariableDeclaration }
+  | ParameterDeclarationItem { attributes: AttributeInstanceClause, parameter: ParameterDeclaration }
+  | LocalParameterDeclarationItem { attributes: AttributeInstanceClause, local_parameter: LocalParameterDeclaration }
+  | ModuleInstantiationItem { attributes: AttributeInstanceClause, instantiation: ModuleInstantiation }
+  | DefparamDeclarationItem { attributes: AttributeInstanceClause, defparam: DefparamDeclaration }
+  | GenerateRegionItem { attributes: AttributeInstanceClause, generate_region: GenerateRegion }
+  | LoopGenerateConstructItem { attributes: AttributeInstanceClause, loop_generate: LoopGenerateConstruct }
+  | ConditionalGenerateConstructItem { attributes: AttributeInstanceClause, conditional_generate: ConditionalGenerateConstruct }
+  | SpecifyBlockItem { attributes: AttributeInstanceClause, specify_block: SpecifyBlock }
+  | TaskDeclarationItem { attributes: AttributeInstanceClause, task: TaskDeclaration }
+  | FunctionDeclarationItem { attributes: AttributeInstanceClause, function_decl: FunctionDeclaration }
+  | EventDeclarationItem { attributes: AttributeInstanceClause, event_decl: EventDeclaration }
+  | GenvarDeclarationItem { attributes: AttributeInstanceClause, genvar_decl: GenvarDeclaration }
+  | GateInstantiationItem { attributes: AttributeInstanceClause, gate: GateInstantiation }
+  | UdpInstantiationItem { attributes: AttributeInstanceClause, udp_instance: UdpInstantiation }
+  | SpecparamDeclarationItem { attributes: AttributeInstanceClause, specparam: SpecparamDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -3110,8 +3283,8 @@ type AnsiModuleItem
 // codex BLOCKING on PR #3176 2026-05-16.
 type NonAnsiModuleItem
   = NonAnsiAnsiCompatItem { item: AnsiModuleItem }
-  | NonAnsiPortDeclarationItem { port_decl: PortDeclaration }
-  | NonAnsiBodyPortDeclarationItem { body_port: AnsiPortDeclaration }
+  | NonAnsiPortDeclarationItem { attributes: AttributeInstanceClause, port_decl: PortDeclaration }
+  | NonAnsiBodyPortDeclarationItem { attributes: AttributeInstanceClause, body_port: AnsiPortDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
