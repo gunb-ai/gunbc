@@ -59,7 +59,10 @@
 //   line is corrected to actual modeled dependencies — a stale citation
 //   from the primitive.dag decomposition is mechanical cleanup, not a
 //   contract revision; the Scope/Owns/Stress/Clear-win contract above
-//   stands.)
+//   stands. Header Consumes change pending operator ratification of
+//   the systemic scaffold-Consumes reconciliation (T-4 mgr synthesis
+//   msg_1fddb75c) — consistent with ptx #3170 and the verilog probe;
+//   operator ratifies all per-file Consumes strikes uniformly.)
 //
 // Status: T-4.10 modeled 2026-05-16 (smart-raven-655). The I/O contract
 // in this header is immutable for downstream workers. Splitting this
