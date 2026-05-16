@@ -63,11 +63,28 @@ module v4.extdeps.formats.json
 // Duplicate object names are structurally addressed: `JsonObject`'s
 // carrier is `Map<String, JsonValue>`, which cannot hold a duplicate
 // key — so a parsed `JsonObject` is dup-free BY CONSTRUCTION (illegal
-// states unrepresentable, INVARIANTS P2). RFC 8259 §4 ("names within an
-// object SHOULD be unique") + the no-engine discipline make duplicate-
-// name INPUT a parse `Rejected`, not a silent last-wins resolution
-// (silent resolution = the no-engine STOP) — enforced in the deferred
-// parse body, structurally guaranteed by the carrier here.
+// states unrepresentable, INVARIANTS P2).
+//
+// NAMED PROFILE BOUNDARY (do NOT conflate with "full RFC 8259"). RFC
+// 8259 §4 makes object-name uniqueness a *recommendation* — "The names
+// within an object SHOULD be unique" and, when not, "the behavior of
+// software that receives such an object is unpredictable." So bare RFC
+// 8259 §4 PERMITS a duplicate-name object in the byte stream; it does
+// not mandate rejection. The `Map<String, JsonValue>` carrier
+// (mandated by the immutable scaffold header — `Object = Map<String,
+// JsonValue>`) deliberately models the STRICTER **unique-names
+// profile**: RFC 7493 (I-JSON) §2.3 ("members ... SHOULD NOT" →
+// unique, MUST for I-JSON) + RFC 8259 §4's SHOULD-unique taken as
+// fail-closed. This is an explicit, immutable-header-mandated policy
+// boundary, NOT the full RFC 8259 §4 value space (which admits
+// unpredictable-duplicate-name objects). Under this profile a
+// duplicate-name INPUT is a parse `Rejected`, never a silent
+// last-wins resolution (silent resolution = the no-engine STOP) —
+// enforced in the deferred parse body, structurally guaranteed by the
+// carrier here. (The JsonValue *value grammar* — §3, the six kinds —
+// is faithful to RFC 8259; only the §4 object-member uniqueness is the
+// named I-JSON-profile narrowing, surfaced here rather than presented
+// as bare RFC 8259.)
 //
 // `Bool`/`String` are kernel-ambient (v2 seed; STRUCTURE.md "Kernel-
 // ambient types"); `List<T>`/`Map<K,V>` are the kernel container types
@@ -243,22 +260,49 @@ type JsonValue
 //         dissolves. The T-4 directive's "operations deferred-with-
 //         named-owner" + TASKS.md T-4.6 record the same dependency.
 //
-// (2) Numeric interpretation of `JsonNumber.lexeme` — RFC 8259 §6
-//   separates the number TOKEN (carried verbatim above) from its
-//   numeric VALUE, which the spec leaves implementation-defined. The
-//   faithful numeric carriers are scaffold: IEEE-754 `Float`
-//   (std/float.dag) and the integer tower (std/integer.dag), both T-3.
-//   The header's "IEEE-754 default + BigDecimal opt-in" is the eventual
-//   interpretation POLICY — it is ratified and authored once those
-//   carriers land, not fabricated here.
-//     (a) scaffold doc — THIS note; `JsonNumber` carries the lexeme,
-//         not a numeric value; no interpretation is claimed.
-//     (b) bounds on use — a consumer needing the numeric value waits on
-//         the interpretation read. The lexeme is round-trip-exact
-//         (B-6): emit reproduces the source token with zero precision
-//         loss, which a premature IEEE-754 collapse could not.
-//     (c) dissolution trigger — when std/float.dag + std/integer.dag
-//         land, a follow-up adds `json_number_value : JsonNumber ->
-//         Outcome<…>` per the header's IEEE-754-default / BigDecimal-
-//         opt-in policy; this note dissolves.
+// (2) `JsonNumber.lexeme` — THREE DISTINCT concerns with THREE DISTINCT
+//   triggers (not one bundled deferral). RFC 8259 §6 separates the
+//   number TOKEN from its numeric VALUE; faithful modeling separates a
+//   third axis (a refined token TYPE):
+//   (2a) §6 token WELL-FORMEDNESS (is the lexeme a valid §6 `number`:
+//        `[minus] int [frac] [exp]`) — this is a PARSE-time check,
+//        owned by the deferred parse body (deferral (1)): a lexeme that
+//        is not §6-conformant is a fail-closed `Rejected` at parse,
+//        never stored as a `JsonNumber`. Trigger = deferral (1)'s
+//        std/text.dag (the parser validates §6 while constructing the
+//        node). NOT bundled with numeric interpretation.
+//   (2b) numeric VALUE interpretation (the lexeme → an actual number) —
+//        the spec leaves range/precision implementation-defined; the
+//        faithful numeric carriers are scaffold: IEEE-754 `Float`
+//        (std/float.dag) + the integer tower (std/integer.dag), T-3.
+//        The header's "IEEE-754 default + BigDecimal opt-in" is the
+//        eventual interpretation POLICY, authored once those land, not
+//        fabricated here. Trigger = std/float.dag + std/integer.dag.
+//   (2c) a refined §6-conformant lexeme TYPE (a `JsonNumberLexeme`
+//        String-refinement that makes a non-§6 lexeme structurally
+//        unrepresentable, so (2a) becomes type-enforced rather than
+//        parser-enforced) — requires the String-refinement substrate,
+//        which is UNLANDED (std/text.dag refinement, T-3 scaffold —
+//        the same deferred-refinement class as toml.dag's
+//        `NonEmptyStr` key). Authoring it now is impossible (no
+//        substrate) and would alter the ratified lexeme-preserving
+//        seam (decision #2); it is future refinement-substrate work,
+//        named here, NOT a now-fix. Trigger = the String-refinement
+//        substrate landing.
+//     (a) scaffold doc — THIS note; `JsonNumber` carries the raw
+//         `String` lexeme; §6-validity is parser-enforced (2a), the
+//         numeric value (2b) and a refined lexeme type (2c) are
+//         separately triggered; no interpretation is claimed here.
+//     (b) bounds on use — a consumer needing the numeric value waits
+//         on (2b); a consumer needing a type-level §6 guarantee waits
+//         on (2c); until then the parser (2a) is the §6 authority. The
+//         lexeme is round-trip-exact (B-6): emit reproduces the source
+//         token with zero precision loss, which a premature IEEE-754
+//         collapse could not.
+//     (c) dissolution trigger — (2a) dissolves with deferral (1)'s
+//         parser; (2b) when std/float.dag + std/integer.dag land
+//         (`json_number_value : JsonNumber -> Outcome<…>` per the
+//         header policy); (2c) when the String-refinement substrate
+//         lands (`lexeme` refines to a §6-conformant token type).
+//         Three independent dissolutions, tracked separately.
 
