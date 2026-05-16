@@ -5,8 +5,10 @@
 //
 // Owns:
 //   - OpenApiSpec { info, servers, paths, components, ... }
+//   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
 //   - Path { operations: Map<HttpMethod, Operation> }
-//   - Operation { parameters, request_body, responses, ... }
+//   - Operation { …, Responses Object (`OpenApiResponses`: status map +
+//     **`responses_object_extensions`**) }
 //   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
 //   - emit(OpenApiSpec) -> String  (typically YAML)
 //   - Type derivation from components.schemas (delegates to json_schema.dag)
@@ -62,8 +64,9 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // closed OAS Path Item Object operation set (get/put/post/delete/options/
 // head/patch/trace) — M4 closed set as a sum, not strings. **Extension
 // verbs** (`x-` object members and non-OAS methods) remain in
-// `path_extensions` / `operation_extensions` as `JsonValue` until an
-// operator-pinned extension policy lands (🟡 (3)).
+// **`paths_extensions`** (Paths Object), `path_extensions` (Path Item Object),
+// and `operation_extensions` as `JsonValue` until an operator-pinned extension
+// policy lands (🟡 (3)).
 //
 // CANONICAL-MIRROR — `Outcome<T>` seam for parse/emit (json.dag #3184
 // seam #3): when `openapi_parse` / `openapi_emit` land, they are fail-
@@ -75,11 +78,14 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
 // the document root, **Info Object (OAS-fixed fields + `info_extensions`)**,
-// paths, operations, responses, media types, and component schemas; **$ref**
-// resolution, parameter objects, callbacks, security schemes, servers, and
-// the full Components object beyond `schemas` are 🟡 deferred with named
-// triggers — not silently omitted without a receipt: overflow lives in
-// `components_extras` / `path_extensions` / `operation_extensions` /
+// **Paths Object (`OpenApiPaths`: `routes` + `paths_extensions`)**, path
+// items, operations, **Responses Object (`OpenApiResponses`)**, media types,
+// and component schemas; **$ref** resolution, parameter objects, callbacks,
+// security schemes, servers, and the full Components object beyond `schemas`
+// are 🟡 deferred with named triggers — not silently omitted without a
+// receipt: overflow lives in `components_extras` / **`paths_extensions`**
+// (Paths Object) / `path_extensions` (Path Item Object) /
+// **`responses_object_extensions`** (Responses Object) / `operation_extensions` /
 // `info_extensions` / **`contact_extensions` (nested under `OpenApiContact`)** /
 // `root_extensions` as faithful `JsonValue` maps (M5).
 
@@ -257,18 +263,34 @@ type OpenApiResponse {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// OpenApiResponses — OAS 3.1.0 **Responses Object** under an Operation: HTTP
+// status-code (and `default`) entries plus **object-level** Specification
+// Extensions (`^x-`) as siblings of those keys — distinct from each
+// `OpenApiResponse.extensions` on the nested Response Object.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+type OpenApiResponses {
+  by_status: Map<String, OpenApiResponse>,
+  responses_object_extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // OpenApiOperation — Operation Object slice modeled here: `operationId`,
-// `responses` map (required by OAS rules once the operation exists — empty
-// map may be structurally representable; OAS-level validity is 🟡 deferred
-// parse authority). Parameters, requestBody, callbacks, security live in
-// `extensions` until decomposed.
+// `responses` (**`OpenApiResponses`** — status map + Responses Object
+// `responses_object_extensions`; required-by-OAS rules once the operation
+// exists — empty `by_status` may be structurally representable; OAS-level
+// validity is 🟡 deferred parse authority). Parameters, requestBody,
+// callbacks, security live in `operation_extensions` until decomposed.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#operation-object
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
-  responses: Map<String, OpenApiResponse>,
+  responses: OpenApiResponses,
   operation_extensions: Map<String, JsonValue>,
 }
 
@@ -286,6 +308,21 @@ type OpenApiOperation {
 type OpenApiPathItem {
   routes: Map<OpenApiHttpMethod, OpenApiOperation>,
   path_extensions: Map<String, JsonValue>,
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiPaths — OAS 3.1.0 **Paths Object**: path-template → Path Item
+// entries plus **object-level** Specification Extensions (`^x-`) as siblings
+// of those keys — distinct from each `OpenApiPathItem.path_extensions` on
+// the Path Item Object.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#paths-object
+//
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+type OpenApiPaths {
+  routes: Map<String, OpenApiPathItem>,
+  paths_extensions: Map<String, JsonValue>,
 }
 
 
@@ -319,7 +356,8 @@ type OpenApiComponentsSlot
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). `servers`
+// OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). **`paths`**
+// is an **`OpenApiPaths`** (Paths Object routes + `paths_extensions`). `servers`
 // / `webhooks` / `security` / `tags` / `externalDocs` remain in
 // `root_extensions` as JSON until decomposed (🟡). `jsonSchemaDialect` is
 // modeled verbatim when present as a string (OAS 3.1 feature) — absence is
@@ -332,7 +370,7 @@ type OpenApiDocument {
   openapi_version_lexeme: String,
   json_schema_dialect: OpenApiOptionalString,
   info: OpenApiInfo,
-  paths: Map<String, OpenApiPathItem>,
+  paths: OpenApiPaths,
   components: OpenApiComponentsSlot,
   root_extensions: Map<String, JsonValue>,
 }
@@ -364,5 +402,7 @@ type OpenApiDocument {
 //     structural `OpenApiLicenseUrlOrIdentifierSlot` forbids **both** `url` and
 //     `identifier` at the carrier layer; JSON surface repair for malformed
 //     both-present objects is parse authority, not silent coercion here.
-//     **`contact_extensions`** keys are carried structurally — validation of
-//     extension-member shapes vs `^x-` patterns remains 🟡 with trigger (1).
+//     **`contact_extensions`** / **`paths_extensions`** /
+//     **`responses_object_extensions`** keys are carried structurally —
+//     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
+//     trigger (1).
