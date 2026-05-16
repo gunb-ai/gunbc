@@ -29,9 +29,919 @@
 //   - std/node.dag, std/algebra.dag, std/primitive.dag
 //   - extdeps/coordination.dag (concurrency via effect-typed Bind — IN-B)
 //
-// Status: scaffold — fill per TASKS.md T-4.9
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-4.9 modeled 2026-05-16 (bright-crane-527). IN-B probe RESULT:
+//   PASS — Verilog hardware concurrency models cleanly under the existing
+//   five L1 behaviors with NO 6th `Concurrent` behavior and NO core/
+//   pipeline change (see modeling notes "IN-B PROBE FINDING"). The probe
+//   surfaces the structurally-correct intra-vs-cross-program partition:
+//   hardware concurrency (parallel `always`-blocks / continuous assigns
+//   within ONE module) is the Conj-of-parallel-siblings + Bind-chain
+//   shape, with per-language effect-typing intrinsic to the wire/reg/
+//   vector signal type — exactly the THESIS:401 IN-B disposition.
+//   The scaffold-header `Consumes` line is preserved verbatim and carries
+//   two known stale citations: (1) `std/primitive.dag` was deleted by
+//   PR #3152 (STRUCTURE.md §"Scalar/numeric concept decomposition"); the
+//   six concept-anchored scalar files are the replacement, and `Symbol`
+//   is now substrate-ambient at std/node.dag (K-1). (2) `extdeps/
+//   coordination.dag` is an unfilled scaffold (T-4.8) and its modeled
+//   scope is CROSS-PROGRAM coordination (Endpoint / DeploymentUnit /
+//   sync-async-stream-pubsub semantics, v4-close-interrogation.md §16) —
+//   a different concern from intra-program hardware concurrency, which
+//   this file demonstrates needs no cross-program coordination carrier
+//   at all. Both stale citations are surfaced, not edited: the contract
+//   lines are immutable, and the per-file Consumes correction is
+//   pending the systemic operator scaffold-Consumes reconciliation
+//   (T-4 mgr synthesis msg_1fddb75c) — uniform with ptx #3170, spice
+//   #3168, and llvm_ir #3171. The body's `import` reflects what this
+//   file actually uses. Splitting this file requires explicit operator
+//   ratification (substrate extension = stop signal).
+
 
 module v4.extdeps.languages.verilog
+
+
+// std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
+// name-reference identity used pervasively in the Verilog grammar —
+// module names, port names, signal names, instance names) resolvable
+// through this file's import closure. std/algebra.dag is NOT imported:
+// this file's scaffold-declared `Inhabitance: bit-vectors per
+// std/algebra.dag` is DEFERRED to the operator-pending D2 STOP (see the
+// Inhabitance section in modeling notes); declaring per-target
+// OrderedRing/Semiring instance-values now would be the per-file
+// `<Algebra><Concrete>` improvisation D2 forbids (#3171 worker
+// vivid-crab-154 / snappy-badger-570 held precedent). std/diagnostic.dag
+// is NOT imported: this declarative LanguageModel declares no
+// parse/emit body — those ride the operator-pending D1 Outcome<T>
+// carrier (`Produced{value:T} | Rejected{diagnostic:Diagnostic}`) when
+// ratified in std/diagnostic.dag; improvising a per-file Result shape
+// now is exactly the v4 value-or-Diagnostic STOP first surfaced by
+// T-4.6 (keen-wren-419). `Int`, `Bool`, `String`, `List` are
+// kernel-ambient per STRUCTURE.md §"Kernel-ambient types" — no import.
+import v4.std.node { Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// SPEC, NOT LIBRARY (M3 / L-2). The anchor is IEEE 1364-2005 — the
+// language specification. The set of synthesizable subsets used by any
+// particular tool (Xilinx XST, Synopsys Design Compiler, Yosys), the
+// vendor-specific timing libraries, and the simulation-only constructs
+// (`$display`, `$monitor`, file I/O system tasks) are NOT modeled: an
+// invocation of `$display` is just a system-task call (a Symbol-named
+// call site); modeling the system-task universe is infinite and the
+// wrong layer. SystemVerilog (IEEE 1800) extensions (interfaces,
+// always_comb / always_ff / always_latch sugar, packed structs, classes)
+// are scope-negative for this file — they are a later language model.
+// The 1364-2005 surface is the closed L-2 fidelity authority.
+//
+// DECLARATIVE MODEL, NOT A RECOGNIZER (T-4 authoring contract). This
+// file is the grammar/type/semantics-skeleton as DATA. It declares no
+// `parse`/`emit` procedure: those are the GENERIC walker (compiler
+// 01_tokenize / 02_parse / 05_emit, B2-OMNI) reading this model. The
+// expression sub-grammar (operators, function calls, concatenation,
+// system functions) is owned by the bidirectional `LanguageModel`
+// substrate that the T-4 bundle introduces — when that shape lands,
+// the Verilog statement/expression productions slot into the Verilog
+// `LanguageModel` instance; the closed classifiers + Conj records
+// declared here are the irreducible structural carrier that does not
+// prejudge that shape. Lexical-surface bodies of always-blocks,
+// continuous-assign right-hand sides, and control-flow conditions are
+// carried as verbatim `String` lexemes at this phase (the spice.dag
+// `SpiceValue.lexeme` precedent — `parse ∘ emit` is identity on the
+// textual surface; the sub-grammar interprets the lexeme when the
+// expression model lands).
+//
+// IN-B PROBE FINDING (the deliverable — the STOP discipline is the
+// product). Verilog HW concurrency models as a plain `LanguageModel`
+// over the closed 5 L1 behaviors with NO 6th `Concurrent` / `Parallel`
+// behavior and NO core/pipeline change. The probe's stress axis — the
+// concurrent semantics of `always` / continuous-assign / module
+// instantiation — resolves into ORDINARY Node structure, surfacing
+// the right intra-vs-cross-program partition along the way. The
+// mapping, member-by-member:
+//
+//   - MODULE BODY ↦ Conj of parallel siblings.
+//     A Verilog `module` body is a flat list of items
+//     (`ModuleItem` — continuous-assigns, always-blocks, instances,
+//     declarations). Concurrent execution across those siblings is
+//     STRUCTURAL: each item is a child of the module-body Conj, and
+//     concurrent semantics is the SAME shape as a Conj of submodule
+//     instantiations (which every C / Rust / Python module already
+//     models as Conj children). The simulator/synthesizer schedule
+//     (event-driven evaluation) is the mechanical realization of the
+//     dependency graph (THESIS:18 "parallelism is the default —
+//     independence is visible in the structure"); it is NOT a
+//     separate behavior. Tempting alternative: a `Concurrent` behavior
+//     wrapping each module item. REJECTED — it would parallel-
+//     represent what the Conj's children already say
+//     (feedback_no_annotations: a property structurally visible is
+//     never duplicated as a marker). This is precisely the IN-B win.
+//
+//   - CONTINUOUS ASSIGN (`assign net = expr;`) ↦ Transform.
+//     A continuous assignment is a function from the right-hand-side
+//     expression's input signals to the left-hand-side net — exactly
+//     the Transform behavior (function application, node.dag:209
+//     "Transform=application"). The "continuous" aspect — re-evaluate
+//     whenever an input changes — is the SCHEDULE of the surrounding
+//     dataflow graph, not a property of the Transform itself.
+//
+//   - ALWAYS BLOCK ↦ Loop (one step) + boundary-driven iteration.
+//     Per node.dag A2 footnote (genuine unboundedness — "servers /
+//     streams / REPLs is a TERMINATING step iterated by the
+//     coordination-boundary driver — never an unbounded `.dag` loop"),
+//     each `always @(...)` block's ONE TRIGGER is a BOUNDED step
+//     (one event-fire: read inputs, sequence the statements, write
+//     outputs). The eternal-iteration ("forever, every clock edge")
+//     lives at the simulator/synthesizer's coordination boundary; the
+//     `.dag` model carries the BOUNDED step, not the unbounded
+//     iteration. The trigger-event-list (`SensitivityItem`s) is the
+//     bound that gates the next iteration. Tempting alternative: an
+//     unbounded `Eternal` / `Concurrent` behavior. REJECTED — the A2
+//     bounded-Loop discipline is the existing surface for this exact
+//     pattern.
+//
+//   - PROCEDURAL STATEMENT SEQUENCE (within `begin ... end`) ↦ Bind.
+//     The statements inside an always-block (or initial-block) form
+//     a sequential composition — exactly the Bind behavior
+//     (node.dag:209 "Bind=let"). Blocking (`=`) vs non-blocking
+//     (`<=`) assignment is a SCHEDULING discriminator on the Bind's
+//     write semantics (blocking commits before the next statement;
+//     non-blocking schedules the write for the end of the time-step),
+//     not a new behavior. The `ProceduralAssignKind` enum below
+//     carries that discriminator as data on the assignment statement.
+//
+//   - IF / CASE ↦ Branch.
+//     Verilog `if ... else` and `case ... endcase` are guarded sums
+//     over a discriminator — exactly the Branch behavior
+//     (node.dag:209 "Branch=sums"). The case-item ordering and the
+//     full-case / parallel-case synthesis directives are emission-
+//     time properties (the synthesizer's concern); the structural
+//     surface is the Branch.
+//
+//   - SIGNAL DECLARATION (Wire / Reg / Vector) ↦ effect-typed value.
+//     A Verilog `wire`, `reg`, or `wire [7:0]` is a TYPED signal
+//     carrier; the type IS the effect-typing locus per the
+//     v4-close-interrogation §16 IN-B disposition ("effects intrinsic
+//     to the type signature, NOT an annotation layer"). A continuous-
+//     assign Transform's domain/codomain types name Wire/Reg with
+//     packing, and the typing is what constrains valid composition
+//     (a `reg`-typed driver can drive an `output reg` port; a
+//     procedural assignment is only legal to a `reg`-typed
+//     destination; etc.). This file's `NetDeclaration` /
+//     `VariableDeclaration` / `PortDeclaration` records are the
+//     effect-typed carriers; there is no separate Verilog-effect-
+//     annotation layer.
+//
+//   - MODULE INSTANCE ↦ structural Conj child.
+//     `ModuleName instance_name (.port(signal), ...);` is a child
+//     Node in the parent module-body Conj — the same shape as a
+//     submodule reference in any other LanguageModel. Concurrent
+//     execution of the instance alongside its sibling items is the
+//     same Conj-of-parallel-siblings shape as multiple always-blocks
+//     (above); no new behavior.
+//
+// INTRA-PROGRAM vs CROSS-PROGRAM EFFECT-TYPING (the partition the
+// probe surfaces). The scaffold-header `Consumes` line citing
+// `extdeps/coordination.dag` for "concurrency via effect-typed Bind
+// — IN-B" was a SCAFFOLD-AUTHOR ANTICIPATION that lumped all
+// concurrency under one carrier. The probe surfaces the structurally
+// correct partition: (a) INTRA-program concurrency (multiple
+// `always`-blocks within one Verilog module sharing signal nets) is
+// what this file models — the effect-typing carriers are the
+// signal-type declarations (`NetType` / `VariableType` / `PackingShape`)
+// declared HERE, in this language file; (b) CROSS-program coordination
+// (one program's output deployed to host A, another to host B,
+// communicating via Endpoint / DeploymentUnit / sync-async-stream-
+// pubsub) is what `extdeps/coordination.dag` (T-4.8) models — a
+// distinct concern with a distinct anchor (Wikipedia Distributed
+// computing + Messaging pattern). The IN-B principle "effect-typed
+// Bind composition, no 6th behavior" holds in BOTH partitions, with
+// the effect-typing carriers in their respective per-language /
+// per-coordination home files (P2 single-authority). This is the
+// per-language effect-typing finding the probe was authored to
+// surface — and it surfaces here on the SUCCESS side, not the STOP
+// side.
+//
+// INHABITANCE (DEFERRED to D2). The scaffold-declared "Inhabitance:
+// bit-vectors (wire/reg [N:0]) per std/algebra.dag" is DEFERRED to
+// the operator-pending D2 STOP. Conceptually, an N-bit unsigned
+// signal grounds in `Semiring<UInt<N>>` (or `OrderedRing<Int<N>>`
+// for signed-as-twos-complement reg/integer arithmetic) — but
+// declaring a `data verilog_wire_n_semiring: Semiring<UInt<N>> = …`
+// instance-value at this layer would be the per-file
+// `<Algebra><Concrete>` improvisation D2 was authored to hold
+// (PR #3171's hold precedent). The instance-value form lands when
+// std/integer.dag / std/logic.dag inhabitance walks land plus the
+// ratified D2 instance-value shape; the algebra import + the
+// instance-value declarations are added in ONE pass, not improvised
+// per language.
+//
+// PROBE LIMITS (honest framing — what this file does NOT validate).
+// The IN-B finding covers the STRUCTURAL fit of Verilog HW concurrency
+// to the 5 L1 behaviors. It does NOT validate:
+//   - that a synthesizer actually produces gates from `emit`'s output
+//     (the "clear win" in the header — that requires invoking a
+//     synthesizer process, an `extdeps/process.dag` consumer
+//     boundary, not modeled here).
+//   - the expression sub-grammar of `assign net = expr;` right-hand
+//     sides and procedural statement bodies (verbatim lexemes at
+//     this phase; the T-4 LanguageModel bundle owns the recursive
+//     expression productions when it lands).
+//   - SystemVerilog (IEEE 1800) extensions (`always_comb` /
+//     `always_ff` / `always_latch` sugar, interfaces, classes,
+//     packed structs) — a later language-version model edits this
+//     file (under the L-2 pin discipline) when it lands.
+//   - Simulator-only / testbench constructs (`initial` with
+//     `$display`, `$finish`, file I/O system tasks, `force` /
+//     `release`, fork-join, `wait`) — `initial` is admitted as a
+//     `ModuleItem` variant for the once-only-driven case; the
+//     `$task` universe is the system-task call site, not the
+//     concurrency primitive.
+//   - Timing-checks (`$setup`, `$hold`, `specify` blocks) — a
+//     separate timing-annotation layer (SDF — Standard Delay
+//     Format), out of scope for this language model.
+//
+// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj coproduct below
+// carries the full 🟢/🟡/🔴 classification + all FIVE patterns
+// attempted (Fact-placement / Variant-is-data / Algebraic-form /
+// Dimensional / Parameterized-family-Practice-7) per modeling-
+// discipline.md §4 (operator-ratified binding 2026-05-15, gate (b);
+// PR #3163 made the 4-pattern miss the proof case — do not omit
+// Practice-7). Conj records carry no ledger (only coproducts
+// dissolve); scaffold-residual raw-Int fields (VectorRange, VerilogCost)
+// carry a 🟡 bridge note mirroring the std/diagnostic.dag /
+// ptx Dim3 precedent.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PortDirection — the closed Verilog port-direction classifier
+// (IEEE 1364-2005 §12.3.2). A module's port is exactly one of three
+// directions.
+//
+//   - Input   — `input`   driven by the instantiating context, read
+//                         inside this module
+//   - Output  — `output`  driven inside this module, read by the
+//                         instantiating context
+//   - Inout   — `inout`   bidirectional (tri-state nets only)
+//
+// CLOSED (C1 stop-signal). A fourth direction is an edit to THIS
+// declaration under the L-2 pin discipline (IEEE 1364-2005 has fixed
+// three directions; SystemVerilog adds `ref` — a future language-
+// version model would EDIT this enum explicitly).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every port consumer (instantiation
+//      legality, emission of the `input`/`output`/`inout` keyword,
+//      reverse-flow check) reads the direction tag uniformly;
+//      shared classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses (a
+//      `match name { "input" => … }` smell). The enum IS the
+//      faithful form (algebra.dag:332 `Ordering` precedent).
+//   3. Algebraic form — N/A by construction: the three port
+//      directions are the Verilog spec's primitive port-flow
+//      taxonomy; they do not trace to a richer std/ algebraic
+//      structure (no `BoundedLattice<Direction>` with Inout = top —
+//      that would be a parallel representation of "Inout admits
+//      both directions", a property derived FROM the three tags).
+//   4. Dimensional — FAILS: a port has EXACTLY ONE direction;
+//      `input output foo` is a syntax error in Verilog itself.
+//      Mutually-exclusive alternatives, not simultaneous coordinates.
+//   5. Parameterized family — FAILS: the three are structurally
+//      distinct flow-roles (consumer / producer / bidirectional) —
+//      NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7). They are the IEEE 1364-2005
+//      spec's irreducible port-flow partition.
+// Terminal: the closed three-way port-flow classifier of the
+// IEEE 1364-2005 spec; a fourth direction is the C1 stop-signal.
+type PortDirection
+  = Input
+  | Output
+  | Inout
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetType — the closed Verilog net-type classifier (IEEE 1364-2005
+// §3.7.1, §5.6). A net carries a value continuously driven by one or
+// more drivers; the net-type fixes the resolution function and the
+// default value when undriven.
+//
+//   - Wire     — `wire`     standard net; resolves to X if multiply
+//                           driven with conflicting values
+//   - Wand     — `wand`     wired-AND resolution
+//   - Wor      — `wor`      wired-OR resolution
+//   - Tri      — `tri`      identical to `wire` semantically;
+//                           designer-intent marker for tri-state nets
+//   - Tri0     — `tri0`     pull-down (resolves to 0 if undriven)
+//   - Tri1     — `tri1`     pull-up (resolves to 1 if undriven)
+//   - TriReg   — `trireg`   stores last driven value (capacitive)
+//   - Supply0  — `supply0`  constant 0 power-rail net
+//   - Supply1  — `supply1`  constant 1 power-rail net
+//   - Uwire    — `uwire`    unresolved wire — exactly one driver
+//                           required (IEEE 1364-2005 §5.6.6)
+//
+// CLOSED (C1 stop-signal). A new net-type is an edit to THIS
+// declaration under the L-2 pin discipline; the IEEE 1364-2005 §3.7.1
+// table is the authority.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter and
+//      every driver-resolution consumer reads the net-type tag
+//      uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
+//      reopens the readable-string heuristic surface K-1 forecloses
+//      (a `match keyword { "wire" => … }` smell); a
+//      `{ resolution_kind: Int }` proxy replaces a closed
+//      10-valued exhaustive sum with an unbounded Int — both
+//      violate P2 + M4 (algebra.dag:332 `Ordering` precedent).
+//   3. Algebraic form — N/A by construction: the ten net-types are
+//      the IEEE 1364-2005 spec's primitive resolution-function set;
+//      they do not trace to a richer std/ algebraic structure (one
+//      could attempt a `Lattice<Resolution>` for the wand/wor
+//      sublattice, but that would be a parallel representation of
+//      the per-net-type resolution function, not a richer source).
+//   4. Dimensional — FAILS: a net declaration carries EXACTLY ONE
+//      net-type; `wire wand x` is a syntax error in Verilog itself.
+//      Mutually-exclusive alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the ten are structurally
+//      distinct resolution / pull / supply / unresolved variants —
+//      NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7). They are the spec's
+//      irreducible net-type partition for IEEE 1364-2005.
+// Terminal: the closed ten-way net-type classifier of the
+// IEEE 1364-2005 spec.
+type NetType
+  = Wire
+  | Wand
+  | Wor
+  | Tri
+  | Tri0
+  | Tri1
+  | TriReg
+  | Supply0
+  | Supply1
+  | Uwire
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VariableType — the closed Verilog variable-type classifier
+// (IEEE 1364-2005 §3.7.2, §5.7). A variable stores a value assigned by
+// a procedural statement; the variable-type fixes the storage shape.
+//
+//   - Reg       — `reg`       general-purpose variable (any width;
+//                             the procedural-assignment destination)
+//   - Integer   — `integer`   32-bit signed (host integer; the spec
+//                             pins integer to >= 32 bits)
+//   - Real      — `real`      double-precision floating point (IEEE
+//                             754)
+//   - Time      — `time`      64-bit unsigned (simulation-time
+//                             carrier)
+//   - RealTime  — `realtime`  alias for `real`, designer-intent
+//                             marker for simulation-time-valued
+//                             reals (kept distinct at the syntactic
+//                             surface per IEEE 1364-2005 §3.7.2)
+//
+// CLOSED (C1 stop-signal). A new variable-type is an edit to THIS
+// declaration under the L-2 pin discipline (SystemVerilog adds
+// `logic` / `bit` / typed enums — a future language-version model
+// would EDIT this enum explicitly).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every variable-declaration emitter
+//      and every procedural-assignment legality check reads the
+//      variable-type tag uniformly; shared classifier, not
+//      scattered.
+//   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
+//      reopens the readable-string heuristic surface K-1
+//      forecloses. The enum IS the faithful form (algebra.dag:332
+//      `Ordering` precedent).
+//   3. Algebraic form — PARTIAL: each variable-type grounds in a
+//      std/algebra structure (Reg→`Semiring<UInt<N>>` or
+//      `OrderedRing<Int<N>>` per declared width; Integer→
+//      `OrderedRing<Int<32>>`; Real / RealTime→`ApproximateField<Float>`;
+//      Time→`Semiring<UInt<64>>`). That grounding is INHABITANCE —
+//      owned by the inhabiting carrier file (std/integer.dag,
+//      std/float.dag) per P2, and DEFERRED to the operator-pending
+//      D2 STOP. The variable-type enum itself stays a closed
+//      classifier; the "type → algebra" map IS the future
+//      inhabitance walk, not a richer std/ source to collapse this
+//      enum INTO.
+//   4. Dimensional — FAILS: a variable declaration has EXACTLY ONE
+//      type; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the five are structurally
+//      distinct storage shapes (bit-vector / signed integer /
+//      floating-point / unsigned 64-bit time / aliased floating-
+//      point) — NOT one generic `F<X>` / projection over a
+//      separately-declared source set (Practice 7). The closed set
+//      is the IEEE 1364-2005 variable-type partition.
+// Terminal: the closed five-way variable-type classifier of the
+// IEEE 1364-2005 spec.
+type VariableType
+  = Reg
+  | Integer
+  | Real
+  | Time
+  | RealTime
+
+
+// ─────────────────────────────────────────────────────────────────────
+// EdgeTrigger — the closed Verilog sensitivity-event classifier
+// (IEEE 1364-2005 §9.7.2). The trigger condition under which an
+// always-block's body re-executes when an event-control signal
+// transitions.
+//
+//   - PosEdge    — `posedge` rising edge: 0→1 transition (also
+//                            X→1, Z→1; the spec defines edge events
+//                            on the implicit ordering 0 < X = Z < 1)
+//   - NegEdge    — `negedge` falling edge: 1→0 transition
+//   - AnyChange  — bare signal name in the event-list (no edge
+//                            keyword): re-executes on ANY signal
+//                            transition (level-sensitive)
+//
+// CLOSED (C1 stop-signal). A fourth edge type is an edit to THIS
+// declaration under the L-2 pin discipline (the IEEE 1364-2005 §9.7.2
+// edge-event set is the authority).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every always-block's sensitivity-
+//      list consumer reads the trigger tag per item (a clock-edge
+//      always synthesizes to a flip-flop, a level-sensitive always
+//      to combinational or a latch); shared classifier, not
+//      scattered.
+//   2. Variant-is-data — FAILS: a `{ direction: Int }` (+1/-1/0)
+//      proxy replaces a closed 3-valued exhaustive sum with an
+//      unbounded Int — violates P2 + M4 (algebra.dag:332 `Ordering`
+//      precedent, which uses the SAME shape).
+//   3. Algebraic form — N/A by construction: the three triggers
+//      are the IEEE 1364-2005 spec's primitive event-control
+//      vocabulary; they do not trace to a richer std/ algebraic
+//      structure.
+//   4. Dimensional — FAILS: a sensitivity-list item carries
+//      EXACTLY ONE trigger; `posedge negedge clk` is a syntax
+//      error. Mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the three are structurally
+//      distinct event-control shapes (rising-edge / falling-edge /
+//      level-sensitive) — NOT one generic `F<X>` / projection over
+//      a separately-declared source set (Practice 7).
+// Terminal: the closed three-way sensitivity-trigger classifier of
+// the IEEE 1364-2005 spec.
+type EdgeTrigger
+  = PosEdge
+  | NegEdge
+  | AnyChange
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ProceduralAssignKind — the closed Verilog procedural-assignment
+// scheduling discriminator (IEEE 1364-2005 §9.2). Inside an always-
+// or initial-block, an assignment to a `reg`-typed destination is
+// either BLOCKING or NON-BLOCKING; the discriminator selects when the
+// write commits within the simulation time step.
+//
+//   - Blocking     — `=`  commits BEFORE the next statement in the
+//                         Bind chain (sequential-by-construction;
+//                         the destination's new value is visible to
+//                         the next statement)
+//   - NonBlocking  — `<=` SCHEDULES the write for the end of the
+//                         time step (the destination's old value is
+//                         visible to every subsequent statement in
+//                         the same time step; all non-blocking
+//                         writes commit at once)
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
+// assignment-scheduling shapes; SystemVerilog's continuous-assign
+// inside procedural blocks is a separate construct, not a third
+// scheduling shape.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every procedural-assignment emitter
+//      AND the synthesis-time race-check ("non-blocking required
+//      for flip-flop inference") read the kind uniformly; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ deferred: Bool }` proxy is a
+//      faithful 2-valued representation, but the LEXICAL SURFACE
+//      (`=` vs `<=`) is a closed two-keyword pair the parser /
+//      emitter must dispatch on; the named-enum is the M4-faithful
+//      form (closed sets are enums, not Bool proxies — the
+//      `Ordering`-as-Int rejection generalizes).
+//   3. Algebraic form — N/A by construction: the two are the IEEE
+//      1364-2005 spec's primitive scheduling-discriminator pair;
+//      they do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a procedural assignment carries
+//      EXACTLY ONE kind; `x = <= y` is a syntax error.
+//      Mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the two are structurally
+//      distinct scheduling shapes (immediate / deferred) — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7).
+// Terminal: the closed two-way procedural-assignment scheduling
+// classifier of the IEEE 1364-2005 spec.
+type ProceduralAssignKind
+  = Blocking
+  | NonBlocking
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VectorRange — a packed bit-vector index range `[msb:lsb]`
+// (IEEE 1364-2005 §3.10). Conj record (no Practice-4 ledger — only
+// coproducts dissolve).
+//
+//   - msb, lsb     the most- / least-significant bit positions
+//
+// 🟡 SCAFFOLD (same bridge as std/diagnostic.dag's `Extent.ByteRange`
+// and ptx Dim3 raw-Int axes). With only kernel-ambient `Int`
+// available at the T-4.9 phase, `{ msb: Int, lsb: Int }`
+// STRUCTURALLY ADMITS illegal states (negative indices; widths
+// exceeding the IEEE 1364-2005 declared maximum; gaps; non-
+// monotonic ranges — `[7:0]` is little-endian, `[0:7]` is big-
+// endian, BOTH legal per spec, but `[7:7]` requires width=1 and
+// `[8:0]` requires width=9). modeling-discipline.md §2 (illegal-
+// states-unrepresentable) forbids admitting them; no bounded-
+// Cardinality refinement substrate exists yet to exclude them. It
+// is a TRACKED scaffold, declared with the three bridge properties
+// (the precedent diagnostic.dag established 2026-05-15):
+//   (a) scaffold doc — THIS note; the carrier is provisional, not
+//       the terminal bounded-axis shape.
+//   (b) bounds on use — a producer MUST construct only valid
+//       Verilog vector ranges; until the substrate enforces it the
+//       invariant is producer-side, and a VectorRange violating it
+//       is a producer bug, not a legal value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (T-3, P4 decidability), `msb` / `lsb` become
+//       refined bounded-Int axes, and this scaffold dissolves.
+type VectorRange {
+  msb: Int
+  lsb: Int
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PackingShape — the closed Verilog signal packing classifier. A net
+// or variable is either SCALAR (a single bit) or PACKED into a
+// bit-vector indexed by a `VectorRange`. IEEE 1364-2005 §5.2.
+//
+//   - Scalar    — no range declared; the signal is a single bit
+//   - Packed    — `[msb:lsb]` packing into a bit-vector
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits these two packing
+// shapes for nets and variables; multi-dimensional unpacked arrays
+// are a separate language-surface concern (§7.4) deferred to a
+// future packing-shape extension under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every declaration emitter (net /
+//      variable / port) and every signal-width consumer reads the
+//      packing shape uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: `Scalar` is nullary; `Packed`
+//      carries a `VectorRange`. Collapsing to `{ width: Int }`
+//      replaces a closed two-valued exhaustive sum with an
+//      unbounded Int (width=-1 representable) — violates P2 + M4
+//      (the illegal-states-unrepresentable shape); also drops the
+//      msb/lsb endianness which is a legal Verilog distinction.
+//   3. Algebraic form — N/A by construction: the two are the
+//      IEEE 1364-2005 spec's primitive packing partition; they do
+//      not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a signal declaration carries EXACTLY
+//      ONE packing shape; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: `Scalar` is nullary and
+//      `Packed` carries a `VectorRange` — structurally
+//      heterogeneous, NOT one generic `F<X>` / projection over a
+//      separately-declared source set (Practice 7). It IS the
+//      irreducible two-way packing partition.
+// Terminal: the closed two-way packing classifier; multi-dimensional
+// unpacked arrays would be an EDIT to this declaration under the
+// L-2 pin discipline (a third variant).
+type PackingShape
+  = Scalar
+  | Packed { range: VectorRange }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetDeclaration — a Verilog net (`wire foo;`, `wire [7:0] bus;`,
+// `wand x;`). Conj record (no Practice-4 ledger).
+//
+//   - net_type   which net-type (wire / wand / wor / tri / …)
+//   - name       the net identifier (K-1-opaque Symbol)
+//   - packing    scalar or `[msb:lsb]` packed bit-vector
+type NetDeclaration {
+  net_type: NetType
+  name: Symbol
+  packing: PackingShape
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VariableDeclaration — a Verilog variable (`reg foo;`, `reg [31:0]
+// counter;`, `integer i;`). Conj record (no Practice-4 ledger).
+//
+//   - var_type   which variable-type (reg / integer / real / time /
+//                realtime)
+//   - name       the variable identifier (K-1-opaque Symbol)
+//   - packing    scalar or `[msb:lsb]` packed bit-vector (note:
+//                `integer` / `real` / `time` / `realtime` accept only
+//                Scalar; `[N:M] integer i;` is a syntax error per IEEE
+//                1364-2005 §5.7 — the per-variable-type packing-
+//                admissibility joint check is the T-4 LanguageModel's
+//                concern, same shape as ptx's RegisterScalarKind-×-
+//                RegisterWidth admissibility)
+type VariableDeclaration {
+  var_type: VariableType
+  name: Symbol
+  packing: PackingShape
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PortDeclaration — a Verilog module port (`input clk`, `output [7:0]
+// data`, `inout wire bidir_bus`). Conj record (no Practice-4 ledger).
+//
+//   - direction  input / output / inout
+//   - name       the port identifier (K-1-opaque Symbol)
+//   - packing    scalar or `[msb:lsb]` packed bit-vector
+//
+// IEEE 1364-2005 §12.3.3 also admits a per-port net-type or variable-
+// type modifier (`output reg [7:0] data` makes the port BOTH a port
+// and a procedural-assignment destination); that modifier is a
+// MATCHING `VariableDeclaration` or `NetDeclaration` in the module
+// body's items list (Practice 7 single-authority — the type-fact lives
+// in the declaration, not duplicated on the port). The port's `name`
+// is the cross-reference; the type modifier is consumed via the
+// matching item, never a parallel field here.
+type PortDeclaration {
+  direction: PortDirection
+  name: Symbol
+  packing: PackingShape
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParameterDeclaration — a Verilog compile-time constant
+// (`parameter WIDTH = 8;`). Conj record (no Practice-4 ledger).
+//
+//   - name              the parameter identifier (K-1-opaque Symbol)
+//   - default_lexeme    the default value as a verbatim lexeme
+//                       (sub-grammar deferred to the T-4 LanguageModel
+//                       expression productions; the spice.dag
+//                       `SpiceValue.lexeme` precedent — `parse ∘ emit`
+//                       is identity on the textual surface)
+type ParameterDeclaration {
+  name: Symbol
+  default_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SensitivityItem — one entry in an always-block's event-control list
+// (`posedge clk`, `negedge rst`, bare `data_in`). Conj record (no
+// Practice-4 ledger).
+//
+//   - trigger    which edge / level-sensitivity
+//   - signal     the signal identifier the trigger watches (K-1-
+//                opaque Symbol; resolved through the namespace to
+//                the matching net or variable declaration)
+type SensitivityItem {
+  trigger: EdgeTrigger
+  signal: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ContinuousAssign — a Verilog continuous-assignment statement
+// (`assign net = expr;`, IEEE 1364-2005 §6.1). Conj record (no
+// Practice-4 ledger).
+//
+//   - lhs              the destination net identifier (K-1-opaque
+//                      Symbol; resolved to a `NetDeclaration` —
+//                      procedural variables cannot be continuous-
+//                      assignment destinations, that legality is the
+//                      T-4 LanguageModel's joint check)
+//   - rhs_lexeme       the right-hand-side expression as a verbatim
+//                      lexeme (sub-grammar deferred — same shape as
+//                      `ParameterDeclaration.default_lexeme`)
+type ContinuousAssign {
+  lhs: Symbol
+  rhs_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AlwaysBlock — a Verilog `always @(...)` block (IEEE 1364-2005 §9.9).
+// Conj record (no Practice-4 ledger).
+//
+//   - sensitivity    the event-control list (empty list = `always`
+//                    with no event control — a delay-driven block,
+//                    rare; the common case is one-or-more events)
+//   - body_lexeme    the procedural body (begin…end or single
+//                    statement) as a verbatim lexeme (sub-grammar
+//                    deferred to the T-4 LanguageModel expression /
+//                    statement productions; `parse ∘ emit` is
+//                    identity on the textual surface)
+//
+// Per the IN-B PROBE FINDING above, this carrier IS the Loop-step +
+// Bind-chain unit: the always-block's ONE TRIGGER is a bounded step
+// (A2 footnote); the iteration across triggers is the simulator/
+// synthesizer's coordination boundary; the sequential composition of
+// statements inside the body is the Bind chain.
+type AlwaysBlock {
+  sensitivity: List<SensitivityItem>
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// InitialBlock — a Verilog `initial` block (IEEE 1364-2005 §9.9).
+// Executes its body ONCE at simulation time 0. Conj record (no
+// Practice-4 ledger).
+//
+//   - body_lexeme    the procedural body as a verbatim lexeme (sub-
+//                    grammar deferred — same shape as `AlwaysBlock.
+//                    body_lexeme`)
+//
+// `initial` is admitted here for the simulation-time-zero
+// initialization case (the synthesizable-subset uses register-reset
+// in `always @(posedge clk)` blocks instead); per the PROBE LIMITS
+// header note the testbench-only `$display` / `$finish` system tasks
+// inside `initial` are out of scope.
+type InitialBlock {
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// PortConnection — one connection in a module-instance's port-binding
+// list (IEEE 1364-2005 §12.1.2). Conj record (no Practice-4 ledger).
+//
+//   - port      the formal port name on the instantiated module
+//               (K-1-opaque Symbol; resolved through the namespace
+//               to the matching `PortDeclaration` on the target
+//               module)
+//   - signal    the actual signal identifier in the instantiating
+//               context (K-1-opaque Symbol; resolved to a
+//               `NetDeclaration` / `VariableDeclaration` /
+//               `PortDeclaration` of the enclosing module)
+//
+// This is the NAMED port-connection form (`.port(signal)`) — the
+// IEEE 1364-2005 §12.1.2 alternative positional form (`(signal1,
+// signal2, ...)`) is scope-negative for T-4.9 (it is order-dependent
+// and prone to silent reorder-bugs the spec recommends against; the
+// L-2 pin discipline admits it via a future PortConnectionKind
+// coproduct EDIT when consumer demand surfaces).
+type PortConnection {
+  port: Symbol
+  signal: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModuleInstance — a Verilog module instantiation (`Adder a1 (.a(x),
+// .b(y), .sum(z));`). IEEE 1364-2005 §12.1. Conj record (no
+// Practice-4 ledger).
+//
+//   - module_name      the instantiated module's name (K-1-opaque
+//                      Symbol; resolved through the namespace to the
+//                      matching top-level `VerilogModule`)
+//   - instance_name    this instance's local name (K-1-opaque
+//                      Symbol)
+//   - connections      the named port-connection list
+type ModuleInstance {
+  module_name: Symbol
+  instance_name: Symbol
+  connections: List<PortConnection>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModuleItem — the closed Verilog module-body item classifier. The
+// items inside a `module ... endmodule` body are a flat list of
+// concurrently-executing siblings (IEEE 1364-2005 §12.2); ModuleItem
+// is the closed variant set of what each sibling can be.
+//
+// Per the IN-B PROBE FINDING above, this coproduct IS the parallel-
+// composition surface: the module-body's `List<ModuleItem>` is the
+// Conj children whose concurrent execution is the IN-B claim's
+// structural representation — no 6th `Concurrent` behavior; the
+// parallelism is the Conj-of-siblings shape, exactly as a Conj of
+// submodule instantiations.
+//
+//   - ContinuousAssignItem      `assign net = expr;`
+//   - AlwaysBlockItem           `always @(...) begin … end`
+//   - InitialBlockItem          `initial begin … end`
+//   - NetDeclarationItem        `wire`, `wand`, … declarations
+//   - VariableDeclarationItem   `reg`, `integer`, … declarations
+//   - ParameterDeclarationItem  `parameter NAME = expr;`
+//   - ModuleInstanceItem        nested `ModuleName inst (...);`
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.2 admits additional
+// item kinds (`defparam`, generate-blocks, specify-blocks, task /
+// function declarations) — these are scope-negative for T-4.9
+// (`defparam` is deprecated; generate-blocks / task / function /
+// specify each open a sub-language out of T-4.9's scope). A new
+// item kind is an edit to THIS declaration under the L-2 pin
+// discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every module-body consumer (emission,
+//      port-binding resolution, sensitivity-list signal lookup,
+//      synthesis dispatch) branches on the item kind; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: each variant carries a payload of
+//      a DIFFERENT type (`ContinuousAssign` / `AlwaysBlock` /
+//      `InitialBlock` / `NetDeclaration` / `VariableDeclaration` /
+//      `ParameterDeclaration` / `ModuleInstance`). Collapsing to a
+//      uniform `{ kind: ItemKind, … }` shape requires Option-typed
+//      payload fields (an item carries the AlwaysBlock or NULL),
+//      which makes "ContinuousAssign item with an AlwaysBlock
+//      payload" representable — the inverse of P2.
+//   3. Algebraic form — N/A by construction: the seven module-
+//      body items are the IEEE 1364-2005 spec's primitive item
+//      taxonomy; they do not trace to a richer std/ algebraic
+//      structure.
+//   4. Dimensional — FAILS: a single item is EXACTLY ONE kind;
+//      mutually-exclusive alternatives. (The module body as a
+//      WHOLE is `List<ModuleItem>` — multiple items co-exist as
+//      siblings, but each item is one kind. The Conj-of-siblings
+//      IS the dimensional model the IN-B finding consumes; that
+//      lives on `VerilogModule.items`, not on this enum.)
+//   5. Parameterized family — FAILS: the seven variants are
+//      structurally heterogeneous (different payload types; the
+//      declaration variants carry storage-shape facts while the
+//      action variants carry computation-shape facts) — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The IEEE 1364-2005 module-body
+//      item set is the irreducible partition.
+// Terminal: the closed seven-way module-body-item classifier of the
+// IEEE 1364-2005 spec.
+type ModuleItem
+  = ContinuousAssignItem { assign: ContinuousAssign }
+  | AlwaysBlockItem { always_block: AlwaysBlock }
+  | InitialBlockItem { initial_block: InitialBlock }
+  | NetDeclarationItem { net: NetDeclaration }
+  | VariableDeclarationItem { variable: VariableDeclaration }
+  | ParameterDeclarationItem { parameter: ParameterDeclaration }
+  | ModuleInstanceItem { instance: ModuleInstance }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VerilogModule — a top-level Verilog module (`module Name (ports);
+// items endmodule`). IEEE 1364-2005 §12.1. Conj record (no
+// Practice-4 ledger).
+//
+//   - name      the module identifier (K-1-opaque Symbol)
+//   - ports     the port-declaration list (the module's external
+//               interface)
+//   - items     the module-body items list (the Conj of parallel
+//               siblings — the IN-B parallel-composition surface)
+//
+// Per the IN-B PROBE FINDING: the `items` field IS the parallel-
+// Conj surface; the structural concurrency of multiple always-blocks
+// / continuous-assigns / instances is precisely "these are siblings
+// in the items list". There is no `concurrent: Bool` flag; the
+// parallelism is read FROM the list-of-siblings shape (
+// feedback_no_annotations).
+type VerilogModule {
+  name: Symbol
+  ports: List<PortDeclaration>
+  items: List<ModuleItem>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// VerilogCost — the per-target cost-realization carrier shape for the
+// Verilog `LanguageModel`. Conj record (no Practice-4 ledger).
+//
+// This declares the SHAPE the U1 spine reads when computing Verilog-
+// target realization cost — the scaffold header's "Cost realization:
+// per-construct cost on a Verilog target" claim:
+//
+//   - gate_cost     per-construct gate-count cost (an XOR, AND, OR
+//                   primitive's gate equivalent; the U1 per-target-
+//                   op cost projection — the `map` side of
+//                   `Homomorphism<…, …, VerilogBits>` carries this;
+//                   cost is read FROM the map's structure, never
+//                   stored as a parallel field per algebra.dag's U1
+//                   no-engine discipline)
+//   - area_cost     per-construct area cost (in technology-dependent
+//                   units — gate equivalents in a generic process,
+//                   LUT count on FPGA, transistor count on ASIC;
+//                   the technology-specific cost table sits in the
+//                   inhabitance walk that the T-4 LanguageModel
+//                   shape parameterizes when it lands, not in this
+//                   carrier itself)
+//
+// Both Int carriers are 🟡 scaffold (same bridge as VectorRange and
+// ptx Dim3): cost is a non-negative quantity, but without
+// std/cardinality.dag refinement the negative-cost state is
+// structurally representable. Producer-side invariant pending the
+// cardinality substrate landing.
+type VerilogCost {
+  gate_cost: Int
+  area_cost: Int
+}
