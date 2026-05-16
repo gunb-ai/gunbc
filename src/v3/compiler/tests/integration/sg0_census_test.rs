@@ -831,9 +831,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
-    // T-19 lens/testgen + manual anchor manifest: `compile_to_dag` smoke on
-    // `src/v4/lens/testgen.dag` and `src/v4/test/claim/manual/t19_manual_anchor_manifest.dag`.
-    "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
