@@ -978,6 +978,69 @@ type InitialBlock {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// PortConnectionActual — the closed Verilog port-connection-actual
+// classifier (IEEE 1364-2005 §12.1.2). The spec admits a port-
+// connection's actual to be any of three forms: a full expression
+// (including identifier references, literals, bit-selects, arithmetic
+// — `.en(1'b1)`, `.data(bus[3:0])`, `.sum(a + b)`), or BLANK (an
+// explicitly unconnected port — `.unused()`). Modeling the actual as
+// a bare `Symbol` (the prior form) narrowed it to identifier
+// references only, excluding valid IEEE 1364-2005 syntax — openai-pro
+// REQUEST_CHANGES on PR #3176 surfaced this gap. INVARIANTS P1
+// modeling-faithfulness violation (the spec's port-connection-actual
+// partition is wider than just identifiers).
+//
+//   - ExpressionConnection { expression_lexeme: String }
+//       — the connection-actual is a Verilog expression carried as
+//       a verbatim lexeme (sub-grammar deferred to the T-4
+//       LanguageModel grammar productions; the spice.dag
+//       `SpiceValue.lexeme` precedent — `parse ∘ emit` is identity
+//       on the textual surface; the expression-typed-fact lands
+//       when the bundled expression productions land). Covers
+//       identifier references (`.en(clk)`), literals (`.en(1'b1)`),
+//       bit-selects (`.data(bus[3:0])`), and arithmetic
+//       (`.sum(a + b)`).
+//   - BlankConnection
+//       — `.port_name()` — an explicitly unconnected port (spec
+//       §12.1.2 admits this form for documenting that a named port
+//       is intentionally left unconnected); nullary marker.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.1.2 admits these two
+// actual-forms; a third would be an edit to THIS declaration under
+// the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every port-connection emitter and
+//      every dependency-graph walker reads the actual form
+//      uniformly (a blank connection contributes no dependency; a
+//      non-blank actual contributes the expression's signal
+//      references); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `{ expression_lexeme:
+//      String }` where blank = empty-string conflates "intentionally
+//      blank" with "expression is empty string" (the lexeme `""` is
+//      not a valid Verilog expression); the Disj-with-named-payloads
+//      makes blank vs expression structurally distinct.
+//   3. Algebraic form — N/A by construction: the two actual-forms
+//      are the IEEE 1364-2005 spec's port-connection-actual partition;
+//      they do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single port-connection actual is
+//      EXACTLY ONE form; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: ExpressionConnection carries a
+//      lexeme payload; BlankConnection is nullary — structurally
+//      heterogeneous, NOT one generic `F<X>` / projection over a
+//      separately-declared source set (Practice 7). The expression
+//      sub-grammar is owned by the bundled T-4 LanguageModel; this
+//      vocabulary slice declares the actual-form partition only.
+// Terminal: the closed two-way Verilog port-connection-actual
+// classifier; the expression sub-grammar is deferred to T-4
+// LanguageModel.
+type PortConnectionActual
+  = ExpressionConnection { expression_lexeme: String }
+  | BlankConnection
+
+
+// ─────────────────────────────────────────────────────────────────────
 // NamedPortConnection — one named connection in a module-instance's
 // port-binding list (IEEE 1364-2005 §12.1.2, named form). Conj record
 // (no Practice-4 ledger).
@@ -986,13 +1049,17 @@ type InitialBlock {
 //               (K-1-opaque Symbol; resolved through the namespace
 //               to the matching `PortDeclaration` on the target
 //               module)
-//   - signal    the actual signal identifier in the instantiating
-//               context (K-1-opaque Symbol; resolved to a
-//               `NetDeclaration` / `VariableDeclaration` /
-//               `PortDeclaration` of the enclosing module)
+//   - actual    the connection's actual value — an expression
+//               (carried as a verbatim lexeme per the closed
+//               PortConnectionActual classifier above) or a blank
+//               `.port_name()` marker. The prior `signal: Symbol`
+//               narrowed this to identifier references only —
+//               corrected per openai-pro REQUEST_CHANGES on
+//               PR #3176 to admit the full spec-mandated set of
+//               expression actuals + blank.
 type NamedPortConnection {
   port: Symbol
-  signal: Symbol
+  actual: PortConnectionActual
 }
 
 
@@ -1045,14 +1112,15 @@ type NamedPortConnection {
 //      syntax error per spec.)
 //   5. Parameterized family — FAILS: the two variants carry
 //      structurally heterogeneous payloads (PositionalConnections
-//      carries `List<Symbol>` — the signal names by position only;
-//      NamedConnections carries `List<NamedPortConnection>` — each
-//      with formal+actual) — NOT one generic `F<X>` / projection
-//      over a separately-declared source set (Practice 7).
+//      carries `List<PortConnectionActual>` — the actuals by
+//      position; NamedConnections carries
+//      `List<NamedPortConnection>` — each with formal+actual) —
+//      NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7).
 // Terminal: the closed two-way Verilog port-connection-form
 // classifier of the IEEE 1364-2005 spec.
 type PortConnections
-  = PositionalConnections { signals: List<Symbol> }
+  = PositionalConnections { actuals: List<PortConnectionActual> }
   | NamedConnections { connections: List<NamedPortConnection> }
 
 
