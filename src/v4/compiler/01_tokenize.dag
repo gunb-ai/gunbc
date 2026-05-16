@@ -27,12 +27,13 @@
 //   - tokenize: (String, file: Symbol, LexRules) -> Outcome<TokenStream>
 //
 // Consumes:
-//   - std/text.dag: String (= FreeMonoid<Char>)
+//   - std/text.dag: String (= FreeMonoid<Char> alias; see std/algebra.dag)
+//   - std/algebra.dag: FreeMonoid<Char> (spine walk for `string_is_empty`)
 //   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
 //     Symbol, node_well_formed
 //   - std/collection.dag: List<T>
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Textual, WholeFile,
-//     Correction, NoCorrectionReason
+//     Correction, ExternalContractUnknown, UserInputBoundary
 //   - extdeps/languages/dag.dag: language-#1 model binds E0 instances (see
 //     `dag_wave1_e0_void_lex`); this file stays encoding-generic.
 //
@@ -50,10 +51,11 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
+  ExternalContractUnknown,
   Locus,
-  NoCorrectionReason,
   Outcome,
   Textual,
+  UserInputBoundary,
   WholeFile,
 }
 import v4.std.algebra { FreeMonoid }
@@ -124,7 +126,7 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: tokenize_lex_e0_source_not_exhausted,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 

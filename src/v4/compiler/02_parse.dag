@@ -28,7 +28,7 @@
 //   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
 //     Symbol, node_well_formed
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, PortLocus, Correction,
-//     NoCorrectionReason
+//     ExternalContractUnknown, UserInputBoundary
 //   - compiler/01_tokenize.dag: TokenStream
 //
 // Status: Wave-1 — G0 void-grammar + empty tokens path **realized**; else
@@ -45,15 +45,15 @@ import v4.compiler.tokenize { TokenStream }
 import v4.std.diagnostic {
   Correction,
   Diagnostic,
+  ExternalContractUnknown,
   Locus,
-  NoCorrectionReason,
   Outcome,
   PortLocus,
+  UserInputBoundary,
 }
 import v4.std.node {
   ComputationNode,
   Conj,
-  Connective,
   Node,
   NodeKind,
   Symbol,
@@ -99,7 +99,7 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: parse_g0_tokens_remain,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -135,10 +135,6 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
       Rejected {
         diagnostic: parse_g0_tokens_remain_diagnostic(at: at)
       }
-    }
-  } else if ntok == 0 {
-    Rejected {
-      diagnostic: parse_walk_not_realized_diagnostic(at: at)
     }
   } else {
     Rejected {
