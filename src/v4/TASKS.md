@@ -71,6 +71,17 @@ Phase 3 (parallel — lens dimensions):
   T-23  lens/application.dag  (apply_lens surface — opt-in depth + the ONLY
          advisory→fail-closed bridge; load-bearing for §1.5 user-defined
          dimensions + §6.2 audience duality + C7 Report→Diagnostic)
+         + AGENT-1: also owns the non-text AGENT-SURFACE contract — agent
+           reads lenses + submits the D1 apply_diff:(Node,Diff)->
+           Result<Node,Diagnostic> (enters B2-OMNI at `core`, a sibling
+           of ingest, NOT an ingest; fail-closed on external/stale Diffs
+           per INVARIANTS P3 — NOT a total `->Node`), gets the
+           affected_set lens read in whatever shape T-21 declares
+           (AGENT-1 coins no return noun — no Witness<ReExecFrontier>)
+           + faithful re-emit (C5-1/C5-2/C4), fail-closed via
+           apply_lens(Enforce). A client/composition of T-21 + B2-OMNI
+           + C5/C4 — no new file, no new authority (DECISIONS.md
+           AGENT-1; lens/application.dag header).
                                                     [needs T-1, lens framework]
 
 Phase 4 (serial — close the loop):
