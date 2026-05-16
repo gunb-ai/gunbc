@@ -68,11 +68,14 @@
 //   refinement type, and the real refinement type lives in
 //   std/cardinality.dag as `Multiplicity` (unmerged #3163). The
 //   contract as originally written was unbuildable. The operator
-//   ratified option b2 (plain carriers, cardinality intrinsic via
-//   the FreeMonoid spine / Bool BooleanAlgebra membership count) +
-//   option A (Map<K,V> split to Wave-A2, gated on witness.dag); this
-//   header is the reconciled b2 form. The original frozen-header
-//   STOP write-up lives in #3169 issuecomment-4464775997.
+//   ratified option b2 (plain carriers — for List<T> = FreeMonoid<T>,
+//   cardinality (length) IS intrinsic via the FreeMonoid spine; for
+//   Set<T> as a characteristic function fn(T) -> Bool, finite-
+//   cardinality is NOT intrinsic to the carrier and is a deferred
+//   refinement — see scaffold item (2) below) + option A (Map<K,V>
+//   split to Wave-A2, gated on witness.dag); this header is the
+//   reconciled b2 form. The original frozen-header STOP write-up
+//   lives in #3169 issuecomment-4464775997.
 //
 // Deferred to Wave-A2 — TRACKED SCAFFOLD (🟡):
 //
