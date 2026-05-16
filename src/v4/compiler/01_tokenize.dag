@@ -28,8 +28,8 @@
 //
 // Consumes:
 //   - std/text.dag: String (= FreeMonoid<Char>)
-//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Connective,
-//     Conj, Symbol, node_well_formed
+//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
+//     Symbol, node_well_formed
 //   - std/collection.dag: List<T>
 //   - std/diagnostic.dag: Diagnostic, Outcome, Locus, Textual, WholeFile,
 //     Correction, NoCorrectionReason
