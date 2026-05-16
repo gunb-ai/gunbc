@@ -94,40 +94,55 @@
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
 //     pre-T-3 / pre-D2)
+//   - Rust D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
+//     2026-05-16 commit 44a37ad46): GroundingMap<IRCarrier>
+//     (surface-spelling Conj), OverflowAction (closed two-way Disj —
+//     PanicOnOverflow / TwoComplementWrap, Rust integer runtime-
+//     dispatch classifier per Reference §numeric),
+//     OverflowDisposition<IRCarrier> (per-language operation-
+//     semantics Conj with debug_default + release_default); plus
+//     the LANDABLE NOW alias-identity row `type RustBool = Bool` +
+//     `data rust_bool_grounding: GroundingMap<RustBool> =
+//     GroundingMap { spelling: "bool" }` (std/logic.dag's Bool is
+//     landed; bool-now/integers-pending split is the sanctioned
+//     scaffold-drift disposition per manager directive msg_2c2716dd).
+//     Per-primitive alias-identity rows for integers / floats /
+//     char / str / never are 🟡 TRACKED-SCAFFOLD with named owner +
+//     dissolution trigger per the D2-resolver block below; they
+//     amend in as one-line landings as their std/ targets reach
+//     `origin/main`.
 //
 // Owned ELSEWHERE (deliberately NOT in this slice — named owners +
 //   dissolution triggers per directive item 3 "DEFER explicitly, with
 //   named owner + dissolution trigger"):
 //
-//   - Rust scalar inhabitance instance-values: `data rust_i32_ring:
-//     OrderedRing<I32> = OrderedRing { ... }` and the parallel rows
-//     for the 11 other integer types, IEEE-754 widths, Bool, Char,
-//     Str, Never. RIDES the operator D2 form-decision (msg_640d429c —
-//     STOP-2/STOP-3 escalated by loyal-koi-702; brief §B's per-
-//     language inhabitance form conflicts with INVARIANTS P1:42's
-//     `Compose<Int, MachineWidth<Word*>>` worked example, AND the
-//     fn-value-expression form for spec-primitive operations
-//     (3a/3b/3c — name-reference Atom vs relaxed instance vs new
-//     substrate carrier) is unspecified). §0 ratifies v2-SYNTAX
-//     LEGALITY ONLY; per-target inhabitance shape is a SEPARATE
-//     operator-pending SEMANTIC decision (manager reinforcement
-//     msg_8b477982). AND rides std/integer.dag / std/float.dag /
-//     std/logic.dag / std/text.dag (T-3 wave A3) carrier landing for
-//     P2 single-authority: pre-D2 / pre-T-3 inhabitance would
-//     foreclose the eventual canonical authority.
-//     STOP-TRIGGER (named, binding): authoring even a "placeholder"
-//     `data rust_i32_ring: OrderedRing<...> = ...` row here pre-D2
-//     is the FORBIDDEN deferral (the v3 cross-layer-drift failure
-//     mode this file's restraint exists to prevent). The PR #3171
-//     improvisation-held draft is the precedent for what NOT to do
-//     (manager held it to draft for exactly this reason). Stub-to-
-//     keep-moving is forbidden; defer-with-named-trigger is the
-//     legitimate form.
-//     SEAM (where it plugs in): the closed RustScalar Disj declared
-//     below is the SURFACE through which each Rust scalar's
-//     inhabitance parameterizes — when D2 ratifies the instance-value
-//     form AND T-3 wave A3 lands, the inhabitance rows land in this
-//     file with the typed scalar variants below as their carriers.
+//   - Rust scalar inhabitance — D2 RATIFIED 2026-05-16 (encoded
+//     DECISIONS.md D2 row, commit 44a37ad46, via PR #3195 merge).
+//     The RATIFIED FORM is NOT per-language `data rust_i32_ring:
+//     OrderedRing<...> = ...` rows (the original STOP-2/STOP-3
+//     escalation surfaced that shape as the parallel-substrate
+//     INVARIANTS P1:42 `numeric_aliases_align_to_refinements`
+//     forbids). The ratified form is the THREE-THIN-FACTS D2a
+//     resolver: alias-identity to the std/ carrier
+//     (`type RustI32 = Int32` — algebra inhabitance flows through
+//     the alias per the `List<T> = FreeMonoid<T>` precedent) +
+//     grounding map (surface spelling) + operation-semantics
+//     carrier (OverflowDisposition for integers; NaN/Inf for
+//     floats). The resolver-shape carriers (GroundingMap,
+//     OverflowAction, OverflowDisposition) + the bool alias-identity
+//     row LAND IN THIS SLICE (per the Owns bullet above). The
+//     remaining per-primitive alias-identity rows are 🟡 TRACKED-
+//     SCAFFOLD deferred to their named std/ targets per the
+//     resolver-block deferral table below.
+//     SUBSTRATE SINGLE-AUTHORITY GUARD (per manager directive
+//     msg_2c2716dd): rust.dag (and any sibling extdeps/languages/
+//     file) MUST NOT mint the std/ Int / UInt / Float / IntPointer /
+//     UIntPointer carriers locally; that authority is std/integer.dag
+//     and std/float.dag (T-3 Wave-A3). Local minting would produce
+//     parallel substrates and break P2 single-authority at the
+//     carrier level. The legitimate landing per primitive is alias-
+//     identity to the existing std/ source, never a parallel
+//     declaration.
 //
 //   - Bidirectional Rust LanguageModel substrate (grammar productions
 //     as declarative B2-OMNI data, C5-fidelity disposition tags per
@@ -200,13 +215,14 @@
 //     its structural recursion through `children` per A1.
 //   - std/logic.dag: `Bool` (KERNEL-AMBIENT — STRUCTURE.md
 //     "Kernel-ambient types"; usable without an import, but
-//     std/logic.dag is its sole modeling authority). The live
-//     `IrToRust<Bool>` row references the type-parameter `Bool`
-//     directly via the kernel-ambient resolution; no `import`
-//     statement is needed (v2-compiler verifies 0-diag without
-//     one). Naming std/logic.dag here makes the substrate-
-//     authority dependency explicit; the absence of an `import`
-//     statement is the kernel-ambient discipline made operational.
+//     std/logic.dag is its sole modeling authority). The D2a
+//     alias-identity row `type RustBool = Bool` references the
+//     type-parameter `Bool` directly via the kernel-ambient
+//     resolution; no `import` statement is needed (v2-compiler
+//     verifies 0-diag without one). Naming std/logic.dag here
+//     makes the substrate-authority dependency explicit; the
+//     absence of an `import` statement is the kernel-ambient
+//     discipline made operational.
 //   `Int` is kernel-ambient (the RustCost components' raw Int
 //   carrier per the 🟡 scaffold bridge to std/cardinality.dag);
 //   `List` is kernel-ambient (used as `List<NamedSegment>` in
@@ -251,9 +267,9 @@ module v4.extdeps.languages.rust
 import v4.std.node { Node, Symbol }
 // Bool from v4.std.logic is KERNEL-AMBIENT (STRUCTURE.md "Kernel-
 // ambient types") — usable without an import statement in any v4
-// .dag file. The live `IrToRust<Bool>` row below references the
-// type-parameter `Bool` directly; v2-compiler resolves it ambiently
-// (verified 0-diag).
+// .dag file. The D2a alias-identity row `type RustBool = Bool`
+// below references the type-parameter `Bool` directly; v2-compiler
+// resolves it ambiently (verified 0-diag).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1715,63 +1731,143 @@ data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
 // OverflowDisposition row.
 
 
-// DEFERRED — alias-identity declarations awaiting their std/
-// carrier landings. Each row below lands as a one-line amend the
-// moment its `Consumes:` target reaches merged state on origin/main.
+// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY ROWS
 //
-//   // Rust signed integers — pending std/integer.dag T-3 Wave-A3
-//   type RustI8    = Int8        // pending
-//   type RustI16   = Int16       // pending
-//   type RustI32   = Int32       // pending
-//   type RustI64   = Int64       // pending
-//   type RustI128  = Int128      // pending
-//   type RustIsize = IntPointer  // pending (composes std/integer.dag
-//                                //          + std/machine.dag PointerWidth)
+// The alias-identity rows below (D2a(1)) are 🟡 TRACKED-SCAFFOLD —
+// shape ratified, landing blocked on named upstream substrate, with
+// explicit owner + trigger + form contract so the deferral is a
+// tracked-scaffold not a silent gap. Per manager directive
+// msg_2c2716dd 2026-05-16 and the encoded DECISIONS.md D2 row.
 //
-//   // Rust unsigned integers — pending std/integer.dag T-3 Wave-A3
-//   type RustU8    = UInt8       // pending
-//   type RustU16   = UInt16      // pending
-//   type RustU32   = UInt32      // pending
-//   type RustU64   = UInt64      // pending
-//   type RustU128  = UInt128     // pending
-//   type RustUsize = UIntPointer // pending
-//
-//   // Rust floats — pending std/float.dag T-3 Wave-A3
-//   type RustF32   = Float32     // pending
-//   type RustF64   = Float64     // pending
-//
-//   // Rust char — pending std/text.dag refinement-question
-//   // resolution. Rust's char is a Unicode scalar value excluding
-//   // surrogates; std/text.dag's Char = Nat is unrefined. Direct
-//   // alias would equate two semantically-distinct carriers
-//   // (refined-Unicode-scalar vs arbitrary-Nat). Authoring this
-//   // alias is gated on either:
-//   //   (a) std/text.dag refining Char to its Unicode-scalar-
-//   //       value form, OR
-//   //   (b) an operator-ratified per-language refinement-
-//   //       disposition carrier capturing the Rust-side refinement.
-//   // Same question for RustStr (UTF-8 vs unrefined
-//   // FreeMonoid<Char>). Both deferred pending the substrate
-//   // decision.
-//   //   type RustChar  = Char    // pending refinement decision
-//   //   type RustStr   = String  // pending refinement decision
-//
-//   // Rust never type — pending std/ empty-cardinality / Never
-//   // carrier (currently no direct std/ source).
-//   //   type RustNever = ???     // pending
-//
-// Each deferred alias lands with:
-//   - its `type Rust<X> = <StdCarrier>` declaration
-//   - its `data rust_<x>_grounding: GroundingMap<Rust<X>> =
-//     GroundingMap { spelling: "<token>" }` row
-//   - for integer aliases: its `data rust_<x>_overflow:
+// FORM CONTRACT — for each deferred alias, the form is the encoded
+// DECISIONS.md D2 row (commit 44a37ad46, line 57). Land as:
+//   - `type Rust<X> = <StdCarrier>` alias-identity (D2a(1));
+//     algebra inhabitance flows through the alias per the
+//     `List<T> = FreeMonoid<T>` precedent — no parallel-substrate
+//     per-language `OrderedRing<Rust<X>, …>` inhabitance
+//     (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`).
+//   - `data rust_<x>_grounding: GroundingMap<Rust<X>> =
+//     GroundingMap { spelling: "<token>" }` row (D2a(2)).
+//   - for integer aliases: `data rust_<x>_overflow:
 //     OverflowDisposition<Rust<X>> = OverflowDisposition {
 //     debug_default: PanicOnOverflow,
-//     release_default: TwoComplementWrap }` row (Rust integer
-//     defaults per Reference §numeric apply uniformly to all
-//     widths).
-//   - for float aliases: a future NaN/Inf disposition carrier
-//     row (the carrier itself lands with std/float.dag).
+//     release_default: TwoComplementWrap }` row (D2a(3); Rust
+//     integer defaults per Reference §numeric apply uniformly
+//     to all widths).
+//   - for float aliases: a NaN/Inf disposition carrier row
+//     (the carrier itself lands with std/float.dag's
+//     ApproximateField<Float> inhabitance — same 🟡 TRACKED-
+//     SCAFFOLD deferral pattern, float.dag as named owner).
+//
+// SUBSTRATE SINGLE-AUTHORITY GUARD — `rust.dag` (and any sibling
+// `verilog.dag` / `python.dag` / etc.) MUST NOT mint the std/ Int /
+// UInt / Float / IntPointer / UIntPointer types locally. The
+// abstract numeric carriers have SINGLE AUTHORITY at `std/`
+// (substrate single-authority per INVARIANTS P2 + scaffold-drift
+// discipline). The extdeps file's only contribution is the
+// alias-identity to the std/ source — minting them locally would
+// produce parallel substrates and break P2 enforcement at the
+// carrier level.
+//
+// ─── DEFERRED ROWS — TRACKED ──────────────────────────────────────
+//
+// Rust signed integers — RustI8 / RustI16 / RustI32 / RustI64 /
+//                        RustI128 / RustIsize
+//   - target form        type RustI8 = Int8 …
+//                        + grounding `spelling: "i8"` etc.
+//                        + OverflowDisposition row (Reference
+//                          §numeric default per width)
+//   - named owner        std/integer.dag — the `Int` arbitrary-
+//                        precision integer concept + the
+//                        `Int8..Int128 = Compose<Int,
+//                        MachineWidth<Word*>>` bounded-width
+//                        ladder (per INVARIANTS:42 +
+//                        `numeric_aliases_align_to_refinements`
+//                        ratchet) + the `IntPointer =
+//                        Compose<Int, PointerWidth>` ladder.
+//   - dispatch wave      T-3 Wave-A3 (substrate spine integer
+//                        carriers).
+//   - dissolution trigger
+//                        when the `Int8..Int128` + `IntPointer`
+//                        ladder lands on `origin/main` in
+//                        `std/integer.dag`, the rows above amend
+//                        in as one-line landings each.
+//
+// Rust unsigned integers — RustU8 / RustU16 / RustU32 / RustU64 /
+//                          RustU128 / RustUsize
+//   - target form        type RustU8 = UInt8 …
+//                        + grounding `spelling: "u8"` etc.
+//                        + OverflowDisposition row (same Rust
+//                          defaults; the wrap arithmetic is
+//                          modular per width — the disposition
+//                          tag selects the runtime action, the
+//                          alias target carries the modular
+//                          algebra).
+//   - named owner        std/integer.dag — the `UInt8..UInt128 =
+//                        Compose<UInt, MachineWidth<Word*>>`
+//                        bounded-width ladder + `UIntPointer =
+//                        Compose<UInt, PointerWidth>` ladder.
+//   - dispatch wave      T-3 Wave-A3.
+//   - dissolution trigger
+//                        same as signed — `UInt*` ladder landing
+//                        on `origin/main` in `std/integer.dag`.
+//
+// Rust floats — RustF32 / RustF64
+//   - target form        type RustF32 = Float32 …
+//                        + grounding `spelling: "f32"` etc.
+//                        + NaN/Inf disposition carrier row
+//                          (carrier itself lands with
+//                          std/float.dag).
+//   - named owner        std/float.dag — the `Float` /
+//                        `Float32` / `Float64` carriers and the
+//                        `ApproximateField<Float>` algebra
+//                        instance D2b's FunctionRef → Arrow
+//                        IEEE-754 op declarations attach to.
+//   - dispatch wave      T-3 Wave-A3.
+//   - dissolution trigger
+//                        when `std/float.dag` lands its
+//                        `Float32` / `Float64` ladder + the
+//                        `ApproximateField<Float>` inhabitance
+//                        on `origin/main`, the rows above and
+//                        the D2b realization surface below
+//                        amend in together.
+//
+// Rust char / str — RustChar / RustStr
+//   - target form        type RustChar = Char / type RustStr =
+//                        String + grounding (`"char"` / `"str"`).
+//   - named owner        std/text.dag — Char/String are LANDED
+//                        but unrefined; Rust's `char` (Unicode
+//                        scalar value excluding surrogates) and
+//                        `str` (UTF-8) are REFINEMENTS, not
+//                        direct alias targets.
+//   - dispatch wave      pending REFINEMENT-DISPOSITION decision
+//                        (D2 scope-guard ambiguity).
+//   - dissolution trigger
+//                        EITHER (a) `std/text.dag` refines `Char`
+//                        to its Unicode-scalar-value form +
+//                        `String` to its UTF-8 form, in which
+//                        case alias-identity lands directly;
+//                        OR (b) an operator-ratified per-
+//                        language refinement-disposition carrier
+//                        lands (D2 row's open scope-guard
+//                        question), in which case the alias
+//                        lands + that carrier carries the
+//                        Rust-side refinement. The decision
+//                        between (a) and (b) is an escalation
+//                        point — surface to the operator when
+//                        authoring the alias forces it.
+//
+// Rust never type — RustNever
+//   - target form        type RustNever = <std/ Never carrier>.
+//   - named owner        std/cardinality.dag — has Multiplicity
+//                        but no explicit empty-cardinality /
+//                        Never type yet.
+//   - dispatch wave      pending std/ empty-cardinality / Never
+//                        carrier authoring (no current dispatch
+//                        wave assignment).
+//   - dissolution trigger
+//                        when std/ lands its Never / empty-
+//                        cardinality carrier on `origin/main`.
 
 
 // ─────────────────────────────────────────────────────────────────────
