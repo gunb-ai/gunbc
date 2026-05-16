@@ -406,8 +406,8 @@ type SpiceValue {
 // for that flag-vs-key-value distinction. The remaining variants
 // without any modifier slot (`Resistor`, `Capacitor`, `Inductor`,
 // `Diode`, `VoltageSource`, `CurrentSource`) are part of the same
-// follow-up that enumerates the missing-list (E, F, G, H, J, O, S, T,
-// U, W, Z) — see `Component`'s 🟡 trigger. `name` is a `Symbol`
+// follow-up that enumerates the missing-list (B, E, F, G, H, J, O,
+// S, T, U, W, Z) — see `Component`'s 🟡 trigger. `name` is a `Symbol`
 // (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar
 // deferred per `SpiceValue`).
 //
@@ -664,17 +664,19 @@ type SubstrateSpec
 //   (a) ELEMENT-KIND COVERAGE — enumerated: R, C, L (passives);
 //       V, I (independent sources); D, Q, M (semiconductor devices);
 //       K (mutual inductance); X (subcircuit invocation). NOT yet
-//       enumerated: E, F, G, H (linear controlled sources), J (JFET),
-//       O (LTRA lossy transmission line), S (voltage-controlled
-//       switch), T (lossless transmission line), U (URC uniform
-//       distributed RC line), W (current-controlled switch), Z
-//       (MESFET). Quarles 1993 SPICE3F5 §11. This list MUST stay
-//       synchronized with the SPICE3F5 anchor's element table — if a
-//       SPICE3 element is neither in `type Component` above nor in
-//       this missing-list, the 🟡 trigger could false-fire green while
-//       leaving a valid spec element unmodeled (the M3 / P1 fidelity
-//       failure mode codex review #3168 surfaced for the prior
-//       omission of Z, O, U).
+//       enumerated: B (non-linear dependent source — SPICE3 `B N+
+//       N- <I=expr> <V=expr>`), E, F, G, H (linear controlled
+//       sources), J (JFET), O (LTRA lossy transmission line), S
+//       (voltage-controlled switch), T (lossless transmission line),
+//       U (URC uniform distributed RC line), W (current-controlled
+//       switch), Z (MESFET). Quarles 1993 SPICE3F5 §11. This list
+//       MUST stay synchronized with the SPICE3F5 anchor's element
+//       table — if a SPICE3 element is neither in `type Component`
+//       above nor in this missing-list, the 🟡 trigger could false-
+//       fire green while leaving a valid spec element unmodeled (the
+//       M3 / P1 fidelity failure mode codex review #3168 surfaced
+//       for the prior omission of Z, O, U; openai-pro #3168 review
+//       on commit e85920c2 surfaced the same shape for `B`).
 //   (b) PER-VARIANT GRAMMAR COVERAGE — each enumerated variant is a
 //       MANDATORY-FIELDS-ONLY shape; the spec's optional facts are
 //       not yet modeled:
@@ -722,7 +724,7 @@ type SubstrateSpec
 // SPICE3 §11 element grammar) exists in the spec but is not yet
 // modeled here.
 //   Named trigger: when (a) all SPICE3F5 elements named in the
-//   missing-list above (E, F, G, H, J, O, S, T, U, W, Z) are added
+//   missing-list above (B, E, F, G, H, J, O, S, T, U, W, Z) are added
 //   as variants AND (b) each enumerated variant carries its
 //   full SPICE3 §11 statement grammar (optional parameters made
 //   structural rather than lexeme-only; transient source specs as
