@@ -177,7 +177,8 @@ module v4.extdeps.languages.ptx
 //     payload on `RegisterScalar`'s typed variants — specifically
 //     the `state_space: RegisterStateSpace` field on
 //     BitsScalar / UnsignedScalar / SignedScalar / FloatScalar
-//     (RegisterStateSpace is the 7-variant typed-scalar-resident
+//     (RegisterStateSpace is the 6-variant user-declarable typed-
+//     scalar-resident
 //     sub-classifier of StateSpace, excluding `.tex` since the
 //     `.tex` state space holds opaque texture/sampler descriptors
 //     per PTX 8.5 §5.1.10, not typed scalars). PredicateScalar is
@@ -833,22 +834,49 @@ type RegisterScalarKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RegisterStateSpace — the closed PTX typed-scalar-resident state-
-// space sub-classifier. PTX ISA 8.5 §5.1 lists 8 state spaces; the
-// `.tex` state space (§5.1.10) is for TEXTURE/SAMPLER/SURFACE
-// DESCRIPTORS (the opaque types `texref` / `sampref` / `surfref`),
-// NOT for typed scalar storage — a typed scalar value cannot reside
-// in `.tex`. So the typed-scalar-residence admissibility set is the
-// 7-variant subset of StateSpace excluding `Tex`.
+// RegisterStateSpace — the closed PTX user-declarable typed-scalar-
+// resident state-space sub-classifier. PTX ISA 8.5 §5.1 lists 8
+// state spaces; TWO are excluded from the user-declarable typed-
+// scalar residence set:
 //
-// CLOSED (C1 stop-signal). If a future PTX revision adds a typed-
-// scalar-resident state space, both this enum AND StateSpace get
-// coordinated edits.
+//   - `.tex` (§5.1.10) is for TEXTURE/SAMPLER/SURFACE DESCRIPTORS —
+//     opaque types `texref` / `sampref` / `surfref`, NOT typed
+//     scalar storage. A typed scalar value cannot reside in `.tex`.
+//   - `.sreg` (§5.1.2) is for PREDEFINED SPECIAL REGISTERS —
+//     system-provided intrinsics like `%tid`, `%ctaid`, `%clusterid`,
+//     `%cluster_ctaid`, `%smid`, `%clock`, etc. These have
+//     SPEC-FIXED types (typically `.u32` or `.v4.u32` per intrinsic);
+//     user code CANNOT declare arbitrary typed scalars in `.sreg`
+//     (`.sreg .f32 my_var;` is not a legal PTX construct). The
+//     ThreadCoord carrier (declared above) is how this model
+//     handles `.sreg`-resident intrinsic reads structurally — the
+//     intrinsic identity (source × axis) determines the type
+//     downstream, not a user-chosen kind × width.
+//
+// So the user-declarable typed-scalar-residence admissibility set
+// is the 6-variant subset of StateSpace excluding both `Tex` and
+// `SReg`.
+//
+// (Refactored 2026-05-16 per operator BLOCKING review on PR #3170:
+// the prior 7-variant form admitted `FloatScalar { state_space:
+// ResSReg }` and similar illegal kind × `.sreg` combinations —
+// INVARIANTS P1 modeling-faithfulness violated against PTX 8.5
+// §5.1.2's spec-fixed intrinsic typing. The exclusion of `.sreg`
+// mirrors the prior `.tex` exclusion — both for residence-
+// admissibility reasons specific to each state space, not a
+// generic "exclude state spaces" pattern.)
+//
+// CLOSED (C1 stop-signal). If a future PTX revision adds a user-
+// declarable typed-scalar-resident state space, both this enum AND
+// StateSpace get coordinated edits.
 //
 // Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#state-spaces
 //       (Reference §5.1; the `.tex` exclusion is grounded in §5.1.10
 //       texture, sampler, and surface descriptor variables — opaque
-//       types, not typed-scalar storage).
+//       types, not typed-scalar storage; the `.sreg` exclusion is
+//       grounded in §5.1.2 — predefined special registers with
+//       spec-fixed intrinsic typing, not user-declarable typed-
+//       scalar storage).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -857,30 +885,36 @@ type RegisterScalarKind
 //      family (`ld.global` / `ld.shared::cta` / `ld.const` etc.);
 //      shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: collapsing to `StateSpace`
-//      reintroduces the `.tex`-residence illegal state this enum
-//      exists to forbid (a typed scalar cannot live in `.tex`); the
-//      sub-classifier IS the dissolved form (same admissibility-
-//      sub-enum pattern as BitsWidth / IntegerWidth / FloatWidth
+//      reintroduces the `.tex`-residence AND `.sreg`-residence
+//      illegal states this enum exists to forbid (a typed scalar
+//      cannot live in `.tex` per §5.1.10; user code cannot declare
+//      arbitrary typed scalars in `.sreg` per §5.1.2); the sub-
+//      classifier IS the dissolved form (same admissibility-sub-
+//      enum pattern as BitsWidth / IntegerWidth / FloatWidth
 //      relative to a hypothetical AllPtxWidths meta-enum).
 //   3. Algebraic form — N/A by construction: these are the spec's
-//      typed-scalar-resident state spaces (StateSpace minus `.tex`);
-//      no richer std/ structure.
+//      user-declarable typed-scalar-resident state spaces (StateSpace
+//      minus `.tex` and `.sreg`); no richer std/ structure.
 //   4. Dimensional — FAILS: a single typed scalar lives in EXACTLY
 //      ONE residence; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the seven variants are
+//   5. Parameterized family — FAILS: the six variants are
 //      structurally distinct (per-thread vs per-CTA vs per-grid;
 //      readable vs read-only; with vs without sub-qualifiers —
 //      Param and Shared carry payloads) — NOT projection-uniform
 //      over any richer source. The variants are the PTX-spec
-//      typed-scalar-resident partition, restricted from the full
-//      StateSpace partition by exclusion of `.tex` (which is for
-//      opaque descriptors, not typed scalars).
-// Terminal: the closed seven-way PTX typed-scalar-resident state-
-// space sub-classifier; a typed scalar in `.tex` is structurally
-// unrepresentable (per PTX 8.5 §5.1.10).
+//      user-declarable typed-scalar-resident partition, restricted
+//      from the full StateSpace partition by exclusion of `.tex`
+//      (opaque descriptors, not typed scalars) AND `.sreg`
+//      (predefined-intrinsic residence with spec-fixed typing, not
+//      user-declarable typed-scalar storage).
+// Terminal: the closed six-way PTX user-declarable typed-scalar-
+// resident state-space sub-classifier; a typed scalar in `.tex`
+// (per §5.1.10) OR in `.sreg` (per §5.1.2) is structurally
+// unrepresentable. Intrinsic-register reads (the `.sreg` residents
+// like `%tid`) are modeled by the ThreadCoord carrier above, NOT by
+// this enum.
 type RegisterStateSpace
   = ResReg
-  | ResSReg
   | ResConst
   | ResGlobal
   | ResLocal
@@ -909,7 +943,8 @@ type RegisterStateSpace
 // reg-only, and any-scalar-in-`.tex` was constructible despite
 // §5.1.10 reserving `.tex` for opaque descriptors):
 //   - Bits / Unsigned / Signed / Float scalars carry `state_space:
-//     RegisterStateSpace` (the 7-variant `.tex`-excluding sub-
+//     RegisterStateSpace` (the 6-variant `.tex`-and-`.sreg`-
+//     excluding sub-
 //     classifier above); .tex residence is unrepresentable for
 //     typed scalars.
 //   - PredicateScalar carries NO state_space field — predicates are
