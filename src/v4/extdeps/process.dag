@@ -45,9 +45,6 @@
 module v4.extdeps.process
 
 
-import v4.std.text { String }
-
-
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
 //
@@ -157,14 +154,19 @@ type Termination
 // ─────────────────────────────────────────────────────────────────────
 // Process — a spawned child process as known to the parent.
 //
-// `parent` is optional because v4 can model an observed process whose
-// parent is outside the current graph. It is not an exit-status escape:
-// termination remains solely in `state`.
+// `parent` is a typed sum rather than `Option<ProcessId>` because the
+// reason for absence is structural: v4 can model an observed process
+// whose parent is outside the current graph. It is not an exit-status
+// escape: termination remains solely in `state`.
+type ParentProcess
+  = KnownParent { id: ProcessId }
+  | ParentOutsideGraph
+
 type Process {
   id: ProcessId
   command: Command
   state: ProcessState
-  parent: Option<ProcessId>
+  parent: ParentProcess
 }
 
 

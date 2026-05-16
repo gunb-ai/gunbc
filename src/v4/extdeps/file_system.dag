@@ -39,9 +39,6 @@
 module v4.extdeps.file_system
 
 
-import v4.std.text { Char, String }
-
-
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
 //
@@ -162,7 +159,7 @@ type FileKind
 // v4 cross-file imports are not resolved by the seed single-file smoke
 // path; duplicating `Outcome<T>` here would violate DECISIONS.md I.
 type FileBody {
-  chars: List<Char>
+  text: String
 }
 
 type ReadFileRequest {
