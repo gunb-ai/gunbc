@@ -32,7 +32,7 @@
 //     is NOT in this carrier, see "Deferred to Wave-A2" below)
 //   - Map<K, V> — partial function K → 1+V with fail-closed lookup
 //     (`lookup: fn(K) -> Witness<V>`; operator-ratified Option A,
-//     #3169; lands Wave-A2 / PR #3187 after witness.dag).
+//     #3169; Wave-A2 / this PR).
 //   - operations defined as algebra-grounding, not enumerated
 //
 // Deferred (split out per operator-ratified Option A, 2026-05-16 —
