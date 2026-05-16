@@ -231,7 +231,7 @@ reference this section when dispatching workers.
 
 3. **`Diagnostic` schema carries a typed `correction`** (per THESIS:103-105
    "show the correct code"). Schema:
-   `Diagnostic { reason: NamedReason, at: Locus, correction: Correction }`
+   `Diagnostic { reason: Symbol, at: Locus, correction: Correction }`
    where `Correction = Suggested(Node) | Unavailable(NoCorrectionReason)`.
    The "show the correct code" promise is structural — every Diagnostic
    site answers the fix question, and answers it with a type, not a
