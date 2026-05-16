@@ -245,6 +245,35 @@ type LeanTerminationClause
   | LeanDecreasingBy { proof: LeanDecreasingProof }
 
 
+// LeanDefinitionTermination — the fixed optional termination-clause shape
+// for one Lean declaration. A declaration may carry no explicit clauses,
+// exactly one `termination_by`, exactly one `decreasing_by`, or one of each
+// in the source order; repeated clauses are not representable.
+// Anchor: Lean 4.20.0 Reference Manual, Definitions; termination_by and
+// decreasing_by clauses:
+// https://lean-lang.org/doc/reference/4.20.0/Definitions/Definitions/
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: proof export, termination checking, and
+//      emitter all need the same declaration-level clause cardinality.
+//   2. Variant-is-data — FAILS: `List<LeanTerminationClause>` admits
+//      duplicate `termination_by` / `decreasing_by` clauses and arbitrary
+//      ordering; a flat record would need optional holes.
+//   3. Algebraic form — N/A: Lean declaration syntax cardinality, not
+//      algebra.
+//   4. Dimensional — FAILS: the declaration-level shape is one of four
+//      clause-presence states.
+//   5. Parameterized family — FAILS: heterogeneous payload combinations.
+type LeanDefinitionTermination
+  = LeanNoExplicitTermination
+  | LeanTerminationByOnly { measure: LeanTerminationMeasure }
+  | LeanDecreasingByOnly { proof: LeanDecreasingProof }
+  | LeanTerminationByWithDecreasingBy {
+      measure: LeanTerminationMeasure,
+      proof: LeanDecreasingProof
+    }
+
+
 // LeanProofArtifact — the PROOF-1 export unit. The source evidence is a
 // Node-side proof artifact read by lenses; this file models the Lean
 // target term boundary, not a new gunbc proof system. Shape is a coproduct
@@ -273,7 +302,7 @@ type LeanProofArtifact
       name: LeanName,
       type: LeanTermRef,
       body: LeanTermRef,
-      termination: List<LeanTerminationClause>
+      termination: LeanDefinitionTermination
     }
 
 

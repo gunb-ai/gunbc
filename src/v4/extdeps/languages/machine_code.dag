@@ -178,9 +178,9 @@ type InstructionLength
   | VariableLength { max_bytes: InstructionWord }
 
 
-// InstructionWord — admissible instruction-word / maximum-length carrier
-// choices. The variants alias std/machine word carriers structurally
-// rather than inventing local byte sequences.
+// InstructionWord — admissible instruction-word / maximum-length width
+// tokens. This carrier records the width category selected by the ISA
+// production; the encoded bytes remain owned by EncodedInstruction.
 // Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
 // encoding; RISC-V Unprivileged ISA 20240411 instruction-length encoding.
 //
@@ -189,7 +189,8 @@ type InstructionLength
 //      grammar, cost, and disassembly.
 //   2. Variant-is-data — PARTIAL: a Nat byte-count would be tempting,
 //      but fixed-cardinality list refinement is not landed; the std/
-//      machine word names are the current single-authority width tokens.
+//      machine word names supply the current width vocabulary without
+//      carrying arbitrary word values.
 //   3. Algebraic form — N/A: representation width, not algebra.
 //   4. Dimensional — FAILS: exactly one width token is selected.
 //   5. Parameterized family — DEFERRED: dissolves when bounded Nat-indexed
@@ -198,10 +199,10 @@ type InstructionLength
 //      Nat-indexed width carrier lands in std/machine.dag or
 //      std/cardinality.dag.
 type InstructionWord
-  = Instr16 { width: Word16 }
-  | Instr32 { width: Word32 }
-  | Instr64 { width: Word64 }
-  | Instr128 { width: Word128 }
+  = Instr16
+  | Instr32
+  | Instr64
+  | Instr128
 
 
 // ─────────────────────────────────────────────────────────────────────
