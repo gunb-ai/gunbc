@@ -36,3 +36,30 @@
 
 module v4.compiler.resolve
 
+
+import v4.compiler.normalize { NormalizedTree }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// ScopeFrame is resolution input data. It maps a local spelling identity
+// already interned at the boundary to the canonical declaration Symbol.
+// The resolved tree itself carries the binding by rewriting use-site
+// Atoms to the canonical Symbol; there is no parallel binding graph.
+type ScopeFrame {
+  declarations: List<ResolutionEntry>
+}
+
+
+type ResolutionEntry {
+  local: Symbol
+  canonical: Symbol
+}
+
+
+type ResolvedTree {
+  root: Node
+}
+
+
+type Resolve = fn(NormalizedTree, List<ScopeFrame>) -> Outcome<ResolvedTree>

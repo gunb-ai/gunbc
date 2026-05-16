@@ -28,3 +28,65 @@
 
 module v4.compiler.tokenize
 
+
+import v4.std.diagnostic { Extent, Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// TokenClass — the parser-facing classifier produced by declarative
+// lexical rules. The payloads are opaque Symbol identities from the
+// LanguageModel, never readable strings the compiler branches on.
+type TokenClass
+  = IdentifierToken { identity: Symbol }
+  | KeywordToken { keyword: Symbol }
+  | LiteralToken { literal: LiteralLexeme }
+  | PunctuationToken { marker: Symbol }
+  | LayoutToken { layout: Symbol }
+
+
+// Literal lexemes remain source-shaped until normalize/infer can bind
+// them to std/ carriers. Integer literals carry their digit spelling,
+// not host `Int`, so the concept layer does not narrow at the tokenizer.
+type LiteralLexeme
+  = TextLiteral { text: String }
+  | IntegerLiteral { digits: String }
+  | FloatLiteral { spelling: String }
+  | BooleanLiteral { value: Bool }
+
+
+// A token is source evidence plus the structural class selected by the
+// LanguageModel's lexical rule.
+type Token {
+  class: TokenClass
+  extent: Extent
+}
+
+
+type TokenStream {
+  tokens: List<Token>
+}
+
+
+// Lexical rule data. `pattern` is a Node-shaped declaration from the
+// LanguageModel; tokenize is the generic walker over this data, not a
+// per-language recognizer.
+type LexRule {
+  name: Symbol
+  pattern: Node
+  disposition: TokenDisposition
+}
+
+
+type TokenDisposition
+  = EmitToken { class: TokenClass }
+  | SkipToken
+
+
+type LexRules {
+  rules: List<LexRule>
+}
+
+
+// Callable contract for T-6. The body lands when the v4 self-parser can
+// own executable stage definitions; bridge-era v2 rejects bodiless fn.
+type Tokenize = fn(String, LexRules) -> Outcome<TokenStream>

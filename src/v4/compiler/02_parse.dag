@@ -54,3 +54,46 @@
 
 module v4.compiler.parse
 
+
+import v4.compiler.tokenize { TokenClass, TokenStream }
+import v4.std.diagnostic { Extent, Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// Grammar — declarative production data supplied by a Shape A
+// LanguageModel. The parser walks this data generically.
+type Grammar {
+  start: Symbol
+  productions: List<GrammarProduction>
+}
+
+
+type GrammarProduction {
+  name: Symbol
+  alternatives: List<GrammarAlternative>
+}
+
+
+type GrammarAlternative {
+  items: List<GrammarItem>
+  builds: Node
+}
+
+
+type GrammarItem
+  = Terminal { token: TokenClass }
+  | Nonterminal { name: Symbol }
+  | Optional { item: GrammarItem }
+  | Repetition { item: GrammarItem }
+
+
+// ParseTree keeps grammar identity and source extent; semantic Node
+// construction is the normalize stage's authority.
+type ParseTree {
+  production: Symbol
+  extent: Extent
+  children: List<ParseTree>
+}
+
+
+type Parse = fn(TokenStream, Grammar) -> Outcome<ParseTree>

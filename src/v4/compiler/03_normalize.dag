@@ -29,3 +29,33 @@
 
 module v4.compiler.normalize
 
+
+import v4.compiler.parse { ParseTree }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// The exact four surface forms ratified by C3. A fifth form is a
+// substrate-extension stop signal, not an inline parser addition.
+type SurfaceForm
+  = ServiceForm
+  | FunctionForm
+  | TypeForm
+  | OperationForm
+
+
+// A normalization rule maps one bounded surface form to its kernel Node
+// construction pattern. The rule is data; normalize is the fold over it.
+type NormalizationRule {
+  form: SurfaceForm
+  pattern: Node
+}
+
+
+type NormalizedTree {
+  root: Node
+  applied_rules: List<Symbol>
+}
+
+
+type Normalize = fn(ParseTree, List<NormalizationRule>) -> Outcome<NormalizedTree>

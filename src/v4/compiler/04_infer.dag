@@ -120,3 +120,51 @@
 
 module v4.compiler.infer
 
+
+import v4.compiler.resolve { ResolvedTree }
+import v4.lens.cost { SymbolicCost }
+import v4.std.cardinality { DescentEvidence }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// AlgebraRef is a reference to the declared algebra inhabitance chosen by
+// the bounded Find phase. It is a Symbol identity, not a name-keyed table.
+type AlgebraRef {
+  identity: Symbol
+}
+
+
+// The frozen IR-1 payload: exactly four flat per-node facts. Cardinality
+// and effects are read from `resolved_type`, not cached here.
+type InferredFacts {
+  resolved_type: Node
+  inhabits: AlgebraRef
+  cost: SymbolicCost
+  descent: DescentEvidence
+}
+
+
+// InferredNode is not recursive. It pairs one existing Node with its flat
+// inferred coordinate; the tree recursion remains solely in Node.
+type InferredNode {
+  node: Node
+  facts: InferredFacts
+}
+
+
+type InferredTree {
+  root: Node
+  facts: List<InferredNode>
+}
+
+
+type HomomorphismCandidate {
+  source: Node
+  target: Node
+  algebra: AlgebraRef
+  cost: SymbolicCost
+}
+
+
+type Infer = fn(ResolvedTree, List<HomomorphismCandidate>) -> Outcome<InferredTree>

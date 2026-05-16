@@ -74,3 +74,63 @@
 
 module v4.compiler.compile
 
+
+import v4.compiler.emit { Emit, TargetModel, TargetSource }
+import v4.compiler.infer { Infer, InferredTree }
+import v4.compiler.normalize { Normalize, NormalizationRule }
+import v4.compiler.parse { Grammar, Parse }
+import v4.compiler.resolve { Resolve, ScopeFrame }
+import v4.compiler.tokenize { LexRules, Tokenize }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// Source is the Shape A ingest input. `language` selects a LanguageModel;
+// `text` is boundary data and is not inspected by core stages except via
+// tokenize/parse.
+type Source {
+  language: Symbol
+  text: String
+}
+
+
+// LanguageModel is the compiler-boundary view over extdeps/languages/*:
+// lexing, grammar, normalization, resolution, and emission facts travel
+// as one direction-agnostic model.
+type LanguageModel {
+  language: Symbol
+  lex: LexRules
+  grammar: Grammar
+  normalization: List<NormalizationRule>
+  scopes: List<ScopeFrame>
+  target: TargetModel
+}
+
+
+type CorePipeline {
+  normalize: Normalize
+  resolve: Resolve
+  infer: Infer
+}
+
+
+type IngestPipeline {
+  tokenize: Tokenize
+  parse: Parse
+}
+
+
+type CompilePipeline {
+  ingest: IngestPipeline
+  core: CorePipeline
+  emit: Emit
+}
+
+
+type Ingest = fn(Source, LanguageModel, IngestPipeline) -> Outcome<Node>
+
+
+type Core = fn(Node, LanguageModel, CorePipeline) -> Outcome<InferredTree>
+
+
+type Compile = fn(Source, LanguageModel, CompilePipeline) -> Outcome<TargetSource>

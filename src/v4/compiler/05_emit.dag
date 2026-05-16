@@ -65,3 +65,37 @@
 
 module v4.compiler.emit
 
+
+import v4.compiler.infer { InferredTree }
+import v4.std.diagnostic { Outcome }
+import v4.std.node { Node, Symbol }
+
+
+// TargetModel is the Shape A language-model projection consumed by emit.
+// It contains declarative realization rules; target-specific branching
+// belongs in this data, not in emitter code.
+type TargetModel {
+  language: Symbol
+  rules: List<EmissionRule>
+}
+
+
+type EmissionRule {
+  applies_to: Node
+  template: Node
+  locality: EmitLocality
+}
+
+
+type EmitLocality
+  = SubtreeLocal
+  | EnclosingNodeScope { scope: Symbol }
+
+
+type TargetSource {
+  language: Symbol
+  text: String
+}
+
+
+type Emit = fn(InferredTree, TargetModel) -> Outcome<TargetSource>
