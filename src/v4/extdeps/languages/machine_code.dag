@@ -260,6 +260,17 @@ type AddressingMode
 // instruction production plus D2 alias target, not by duplicating an
 // algebra row on the operand itself.
 // Anchor: version-pinned ISA instruction-format sections named above.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, emit, and operand legality all
+//      branch on the same operand shape.
+//   2. Variant-is-data — FAILS: variants carry heterogeneous payloads;
+//      a flat record would admit register+immediate+memory mixtures.
+//   3. Algebraic form — N/A: instruction operand syntax is ISA surface.
+//   4. Dimensional — FAILS: one operand occurrence is register OR
+//      immediate OR memory.
+//   5. Parameterized family — FAILS: not one F<X>; payloads differ by
+//      operand category.
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
@@ -288,6 +299,15 @@ type EncodedInstruction {
 // guessed instruction.
 // Anchor: version-pinned ISA instruction decoding / reserved-encoding
 // rules named above.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: disassembly, emit, and C5 diagnostics read
+//      the same feature classifier.
+//   2. Variant-is-data — FAILS: Symbol/string would make the boundary open
+//      and uncheckable.
+//   3. Algebraic form — N/A: C5 fidelity-boundary taxonomy.
+//   4. Dimensional — FAILS: one boundary decision names one feature class.
+//   5. Parameterized family — FAILS: heterogeneous feature classes.
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -298,6 +318,14 @@ type MachineFidelityFeature
   | AmbiguousDecode
 
 
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: modeled / normalized / fail-closed is the
+//      shared machine-code C5 disposition.
+//   2. Variant-is-data — FAILS: the non-modeled variants carry a feature
+//      payload; a flat record would admit modeled-with-failure-feature.
+//   3. Algebraic form — N/A: C5 boundary partition.
+//   4. Dimensional — FAILS: one feature has exactly one disposition.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
 type MachineFidelityDisposition
   = MachineModeled
   | MachineDeclaredNormalized { feature: MachineFidelityFeature }
@@ -323,10 +351,22 @@ fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisp
 // Anchor: Intel SDM 2025 arithmetic instruction semantics; Arm ARM
 // 2025-03 integer instruction pseudocode; RISC-V Unprivileged ISA
 // 20240411 integer computational instructions.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: integer operation semantics and lowering
+//      read this overflow classifier uniformly.
+//   2. Variant-is-data — FAILS: Bool cannot distinguish wrap, trap, and
+//      undefined ISA behavior.
+//   3. Algebraic form — PARTIAL: wrapping maps to std/integer fixed-width
+//      carrier behavior through D2 aliases; trap/undefined are target
+//      operation semantics, not algebra inhabitance.
+//   4. Dimensional — FAILS: one arithmetic operation has one overflow
+//      behavior; flag writes are a separate coordinate below.
+//   5. Parameterized family — FAILS: closed semantic alternatives, not a
+//      width-indexed family.
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
-  | SetConditionFlags
   | UndefinedByIsa
 
 
@@ -336,6 +376,20 @@ type MachineIntegerOperationSemantics<IRCarrier> {
 }
 
 
+// FlagWriteDisposition — separate coordinate for architectural flags /
+// predicate writes. It is intentionally not an overflow alternative:
+// instructions can wrap/trap/leave overflow undefined and independently
+// write or not write flags.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: consumers checking condition-code
+//      dependencies read this shared coordinate.
+//   2. Variant-is-data — FAILS: Bool cannot distinguish flags vs
+//      predicate-register writes.
+//   3. Algebraic form — N/A: target operation side-effect surface.
+//   4. Dimensional — FAILS: one instruction has one flag-write
+//      disposition.
+//   5. Parameterized family — FAILS: closed side-effect alternatives.
 type FlagWriteDisposition
   = DoesNotWriteFlags
   | WritesArchitecturalFlags

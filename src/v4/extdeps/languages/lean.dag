@@ -224,6 +224,22 @@ type LeanDecreasingProof {
 }
 
 
+// LeanTerminationClause — Lean's two explicit termination-checking
+// clauses. `termination_by` supplies the measure; `decreasing_by`
+// supplies the proof term for recursive-call descent.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: termination export, parser, and emitter
+//      all distinguish the same two clause forms.
+//   2. Variant-is-data — FAILS: the payloads are heterogeneous
+//      (`measure` vs `proof`); a flat record would admit a clause with
+//      both or neither.
+//   3. Algebraic form — N/A: Lean termination-clause syntax is the
+//      external source.
+//   4. Dimensional — FAILS: one clause occurrence is exactly one of
+//      `termination_by` or `decreasing_by`.
+//   5. Parameterized family — FAILS: not one F<X>; distinct clause
+//      payloads with different checker roles.
 type LeanTerminationClause
   = LeanTerminationBy { measure: LeanTerminationMeasure }
   | LeanDecreasingBy { proof: LeanDecreasingProof }
@@ -231,14 +247,34 @@ type LeanTerminationClause
 
 // LeanProofArtifact — the PROOF-1 export unit. The source evidence is a
 // Node-side proof artifact read by lenses; this file models the Lean
-// target term boundary, not a new gunbc proof system.
-type LeanProofArtifact {
-  declaration: LeanDeclarationKind
-  name: LeanName
-  type: LeanTermRef
-  proof: LeanTermRef
-  termination: List<LeanTerminationClause>
-}
+// target term boundary, not a new gunbc proof system. Shape is a coproduct
+// so proof-bearing theorem exports and termination-bearing definitions are
+// the only representable artifacts here; `axiom` / `inductive` /
+// `structure` declarations do not accidentally acquire mandatory proof
+// and termination fields.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: the PROOF-1 exporter and Lean emitter
+//      share this artifact classifier.
+//   2. Variant-is-data — FAILS: theorem and definition artifacts carry
+//      different required fields; a single record with a kind field
+//      permits illegal combinations.
+//   3. Algebraic form — N/A: proof-export artifact shape, not algebra.
+//   4. Dimensional — FAILS: one exported artifact is theorem-proof OR
+//      terminating-definition proof, not both.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
+type LeanProofArtifact
+  = LeanTheoremProofArtifact {
+      name: LeanName,
+      type: LeanTermRef,
+      proof: LeanTermRef
+    }
+  | LeanDefinitionTerminationArtifact {
+      name: LeanName,
+      type: LeanTermRef,
+      body: LeanTermRef,
+      termination: List<LeanTerminationClause>
+    }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -246,6 +282,16 @@ type LeanProofArtifact {
 // non-kernel surface conveniences normalize or fail closed.
 // Anchor: Lean 4.20.0 Reference Manual, elaboration and kernel checking:
 // https://lean-lang.org/doc/reference/4.20.0/
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: the generic walker and Lean proof-export
+//      boundary read this same feature classifier.
+//   2. Variant-is-data — FAILS: Symbol/string would make the C5 boundary
+//      open and uncheckable.
+//   3. Algebraic form — N/A: fidelity-boundary taxonomy, not algebra.
+//   4. Dimensional — FAILS: a boundary decision names one feature class.
+//   5. Parameterized family — FAILS: heterogeneous feature classes, not
+//      one indexed family.
 type LeanFidelityFeature
   = LeanKernelTerm
   | LeanPrettyNameSpelling
@@ -256,6 +302,15 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: modeled / normalized / fail-closed is the
+//      shared C5 disposition consumed by the walker.
+//   2. Variant-is-data — FAILS: the two non-modeled variants carry a
+//      feature payload; a flat record would admit `Modeled` with a
+//      failure feature.
+//   3. Algebraic form — N/A: C5 boundary partition.
+//   4. Dimensional — FAILS: one feature has exactly one disposition.
+//   5. Parameterized family — FAILS: heterogeneous payloads.
 type LeanFidelityDisposition
   = LeanModeled
   | LeanDeclaredNormalized { feature: LeanFidelityFeature }
@@ -277,17 +332,16 @@ fn lean_feature_disposition(f: LeanFidelityFeature) -> LeanFidelityDisposition {
 
 // ─────────────────────────────────────────────────────────────────────
 // D2a(3) Lean operation/proof-checking semantics. These are genuine Lean
-// resolver facts; they are not algebra-inhabitance rows.
+// resolver facts; they are not algebra-inhabitance rows. The checker facts
+// are simultaneous coordinates, not alternatives: Lean can have
+// definitional reduction, opaque boundaries, and proof irrelevance in the
+// same proof-checking environment.
 // Anchor: Lean 4.20.0 Reference Manual, reduction and opaque constants:
 // https://lean-lang.org/doc/reference/4.20.0/
-type LeanReductionSemantics
-  = KernelDefinitionalReduction
-  | OpaqueAxiomBoundary
-  | ProofIrrelevantProposition
-
-
 type LeanProofCheckSemantics<IRCarrier> {
-  reduction: LeanReductionSemantics
+  kernel_definitional_reduction: Bool
+  opaque_axiom_boundary: Bool
+  proof_irrelevance_for_propositions: Bool
 }
 
 
