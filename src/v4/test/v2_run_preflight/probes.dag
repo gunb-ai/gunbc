@@ -1,112 +1,15 @@
 // src/v4/test/v2_run_preflight/probes.dag
 //
-// Scope: constructive v2-interpreter pre-flight (T-20 residual / PARSE-1
-//        precedent). Entry points for `v2-compiler run --source-root src/v4`.
-// Anchor: src/v4/DECISIONS.md T-20 + parent brief (Move 1)
-//
-// Status: probe fixtures — test/ only; not production substrate.
+// Scope: reserved module for future v2 `dag run` probes against src/v4.
+//        Move 1 (2026-05-16) showed the frozen v2 *interpreter* is not yet a
+//        reliable execution engine for the merged v4 substrate graph (see
+//        MOVE1_COVERAGE.txt). Probes that called cross-module `fn` values
+//        failed at runtime (`nat_add` undefined); `node_well_formed` + host
+//        `ProcessExit` paths hung or hit `int_add` undefined — so no runnable
+//        entry points are committed here until T-22 (v4 eval) dissolves the gap.
+// Anchor: parent brief Move 1 + DECISIONS.md T-20
 
 module v4.test.v2_run_preflight.probes
 
-import v4.test.v2_run_preflight.process_exit_shim {
-  ProcessExit,
-  ExitSuccess,
-  ExitFailure,
-  exit_code_general_error,
-}
-import v4.std.nat { Zero, Succ, nat_add, nat_mul }
-import v4.std.logic { bool_boolean_algebra }
-import v4.std.node {
-  Node,
-  TypeNode,
-  Conj,
-  node_locally_well_formed,
-  node_well_formed,
-}
 
-
-// Literals + Peano recursion (nat_add / nat_mul) + match (Branch discipline).
-
-func run_probe_nat_literals_and_recursion() -> ProcessExit {
-  let two = Succ { prev: Succ { prev: Zero } }
-  let three = Succ { prev: two }
-  let five = nat_add(a: two, b: three)
-  let six = nat_mul(a: two, b: three)
-  let check_add = nat_add(a: Zero, b: five) == five
-  let check_mul_zero = nat_mul(a: Zero, b: three) == Zero
-  let expect_six = Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } }
-  let ok = check_add && check_mul_zero && six == expect_six
-  match ok {
-    True => ExitSuccess
-    False =>
-      ExitFailure {
-        code: exit_code_general_error,
-        reason: "nat probe: unexpected arithmetic result"
-      }
-  }
-}
-
-
-// Kernel literal + equality (Value / structural compare probe).
-
-func run_probe_kernel_int_eq() -> ProcessExit {
-  match 1 == 1 {
-    True => ExitSuccess
-    False =>
-      ExitFailure {
-        code: exit_code_general_error,
-        reason: "kernel int equality probe failed"
-      }
-  }
-}
-
-
-// Algebra-carried meet: use lattice top/bottom (exported Bool values) — not raw True/False tokens,
-// which the v2 seed does not surface as cross-module expression constants in this probe module.
-
-func run_probe_bool_meet_via_algebra() -> ProcessExit {
-  let top = bool_boolean_algebra.bounded_lattice.top
-  let bottom = bool_boolean_algebra.bounded_lattice.bottom
-  let m = bool_boolean_algebra.bounded_lattice.lattice.meet(a: top, b: bottom)
-  match m {
-    False => ExitSuccess
-    True =>
-      ExitFailure {
-        code: exit_code_general_error,
-        reason: "bool meet(top,bottom) expected False"
-      }
-  }
-}
-
-
-// Type-node connective: empty Conj (connective / edge-discipline probe).
-
-func run_probe_empty_conj_wellformed() -> ProcessExit {
-  let n = Node {
-    kind: TypeNode { connective: Conj },
-    children: []
-  }
-  let w = node_locally_well_formed(n: n) && node_well_formed(n: n)
-  match w {
-    True => ExitSuccess
-    False =>
-      ExitFailure {
-        code: exit_code_general_error,
-        reason: "empty Conj node should be locally and globally well-formed"
-      }
-  }
-}
-
-
-func run_v2_preflight_all() -> ProcessExit {
-  match run_probe_nat_literals_and_recursion() {
-    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-    ExitSuccess => match run_probe_kernel_int_eq() {
-      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-      ExitSuccess => match run_probe_bool_meet_via_algebra() {
-        ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-        ExitSuccess => run_probe_empty_conj_wellformed()
-      }
-    }
-  }
-}
+data v2_run_preflight_probe_marker: Int = 0

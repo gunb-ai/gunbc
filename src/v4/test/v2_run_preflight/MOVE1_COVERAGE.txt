@@ -1,0 +1,48 @@
+Move 1 — v2 `run` vs v4 kernel (constructive pre-flight, 2026-05-16)
+================================================================
+
+Authority: `target/release/v2-compiler compile --source-root src/v4` (PASS,
+0 diagnostics) — this is the gate already exercised in CI job `v4`
+("bootstrap viability").
+
+Instrument: `v2-compiler run --source-root src/v4 --function <name>` on small
+probe functions (see revision history on branch for attempted probes:
+nat_add/nat_mul recursion, kernel `1 == 1`, bool meet via lattice top/bottom,
+node_well_formed on empty Conj, trivial ProcessExit).
+
+Findings (v2 seed interpreter, merged v4 graph)
+-----------------------------------------------
+COVERED by compile-only gate today
+  - Entire `src/v4/**/*.dag` module graph parses, resolves imports, and
+    type-checks under v2 — including new `test/claim/manual/*` TestClaim data.
+
+NOT COVERED by v2 `run` (runtime) — honest gaps
+  - Cross-module calls into substrate `fn` values (e.g. `nat_add`) from a
+    `func` probe: runtime error `undefined variable: nat_add`.
+  - Returning `ProcessExit` / `ExitSuccess` from a minimal probe: runtime
+    error `undefined variable: int_add` (host/exit plumbing not wired for this
+    graph shape).
+  - `node_well_formed` on a tiny well-formed `Node`: non-terminating under the
+    interpreter in local trials (treated as interpreter gap, not claimed
+    substrate bug).
+
+Interpretation
+--------------
+v2 `compile` is the reliable pre-T-22 bridge; v2 `run` is **not** a truthful
+execution oracle for v4 substrate yet. Phase 2 testing that requires
+evaluating v4 programs + TestClaims must wait on **T-22 (v4 compiler/05_eval
+and claim runner)** — dissolution trigger for an automated `v2-compiler run`
+TestClaim CI lane.
+
+Interim CI (Move 3)
+-------------------
+Per brief: **DEFERRED** — no required `v2-compiler run` gate on TestClaim
+execution until T-22. CI adds an **informational** step (continue-on-error)
+that runs `scripts/v2-run-preflight.sh` (compile re-check + notice) so the
+deferral is visible in logs, not a silent drop.
+
+Atom-shaped manual TestClaims
+-----------------------------
+K-1 forbids minting `Symbol` values in `.dag` data literals; `Atom {…}`
+TestClaims are therefore absent from `test/claim/manual/connective_anchors.dag`
+with an explicit note in that file.

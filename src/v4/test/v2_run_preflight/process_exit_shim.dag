@@ -2,8 +2,9 @@
 //
 // Scope: minimal `ProcessExit` carrier for `v2-compiler run` host exit-code
 //        mapping (cli_run.rs structural contract). TEST-ONLY — duplicates
-//        the shape of dsl/std/process.dag so pre-flight probes stay under
-//        `--source-root src/v4` alone (full `dsl/` tree is not v2-parse-clean).
+//        the shape of dsl/std/process.dag so future run-based probes can stay
+//        under `--source-root src/v4` alone (full `dsl/` tree is not v2-parse-
+//        clean as a single root).
 // Anchor: dsl/std/process.dag + src/v4/DECISIONS.md T-20 pre-flight note
 
 module v4.test.v2_run_preflight.process_exit_shim
