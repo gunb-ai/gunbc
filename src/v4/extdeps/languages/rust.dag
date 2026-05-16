@@ -897,8 +897,13 @@ type RustReferenceKind
 // `pub(in self)` AND is the same as not using `pub` at all"). The
 // faithful structural partition is therefore THREE variants — the
 // absent / unrestricted / path-restricted axis — with the path-
-// restricted variant CARRYING its SimplePath, so
-// `pub(in crate::outer_mod)` is REPRESENTABLE.
+// restricted variant CARRYING its SimplePath as a `List<RustPathSegment>`
+// where RustPathSegment is the closed typed-segment classifier with
+// NO Self variant. So `pub(in crate::outer_mod)` is REPRESENTABLE
+// (path = `[Crate, Named { id: outer_mod }]`), but
+// `pub(in self)` / `pub(in self::...)` is STRUCTURALLY UNREPRESENTABLE
+// (the Self segment doesn't exist — type-level enforcement of
+// pub(self) ≡ Private, NOT a documentation-only invariant).
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 //
 //   - Private — items without a `pub` modifier (the Rust default;
