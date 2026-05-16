@@ -1,0 +1,149 @@
+// src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
+//
+// Scope: T-19 manual regression manifest — twelve named anchors mirroring the
+//        still-lark-213 hand-off: one row per bootstrap claim testgen must
+//        eventually subsume (produced corpus ⊇ manual). Integer codes keep
+//        `data` bodies structurally valid under M1(2.8) until record+sum
+//        literals validate together; map to enums in lens/testgen.dag:
+//          tier: 0=Tier1, 1=Tier2, 2=Tier3
+//          layer: 0=Unit, 1=Integration, 2=Boundary
+//          testgen_category: 0 type_construction … 4 bidirectional_roundtrip
+//          assert_kind: 0 Equals, 1 Diagnostic, 2 Compiles, 3 RoundTrips
+// Anchor: TASKS.md T-19 + lens/testgen.dag bootstrap path + K-1 (slugs are
+//         stable string keys — upgrade to `Symbol` name-refs when wiring
+//         full `TestClaim` rows; no `Sym` mint at authoring time)
+//
+// Owns:
+//   - Twelve `data …: ManualTestgenAnchor` rows covering:
+//       (1–6) type-construction — one per closed connective (Compiles tier)
+//       (7–8) algebra-law — Equals tier (Magmoid + Monoid law slots)
+//       (9)   diagnostic-exhaustiveness — Diagnostic tier
+//       (10)  lens-applicability — Equals tier
+//       (11)  bidirectional-roundtrip — RoundTrips tier / Boundary layer
+//       (12)  type-construction — L1 `Value` behavior smoke (Compiles tier)
+//
+// Consumes:
+//   - (none — self-contained until M2 module graph links std/)
+//
+// Status: landed 2026-05-16 (still-deer-194). Keep slugs stable; coverage
+//         lens (T-18) keys off them when comparing testgen output.
+// Brief: see BRIEF_TEMPLATE.md.
+
+module v4.test.claim.manual.t19_manual_anchor_manifest
+
+
+type ManualTestgenAnchor {
+  slug: String
+  tier: Int
+  layer: Int
+  testgen_category: Int
+  assert_kind: Int
+}
+
+
+data manual_anchor_tc_atom: ManualTestgenAnchor = {
+  slug: "t19.type_construction.atom",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_tc_conj: ManualTestgenAnchor = {
+  slug: "t19.type_construction.conj",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_tc_disj: ManualTestgenAnchor = {
+  slug: "t19.type_construction.disj",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_tc_arrow: ManualTestgenAnchor = {
+  slug: "t19.type_construction.arrow",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
+  slug: "t19.type_construction.cardinality",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
+  slug: "t19.type_construction.instantiation",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
+
+
+data manual_anchor_alg_magma_closure: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.magma_closure",
+  tier: 1,
+  layer: 1,
+  testgen_category: 1,
+  assert_kind: 0
+}
+
+
+data manual_anchor_alg_monoid_identity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.monoid_identity",
+  tier: 1,
+  layer: 1,
+  testgen_category: 1,
+  assert_kind: 0
+}
+
+
+data manual_anchor_diag_exhaustive_cell: ManualTestgenAnchor = {
+  slug: "t19.diagnostic_exhaustiveness.named_reason_cell",
+  tier: 0,
+  layer: 0,
+  testgen_category: 2,
+  assert_kind: 1
+}
+
+
+data manual_anchor_lens_applicability: ManualTestgenAnchor = {
+  slug: "t19.lens_applicability.shape_equals",
+  tier: 1,
+  layer: 0,
+  testgen_category: 3,
+  assert_kind: 0
+}
+
+
+data manual_anchor_roundtrip_boundary: ManualTestgenAnchor = {
+  slug: "t19.bidirectional_roundtrip.language_production",
+  tier: 2,
+  layer: 2,
+  testgen_category: 4,
+  assert_kind: 3
+}
+
+
+data manual_anchor_tc_behavior_value: ManualTestgenAnchor = {
+  slug: "t19.type_construction.behavior_value",
+  tier: 0,
+  layer: 0,
+  testgen_category: 0,
+  assert_kind: 2
+}
