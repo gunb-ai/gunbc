@@ -591,51 +591,138 @@ type PackingShape
 // NetDeclaration — a Verilog net (`wire foo;`, `wire [7:0] bus;`,
 // `wand x;`). Conj record (no Practice-4 ledger).
 //
-//   - net_type   which net-type (wire / wand / wor / tri / …)
-//   - name       the net identifier (K-1-opaque Symbol)
-//   - packing    scalar or `[msb:lsb]` packed bit-vector
+// ─────────────────────────────────────────────────────────────────────
+// Signedness — the closed Verilog net/reg signedness classifier
+// (IEEE 1364-2005 §5.6 "Signed types"). The `signed` keyword on a net
+// or `reg` declaration selects two's-complement signed interpretation
+// of the bit-vector; the default (no keyword) is unsigned. The
+// signedness fact governs sign-extension on assignment, comparison
+// semantics, and arithmetic operator dispatch — a fact every emission
+// / arithmetic consumer must preserve per INVARIANTS P2 (codex
+// BLOCKING review on PR #3176 2026-05-16 surfaced this gap; the
+// prior NetDeclaration / RegVariable collapsed signed and unsigned
+// packed forms, losing a spec-mandated boundary fact).
+//
+//   - Signed     — `signed` modifier present; two's-complement
+//                  signed interpretation; sign-extension on
+//                  assignment; signed-arithmetic operator dispatch
+//   - Unsigned   — no `signed` modifier; unsigned modular
+//                  interpretation; zero-extension on assignment;
+//                  unsigned-arithmetic operator dispatch (the spec's
+//                  default)
+//
+// CLOSED (C1 stop-signal). The signedness axis is BINARY per the
+// IEEE 1364-2005 spec; a third interpretation is an edit to THIS
+// declaration under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every arithmetic-emission consumer
+//      and every assignment-extension consumer reads the signedness
+//      tag uniformly to dispatch (signed vs unsigned operator
+//      lowering; sign- vs zero-extension); shared classifier, not
+//      scattered.
+//   2. Variant-is-data — FAILS: a `{ signed: Bool }` proxy is a
+//      faithful 2-valued representation, but the LEXICAL SURFACE
+//      (`signed` keyword present / absent) is a closed pair the
+//      parser/emitter dispatch on; the named-enum is the M4-faithful
+//      form (closed sets are enums, not Bool proxies — same
+//      argument as ProceduralAssignKind's ledger).
+//   3. Algebraic form — PARTIAL: each variant grounds in a different
+//      std/algebra structure (Signed → OrderedRing on the underlying
+//      bit-vector width; Unsigned → Semiring). That grounding is
+//      the inhabitance walk DEFERRED to D2 per the file's "Owned
+//      ELSEWHERE" framing; the signedness enum itself stays a closed
+//      classifier.
+//   4. Dimensional — FAILS: a net/reg declaration is EXACTLY ONE
+//      signedness; `wire signed signed x;` is a syntax error.
+//      Mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the two are structurally
+//      distinct arithmetic-interpretation primitives — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). They are the spec's irreducible
+//      signedness partition.
+// Terminal: the closed two-way Verilog signedness classifier of the
+// IEEE 1364-2005 spec.
+type Signedness
+  = Signed
+  | Unsigned
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NetDeclaration — a Verilog net (`wire foo;`, `wire [7:0] bus;`,
+// `wire signed [15:0] s;`, `wand x;`). Conj record (no Practice-4
+// ledger).
+//
+//   - net_type     which net-type (wire / wand / wor / tri / …)
+//   - name         the net identifier (K-1-opaque Symbol)
+//   - packing      scalar or `[msb:lsb]` packed bit-vector
+//   - signedness   `signed` keyword present / absent (IEEE 1364-2005
+//                  §5.6; the spec admits `signed` on any net-type;
+//                  for a scalar (single-bit) net the signedness fact
+//                  is semantically vacuous but the spec preserves it
+//                  syntactically — parse ∘ emit must preserve the
+//                  writer's keyword choice. Added 2026-05-16 per
+//                  codex BLOCKING review on PR #3176 to preserve the
+//                  IEEE signedness boundary fact for downstream
+//                  arithmetic/emission consumers, INVARIANTS P2.)
 type NetDeclaration {
   net_type: NetType
   name: Symbol
   packing: PackingShape
+  signedness: Signedness
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // VariableDeclaration — a Verilog variable (`reg foo;`, `reg [31:0]
-// counter;`, `integer i;`, `real x;`, `time t;`, `realtime rt;`).
-// IEEE 1364-2005 §3.7.2, §5.7 partitions variable declarations into
-// five kinds, where ONLY `reg` admits a `[msb:lsb]` packing — the
-// other four (`integer` / `real` / `time` / `realtime`) have spec-
-// fixed widths and forbid a vector range (`[N:M] integer i;` is a
-// syntax error per §5.7). The kind × packing admissibility is
-// modeled STRUCTURALLY: only `RegVariable` carries a `packing`
-// payload, so "Integer with Packed range" is unrepresentable — not
-// "rejected by a check" — the INVARIANTS P2 illegal-states-
-// unrepresentable shape (same design choice as node.dag's EdgeLabel,
-// rust.dag's RustScalar Disj-with-named-payloads, and go.dag's
-// GoScalar). The prior `{ var_type: VariableType, packing:
-// PackingShape }` Conj-record-with-independent-coordinates form was
-// the codex BLOCKING-review anti-pattern on PR #3176; this Disj-
-// with-payloads form is the dissolution.
+// counter;`, `reg signed [15:0] s;`, `integer i;`, `real x;`,
+// `time t;`, `realtime rt;`). IEEE 1364-2005 §3.7.2, §5.7 partitions
+// variable declarations into five kinds, where ONLY `reg` admits a
+// `[msb:lsb]` packing — the other four (`integer` / `real` / `time`
+// / `realtime`) have spec-fixed widths and forbid a vector range
+// (`[N:M] integer i;` is a syntax error per §5.7). The kind × packing
+// admissibility is modeled STRUCTURALLY: only `RegVariable` carries
+// a `packing` payload, so "Integer with Packed range" is
+// unrepresentable — not "rejected by a check" — the INVARIANTS P2
+// illegal-states-unrepresentable shape (same design choice as
+// node.dag's EdgeLabel, rust.dag's RustScalar Disj-with-named-
+// payloads, and go.dag's GoScalar). The prior `{ var_type:
+// VariableType, packing: PackingShape }` Conj-record-with-
+// independent-coordinates form was the codex BLOCKING-review anti-
+// pattern on PR #3176; this Disj-with-payloads form is the
+// dissolution.
 //
-//   - RegVariable        — `reg [msb:lsb] name;` / `reg name;`
-//                          general-purpose variable; the procedural-
-//                          assignment destination; THE ONLY
-//                          variable-kind that admits a packing
-//   - IntegerVariable    — `integer name;` 32-bit signed (the spec
-//                          pins integer to >= 32 bits); no packing
+// The kind × signedness admissibility is also modeled STRUCTURALLY
+// per IEEE 1364-2005 §5.6: `reg` admits `signed` (`reg signed [N:0]`
+// is two's-complement signed bit-vector); `integer` is ALWAYS signed
+// by spec (§3.7.2: "32-bit signed"); `time` is ALWAYS unsigned (the
+// 64-bit simulation-time carrier); `real` and `realtime` are IEEE-754
+// floating-point and carry NO signedness keyword (the floating-point
+// sign is internal to the IEEE-754 representation, not a separate
+// declaration modifier). Only `RegVariable` carries the
+// `signedness: Signedness` payload — "RealVariable signedness=Signed"
+// is unrepresentable, just like the kind × packing partition (codex
+// BLOCKING fix 2026-05-16 on PR #3176; the spec-fixed-signedness
+// kinds DO NOT need the carrier because the fact is non-variant per
+// spec).
+//
+//   - RegVariable        — `reg [msb:lsb] name;` / `reg signed [msb:
+//                          lsb] name;` / `reg name;` general-purpose
+//                          variable; the procedural-assignment
+//                          destination; THE ONLY variable-kind that
+//                          admits packing AND signedness modifiers
+//   - IntegerVariable    — `integer name;` 32-bit signed (spec-fixed
+//                          signed); no packing, no signedness payload
 //   - RealVariable       — `real name;` double-precision IEEE-754
-//                          floating-point; no packing
+//                          floating-point; no packing, no signedness
+//                          payload (sign is internal to the IEEE-754
+//                          representation, not a declaration modifier)
 //   - TimeVariable       — `time name;` 64-bit unsigned simulation-
-//                          time carrier; no packing
-//   - RealTimeVariable   — `realtime name;` aliased to `real`,
-//                          designer-intent marker for simulation-
-//                          time-valued reals (the spec keeps it
-//                          distinct at the syntactic surface per
-//                          IEEE 1364-2005 §3.7.2 — parse ∘ emit
-//                          must preserve the keyword choice); no
-//                          packing
+//                          time carrier (spec-fixed unsigned); no
+//                          packing, no signedness payload
+//   - RealTimeVariable   — `realtime name;` aliased to `real` per
+//                          §3.7.2; no packing, no signedness payload
 //
 // CLOSED (C1 stop-signal). A new variable-kind is an edit to THIS
 // declaration under the L-2 pin discipline (SystemVerilog adds
@@ -646,43 +733,48 @@ type NetDeclaration {
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every variable-declaration emitter,
 //      every procedural-assignment legality check (only RegVariable
-//      is a legal procedural-assignment destination), and the per-
-//      kind algebra inhabitance walk all read the variant tag
-//      uniformly; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing to `{ kind:
-//      VariableType, packing: PackingShape }` ratifies the illegal
-//      state "Integer with Packed range" the spec forbids (§5.7);
-//      collapsing to `{ keyword: Symbol, packing?: PackingShape }`
-//      additionally reopens the readable-string heuristic surface
-//      K-1 forecloses. The Disj-with-heterogeneous-payloads IS the
-//      dissolved form (P2 + Practice 2/6 + M4) — same shape as
-//      rust.dag's RustScalar and go.dag's GoScalar.
+//      is a legal procedural-assignment destination), every signed-
+//      vs-unsigned arithmetic dispatch, and the per-kind algebra
+//      inhabitance walk all read the variant tag uniformly; shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `{ kind: VariableType,
+//      packing: PackingShape, signedness: Signedness }` ratifies
+//      multiple illegal states the spec forbids — "Integer with
+//      Packed range" (§5.7) AND "Real with signedness=Signed" (§5.6
+//      — real is floating-point, no signedness modifier), AND
+//      "Time with signedness=Signed" (spec-fixed unsigned). The
+//      Disj-with-heterogeneous-payloads dissolves all of these:
+//      only RegVariable carries packing AND signedness; the spec-
+//      fixed-attribute kinds carry only `name`. Same dissolution
+//      shape as rust.dag's RustScalar and go.dag's GoScalar.
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
 //      algebra structure (RegVariable → `Semiring<UInt<N>>` or
-//      `OrderedRing<Int<N>>` per declared packing; IntegerVariable
-//      → `OrderedRing<Int<32>>`; RealVariable / RealTimeVariable →
-//      `ApproximateField<Float>`; TimeVariable → `Semiring<UInt<64>>`).
-//      That grounding is INHABITANCE — owned by the inhabiting
-//      carrier file (std/integer.dag, std/float.dag) per P2, and
-//      DEFERRED to the operator-pending D2 STOP. The variant set
-//      itself stays a closed classifier.
+//      `OrderedRing<Int<N>>` per declared packing × signedness;
+//      IntegerVariable → `OrderedRing<Int<32>>`; RealVariable /
+//      RealTimeVariable → `ApproximateField<Float>`; TimeVariable
+//      → `Semiring<UInt<64>>`). That grounding is INHABITANCE —
+//      owned by the inhabiting carrier file (std/integer.dag,
+//      std/float.dag) per P2, and DEFERRED to the operator-pending
+//      D2 STOP. The variant set itself stays a closed classifier.
 //   4. Dimensional — FAILS: a single variable declaration IS
 //      EXACTLY ONE variant; mutually-exclusive alternatives. The
-//      shapes differ across variants (RegVariable carries a
-//      packing; the rest do not) — they cannot be coordinates of a
-//      single record without the illegal-state smell.
+//      shapes differ across variants (RegVariable carries packing
+//      AND signedness; the rest carry neither) — they cannot be
+//      coordinates of a single record without the illegal-state
+//      smell.
 //   5. Parameterized family — FAILS: the five are structurally
-//      heterogeneous (RegVariable carries packing; the rest are
-//      packing-less; the algebraic groundings are five distinct
-//      std/algebra structures — Semiring / OrderedRing<Int<32>> /
+//      heterogeneous (RegVariable carries packing + signedness; the
+//      rest carry neither; the algebraic groundings are five
+//      distinct std/algebra structures — Semiring or OrderedRing
+//      depending on packing×signedness / OrderedRing<Int<32>> /
 //      ApproximateField / Semiring<UInt<64>> / aliased
 //      ApproximateField) — NOT one generic `F<X>` / projection
 //      over a separately-declared source set (Practice 7).
 // Terminal: the closed five-variant Verilog variable-declaration
-// classifier; illegal kind×packing combinations are unrepresentable
-// by construction.
+// classifier; illegal kind×packing AND kind×signedness combinations
+// are unrepresentable by construction.
 type VariableDeclaration
-  = RegVariable { name: Symbol, packing: PackingShape }
+  = RegVariable { name: Symbol, packing: PackingShape, signedness: Signedness }
   | IntegerVariable { name: Symbol }
   | RealVariable { name: Symbol }
   | TimeVariable { name: Symbol }
