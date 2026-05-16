@@ -272,19 +272,56 @@ type TomlValue
 //     (a) scaffold doc — THIS note; `toml_parse`/`toml_emit` are
 //         intentionally absent from toml.dag today.
 //     (b) bounds on use — no consumer reads `toml_parse`/`toml_emit`
-//         from toml.dag in this PR. The carrier seam is fixed: when
-//         authored, `toml_parse : String -> Outcome<TomlValue>` and
-//         `toml_emit : TomlValue -> String`, `Outcome<T>` the ratified
-//         D1 carrier — fail-closed (every non-conforming input,
-//         duplicate key, invalid datetime is `Rejected { diagnostic }`,
-//         never a partial/defaulted value). The SAME seam as the other
-//         five T-4.6 formats.
+//         from toml.dag in this PR. The carrier seam is fixed and
+//         fail-closed in BOTH directions (the T-4 seam-gate-ratified
+//         corrected seam #3 — propagated from canonical json.dag
+//         #3184): when authored, `toml_parse : String ->
+//         Outcome<TomlValue>` AND **`toml_emit : TomlValue ->
+//         Outcome<String>`** — NOT a total `TomlValue -> String`.
+//         `Outcome<T>` is the operator-ratified D1 carrier
+//         (std/diagnostic.dag, DECISIONS item **I**). WHY EMIT IS ALSO
+//         FAIL-CLOSED (not total): `TomlInt`/`TomlFloat`/`TomlDatetime`
+//         carry a raw `String` lexeme and the type-level
+//         §Integer/§Float/§Date-Time conformance is deferred (numeric
+//         (2)/(3) + key-refinement (4)) — so a `TomlValue` carrying a
+//         non-conformant scalar/datetime lexeme is type-constructible
+//         OUTSIDE the parser. A total `TomlValue -> String` emit would
+//         have no typed channel to reject it and would FABRICATE an
+//         invalid TOML artifact — an INVARIANTS P3 / no-fabrication
+//         violation (the canonical json.dag #3184 finding, propagated
+//         here as the ratified seam #3). So emit returns
+//         `Outcome<String>`: a structurally-representable but
+//         spec-invalid `TomlValue` emits `Rejected { diagnostic }`,
+//         never a fabricated string. Every non-conforming input,
+//         duplicate key, invalid datetime (parse) AND every
+//         spec-invalid value (emit) is `Rejected { diagnostic }`,
+//         never partial/defaulted/fabricated. The other five T-4.6
+//         formats mirror THIS fail-closed-both-directions seam.
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(TomlValue) -> String`" documents a TOTAL emit. The
+//         T-4 seam-gate ratified the fail-closed `-> Outcome<String>`
+//         seam (correctness-tightening of seam #3, INVARIANTS P3); the
+//         literal immutable-header line edit is operator-tier (worker
+//         may not edit the immutable header — csv-class authority),
+//         batched into the operator header-reconcile (flagged by the
+//         T-4 mgr). This note is the fail-closed authority pending that
+//         reconcile; the header/note divergence is tracked-not-silent
+//         here.
 //     (c) dissolution trigger — when std/text.dag (T-3) lands its
 //         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
-//         PR adds `toml_parse`/`toml_emit` returning `Outcome<TomlValue>`;
-//         this note dissolves. The T-4 directive's "operations
-//         deferred-with-named-owner" + TASKS.md T-4.6 record the same
-//         dependency.
+//         PR adds `toml_parse : … -> Outcome<TomlValue>` /
+//         `toml_emit : … -> Outcome<String>`. The emit body MUST
+//         validate any non-parser-constructed value fail-closed (a
+//         non-conformant scalar/datetime lexeme, pending the
+//         refined-lexeme substrate, is a `Rejected`, never emitted) —
+//         the trigger is NOT satisfied by a total `-> String` emit
+//         even once std/text.dag lands; the fail-closed
+//         `Outcome<String>` contract is part of THIS ratified seam #3,
+//         so the invalid-lexeme emission hole cannot survive the
+//         dissolution. The T-4 directive's "operations deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
 //
 // (2) Numeric interpretation of `TomlInt.lexeme` / `TomlFloat.lexeme` —
 //   the integer tower (std/integer.dag) + IEEE-754 `Float`
