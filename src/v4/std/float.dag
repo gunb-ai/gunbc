@@ -310,7 +310,7 @@ fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
 // float_ordered_compare_tier2 — Tier-2 totalization for **unordered** `<|Equal|Greater>`
 // in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
 // `Produced` with the semantic-carrier total compare (NOT IEEE `<`; see modeling notes).
-fn float_ordered_compare_tier2(a: Float64, b: Float64, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
+fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
   if float_body_is_nan(a.body) {
     Rejected {
       diagnostic: Diagnostic {
@@ -336,15 +336,15 @@ fn float_ordered_compare_tier2(a: Float64, b: Float64, diagnostic_anchor: Symbol
 
 
 fn float_alg_add(a: Float, b: Float) -> Float {
-  Float64 { body: float_body_add(a.body, b.body) }
+  Float { body: float_body_add(a.body, b.body) }
 }
 
 fn float_alg_negate(x: Float) -> Float {
-  Float64 { body: float_body_negate(x.body) }
+  Float { body: float_body_negate(x.body) }
 }
 
 fn float_alg_mul(a: Float, b: Float) -> Float {
-  Float64 { body: float_body_mul(a.body, b.body) }
+  Float { body: float_body_mul(a.body, b.body) }
 }
 
 fn float_alg_compare(a: Float, b: Float) -> Ordering {
@@ -352,12 +352,14 @@ fn float_alg_compare(a: Float, b: Float) -> Ordering {
 }
 
 
-// float_approximate_field — machine-readable inhabitance: `Float64`
-// (`Float` is `Float64`; v2 resolves `ApproximateField` method bodies against
-// the concrete carrier name here).
+// float_approximate_field — machine-readable inhabitance: `Float` (= `Float64`)
+// inhabits `ApproximateField` (operator ruling 2026-05-16). Method bodies are
+// free functions (`float_alg_*`) so v2 monomorphizes `T` to the concrete
+// float carrier (inline `fn` bodies inside `ApproximateField {…}` stay
+// generically typed as `T` and cannot project `.body`).
 data float_approximate_field: ApproximateField<Float> = ApproximateField {
   add: float_alg_add,
-  zero: Float64 {
+  zero: Float {
     body: Finite {
       sign: false
       biased_exponent: Zero
@@ -366,7 +368,7 @@ data float_approximate_field: ApproximateField<Float> = ApproximateField {
   },
   negate: float_alg_negate,
   mul: float_alg_mul,
-  one: Float64 {
+  one: Float {
     body: Finite {
       sign: false
       biased_exponent: Zero
