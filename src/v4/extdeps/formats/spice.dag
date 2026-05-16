@@ -500,6 +500,86 @@ type IncludeCard {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// SweepSourceRef — a typed reference to an independent source for
+// `.DC` sweep (PR #3168 codex review). SPICE3 §11.5.2 specifies
+// `.DC SRCNAM VSTART VSTOP VINCR`, where SRCNAM is the FULL SPICE
+// name of the swept source (e.g. `V1` or `I1`). The simulator
+// disambiguates voltage-source vs current-source sweeps by reading
+// the leading character of SRCNAM.
+//
+// Component.name strips the kind prefix (post-prefix discipline —
+// see Component declaration), so a `Symbol` payload alone cannot
+// distinguish `V1` from `I1` at the reference site (both reduce to
+// `Symbol("1")` after stripping). The codex review surfaced this:
+// the same suffix-Symbol could alias a voltage source and a current
+// source with the same suffix — `Dc.source: Symbol` is therefore not
+// faithful to SPICE3 `.DC` semantics. SweepSourceRef restores the
+// kind at the reference site via a typed sum:
+//
+//   `.DC V1 0 5 0.1`  ⇒  Dc { source: VoltageSweepSource { name = Symbol("1"), ... }, ... }
+//   `.DC I1 0 1m 0.01` ⇒  Dc { source: CurrentSweepSource { name = Symbol("1"), ... }, ... }
+//
+// Kind is carried structurally by the variant; suffix matches the
+// corresponding `Component.{VoltageSource|CurrentSource}.name`. The
+// reference's kind constrains which Component variants can satisfy
+// it (a `VoltageSweepSource` resolves only against
+// `Component.VoltageSource` instances), so cross-kind aliasing is
+// structurally unrepresentable.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every consumer of `Dc.source`
+//      branches on V-vs-I uniformly; shared classifier.
+//   2. Variant-is-data — FAILS: collapsing to `{ kind: Symbol,
+//      name: Symbol }` reduces a closed two-way enum to an opaque-
+//      string proxy (M4 closed-sets-not-strings violation; the
+//      Symbol "kind" would be the kind-prefix character "V"/"I"
+//      and would re-introduce the kind/spelling-sentinel anti-
+//      pattern the post-prefix Component name discipline removes).
+//   3. Algebraic form — N/A: the V-vs-I partition is the SPICE3
+//      spec's enumeration of independent-source kinds, not an
+//      algebra carrier.
+//   4. Dimensional — FAILS: a sweep source is EXACTLY ONE of
+//      voltage / current; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: both variants carry the same
+//      `{ name: Symbol }` payload — this LOOKS like an F<X>
+//      projection over the kind set, but the kind set is not a
+//      separately-declared source (the Component variants
+//      themselves are the closure), and collapsing them loses the
+//      kind-vs-name single-authority discipline that motivates this
+//      type. Practice-7 projection over Component variants would
+//      require admitting Component as a typeclass-like carrier,
+//      which is std/-substrate-tier; until then this two-variant
+//      shape carries the kind structurally.
+// Terminal: the irreducible binary V-vs-I partition of SPICE3
+// independent-source kinds at the `.DC` reference site.
+type SweepSourceRef
+  = VoltageSweepSource { name: Symbol }
+  | CurrentSweepSource { name: Symbol }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// InductorRef — a typed reference to an inductor element (PR #3168
+// codex review). Used by `Component.MutualInductance` to identify
+// the two coupled inductors by name. SPICE3 §11.1 specifies the
+// `K` element as `Kxxxx Lyyyy Lzzzz value` where `Lyyyy`/`Lzzzz` are
+// FULL SPICE inductor names. After Component.name's post-prefix
+// discipline, a bare `Symbol` payload would only carry the suffix
+// (`Symbol("1")` for `L1`), losing the kind affirmation — analogous
+// to the V/I aliasing concern that motivates SweepSourceRef. Using
+// `InductorRef` makes "this names an Inductor specifically" a
+// positive type fact: the reference's type constrains which
+// Component variants can satisfy it (an `InductorRef` resolves only
+// against `Component.Inductor` instances). Single-variant record
+// because SPICE3's `K` element references inductors and only
+// inductors; a typed sum would add no information.
+type InductorRef {
+  name: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // SubstrateSpec — the optional 4th terminal of a SPICE3 Q-card. The
 // SPICE3 BJT statement permits both
 //   `Qname COLLECTOR BASE EMITTER MODEL [params...]`             (3-term)
@@ -691,7 +771,7 @@ type Component
   | Diode { name: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
   | Bjt { name: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, modifiers: List<Modifier> }
   | Mosfet { name: Symbol, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, modifiers: List<Modifier> }
-  | MutualInductance { name: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
+  | MutualInductance { name: Symbol, l1: InductorRef, l2: InductorRef, coupling: SpiceValue }
   | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
 
@@ -957,7 +1037,7 @@ type NodeVoltageBindings {
 type Directive
   = Op
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
-  | Dc { source: Symbol, vstart: SpiceValue, vstop: SpiceValue, vincr: SpiceValue }
+  | Dc { source: SweepSourceRef, vstart: SpiceValue, vstop: SpiceValue, vincr: SpiceValue }
   | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
   | InitialCondition { assignments: NodeVoltageBindings }
   | NodeSet { assignments: NodeVoltageBindings }
