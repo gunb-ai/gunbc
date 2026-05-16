@@ -871,8 +871,22 @@ type ModelCard {
 // 1993 §11.5.1): linear, decade, or octave sweep.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
+// discipline.md §4) — classification: 🟡 YELLOW (deferred-on-consumer).
+// FLIP rationale (rule-change attribution): per the operator-directed
+// modeling-discipline rule change in PR #3200 (merged 2026-05-16
+// 19:53:37Z), GREEN is consumer-INDEPENDENT — a coproduct is GREEN
+// ONLY IF no richer source exists. The merry-ibex-337-led
+// authoritative cross-PR Tier-1 audit identified AcSweepKind as
+// mis-GREEN: the three variants PROJECT OVER a namable 2D axis
+// `(spacing-law × ratio-base)`:
+//   - `Linear`  ⇒ spacing-law = arithmetic;   ratio-base = NA
+//   - `Decade`  ⇒ spacing-law = logarithmic;  ratio-base = base-10
+//   - `Octave`  ⇒ spacing-law = logarithmic;  ratio-base = base-2
+// A consumer that matches over the `{Linear | Decade | Octave}`
+// labels is doing structural decomposition in the wrong place —
+// the step-law derivation belongs at the meaning-consumer, not at
+// the foreign-label match.
+// Ledger — five patterns attempted (updated for the new classification):
 //   1. Fact placement — FAILS: the sweep kind is consumed uniformly by
 //      the analysis-driver and the emitter; shared, not scattered.
 //   2. Variant-is-data — FAILS: collapsing to `{ name: Symbol }`
@@ -880,12 +894,29 @@ type ModelCard {
 //      (M4 violation).
 //   3. Algebraic form — N/A: a frequency-sweep kind is not an algebra
 //      carrier; it is the SPICE3 spec's enumeration.
-//   4. Dimensional — FAILS: a sweep is EXACTLY ONE kind; mutually-
-//      exclusive alternatives, never simultaneous coordinates.
-//   5. Parameterized family — FAILS: the three are bare nullary
-//      discriminants; no `F<X>` shape, no separately-declared source
-//      set to project over.
-// Terminal: the closed AC-analysis sweep-kind enumeration.
+//   4. Dimensional — FAILS-AT-THIS-LAYER, but the 2D `(spacing-law ×
+//      ratio-base)` axis IS the richer source the YELLOW dissolution
+//      targets at the meaning-consumer; a coproduct value at this
+//      file's surface still carries EXACTLY ONE sweep kind.
+//   5. Parameterized family — SUCCEEDS at the meaning-consumer (the
+//      sweep-point generator) per PR #3200: the three variants are
+//      `F<X>` for X over the spacing-law × ratio-base axis-set.
+//      Stays in coproduct form at this file's surface because the
+//      decomposition is the consumer's obligation (see below), not
+//      a local-lookup at the netlist data-model layer.
+//   Named trigger: the first consumer of frequency-stepping semantics
+//   — concretely the AC-analysis sweep-point generator (the code
+//   that walks `fstart` → `fstop` emitting per-step frequencies for
+//   `.AC` simulation).
+//   Pre-assigned obligation: that consumer DERIVES the step law from
+//   the `(spacing-law, ratio-base)` axes — NOT a `match` over the
+//   `{Linear | Decade | Octave}` coproduct labels. A typed
+//   `(spacing-law: ArithSpacing | LogSpacing, ratio-base: …)`
+//   carrier (or its equivalent decomposition shape) is the
+//   structural form the consumer owes; this declaration's surface
+//   stays a coproduct because the netlist data layer (parse/emit
+//   round-trip) does not need the axis decomposition — the meaning-
+//   consumer does.
 type AcSweepKind
   = Linear
   | Decade
