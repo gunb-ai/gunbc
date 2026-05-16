@@ -17,9 +17,12 @@
 //   - ReactModuleSurface (client vs React Server Components module capability)
 //   - ReactFunctionComponent (surface + props type/value **refs** + render root **ref**)
 //   - ReactPropsSite (props type + value **refs** — call-site / element payload)
-//   - ReactElement (+ host / composite / fragment / text variants) with
-//     `children_refs: List<Symbol>` (A1: ordered children are **name-references**,
-//     never producer-inlined subtrees at this substrate layer)
+//   - ReactElement (+ host / composite / fragment / text variants) with ordered
+//     child identities carried as `Path` (node.dag: `Path.steps: List<Symbol>` — the
+//     **same** K-1 spine as an ordered name-ref list; React lenses read it as a
+//     child **sequence**, not a diff-route through `Node` edges — P2 single carrier
+//     for `List<Symbol>` avoids a `compile_to_dag` strict-resolution gap on raw
+//     `List<Symbol>` in this module)
 //   - ReactContextBinding (opaque `createContext` pair identity at a site)
 //   - ReactHook, ReactHookKind, ReactBuiltinHook (closed hook API partition)
 //   - ReactComponentEffect (trigger + **effect_body_ref** Symbol)
@@ -28,10 +31,8 @@
 //     `reason: Symbol` rows — not enumerated here)
 //
 // Consumes (traceability):
-//   - std/node.dag: Node + Symbol (import **both** — the lowering closure resolves
-//     `List<Symbol>` and other `Symbol` carriers only when `node.dag` is loaded;
-//     `Node` stays unused in field types here but is required import-closure glue)
-//   - std/collection.dag: List<T>
+//   - std/node.dag: Node, Symbol, Path (Path = ordered `List<Symbol>` spine for
+//     dependency arrays + child sequences; import **Node** for lowering closure glue)
 //   - std/diagnostic.dag: Outcome<T> ratified (DECISIONS.md **I**, #3181) —
 //     referenced in commentary for future parse/resolve seams; no operation rows
 //     authored here yet (DECLARATIVE-NOW).
@@ -56,8 +57,7 @@
 module v4.extdeps.frameworks.react
 
 
-import v4.std.node { Node, Symbol }
-import v4.std.collection { List }
+import v4.std.node { Node, Symbol, Path }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -67,8 +67,11 @@ import v4.std.collection { List }
 // resolved through the module / component namespace to a declaration or value
 // site authored in the TS+React grammar layer — the React substrate does not
 // carry inlined `Node` forests for children, custom hooks, or effect bodies here.
-// `Node` remains the kernel's sole recursive program carrier (node.dag A1);
-// React graphs **attach** to it by reference, not by embedding another recursion.
+// Ordered lists of such refs reuse `Path` from std/node.dag (`steps: List<Symbol>`):
+// the **type** is the substrate's existing free-monoid-of-`Symbol` carrier; React
+// lenses interpret `steps` as a **sequence** of child/value identities, not a diff
+// route through `Node` named edges (that interpretation is lens-owned, not a
+// second `List<Symbol>` authority — P2).
 //
 // D1/D2. Fail-closed stage returns use `Outcome<T>` from `v4.std.diagnostic` when
 // operations land; this file declares **data** carriers only (DECLARATIVE-NOW).
@@ -156,7 +159,7 @@ type ReactBuiltinHook
 //      `Symbol`) — not uniform `F<X>`.
 // Terminal: built-in vs custom-hook **reference** partition.
 type ReactHookKind
-  = Builtin { hook: ReactBuiltinHook }
+  = BuiltIn { hook: ReactBuiltinHook }
   | Custom { implementation_ref: Symbol }
 
 
@@ -165,12 +168,12 @@ type ReactHookKind
 // Anchor: https://react.dev/reference/react/hooks + dependency-array semantics per
 //         hook family (e.g. https://react.dev/reference/react/useEffect#parameters )
 //
-// `dependency_value_refs`: ordered dependency expressions; each `Symbol` names a
-// value site (including "absent array" modeled as empty list at grammar policy).
-// A1: refs, not inlined expression `Node`s at this layer.
+// `dependency_value_path`: ordered dependency identities (`Path.steps`); each step
+// `Symbol` names a value site (including "absent array" modeled as empty `steps`
+// at grammar policy). A1: refs, not inlined expression `Node`s at this layer.
 type ReactHook {
   kind: ReactHookKind
-  dependency_value_refs: List<Symbol>
+  dependency_value_path: Path
 }
 
 
@@ -225,7 +228,7 @@ type ReactPropsSite {
 // Anchor: https://react.dev/reference/react/function-components
 //
 // `render_root_ref` names the root **element** declaration for this component's
-// return tree (children under that root use `children_refs` inside `ReactElement`
+// return tree (children under that root use `children_path` inside `ReactElement`
 // carriers — A1 ref spine, not inlined trees).
 type ReactFunctionComponent {
   surface: ReactModuleSurface
@@ -242,7 +245,7 @@ type ReactFunctionComponent {
 type ReactHostElement {
   tag_ref: Symbol
   props: ReactPropsSite
-  children_refs: List<Symbol>
+  children_path: Path
 }
 
 
@@ -256,7 +259,7 @@ type ReactHostElement {
 type ReactCompositeElement {
   component_ref: Symbol
   props: ReactPropsSite
-  children_refs: List<Symbol>
+  children_path: Path
 }
 
 
@@ -281,7 +284,7 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { children_refs: List<Symbol> }
+  | Fragment { children_path: Path }
   | Text { text_value_ref: Symbol }
 
 
