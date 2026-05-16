@@ -228,7 +228,11 @@ module v4.extdeps.languages.rust
 
 
 import v4.std.node { Node, Symbol }
-import v4.std.logic { Bool }
+// Bool from v4.std.logic is KERNEL-AMBIENT (STRUCTURE.md "Kernel-
+// ambient types") — usable without an import statement in any v4
+// .dag file. The live `IrToRust<Bool>` row below references the
+// type-parameter `Bool` directly; v2-compiler resolves it ambiently
+// (verified 0-diag).
 
 
 // ─────────────────────────────────────────────────────────────────────
