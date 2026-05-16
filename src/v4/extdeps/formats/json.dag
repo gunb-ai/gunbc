@@ -21,3 +21,244 @@
 
 module v4.extdeps.formats.json
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// CANONICAL-FIRST SEAM (operator-ratified T-4 directive 2026-05-16:
+// "one canonical file first, get its declarative model + the carrier-
+// shaped seams ratified, THEN fan the rest out"). json.dag is the T-4.6
+// reference: the other five formats (yaml/csv/toml/json_schema/openapi)
+// mirror THIS file's value-model shape + parse/emit carrier seam — they
+// do not each re-invent one (that re-invention IS the v3 cross-layer-
+// drift failure mode v4 exists to kill). Surface this file for seam-
+// review before fan-out.
+//
+// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER (the operator-
+// sanctioned middle path, verified on std/collection.dag #3169). What
+// is modeled here NOW: the `JsonValue` data model — declaration-class,
+// substrate-faithful, no unlanded dependency. What is DEFERRED with a
+// named owner + dissolution trigger (NEVER improvised, NEVER a fake
+// stub, NEVER a bodiless `fn` — the frozen v2 seed rejects bodiless
+// `fn`, DECISIONS PARSE-1): the `parse`/`emit` operation bodies and the
+// numeric interpretation of a number lexeme. Both ride substrate that
+// is scaffold today (std/text.dag for the Char-stream walk; std/float.
+// dag + std/integer.dag for numeric interpretation). The deferral is a
+// 🟡 TRACKED-SCAFFOLD block with the three bridge properties, exactly
+// the collection.dag-deferred-Map pattern.
+//
+// CARRIER SEAM = Outcome<JsonValue> (NOT a per-file sum). The header's
+// `parse(String) -> Result<JsonValue, Diagnostic>` prose denotes the
+// operator-ratified D1 carrier `Outcome<T> = Produced { value: T } |
+// Rejected { diagnostic: Diagnostic }` (std/diagnostic.dag, DECISIONS
+// item **I**, 2026-05-16; `Result<…, Diagnostic>` prose names this same
+// surface — there is no parallel `Result<ok, err>` in std/). When the
+// parse op is authored (trigger below), it returns `Outcome<JsonValue>`.
+// This is the cross-file seam the canonical-first directive ratifies on
+// THIS file; the other five formats consume the SAME carrier.
+//
+// FAIL-CLOSED, NO FABRICATION (RFC 8259; brief §C binding STOP). Every
+// non-conforming input is `Rejected { diagnostic }` — never a partial
+// parse, never a defaulted/guessed JsonValue, never a fabricated number.
+// Duplicate object names are structurally addressed: `JsonObject`'s
+// carrier is `Map<String, JsonValue>`, which cannot hold a duplicate
+// key — so a parsed `JsonObject` is dup-free BY CONSTRUCTION (illegal
+// states unrepresentable, INVARIANTS P2). RFC 8259 §4 ("names within an
+// object SHOULD be unique") + the no-engine discipline make duplicate-
+// name INPUT a parse `Rejected`, not a silent last-wins resolution
+// (silent resolution = the no-engine STOP) — enforced in the deferred
+// parse body, structurally guaranteed by the carrier here.
+//
+// `Bool`/`String` are kernel-ambient (v2 seed; STRUCTURE.md "Kernel-
+// ambient types"); `List<T>`/`Map<K,V>` are the kernel container types
+// (node.dag uses `List` unimported). That relaxes only the import edge —
+// this file remains JSON's sole modeling authority (the std/logic.dag
+// kernel-ambient discipline). No std/ import is needed: the data model
+// uses only kernel-ambient carriers + self-recursion; the deferred
+// carrier seam is named in prose, not structurally referenced (an
+// unused import would itself fail 0-diagnostics).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// JsonValue — the RFC 8259 §3 JSON value: the closed, recursive set of
+// the six JSON value kinds. Anchor: RFC 8259 §3 ("A JSON value MUST be
+// an object, array, number, or string, or one of the following three
+// literal names: false / null / true") + ECMA-404.
+//
+//   - JsonNull            — the `null` literal (RFC 8259 §3).
+//   - JsonBool            — the `true` / `false` literals; the payload
+//                           is the kernel `Bool` (one authority for the
+//                           truth value — std/logic.dag — not a second
+//                           True/False enum re-declared here).
+//   - JsonNumber          — RFC 8259 §6. Carries the VERBATIM source
+//                           number token (`lexeme`), NOT a numeric
+//                           value. RFC 8259 §6 deliberately separates
+//                           the number TOKEN (a lexical grammar
+//                           production: `[minus] int [frac] [exp]`)
+//                           from its numeric INTERPRETATION, which it
+//                           leaves implementation-defined ("This
+//                           specification allows implementations to set
+//                           limits on the range and precision"). The
+//                           faithful numeric carriers — IEEE-754
+//                           `Float` (std/float.dag) and the integer
+//                           tower (std/integer.dag) — are scaffold
+//                           today, so collapsing the token to a numeric
+//                           value NOW would (i) fabricate a precision
+//                           decision the substrate has not landed
+//                           (no-fabrication / no-engine) and (ii) lose
+//                           information the round-trip (B-6) needs.
+//                           Preserving the lexeme is the no-fabrication-
+//                           correct, round-trip-exact choice; the
+//                           numeric interpretation is a DEFERRED read
+//                           owned by the numeric substrate (🟡 block
+//                           below). The lexeme is a faithful external-
+//                           format token, NOT an opaque-string heuristic
+//                           channel (feedback_opaque_strings): nothing
+//                           here branches on its spelling — its §6-
+//                           conformance and its value are separately-
+//                           owned deferred reads, exactly like a source
+//                           span is preserved verbatim and interpreted
+//                           by its own owner.
+//   - JsonString          — RFC 8259 §7. The payload is the kernel
+//                           `String`. (Escape decoding / `\uXXXX`
+//                           surrogate-pair handling is a parse-body
+//                           concern — the deferred Char-stream walk —
+//                           not a data-model variant.)
+//   - JsonArray           — RFC 8259 §5. An ordered sequence of
+//                           JsonValue; the carrier is the kernel
+//                           `List<JsonValue>` (order is the list order —
+//                           the single authority, canonical/
+//                           deterministic per CULTURE §8).
+//   - JsonObject          — RFC 8259 §4. An unordered collection of
+//                           name/value pairs; the carrier is the kernel
+//                           `Map<String, JsonValue>` — which makes
+//                           duplicate names structurally unrepresentable
+//                           (see Modeling notes: dup-name INPUT is a
+//                           parse `Rejected`, the parsed value is
+//                           dup-free by construction).
+//
+// Recursion lives in the `elements` / `members` children (node.dag A1:
+// the one recursive type is `Node`; this recursive `Disj` is a finite
+// Node tree whose recursive occurrence is the name-reference `JsonValue`
+// resolved through the namespace — never a self-referential type slot,
+// exactly std/nat.dag's `Succ { prev: Nat }`). The recursion is REGULAR
+// (the recursive occurrence is `JsonValue` itself, not a different
+// instantiation) ⇒ unconditionally admissible per A1. Structural
+// descent on a proper sub-JsonValue (a list element / map value) is the
+// A2 IMPLICIT termination case — every fold/walk over a JsonValue
+// strips one constructor layer, total by construction, no ranking
+// measure needed.
+//
+// CLOSED. The six are RFC 8259 §3's exhaustive value grammar — there is
+// no `Other` / open variant. A seventh JSON value kind would be an edit
+// to this declaration routed to ratification (it would mean RFC 8259
+// itself changed), not a silent escape.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — 🟢 GREEN (terminal). Ledger — five patterns
+// attempted:
+//   1. Fact placement — FAILS: the value kind is consumed UNIFORMLY by
+//      every JSON consumer (the deferred parse builds it, emit walks it,
+//      json_schema validates over it, any pipeline ingest dispatches on
+//      it). It is the shared classifier of the whole JSON value space,
+//      not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the six carry structurally DISTINCT
+//      payloads (JsonNull nullary; a `Bool`; a lexeme `String`; a
+//      `String`; a `List<JsonValue>`; a `Map<String, JsonValue>`).
+//      Collapsing to a flat `{ kind, bool?, number?, string?, array?,
+//      object? }` record makes illegal mixed states representable (a
+//      JsonNull carrying array elements; a JsonBool with object
+//      members) — the inverse of INVARIANTS P2 (illegal states
+//      unrepresentable).
+//   3. Algebraic form — N/A by construction: a JSON value is RFC 8259
+//      §3's closed value grammar; it is heterogeneous external data,
+//      not the carrier of a richer std/algebra.dag structure (no
+//      Monoid/Ring/Lattice it inhabits). The Array/Object children
+//      ground in their OWN carriers (List = FreeMonoid, Map) owned by
+//      std/collection.dag — not a richer single source JsonValue
+//      decomposes into; pointing the variants at an algebra is circular.
+//   4. Dimensional — FAILS: a JSON value is EXACTLY ONE of the six
+//      kinds (RFC 8259 §3 — a value is one of object/array/number/
+//      string/true/false/null); mutually-exclusive alternatives, never
+//      simultaneous coordinates. No value is "both a number and an
+//      array".
+//   5. Parameterized family — FAILS: the six variants are structurally
+//      heterogeneous (nullary; `Bool`; lexeme `String`; `String`;
+//      `List<JsonValue>`; `Map<String, JsonValue>`) — NOT one generic
+//      `F<X>` / projection over a separately-declared enumerable set
+//      (Practice 7). They are the irreducible constructors of the RFC
+//      8259 §3 value grammar, not a mechanical copy of an enumerable
+//      set.
+// Terminal: the irreducible closed RFC 8259 §3 JSON value grammar; a
+// recursive Disj whose Array/Object children recurse through kernel
+// `List`/`Map` of `JsonValue` (A1 recursion-in-children, name-reference
+// through the namespace — the std/nat.dag `Nat` shape).
+type JsonValue
+  = JsonNull
+  | JsonBool { value: Bool }
+  | JsonNumber { lexeme: String }
+  | JsonString { value: String }
+  | JsonArray { elements: List<JsonValue> }
+  | JsonObject { members: Map<String, JsonValue> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred — TRACKED SCAFFOLD (🟡). The operations ride substrate that
+// is scaffold today. Per the operator-ratified declarative-now /
+// operations-deferred-with-owner discipline (verified on std/collection.
+// dag #3169) these are NOT authored here — not as improvised bodies,
+// not as bodiless `fn` signatures (the frozen v2 seed rejects bodiless
+// `fn`, DECISIONS PARSE-1: "expected LBrace"). Each carries the three
+// bridge properties (scaffold doc / bounds on use / dissolution
+// trigger).
+//
+// (1) `json_parse` / `json_emit` — the parse and emit operation bodies.
+//   RFC 8259 §2: a JSON text is a sequence of Unicode code points; a
+//   JSON parser is fundamentally a Char-STREAM structural walk and emit
+//   builds a String from structure. Both require std/text.dag's `Char`
+//   + a `String` ↔ sequence-of-`Char` decomposition — std/text.dag is
+//   T-3 SCAFFOLD (unmerged). RATIFIED parse strategy (the brief §C
+//   "recursive vs iterative" decision, settled here as the canonical
+//   seam): RECURSIVE-DESCENT — a single self-recursive structural walk
+//   descending on the input Char-sequence spine (RFC 8259's grammar is
+//   LL(1)), mirroring `JsonValue`'s own recursion; termination is the
+//   A2 IMPLICIT case (descent on a proper sub-sequence of the input
+//   list — the std/node.dag `node_well_formed` shape), no ranking
+//   measure needed.
+//     (a) scaffold doc — THIS note; `json_parse`/`json_emit` are
+//         intentionally absent from json.dag today.
+//     (b) bounds on use — no consumer reads `json_parse`/`json_emit`
+//         from json.dag in this PR. The carrier-shaped seam IS ratified
+//         here: when authored, `json_parse : String -> Outcome<JsonValue>`
+//         and `json_emit : JsonValue -> String`, where `Outcome<T>` is
+//         the operator-ratified D1 carrier (std/diagnostic.dag,
+//         DECISIONS item **I**) — fail-closed (every non-conforming
+//         input is `Rejected { diagnostic }`, never a partial/defaulted
+//         value; brief §C binding STOP). The other five T-4.6 formats
+//         mirror THIS seam (one carrier, not a per-file sum).
+//     (c) dissolution trigger — when std/text.dag (T-3) lands its
+//         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
+//         PR adds `json_parse`/`json_emit` as single self-recursive
+//         structural walks returning `Outcome<JsonValue>`; this note
+//         dissolves. The T-4 directive's "operations deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
+//
+// (2) Numeric interpretation of `JsonNumber.lexeme` — RFC 8259 §6
+//   separates the number TOKEN (carried verbatim above) from its
+//   numeric VALUE, which the spec leaves implementation-defined. The
+//   faithful numeric carriers are scaffold: IEEE-754 `Float`
+//   (std/float.dag) and the integer tower (std/integer.dag), both T-3.
+//   The header's "IEEE-754 default + BigDecimal opt-in" is the eventual
+//   interpretation POLICY — it is ratified and authored once those
+//   carriers land, not fabricated here.
+//     (a) scaffold doc — THIS note; `JsonNumber` carries the lexeme,
+//         not a numeric value; no interpretation is claimed.
+//     (b) bounds on use — a consumer needing the numeric value waits on
+//         the interpretation read. The lexeme is round-trip-exact
+//         (B-6): emit reproduces the source token with zero precision
+//         loss, which a premature IEEE-754 collapse could not.
+//     (c) dissolution trigger — when std/float.dag + std/integer.dag
+//         land, a follow-up adds `json_number_value : JsonNumber ->
+//         Outcome<…>` per the header's IEEE-754-default / BigDecimal-
+//         opt-in policy; this note dissolves.
+
