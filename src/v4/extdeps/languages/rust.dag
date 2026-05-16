@@ -1020,12 +1020,14 @@ type RustPathSegment
 //               EQUIVALENCE: this variant is ALSO the canonical
 //               representation of `pub(self)` and `pub(in self)`
 //               (the Reference states all three are the same
-//               visibility). It is a producer obligation to
-//               canonicalize the three source forms (no-modifier,
-//               `pub(self)`, `pub(in self)`) into THIS variant;
-//               `PubIn { path: [self-symbol] }` is NEVER a legal
-//               representation — the well-formedness fn below
-//               (`rust_visibility_well_formed`) enforces this.
+//               visibility). The three source forms (no-modifier,
+//               `pub(self)`, `pub(in self)`) ALL canonicalize to
+//               THIS variant — STRUCTURALLY: `RustPathSegment` has
+//               no `Self` variant (see its declaration above), so
+//               `PubIn { path: [<Self>] }` is unrepresentable by
+//               construction. The canonicalization is type-
+//               enforced, not check-enforced; no separate
+//               well-formedness fn is needed.
 //   - Pub     — `pub`         publicly visible (no restriction
 //               beyond the defining crate's API surface)
 //   - PubIn { path: List<RustPathSegment> }
