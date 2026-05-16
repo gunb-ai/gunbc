@@ -1618,6 +1618,114 @@ type FunctionDeclaration {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// EventDeclaration — a Verilog named-event declaration (`event ev;`).
+// IEEE 1364-2005 §9.7.3 / §10.3. Named events are explicitly-
+// triggered control-flow primitives (`-> ev;` triggers, `@ev` waits).
+// Conj record (no Practice-4 ledger).
+//
+//   - name    the event identifier (K-1-opaque Symbol)
+type EventDeclaration {
+  name: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GenvarDeclaration — a Verilog `genvar` declaration (`genvar i;`).
+// IEEE 1364-2005 §12.4.2. Generate variables drive elaboration-time
+// loop iteration in `generate-for` constructs. Conj record (no
+// Practice-4 ledger).
+//
+//   - name    the genvar identifier (K-1-opaque Symbol)
+type GenvarDeclaration {
+  name: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LocalParameterDeclaration — a Verilog `localparam` declaration
+// (`localparam W = 8;`). IEEE 1364-2005 §3.10, §12.2. Local parameters
+// differ from ordinary parameters in that they CANNOT be overridden
+// by `defparam` or by parameter overrides on a module instantiation
+// (the spec's distinct binding rule). Conj record (no Practice-4
+// ledger).
+//
+//   - name              the localparam identifier (K-1-opaque Symbol)
+//   - default_lexeme    the value as a verbatim expression lexeme
+//                       (mirrors ParameterDeclaration; sub-grammar
+//                       deferred)
+type LocalParameterDeclaration {
+  name: Symbol
+  default_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GateInstantiation — a Verilog built-in primitive instantiation
+// (`and g1(out, a, b);` / `not n1(o, i);` / `bufif1 b1(out, in, en);`,
+// etc.). IEEE 1364-2005 §7 admits 24 built-in primitive gate types
+// (and / or / nand / nor / xor / xnor / not / buf / bufif0 / bufif1 /
+// notif0 / notif1 / pulldown / pullup / nmos / pmos / cmos / rnmos /
+// rpmos / rcmos / tran / tranif0 / tranif1 / rtran / rtranif0 /
+// rtranif1). Conj record (no Practice-4 ledger).
+//
+//   - gate_keyword     the primitive's keyword as a verbatim lexeme
+//                      (the closed 24-keyword set is owned by the
+//                      bundled T-4 LanguageModel productions; the
+//                      vocabulary slice carries the keyword as
+//                      lexeme + the per-keyword terminal-arity table
+//                      is a LanguageModel-level joint check, same
+//                      pattern as gate primitives' per-keyword
+//                      admissibility)
+//   - body_lexeme      instance name + terminal list as a verbatim
+//                      lexeme (sub-grammar deferred — the
+//                      per-primitive terminal arity / drive strength
+//                      / delay control is in the bundled
+//                      LanguageModel)
+type GateInstantiation {
+  gate_keyword: String
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// UdpInstantiation — a Verilog user-defined-primitive instantiation
+// (a UDP defined via `primitive ... endprimitive` at the file level
+// per IEEE 1364-2005 §8 is instantiated like a gate at the module-
+// body level). Conj record (no Practice-4 ledger).
+//
+//   - udp_name         the UDP identifier (K-1-opaque Symbol;
+//                      resolves through the namespace to the
+//                      matching top-level UDP definition — UDP
+//                      definitions themselves are a file-level
+//                      concern, separate from module body items)
+//   - instance_name    this instance's local name (K-1-opaque Symbol)
+//   - body_lexeme      port list + drive strength + delay as a
+//                      verbatim lexeme (sub-grammar deferred to the
+//                      bundled T-4 LanguageModel)
+type UdpInstantiation {
+  udp_name: Symbol
+  instance_name: Symbol
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SpecparamDeclaration — a Verilog `specparam` declaration. IEEE
+// 1364-2005 §14.3.1 + §12.2. Specify parameters are distinct from
+// ordinary parameters: they are intended for timing-check values
+// (rise/fall/hi-Z transitions, pulse-control limits) and CANNOT be
+// used as bit-vector widths or array indices per spec. Conj record
+// (no Practice-4 ledger).
+//
+//   - name              the specparam identifier (K-1-opaque Symbol)
+//   - default_lexeme    the value as a verbatim expression lexeme
+type SpecparamDeclaration {
+  name: Symbol
+  default_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // ModuleItem — the closed Verilog module-body item classifier. The
 // items inside a `module ... endmodule` body are a flat list of
 // concurrently-executing siblings (IEEE 1364-2005 §12.2); ModuleItem
@@ -1630,52 +1738,54 @@ type FunctionDeclaration {
 // parallelism is the Conj-of-siblings shape, exactly as a Conj of
 // submodule instantiations.
 //
-//   - ContinuousAssignItem      `assign net = expr;`
-//   - AlwaysBlockItem           `always @(...) begin … end`
-//   - InitialBlockItem          `initial begin … end`
-//   - NetDeclarationItem        `wire`, `wand`, … declarations
-//   - VariableDeclarationItem   `reg`, `integer`, … declarations
-//   - ParameterDeclarationItem  `parameter NAME = expr;`
-//   - ModuleInstanceItem        nested `ModuleName inst (...);`
-//   - DefparamDeclarationItem   `defparam top.sub.PARAM = value;` (§4.10.2.1)
-//   - GenerateRegionItem        `generate ... endgenerate` (§12.4)
-//   - SpecifyBlockItem          `specify ... endspecify` (§14)
-//   - TaskDeclarationItem       `task name; … endtask` (§10.2)
-//   - FunctionDeclarationItem   `function name; … endfunction` (§10.3)
+//   - ContinuousAssignItem        `assign net = expr;`
+//   - AlwaysBlockItem             `always @(...) begin … end`
+//   - InitialBlockItem            `initial begin … end`
+//   - NetDeclarationItem          `wire`, `wand`, … declarations
+//   - VariableDeclarationItem     `reg`, `integer`, … declarations
+//   - ParameterDeclarationItem    `parameter NAME = expr;`
+//   - LocalParameterDeclarationItem `localparam NAME = expr;` (§3.10)
+//   - ModuleInstanceItem          nested `ModuleName inst (...);`
+//   - DefparamDeclarationItem     `defparam top.sub.PARAM = value;` (§4.10.2.1)
+//   - GenerateRegionItem          `generate ... endgenerate` (§12.4)
+//   - SpecifyBlockItem            `specify ... endspecify` (§14)
+//   - TaskDeclarationItem         `task name; … endtask` (§10.2)
+//   - FunctionDeclarationItem     `function name; … endfunction` (§10.3)
+//   - EventDeclarationItem        `event ev;` (§9.7.3)
+//   - GenvarDeclarationItem       `genvar i;` (§12.4.2)
+//   - GateInstantiationItem       `and g1(out, a, b);` (§7)
+//   - UdpInstantiationItem        UDP instantiation (§8)
+//   - SpecparamDeclarationItem    `specparam ...;` (§14.3.1)
 //
 // CLOSED-SET COVERAGE — the variants enumerated below cover the full
-// IEEE 1364-2005 §12.2 module-item set. The initial cut deliberately
-// scoped to the IN-B-probe-core subset (the spice.dag #3168
-// non-exhaustive precedent) was insufficiently faithful per codex
-// REQUEST_CHANGES on PR #3176 — the spec partition includes
-// `defparam`, `generate`, `specify`, `task`, and `function`
-// declarations, and a closed-Disj claiming spec-fidelity must include
-// them. Each is represented as its own variant; the sub-language body
-// of generate / specify / task / function is carried as a verbatim
-// `body_lexeme: String` (the established AlwaysBlock body_lexeme
-// precedent — the recursive sub-grammar of each sub-language is owned
+// IEEE 1364-2005 §12.2 module_or_generate_item + specparam_declaration
+// grammar partition per Annex A.1.4. The prior 12-variant cut missed
+// `event_declaration`, `genvar_declaration`, `local_parameter_
+// declaration`, `gate_instantiation`, `udp_instantiation`, and
+// `specparam_declaration` (codex BLOCKING on PR #3176, codex/codex-
+// default 2026-05-16 — the strict spec-fidelity bar surfaced these
+// gaps). Each new variant is a Conj record + body_lexeme deferral
+// per the established AlwaysBlock body_lexeme precedent — the sub-
+// language structures (gate-primitive terminal lists, UDP definition
+// tables, generate-for elaboration, specify timing checks) are owned
 // by the bundled T-4 LanguageModel productions when they land, but
 // the variant + payload-skeleton lives here so the closed-Disj
-// honestly covers §12.2). A NEW item kind (one the spec does not
-// list) is the C1 stop-signal edit.
+// honestly covers §12.2 + §14.3.1. A NEW item kind (one the spec
+// does not list) is the C1 stop-signal edit.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every module-body consumer (emission,
 //      port-binding resolution, sensitivity-list signal lookup,
 //      synthesis dispatch, generate-elaboration, specify-timing-
-//      check, task/function inlining) branches on the item kind;
+//      check, task/function inlining, gate-primitive emission, UDP
+//      resolution, genvar elaboration) branches on the item kind;
 //      shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: each variant carries a payload of
-//      a DIFFERENT type (`ContinuousAssign` / `AlwaysBlock` /
-//      `InitialBlock` / `NetDeclaration` / `VariableDeclaration` /
-//      `ParameterDeclaration` / `ModuleInstance` / `Defparam
-//      Declaration` / `GenerateRegion` / `SpecifyBlock` /
-//      `TaskDeclaration` / `FunctionDeclaration`). Collapsing to a
-//      uniform `{ kind: ItemKind, … }` shape requires Option-typed
-//      payload fields (an item carries the AlwaysBlock or NULL),
-//      which makes "ContinuousAssign item with an AlwaysBlock
-//      payload" representable — the inverse of P2.
+//      a DIFFERENT type (the 18 distinct payload records). Collapsing
+//      to a uniform `{ kind: ItemKind, … }` shape requires Option-
+//      typed payload fields, which makes mismatched-kind+payload
+//      combinations representable — the inverse of P2.
 //   3. Algebraic form — N/A by construction: the module-body items
 //      are the IEEE 1364-2005 spec's primitive item taxonomy; they
 //      do not trace to a richer std/ algebraic structure.
@@ -1688,13 +1798,13 @@ type FunctionDeclaration {
 //   5. Parameterized family — FAILS: the variants are structurally
 //      heterogeneous (different payload types; the declaration
 //      variants carry storage-shape facts while the action variants
-//      carry computation-shape facts; generate / specify / task /
-//      function each carry their own sub-language body) — NOT one
-//      generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7). The IEEE 1364-2005 module-body
-//      item set is the irreducible partition.
-// Terminal: the closed twelve-way module-body-item classifier of
-// the IEEE 1364-2005 §12.2 spec.
+//      carry computation-shape facts; gate / udp / specify / task /
+//      function / generate each carry their own sub-language body)
+//      — NOT one generic `F<X>` / projection over a separately-
+//      declared source set (Practice 7). The IEEE 1364-2005 module-
+//      body item set is the irreducible partition.
+// Terminal: the closed eighteen-way module-body-item classifier of
+// the IEEE 1364-2005 §12.2 + §14.3.1 spec.
 type ModuleItem
   = ContinuousAssignItem { assign: ContinuousAssign }
   | AlwaysBlockItem { always_block: AlwaysBlock }
@@ -1702,12 +1812,18 @@ type ModuleItem
   | NetDeclarationItem { net: NetDeclaration }
   | VariableDeclarationItem { variable: VariableDeclaration }
   | ParameterDeclarationItem { parameter: ParameterDeclaration }
+  | LocalParameterDeclarationItem { local_parameter: LocalParameterDeclaration }
   | ModuleInstanceItem { instance: ModuleInstance }
   | DefparamDeclarationItem { defparam: DefparamDeclaration }
   | GenerateRegionItem { generate_region: GenerateRegion }
   | SpecifyBlockItem { specify_block: SpecifyBlock }
   | TaskDeclarationItem { task: TaskDeclaration }
   | FunctionDeclarationItem { function_decl: FunctionDeclaration }
+  | EventDeclarationItem { event_decl: EventDeclaration }
+  | GenvarDeclarationItem { genvar_decl: GenvarDeclaration }
+  | GateInstantiationItem { gate: GateInstantiation }
+  | UdpInstantiationItem { udp_instance: UdpInstantiation }
+  | SpecparamDeclarationItem { specparam: SpecparamDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
