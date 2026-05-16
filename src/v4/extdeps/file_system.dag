@@ -39,8 +39,6 @@
 module v4.extdeps.file_system
 
 
-import v4.std.algebra { FreeMonoid }
-import v4.std.diagnostic { Outcome }
 import v4.std.text { Char, String }
 
 
@@ -74,8 +72,9 @@ import v4.std.text { Char, String }
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
 // (DECISIONS.md I). This file does not author bodiless `fn`
 // declarations because the frozen v2 seed rejects them; instead it
-// declares operation contract carriers. The external realization layer
-// reads these carriers and binds the actual host-system effects.
+// declares request carriers and names the Outcome result seam in prose.
+// The external realization layer reads these carriers and binds the
+// actual host-system effects.
 //
 // FILE CONTENT IS TEXT IN V4. `read_file` / `write_file` are scoped to
 // the compiler self-hosting need: reading and writing text `.dag`,
@@ -94,7 +93,7 @@ type PathComponent = String
 
 
 // ─────────────────────────────────────────────────────────────────────
-// AbsolutePath / RelativePath / Path.
+// AbsolutePath / RelativePath / FileSystemPath.
 //
 // `AbsolutePath` carries the root fact by variant, not by a leading
 // slash in text. Its component list is intentionally the same carrier
@@ -109,7 +108,14 @@ type RelativePath {
   components: List<PathComponent>
 }
 
-type Path
+// The source concept is POSIX `Path`; the declaration name is
+// `FileSystemPath` because the bootstrap seed already has a global
+// `Path` declaration for diagnostic/test-claim positions. This is a
+// namespace workaround, not a second authority: within this file,
+// `FileSystemPath` is THE filesystem path carrier. Dissolution trigger:
+// when v4 module namespaces are load-bearing in the bootstrap resolver,
+// this can return to the header spelling `Path` without colliding.
+type FileSystemPath
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
 
@@ -139,40 +145,39 @@ type Path
 type FileKind
   = RegularFile
   | Directory
-  | Symlink { target: Path }
+  | Symlink { target: FileSystemPath }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
 //
-// Each `*Request` is a pure data description of the host operation.
-// Each `*Result` is an `Outcome<T>` alias so failure always carries the
-// shared structural `Diagnostic`, never a sentinel value or free-form
-// stderr string. The realization that performs OS I/O lives outside this
-// declaration file and must return through these carriers.
-type FileBody = FreeMonoid<Char>
-
-type ReadFileRequest {
-  path: Path
+// Each `*Request` is a pure data description of the host operation. The
+// result seam is the shared `Outcome<T>` carrier named in this file's
+// header/prose:
+//   - `read_file : ReadFileRequest -> Outcome<FileBody>`
+//   - `write_file : WriteFileRequest -> Outcome<Unit>`
+//   - `list_dir : ListDirRequest -> Outcome<List<PathComponent>>`
+//   - `file_kind : FileKindRequest -> Outcome<FileKind>`
+// This file intentionally does not declare local `*Result` aliases while
+// v4 cross-file imports are not resolved by the seed single-file smoke
+// path; duplicating `Outcome<T>` here would violate DECISIONS.md I.
+type FileBody {
+  chars: List<Char>
 }
 
-type ReadFileResult = Outcome<FileBody>
+type ReadFileRequest {
+  path: FileSystemPath
+}
 
 type WriteFileRequest {
-  path: Path
+  path: FileSystemPath
   body: FileBody
 }
 
-type WriteFileResult = Outcome<Unit>
-
 type ListDirRequest {
-  path: Path
+  path: FileSystemPath
 }
-
-type ListDirResult = Outcome<List<PathComponent>>
 
 type FileKindRequest {
-  path: Path
+  path: FileSystemPath
 }
-
-type FileKindResult = Outcome<FileKind>
