@@ -33,8 +33,12 @@
 //   (parse/emit operations — ratified Outcome<T> = Produced { value:
 //   T } | Rejected { diagnostic: Diagnostic }, NOT YET LANDED in
 //   std/diagnostic.dag) and D2 (per-language primitive inhabitance
-//   instance-values + fn-value-expression form — operator-pending
-//   SEMANTIC decision, msg_640d429c) plug in.
+//   instance-values + fn-value-expression form for genuinely-
+//   irreducible spec primitives — D2a **resolver** carriers ratified
+//   2026-05-16 via the encoded DECISIONS.md D2 row, PR #3195; the D2
+//   block below mirrors rust.dag @0328bee951962382aa60143bf563c7b9eb39d215;
+//   full numeric alias rows remain substrate-gated per "Owned ELSEWHERE")
+//   plug in.
 //
 //   The seams are NAMED in "Owned ELSEWHERE" below with their owners
 //   and dissolution triggers. Authoring those seams here would have
@@ -102,35 +106,50 @@
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-
 //     values pre-T-3 / pre-D2)
+//   - Go D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
+//     2026-05-16 commit 44a37ad46 via PR #3195 merge; structural mirror
+//     of rust.dag #3174 @0328bee951962382aa60143bf563c7b9eb39d215):
+//     GroundingMap<IRCarrier> (surface-spelling Conj), OverflowAction
+//     (closed two-way Disj — **same carrier shape** as rust.dag for
+//     homogeneous downstream typing; Go 1.26 built-in integer defaults
+//     documented in the D2 block below), OverflowDisposition<IRCarrier>
+//     (per-language operation-semantics Conj); plus the LANDABLE NOW
+//     alias-identity row `type GoBool = Bool` + `data go_bool_grounding:
+//     GroundingMap<GoBool> = GroundingMap { spelling: "bool" }`
+//     (std/logic.dag's Bool is landed). Per-primitive alias-identity
+//     rows for Go integers / floats / complex / string / never are 🟡
+//     TRACKED-SCAFFOLD with named owner + dissolution trigger per the
+//     D2-resolver block below; they amend in as one-line landings as
+//     their std/ targets reach `origin/main`.
 //
 // Owned ELSEWHERE (deliberately NOT in this slice — named owners +
 //   dissolution triggers per the rust #3174 deferral shape):
 //
-//   - Go scalar inhabitance instance-values: `data go_int32_ring:
-//     OrderedRing<Int32> = OrderedRing { ... }` and the parallel rows
-//     for the other integer types, IEEE-754 widths, the two complex
-//     widths, Bool, String. RIDES the operator D2 form-decision
-//     (msg_640d429c — STOP-2/STOP-3 escalated by loyal-koi-702; the
-//     fn-value-expression form for spec-primitive operations
-//     (3a/3b/3c — name-reference Atom vs relaxed instance vs new
-//     substrate carrier) is unspecified). §0 ratifies v2-SYNTAX
-//     LEGALITY ONLY; per-target inhabitance shape is a SEPARATE
-//     operator-pending SEMANTIC decision. AND rides std/integer.dag
-//     / std/float.dag / std/logic.dag / std/text.dag (T-3 wave A3)
-//     carrier landing for P2 single-authority: pre-D2 / pre-T-3
-//     inhabitance would foreclose the eventual canonical authority.
+//   - Go scalar inhabitance **instance-values** — D2 RATIFIED 2026-05-16
+//     (encoded DECISIONS.md D2 row, commit 44a37ad46 via PR #3195 merge;
+//     resolver reshape mirrors rust.dag @0328bee951962382aa60143bf563c7b9eb39d215).
+//     The ratified form is the THREE-THIN-FACTS D2a resolver (alias-
+//     identity + grounding map + operation-semantics) in the D2 block
+//     below — NOT a per-language `data go_<prim>_ring: OrderedRing<
+//     GoPrim, …>` inhabitance (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`
+//     forbids that parallel-substrate pattern). D2b `Transform →
+//     FunctionRef → Arrow` IEEE / complex realization **bodies** ride
+//     the bundled T-4 LanguageModel grammar slice per the D2 row's scope
+//     guard (same deferral shape as rust.dag). Numeric D2a rows for Go
+//     integers, floats, the two complex widths, `string`, and never
+//     are 🟡 TRACKED-SCAFFOLD — dissolution triggers in the D2 block's
+//     deferred ledger; they amend in when `std/integer.dag`, `std/
+//     float.dag`, `std/text.dag`, and related carriers land (T-3 Wave-A3).
 //     STOP-TRIGGER (named, binding): authoring even a "placeholder"
-//     `data go_int32_ring: OrderedRing<...> = ...` row here pre-D2
-//     is the FORBIDDEN deferral (the v3 cross-layer-drift failure
-//     mode this file's restraint exists to prevent). The PR #3171
-//     improvisation-held draft is the precedent for what NOT to do.
-//     Stub-to-keep-moving is forbidden; defer-with-named-trigger is
-//     the legitimate form.
-//     SEAM (where it plugs in): the closed GoScalar Disj declared
-//     below is the SURFACE through which each Go scalar's
-//     inhabitance parameterizes — when D2 ratifies the instance-
-//     value form AND T-3 wave A3 lands, the inhabitance rows land
-//     in this file with the typed scalar variants below as their
+//     `OrderedRing<…>` inhabitance row here is the FORBIDDEN pattern
+//     (the v3 cross-layer-drift failure mode this file's restraint exists
+//     to prevent). The PR #3171 improvisation-held draft is the precedent
+//     for what NOT to do. Stub-to-keep-moving is forbidden; defer-with-
+//     named-trigger is the legitimate form.
+//     SEAM (where it plugs in): the closed GoScalar Disj declared below
+//     is the SURFACE through which each Go scalar's inhabitance
+//     parameterizes — when upstream std/ carriers land, the per-scalar
+//     D2a rows amend in with the typed scalar variants below as their
 //     carriers. Special inhabitance notes:
 //       * Go's `complex64` / `complex128` inhabit a field-like
 //         structure (`ApproximateField` for the rounding-aware
@@ -233,8 +252,9 @@
 //   std/node.dag (the K-1 opaque kernel identity used as the
 //   channel-element-type-reference on `GoChannel`). std/algebra.dag
 //   is NOT imported because the inhabitance instance-values this
-//   slice would otherwise declare ride D2 (operator-pending) — the
-//   import returns when D2 ratifies and the inhabitance rows land
+//   slice would otherwise declare ride full numeric D2a alias rows
+//   (substrate-gated) — the import returns when std/integer.dag /
+//   std/float.dag land and the per-scalar inhabitance instance-values
 //   here, exactly the rust #3174 pattern. This per-file Consumes
 //   correction rides the systemic operator scaffold-Consumes
 //   reconciliation (T-4 mgr synthesis msg_1fddb75c) — uniform with
@@ -252,6 +272,11 @@ module v4.extdeps.languages.go
 
 
 import v4.std.node { Symbol }
+// Bool from v4.std.logic is KERNEL-AMBIENT (STRUCTURE.md "Kernel-
+// ambient types") — usable without an import statement in any v4
+// .dag file. The D2a alias-identity row `type GoBool = Bool` below
+// references the type-parameter `Bool` directly; v2-compiler resolves
+// it ambiently (same pattern as rust.dag @0328bee951962382aa60143bf563c7b9eb39d215).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -902,18 +927,20 @@ type GoScalarKind
 // data its kind admits, and no illegal kind×width combination is
 // constructible.
 //
-// SEAM (where D2 inhabitance plugs in). When the D2 form decision
-// lands, the per-variant inhabitance instance-values land in this
-// file with these typed variants as their carriers — SignedIntScalar
-// { width: SignedBits32 } is the carrier for Go's `int32` inhabitance
-// into OrderedRing (or its v4-equivalent per the D2-ratified form);
-// UnsignedIntScalar { width: UnsignedPointerSized } is the carrier
-// for `uintptr` → Semiring; FloatScalar { width: Bits32 } is the
-// carrier for `float32` → ApproximateField; ComplexScalar { width:
-// Bits128 } is the carrier for `complex128` → ApproximateField over
-// a Conj of two binary64 floats; StringScalar is the carrier for
-// `string` → FreeMonoid<Byte>. The seam itself is the typed variant;
-// the inhabitance value is the deferred row.
+// SEAM (where D2 inhabitance instance-values plug in). The D2a three-
+// thin-facts resolver form is operator-ratified (DECISIONS.md D2 row;
+// D2 block below). When upstream std/ carriers land (T-3 Wave-A3), the
+// per-scalar alias + grounding + operation-semantics rows amend into
+// this file with these typed variants as their carriers — SignedIntScalar
+// { width: SignedBits32 } is the carrier surface for Go's `int32`
+// alias-identity into `Int32` (through std/integer.dag — NOT a parallel-
+// substrate OrderedRing row); UnsignedIntScalar { width:
+// UnsignedPointerSized } is the carrier for `uintptr`; FloatScalar {
+// width: Bits32 } is the carrier for `float32` → ApproximateField;
+// ComplexScalar { width: Bits128 } is the carrier for `complex128` →
+// ApproximateField over a Conj of two binary64 floats; StringScalar is
+// the carrier for `string` → FreeMonoid<Byte>. The seam itself is the
+// typed variant; the D2a inhabitance rows are the deferred additions.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -1350,3 +1377,351 @@ type GoCost {
   instruction_cost: Int
   allocation_cost: Int
 }
+
+
+// ═════════════════════════════════════════════════════════════════════
+// D2 RESOLVER SHAPE — per-primitive three-thin-facts declarations.
+//
+// Per the operator-ratified DECISIONS.md D2 row (2026-05-16, encoded
+// via PR #3195 merge at 44a37ad46), a language extdeps file is a
+// RESOLVER for the abstract std/ carriers — the
+// `infra(abstract) → gcloud/aws(concrete)` pattern. Per primitive,
+// THREE thin declarations:
+//
+//   (1) alias-identity to the std/ carrier (`type GoInt32 = Int32`)
+//       — the machine-readable-inhabitance form (`List<T> =
+//       FreeMonoid<T>` precedent); the algebra inhabitance flows
+//       through the alias, so "see through the labels" is literal
+//       Node identity.
+//   (2) grounding map (surface spelling — `int32`).
+//   (3) operation-semantics carriers (OverflowDisposition,
+//       NaN/Inf handling) — genuine per-language facts, siblings
+//       to the alias.
+//
+// Per the D2 row: a per-language `data go_<prim>_ring: OrderedRing<
+// GoPrim, …>` inhabitance is the parallel-substrate INVARIANTS P1:42
+// forbids (`numeric_aliases_align_to_refinements`) — superseded.
+// Structural mirror of rust.dag #3174 @0328bee951962382aa60143bf563c7b9eb39d215
+// (verified canonical rust head for the D2 reshape).
+//
+// Per the D2 row's D2.2: coercion = the U1 homomorphism realized by
+// the generic B2-OMNI emit fold reading the resolver data. NOT a
+// hand table, NOT a per-language emit lens (B2-OMNI/B4: one generic
+// emit, target-specificity is declarative T-11 data).
+//
+// Per the D2 row's D2.3: compound/generic coercion composes for
+// FREE via the Node catamorphism (A1's single recursive type;
+// `List<Int32>` = `Instantiation` recursed); no per-instantiation
+// rows. Not blocked on the Functor hierarchy.
+//
+// Per the D2 row's D2.4: round-trip guarantee is structural-on-F
+// per C5-1; TestClaims document it, never establish it.
+//
+// Per the D2 row's D2.5: overflow/UB/arbitrary-precision are
+// DISTINCT std/ carriers selected by the alias target + the
+// per-language OverflowDisposition carrier, never a re-declared
+// semantics.
+//
+// Per the D2 row's scope guard: D2 covers per-primitive inhabitance
+// form ONLY. It does NOT decide LanguageModel-grammar facts — those
+// ride C5-3 / B2-OMNI / B4 per their own cascade. Grammar-slice
+// workers must not import D2 reasoning into them.
+//
+// CURRENT-MAIN GROUNDING STATE (snapshot 2026-05-16 post-#3195 merge):
+//   - std/logic.dag: `Bool` LANDED (#3166) → GoBool alias-identity
+//     + grounding-map land NOW (this block).
+//   - std/nat.dag: `Nat` LANDED — Go has no arbitrary-precision Nat
+//     primitive (every Go numeric primitive is bounded or IEEE/complex
+//     shaped); no direct alias.
+//   - std/machine.dag: `Word*` / `MachineWidth` / `PointerWidth`
+//     LANDED — machine-width substrate for eventual `int` / `uint` /
+//     `uintptr` platform widths; they compose with std/integer.dag's
+//     eventual bounded ladders; they don't standalone-alias from
+//     go.dag.
+//   - std/text.dag: `Char = Nat` and `String = FreeMonoid<Char>`
+//     LANDED — Go `string` is a byte sequence (not necessarily valid
+//     UTF-8 per spec); alias-identity to `String` is a REFINEMENT
+//     question parallel to rust.dag's `str` deferral — DEFERRED pending
+//     refined std/text.dag carriers OR a per-language refinement-
+//     disposition carrier (D2 scope-guard ambiguity).
+//   - std/integer.dag: NOT YET FILLED (scaffold only). Integer aliases
+//     (GoInt8 = Int8 through GoInt64 = Int64 / GoInt for `int` /
+//     GoUint8..GoUint64 / GoUint / GoUintptr) DEFERRED pending T-3
+//     Wave-A3.
+//   - std/float.dag: NOT YET FILLED. Float aliases (GoFloat32 =
+//     Float32 / GoFloat64 = Float64) + complex carrier questions
+//     DEFERRED pending T-3 Wave-A3.
+//   - Never carrier: std/cardinality.dag has Multiplicity but no
+//     explicit empty-cardinality / Never type. GoNever alias DEFERRED
+//     pending its std/ source.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GroundingMap<IRCarrier> — the per-primitive surface-spelling
+// carrier. Conj record (no Practice-4 ledger).
+//
+// Per the D2 row D2a(2): a "grounding map (surface spelling)".
+// Each Go primitive's alias-identity declaration is paired with a
+// `data <name>_grounding: GroundingMap<<AliasName>> = GroundingMap
+// { spelling: "<source-token>" }` row that names the Go source token
+// for emit / ingest. The spelling is a `String` boundary value (the
+// canonical surface text); it lives at the source-syntax boundary,
+// not in kernel/lens code.
+//
+// Spec: https://go.dev/ref/spec#Types (pinned go1.26 — per this file's
+//       Anchor header; per-primitive spec anchors land on the alias-
+//       identity rows in the deferred ledger below.)
+type GroundingMap<IRCarrier> {
+  spelling: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OverflowAction — the closed disposition carrier **shape** shared
+// with rust.dag for homogeneous downstream typing (rust.dag @0328bee9
+// precedent). Go 1.26 differs materially from Rust: well-typed built-
+// in `+ - * /` on integer **types** uses two's-complement modular
+// truncation on overflow for BOTH signed and unsigned widths — there
+// is **no** Rust-style "debug panics / release wraps" split for these
+// operators (Go spec §Integer_overflow, pinned go1.26).
+//
+//   - PanicOnOverflow      — **not** the Go 1.26 default for ordinary
+//                            built-in integer `+ - * /`; retained as the
+//                            ratified coproduct's second member mirroring
+//                            rust.dag's closed Disj (C1 stop-signal if a
+//                            future Go edition introduces a panic default
+//                            — would be an L-2-visible edit here).
+//   - TwoComplementWrap    — the Go 1.26 built-in default for these ops
+//                            on typed integer widths.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Same five-pattern ledger shape as rust.dag's
+// `OverflowAction` — the per-language **facts** differ; the resolver
+// carrier family stays isomorphic at the type level.
+//
+// Spec: https://go.dev/ref/spec#Integer_overflow
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OverflowDisposition<IRCarrier> — the per-language operation-
+// semantics carrier for Go integer arithmetic (D2a(3)). Conj record
+// (no Practice-4 ledger).
+//
+//   - debug_default     the default OverflowAction for Go integer
+//                       built-in operators in **debug** builds
+//                       (canonically TwoComplementWrap per Go spec
+//                       §Integer_overflow — same as release for these ops)
+//   - release_default   the default OverflowAction in **release**
+//                       builds (canonically TwoComplementWrap)
+//
+// Per the D2 row D2.5: overflow/UB/arbitrary-precision are DISTINCT
+// std/ carriers selected by the alias target + the per-language
+// OverflowDisposition carrier, never a re-declared semantics. This
+// record carries Go's runtime-action selection; the abstract-vs-
+// bounded-integer-semantics axis is selected via the alias target once
+// std/integer.dag lands (e.g. bounded `Int32` vs arbitrary-precision
+// `Int`).
+//
+// Floats / complex use separate operation-semantics carriers (NaN/Inf
+// handling per IEEE-754, complex component rounding) — those rows land
+// when the float / complex aliases land (pending std/float.dag T-3
+// Wave-A3). The integer-overflow case is the canonical instance of the
+// D2a(3) shape; float/complex mirror structurally with different fields.
+type OverflowDisposition<IRCarrier> {
+  debug_default: OverflowAction
+  release_default: OverflowAction
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Per-primitive alias-identity + grounding declarations.
+//
+// Each Go primitive type below is declared as a thin three-fact
+// resolver: (1) alias-identity to its std/ carrier, (2) grounding-
+// map for surface spelling, (3) operation-semantics carrier (for
+// integers, OverflowDisposition; for floats/complex, a future NaN/Inf /
+// rounding disposition carrier; Bool/String/Never have no per-op
+// runtime dispatch and don't carry one — string DEFERRED per the
+// grounding-state note above).
+//
+// LANDABLE NOW — grounded against current origin/main carriers:
+
+// Go `bool` ↔ std/logic.dag's `Bool` (LANDED via #3166).
+// Alias-identity: literal Node identity per the D2 row's
+// "see through the labels" framing.
+type GoBool = Bool
+
+data go_bool_grounding: GroundingMap<GoBool> = GroundingMap {
+  spelling: "bool"
+}
+
+// Bool has no overflow / runtime-dispatch operation semantics; no
+// OverflowDisposition row.
+
+
+// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY ROWS
+//
+// The alias-identity rows below (D2a(1)) are 🟡 TRACKED-SCAFFOLD —
+// shape ratified, landing blocked on named upstream substrate, with
+// explicit owner + trigger + form contract so the deferral is a
+// tracked-scaffold not a silent gap. Per manager directive
+// msg_2c2716dd 2026-05-16 and the encoded DECISIONS.md D2 row.
+//
+// FORM CONTRACT — for each deferred alias, the form is the encoded
+// DECISIONS.md D2 row (commit 44a37ad46, line 57). Land as:
+//   - `type Go<X> = <StdCarrier>` alias-identity (D2a(1));
+//     algebra inhabitance flows through the alias per the
+//     `List<T> = FreeMonoid<T>` precedent — no parallel-substrate
+//     per-language `OrderedRing<Go<X>, …>` inhabitance
+//     (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`).
+//   - `data go_<x>_grounding: GroundingMap<Go<X>> =
+//     GroundingMap { spelling: "<token>" }` row (D2a(2)).
+//   - for integer aliases: `data go_<x>_overflow:
+//     OverflowDisposition<Go<X>> = OverflowDisposition {
+//     debug_default: TwoComplementWrap,
+//     release_default: TwoComplementWrap }` row (D2a(3); **Go 1.26**
+//     applies modular wrap for built-in ops on typed integer widths in
+//     **all** build configurations — both fields canonically
+//     `TwoComplementWrap`, unlike Rust's PanicOnOverflow debug default).
+//   - for float aliases: a NaN/Inf disposition carrier row (the
+//     carrier itself lands with std/float.dag's ApproximateField<Float>
+//     inhabitance — same 🟡 TRACKED-SCAFFOLD deferral pattern,
+//     float.dag as named owner).
+//   - for complex types: component-wise float semantics + rounding
+//     structure land with std/float.dag extensions for complex — NOT
+//     authored here until that substrate exists.
+//
+// SUBSTRATE SINGLE-AUTHORITY GUARD — `go.dag` (and any sibling
+// `rust.dag` / `python.dag` / etc.) MUST NOT mint the std/ Int / UInt /
+// Float / pointer-width types locally. The abstract numeric carriers
+// have SINGLE AUTHORITY at `std/` (substrate single-authority per
+// INVARIANTS P2 + scaffold-drift discipline). The extdeps file's only
+// contribution is the alias-identity to the std/ source — minting them
+// locally would produce parallel substrates and break P2 enforcement at
+// the carrier level.
+//
+// ─── DEFERRED ROWS — TRACKED ──────────────────────────────────────
+//
+// Go signed integers — GoInt8 / GoInt16 / GoInt32 / GoInt64 / GoInt
+//   - target form        type GoInt8 = Int8 …
+//                        + grounding `spelling: "int8"` etc.
+//                        + OverflowDisposition row (Go §Integer_overflow
+//                          — both defaults TwoComplementWrap)
+//   - named owner        std/integer.dag — the bounded-width integer
+//                        ladder + platform `int` width composition
+//                        (per INVARIANTS:42 +
+//                        `numeric_aliases_align_to_refinements` ratchet).
+//   - dispatch wave      T-3 Wave-A3 (substrate spine integer carriers).
+//   - dissolution trigger
+//                        when the signed bounded ladder + `int`
+//                        platform composition lands on `origin/main`
+//                        in `std/integer.dag`, the rows above amend
+//                        in as one-line landings each.
+//
+// Go unsigned integers — GoUint8 / GoUint16 / GoUint32 / GoUint64 /
+//                        GoUint / GoUintptr
+//   - target form        type GoUint8 = UInt8 …
+//                        + grounding `spelling: "uint8"` etc.
+//                        + OverflowDisposition row (same Go §Integer_overflow
+//                          wrap-default for typed widths; `uintptr` follows
+//                          the unsigned platform width substrate)
+//   - named owner        std/integer.dag — the unsigned bounded-width
+//                        ladder + `uint` / `uintptr` composition with
+//                        std/machine.dag pointer widths.
+//   - dispatch wave      T-3 Wave-A3.
+//   - dissolution trigger
+//                        same as signed — `UInt*` / `uintptr` ladder
+//                        landing on `origin/main` in `std/integer.dag`.
+//
+// Go floats — GoFloat32 / GoFloat64
+//   - target form        type GoFloat32 = Float32 …
+//                        + grounding `spelling: "float32"` etc.
+//                        + NaN/Inf disposition carrier row (carrier
+//                          lands with std/float.dag).
+//   - named owner        std/float.dag — the `Float` / `Float32` /
+//                        `Float64` carriers and the `ApproximateField<Float>`
+//                        algebra instance D2b's FunctionRef → Arrow
+//                        IEEE-754 op declarations attach to.
+//   - dispatch wave      T-3 Wave-A3.
+//   - dissolution trigger
+//                        when `std/float.dag` lands its Float32 /
+//                        Float64 ladder + the ApproximateField<Float>
+//                        inhabitance on `origin/main`, the rows above
+//                        and the D2b realization surface below amend in
+//                        together.
+//
+// Go complex — GoComplex64 / GoComplex128
+//   - target form        alias + grounding (`"complex64"` /
+//                        `"complex128"`) + disposition rows tying
+//                        component IEEE-754 semantics to std/float.dag's
+//                        complex extension.
+//   - named owner        std/float.dag — complex is a structured
+//                        composition over two IEEE-754 floats at each
+//                        width; multiplication is rounding-approximate.
+//   - dispatch wave      T-3 Wave-A3 + float/complex substrate closure.
+//   - dissolution trigger
+//                        when std/float.dag lands explicit complex
+//                        carriers + ApproximateField structure for the
+//                        Go complex widths on `origin/main`.
+//
+// Go string — GoString
+//   - target form        type GoString = String + grounding
+//                        (`spelling: "string"`).
+//   - named owner        std/text.dag — `String = FreeMonoid<Char>` is
+//                        LANDED but unrefined; Go strings are byte
+//                        sequences (UTF-8 is idiomatic but not guaranteed
+//                        by the spec) — a refinement / disposition
+//                        question parallel to rust.dag's `str` deferral.
+//   - dispatch wave      pending REFINEMENT-DISPOSITION decision (D2
+//                          scope-guard ambiguity).
+//   - dissolution trigger
+//                        EITHER (a) std/text.dag refines the carrier
+//                        to the Go-faithful byte-sequence / UTF-8
+//                        interpretation split, OR (b) an operator-
+//                        ratified per-language refinement-disposition
+//                        carrier lands. Escalate when authoring the
+//                        alias forces the decision.
+//
+// Go never — GoNever
+//   - target form        type GoNever = <std/ Never carrier>.
+//   - named owner        std/cardinality.dag — has Multiplicity but no
+//                        explicit empty-cardinality / Never type yet.
+//   - dispatch wave      pending std/ Never carrier authoring.
+//   - dissolution trigger
+//                        when std/ lands its Never / empty-cardinality
+//                        carrier on `origin/main`.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2b — Go's IEEE-754 float + complex operation realizations.
+//
+// Per the D2 row D2b: IEEE-754 float arithmetic (and Go's complex
+// types built from float pairs) are genuinely-irreducible spec
+// primitives where applicable. They flow through THESIS:203's
+// `Transform → FunctionRef → Arrow` pattern, where the Arrow's `body`
+// is a REALIZATION DECLARATION in `extdeps/languages/*` — the per-
+// target resolver. D2b coins NO new carrier (no `Symbol`+`Anchor`
+// data node referenced directly by the inhabitance — P2 forbids the
+// second external-primitive path).
+//
+// Per the D2 row's SCOPE GUARD, "D2 covers per-primitive inhabitance
+// form ONLY: it does NOT decide LanguageModel-grammar facts." The
+// Arrow-body realization data IS grammar/emission facts (Go source
+// tokens for operators, precedence, associativity). Those land with the
+// bundled T-4 LanguageModel grammar work; the D2 row directs the SHAPE
+// (`Transform → FunctionRef → Arrow` with body = extdeps realization)
+// but does not author the realizations themselves here.
+//
+// For this slice: the realizations are DEFERRED to the bundled T-4
+// LanguageModel grammar bundle. They land alongside the broader grammar
+// production data; not in this canonical reshape.
+//
+// (Also pending: std/float.dag's ApproximateField inhabitance for float
+// and complex, which the FunctionRefs to op Arrows live INSIDE. Until
+// std/float.dag lands its ApproximateField<Float> instance (and complex
+// extensions) and the per-op Arrow declarations are bound to
+// FunctionRefs, the D2b realization surface in go.dag has nothing to
+// attach to.)
