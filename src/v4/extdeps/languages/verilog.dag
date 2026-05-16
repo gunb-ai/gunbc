@@ -1428,6 +1428,99 @@ type ModuleInstance {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// DefparamDeclaration — a Verilog `defparam` statement
+// (`defparam top.sub.WIDTH = 8;`). IEEE 1364-2005 §12.2 +
+// §4.10.2.1. Deprecated per spec but admitted. Conj record (no
+// Practice-4 ledger).
+//
+//   - target_path     the hierarchical target-parameter path as a
+//                     verbatim lexeme (sub-grammar deferred to the
+//                     T-4 LanguageModel — hierarchical identifier
+//                     resolution is its concern)
+//   - value_lexeme    the override value as a verbatim expression
+//                     lexeme (same body_lexeme precedent as
+//                     ParameterDeclaration.default_lexeme)
+type DefparamDeclaration {
+  target_path: String
+  value_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// GenerateRegion — a Verilog `generate ... endgenerate` block
+// (IEEE 1364-2005 §12.4, §12.1.3.3). Generate regions admit
+// `generate-for`, `generate-if`, and `generate-case` constructs that
+// are ELABORATED at compile time to produce additional module items.
+// Conj record (no Practice-4 ledger).
+//
+//   - body_lexeme    the entire `generate ... endgenerate` body as
+//                    a verbatim lexeme (sub-grammar deferred to the
+//                    T-4 LanguageModel — the elaboration rules for
+//                    generate-for / generate-if / generate-case +
+//                    the elaboration-time iteration are owned by
+//                    the bundled LanguageModel productions when
+//                    they land)
+type GenerateRegion {
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SpecifyBlock — a Verilog `specify ... endspecify` block
+// (IEEE 1364-2005 §14, §12.2). Specify blocks declare module path
+// delays + timing checks (`$setup`, `$hold`, `$width`, etc.). Conj
+// record (no Practice-4 ledger).
+//
+//   - body_lexeme    the entire `specify ... endspecify` body as a
+//                    verbatim lexeme (sub-grammar deferred — the
+//                    SDF-class timing-check vocabulary is owned by
+//                    the bundled T-4 LanguageModel productions when
+//                    they land; per the header PROBE LIMITS,
+//                    timing-checks are a separate layer)
+type SpecifyBlock {
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TaskDeclaration — a Verilog `task ... endtask` declaration
+// (IEEE 1364-2005 §10.2, §12.2). A task is a procedural sub-routine
+// callable from procedural code; it can carry input/output/inout
+// arguments and contain delay/event controls (unlike `function`).
+// Conj record (no Practice-4 ledger).
+//
+//   - name           the task identifier (K-1-opaque Symbol)
+//   - body_lexeme    the procedural body (port list + statements
+//                    between `task name;` and `endtask`) as a
+//                    verbatim lexeme (sub-grammar deferred to the
+//                    T-4 LanguageModel)
+type TaskDeclaration {
+  name: Symbol
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FunctionDeclaration — a Verilog `function ... endfunction`
+// declaration (IEEE 1364-2005 §10.3, §12.2). A function is a pure
+// (synthesizable) sub-routine that returns a value; the spec
+// forbids delay/event controls inside the body (distinguishing
+// functions from tasks). Conj record (no Practice-4 ledger).
+//
+//   - name           the function identifier (K-1-opaque Symbol)
+//   - body_lexeme    the function body (return-type + arguments +
+//                    statements between `function name;` and
+//                    `endfunction`) as a verbatim lexeme (sub-
+//                    grammar deferred to the T-4 LanguageModel —
+//                    the return-type declaration + the pure-body
+//                    constraint enforcement live there)
+type FunctionDeclaration {
+  name: Symbol
+  body_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // ModuleItem — the closed Verilog module-body item classifier. The
 // items inside a `module ... endmodule` body are a flat list of
 // concurrently-executing siblings (IEEE 1364-2005 §12.2); ModuleItem
@@ -1447,54 +1540,45 @@ type ModuleInstance {
 //   - VariableDeclarationItem   `reg`, `integer`, … declarations
 //   - ParameterDeclarationItem  `parameter NAME = expr;`
 //   - ModuleInstanceItem        nested `ModuleName inst (...);`
+//   - DefparamDeclarationItem   `defparam top.sub.PARAM = value;` (§4.10.2.1)
+//   - GenerateRegionItem        `generate ... endgenerate` (§12.4)
+//   - SpecifyBlockItem          `specify ... endspecify` (§14)
+//   - TaskDeclarationItem       `task name; … endtask` (§10.2)
+//   - FunctionDeclarationItem   `function name; … endfunction` (§10.3)
 //
-// CLOSED-SET COVERAGE (clarified per codex BLOCKING review on PR #3176
-// 2026-05-16). IEEE 1364-2005 §12.2 also admits `defparam` (deprecated),
-// `generate` blocks, `specify` blocks, and `task` / `function`
-// declarations as module items. The variants enumerated below cover
-// the IN-B PROBE's CORE NEEDS — the parallel-composition surface,
-// signal declarations, instantiation — which is what the T-4.9 probe
-// validates. The remaining items are NOT enumerated in this initial
-// cut: `defparam` is deprecated per spec, and `generate` / `specify`
-// / `task` / `function` each OPEN A SUB-LANGUAGE (the recursive body
-// of a generate block, the timing-check vocabulary of `specify`, the
-// procedural body of a task/function) whose grammar is owned by the
-// bundled T-4 LanguageModel productions when they land. Adding each
-// is MECHANICAL (one variant per kind, payload as a Conj record with
-// a `body_lexeme: String` for the sub-language portion — the same
-// `AlwaysBlock.body_lexeme` precedent), and crucially the 5-pattern
-// ledger BELOW STAYS UNCHANGED when those variants are added: the
-// dissolution argument is about coproduct SHAPE, not membership
-// completeness. This is the deliberate non-exhaustive scoping the
-// probe permits (same shape as spice.dag #3168 `Component`'s
-// "controlled-source variants E/F/G/H, JFET, transmission line,
-// switches are NOT enumerated in this initial cut" framing — adding
-// them is mechanical and does not affect the structural finding).
-// A NEW item kind (one the spec does not list) is the C1 stop-signal
-// edit; a follow-up adding the named scope-negative items is
-// straightforward L-2 maintenance.
+// CLOSED-SET COVERAGE — the variants enumerated below cover the full
+// IEEE 1364-2005 §12.2 module-item set. The initial cut deliberately
+// scoped to the IN-B-probe-core subset (the spice.dag #3168
+// non-exhaustive precedent) was insufficiently faithful per codex
+// REQUEST_CHANGES on PR #3176 — the spec partition includes
+// `defparam`, `generate`, `specify`, `task`, and `function`
+// declarations, and a closed-Disj claiming spec-fidelity must include
+// them. Each is represented as its own variant; the sub-language body
+// of generate / specify / task / function is carried as a verbatim
+// `body_lexeme: String` (the established AlwaysBlock body_lexeme
+// precedent — the recursive sub-grammar of each sub-language is owned
+// by the bundled T-4 LanguageModel productions when they land, but
+// the variant + payload-skeleton lives here so the closed-Disj
+// honestly covers §12.2). A NEW item kind (one the spec does not
+// list) is the C1 stop-signal edit.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). The ledger is about coproduct DISSOLUTION
-// SHAPE (do these variants need to collapse to something simpler?),
-// NOT membership completeness — adding the named scope-negative
-// variants per the closed-set-coverage note above keeps every
-// pattern's argument unchanged. Ledger — five patterns attempted:
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every module-body consumer (emission,
 //      port-binding resolution, sensitivity-list signal lookup,
-//      synthesis dispatch) branches on the item kind; shared
-//      classifier, not scattered. (Adding generate/specify/task/
-//      function would extend the dispatch uniformly; same shape.)
+//      synthesis dispatch, generate-elaboration, specify-timing-
+//      check, task/function inlining) branches on the item kind;
+//      shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: each variant carries a payload of
 //      a DIFFERENT type (`ContinuousAssign` / `AlwaysBlock` /
 //      `InitialBlock` / `NetDeclaration` / `VariableDeclaration` /
-//      `ParameterDeclaration` / `ModuleInstance`). Collapsing to a
+//      `ParameterDeclaration` / `ModuleInstance` / `Defparam
+//      Declaration` / `GenerateRegion` / `SpecifyBlock` /
+//      `TaskDeclaration` / `FunctionDeclaration`). Collapsing to a
 //      uniform `{ kind: ItemKind, … }` shape requires Option-typed
 //      payload fields (an item carries the AlwaysBlock or NULL),
 //      which makes "ContinuousAssign item with an AlwaysBlock
-//      payload" representable — the inverse of P2. (Adding more
-//      variants with their own payload types preserves the
-//      heterogeneity — same argument.)
+//      payload" representable — the inverse of P2.
 //   3. Algebraic form — N/A by construction: the module-body items
 //      are the IEEE 1364-2005 spec's primitive item taxonomy; they
 //      do not trace to a richer std/ algebraic structure.
@@ -1507,19 +1591,13 @@ type ModuleInstance {
 //   5. Parameterized family — FAILS: the variants are structurally
 //      heterogeneous (different payload types; the declaration
 //      variants carry storage-shape facts while the action variants
-//      carry computation-shape facts) — NOT one generic `F<X>` /
-//      projection over a separately-declared source set (Practice
-//      7). The IEEE 1364-2005 module-body item set is the
-//      irreducible partition; the future scope-negative additions
-//      preserve heterogeneity (generate carries a body shape,
-//      specify carries timing-check vocabulary, task/function each
-//      carry a body) — no projection-uniformity.
-// Terminal SHAPE: the closed module-body-item classifier of the
-// IEEE 1364-2005 spec; the seven variants enumerated below are the
-// IN-B-probe-core subset, with the named scope-negative variants
-// (defparam, generate, specify, task, function) deliberately
-// non-exhaustive in this initial cut. The dissolution argument
-// holds across the full spec set.
+//      carry computation-shape facts; generate / specify / task /
+//      function each carry their own sub-language body) — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The IEEE 1364-2005 module-body
+//      item set is the irreducible partition.
+// Terminal: the closed twelve-way module-body-item classifier of
+// the IEEE 1364-2005 §12.2 spec.
 type ModuleItem
   = ContinuousAssignItem { assign: ContinuousAssign }
   | AlwaysBlockItem { always_block: AlwaysBlock }
@@ -1528,6 +1606,11 @@ type ModuleItem
   | VariableDeclarationItem { variable: VariableDeclaration }
   | ParameterDeclarationItem { parameter: ParameterDeclaration }
   | ModuleInstanceItem { instance: ModuleInstance }
+  | DefparamDeclarationItem { defparam: DefparamDeclaration }
+  | GenerateRegionItem { generate_region: GenerateRegion }
+  | SpecifyBlockItem { specify_block: SpecifyBlock }
+  | TaskDeclarationItem { task: TaskDeclaration }
+  | FunctionDeclarationItem { function_decl: FunctionDeclaration }
 
 
 // ─────────────────────────────────────────────────────────────────────
