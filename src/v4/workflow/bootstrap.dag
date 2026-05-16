@@ -102,7 +102,7 @@
 // four positions over the artifacts {external seed (v2, src/v2/,
 // touched once), stage0, stage1, stage2}. Each position's source→target
 // edge is the chain's FIXED structural identity, not configuration, so
-// it is encoded as a distinct payload-less singleton TYPE (the edge IS
+// it is encoded as a distinct empty-record singleton TYPE (the edge IS
 // the type) rather than free `Stage` fields — emission style (stage0 =
 // v2-style, stage1+ = v4-style) and source root (always src/v4) are
 // derivable FACTS, never stored. This is why the fixed point is the
@@ -154,14 +154,15 @@
 // seed→stage0, stage0→stage1, stage1→stage2, then the stage1==stage2
 // fixed point — ZERO degrees of freedom (the source/target edges are
 // the chain's structural IDENTITY, NOT user configuration). So each of
-// the four positions is its OWN distinct SINGLETON type whose edge
-// identity IS the type (documented at the type), and `BootstrapPlan` is
-// the fixed record of those four slots — it has EXACTLY ONE inhabitant.
-// A reordered / duplicated / missing / extra / MIS-WIRED step is
-// UNCONSTRUCTIBLE by type: there are no free `Stage` fields for a slot
-// name and a payload to disagree about. This is the openai-pro
-// REQUEST_CHANGES (2026-05-16) + operator P2 finding resolved: the edge
-// identity is structural now, NOT an interpret-time check.
+// the four positions is its OWN distinct SINGLETON type — an empty
+// record whose sole inhabitant's identity IS the edge (documented at
+// the type) — and `BootstrapPlan` is the fixed record of those four
+// slots, so it has EXACTLY ONE inhabitant. A reordered / duplicated /
+// missing / extra / MIS-WIRED step is UNCONSTRUCTIBLE by type: there
+// are no free `Stage` fields for a slot name and a payload to disagree
+// about. This is the openai-pro REQUEST_CHANGES (2026-05-16) + operator
+// P2 finding resolved: the edge identity is structural now, NOT an
+// interpret-time check.
 //
 // SUPERSESSION (provenance, not silently dropped — diagnostic.dag #3161
 // reconcile precedent). This replaces, in order: (i) the original
@@ -171,13 +172,13 @@
 // mis-wiring (`seed` typed-valid with `produces: Stage2`) their own
 // comments claimed eliminated — the exact P2 illegal-state. The earlier
 // "BOUNDED RESIDUAL / YamlInt-lexeme-class / future-grammar deferral"
-// is RETRACTED: single-variant singleton step types ARE valid v4
-// (verified — v2 parses `type X = X`), so the structural form is
-// reachable NOW; the deferral was unnecessary, not a real bounded
-// refinement.
+// is RETRACTED: an empty-record singleton step type IS valid,
+// constructible v4 (verified — v2 parses `type X {}` and constructs
+// `X {}`), so the structural form is reachable NOW; the deferral was
+// unnecessary, not a real bounded refinement.
 //
 // LEDGER PROVENANCE. `BootstrapPlan` is a Conj RECORD and the four step
-// types are single-variant SINGLETONS — NO Practice-4 🟢/🟡/🔴
+// types are empty-record SINGLETONS — NO Practice-4 🟢/🟡/🔴
 // dissolution ledger applies anywhere in this file: Practice 4 binds
 // COPRODUCTS (a ≥2-variant choice to dissolve); a record has no choice
 // and a one-inhabitant singleton presents no variant set (modeling-
@@ -194,33 +195,33 @@ module v4.workflow.bootstrap
 
 
 // ─────────────────────────────────────────────────────────────────────
-// The four chain positions — each a distinct SINGLETON whose EDGE
-// IDENTITY is the type itself (no free stage fields ⇒ nothing for a
-// slot name and a payload to disagree about; the mis-wiring P2
-// illegal-state is unconstructible). The stage vocabulary
-// (Seed/Stage0/Stage1/Stage2, STRUCTURE.md §"Bootstrap chain") is
-// embedded in these names; there is no separate `Stage` enum (removed —
-// see LEDGER PROVENANCE). A single-variant `type X = X` is a unit, not
-// a coproduct — no Practice-4 ledger applies.
+// The four chain positions — each a distinct SINGLETON (empty record,
+// exactly one inhabitant `X {}`) whose EDGE IDENTITY is the type itself
+// (no free stage fields ⇒ nothing for a slot name and a payload to
+// disagree about; the mis-wiring P2 illegal-state is unconstructible).
+// The stage vocabulary (Seed/Stage0/Stage1/Stage2, STRUCTURE.md
+// §"Bootstrap chain") is embedded in these names; there is no separate
+// `Stage` enum (removed — see LEDGER PROVENANCE). An empty record is
+// the unit type, not a coproduct — no Practice-4 ledger applies.
 
 // Seed-once compile: the frozen external v2 seed (src/v2/, touched
 // EXACTLY ONCE) compiles src/v4/*.dag → the v4-stage0 binary (v2
 // emission style). THE seed boundary.
-type SeedToStage0 = SeedToStage0
+type SeedToStage0 {}
 
 // Self-host compile: v4-stage0 compiles src/v4/*.dag → v4-stage1
 // (v4's OWN emission style — the first self-host product).
-type Stage0ToStage1 = Stage0ToStage1
+type Stage0ToStage1 {}
 
 // Self-host compile: v4-stage1 compiles src/v4/*.dag → v4-stage2.
-type Stage1ToStage2 = Stage1ToStage2
+type Stage1ToStage2 {}
 
 // Fixed-point assertion: v4-stage1-emitted == v4-stage2-emitted,
 // BitIdentical. The self-host fixed point is stage1==stage2 — NOT
 // stage0==stage1 (stage0 is v2-emission-style, stage1+ is v4-style).
 // The executable assertion is T-15's `RoundTrips` TestClaim consuming
 // this step (deferred — TRACKED SCAFFOLD (2) above).
-type FixptStage1Stage2 = FixptStage1Stage2
+type FixptStage1Stage2 {}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -247,9 +248,9 @@ type BootstrapPlan {
 // one inhabitant, so this `data` is not "the correct wiring among
 // many" — it is the sole representable value.
 data bootstrap_plan: BootstrapPlan = BootstrapPlan {
-  seed: SeedToStage0,
-  self0: Stage0ToStage1,
-  self1: Stage1ToStage2,
-  fixpt: FixptStage1Stage2
+  seed: SeedToStage0 {},
+  self0: Stage0ToStage1 {},
+  self1: Stage1ToStage2 {},
+  fixpt: FixptStage1Stage2 {}
 }
 
