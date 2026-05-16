@@ -40,16 +40,20 @@
 //     9a477536 — the prior "equally-valid SPICE3 spellings" framing
 //     was overstated and is retracted). Instance modifiers are now
 //     a typed `Modifier = Flag { name } | KeyValue { name, value }`
-//     sub-coproduct on the variants that carry them (`Mosfet`,
-//     `Bjt`); a bare-flag `OFF` parses into `Flag { name = OFF }`
+//     sub-coproduct on every context that admits both forms
+//     (`Mosfet` / `Bjt` instance modifiers AND the `.OPTIONS`
+//     directive — SPICE3 §11.5 `.OPTIONS` admits both
+//     `.OPTIONS ACCT NOPAGE` bare-flag and `.OPTIONS METHOD=GEAR`
+//     key-value forms in the same card per ngspice §Simulator
+//     Variables). A bare-flag `OFF` parses into `Flag { name = OFF }`
 //     and a parameter `AREA=2` parses into `KeyValue { name = AREA,
 //     value = ... }`. `parse ∘ emit` preserves the flag-vs-key-value
 //     distinction byte-exact (no normalization between forms); the
 //     two surface forms have distinct grammar and semantics in
 //     SPICE3 and the type system now models that distinction
 //     directly. (`Parameter` remains the carrier for contexts that
-//     admit ONLY the `name=value` form — .MODEL cards, .OPTIONS
-//     directive, HSPICE-extension X-element params.) The contract
+//     admit ONLY the `name=value` form — `.MODEL` parameter sets
+//     and HSPICE-extension X-element params.) The contract
 //     promised here is therefore "top-level interleave round-trip" +
 //     "nested-SUBCKT parent-identity preservation" + "instance-
 //     modifier byte-exact round-trip (Flag vs KeyValue
@@ -421,9 +425,11 @@ type SpiceValue {
 // FLAG-FORM INSTANCE MODIFIERS — handled by the dedicated `Modifier`
 // sum (declared below); see that declaration for the typed-sum
 // rationale. `Parameter` carries only `name=value` pairs and is used
-// for contexts where SPICE3 admits ONLY the `name=value` form (the
-// .MODEL and .OPTIONS cards, the HSPICE-extension X-element params
-// — none of these accept bare-flag modifiers).
+// for contexts where SPICE3 admits ONLY the `name=value` form
+// (`.MODEL` parameter sets and the HSPICE-extension X-element
+// `parameters` slot — neither accepts bare-flag modifiers).
+// `.OPTIONS` is NOT in this list because it admits BOTH forms (per
+// ngspice §Simulator Variables) and uses `Modifier` instead.
 type Parameter {
   name: Symbol
   value: SpiceValue
@@ -468,6 +474,29 @@ type Parameter {
 type Modifier
   = Flag { name: Symbol }
   | KeyValue { name: Symbol, value: SpiceValue }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// IncludeCard — the payload of a SPICE3 `.INCLUDE` directive
+// (PR #3168 openai-pro review). `.INCLUDE filename` is legal in TWO
+// distinct positions in a SPICE3 deck:
+//   - at the top level (parsed as `Directive.Include`)
+//   - inside a `.SUBCKT/.ENDS` body (parsed as
+//     `SubcircuitStatement.StmtInclude` — SPICE3 §2.5 textual
+//     inclusion at position; §2.4 only bans control lines inside
+//     `.SUBCKT`, not includes)
+// The payload (the included file path) is IDENTICAL in both
+// positions — one SPICE concept, one carrier. Encoding it as
+// `{ path: String }` directly on both variants creates two parallel
+// authorities for the include-card payload (cost-of-change = 2 if
+// `.INCLUDE` ever gains quoting/section/library structure; modeling-
+// discipline.md P2 single-authority + M2 no-duplicate-type-
+// authorities). `IncludeCard` is the single carrier consumed by
+// both positions; the two variants differ only in WHERE the include
+// appears, not WHAT it carries.
+type IncludeCard {
+  path: String
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -933,7 +962,7 @@ type Directive
   | InitialCondition { assignments: NodeVoltageBindings }
   | NodeSet { assignments: NodeVoltageBindings }
   | Options { modifiers: List<Modifier> }
-  | Include { path: String }
+  | Include { card: IncludeCard }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -986,7 +1015,7 @@ type Directive
 type SubcircuitStatement
   = StmtComponent { component: Component }
   | StmtModel { model: ModelCard }
-  | StmtInclude { path: String }
+  | StmtInclude { card: IncludeCard }
 
 
 // ─────────────────────────────────────────────────────────────────────
