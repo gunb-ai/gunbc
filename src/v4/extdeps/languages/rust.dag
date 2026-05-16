@@ -59,9 +59,14 @@
 //   - Rust reference vocabulary: RustReferenceKind (Shared / Exclusive
 //     — Rust's `&T` vs `&mut T`), and the Conj carrier RustReference
 //     attaching it to an opaque lifetime Symbol (K-1)
-//   - Rust visibility scope: RustVisibility (Private / Crate / Super /
-//     Pub) — the four-way visibility partition of the Rust Reference
-//     §item-visibility-and-privacy
+//   - Rust visibility scope: RustVisibility (Private / Pub / PubIn
+//     { path: List<Symbol> }) — the three-way visibility partition
+//     reflecting the Reference's fundamental form
+//     (§visibility-and-privacy), with `pub(crate)` / `pub(self)` /
+//     `pub(super)` folding into PubIn's path-list per the Reference's
+//     stated equivalences. Path-restricted visibility CARRIES its
+//     SimplePath structurally; `pub(in crate::outer_mod)` is
+//     representable.
 //   - Rust per-target cost-realization carrier shape: RustCost (per-
 //     instruction + per-allocation components — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
@@ -365,6 +370,7 @@ import v4.std.node { Symbol }
 // Rust Reference §3.4 numeric-types-integer-types declares exactly
 // two integer kinds: signed (i*) and unsigned (u*). Each integer
 // scalar in Rust's spec is one of these.
+// Spec: https://doc.rust-lang.org/reference/types/numeric.html
 //
 //   - Signed   — `i8` / `i16` / `i32` / `i64` / `i128` / `isize`
 //                (two's-complement signed integers)
@@ -429,6 +435,7 @@ type RustIntKind
 // (each available in both Signed and Unsigned kind, except Pointer
 // which is platform-dependent and reads the host machine's
 // pointer-width per std/machine.dag).
+// Spec: https://doc.rust-lang.org/reference/types/numeric.html
 //
 //   - Bits8    — `i8`  / `u8`     (1-byte integers)
 //   - Bits16   — `i16` / `u16`    (2-byte integers)
@@ -513,6 +520,7 @@ type RustIntWidth
 // gates and are NOT part of the pinned stable spec this file models
 // (they are a visible C1 edit when they stabilize, never a silent
 // extension).
+// Spec: https://doc.rust-lang.org/reference/types/numeric.html
 //
 //   - Bits32 — `f32`  (IEEE-754 binary32 single-precision)
 //   - Bits64 — `f64`  (IEEE-754 binary64 double-precision; the Rust
@@ -564,6 +572,13 @@ type RustFloatWidth
 // exactly six kinds, per §3.3 boolean-type, §3.4 numeric-types (the
 // Int / Float bifurcation), §3.5 textual-types (the Char / Str
 // bifurcation), and §3.6 never-type:
+// Spec: https://doc.rust-lang.org/reference/types.html
+//   Bool:    https://doc.rust-lang.org/reference/types/boolean.html
+//   Int:     https://doc.rust-lang.org/reference/types/numeric.html
+//   Float:   https://doc.rust-lang.org/reference/types/numeric.html
+//   Char:    https://doc.rust-lang.org/reference/types/textual.html
+//   Str:     https://doc.rust-lang.org/reference/types/textual.html
+//   Never:   https://doc.rust-lang.org/reference/types/never.html
 //
 //   - Int      — integer scalars (Reference §3.4 numeric-types-
 //                integer-types; both signed and unsigned, all
@@ -710,6 +725,9 @@ type RustScalarKind
 // `()` (the zero-tuple Unit type) is DELIBERATELY NOT a variant of
 // this Disj: per Reference §3.10 it is a TupleType, not a primitive
 // scalar. See SCOPE NEGATIVE Tuple types in the header.
+// Spec: https://doc.rust-lang.org/reference/types.html
+//   (Per-variant Spec URLs on RustScalarKind above; this Disj is the
+//   typed-value carrier composing kind × width over those.)
 //
 // The structural argument for the Disj-with-payloads (vs ptx's
 // Conj-record `RegisterScalar { kind, width, state_space }`): in
@@ -794,6 +812,7 @@ type RustScalar
 // RustReferenceKind — the closed Rust reference-kind classifier. The
 // Rust Reference §types-reference admits exactly two reference kinds
 // (the borrow-kind partition that the borrow checker enforces):
+// Spec: https://doc.rust-lang.org/reference/types/pointer.html
 //
 //   - Shared    — `&T`   shared / immutable reference; multiple
 //                        concurrent shared references to the same
@@ -861,29 +880,61 @@ type RustReferenceKind
 
 // ─────────────────────────────────────────────────────────────────────
 // RustVisibility — the closed Rust item-visibility classifier. The
-// Rust Reference §visibility-and-privacy admits exactly four
-// visibility scopes (the four-way visibility partition the Reference
-// names):
+// Rust Reference §visibility-and-privacy partitions item visibility
+// into TWO fundamental forms — unrestricted (`pub`) and path-
+// restricted (`pub(in SimplePath)`) — with `pub(crate)` / `pub(self)`
+// / `pub(super)` as syntactic CONVENIENCE FORMS of the latter
+// (Reference: "`pub(crate)` is the same as `pub(in crate)`. `pub(super)`
+// is the same as `pub(in super)`. `pub(self)` is the same as
+// `pub(in self)`"). The faithful structural partition is therefore
+// THREE variants — the absent / unrestricted / path-restricted axis
+// — with the path-restricted variant CARRYING its SimplePath, so
+// `pub(in crate::outer_mod)` is REPRESENTABLE.
+// Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 //
 //   - Private — items without a `pub` modifier (the Rust default;
 //               visible only within the defining module and its
 //               descendants per the privacy rules)
-//   - Crate   — `pub(crate)`  visible throughout the defining crate
-//   - Super   — `pub(super)`  visible to the parent module (and the
-//               related `pub(in path)` forms; for this slice
-//               `pub(in path)` folds into the Super-or-descendant
-//               family — the richer path-scoped visibility carrier
-//               lands when the bundled T-4 LanguageModel grammar
-//               productions land)
 //   - Pub     — `pub`         publicly visible (no restriction
 //               beyond the defining crate's API surface)
+//   - PubIn { path: List<Symbol> }
+//             — `pub(in SimplePath)` — visible to the module at
+//               the given SimplePath. The path is a List<Symbol> of
+//               its segments, each segment a K-1-opaque Symbol (the
+//               spellings `crate` / `self` / `super` / module
+//               identifiers live in the boundary intern table per
+//               node.dag:70-86; equality on the segment Symbols
+//               distinguishes `pub(in crate)` from `pub(in super)`
+//               etc.). The convenience forms `pub(crate)` /
+//               `pub(self)` / `pub(super)` are EQUAL (per Reference)
+//               to `PubIn { path: [crate-symbol] }` /
+//               `[self-symbol]` / `[super-symbol]` respectively;
+//               multi-segment paths like `pub(in crate::outer_mod)`
+//               are represented as `PubIn { path: [crate-symbol,
+//               outer_mod-symbol] }` — the path fact is preserved
+//               structurally, not dropped.
+//               P2 single-authority: the four syntactic shorthand
+//               forms each have ONE canonical `PubIn` representation
+//               (no `PubCrate` / `PubSelf` / `PubSuper` variants in
+//               parallel with `PubIn { path: [crate] }` etc., which
+//               would be duplicate authority — the same fact in two
+//               places, the cost-of-change-2 v3 failure mode).
 //
-// CLOSED (C1 stop-signal). A fifth visibility scope is an edit to
-// THIS declaration under the L-2 pin discipline. The `pub(in path)`
-// generalization is a STRUCTURAL refinement on Super (a Super with
-// an explicit path-Symbol parameter); when the bundled LanguageModel
-// grammar lands, that refinement composes over Super without
-// adding a fifth variant — the four-way partition stays.
+// (Corrected 2026-05-16 per BLOCKING operator review on PR #3174:
+// the prior 4-way partition `Private | Crate | Super | Pub` dropped
+// the `pub(in SimplePath)` path fact, making cases like
+// `pub(in crate::outer_mod)` unrepresentable — INVARIANTS P1
+// modeling-faithfulness AND P2 boundary-discipline violations. The
+// faithful partition is the Reference's own fundamental-form
+// axis, with the convenience shorthand forms folding into PubIn's
+// path-list per the Reference's stated equivalences.)
+//
+// CLOSED (C1 stop-signal). A fourth top-level form is an edit to
+// THIS declaration under the L-2 pin discipline. The PubIn variant
+// carries the path STRUCTURALLY (not as a separate parallel-named
+// variant), so future Reference revisions adding new convenience
+// shorthand for an existing path family are NOT a C1 edit — they
+// fold into PubIn's path-list.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -892,46 +943,53 @@ type RustReferenceKind
 //      walk, the public-API-surface synthesis for documentation /
 //      coordination contracts) reads the visibility tag uniformly;
 //      shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ level: Int }` proxy (0 / 1 /
-//      2 / 3) replaces a closed 4-valued exhaustive sum with an
-//      unbounded Int (level=42 representable) — violates P2 + M4
-//      (same shape as algebra.dag Ordering's argument), AND
-//      conflates DISTINCT scopes whose containment is partial-
-//      order, not total (Crate and Super are siblings, not nested).
-//   3. Algebraic form — PARTIAL: the four scopes form a CONTAINMENT
-//      partial-order (Private ⊑ Super ⊑ Crate ⊑ Pub for items in
-//      nested modules); but the partial-order is DERIVED FROM the
-//      closed enum, not a richer source — pointing to a
+//   2. Variant-is-data — FAILS: collapsing to a uniform record
+//      `{ kind: Symbol, path: List<Symbol>? }` reintroduces the
+//      readable-string-as-tag heuristic K-1 forecloses AND the
+//      illegal state "kind=Pub with path=[...]" (Pub carries no
+//      path — that combination is unrepresentable here by
+//      construction; the Disj-with-payloads is the dissolved form
+//      per P2 + Practice 2/6 + M4).
+//   3. Algebraic form — PARTIAL: visibility scopes form a partial
+//      order (Private ⊑ PubIn { path: [self] } ⊑ PubIn { path:
+//      [super] } ⊑ PubIn { path: [crate] } ⊑ Pub for items in a
+//      nested module — and PubIn paths in general are ordered by
+//      module containment). The partial-order is DERIVED FROM the
+//      closed enum + the namespace's module-containment relation,
+//      not a richer std/ source — pointing to a
 //      `BoundedLattice<RustVisibility>` would parallel-represent
 //      the visibility taxonomy the order is defined over
 //      (algebra.dag U1 engine-debt smell — the same argument
 //      ptx.dag's BarrierScope ledger makes).
 //   4. Dimensional — FAILS: a single Rust item has EXACTLY ONE
-//      visibility modifier (the Reference admits `pub`,
-//      `pub(crate)`, `pub(super)`, or none — never a combination);
-//      mutually-exclusive alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the four scopes are the Rust-
-//      Reference visibility partition; they are NOT one generic
-//      `F<X>` / projection over a separately-declared source set
-//      (Practice 7). The richer `pub(in path)` form is a
-//      STRUCTURAL refinement on Super (Super carrying a path
-//      Symbol) — that refinement composes over Super at the
-//      grammar-production layer; it does not parameterize this
-//      four-way enum into a generic family.
-// Terminal: the closed four-way Rust item-visibility classifier; the
-// `pub(in path)` generalization composes over Super at the
-// LanguageModel grammar layer when it lands.
+//      visibility modifier; the three variants are mutually-
+//      exclusive alternatives (an item is private, OR `pub`, OR
+//      `pub(in <path>)` — never a combination). The path-INSIDE
+//      PubIn is a structural Conj field within that variant, not
+//      a separate Disj coordinate.
+//   5. Parameterized family — FAILS: the three variants are NOT
+//      one generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). Private and Pub are nullary
+//      tags; PubIn carries a List<Symbol> path. They are
+//      structurally heterogeneous (the Disj-with-payloads shape is
+//      irreducible — collapsing PubIn into Private/Pub would lose
+//      the path fact, exactly the regression this BLOCKING fix
+//      undid).
+// Terminal: the closed three-way Rust item-visibility partition
+// reflecting the Reference's fundamental form (Reference equivalence
+// folds `pub(crate)` / `pub(self)` / `pub(super)` into PubIn's
+// path-list).
 type RustVisibility
   = Private
-  | Crate
-  | Super
   | Pub
+  | PubIn { path: List<Symbol> }
 
 
 // ─────────────────────────────────────────────────────────────────────
 // RustReference — a typed Rust reference: reference-kind × lifetime
 // identity. Conj record (no Practice-4 ledger — only coproducts
 // dissolve).
+// Spec: https://doc.rust-lang.org/reference/types/pointer.html
 //
 //   - kind          which reference kind (Shared / Exclusive — the
 //                   borrow-kind partition the borrow checker reads)
@@ -968,6 +1026,10 @@ type RustReference {
 // ─────────────────────────────────────────────────────────────────────
 // RustCost — the per-target cost-realization carrier shape for the
 // Rust `LanguageModel`. Conj record (no Practice-4 ledger).
+// Spec: gunbc-internal — cost realization is a v4 substrate concern
+// (U1 / U2 per std/algebra.dag + lens/cost.dag), not a Rust-language
+// spec fact; no upstream URL applies. The carrier SHAPE is gunbc's,
+// pinned by the U1 one-homomorphism-with-cost discipline.
 //
 // This declares the SHAPE the U1 spine reads when computing Rust-
 // side realization cost — both components per the scaffold header's
