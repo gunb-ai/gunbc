@@ -8,25 +8,33 @@
 #
 # Usage: from repo root, with v2-compiler already built:
 #   V2_COMPILER=target/release/v2-compiler bash scripts/v2-run-preflight.sh
+#
+# When the caller has already run `v2-compiler compile` on src/v4 (e.g. the
+# bootstrap viability step in ci.yml), set V2_PREFLIGHT_SKIP_COMPILE=1 to emit
+# only the GitHub notice — avoids a redundant full-graph compile.
 
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-bin="${V2_COMPILER:-target/release/v2-compiler}"
-if [[ ! -x "$bin" ]]; then
-  echo "error: v2-compiler not found at $bin (build with: cargo build -p v2-compiler --release)" >&2
-  exit 1
+if [[ "${V2_PREFLIGHT_SKIP_COMPILE:-0}" == "1" ]]; then
+  echo "=== v2-run-preflight: compile skipped (V2_PREFLIGHT_SKIP_COMPILE=1; prior step already compiled src/v4) ==="
+else
+  bin="${V2_COMPILER:-target/release/v2-compiler}"
+  if [[ ! -x "$bin" ]]; then
+    echo "error: v2-compiler not found at $bin (build with: cargo build -p v2-compiler --release)" >&2
+    exit 1
+  fi
+
+  out="${V2_PREFLIGHT_COMPILE_OUT:-/tmp/v4-preflight-compile-out}"
+  rm -rf "$out"
+  mkdir -p "$out"
+
+  echo "=== v2-run-preflight: compile src/v4 (interim bridge; T-24 = workflow/ci.dag) ==="
+  "$bin" compile --source-root src/v4 --output-dir "$out" --target dag
+  echo "compile: OK"
 fi
-
-out="${V2_PREFLIGHT_COMPILE_OUT:-/tmp/v4-preflight-compile-out}"
-rm -rf "$out"
-mkdir -p "$out"
-
-echo "=== v2-run-preflight: compile src/v4 (interim bridge; T-24 = workflow/ci.dag) ==="
-"$bin" compile --source-root src/v4 --output-dir "$out" --target dag
-echo "compile: OK"
 
 echo "::notice::v2 \`run\` TestClaim execution gate is DEFERRED until T-22 (v4 eval). Evidence: src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
 
