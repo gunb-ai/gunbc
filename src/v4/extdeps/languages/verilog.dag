@@ -720,7 +720,7 @@ type NetDeclaration {
   signedness: Signedness
   drive_strength_lexeme: String
   delay_lexeme: String
-  declarators: List<NetDeclarator>
+  declarators: NonEmptyList<NetDeclarator>
 }
 
 
@@ -844,11 +844,11 @@ type NetDeclarator {
 // classifier; illegal kind×packing AND kind×signedness combinations
 // are unrepresentable by construction.
 type VariableDeclaration
-  = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
-  | IntegerVariable { declarators: List<VariableDeclarator> }
-  | RealVariable { declarators: List<VariableDeclarator> }
-  | TimeVariable { declarators: List<VariableDeclarator> }
-  | RealTimeVariable { declarators: List<VariableDeclarator> }
+  = RegVariable { packing: PackingShape, signedness: Signedness, declarators: NonEmptyList<VariableDeclarator> }
+  | IntegerVariable { declarators: NonEmptyList<VariableDeclarator> }
+  | RealVariable { declarators: NonEmptyList<VariableDeclarator> }
+  | TimeVariable { declarators: NonEmptyList<VariableDeclarator> }
+  | RealTimeVariable { declarators: NonEmptyList<VariableDeclarator> }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1292,6 +1292,28 @@ type ParameterTypeKind
 
 
 // ─────────────────────────────────────────────────────────────────────
+// NonEmptyList<T> — a list known to be non-empty by construction: a
+// required head element + a (possibly empty) tail. Used wherever the
+// IEEE 1364-2005 grammar requires "at least one" entry — a structural
+// dissolution of the spec-illegal empty-list state that a bare
+// `List<T>` would admit. INVARIANTS P2 illegal-states-unrepresentable
+// + modeling-discipline.md Practices 2 / 6.
+//
+//   - head    the required first entry
+//   - tail    the remaining entries (may be empty)
+//
+// Conj record (no Practice-4 ledger — only coproducts dissolve).
+// Added per codex REQUEST_CHANGES on PR #3176 2026-05-16 — multiple
+// declaration carriers' `List<…>` fields admitted empty-list states
+// the spec grammar forbids; NonEmptyList<T> makes the "at least one"
+// requirement structural.
+type NonEmptyList<T> {
+  head: T
+  tail: List<T>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // ParameterAssignment — one (name, default-value) pair in a
 // parameter_declaration's list_of_param_assignments (IEEE 1364-2005
 // §A.2.4 / §3.10). A single declaration like `parameter WIDTH = 8,
@@ -1337,7 +1359,7 @@ type ParameterAssignment {
 // without these facts the conversion is unspecified).
 type ParameterDeclaration {
   type_kind: ParameterTypeKind
-  assignments: List<ParameterAssignment>
+  assignments: NonEmptyList<ParameterAssignment>
 }
 
 
@@ -1900,7 +1922,7 @@ type GenvarDeclaration {
 //                   ParameterAssignment carries name + default_lexeme.
 type LocalParameterDeclaration {
   type_kind: ParameterTypeKind
-  assignments: List<ParameterAssignment>
+  assignments: NonEmptyList<ParameterAssignment>
 }
 
 
@@ -2047,7 +2069,7 @@ type UdpInstantiation {
 //                   admitted via the assignment's lexeme.
 type SpecparamDeclaration {
   packing: PackingShape
-  assignments: List<ParameterAssignment>
+  assignments: NonEmptyList<ParameterAssignment>
 }
 
 
@@ -2240,7 +2262,7 @@ type NonAnsiModuleItem
 // port-list classifier of the IEEE 1364-2005 spec §12.1.
 type ModuleParameterPortList
   = NoModuleParameterPortList
-  | ModuleParameters { parameters: List<ParameterDeclaration> }
+  | ModuleParameters { parameters: NonEmptyList<ParameterDeclaration> }
 
 
 // ─────────────────────────────────────────────────────────────────────
