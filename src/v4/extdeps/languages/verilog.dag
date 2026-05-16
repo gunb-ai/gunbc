@@ -800,105 +800,89 @@ type VariableDeclaration
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortAnsiTypeKind — the closed Verilog ANSI-port-type-kind
-// classifier (IEEE 1364-2005 §12.3.3). An ANSI-style port carrying
-// its own type declares EITHER a net-type or a variable-type; per
-// spec a port with `output reg` is a register-typed port (procedural-
-// assignable from within the module), while a port with `output
-// wire` is a net-typed port.
+// PortAnsiTypeKind — the closed Verilog ANSI-port type/kind
+// classifier (IEEE 1364-2005 §12.3.3, §5.6, §5.7). An ANSI-style port
+// declares EITHER a net-type or a variable-kind; spec-admissibility
+// of `packing` and `signedness` modifiers DIFFERS per variant — only
+// net-types and `reg` admit them, the spec-fixed-width variable kinds
+// (integer/real/time/realtime) forbid them. The kind × packing × sign
+// admissibility is modeled STRUCTURALLY via Disj-with-heterogeneous-
+// payloads: only the variants whose spec form admits packing/sign
+// carry those payloads (codex BLOCKING fix on PR #3176 — the prior
+// uniform `packing + signedness` on every ANSI-port admitted spec-
+// forbidden states like `output integer signed [N:0]`, mirroring
+// what the body-side VariableDeclaration Disj already dissolves).
 //
-//   - AnsiNetType { net_type: NetType }
-//       — `input wire`, `output wand`, etc. The port's type is a
-//       net resolution from the closed NetType set.
-//   - AnsiVariableType { var_kind: AnsiVariableKind }
-//       — `output reg`, `output integer`, `output real`, `output
-//       time`, `output realtime`. The port's type is a variable
-//       kind from the closed AnsiVariableKind set below (excludes
-//       the per-variant payload fields of the body-side
-//       VariableDeclaration — those payloads represent body-side
-//       declarations, while AnsiVariableType is the port-side
-//       declaration's type-kind only; the port's packing /
-//       signedness live on the enclosing AnsiStyle, not here).
+//   - AnsiNetType { net_type: NetType, packing: PackingShape,
+//                   signedness: Signedness }
+//       — `input wire`, `output wand`, `inout tri0`, etc. Net ports
+//       admit any net-type from the closed NetType set, any
+//       PackingShape, and any signedness (per IEEE 1364-2005 §5.6).
+//   - AnsiRegType { packing: PackingShape, signedness: Signedness }
+//       — `output reg [N:0]`, `output reg signed`, etc. Reg-typed
+//       ANSI ports admit both packing and signedness (§5.6).
+//   - AnsiIntegerType
+//       — `output integer`. Spec-fixed 32-bit signed (§3.7.2); NO
+//       packing, NO signedness modifier.
+//   - AnsiRealType
+//       — `output real`. IEEE-754 double; NO packing, NO signedness
+//       (sign is internal to IEEE-754).
+//   - AnsiTimeType
+//       — `output time`. Spec-fixed 64-bit unsigned (§3.7.2); NO
+//       packing, NO signedness modifier.
+//   - AnsiRealTimeType
+//       — `output realtime`. Aliased to `real` per §3.7.2; NO
+//       packing, NO signedness modifier (parse∘emit preserves the
+//       keyword choice).
 //
-// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits these two
-// ANSI-port-type-kind partitions; a future language-version model
-// would EDIT this Disj explicitly.
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits this six-
+// way ANSI-port type/kind partition; a future language-version model
+// (SystemVerilog `logic`/`bit`/etc.) would EDIT this Disj explicitly.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: ANSI-port consumers branch on the
-//      kind uniformly to know whether the port is net-typed (wire
-//      family) or variable-typed (reg family); shared classifier,
-//      not scattered.
-//   2. Variant-is-data — FAILS: a `{ kind: Symbol }` proxy reopens
-//      K-1's foreclosed readable-string heuristic surface (a
-//      `match kind { "net" => … }` smell). The enum IS the M4-
-//      faithful form.
-//   3. Algebraic form — N/A by construction: the two kinds are
-//      the net-vs-variable distinction of the IEEE 1364-2005
-//      type system; they do not trace to a richer std/ algebraic
-//      structure.
-//   4. Dimensional — FAILS: an ANSI port has EXACTLY ONE type-kind;
-//      mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: each variant carries a
-//      DIFFERENT payload type (NetType vs AnsiVariableKind) —
-//      structurally heterogeneous, NOT one generic `F<X>` /
-//      projection over a single source set (Practice 7).
-// Terminal: the closed two-way Verilog ANSI-port-type-kind
-// classifier of the IEEE 1364-2005 spec.
+//      kind uniformly to dispatch emission / type-check legality /
+//      eventual algebra inhabitance; shared classifier, not
+//      scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{ kind:
+//      Symbol, packing: PackingShape, signedness: Signedness }`
+//      record reopens BOTH (a) the readable-string K-1 heuristic
+//      surface AND (b) the spec-forbidden illegal states like
+//      "AnsiIntegerType with signedness=Signed" that the per-variant
+//      payload-presence rule dissolves. Disj-with-heterogeneous-
+//      payloads is the dissolved form (P2 + Practice 2/6 + M4) —
+//      same shape as body-side VariableDeclaration's kind × packing
+//      × signedness dissolution.
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (AnsiNetType / AnsiRegType → Semiring or
+//      OrderedRing per packing × signedness; AnsiIntegerType →
+//      OrderedRing<Int<32>>; AnsiRealType / AnsiRealTimeType →
+//      ApproximateField<Float>; AnsiTimeType → Semiring<UInt<64>>);
+//      D2-deferred per "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: an ANSI port has EXACTLY ONE type/kind;
+//      mutually-exclusive alternatives. The shapes differ across
+//      variants (net + reg carry packing+signedness; integer/real/
+//      time/realtime carry neither) — they cannot be coordinates of
+//      a single record without the illegal-state smell.
+//   5. Parameterized family — FAILS: the six are structurally
+//      heterogeneous in BOTH their payload shapes AND their
+//      algebraic groundings (Semiring/OrderedRing depending on
+//      packing×signedness / OrderedRing<Int<32>> / ApproximateField
+//      / Semiring<UInt<64>> / aliased ApproximateField — five
+//      distinct std/algebra groundings plus an additional NetType-
+//      payload-bearing variant). NOT one generic `F<X>` / projection
+//      over a separately-declared source set (Practice 7).
+// Terminal: the closed six-variant Verilog ANSI-port type/kind
+// classifier; illegal kind × packing / kind × signedness combinations
+// are unrepresentable by construction.
 type PortAnsiTypeKind
-  = AnsiNetType { net_type: NetType }
-  | AnsiVariableType { var_kind: AnsiVariableKind }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// AnsiVariableKind — the closed Verilog ANSI-variable-port-type
-// classifier (IEEE 1364-2005 §12.3.3). The variable-type set valid
-// for ANSI ports matches the VariableDeclaration kind set; this
-// nullary enum carries the KIND only (the per-kind payloads — name,
-// packing, signedness for RegVariable — are factored into the
-// enclosing AnsiStyle to keep cross-form (NonAnsi vs Ansi) packing/
-// signedness reuse single-authority).
-//
-//   - AnsiReg       — `output reg name`
-//   - AnsiInteger   — `output integer name`
-//   - AnsiReal      — `output real name`
-//   - AnsiTime      — `output time name`
-//   - AnsiRealTime  — `output realtime name`
-//
-// CLOSED (C1 stop-signal). Matches the VariableDeclaration variant
-// kind set per spec §12.3.3.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every ANSI-variable-port consumer
-//      reads the kind uniformly to dispatch emission / type-check
-//      legality; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: a `{ keyword: Symbol }` proxy
-//      reopens the readable-string heuristic surface K-1
-//      forecloses. The enum IS the M4-faithful form.
-//   3. Algebraic form — PARTIAL: each variant grounds in the same
-//      std/algebra structure its body-side VariableDeclaration
-//      counterpart grounds in (AnsiReg → Semiring/OrderedRing per
-//      packing×signedness; AnsiInteger → OrderedRing<Int<32>>;
-//      AnsiReal/AnsiRealTime → ApproximateField<Float>; AnsiTime
-//      → Semiring<UInt<64>>); D2-deferred per "Owned ELSEWHERE".
-//   4. Dimensional — FAILS: an ANSI variable port has EXACTLY ONE
-//      kind; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the five are structurally
-//      heterogeneous in their underlying std/algebra grounding
-//      (same argument as VariableDeclaration's ledger) — NOT one
-//      generic `F<X>` / projection over a separately-declared
-//      source set (Practice 7).
-// Terminal: the closed five-way ANSI-variable-port-kind
-// classifier; mirrors VariableDeclaration's kind-partition under
-// the IEEE 1364-2005 §12.3.3 ANSI-port admissibility rules.
-type AnsiVariableKind
-  = AnsiReg
-  | AnsiInteger
-  | AnsiReal
-  | AnsiTime
-  | AnsiRealTime
+  = AnsiNetType { net_type: NetType, packing: PackingShape, signedness: Signedness }
+  | AnsiRegType { packing: PackingShape, signedness: Signedness }
+  | AnsiIntegerType
+  | AnsiRealType
+  | AnsiTimeType
+  | AnsiRealTimeType
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -927,27 +911,31 @@ type PortDeclaration {
 // ─────────────────────────────────────────────────────────────────────
 // AnsiPortDeclaration — an ANSI-style Verilog module port (`module M
 // (input wire [7:0] a, output reg b, output reg signed [3:0] count,
-// …);`). The header carries direction, name, AND the full type/
-// packing/signedness facts INLINE. Per IEEE 1364-2005 §12.3.3 the
-// port declaration is "completely declared" by this single carrier;
-// a body redeclaration is a SYNTAX ERROR — single-authority enforced
-// structurally because the type-fact lives ON this record, not in a
-// matching body item. Conj record (no Practice-4 ledger).
+// …);`). The header carries direction, name, AND the per-kind type
+// payload INLINE. Per IEEE 1364-2005 §12.3.3 the port declaration is
+// "completely declared" by this single carrier; a body redeclaration
+// is a SYNTAX ERROR — single-authority enforced structurally because
+// the type-fact lives ON this record, not in a matching body item.
+// Conj record (no Practice-4 ledger).
 //
-//   - direction     input / output / inout
-//   - name          the port identifier (K-1-opaque Symbol)
-//   - net_kind      net-type vs variable-kind (PortAnsiTypeKind —
-//                   AnsiNetType { net_type } | AnsiVariableType
-//                   { var_kind })
-//   - packing       scalar or `[msb:lsb]` packed bit-vector
-//   - signedness    `signed` keyword present / absent (IEEE 1364-2005
-//                   §5.6)
+//   - direction   input / output / inout
+//   - name        the port identifier (K-1-opaque Symbol)
+//   - type_kind   the full per-variant ANSI-port type payload
+//                 (PortAnsiTypeKind: AnsiNetType / AnsiRegType carry
+//                 their own packing + signedness; AnsiIntegerType /
+//                 AnsiRealType / AnsiTimeType / AnsiRealTimeType
+//                 carry neither per spec). The prior uniform
+//                 packing + signedness fields on this record were a
+//                 codex BLOCKING (PR #3176): they admitted spec-
+//                 forbidden states like `output integer signed [N:0]`
+//                 — INVARIANTS P2 illegal-states-unrepresentable
+//                 violation. Packing / signedness are now per-variant
+//                 payloads on the type-kind, dissolving those illegal
+//                 states by construction.
 type AnsiPortDeclaration {
   direction: PortDirection
   name: Symbol
-  net_kind: PortAnsiTypeKind
-  packing: PackingShape
-  signedness: Signedness
+  type_kind: PortAnsiTypeKind
 }
 
 
