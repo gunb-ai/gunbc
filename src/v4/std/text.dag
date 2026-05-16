@@ -25,3 +25,65 @@
 
 
 module v4.std.text
+
+
+import v4.std.algebra { FreeMonoid }
+import v4.std.nat { Nat }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// STRING INHABITANCE IS MACHINE-READABLE. `String` is a type alias onto
+// `FreeMonoid<Char>` below. That alias edge is the inhabitance edge: a
+// consumer does not read prose or a side table to learn that strings are
+// finite character sequences. This is the same authority pattern as
+// collection.dag's `List<T> = FreeMonoid<T>`.
+//
+// CHAR RANGE IS A TRACKED SCAFFOLD. Unicode scalar values are exactly
+// U+0000..U+D7FF and U+E000..U+10FFFF: natural-number code points in
+// the Unicode codespace, excluding surrogate code points. The current
+// v2 syntax and this file's settled dependency set (`node`, `nat`,
+// `algebra`) cannot express that non-contiguous bounded subset as a
+// type-enforced value refinement. A single upper-bound interval would
+// admit surrogates, which would be a fabricated `Char`.
+//
+// The honest T-3 carrier is therefore the unrefined `Nat` alias below,
+// with these bridge properties:
+//   (a) scaffold doc — THIS note; `Char` currently names the code-point
+//       carrier but does not type-enforce the Unicode scalar subset.
+//   (b) bounds on use — producers of `Char` must construct only Unicode
+//       scalar values. A surrogate-valued `Char` is a producer bug
+//       against this scaffold, not a legal Unicode scalar value.
+//   (c) dissolution trigger — when v4 has a machine-readable value
+//       refinement for finite unions of ordered `Nat` intervals (or an
+//       equivalent Unicode-scalar predicate substrate) in the settled
+//       dependency path, replace this alias with the refined carrier:
+//       U+0000..U+D7FF ∪ U+E000..U+10FFFF.
+//
+// No coproduct is introduced in this file. `String` aliases a coproduct
+// owned by std/algebra.dag (`FreeMonoid<T>`), whose Practice-4 ledger
+// lives there; `Char` is an alias over `Nat`, whose ledger lives in
+// std/nat.dag. This file therefore has no new Practice-4 ledger.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Char — Unicode scalar value carrier.
+//
+// Terminal target: a bounded `Nat` over Unicode scalar values
+// (U+0000..U+D7FF and U+E000..U+10FFFF). Current v2-expressible shape:
+// an unrefined `Nat` alias with the tracked scaffold above. This keeps
+// the code-point parent faithful while avoiding the false single-range
+// model that would admit surrogate code points.
+type Char = Nat
+
+
+// ─────────────────────────────────────────────────────────────────────
+// String — finite sequence of `Char`.
+//
+// The alias IS the machine-readable inhabitance edge:
+// `String` inhabits `FreeMonoid<Char>` by being the free-monoid carrier
+// over `Char`. Concatenation, empty, fold, and length are structural
+// reads of std/algebra.dag's `FreeMonoid<T>` shape, not operations
+// re-declared in this file.
+type String = FreeMonoid<Char>
