@@ -2,6 +2,7 @@
 //
 // Scope: algebraic primitives that ground every concrete type via inhabitance.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure (Magma, Monoid, Group, FreeMonoid<T>)
+//         + https://en.wikipedia.org/wiki/Power_set (PointwisePower<T>)
 //
 // Owns:
 //   - the algebra-STRUCTURE hierarchy — the THESIS roots AND the derived
@@ -23,9 +24,10 @@
 //     AbelianGroup, float→ApproximateField, logic→BooleanAlgebra,
 //     text→FreeMonoid). A scalar's grounding is represented, not
 //     deferred, iff this file owns the structure it names.
-//   - STRUCTURES ONLY. A concrete type declares its OWN inhabitance in
-//     its own file (std/integer.dag, std/logic.dag, …); algebra.dag owns
-//     what gets inhabited, never the instances (P2).
+//   - STRUCTURES + CANONICAL CARRIER CONSTRUCTIONS ONLY. A concrete type
+//     declares its OWN inhabitance in its own file (std/integer.dag,
+//     std/logic.dag, …); algebra.dag owns what gets inhabited or aliased,
+//     never the concrete instances (P2).
 //
 // U1 (operator-ratified 2026-05-15) — the single homomorphism carrier:
 //   - ONE carrier: a structure-preserving map between algebras, WITH its

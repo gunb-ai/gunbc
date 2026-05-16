@@ -17,10 +17,10 @@
 //            value. Finite-cardinality is a REFINEMENT layer — tracked
 //            as deferred (Wave-A2, see scaffold note below) and out of
 //            scope for the bare carrier.
-//        This honest split was surfaced by the codex BLOCKING review
+//        This honest cardinality split was surfaced by the codex BLOCKING review
 //        (#3169) flagging an earlier "finite subsets / count `true`
-//        elements" over-claim on Set; the carrier is unchanged, the
-//        framing here is tightened to match it (P1/P4/Practice-2).
+//        elements" over-claim on Set; the finite-cardinality framing
+//        remains bounded to the refinement layer (P1/P4/Practice-2).
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid (List) +
 //         https://en.wikipedia.org/wiki/Algebra_of_sets (Set)
 //
@@ -43,10 +43,7 @@
 //     cardinality / enumerability substrate landing; the bare Set<T>
 //     here is the unrefined BooleanAlgebra carrier, by design.
 //   - Machine-readable BooleanAlgebra<Set<T>> inhabitance edge —
-//     gated on parametric `data` instances OR a pipeline-level
-//     structural-grounding-reader landing; the BooleanAlgebra
-//     grounding for Set<T> lives in prose today (pointwise-lift
-//     derivation), not as a substrate-readable edge.
+//     DISSOLVED by `Set<T> = PointwisePower<T>` alias-identity below.
 //
 // Consumes:
 //   - std/node.dag: Cardinality, Instantiation — the type-substrate
@@ -90,7 +87,7 @@
 // (2) `FiniteSet<T>` (or `Set<T, n: Multiplicity>`) — a
 //   finite-cardinality refinement of the bare Set<T> below. Codex
 //   BLOCKING review (#3169, 2026-05-16) correctly observed that
-//   `Set<T> = { member: fn(T) -> Bool }` denotes ARBITRARY subsets
+//   `Set<T> = PointwisePower<T>` denotes ARBITRARY subsets
 //   (including universe / complement-of-finite for infinite T) and
 //   does not encode finiteness or witness `T`'s enumerability;
 //   counting `true` elements requires an enumeration of T that the
@@ -169,11 +166,11 @@ import v4.std.witness { Witness }
 // The aliasing IS the inhabitance — the same pattern std/text.dag
 // uses for `String = FreeMonoid<Char>`.
 //
-// NO NEW COPRODUCTS. The declarations below are a TYPE ALIAS onto a
-// coproduct owned elsewhere (List → FreeMonoid in algebra.dag) and
-// two Conj records (Set, Map). No new Disj declared here means no new
-// Practice-4 5-pattern ledger applies — the FreeMonoid<T> ledger
-// already lives in algebra.dag and is the one authority.
+// NO NEW COPRODUCTS. The declarations below are TYPE ALIASES onto
+// carriers owned elsewhere (List → FreeMonoid, Set → PointwisePower in
+// algebra.dag) and one Conj record (Map). No new Disj declared here
+// means no new Practice-4 5-pattern ledger applies — the FreeMonoid<T>
+// ledger already lives in algebra.dag and is the one authority.
 //
 // OPS FALL OUT OF GROUNDING — illustrated, not enumerated. The
 // header names which algebra each carrier grounds in and how the
