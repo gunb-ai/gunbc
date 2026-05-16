@@ -788,72 +788,15 @@ type VariableDeclaration
   | RealTimeVariable { name: Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// PortDeclarationStyle — the closed Verilog port-declaration-style
-// classifier (IEEE 1364-2005 §12.3.3, §12.3.4). The spec admits TWO
-// port-declaration styles and they place the type-fact in
-// STRUCTURALLY DIFFERENT loci — a single-authority constraint that
-// only works when the model captures the style choice (openai-pro
-// REQUEST_CHANGES on PR #3176 surfaced this gap; the prior
-// "type-fact lives EXCLUSIVELY in matching body declaration" framing
-// was correct for non-ANSI style but WRONG for ANSI-style ports,
-// where the spec says the port declaration is "completely declared"
-// and a redeclaration in the body is an ERROR per §12.3.3).
-//
-//   - NonAnsiStyle
-//       — `module M (a, b, c); input wire [7:0] a; output reg b; …`
-//       (legacy / Verilog-1995 style). The header lists port names
-//       only; the type, direction, width, and signedness facts come
-//       from MATCHING NetDeclaration / VariableDeclaration items
-//       inside the module body. The port's authority for type/width/
-//       signedness is the matching body declaration.
-//   - AnsiStyle { net_kind: PortAnsiTypeKind, packing: PackingShape,
-//                 signedness: Signedness }
-//       — `module M (input wire [7:0] a, output reg b, …);`
-//       (Verilog-2001 / 1364-2005 §12.3.3 ANSI style). The header
-//       carries the port's type, width, and signedness directly;
-//       the port declaration is "completely declared" per spec.
-//       Redeclaring in the body is a SYNTAX ERROR per §12.3.3 —
-//       the spec's single-authority constraint, structurally
-//       enforced because an AnsiStyle port has the type-fact ON
-//       this variant and consumers do not look up a matching body
-//       declaration.
-//
-// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
-// port-declaration styles; SystemVerilog adds further forms (e.g.
-// `interface` ports) — a future language-version model EDITS this
-// Disj explicitly.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every port-emission consumer and
-//      every type-resolution walker reads the style uniformly to
-//      know WHERE the type-fact lives (header for ANSI / body
-//      lookup for non-ANSI); shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: collapsing to `{ ansi: Bool, type:
-//      Option<…> }` would let `ansi=true` co-exist with `type=None`
-//      (ANSI without inline type — a spec violation) or `ansi=
-//      false` with `type=Some(…)` (non-ANSI port carrying its own
-//      type — a spec violation since non-ANSI ports get types from
-//      the body). The Disj-with-named-payloads makes both illegal
-//      states structurally unrepresentable.
-//   3. Algebraic form — N/A by construction: the two styles are
-//      IEEE 1364-2005 spec's primitive port-declaration partition;
-//      they do not trace to a richer std/ algebraic structure.
-//   4. Dimensional — FAILS: a single port declaration is EXACTLY
-//      ONE style; mutually-exclusive alternatives. (The spec
-//      forbids mixing styles within one module — §12.3.4.)
-//   5. Parameterized family — FAILS: NonAnsiStyle is nullary
-//      (type-fact deferred to the body lookup); AnsiStyle carries
-//      net-kind + packing + signedness payload (type-fact in the
-//      header) — structurally heterogeneous, NOT one generic
-//      `F<X>` / projection over a separately-declared source set
-//      (Practice 7).
-// Terminal: the closed two-way Verilog port-declaration-style
-// classifier of the IEEE 1364-2005 spec.
-type PortDeclarationStyle
-  = NonAnsiStyle
-  | AnsiStyle { net_kind: PortAnsiTypeKind, packing: PackingShape, signedness: Signedness }
+// (PortDeclarationStyle has been dissolved into ModulePortsList's
+// Disj-with-named-payloads at the MODULE level — IEEE 1364-2005
+// §12.3.4 forbids mixing ANSI and non-ANSI styles within ONE module,
+// so the style-choice belongs on the module's port-list as a whole,
+// not as a per-port field. The prior per-port `style: PortDeclaration
+// Style` admitted the spec-forbidden mixed-style state (codex BLOCKING
+// review on PR #3176 surfaced this — the per-port encoding was a
+// product-axis miscarve relative to the spec's module-header
+// partition). See ModulePortsList below.)
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -959,40 +902,118 @@ type AnsiVariableKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortDeclaration — a Verilog module port (`input clk`, `output [7:0]
-// data`, `output reg signed [3:0] count`, …). Conj record (no
-// Practice-4 ledger).
+// PortDeclaration — a non-ANSI-style Verilog module port (`module M
+// (a, b, c); input wire [7:0] a; output reg b; …`). The header lists
+// port direction + name; the type/packing/signedness facts come from
+// a MATCHING `NetDeclaration` / `VariableDeclaration` in the module
+// body's items list. Conj record (no Practice-4 ledger).
 //
 //   - direction  input / output / inout
-//   - name       the port identifier (K-1-opaque Symbol)
-//   - style      which port-declaration style applies (non-ANSI =
-//                type comes from a matching body NetDeclaration /
-//                VariableDeclaration; ANSI = type carried inline on
-//                this declaration, per the AnsiStyle payload).
+//   - name       the port identifier (K-1-opaque Symbol; resolves
+//                through the namespace to the matching body
+//                Net/Variable declaration that carries the type-fact)
 //
-// IEEE 1364-2005 §12.3.3 — §12.3.4 admit two port-declaration styles
-// with STRUCTURALLY DIFFERENT type-locus rules (corrected per openai-
-// pro REQUEST_CHANGES on PR #3176; the prior "type-fact lives
-// EXCLUSIVELY in matching body declaration" framing was over-applied
-// — it's correct for non-ANSI, but ANSI-style ports declare their
-// type INLINE and per §12.3.3 a body redeclaration is a syntax
-// error). The PortDeclarationStyle Disj makes the locus partition
-// structural:
-//   - NonAnsiStyle → the type/packing/signedness facts come from
-//     the matching body NetDeclaration / VariableDeclaration; the
-//     port's `name` is the cross-reference (the prior single-
-//     authority discipline applied to this style).
-//   - AnsiStyle { net_kind, packing, signedness } → the type/
-//     packing/signedness facts are CARRIED INLINE on this port
-//     declaration; per spec §12.3.3 a body redeclaration is an
-//     error (the spec's structural single-authority enforcement).
-// Either style preserves INVARIANTS P2 single-authority — just at
-// different loci per spec.
+// Per IEEE 1364-2005 §12.3.4 a module's port-list is uniformly EITHER
+// non-ANSI (this record's form) OR ANSI (AnsiPortDeclaration below);
+// mixing styles within one module is forbidden. The
+// ModulePortsList Disj makes that uniformity structural at the
+// module level.
 type PortDeclaration {
   direction: PortDirection
   name: Symbol
-  style: PortDeclarationStyle
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AnsiPortDeclaration — an ANSI-style Verilog module port (`module M
+// (input wire [7:0] a, output reg b, output reg signed [3:0] count,
+// …);`). The header carries direction, name, AND the full type/
+// packing/signedness facts INLINE. Per IEEE 1364-2005 §12.3.3 the
+// port declaration is "completely declared" by this single carrier;
+// a body redeclaration is a SYNTAX ERROR — single-authority enforced
+// structurally because the type-fact lives ON this record, not in a
+// matching body item. Conj record (no Practice-4 ledger).
+//
+//   - direction     input / output / inout
+//   - name          the port identifier (K-1-opaque Symbol)
+//   - net_kind      net-type vs variable-kind (PortAnsiTypeKind —
+//                   AnsiNetType { net_type } | AnsiVariableType
+//                   { var_kind })
+//   - packing       scalar or `[msb:lsb]` packed bit-vector
+//   - signedness    `signed` keyword present / absent (IEEE 1364-2005
+//                   §5.6)
+type AnsiPortDeclaration {
+  direction: PortDirection
+  name: Symbol
+  net_kind: PortAnsiTypeKind
+  packing: PackingShape
+  signedness: Signedness
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModulePortsList — the closed Verilog module-ports-list-style
+// classifier (IEEE 1364-2005 §12.3.4). The spec admits two port-list
+// styles and they are MUTUALLY EXCLUSIVE PER MODULE: a single module
+// declares its entire port list in EITHER non-ANSI style (port names
+// in header + matching body declarations) OR ANSI style (full type-
+// fact inline in header). Mixing styles within one module is a syntax
+// error per §12.3.4. The Disj-with-named-payloads makes that
+// uniformity structural at the module-list level — the prior per-port
+// `style: PortDeclarationStyle` field admitted the spec-forbidden
+// mixed state (codex BLOCKING review on PR #3176 corrected this; the
+// per-port encoding was a product-axis miscarve relative to the spec's
+// module-header partition).
+//
+//   - NonAnsiPorts { ports: List<PortDeclaration> }
+//       — the entire module's port list is non-ANSI style; each port
+//       declares direction + name only and the type-fact comes from
+//       the matching body Net/Variable declaration. The spec's
+//       Verilog-1995 module-header form.
+//   - AnsiPorts { ports: List<AnsiPortDeclaration> }
+//       — the entire module's port list is ANSI style; each port
+//       carries direction + name + inline net_kind + packing +
+//       signedness. The spec's Verilog-2001 / 1364-2005 §12.3.3
+//       module-header form.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly these two
+// module-port-list styles; SystemVerilog adds `.name`-shorthand and
+// interface ports — a future language-version model would EDIT this
+// Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every module-port-list emitter and
+//      every type-resolution walker reads the style uniformly to
+//      know WHERE the type-fact lives across the entire port list
+//      (header for ANSI / body lookup for non-ANSI); shared
+//      classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{ ports:
+//      List<PortDeclarationLike>, ansi: Bool }` ratifies the
+//      spec-forbidden mixed-style state (an `ansi=false` flag with
+//      ANSI-typed elements, or vice versa) — INVARIANTS P2
+//      illegal-states-unrepresentable anti-pattern (this PR's
+//      BLOCKING fix exists to dissolve). The Disj-with-typed-
+//      payload-lists makes mixed-style unrepresentable by
+//      construction.
+//   3. Algebraic form — N/A by construction: the two styles are
+//      the IEEE 1364-2005 module-header primitive partition; they
+//      do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single module's port-list is EXACTLY
+//      ONE style; mutually-exclusive alternatives per §12.3.4.
+//   5. Parameterized family — FAILS: the two variants carry
+//      structurally heterogeneous payload-element types
+//      (NonAnsiPorts.ports: List<PortDeclaration> with direction +
+//      name only; AnsiPorts.ports: List<AnsiPortDeclaration> with
+//      direction + name + net_kind + packing + signedness) — NOT
+//      one generic `F<X>` / projection over a single source set
+//      (Practice 7). The list-element-shape difference IS the
+//      partition's defining structural fact.
+// Terminal: the closed two-way Verilog module-ports-list-style
+// classifier of the IEEE 1364-2005 spec.
+type ModulePortsList
+  = NonAnsiPorts { ports: List<PortDeclaration> }
+  | AnsiPorts { ports: List<AnsiPortDeclaration> }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1311,21 +1332,109 @@ type PortConnections
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ModuleInstance — a Verilog module instantiation (`Adder a1 (.a(x),
-// .b(y), .sum(z));` or `Adder a1 (x, y, sum);`). IEEE 1364-2005 §12.1.
-// Conj record (no Practice-4 ledger).
+// NamedParameterOverride — one named parameter override on a module
+// instantiation (`.WIDTH(8)`). IEEE 1364-2005 §12.1.3. Conj record
+// (no Practice-4 ledger).
 //
-//   - module_name      the instantiated module's name (K-1-opaque
-//                      Symbol; resolved through the namespace to the
-//                      matching top-level `VerilogModule`)
-//   - instance_name    this instance's local name (K-1-opaque
-//                      Symbol)
-//   - connections      the port-binding list (PositionalConnections
-//                      OR NamedConnections per spec §12.1.2; uniform
-//                      per instance)
+//   - parameter    the formal parameter name on the instantiated
+//                  module (K-1-opaque Symbol; resolves to a matching
+//                  ParameterDeclaration on the target module)
+//   - actual       the override value as a verbatim lexeme (expression
+//                  sub-grammar deferred to the T-4 LanguageModel —
+//                  same precedent as PortConnectionActual /
+//                  ParameterDeclaration.default_lexeme)
+type NamedParameterOverride {
+  parameter: Symbol
+  actual: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParameterOverrides — the closed Verilog module-instance parameter-
+// override classifier (IEEE 1364-2005 §12.1.3). A module
+// instantiation can override the instantiated module's parameter
+// declarations via the `#(...)` syntax (`Adder #(.WIDTH(8)) a1
+// (.a(x), .b(y))` named form, or `Adder #(8) a1 (x, y)` ordered
+// form), or omit overrides entirely. The spec admits three mutually-
+// exclusive forms; modeling parameter-overrides as omitted (the prior
+// ModuleInstance shape) excluded valid Verilog syntax that
+// parameterized instantiations depend on (codex BLOCKING review on
+// PR #3176). INVARIANTS P1 modeling-faithfulness violation.
+//
+//   - NoParameterOverrides
+//       — `Adder a1 (.a(x), .b(y))` — no `#(...)` clause; the
+//       instantiated module uses its declared default-parameter
+//       values.
+//   - OrderedParameterOverrides { actuals: List<String> }
+//       — `Adder #(8, 16) a1 (...)` — overrides listed in
+//       declaration-order position; the i-th actual overrides the
+//       i-th parameter of the instantiated module. Each actual is a
+//       verbatim expression lexeme.
+//   - NamedParameterOverrides { overrides: List<NamedParameterOverride> }
+//       — `Adder #(.WIDTH(8), .DEPTH(16)) a1 (...)` — overrides
+//       explicitly bound to formals by name.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.1.3 admits exactly
+// these three parameter-override forms; mixing ordered and named
+// within one `#(...)` clause is a syntax error per spec — the Disj-
+// with-named-payloads makes that uniform-form choice structural
+// (same shape as PortConnections).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every instance-emission consumer and
+//      every parameter-resolution walker reads the override form
+//      uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the three forms to a
+//      uniform `{ named?: List<...>, ordered?: List<...> }` ratifies
+//      "both named and ordered in one clause" — exactly the spec-
+//      forbidden mixed form. The Disj makes per-instance uniformity
+//      structural.
+//   3. Algebraic form — N/A by construction: the three forms are
+//      the IEEE 1364-2005 spec's parameter-override partition; they
+//      do not trace to a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single module instance has EXACTLY
+//      ONE parameter-override form; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: NoParameterOverrides is
+//      nullary; OrderedParameterOverrides carries
+//      `List<String>` (verbatim expression lexemes by position);
+//      NamedParameterOverrides carries `List<NamedParameterOverride>`
+//      (each with formal + actual) — structurally heterogeneous,
+//      NOT one generic `F<X>` / projection over a single source set
+//      (Practice 7).
+// Terminal: the closed three-way Verilog module-instance parameter-
+// override classifier of the IEEE 1364-2005 spec.
+type ParameterOverrides
+  = NoParameterOverrides
+  | OrderedParameterOverrides { actuals: List<String> }
+  | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModuleInstance — a Verilog module instantiation (`Adder a1 (.a(x),
+// .b(y), .sum(z));` or `Adder a1 (x, y, sum);` or `Adder #(.WIDTH(8))
+// a1 (...)`). IEEE 1364-2005 §12.1. Conj record (no Practice-4
+// ledger).
+//
+//   - module_name           the instantiated module's name (K-1-
+//                           opaque Symbol; resolved through the
+//                           namespace to the matching top-level
+//                           `VerilogModule`)
+//   - instance_name         this instance's local name (K-1-opaque
+//                           Symbol)
+//   - parameter_overrides   the `#(...)` parameter-override clause —
+//                           none, ordered, or named per spec §12.1.3
+//                           (corrected per codex BLOCKING on
+//                           PR #3176: the prior ModuleInstance had
+//                           NO parameter-override carrier, omitting
+//                           a §12.1 spec construct).
+//   - connections           the port-binding list (PositionalConnections
+//                           OR NamedConnections per spec §12.1.2;
+//                           uniform per instance)
 type ModuleInstance {
   module_name: Symbol
   instance_name: Symbol
+  parameter_overrides: ParameterOverrides
   connections: PortConnections
 }
 
@@ -1439,8 +1548,13 @@ type ModuleItem
 // Practice-4 ledger).
 //
 //   - name      the module identifier (K-1-opaque Symbol)
-//   - ports     the port-declaration list (the module's external
-//               interface)
+//   - ports     the port-declaration list as a ModulePortsList Disj
+//               (NonAnsiPorts OR AnsiPorts per spec §12.3.4;
+//               uniform per module — mixing styles in one module is
+//               a syntax error). Corrected from `List<PortDeclaration>`
+//               per codex BLOCKING on PR #3176: the prior per-port
+//               style encoding admitted the spec-forbidden mixed
+//               state.
 //   - items     the module-body items list (the Conj of parallel
 //               siblings — the IN-B parallel-composition surface)
 //
@@ -1452,7 +1566,7 @@ type ModuleItem
 // feedback_no_annotations).
 type VerilogModule {
   name: Symbol
-  ports: List<PortDeclaration>
+  ports: ModulePortsList
   items: List<ModuleItem>
 }
 
