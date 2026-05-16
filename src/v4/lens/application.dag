@@ -48,18 +48,31 @@
 //           the affected-set lens `affected_set(dag, diff)` (T-21,
 //           lens/affected_set.dag). The affected lens IS what replaces
 //           file-reading exploration ("what is even relevant here").
-//   WRITE — it does not emit a text patch; a change is a STRUCTURAL
-//           `apply_diff : (Node, Diff) -> Node` transform. It is
-//           ALREADY Node, so it does NOT pass `ingest` (no source
-//           text, no LanguageModel, no parse). It enters the B2-OMNI
-//           pipeline at `core` — a SIBLING entry point to `ingest`,
-//           not an instance of it: `emit ∘ core ∘ apply_diff` (cf.
-//           `compile = emit ∘ core ∘ ingest`). Diff content-addressed
-//           by B1 `content_hash` — identity over structure, not lines.
-//   BACK  — it gets `Witness<ReExecFrontier>` (from affected_set: the
-//           minimal re-execution cone of its change) + a FAITHFUL
-//           re-emit (C5 ingest = emit⁻¹ on the modeled core; C4
-//           committed == emit) — no lossy text round-trip.
+//   WRITE — it does not emit a text patch; a change is the **D1**
+//           `apply_diff : (Node, Diff) -> Result<Node, Diagnostic>`
+//           (the ratified D1 operation in this file — NOT a total
+//           `-> Node`). An agent-supplied Diff is EXTERNAL input that
+//           may be invalid or stale, so the boundary is FAIL-CLOSED
+//           (INVARIANTS P3): an unresolved/ill-formed Diff ⇒ a typed
+//           Diagnostic, all-or-nothing, never a total transform.
+//           AGENT-1 USES D1's apply_diff; it does not restate a total
+//           one. The change is ALREADY Node, so it does NOT pass
+//           `ingest` (no source text, no LanguageModel, no parse): it
+//           enters the B2-OMNI pipeline at `core` — a SIBLING entry to
+//           `ingest`, not an instance of it: `emit ∘ core ∘ apply_diff`
+//           (cf. `compile = emit ∘ core ∘ ingest`). Diff
+//           content-addressed by B1 `content_hash` — identity over
+//           structure, not lines.
+//   BACK  — it gets the `affected_set` lens read — the minimal
+//           re-execution cone of its change — in whatever shape T-21 /
+//           lens/affected_set.dag DECLARES. AGENT-1 is a CLIENT: it
+//           defers to that lens as the single authority (P2) and coins
+//           NO return noun of its own (no `Witness<ReExecFrontier>` or
+//           any other AGENT-1-introduced type — that ungrounded noun is
+//           what this corrects, P1/P2). Plus a FAITHFUL re-emit:
+//           node-level (C5-1 `ingest∘emit = id_Node`, hash-checked) +
+//           emit-locality (C5-2) + C4 committed == emit — no lossy text
+//           round-trip.
 //   GATE  — gated like any other change: the relevant lenses run and
 //           `apply_lens(_, Enforce)` (the single advisory→fail-closed
 //           bridge above) blocks fail-closed. The agent earns no
