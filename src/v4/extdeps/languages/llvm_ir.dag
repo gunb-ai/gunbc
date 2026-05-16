@@ -1500,8 +1500,10 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 //   2. Variant-is-data — FAILS: the only "data" reduction is a free
 //      string describing the loss — the opaque-string no-engine smell;
 //      the closed three-way partition is the faithful form. (The
-//      `feature: Symbol` payloads are K-1 name-references to the
-//      feature, NOT a readable category proxy.)
+//      `feature: FidelityFeature` payloads are a CLOSED enum, NOT an
+//      opaque Symbol or readable string — so the per-feature disposition
+//      is machine-consumable substrate DATA via `feature_disposition`,
+//      not prose; P2/P3 — the generic walker reads the projection.)
 //   3. Algebraic form — N/A: this is the C5 epistemic-boundary
 //      partition, not an algebra carrier; no richer std/ source — it IS
 //      the lossless-core boundary definition.
@@ -1515,8 +1517,69 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 // surface feature answers structurally which side of F it is on.
 type FidelityDisposition
   = Modeled
-  | DeclaredNormalized { feature: Symbol }
-  | FailClosed { feature: Symbol }
+  | DeclaredNormalized { feature: FidelityFeature }
+  | FailClosed { feature: FidelityFeature }
+
+
+// FidelityFeature — the CLOSED set of C5-relevant LLVM-IR surface
+// feature classes the model declares a disposition for (the prose
+// bullets above, promoted to substrate so the generic ingest/emit
+// walker reads DATA, not comments — the codex BLOCKING: P2/P3, a
+// machine-consumable boundary, no opaque-Symbol/prose-only smell).
+// Closed: a LangRef surface feature outside this set is itself the
+// `MalformedStructure`/`UnmodeledSemanticAttribute` fail-closed case (no
+// silent escape). Not Symbol-keyed (K-1: Symbols are un-mintable in
+// data literals — the same constraint behind the value-graph SSA form);
+// a closed enum keyed by the feature CLASS is the faithful, authorable
+// carrier.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: read uniformly by the generic walker via
+//      `feature_disposition` to know F; a shared C5 classifier.
+//   2. Variant-is-data — FAILS: the reduction is a free string naming
+//      the feature — the opaque-string no-engine smell; the closed
+//      enumerated feature-class set is the faithful form.
+//   3. Algebraic form — N/A: a C5 boundary taxonomy, not an algebra
+//      carrier; no richer std/ source.
+//   4. Dimensional — FAILS: the walker is handling EXACTLY ONE feature
+//      class at a decision point; alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the classes are heterogeneous
+//      (spelling / order / trivia / token / metadata / asm / attribute /
+//      malformed / structural-core), NOT one `F<X>` over a declared set.
+// Terminal: the closed C5 surface-feature-class set; its disposition is
+// the total `feature_disposition` projection (single authority, M7).
+type FidelityFeature
+  = StructuralCore
+  | SsaValueSpelling
+  | BlockTextualOrder
+  | LexicalTrivia
+  | TargetConfigToken
+  | AdvisoryMetadata
+  | UnmodeledInlineAsm
+  | UnmodeledSemanticAttribute
+  | MalformedStructure
+
+
+// feature_disposition — the machine-consumable C5 boundary the generic
+// ingest/emit walker reads (the codex BLOCKING fix: substrate DATA, not
+// prose; INVARIANTS P2 single-authority / P3 fail-closed). A total
+// projection over the closed `FidelityFeature` set — adding a feature
+// class is cost-of-change 1 here (Practice 7 / M7), never a scattered
+// per-consumer comment.
+fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
+  match f {
+    StructuralCore => Modeled
+    SsaValueSpelling => DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder => DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia => DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken => DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
+    UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
+    MalformedStructure => FailClosed { feature: MalformedStructure }
+  }
+}
 
 
 // ─────────────────────────────────────────────────────────────────────
