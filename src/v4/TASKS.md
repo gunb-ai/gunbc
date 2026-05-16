@@ -20,7 +20,7 @@ Phase 1 (parallel — substrate foundation):
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
   T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-1; boundary-honesty probe — fail-closed ingest, no fabrication]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
-  T-4.13 extdeps/languages/machine_code.dag  [needs T-1; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
+  T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
@@ -454,7 +454,25 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 ### T-4.9 … T-4.14 — architecture stress probes (operator-ratified 2026-05-15)
 
-**Parallel** tasks (need only T-1 + the B2-OMNI `LanguageModel` contract; independent of each other and of T-4). Their value is that they are **maximally diverse on purpose** — each is a *falsification probe* for the B2-OMNI O(N+M) claim. If adding one is genuinely O(1) (one declarative model, instantly cross-composing through the Node pivot), B2-OMNI is empirically validated; if any forces a core/pipeline change, B2-OMNI is leaking — surfaced now, before it is load-bearing. T-4.9-4.11 span the *upper* stack (HDL / netlist / NL boundary); T-4.12-4.14 span *down* the stack (IR / machine code / GPU) — together they validate the model across the **full target spectrum**: source (F may include cosmetics by intent) → IR (F structural) → machine code (F = encoding, no cosmetics). Long-held v2 intent, de-deferred per the frontload-the-hard-cases discipline.
+**Parallel** tasks (need the B2-OMNI `LanguageModel` contract; independent of
+each other once their named substrate inputs exist). Their value is that they
+are **maximally diverse on purpose** — each is a *falsification probe* for the
+B2-OMNI O(N+M) claim. If adding one is genuinely O(1) (one declarative model,
+instantly cross-composing through the Node pivot), B2-OMNI is empirically
+validated; if any forces a core/pipeline change, B2-OMNI is leaking — surfaced
+now, before it is load-bearing. T-4.9-4.11 span the *upper* stack (HDL /
+netlist / NL boundary); T-4.12-4.14 span *down* the stack (IR / machine code /
+GPU) — together they validate the model across the **full target spectrum**:
+source (F may include cosmetics by intent) → IR (F structural) → machine code
+(F = encoding, no cosmetics). Long-held v2 intent, de-deferred per the
+frontload-the-hard-cases discipline.
+
+**Prerequisite correction (T-4.13).** `machine_code.dag` is not T-1-only.
+It consumes two authorities that must exist before the probe is fillable:
+`src/v4/std/machine.dag` for Byte/Word/MachineWidth and T-4's canonical
+`LanguageModel`-as-data shape. The machine-code worker must consume those
+models; it must not invent a local byte/word scaffold or a private language
+model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
@@ -481,7 +499,8 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 #### T-4.13: `extdeps/languages/machine_code.dag`
 - **Stress axis**: the **bottom of the stack** — no cosmetic surface at all (the limit test for C5-fidelity), and **disassembly is the extreme fail-closed case** (most byte runs are not valid instructions; a disassembler that guesses = the no-engine violation made visible).
-- **Fork (PROPOSED — confirm)**: ONE `machine_code.dag` parameterized by an `Isa` model (recommended — parameterize, don't enumerate per-ISA; matches B2-OMNI/O(N+M)) vs per-ISA files.
+- **Shape (operator-ratified L-3)**: ONE `machine_code.dag` parameterized by an `Isa` model. Per-ISA files would reintroduce the N×M trap B2-OMNI forbids.
+- **Prerequisites**: `src/v4/std/machine.dag` filled through the T-3 scalar/numeric stack (`logic` + `nat` -> `machine`) and T-4's canonical `LanguageModel` data shape. A local `Byte`/`Word` copy or private language-model schema is invalid.
 - **Anchor**: the ISA spec (Intel 64 SDM / Arm ARM), pinned revision (L-2).
 - **Scope**: L.
 
