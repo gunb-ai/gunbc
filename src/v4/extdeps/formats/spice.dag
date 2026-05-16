@@ -631,6 +631,29 @@ type NodeVoltageBinding {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// NodeVoltageBindings — the non-empty list of bindings carried by one
+// `.IC` or `.NODESET` card (PR #3168 codex review). SPICE3F5 §11.5.4
+// requires at least one `V(node)=value` binding per card; a card with
+// zero bindings is a syntactic dead-end (no information to inject).
+//
+// Modeled with the same head+tail discipline as `SubcircuitPorts` so
+// non-emptiness is STRUCTURALLY ENFORCED at the type layer rather than
+// as a well-formedness check — INVARIANTS P2 / modeling-discipline.md
+// Practice 2/6 (illegal states unrepresentable). A zero-binding
+// `NodeVoltageBindings` value is unconstructible because `first` is
+// mandatory; the type system rejects empty input.
+//
+// Same eventual dissolution as `SubcircuitPorts`: a generic
+// `NonEmptyList<T>` in std/ would absorb both head+tail records; the
+// inlined record is the worker-tier scaffold that does not require
+// that substrate addition.
+type NodeVoltageBindings {
+  first: NodeVoltageBinding
+  rest: List<NodeVoltageBinding>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Directive — a SPICE analysis or control statement (the dot-prefixed
 // cards; Quarles 1993 §11.5). Each variant carries the parameters the
 // spec requires for that directive.
@@ -736,8 +759,8 @@ type Directive
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
   | Dc { source: Symbol, vstart: SpiceValue, vstop: SpiceValue, vincr: SpiceValue }
   | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
-  | InitialCondition { assignments: List<NodeVoltageBinding> }
-  | NodeSet { assignments: List<NodeVoltageBinding> }
+  | InitialCondition { assignments: NodeVoltageBindings }
+  | NodeSet { assignments: NodeVoltageBindings }
   | Options { parameters: List<Parameter> }
   | Include { path: String }
 
@@ -859,7 +882,7 @@ type SubcircuitStatement
 // `(name, parent_scope)` identities at the type layer — they are no
 // longer competing authorities. `SubcircuitCall.subcircuit` resolution
 // is positional: the call's containing list (the top-level
-// `SpiceNetlist.components` list, or its enclosing
+// `SpiceNetlist.body` list wrapping it as `DeckComponent`, or its enclosing
 // `SubcircuitDefinition.body` list wrapping it as `StmtComponent`)
 // determines the call's enclosing scope; lookup walks up the scope
 // chain per
@@ -911,6 +934,54 @@ type SubcircuitPorts {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// DeckStatement — one statement in the top-level deck body
+// (PR #3168 codex review). SPICE3 admits four statement kinds at the
+// top level — component instances, `.MODEL` cards, `.SUBCKT/.ENDS`
+// definitions, and analysis/control directives (including `.INCLUDE`)
+// — and a real deck INTERLEAVES them in source order (e.g. `.MODEL`
+// card → R1 element → `.INCLUDE foo.inc` → Q2 element). The prior
+// `SpiceNetlist` shape carried four PARALLEL lists (`components`,
+// `models`, `subcircuits`, `directives`) which silently DROPPED the
+// interleave order — a deck whose source order was `M-R-I-Q` would
+// re-emit as `R-Q | M | I` (some canonical bucket-ordered form),
+// breaking `parse ∘ emit` textual round-trip (P1 modeling-faithfulness
+// / P3 facts-flow-forward — the source-order fact existed at parse,
+// then dropped). The file already preserves ordered statements at the
+// subcircuit-body layer via `SubcircuitStatement`; this coproduct
+// applies the same discipline at the top level.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every deck consumer (well-formedness
+//      check, emit, simulator-driver) dispatches on the statement
+//      kind; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: payloads are structurally distinct
+//      (`DeckComponent` carries a `Component`; `DeckModelCard`
+//      carries a `ModelCard`; `DeckSubcircuit` carries a
+//      `SubcircuitDefinition`; `DeckDirective` carries a
+//      `Directive`). Collapsing to a flat record makes illegal-shape
+//      combinations representable (the inverse of P2).
+//   3. Algebraic form — N/A: the SPICE3 top-level statement set is a
+//      spec partition, not a richer std/ algebra.
+//   4. Dimensional — FAILS: a deck statement is EXACTLY ONE of the
+//      four — mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: payloads are structurally
+//      distinct (one wraps `Component`, one wraps `ModelCard`, one
+//      wraps `SubcircuitDefinition`, one wraps `Directive`) — not
+//      `F<X>` over a separately-declared set.
+// Terminal: the closed four-way partition of SPICE3 top-level
+// statement kinds. A fifth kind would be a SPICE3 spec change
+// (operator-tier) or evidence of a missed legal-at-top-level
+// statement (worker-tier addition with named justification).
+type DeckStatement
+  = DeckComponent { component: Component }
+  | DeckModelCard { model: ModelCard }
+  | DeckSubcircuit { definition: SubcircuitDefinition }
+  | DeckDirective { directive: Directive }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // SpiceNetlist — the top-level deck. The title is the first line of
 // any SPICE deck (Quarles 1993 §2); the spec treats it as a required
 // label, not a comment.
@@ -919,25 +990,47 @@ type SubcircuitPorts {
 // file terminator is a STRUCTURAL fact owned by parse/emit, not
 // netlist data: parse success structurally requires exactly one
 // trailing `.END` (absence / duplication / mid-position = Diagnostic);
-// emit always appends `.END` after the last directive. Carrying it as
-// a `Directive` variant in `directives: List<Directive>` or as a
-// `terminator: End` field would admit zero / multiple / misplaced
-// terminators as representable values — INVARIANTS P2. See the
-// `Directive` declaration's header note for the full rationale.
+// emit always appends `.END` after the last statement. Carrying it as
+// a `Directive` variant in `body` or as a `terminator: End` field
+// would admit zero / multiple / misplaced terminators as representable
+// values — INVARIANTS P2. See the `Directive` declaration's header
+// note for the full rationale.
 //
-// Emptiness of the `components` / `models` / `subcircuits` /
-// `directives` lists is NOT structurally ruled out at this layer —
-// SPICE3 admits empty body sections (a deck with only an `.INCLUDE`
-// directive is legal, e.g. a library include-only deck). The lists
-// may therefore be empty as a matter of type. Consumer-side checks
-// (simulator-driver) enforce semantic non-emptiness where applicable
-// (e.g. a deck with no components and no `.INCLUDE` is well-formed
-// SPICE syntax but has nothing to simulate — that's a simulator
-// concern, not a netlist-format concern).
+// SINGLE ORDERED BODY (PR #3168 codex review). The body is a single
+// `body: List<DeckStatement>` rather than four parallel lists for the
+// four statement kinds — this preserves the deck's source-order
+// interleaving of components / `.MODEL` cards / `.SUBCKT` definitions
+// / directives, matching the `SubcircuitStatement` discipline at the
+// subcircuit-body layer. A deck whose source order interleaves these
+// kinds round-trips through `parse ∘ emit` faithfully; the prior
+// parallel-list shape silently bucketed the statements and dropped
+// the order.
+//
+// LIFTED NESTED `.SUBCKT` POSITION. Nested `.SUBCKT/.ENDS` pairs are
+// lifted to the top-level body (see "SUBCIRCUIT NESTING + LEXICAL
+// SCOPING" in the top-of-file modeling notes). A lifted nested
+// subcircuit appears in `body` as a `DeckSubcircuit` value with
+// non-empty `parent_scope`; the parser places it at a canonical
+// post-lifting position, and emit re-nests it inside the named parent
+// `.SUBCKT/.ENDS` pair using the `parent_scope` chain. The exact
+// within-parent position of a nested SUBCKT (i.e. which statement of
+// the parent's body it appeared BETWEEN) is NOT preserved by this
+// shape — only its parent identity is. This is a documented secondary
+// fidelity concession (top-level interleave preserved; within-parent
+// nested-SUBCKT position not preserved), tracked as a YELLOW debt
+// item: dissolution would require either threading position metadata
+// through `SubcircuitDefinition` or moving nested SUBCKTs back into
+// the parent's `body` list (which would require admitting
+// `SubcircuitDefinition` itself as a `SubcircuitStatement` variant,
+// which in turn requires careful treatment of the recursion shape).
+// The current shape favors top-level interleave fidelity (the
+// reviewer's flagged concern) over within-parent nesting position.
+//
+// Emptiness of `body` is not structurally ruled out — SPICE3 admits a
+// deck with only a title (semantically empty but syntactically legal).
+// Consumer-side checks (simulator-driver) enforce semantic non-
+// emptiness where applicable.
 type SpiceNetlist {
   title: String
-  components: List<Component>
-  models: List<ModelCard>
-  subcircuits: List<SubcircuitDefinition>
-  directives: List<Directive>
+  body: List<DeckStatement>
 }
