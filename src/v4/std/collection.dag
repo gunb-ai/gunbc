@@ -138,7 +138,7 @@ module v4.std.collection
 
 
 import v4.std.algebra { BooleanAlgebra, BoundedLattice, FreeMonoid, Lattice }
-import v4.std.logic { Bool }
+import v4.std.logic { Bool, True, False }
 import v4.std.witness { Witness }
 
 
