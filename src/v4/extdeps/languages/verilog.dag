@@ -2055,7 +2055,7 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Twenty-seven sites in this file carry `List<T>` payloads where IEEE
+// Twenty-six sites in this file carry `List<T>` payloads where IEEE
 // 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
 // state is structurally representable, the same INVARIANTS P2
 // illegal-states-unrepresentable concern codex / openai-pro
@@ -2082,7 +2082,7 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the twenty-seven spec-non-empty sites keeps `List<T>` for now.
+// - Each of the twenty-six spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
@@ -2091,7 +2091,7 @@ type ParameterTypeKind
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The twenty-seven spec-non-empty sites (back-pointers to this note):
+// The twenty-six spec-non-empty sites (back-pointers to this note):
 //   (sites 25-26 below — VerilogModule per-style header_ports)
 //   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
 //   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
@@ -2114,13 +2114,17 @@ type ParameterTypeKind
 //  18. EventDeclaration.event_names                  (§A.2.1.4)
 //  19. GenvarDeclaration.genvar_names                (§A.2.1.1)
 //  20. UdpInstantiation.instances                    (§A.5.2)
-//  21. PortDeclaration.names                          (§A.2.1.2)
-//  22. AnsiPortDeclaration.AnsiInputPort.names           (§A.1.3)
-//  23. AnsiPortDeclaration.AnsiOutputNetPort.names       (§A.1.3)
-//  24. AnsiPortDeclaration.AnsiOutputVariablePort.names  (§A.1.3)
-//  25. AnsiPortDeclaration.AnsiInoutPort.names           (§A.1.3)
-//  26. VerilogModule.NonAnsiVerilogModule.header_ports (§12.3.4)
-//  27. VerilogModule.AnsiVerilogModule.header_ports    (§12.3.4)
+//  (Former site 21 PortDeclaration.names was DISSOLVED at sha
+//  cb028c7d+ — PortDeclaration itself dissolved into AnsiPortDeclaration
+//  per openai-pro REQUEST_CHANGES; the §A.2.1.2 list_of_port_identifiers
+//  fact is now uniformly carried by AnsiPortDeclaration's per-direction
+//  variants at sites 21-24 below.)
+//  21. AnsiPortDeclaration.AnsiInputPort.names           (§A.1.3)
+//  22. AnsiPortDeclaration.AnsiOutputNetPort.names       (§A.1.3)
+//  23. AnsiPortDeclaration.AnsiOutputVariablePort.names  (§A.1.3)
+//  24. AnsiPortDeclaration.AnsiInoutPort.names           (§A.1.3)
+//  25. VerilogModule.NonAnsiVerilogModule.header_ports (§12.3.4)
+//  26. VerilogModule.AnsiVerilogModule.header_ports    (§12.3.4)
 //
 // Sites previously numbered 7-9 added 2026-05-16 per codex
 // REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
@@ -3589,8 +3593,16 @@ type UdpDefinition {
   // per openai-pro REQUEST_CHANGES on PR #3176 sha f9159ce8b (Layer-
   // Model BLOCKING: top-level UDP attributes had no typed home; reuses
   // the existing AttributeInstanceClause Disj). No double-authority
-  // concern: the source_text design-element classifier is deferred to
-  // the bundled T-4 LanguageModel and doesn't yet wrap UdpDefinition.
+  // concern by grammar-level distinction (not by deferral-timing):
+  // the §A.1.2 / Syntax 3-9 attribute_instance prefix is INTRINSIC
+  // to the udp_declaration production, attaching at the declaration
+  // boundary itself. The source_text design-element classifier (when
+  // the bundled T-4 LanguageModel lands it) is the description-level
+  // {module | udp | config} KIND-SELECTOR — a different grammar level
+  // that structurally NEVER carries attribute_instance. So there is
+  // no double-authority NOW NOR AFTER the wrapper lands: by spec
+  // grammar levels, the attribute_instance lives ON the declaration
+  // (here) and not on the kind-selector.
   attributes: AttributeInstanceClause
   name: Symbol
   body_lexeme: String
@@ -4049,11 +4061,18 @@ type ModuleKeyword
 //       the single representation of the no-ports state; the per-
 //       style variants now have spec-non-empty header_ports)
 //
-//   - NoPortsModule
-//       — `module M; ... endmodule` form: no header port list.
-//       Style-neutral (the §12.3.4 ANSI-vs-non-ANSI distinction
-//       loses meaning when there are no ports). Items use the
-//       AnsiModuleItem set, which excludes body port_declarations.
+//   - NoPortListModule
+//       — `module M; ... endmodule` form: §A.1.2 port-list brackets
+//       entirely absent (no parens). Style-neutral.
+//   - EmptyPortListModule
+//       — `module M (); ... endmodule` form: §A.1.2 port-list
+//       brackets PRESENT but inner list EMPTY. Distinct spec
+//       surface from NoPortListModule per §A.1.2 (split at sha
+//       cb028c7d+ per openai-pro REQUEST_CHANGES — prior single
+//       NoPortsModule variant conflated the two distinct spec
+//       forms, losing surface fidelity for parse/emit). Style-
+//       neutral; items use the AnsiModuleItem set (excludes body
+//       port_declarations).
 //   - NonAnsiVerilogModule
 //       — non-ANSI style: header carries port-EXPRESSIONS only
 //       (List<NonAnsiPort>); body carries the full NonAnsiModuleItem
@@ -4135,35 +4154,65 @@ type ModuleKeyword
 //      NOT one generic `F<X>` / projection over a single source set
 //      (Practice 7). The compound payload-type difference IS the
 //      partition's defining structural fact.
-// Terminal: the closed three-way Verilog module-declaration-style
-// classifier of the IEEE 1364-2005 §12.3.4 spec (NoPortsModule +
-// per-style variants); ledger added per codex BLOCKING on PR #3176
-// 2026-05-16, NoPortsModule variant added at sha 7709c9968 per
+// Terminal: the closed four-way Verilog module-declaration-style
+// classifier of the IEEE 1364-2005 §A.1.2 / §12.3.4 spec
+// (NoPortListModule + EmptyPortListModule + per-style variants);
+// the NoPortListModule/EmptyPortListModule split (sha cb028c7d+,
+// openai-pro REQUEST_CHANGES) distinguishes parens-absent from
+// parens-present-empty per §A.1.2. Original ledger added per codex
+// BLOCKING on PR #3176 2026-05-16, NoPortsModule variant added at
+// sha 7709c9968 per
 // openai-pro REQUEST_CHANGES (line 3525 — no-port-list
 // representation-duality + non-ANSI body port_declarations with
 // empty header).
-// All 3 variants carry `attributes: AttributeInstanceClause` per
+// All 4 variants carry `attributes: AttributeInstanceClause` per
 // IEEE 1364-2005 Syntax 3-4: `module_declaration ::= { attribute_
 // instance } module_keyword ... endmodule` — `(* optimize_power *)
 // module M ... endmodule` is legal spec form. Field added at sha
 // 7b7dd0b54+ per openai-pro REQUEST_CHANGES on PR #3176 sha
 // f9159ce8b (Layer-Model BLOCKING: top-level module attributes had
 // no typed home; reuses the existing AttributeInstanceClause Disj).
-// No double-authority concern: the source_text design-element
-// classifier is deferred to the bundled T-4 LanguageModel and
-// doesn't yet wrap VerilogModule.
+// No double-authority concern by grammar-level distinction (not by
+// deferral-timing): the §A.1.2 / Syntax 3-4 attribute_instance
+// prefix is INTRINSIC to the module_declaration production,
+// attaching at the declaration boundary itself. The source_text
+// design-element classifier (when the bundled T-4 LanguageModel
+// lands it) is the description-level {module | udp | config}
+// KIND-SELECTOR — a different grammar level that structurally
+// NEVER carries attribute_instance. So there is no double-authority
+// NOW NOR AFTER the wrapper lands: by spec grammar levels, the
+// attribute_instance lives ON the declaration (here) and not on
+// the kind-selector.
 type VerilogModule
-  = NoPortsModule {
-      // `module M; ... endmodule` (no port list at all). Style-
-      // neutral: with no header ports, the §12.3.4 ANSI-vs-non-ANSI
-      // distinction loses meaning (the distinction is defined by
-      // whether port direction lives in header or body — both
-      // collapse to "no ports anywhere"). Items use the
-      // AnsiModuleItem set (which excludes NonAnsiPortDeclarationItem
-      // / NonAnsiBodyPortDeclarationItem) because there are no
-      // header ports for body port_declarations to reference per
-      // §12.3.4 — so admitting body port_declaration items here
-      // would be a spec-illegal state.
+  = NoPortListModule {
+      // `module M; ... endmodule` — the §A.1.2 `[list_of_ports]` /
+      // `[list_of_port_declarations]` brackets are ENTIRELY absent
+      // (no parens around the port-list position in the spec form).
+      // Style-neutral: with no header port-list, the §12.3.4
+      // ANSI-vs-non-ANSI distinction loses meaning. Distinct from
+      // EmptyPortListModule below per §A.1.2 surface fact (parens-
+      // absent vs parens-present-empty) — openai-pro REQUEST_CHANGES
+      // on PR #3176 sha cb028c7d at line 4021: prior NoPortsModule
+      // conflated these two distinct spec forms, losing a §A.1.2
+      // surface fact the language model otherwise preserves for
+      // parse/emit fidelity. Items use the AnsiModuleItem set
+      // (excludes body port_declaration variants — body
+      // port_declarations would reference non-existent header port
+      // names per §12.3.4).
+      attributes: AttributeInstanceClause,
+      module_keyword: ModuleKeyword,
+      name: Symbol,
+      parameter_port_list: ModuleParameterPortList,
+      items: List<AnsiModuleItem>
+    }
+  | EmptyPortListModule {
+      // `module M (); ... endmodule` — the §A.1.2 port-list brackets
+      // are PRESENT but the inner list is EMPTY. Distinct spec
+      // surface from NoPortListModule above (parens-present-empty
+      // vs parens-absent). Same style-neutrality and item-set
+      // reasoning as NoPortListModule (no header ports → no body
+      // port_declarations admissible). Variant added at sha
+      // cb028c7d+ per openai-pro REQUEST_CHANGES (line 4021).
       attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
       name: Symbol,
