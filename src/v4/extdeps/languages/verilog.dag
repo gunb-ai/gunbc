@@ -380,6 +380,31 @@ type PortDirection
 //      preserves writer intent).
 // Terminal: the closed eleven-way non-trireg net-type-keyword
 // classifier of the IEEE 1364-2005 spec.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT
+// GREEN rule this Disj was correctly GREEN (no consumer needed the
+// decomposition yet, so structural extraction was deferred). Under
+// the post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW
+// because a namable richer source EXISTS:
+//   Axes: {resolution_function, default_when_undriven, driver_arity,
+//          designer_intent_marker}
+//     Resolution: Wire/Tri=X-on-conflict; Wand/TriAnd=AND;
+//       Wor/TriOr=OR; Tri0=pull0; Tri1=pull1; Supply0=const0;
+//       Supply1=const1; Uwire=single-driver-required
+//     Default-when-undriven: Wire/Tri/Wand/Wor=X; Tri0=0; Tri1=1;
+//       Supply0=0; Supply1=1; Uwire=N/A
+//     Driver-arity: multi-driver-resolution (Wire/Wand/Wor/Tri*);
+//       power-rail (Supply0/1); exactly-one (Uwire)
+//     Designer-intent marker: Tri/TriAnd/TriOr (semantically-
+//       equivalent partner variants kept distinct for parse∘emit
+//       writer-intent preservation)
+//   Trigger: first consumer of net-resolution semantics (synthesizer
+//     dispatch / driver-resolution walker).
+//   Obligation: the first meaning-consumer owes structural
+//     decomposition into a {resolution, default, arity} record AT
+//     the consumer site — NOT a local match-over-keyword lookup in
+//     this carrier.
 type NonTriregNetKind
   = Wire
   | Tri
@@ -1318,7 +1343,10 @@ type NetIdentifierDeclarator {
 // would EDIT this Disj explicitly).
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: every variable-declaration emitter,
 //      every procedural-assignment legality check (only RegVariable
 //      is a legal procedural-assignment destination), every signed-
@@ -1361,6 +1389,31 @@ type NetIdentifierDeclarator {
 // Terminal: the closed five-variant Verilog variable-declaration
 // classifier; illegal kind×packing AND kind×signedness combinations
 // are unrepresentable by construction.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT
+// GREEN rule this Disj was correctly GREEN (D2 inhabitance not yet
+// landed). Under the post-#3200 consumer-INDEPENDENT rule this is
+// 🟡 YELLOW because a namable richer source EXISTS:
+//   Axes: {storage-class, width, signedness, algebra-grounding}
+//     RegVariable: storage=mutable-bit-vector; width=packing-payload;
+//       signedness=signedness-payload; algebra=Semiring/OrderedRing
+//       per packing×signedness
+//     IntegerVariable: storage=fixed-int; width=32; signedness=
+//       signed-fixed; algebra=OrderedRing<Int<32>>
+//     RealVariable: storage=ieee754-double; width=64; signedness=
+//       ieee754-internal; algebra=ApproximateField<Float>
+//     TimeVariable: storage=sim-time-counter; width=64; signedness=
+//       unsigned-fixed; algebra=Semiring<UInt<64>>
+//     RealTimeVariable: aliased to RealVariable per spec §3.7.2
+//       (parse∘emit preserves the keyword); same algebra-grounding
+//       as RealVariable
+//   Trigger: first consumer of variable-storage / algebra semantics
+//     (algebra inhabitance lens — D2 pathway).
+//   Obligation: the first meaning-consumer (D2 inhabitance work) owes
+//     structural decomposition into a {storage-class, width,
+//     signedness, algebra} record AT that consumer — NOT a local
+//     match-over-kind lookup in this carrier.
 type VariableDeclaration
   // declarators: 🟡 spec-non-empty (§A.2.4 / §7.4) — deferred to
   // std/collection.dag Wave-A2 `List<T> where non_empty` refinement;
@@ -1601,7 +1654,10 @@ type OutputPortAnsiNetTypeKind
 // CLOSED (C1 stop-signal). Three-way variable-form output partition.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Five-pattern ledger abbreviated:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Five-pattern ledger
+// abbreviated:
 //   1. Fact placement — FAILS: shared output-port classifier.
 //   2. Variant-is-data — FAILS: collapsing to `{kind, packing?,
 //      signedness?}` admits the §12.3.3 illegal `output real` /
@@ -1617,6 +1673,24 @@ type OutputPortAnsiNetTypeKind
 // Terminal: the closed three-way Verilog ANSI-output-port VARIABLE-
 // form type/kind classifier; real/realtime outputs unrepresentable
 // by construction per §12.3.3.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT
+// GREEN rule this Disj was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW because a namable
+// richer source EXISTS — same {storage-class, width, signedness,
+// algebra-grounding} matrix as VariableDeclaration (output-admissible
+// subset: real/realtime structurally excluded per §12.3.3):
+//     OutputAnsiRegType: same as RegVariable
+//     OutputAnsiIntegerType: same as IntegerVariable
+//     OutputAnsiTimeType: same as TimeVariable
+//   Trigger: first consumer of variable-storage / algebra semantics
+//     (D2 inhabitance pathway — shared with VariableDeclaration
+//     consumer).
+//   Obligation: the first meaning-consumer owes structural
+//     decomposition into the same {storage-class, width, signedness,
+//     algebra} record consumed for VariableDeclaration — single-
+//     authority across the storage-kind family.
 type OutputPortAnsiVariableTypeKind
   = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
   | OutputAnsiIntegerType
@@ -2021,7 +2095,10 @@ type AnsiOutputPortDeclarator {
 // this five-way parameter-type partition.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: every parameter consumer (override-
 //      conversion per §12.1.3, type-check legality, emission)
 //      reads the type kind uniformly; shared classifier.
@@ -2046,6 +2123,27 @@ type AnsiOutputPortDeclarator {
 //      VariableDeclaration's kind × packing × signedness
 //      dissolution.
 // Terminal: the closed five-way Verilog parameter-type classifier.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT
+// GREEN rule this Disj was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW because a namable
+// richer source EXISTS — same {storage-class, width, signedness,
+// algebra-grounding} matrix as VariableDeclaration / OutputPortAnsi
+// VariableTypeKind (compile-time-constant variant at parameter
+// position):
+//     UntypedParameter: packing-payload + signedness-payload
+//       (inferred from default-value expression)
+//     IntegerParameter: same as IntegerVariable
+//     RealParameter: same as RealVariable
+//     TimeParameter: same as TimeVariable
+//     RealTimeParameter: same as RealTimeVariable (aliased to Real)
+//   Trigger: first consumer of parameter-storage / algebra semantics
+//     (D2 inhabitance pathway — shared with the
+//     VariableDeclaration / OutputPortAnsiVariableTypeKind family).
+//   Obligation: the first meaning-consumer owes structural
+//     decomposition into the same storage-class matrix used for
+//     VariableDeclaration — single-authority across the family.
 type ParameterTypeKind
   = UntypedParameter { packing: PackingShape, signedness: Signedness }
   | IntegerParameter
@@ -3313,7 +3411,10 @@ type LocalParameterDeclaration {
 // primitive-gate partition; SystemVerilog adds no new primitives.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+// 🟡 YELLOW (deferred-on-consumer; re-scoped under #3200 rule-change
+// 2026-05-16 — namable richer source exists; see #3200 RE-SCOPE
+// footer before the type declaration below). Ledger — five patterns
+// attempted:
 //   1. Fact placement — FAILS: every gate-emission consumer + every
 //      per-gate terminal-arity check + every per-gate drive-strength
 //      legality check reads the kind tag uniformly; shared
@@ -3337,6 +3438,27 @@ type LocalParameterDeclaration {
 //      partition is irreducible.
 // Terminal: the closed twenty-six-way Verilog primitive-gate-kind
 // classifier of the IEEE 1364-2005 §7 spec.
+//
+// #3200 RE-SCOPE (rule-change 2026-05-16, docs/modeling-discipline.md
+// merged on origin/main): under the pre-#3200 consumer-DEPENDENT
+// GREEN rule this Disj was correctly GREEN. Under the post-#3200
+// consumer-INDEPENDENT rule this is 🟡 YELLOW because a namable
+// richer source EXISTS:
+//   Axes: {gate-family, logic-function, inversion, polarity,
+//          controllable-enable, resistive, transmission}
+//     Logic-family + inversion: and/or/not/buf/nand/nor/xor/xnor
+//     Controllable-enable + polarity: bufif0/bufif1/notif0/notif1
+//     CMOS-switch + resistive + polarity: cmos/rcmos/nmos/rnmos/
+//       pmos/rpmos
+//     Transmission-gate + resistive + controllable + polarity:
+//       tran/rtran/tranif0/tranif1/rtranif0/rtranif1
+//     Pull-resistor + polarity: pulldown/pullup
+//   Trigger: first consumer of gate-class semantics (elaboration /
+//     simulation dispatch — the per-gate-class admissibility table
+//     for drive_strength / delay / terminal-arity).
+//   Obligation: the first meaning-consumer owes structural
+//     decomposition into the gate-family matrix AT that consumer —
+//     NOT a local match-over-keyword lookup in this carrier.
 type PrimitiveGateKind
   = GateAnd
   | GateNand
