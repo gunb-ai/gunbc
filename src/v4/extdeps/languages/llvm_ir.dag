@@ -423,64 +423,58 @@ type LlvmConstant
 
 
 // ─────────────────────────────────────────────────────────────────────
-// LlvmValue — an SSA operand. THE SSA crux, modeled as the value-graph
-// (the scaffold's "the value graph is Node edges"): an operand IS an
-// edge to its def-site, never a stored name (the textual `%x` spelling
-// is a `DeclaredNormalized` boundary concern — modeling notes / B2-OMNI
-// finding).
-//   - InstructionValue { instruction } — the value PRODUCED by a non-phi
-//     instruction: a direct edge to the producing Node. SSA single-
-//     assignment is structural — the instruction Node is the unique
-//     authority for its value (INVARIANTS P2); a value used twice is two
-//     edges to ONE node (node.dag content-hash canonicalizes the share).
-//     No `result: Symbol` is minted anywhere (K-1: Symbols are not
-//     hand-mintable; the name is not load-bearing — see the finding).
-//   - PhiValue { phi } — the value PRODUCED by a φ. A phi result is a
-//     first-class SSA operand (it is referenced pervasively — that IS
-//     phi's purpose); the value-graph edge points at the `PhiNode`
-//     itself (same def-site-is-the-value discipline as InstructionValue).
-//     This does NOT weaken the block-start guarantee: a `PhiNode` is
-//     still ONLY constructible inside `BasicBlock.phis` (phi-after-non-
-//     phi stays unrepresentable, P2); `PhiValue` is purely a *reference*
-//     edge to it, restoring the SSA value-authority a φ defines. (Fix
-//     for the codex BLOCKING: hoisting phi to the block region must not
-//     drop its def-site value-reference — both invariants now hold.)
-//   - ArgumentValue { name } — a function parameter, by its binder
-//     `Symbol` (threaded from the function signature; a binder identity,
-//     not a minted fresh name).
+// LlvmValue — an SSA operand. THE SSA crux, modeled as a NAME-REFERENCE
+// (node.dag A1's cross-declaration idiom — precedent: diagnostic.dag
+// `reason: Symbol`): an operand naming its def-site by the K-1-opaque
+// `Symbol`, resolved through function scope. This is the FINITE,
+// A1-faithful REALIZATION of the value-graph intent (operands reference
+// their producers): because the def-use graph is CYCLIC for every loop
+// (a loop-carried phi references an instruction that references the
+// phi), the reference MUST be a name (finite Node tree, cycle expressed
+// through scope) — A1 mandates name-reference recursion for exactly this
+// reason. An earlier cut INLINED the producer node; that could not
+// finitely represent cyclic loop-carried SSA (excluding ALL loops — a
+// P1/M3 spec-narrowing, the A1 violation A1 exists to prevent). The
+// name-reference here PRESERVES the value-graph (operands → producers);
+// it is its correct realization, not an abandonment.
+//   - LocalRef { name } — a use of an in-function def-site by its
+//     `Symbol` name, resolved through function scope to a value-
+//     producing instruction's `result`, a `PhiNode.result`, or a
+//     function parameter (all share LLVM's local `%`-namespace).
+//     Single-assignment is the structural fact that exactly one def-site
+//     declares each name (INVARIANTS P2); a use is finite (a name), so a
+//     def-use CYCLE is representable (the loop-carried-phi case).
 //   - ConstantOperand { constant } — an inline `LlvmConstant`.
-//   - GlobalValue { name } — a module-level global/function address by
-//     name-reference `Symbol` (a module binder).
+//   - GlobalRef { name } — a module-level global/function address by
+//     `Symbol` name, resolved through the module namespace.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
 // five patterns attempted:
 //   1. Fact placement — FAILS: every instruction operand is resolved
 //      uniformly; the value kind is a shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: the variants carry disjoint payloads (an
-//      `LlvmInstruction`; a `PhiNode`; a binder `Symbol`; an
-//      `LlvmConstant`); a flat `{ kind, instruction?, phi?, name?,
-//      constant? }` makes "an InstructionValue carrying a constant"
-//      representable — the inverse of P2.
+//   2. Variant-is-data — FAILS: the variants carry disjoint payloads (a
+//      local-scope `Symbol`; an `LlvmConstant`; a module-scope
+//      `Symbol`); a flat `{ kind, name?, constant? }` makes "a LocalRef
+//      carrying a constant" representable — the inverse of P2. (`LocalRef`
+//      and `GlobalRef` are NOT one labelled case: the resolution SCOPE
+//      differs — function vs module namespace — a real distinction, not
+//      a spelling.)
 //   3. Algebraic form — N/A: operand-kind is the LangRef value-use
 //      taxonomy; no richer std/ source — it is the boundary itself.
 //   4. Dimensional — FAILS: an operand is EXACTLY ONE kind; alternatives,
 //      not coordinates.
-//   5. Parameterized family — FAILS: heterogeneous payloads (a producing
-//      instruction node / a phi node / a binder Symbol / a constant) —
-//      `InstructionValue` and `PhiValue` are NOT one `F<X>` (their
-//      payloads are the two structurally-distinct def-site shapes — a
-//      non-phi instruction vs a block-start φ — not a projection over a
-//      declared set); not one `F<X>` over a declared set.
+//   5. Parameterized family — FAILS: heterogeneous payloads / scopes (a
+//      function-scope name / a constant / a module-scope name); not one
+//      `F<X>` over a declared set.
 // Terminal: the irreducible SSA operand kinds; single-assignment is the
-// structural def-site authority (INVARIANTS P2), not a stored name/flag —
-// and every def-site (non-phi instruction AND φ) is now referenceable.
+// one-def-site-per-name structural fact (INVARIANTS P2), and the
+// name-reference keeps the Node tree finite while admitting cyclic
+// def-use (loops) — the A1-faithful value-graph realization.
 type LlvmValue
-  = InstructionValue { instruction: LlvmInstruction }
-  | PhiValue { phi: PhiNode }
-  | ArgumentValue { name: Symbol }
+  = LocalRef { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
-  | GlobalValue { name: Symbol }
+  | GlobalRef { name: Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -646,10 +640,15 @@ type PhiIncoming {
 // PhiNode — an SSA φ. A record (Conj), no ledger. NOT a variant of
 // `LlvmInstruction`: its block-start position is STRUCTURAL (it lives in
 // `BasicBlock.phis`), so "a phi after a non-phi" is unrepresentable (P2)
-// rather than a checker rule. Carries no result name (the value IS this
-// node — the value-graph finding); `result_type` is the load-bearing
+// rather than a checker rule. Carries `result: Symbol` — the def-site
+// name a φ defines; uses reference it via `LlvmValue.LocalRef` resolved
+// through function scope (the A1 name-reference idiom). This is what
+// makes loop-carried SSA representable: a φ's incoming may name an
+// instruction whose operand names the φ — a finite cyclic def-use graph,
+// not an infinite inlined tree. `result_type` is the load-bearing
 // LangRef-typed result type.
 type PhiNode {
+  result: Symbol
   result_type: LlvmType
   incomings: List<PhiIncoming>
 }
@@ -856,14 +855,27 @@ type AtomicRmwOp
 // the genuinely structurally-distinct instructions stay faithful
 // variants.
 //
-// NO `result: Symbol`. An instruction IS its produced value (operands
-// edge to it via `LlvmValue.InstructionValue` — the value-graph; the
-// textual `%x` name is a `DeclaredNormalized` C5 boundary concern, NOT
-// load-bearing data, and K-1 forbids minting Symbols in declarative
-// data anyway — see the B2-OMNI finding). `result_type` IS load-bearing
-// (LLVM is typed) and stays where LangRef carries it. `Store`/`Fence`
-// produce no value and carry no result type — modeled by the absence of
-// those fields, not a nullable result (P2 — "a store with a result" is
+// `result: Symbol` — the SSA def-site NAME. A value-producing
+// instruction carries the K-1-opaque `Symbol` it defines (`%x`/`%1`);
+// uses are NAME-REFERENCES (`LlvmValue.LocalRef`) resolved through
+// function scope — node.dag A1's cross-declaration idiom (precedent:
+// diagnostic.dag `reason: Symbol`). This is the FINITE, A1-faithful
+// REALIZATION of the value-graph intent (operands reference their
+// producers): the def-use graph may be CYCLIC (every loop has a
+// loop-carried phi referencing an instruction that references the phi),
+// and a name-reference keeps the bounded Node tree FINITE while
+// expressing that cycle — exactly why A1 mandates name-reference
+// recursion. (An earlier cut INLINED the producer node; that could not
+// finitely represent cyclic loop-carried SSA — a P1/M3 spec-narrowing
+// excluding ALL loops — and was the A1 violation A1 exists to prevent.
+// `result: Symbol` is a declaration FIELD = a name-reference, NOT a
+// runtime Symbol mint; the K-1 no-mint rule was specific to the removed
+// inhabitance lambdas, not declaration-class fields.) The textual `%x`
+// spelling is `DeclaredNormalized` (α-equivalent — `Symbol` is opaque,
+// so the content-hash is rename-invariant). `result_type` IS
+// load-bearing (LLVM is typed). `Store`/`Fence` produce NO value and
+// carry no `result`/`result_type` — modeled by the absence of those
+// fields, not a nullable result (P2 — "a store with a result" is
 // unrepresentable).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
@@ -905,31 +917,37 @@ type AtomicRmwOp
 // (the M3 spec-anchor analog of node.dag's C1 stop-signal).
 type LlvmInstruction
   = Binary {
+      result: Symbol
       result_type: LlvmType
       op: BinaryOpcode
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Conversion {
+      result: Symbol
       result_type: LlvmType
       op: ConversionOpcode
       value: LlvmValue
     }
   | IntCompare {
+      result: Symbol
       predicate: IntPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | FloatCompare {
+      result: Symbol
       predicate: FloatPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Alloca {
+      result: Symbol
       allocated_type: LlvmType
       element_count: LlvmValue
     }
   | Load {
+      result: Symbol
       result_type: LlvmType
       pointer: LlvmValue
       ordering: LoadAtomicity
@@ -940,17 +958,20 @@ type LlvmInstruction
       ordering: StoreAtomicity
     }
   | GetElementPtr {
+      result: Symbol
       source_type: LlvmType
       base: LlvmValue
       indices: List<LlvmValue>
     }
   | AtomicRmw {
+      result: Symbol
       op: AtomicRmwOp
       pointer: LlvmValue
       operand: LlvmValue
       ordering: AtomicRmwOrdering
     }
   | CmpXchg {
+      result: Symbol
       pointer: LlvmValue
       compare_value: LlvmValue
       new_value: LlvmValue
@@ -961,60 +982,73 @@ type LlvmInstruction
       ordering: FenceOrdering
     }
   | ExtractValue {
+      result: Symbol
       aggregate: LlvmValue
       indices: List<Int>
     }
   | InsertValue {
+      result: Symbol
       aggregate: LlvmValue
       element: LlvmValue
       indices: List<Int>
     }
   | ExtractElement {
+      result: Symbol
       vector: LlvmValue
       index: LlvmValue
     }
   | InsertElement {
+      result: Symbol
       vector: LlvmValue
       element: LlvmValue
       index: LlvmValue
     }
   | ShuffleVector {
+      result: Symbol
       first: LlvmValue
       second: LlvmValue
       mask: LlvmValue
     }
   | Select {
+      result: Symbol
       condition: LlvmValue
       if_true: LlvmValue
       if_false: LlvmValue
     }
   | Call {
+      result: Symbol
       result_type: LlvmType
       callee: LlvmValue
       arguments: List<CallArgument>
     }
   | Freeze {
+      result: Symbol
       value: LlvmValue
     }
   | FNeg {
+      result: Symbol
       result_type: LlvmType
       operand: LlvmValue
     }
   | VaArg {
+      result: Symbol
       result_type: LlvmType
       va_list: LlvmValue
       arg_type: LlvmType
     }
   | LandingPad {
+      result: Symbol
       result_type: LlvmType
       is_cleanup: LandingPadCleanup
       clauses: List<LandingClause>
     }
   | CatchPad {
+      result: Symbol
       catch_switch: LlvmValue
       args: List<LlvmValue>
     }
   | CleanupPad {
+      result: Symbol
       parent_pad: LlvmValue
       args: List<LlvmValue>
     }
