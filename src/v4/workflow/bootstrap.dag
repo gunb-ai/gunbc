@@ -88,25 +88,28 @@
 // Modeling notes (read before validating against the anchor)
 //
 // DATA, not a runner. This file declares the bootstrap chain AS DATA: a
-// fixed `BootstrapPlan` record of named `CompileStep` / `FixedPointStep`
-// slots that v2's `run` interpreter walks. There is deliberately NO
-// orchestration body here —
-// no fn that spawns processes, reads the filesystem, or shells out. That
-// is exactly the v3 regression door (build.rs / bootstrap.sh = editable
-// Rust/script authority). The plan is inert structured data; the
-// interpreter that gives it effect is the deferred operation, with a
-// named owner and dissolution trigger (below).
+// fixed `BootstrapPlan` record of four named singleton edge-identity
+// slots (`SeedToStage0` / `Stage0ToStage1` / `Stage1ToStage2` /
+// `FixptStage1Stage2`) that v2's `run` interpreter walks. There is
+// deliberately NO orchestration body here — no fn that spawns
+// processes, reads the filesystem, or shells out. That is exactly the
+// v3 regression door (build.rs / bootstrap.sh = editable Rust/script
+// authority). The plan is inert structured data; the interpreter that
+// gives it effect is the deferred operation, with a named owner and
+// dissolution trigger (below).
 //
-// WHY `Stage` IS A CLOSED NULLARY SUM. The chain has exactly four named
-// artifacts: the frozen external seed (v2, in src/v2/, touched once) and
-// the three self-host products stage0/stage1/stage2. `Stage` enumerates
-// them; it carries no payload because a stage IS its identity — the
-// emission style (stage0 = v2-style, stage1+ = v4-style) and the source
-// root (always src/v4) are FACTS about a stage, derivable, not stored
-// fields (no non-load-bearing fields — CODING/MODELING discipline). This
-// is why the fixed point is `FixedPoint { Stage1, Stage2 }` and NOT
-// stage0==stage1: stage0 is v2-emission-style, so only stage1==stage2 is
-// the self-host fixed point.
+// WHY EACH POSITION IS A SINGLETON EDGE TYPE. The chain has exactly
+// four positions over the artifacts {external seed (v2, src/v2/,
+// touched once), stage0, stage1, stage2}. Each position's source→target
+// edge is the chain's FIXED structural identity, not configuration, so
+// it is encoded as a distinct payload-less singleton TYPE (the edge IS
+// the type) rather than free `Stage` fields — emission style (stage0 =
+// v2-style, stage1+ = v4-style) and source root (always src/v4) are
+// derivable FACTS, never stored. This is why the fixed point is the
+// `FixptStage1Stage2` singleton and NOT stage0==stage1: stage0 is
+// v2-emission-style, so only stage1==stage2 is the self-host fixed
+// point. Result: `BootstrapPlan` has exactly one inhabitant; no
+// mis-wiring is representable (the openai-pro/operator P2 resolution).
 //
 // WHY THE PINNED HASH IS NOT A STORED LITERAL. STRUCTURE.md §"Bootstrap
 // chain" + the A3 block (above) make the v4 binary a content-addressed
@@ -115,7 +118,8 @@
 // PRODUCED by `content_hash : Node -> Hash` at interpret time, never
 // hand-written here (a hand-written hash would be exactly the editable
 // proxy A3 rejects). So the plan stores no `pinned: Hash` field; the
-// `FixedPoint` step DECLARES the BitIdentical equality structurally, and
+// `FixptStage1Stage2` step DECLARES the BitIdentical equality
+// structurally, and
 // the executable assertion over real emitted artifacts is T-15's
 // `BitIdentical` TestClaim CONSUMING this plan — not authored here.
 //
@@ -137,7 +141,8 @@
 //   (2) The executable fixed-point assertion (stage1-emitted ==
 //       stage2-emitted, BitIdentical) is a `TestClaim`
 //       (std/verification.dag, `kind: RoundTrips`) AUTHORED BY T-15, not
-//       here — bootstrap.dag declares the `FixedPoint` step it consumes.
+//       here — bootstrap.dag declares the `FixptStage1Stage2` step it
+//       consumes.
 //       OWNER/TRIGGER: T-15 fixed-point validation lane.
 //   Bounds on use: no consumer reads an `interpret`/run symbol from this
 //   file in this PR; the only gate this file rides today is the
