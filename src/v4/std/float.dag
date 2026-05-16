@@ -102,12 +102,13 @@ import v4.std.node { Symbol }
 // Dissolution = grounded `add`/`mul` realized over `Float32Interchange` /
 // `Float64Interchange` (machine.dag `Word*`) on the homomorphism spine.
 //
-// Until then: **Tier-2** `float_ordered_compare_tier2` + `float_body_compare_total`
-// carry ordering: fail-closed `Outcome` for NaN (IEEE `<` unordered), and on
-// non-NaN finite pairs a **totalOrder-consistent** magnitude compare on the
-// encoded fields (sign + inverted lex on exponent/significand when both
-// negative — IEEE 754 `totalOrder` discipline), extending numeric `<` on the
-// ordered subset. Still NOT a packaged `ApproximateField` witness.
+// Until then: **Tier-2** `float_ordered_compare_tier2` carries IEEE **numeric**
+// ordered comparison on the non-NaN subset via `float_body_compare_ieee_ordered`
+// (`±0` magnitude with both `Nat` fields at Peano `Zero` ⇒ `Equal` — IEEE
+// numeric equality). That is **not** IEEE 754 **`totalOrder`**, which
+// distinguishes `-0` before `+0`; the explicit `totalOrder` carrier is
+// `float_body_compare_total_order` (split so P1 does not conflate the two).
+// Still NOT a packaged `ApproximateField` witness.
 //
 // SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
 // `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
@@ -234,7 +235,7 @@ fn ordering_invert(o: Ordering) -> Ordering {
 // float_finite_unsigned_field_order — lexicographic Nat order on encoded
 // `(biased_exponent, trailing_significand)` as unsigned magnitude keys
 // (correct for **positive** IEEE finite values; negatives compose via
-// `ordering_invert` in `float_body_compare_total`).
+// `ordering_invert` in `float_body_compare_total_order`).
 fn float_finite_unsigned_field_order(
   ea: Nat,
   fa: Nat,
@@ -269,12 +270,27 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
 }
 
 
-// float_body_compare_total — IEEE 754 `totalOrder`-style total order on this
-// carrier (finite: sign rank, then unsigned exponent/significand lex with
-// **inverted** magnitude order when both signs are negative; non-finite: tag
-// rank). NOT the partial IEEE `<` relation; NaN unorderedness is Tier-2 only
-// (`float_ordered_compare_tier2`).
-fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
+// float_finite_magnitude_zero — true when `biased_exponent` and
+// `trailing_significand` are both Peano `Zero` (IEEE ±0 magnitude on this
+// carrier; sign bit may still differ).
+fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
+  match e {
+    Zero => match f {
+      Zero => true
+      Succ { prev: _ } => false
+    }
+    Succ { prev: _ } => false
+  }
+}
+
+
+// float_body_compare_total_order — IEEE 754 **`totalOrder`** on this carrier
+// (finite: sign rank, then unsigned exponent/significand lex with **inverted**
+// magnitude order when both signs are negative; non-finite: tag rank).
+// Distinguishes `-0` before `+0`. NOT IEEE numeric `==` / ordered `<` alone;
+// use `float_body_compare_ieee_ordered` when Tier-2 must extend numeric
+// equality for signed zero. NaN unorderedness stays Tier-2-only (`Rejected`).
+fn float_body_compare_total_order(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
       Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
@@ -319,10 +335,35 @@ fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
 }
 
 
+// float_body_compare_ieee_ordered — total comparison used by Tier-2 **after**
+// NaN rejection: agrees with IEEE **numeric** ordering on the non-NaN subset
+// (`±0` with zero magnitude ⇒ `Equal`). Delegates all other cases to
+// `float_body_compare_total_order` (same sign/magnitude logic as `totalOrder`
+// except signed-zero collapse).
+fn float_body_compare_ieee_ordered(a: FloatBody, b: FloatBody) -> Ordering {
+  match a {
+    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
+      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
+        if float_finite_magnitude_zero(e: ea, f: fa)
+          && float_finite_magnitude_zero(e: eb, f: fb)
+        {
+          Equal
+        } else {
+          float_body_compare_total_order(a: a, b: b)
+        }
+      }
+      NonFinite { tag: tb } => float_body_compare_total_order(a: a, b: b)
+    }
+    NonFinite { tag: ta } => float_body_compare_total_order(a: a, b: b)
+  }
+}
+
+
 // float_ordered_compare_tier2 — Tier-2 totalization for **unordered** IEEE `<`
 // in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
-// `Produced` with `float_body_compare_total` (IEEE 754 `totalOrder` on the
-// non-NaN subset — extends numeric `<` on ordered finite values; see modeling notes).
+// `Produced` with `float_body_compare_ieee_ordered` (numeric ordered compare on
+// the non-NaN subset, `±0` ⇒ `Equal`; see `float_body_compare_total_order` for
+// strict IEEE 754 `totalOrder` without that collapse).
 fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
   if float_body_is_nan(a.body) {
     Rejected {
@@ -342,7 +383,7 @@ fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) ->
         }
       }
     } else {
-      Produced { value: float_body_compare_total(a.body, b.body) }
+      Produced { value: float_body_compare_ieee_ordered(a.body, b.body) }
     }
   }
 }
