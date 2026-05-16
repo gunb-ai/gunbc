@@ -82,30 +82,43 @@ import v4.std.algebra {
 //
 // B2-OMNI PROBE FINDING (the deliverable — the STOP discipline is the
 // product). LLVM IR models as a plain `LanguageModel` with NO 6th
-// behavior and NO core/pipeline change. The three structurally-unusual
-// SSA shapes resolve to ORDINARY Node structure:
-//   - "every value defined once" (SSA) — an `LlvmValue` use is a
-//     NAME-REFERENCE (an opaque `Symbol`, K-1) resolved through scope to
-//     its unique def-site Node. Single-assignment is therefore
-//     STRUCTURAL: the def-site Node is the one authority for the value
-//     (INVARIANTS P2); there is no separate mutable cell to make a
-//     second assignment representable. This is exactly std/node.dag's
-//     cross-declaration idiom (A1: recursion in children; references are
-//     name Atoms) — the SAME mechanism inhabitance and `diagnostic.reason`
-//     already use. No new connective, no new behavior.
-//   - phi — a phi is an ORDINARY instruction Node (`Phi` below). Its
-//     incoming edges are (value, predecessor-label) pairs: plain
-//     structured operands. At the computation layer phi is `Branch`-
-//     shaped (it selects an incoming value by which CFG edge was taken)
-//     — it reuses the EXISTING closed `Behavior::Branch`, it does not add
-//     one. Per IN-B: control/data flow is Node edges; phi is a Node.
-//   - dominance — NOT modeled as a field or flag (feedback_no_
-//     annotations). The model carries the CFG structurally (each block's
-//     terminator names its successor labels — `block_successors` below).
-//     "Definition dominates all uses" is a LENS read over that Node
-//     graph (the same shape as the complexity/effect lenses), derived,
-//     never stored. Storing a `dominates` edge would be a second
-//     authority for a fact the CFG already determines (INVARIANTS P2).
+// behavior and NO core/pipeline change. The structurally-unusual SSA
+// shapes resolve to ORDINARY Node structure — and modeling them HONESTLY
+// drove the right structural form:
+//   - "every value defined once" (SSA) — an `LlvmValue` IS its def-site:
+//     an operand edges DIRECTLY to the producing instruction Node
+//     (`InstructionValue`), to a parameter binder, a global, or an
+//     inline constant. This is the scaffold's own "the value graph is
+//     Node edges": SSA is literally the operand-DAG; a value reused
+//     twice is two edges to ONE node (node.dag's content-hash makes the
+//     shared node canonical). Single-assignment is therefore STRUCTURAL
+//     (the node is the unique authority — INVARIANTS P2); there is no
+//     mutable cell to make reassignment representable. The textual `%x`
+//     / `%1` SPELLING is NOT load-bearing data — it is a K-1-style
+//     boundary rendering concern (a `DeclaredNormalized` C5 feature, the
+//     SAME α-equivalence node.dag's content-hash fold already has). An
+//     EARLIER cut carried a `result: Symbol` on every instruction; that
+//     was the un-faithful form — it would have forced the declarative
+//     inhabitance instances to MINT a fresh SSA `Symbol` (which the
+//     substrate forbids: K-1 opaque, not hand-mintable). Removing it
+//     both fixed that and produced the more faithful value-graph model —
+//     a STOP-shaped finding resolved by better structure, not a
+//     workaround.
+//   - phi — phi is an ORDINARY Node, hoisted to the block's structural
+//     `phis` region (`PhiNode`), so "a phi after a non-phi instruction"
+//     is UNREPRESENTABLE (P2), not a checker rule. It is NOT a variant
+//     of the general instruction sum (its block-start position is
+//     structural). At the computation layer phi is `Branch`-shaped (it
+//     selects an incoming value by which CFG edge was taken) — it reuses
+//     the EXISTING closed `Behavior::Branch`, it does not add one. Per
+//     IN-B: control/data flow is Node edges; phi is a Node.
+//   - dominance — NOT a field or flag (feedback_no_annotations). The CFG
+//     is carried structurally (each block's terminator names its
+//     successor labels — `block_successors`). "Definition dominates all
+//     uses" is a LENS read over that Node graph (the same shape as the
+//     complexity/effect lenses), derived, never stored; a `dominates`
+//     edge would be a second authority for what the CFG already
+//     determines (INVARIANTS P2).
 //
 // A2 TOTALITY IS A `.dag`-PROGRAM PROPERTY, NOT A MODELED-LANGUAGE ONE.
 // An LLVM CFG can contain irreducible / non-terminating loops (a back-
@@ -377,40 +390,48 @@ type LlvmConstant
 
 
 // ─────────────────────────────────────────────────────────────────────
-// LlvmValue — an SSA operand. THE SSA crux. A value is referenced one of
-// three ways; single-assignment is structural (modeling notes):
-//   - LocalRef { name } — a use of an instruction result or a function
-//     argument, by SSA name (opaque `Symbol`, K-1). Its identity IS its
-//     unique def-site Node, resolved through function scope; there is no
-//     mutable cell, so a second definition of the same name is not
-//     representable as a *value* (it would be a malformed def-site, a
-//     walker fail-closed concern, not a value shape).
+// LlvmValue — an SSA operand. THE SSA crux, modeled as the value-graph
+// (the scaffold's "the value graph is Node edges"): an operand IS an
+// edge to its def-site, never a stored name (the textual `%x` spelling
+// is a `DeclaredNormalized` boundary concern — modeling notes / B2-OMNI
+// finding).
+//   - InstructionValue { instruction } — the value PRODUCED by an
+//     instruction: a direct edge to the producing Node. SSA single-
+//     assignment is structural — the instruction Node is the unique
+//     authority for its value (INVARIANTS P2); a value used twice is two
+//     edges to ONE node (node.dag content-hash canonicalizes the share).
+//     No `result: Symbol` is minted anywhere (K-1: Symbols are not
+//     hand-mintable; the name is not load-bearing — see the finding).
+//   - ArgumentValue { name } — a function parameter, by its binder
+//     `Symbol` (threaded from the function signature; a binder identity,
+//     not a minted fresh name).
 //   - ConstantOperand { constant } — an inline `LlvmConstant`.
-//   - GlobalRef { name } — a module-level global/function address by
-//     name-reference Symbol.
+//   - GlobalValue { name } — a module-level global/function address by
+//     name-reference `Symbol` (a module binder).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
 // five patterns attempted:
 //   1. Fact placement — FAILS: every instruction operand is resolved
 //      uniformly; the value kind is a shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: LocalRef/GlobalRef carry a `Symbol`,
-//      ConstantOperand carries an `LlvmConstant` — disjoint payloads; a
-//      flat `{ kind, name?, constant? }` makes "a LocalRef carrying a
-//      constant" representable, the inverse of P2.
+//   2. Variant-is-data — FAILS: the variants carry disjoint payloads (an
+//      `LlvmInstruction`; a binder `Symbol`; an `LlvmConstant`); a flat
+//      `{ kind, instruction?, name?, constant? }` makes "an
+//      InstructionValue carrying a constant" representable — inverse P2.
 //   3. Algebraic form — N/A: operand-kind is the LangRef value-use
 //      taxonomy; no richer std/ source — it is the boundary itself.
 //   4. Dimensional — FAILS: an operand is EXACTLY ONE kind; alternatives,
 //      not coordinates.
-//   5. Parameterized family — FAILS: heterogeneous payloads (`Symbol`
-//      twice but in DIFFERENT roles — local-scope vs module-scope — and
-//      an `LlvmConstant` once); not one `F<X>` over a declared set.
+//   5. Parameterized family — FAILS: heterogeneous payloads (a producing
+//      instruction node vs a binder Symbol vs a constant); not one
+//      `F<X>` over a declared set.
 // Terminal: the irreducible SSA operand kinds; single-assignment is the
-// structural def-site authority (INVARIANTS P2), not a stored flag.
+// structural def-site authority (INVARIANTS P2), not a stored name/flag.
 type LlvmValue
-  = LocalRef { name: Symbol }
+  = InstructionValue { instruction: LlvmInstruction }
+  | ArgumentValue { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
-  | GlobalRef { name: Symbol }
+  | GlobalValue { name: Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -563,6 +584,18 @@ type PhiIncoming {
 }
 
 
+// PhiNode — an SSA φ. A record (Conj), no ledger. NOT a variant of
+// `LlvmInstruction`: its block-start position is STRUCTURAL (it lives in
+// `BasicBlock.phis`), so "a phi after a non-phi" is unrepresentable (P2)
+// rather than a checker rule. Carries no result name (the value IS this
+// node — the value-graph finding); `result_type` is the load-bearing
+// LangRef-typed result type.
+type PhiNode {
+  result_type: LlvmType
+  incomings: List<PhiIncoming>
+}
+
+
 // SwitchCase — one (constant, target-block) arm of a `switch`. Record,
 // no ledger.
 type SwitchCase {
@@ -634,20 +667,23 @@ type AtomicRmwOp
 
 
 // ─────────────────────────────────────────────────────────────────────
-// LlvmInstruction — the non-terminator instruction set (LangRef
-// "Instruction Reference", minus terminators which are `Terminator`).
-// Practice-7 projections (`Binary`/`Conversion`/`AtomicRmw`) collapse
-// the mechanically-uniform families to one shape over a closed opcode
-// set; the genuinely structurally-distinct instructions stay as
-// faithful variants.
+// LlvmInstruction — the non-terminator, non-phi instruction set (LangRef
+// "Instruction Reference", minus terminators (`Terminator`) and phi
+// (`PhiNode`, structurally hoisted to the block)). Practice-7
+// projections (`Binary`/`Conversion`/`AtomicRmw`) collapse the
+// mechanically-uniform families to one shape over a closed opcode set;
+// the genuinely structurally-distinct instructions stay faithful
+// variants.
 //
-// Every result-producing instruction carries `result` (the SSA name it
-// defines, an opaque `Symbol`, K-1) and `result_type`. The
-// single-assignment guarantee is that this `result` name is the unique
-// def-site (modeling notes) — there is no separate "assignment" node.
-// `Store`/`Fence` define no value (no `result`) — faithfully modeled by
-// their absence of those fields, not a nullable result (P2 — an illegal
-// "store with a result name" is unrepresentable).
+// NO `result: Symbol`. An instruction IS its produced value (operands
+// edge to it via `LlvmValue.InstructionValue` — the value-graph; the
+// textual `%x` name is a `DeclaredNormalized` C5 boundary concern, NOT
+// load-bearing data, and K-1 forbids minting Symbols in declarative
+// data anyway — see the B2-OMNI finding). `result_type` IS load-bearing
+// (LLVM is typed) and stays where LangRef carries it. `Store`/`Fence`
+// produce no value and carry no result type — modeled by the absence of
+// those fields, not a nullable result (P2 — "a store with a result" is
+// unrepresentable).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
 // discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
@@ -658,10 +694,10 @@ type AtomicRmwOp
 //   2. Variant-is-data — PARTIALLY APPLIED then FAILS to fully dissolve:
 //      the mechanically-uniform families ARE folded to data
 //      (`Binary`/`Conversion`/`AtomicRmw` over opcode sets — Practice-2/7
-//      done). The residual variants (Load/Store/GEP/Phi/Call/…) have
-//      genuinely disjoint shapes (Phi { incomings }; Store { value, ptr };
-//      Call { callee, args }); a flat record makes "a Store with phi
-//      incomings" representable — the inverse of P2. Cannot fully fold.
+//      done). The residual variants (Load/Store/GEP/Select/Call/…) have
+//      genuinely disjoint shapes (Store { value, ptr }; Call { callee,
+//      args }); a flat record makes "a Store with call arguments"
+//      representable — the inverse of P2. Cannot fully fold.
 //   3. Algebraic form — APPLIED where it grounds: arithmetic opcodes
 //      trace to the inhabitance instances ("operations fall out of
 //      inhabitance"); the instruction is still the bidirectional grammar
@@ -670,43 +706,37 @@ type AtomicRmwOp
 //      coordinate tuple of all kinds.
 //   5. Parameterized family — APPLIED to the uniform sub-families
 //      (the opcode-set projections) and FAILS for the residual: Load/
-//      Store/GEP/Phi/Select/Call/… are not one `F<X>` over a single
-//      declared set (heterogeneous arities and operand roles).
-// Terminal: the closed LangRef non-terminator instruction set, maximally
-// Practice-7-collapsed; residual variants are irreducibly distinct.
+//      Store/GEP/Select/Call/… are not one `F<X>` over a single declared
+//      set (heterogeneous arities and operand roles).
+// Terminal: the closed LangRef non-terminator non-phi instruction set,
+// maximally Practice-7-collapsed; residual variants irreducibly distinct.
 type LlvmInstruction
   = Binary {
-      result: Symbol
       result_type: LlvmType
       op: BinaryOpcode
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Conversion {
-      result: Symbol
       result_type: LlvmType
       op: ConversionOpcode
       value: LlvmValue
     }
   | IntCompare {
-      result: Symbol
       predicate: IntPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | FloatCompare {
-      result: Symbol
       predicate: FloatPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Alloca {
-      result: Symbol
       allocated_type: LlvmType
       element_count: LlvmValue
     }
   | Load {
-      result: Symbol
       result_type: LlvmType
       pointer: LlvmValue
       ordering: LoadStoreAtomicity
@@ -717,20 +747,17 @@ type LlvmInstruction
       ordering: LoadStoreAtomicity
     }
   | GetElementPtr {
-      result: Symbol
       source_type: LlvmType
       base: LlvmValue
       indices: List<LlvmValue>
     }
   | AtomicRmw {
-      result: Symbol
       op: AtomicRmwOp
       pointer: LlvmValue
       operand: LlvmValue
       ordering: AtomicOrdering
     }
   | CmpXchg {
-      result: Symbol
       pointer: LlvmValue
       compare_value: LlvmValue
       new_value: LlvmValue
@@ -741,51 +768,39 @@ type LlvmInstruction
       ordering: AtomicOrdering
     }
   | ExtractValue {
-      result: Symbol
       aggregate: LlvmValue
       indices: List<Int>
     }
   | InsertValue {
-      result: Symbol
       aggregate: LlvmValue
       element: LlvmValue
       indices: List<Int>
     }
   | ExtractElement {
-      result: Symbol
       vector: LlvmValue
       index: LlvmValue
     }
   | InsertElement {
-      result: Symbol
       vector: LlvmValue
       element: LlvmValue
       index: LlvmValue
     }
   | ShuffleVector {
-      result: Symbol
       first: LlvmValue
       second: LlvmValue
       mask: LlvmValue
     }
-  | Phi {
-      result: Symbol
-      result_type: LlvmType
-      incomings: List<PhiIncoming>
-    }
   | Select {
-      result: Symbol
       condition: LlvmValue
       if_true: LlvmValue
       if_false: LlvmValue
     }
   | Call {
-      result: Symbol
+      result_type: LlvmType
       callee: LlvmValue
       arguments: List<CallArgument>
     }
   | Freeze {
-      result: Symbol
       value: LlvmValue
     }
 
@@ -865,14 +880,12 @@ type Terminator
   | IndirectBr { address: LlvmValue, possible_targets: List<Symbol> }
   | Unreachable
   | Invoke {
-      result: Symbol
       callee: LlvmValue
       arguments: List<CallArgument>
       normal_target: Symbol
       unwind_target: Symbol
     }
   | CallBr {
-      result: Symbol
       callee: LlvmValue
       arguments: List<CallArgument>
       fallthrough: Symbol
@@ -888,16 +901,16 @@ type Terminator
 // BasicBlock — a label + the SSA-mandated structure: phi nodes FIRST,
 // then ordinary instructions, then EXACTLY ONE terminator. Record (Conj),
 // no ledger. The phi-before-body LangRef rule is STRUCTURAL here (a
-// separate `phis` field) — "a phi after a non-phi instruction" is
-// unrepresentable, not a checker rule (P2 / modeling-discipline.md §2,
-// the std/node.dag EdgeLabel no-stored-index discipline applied to block
-// structure). Block textual order in a function is NOT semantic (the CFG
-// defines order); the entry block is the FIRST element of the function's
-// block list (positional authority = list order, the node.dag
-// `Positional` discipline — no stored `is_entry` flag).
+// separate `phis` field of `PhiNode`) — "a phi after a non-phi
+// instruction" is unrepresentable, not a checker rule (P2 / modeling-
+// discipline.md §2, the std/node.dag EdgeLabel no-stored-index
+// discipline applied to block structure). Block textual order in a
+// function is NOT semantic (the CFG defines order); the entry block is
+// the FIRST element of the function's block list (positional authority =
+// list order, the node.dag `Positional` discipline — no `is_entry` flag).
 type BasicBlock {
   label: Symbol
-  phis: List<Phi>
+  phis: List<PhiNode>
   body: List<LlvmInstruction>
   terminator: Terminator
 }
@@ -1085,8 +1098,8 @@ fn block_successors(t: Terminator) -> List<Symbol> {
       concat([d], map(cs, fn(c) { c.target }))
     IndirectBr { address: _, possible_targets: ts } => ts
     Unreachable => []
-    Invoke { result: _, callee: _, arguments: _, normal_target: n, unwind_target: u } => [n, u]
-    CallBr { result: _, callee: _, arguments: _, fallthrough: f, indirect_targets: it } =>
+    Invoke { callee: _, arguments: _, normal_target: n, unwind_target: u } => [n, u]
+    CallBr { callee: _, arguments: _, fallthrough: f, indirect_targets: it } =>
       concat([f], it)
     Resume { value: _ } => []
     CatchSwitch { parent_pad: _, handlers: hs, unwind_target: u } => concat(hs, [u])
@@ -1116,7 +1129,8 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 //     canonicalizes it, a DECLARED reviewable loss, never silent:
 //       * SSA value spellings (`%1` vs `%x`) — identity is the def-site
 //         Node; names are K-1-opaque, α-equivalence (the SAME
-//         rename-invariance node.dag's content-hash fold already has).
+//         rename-invariance node.dag's content-hash fold already has,
+//         and the reason no instruction carries a `result: Symbol`).
 //       * non-entry basic-block textual order — the CFG defines order.
 //       * comments (`;`), blank lines, horizontal whitespace.
 //       * `data_layout` / `target_triple` opaque token (preserved
@@ -1169,16 +1183,18 @@ type FidelityDisposition
 // Inhabitance (operator-ratified instance-value form: a
 // `data <name>: <Algebra><Carrier> = <Algebra> { … }` value IN THIS
 // FILE; never a carrier, never an `inhabits` keyword). The carrier is
-// `LlvmValue` (the LLVM value domain); each algebra operation is the
-// corresponding LangRef instruction constructor — "operations fall out
-// of the instance" (THESIS epistemic stacking): emitting `add` IS
-// walking the ring instance's additive `op`. The carrier type for the
-// constructed instruction's `result_type` is held by the helper
-// `integer_carrier_type` / `float_carrier_type` / `i1_carrier_type` so
-// the instance is width-generic (Practice-7 width projection of
-// INVARIANTS P1's integer worked example — one instance, not a per-width
-// family); `fresh_ssa_name` is the def-site identity the walker freshens
-// per SSA (at the model layer it witnesses the op produces a NEW value).
+// `LlvmValue`; each algebra operation is the corresponding LangRef
+// instruction, returned AS a value via `InstructionValue` — the value
+// IS its producing node (the value-graph finding): "operations fall out
+// of the instance" (THESIS epistemic stacking) — emitting `add` IS
+// walking the ring instance's additive `op`. NO SSA `Symbol` is minted
+// anywhere (K-1: opaque, not hand-mintable; the textual name is the
+// `DeclaredNormalized` cosmetic, not load-bearing — this is exactly the
+// structural realization the probe surfaced). The result type is the
+// canonical scalar carrier; a concrete width flows through the value
+// (the constant operand's own `ty`), so each instance is width-generic
+// (the Practice-7 width projection of INVARIANTS P1's integer worked
+// example — ONE instance, never a per-width family).
 //
 // HONESTY (modeling notes; mirrors algebra.dag Float≠Field):
 //   - `iN` default arithmetic WRAPS (Z/2^N Z) ⇒ `CommutativeRing`,
@@ -1192,31 +1208,17 @@ type FidelityDisposition
 //     `ptrtoint`/`inttoptr` are the honest bridge — asserting a pointer
 //     ring would be fabrication, so NO pointer instance is declared.
 
-// The carrier-type / fresh-name helpers. These are the model-layer
-// stand-ins for "the width the inhabiting iN/float carries" and "the SSA
-// name the emit walker freshens": a single authority each (M7), not a
-// per-width table. A concrete width is supplied by the value flowing
-// through the instance (the constant's own `ty`); these default the
-// instruction's `result_type` to the canonical scalar so the instance
-// is total and width-generic.
+// Carrier-type helpers — the canonical scalar each inhabiting type
+// projects from (single authority, M7; return `LlvmType`, mint no
+// Symbol). The width is the Practice-7 projection axis (INVARIANTS P1).
 fn integer_carrier_type() -> LlvmType { IntegerType { bits: 32 } }
 fn float_carrier_type() -> LlvmType { FloatingType { kind: SingleFloat } }
 fn i1_carrier_type() -> LlvmType { IntegerType { bits: 1 } }
-fn fresh_ssa_name() -> Symbol { ssa_result_placeholder }
-
-// `ssa_result_placeholder` — the model-layer witness that an op DEFINES
-// a fresh SSA value. The emit walker substitutes a freshened def-site
-// name (K-1 opaque); at the declarative-model layer the identity is
-// irrelevant (α-equivalence — the DeclaredNormalized SSA-spelling
-// disposition), so one opaque placeholder is the single authority, not a
-// fabricated counter (no-engine: the model does not invent names).
-data ssa_result_placeholder: Symbol = symbol_of("")
 
 // iN integer ⇒ finite commutative ring Z/2^N Z. `add`/`sub`(via
 // inverse)/`mul` are the LangRef `add`/`sub`/`mul` instructions; the
 // additive identity is the i-typed constant 0, the multiplicative
-// identity the constant 1. Width-generic (the Practice-7 width
-// projection of INVARIANTS P1's integer worked example).
+// identity the constant 1. Width-generic.
 data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing {
   ring: Ring {
     add: AbelianGroup {
@@ -1225,12 +1227,13 @@ data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing
           semigroup: Semigroup {
             magma: Magma {
               op: fn(a, b) {
-                Binary {
-                  result: fresh_ssa_name(),
-                  result_type: integer_carrier_type(),
-                  op: OpAdd,
-                  lhs: a,
-                  rhs: b
+                InstructionValue {
+                  instruction: Binary {
+                    result_type: integer_carrier_type(),
+                    op: OpAdd,
+                    lhs: a,
+                    rhs: b
+                  }
                 }
               }
             }
@@ -1238,12 +1241,13 @@ data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing
           identity: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 0 } }
         },
         inverse: fn(a) {
-          Binary {
-            result: fresh_ssa_name(),
-            result_type: integer_carrier_type(),
-            op: OpSub,
-            lhs: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 0 } },
-            rhs: a
+          InstructionValue {
+            instruction: Binary {
+              result_type: integer_carrier_type(),
+              op: OpSub,
+              lhs: ConstantOperand { constant: IntConstant { ty: integer_carrier_type(), value: 0 } },
+              rhs: a
+            }
           }
         }
       }
@@ -1252,12 +1256,13 @@ data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing
       semigroup: Semigroup {
         magma: Magma {
           op: fn(a, b) {
-            Binary {
-              result: fresh_ssa_name(),
-              result_type: integer_carrier_type(),
-              op: OpMul,
-              lhs: a,
-              rhs: b
+            InstructionValue {
+              instruction: Binary {
+                result_type: integer_carrier_type(),
+                op: OpMul,
+                lhs: a,
+                rhs: b
+              }
             }
           }
         }
@@ -1272,25 +1277,26 @@ data llvm_integer_commutative_ring: CommutativeRing<LlvmValue> = CommutativeRing
 // The ops are the LangRef `fadd`/`fsub`(negate)/`fmul` instructions;
 // `compare` is `fcmp`-shaped, codomain std/algebra.dag's `Ordering`.
 // The NaN-unordered case is the honest boundary: it is NOT folded into a
-// fabricated total here — the total-where-defined order is carried, the
-// unordered case being a `FloatPredicate` (`FcmpUno`) concern at the
-// instruction layer, not a mendacious total this instance may assert.
+// fabricated total here — the unordered case is a `FloatPredicate`
+// (`FcmpUno`) concern at the instruction layer, not a mendacious total
+// this instance may assert.
 data llvm_float_approximate_field: ApproximateField<LlvmValue> = ApproximateField {
   add: fn(a, b) {
-    Binary { result: fresh_ssa_name(), result_type: float_carrier_type(), op: OpFAdd, lhs: a, rhs: b }
+    InstructionValue { instruction: Binary { result_type: float_carrier_type(), op: OpFAdd, lhs: a, rhs: b } }
   },
   zero: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 0 } },
   negate: fn(a) {
-    Binary {
-      result: fresh_ssa_name(),
-      result_type: float_carrier_type(),
-      op: OpFSub,
-      lhs: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 0 } },
-      rhs: a
+    InstructionValue {
+      instruction: Binary {
+        result_type: float_carrier_type(),
+        op: OpFSub,
+        lhs: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 0 } },
+        rhs: a
+      }
     }
   },
   mul: fn(a, b) {
-    Binary { result: fresh_ssa_name(), result_type: float_carrier_type(), op: OpFMul, lhs: a, rhs: b }
+    InstructionValue { instruction: Binary { result_type: float_carrier_type(), op: OpFMul, lhs: a, rhs: b } }
   },
   one: ConstantOperand { constant: FloatConstant { ty: float_carrier_type(), bits: 1065353216 } },
   compare: fn(a, b) { Equal }
@@ -1304,22 +1310,23 @@ data llvm_i1_boolean_algebra: BooleanAlgebra<LlvmValue> = BooleanAlgebra {
   bounded_lattice: BoundedLattice {
     lattice: Lattice {
       meet: fn(a, b) {
-        Binary { result: fresh_ssa_name(), result_type: i1_carrier_type(), op: OpAnd, lhs: a, rhs: b }
+        InstructionValue { instruction: Binary { result_type: i1_carrier_type(), op: OpAnd, lhs: a, rhs: b } }
       },
       join: fn(a, b) {
-        Binary { result: fresh_ssa_name(), result_type: i1_carrier_type(), op: OpOr, lhs: a, rhs: b }
+        InstructionValue { instruction: Binary { result_type: i1_carrier_type(), op: OpOr, lhs: a, rhs: b } }
       }
     },
     top: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 1 } },
     bottom: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 0 } }
   },
   complement: fn(a) {
-    Binary {
-      result: fresh_ssa_name(),
-      result_type: i1_carrier_type(),
-      op: OpXor,
-      lhs: a,
-      rhs: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 1 } }
+    InstructionValue {
+      instruction: Binary {
+        result_type: i1_carrier_type(),
+        op: OpXor,
+        lhs: a,
+        rhs: ConstantOperand { constant: IntConstant { ty: i1_carrier_type(), value: 1 } }
+      }
     }
   }
 }
@@ -1365,26 +1372,25 @@ data llvm_i1_boolean_algebra: BooleanAlgebra<LlvmValue> = BooleanAlgebra {
 // the symbolic composition; this is the per-leaf ground weight).
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
-    Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
-    Conversion { result: _, result_type: _, op: OpBitCast, value: _ } => 0
-    Conversion { result: _, result_type: _, op: _, value: _ } => 1
-    IntCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
-    FloatCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
-    Alloca { result: _, allocated_type: _, element_count: _ } => 1
-    Load { result: _, result_type: _, pointer: _, ordering: _ } => 4
+    Binary { result_type: _, op: _, lhs: _, rhs: _ } => 1
+    Conversion { result_type: _, op: OpBitCast, value: _ } => 0
+    Conversion { result_type: _, op: _, value: _ } => 1
+    IntCompare { predicate: _, lhs: _, rhs: _ } => 1
+    FloatCompare { predicate: _, lhs: _, rhs: _ } => 1
+    Alloca { allocated_type: _, element_count: _ } => 1
+    Load { result_type: _, pointer: _, ordering: _ } => 4
     Store { value: _, pointer: _, ordering: _ } => 4
-    GetElementPtr { result: _, source_type: _, base: _, indices: _ } => 1
-    AtomicRmw { result: _, op: _, pointer: _, operand: _, ordering: _ } => 8
-    CmpXchg { result: _, pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
+    GetElementPtr { source_type: _, base: _, indices: _ } => 1
+    AtomicRmw { op: _, pointer: _, operand: _, ordering: _ } => 8
+    CmpXchg { pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
     Fence { ordering: _ } => 4
-    ExtractValue { result: _, aggregate: _, indices: _ } => 0
-    InsertValue { result: _, aggregate: _, element: _, indices: _ } => 1
-    ExtractElement { result: _, vector: _, index: _ } => 1
-    InsertElement { result: _, vector: _, element: _, index: _ } => 1
-    ShuffleVector { result: _, first: _, second: _, mask: _ } => 1
-    Phi { result: _, result_type: _, incomings: _ } => 0
-    Select { result: _, condition: _, if_true: _, if_false: _ } => 1
-    Call { result: _, callee: _, arguments: _ } => 5
-    Freeze { result: _, value: _ } => 0
+    ExtractValue { aggregate: _, indices: _ } => 0
+    InsertValue { aggregate: _, element: _, indices: _ } => 1
+    ExtractElement { vector: _, index: _ } => 1
+    InsertElement { vector: _, element: _, index: _ } => 1
+    ShuffleVector { first: _, second: _, mask: _ } => 1
+    Select { condition: _, if_true: _, if_false: _ } => 1
+    Call { result_type: _, callee: _, arguments: _ } => 5
+    Freeze { value: _ } => 0
   }
 }
