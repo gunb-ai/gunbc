@@ -5,11 +5,7 @@
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
 //         (TypeScript Handbook) + https://tc39.es/ecma262/ (ECMAScript
 //         specification) — the versioned upstream specifications (L-2
-//         fidelity authority). The Handbook + ECMA-262 are the specs the
-//         carriers below are pinned to; when the spec partition changes
-//         (a new primitive; revised `Number` / `BigInt` semantics), the
-//         change is a visible C1 edit to the relevant declaration below,
-//         never a silent extension.
+//         fidelity authority).
 // Unifies: (per THESIS:188) language spec = transport spec = interpreter
 //         runtime. ONE substrate carrier for all three roles. Different
 //         lenses read different facts from the same data (emission reads
@@ -17,61 +13,58 @@
 //         execution semantics). A worker needing transport or runtime
 //         extends this file, not a new "transport spec" file.
 //
-// Owns (this slice — T-4 typescript D2-resolver; **mirrors** the D2
-//   resolver machine encoded in `extdeps/languages/rust.dag` at PR
-//   #3174 / commit 0328bee95 + the operator-ratified DECISIONS.md D2
-//   row, 2026-05-16 / PR #3195 merge 44a37ad46):
+// HEADER-ENCODING (mgr brief msg_6d3a3eb2; DECISIONS.md D2 "Encoded in"
+//   column — `extdeps/languages/*` headers; workers encode the resolver
+//   shape): Owns/Consumes/Status below are amended for the D2 resolver
+//   slice only; frozen scaffold Scope/Anchor/Unifies lines are preserved
+//   verbatim above. **D2a(2) grounding-map facet is 🟡 operator-pending**
+//   (shared `GroundingMap` type has no pinned P2 home — do not declare a
+//   local `GroundingMap` here; defer type + all `*_grounding` data rows
+//   until the operator pins the shared carrier).
 //
-//   - TypeScript / ECMAScript primitive inhabitance as the D2a three-
-//     thin-facts resolver: alias-identity to std/ carriers, grounding
-//     map (surface spelling / keyword), operation-semantics siblings
-//     (where the spec supplies a Rust-analogous disposition partition).
-//   - The closed resolver-shape carriers `GroundingMap<IRCarrier>`,
-//     `OverflowAction`, `OverflowDisposition<IRCarrier>` — **structural
-//     parity** with the rust.dag D2 block so the generic B2-OMNI emit
-//     fold (D2.2) reads one resolver vocabulary across Shape A targets.
-//     **Semantic defaults are language-specific:** ECMAScript `number`
-//     is IEEE-754 binary64 arithmetic (approximate field — see this
-//     file's prior scaffold `number` → ApproximateField note); it does
-//     NOT inherit Rust's debug `PanicOnOverflow` / release
-//     `TwoComplementWrap` *defaults* for `+` on fixed-width integers.
-//     Those two variants remain the **shared closed carrier** for any
-//     future TS surface that genuinely maps to the same disposition
-//     axis (e.g. Wasm strict i32 lowering, or a checked TypedArray
-//     policy modeled explicitly). No `data ts_*_overflow` instance rows
-//     are authored here for `boolean` or `number` — only types + the
-//     landed `boolean` grounding row.
-//   - TypeScript grammar (declarations, expressions, types, generics,
-//     interfaces, classes), structural typing, and cost realization —
-//     **preserved as goals** in the Owned ELSEWHERE table; this slice
-//     lands D2 only (same slice-vs-bundled discipline as rust.dag
-//     #3174 / ptx.dag #3170).
+// Owns (T-4 typescript — D2 resolver slice; discipline from rust.dag PR
+//   #3174 @ 0328bee9 + encoded DECISIONS.md D2 row @ 44a37ad46; **TS spec
+//   partition**, not a literal rust type-copy):
 //
-// Owned ELSEWHERE (named owners + dissolution triggers):
+//   - D2a(1) alias-identity rows to std/ where kernel-ambient resolution
+//     suffices (STRUCTURE.md:147 — `Bool` / `String` / `Int` / `Char` /
+//     `List` / `Map` traceability: Consumes lists modeled authority when
+//     the file depends on that type's facts, not raw kernel spelling).
+//     NON-kernel-ambient std/ targets: explicit `import` + 🟡 TRACKED-
+//     SCAFFOLD until T-3 Wave-A3 ladder lands (named owner + trigger).
+//     Never mint std/ carriers locally (INVARIANTS P2 single-authority).
+//   - D2a(2) **entire facet DEFERRED** — no `GroundingMap` type, no
+//     `data ts_*_grounding` rows (operator escalation: pin shared
+//     `GroundingMap` home before fan-out repeats N declarations).
+//   - D2a(3) **TypeScript-native** operation-semantics carriers for
+//     primitives where ECMA-262 supplies a disposition (IEEE-754 `Number`;
+//     exact unbounded `BigInt`). **No** Rust `OverflowAction` /
+//     `OverflowDisposition` superset (peer-confirmed (a) — TS `number`
+//     has no fixed-width integer-overflow event; `bigint` is unbounded).
+//     Each closed carrier carries its own Practice-4 ledger anchored to
+//     Handbook + ECMA-262 sections.
+//   - Minimal **numeric primitive vocabulary** — ECMAScript's `number` vs
+//     `bigint` partition (Handbook "Everyday Types" + ECMA-262 language
+//     types), distinct from Rust's fixed-width `i*` / `u*` ladder.
+//   - TypeScript grammar, structural typing, generics, interfaces,
+//     classes, cost realization — **Owned ELSEWHERE** (bundled T-4
+//     LanguageModel; C5-3 / B2-OMNI / B4); D2 scope guard: do not import D2
+//     into structural-typing facts.
 //
-//   - Full bidirectional TypeScript `LanguageModel` (grammar as B2-OMNI
-//     data, C5-fidelity disposition tags, ingest∘emit TestClaims) —
-//     bundled T-4 Shape A work; rides ratified `Outcome<T>` when
-//     std/diagnostic.dag lands (same STOP-triggers as rust.dag).
-//   - Pipeline emit/ingest operations — compiler/05_emit.dag (T-10),
-//     compiler/02_parse.dag (T-7); not language-file operations.
-//   - Structural typing, excess property checks, conditional types —
-//     C5-3 / B2-OMNI / B4; **D2 scope guard** (DECISIONS.md D2): D2
-//     covers per-primitive inhabitance form ONLY — do not import D2
-//     reasoning into those axes.
+// Owned ELSEWHERE:
+//   - Bidirectional `LanguageModel`, emit/ingest ops, `Outcome<T>` seam —
+//     same framing as rust.dag #3174 (D1 lands in std/diagnostic.dag).
+//   - D2b IEEE-754 `Arrow` bodies for `number` — grammar bundle + std/
+//     float.dag ApproximateField attachment (DECISIONS D2b).
 //
-// Consumes:
-//   - std/logic.dag: `Bool` (kernel-ambient; the D2a row `type TsBoolean
-//     = Bool` references `Bool` without an import — same discipline as
-//     rust.dag's `RustBool` row).
-//   - `String` in `GroundingMap.spelling` is kernel-ambient boundary
-//     text at the source-syntax edge (same as rust.dag's
-//     `GroundingMap`).
+// Consumes (traceability — kernel-ambient `Bool` needs no import):
+//   - std/logic.dag: sole modeling authority for `Bool` (the D2a(1) row
+//     `type TsBoolean = Bool` is alias-identity to that authority).
 //
-// Status: T-4 typescript D2-resolver slice modeled 2026-05-16 — D2
-//   machine mirrors rust #3174@0328bee95; bool alias-identity + grounding
-//   landed; numeric / string / bigint / symbol rows 🟡 TRACKED-SCAFFOLD
-//   per upstream std/ + refinement decisions (see resolver block).
+// Status: T-4 typescript D2-resolver slice — D2a(1) bool landed; D2a(2)
+//   grounding 🟡 operator-pending; D2a(3) ECMA-262-native semantics +
+//   numeric-kind vocabulary landed; numeric/string/symbol/nullability
+//   alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -80,164 +73,177 @@
 module v4.extdeps.languages.typescript
 
 
-// Bool is KERNEL-AMBIENT (STRUCTURE.md). The D2a row `type TsBoolean =
-// Bool` below references `Bool` directly; no `import` of std/logic.dag
-// is required (rust.dag precedent).
+// `Bool` is kernel-ambient (STRUCTURE.md:147). `type TsBoolean = Bool`
+// references std/logic.dag's `Bool` without an `import` — correct alias-
+// identity, not hollow.
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes (D2 slice; read before extending)
+// Modeling notes (D2 slice)
 //
-// PRIMITIVE INHABITANCE (scaffold continuity — still binding intent):
-//   - `number` → IEEE-754 binary64 `Float` / `ApproximateField` (NOT an
-//     exact `Field`); same grounding as std/float.dag + std/algebra.dag.
-//   - `string` → `FreeMonoid<Char>` via std/text.dag's `String` alias;
-//     ECMA-262 `string` values are UTF-16 code unit sequences — a
-//     **refinement** mismatch vs Unicode-scalar `Char` (mirrors rust.dag
-//     char/str deferral until std/text refines or a disposition lands).
-//   - `Array<T>` / `T[]` → `List<T>` (std/collection.dag) — compound;
-//     D2.3 composes for free; no per-instantiation resolver rows.
-// STRUCTURAL TYPING — Handbook structural rules are **out of D2** per
-//   DECISIONS.md D2 scope guard; owned by C5-3 / B2-OMNI grammar work.
+// ECMAScript partitions `number` (IEEE-754 binary64) and `bigint`
+// (exact integers, unbounded) as DISTINCT primitives — not Rust's `i32`
+// fixed-width ladder. Structural typing, excess property checks, and
+// conditional types are **out of D2** (DECISIONS.md D2 scope guard).
 
 
 // ═════════════════════════════════════════════════════════════════════
-// D2 RESOLVER SHAPE — per-primitive three-thin-facts declarations.
+// D2a(2) — GROUNDING MAP (🟡 ENTIRE FACET DEFERRED — operator-pending)
 //
-// Per the operator-ratified DECISIONS.md D2 row (2026-05-16, encoded via
-// PR #3195 merge at 44a37ad46), a language extdeps file is a RESOLVER for
-// the abstract std/ carriers. Per primitive, THREE thin declarations:
-//
-//   (1) alias-identity to the std/ carrier — algebra flows through the
-//       alias (`List<T> = FreeMonoid<T>` precedent).
-//   (2) grounding map (surface spelling / keyword).
-//   (3) operation-semantics carriers — genuine per-language facts.
-//
-// Per D2.2: coercion = U1 homomorphism via the generic B2-OMNI emit fold
-// reading resolver data — not a hand table, not a per-language emit lens.
-//
-// Per D2.3: compound / generic coercion composes via the Node catamorphism.
-//
-// Per D2.4: round-trip is structural-on-F per C5-1; TestClaims document.
-//
-// Per D2.5: overflow / UB / arbitrary-precision are DISTINCT std/ carriers
-// selected by alias target + per-language disposition — never a re-
-// declared parallel `OrderedRing<<lang>Prim, …>` inhabitance (INVARIANTS
-// P1:42).
-//
-// Canonical rust encoding: `extdeps/languages/rust.dag` @ 0328bee95
-// (PR #3174 reshape). This block mirrors that file's resolver carriers
-// and the landed-bool pattern; deferral tables are TypeScript-specific.
+// Per mgr brief msg_6d3a3eb2: `GroundingMap` is SHARED with no pinned P2
+// home yet. Declaring a local `GroundingMap` in each language file would
+// be N parallel declarations — forbidden. **Defer** the carrier type AND
+// every `data ts_*_grounding` instance row until the operator pins the
+// shared `GroundingMap` authority (escalation path). Includes deferred
+// `boolean` / `number` / `bigint` keyword grounding data.
 
 
-// ─────────────────────────────────────────────────────────────────────
-// GroundingMap<IRCarrier> — surface-spelling / keyword carrier (Conj).
+// ═════════════════════════════════════════════════════════════════════
+// Primitive vocabulary — ECMAScript numeric surface (Handbook + ECMA-262)
 //
-// Per D2a(2). Each alias pairs with `data ts_*_grounding: GroundingMap<
-// …> = GroundingMap { spelling: "<token>" }` at the source-syntax
-// boundary (Handbook keyword or literal form), not in kernel code.
+// TypeScript inherits ECMAScript's two numeric primitives: `number` and
+// `bigint` (distinct from Rust's signed/unsigned fixed-width family).
 //
-// Spec: https://tc39.es/ecma262/#sec-ecmascript-language-types
-//       https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
-type GroundingMap<IRCarrier> {
-  spelling: String
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// OverflowAction — closed disposition partition carried in
-// `OverflowDisposition` (D2a(3)).
+// Spec: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
+//       (sections on `number`, `bigint`)
+//       https://tc39.es/ecma262/#sec-ecmascript-language-types-number-type
+//       https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
 //
-// **Shared vocabulary with rust.dag** for the D2 resolver machine. Rust
-// assigns these variants to fixed-width integer `+` defaults. TypeScript
-// does not use that assignment for ECMAScript `number` (IEEE-754). Future
-// rows that genuinely select among these variants must cite the spec edge
-// they model (never silently reuse Rust defaults for `number`).
-//
-// Coproduct: 🟢 terminal for the **carrier shape**; ledger lives in
-// rust.dag (PR #3174); not re-ledgered here — duplicate Practice-4 text
-// would fork authority.
-type OverflowAction
-  = PanicOnOverflow
-  | TwoComplementWrap
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: both kinds are shared classifiers for every
+//      consumer that dispatches on numeric primitive kind.
+//   2. Variant-is-data — FAILS: nullary tags from a closed ECMA-262
+//      partition; a `Bool` proxy would be the M4 numeric/boolean-proxy smell.
+//   3. Algebraic form — PARTIAL: each kind's algebra is std/ (float vs
+//      integer chains) reached via **future** D2a(1) aliases, not by
+//      collapsing this enum into those carriers.
+//   4. Dimensional — FAILS: a value is exactly ONE numeric primitive kind.
+//   5. Parameterized family — FAILS: `number` and `bigint` are distinct
+//      ECMA primitives, not one indexed family (Practice 7).
+type TsEcma262NumericPrimitiveKind
+  = TsNumberPrimitive
+  | TsBigIntPrimitive
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OverflowDisposition<IRCarrier> — per-target debug/release defaults
-// for the overflow-action axis (Conj).
-//
-// Structural mirror of rust.dag. **No TsBoolean / TsNumber instance rows**
-// here — `boolean` has no integer overflow; `number` is not a fixed-width
-// int (IEEE-754 disposition lands with std/float.dag + float alias rows).
-type OverflowDisposition<IRCarrier> {
-  debug_default: OverflowAction
-  release_default: OverflowAction
-}
+// ═════════════════════════════════════════════════════════════════════
+// D2a(1) — alias-identity (kernel-ambient `Bool`)
 
-
-// ─────────────────────────────────────────────────────────────────────
-// Per-primitive alias-identity + grounding (LANDABLE NOW).
 
 // ECMAScript / TypeScript `boolean` ↔ std/logic.dag `Bool`.
+// Spec: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
+//       https://tc39.es/ecma262/#sec-ecmascript-language-types-boolean-type
 type TsBoolean = Bool
 
-data ts_boolean_grounding: GroundingMap<TsBoolean> = GroundingMap {
-  spelling: "boolean"
-}
 
-// No overflow disposition row for `boolean`.
+// D2a(3) — **omitted** for `boolean`: no ECMA-262 operation-semantics event
+// distinct from `BooleanAlgebra<Bool>` (std/logic.dag); no parallel
+// overflow / NaN carrier.
 
 
-// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY + SEMANTICS ROWS
+// ═════════════════════════════════════════════════════════════════════
+// D2a(3) — ECMA-262 `Number` primitive semantics (NOT integer overflow)
 //
-// SUBSTRATE SINGLE-AUTHORITY GUARD (rust.dag #3174 precedent): this file
-// MUST NOT mint std/ `Int` / `UInt` / `Float*` / `String` carriers
-// locally — alias-identity to std/ only.
+// ECMA-262 defines two standard **axes** on the `Number` type value domain:
+//   (A) Additive / multiplicative / division / remainder on Number values
+//       follow IEEE-754 binary64 (including NaN / ±∞ propagation), not
+//       two's-complement fixed-width wrap.
+//   (B) Bitwise operators coerce via ToInt32 / ToUint32 — results are
+//       integers mod 2³² in two's-complement / unsigned binary32 layout
+//       per ECMA-262 — a **different** spec surface from (A).
 //
-// ─── `number` (IEEE-754 binary64) — TsNumber = Float64
-//   - grounding keyword        `"number"` (Handbook + TS grammar).
-//   - operation semantics      NaN / ±Inf / rounding — D2b + std/float
-//                              `ApproximateField` op `Arrow` bodies;
-//                              NOT `OverflowDisposition` rows meant for
-//                              Rust fixed-width ints.
-//   - named owner              std/float.dag — Float32 / Float64 ladder.
-//   - dissolution trigger      Float64 + ApproximateField inhabitance on
-//                              origin/main in std/float.dag.
+// These are modeled as **two singleton carriers** (each N=1) so each axis
+// carries its own 🟢 terminal Practice-4 ledger without falsely merging
+// distinct spec obligations into one ambiguous coproduct value.
 //
-// ─── `bigint` — arbitrary-precision integer
-//   - target form              alias to std/ arbitrary-precision `Int`
-//                              (std/integer.dag) when that carrier is the
-//                              ratified BigInt semantic target; ECMA-262
-//                              throws on division-by-zero etc. — genuine
-//                              per-spec facts, not Rust's wrap/panic axis.
-//   - named owner              std/integer.dag (unbounded `Int` ladder).
-//   - dissolution trigger      std/integer.dag lands BigInt-aligning alias
-//                              target + explicit disposition table row.
-//
-// ─── `string` — TsString = String
-//   - refinement tension       ECMA-262 `string` is UTF-16 code units;
-//                              std/text `String = FreeMonoid<Char>` is
-//                              Unicode-scalar-oriented — same class of
-//                              deferral as rust.dag RustChar/RustStr.
-//   - dissolution trigger      std/text refinement OR operator-ratified
-//                              per-language disposition (rust.dag char/str
-//                              table precedent).
-//
-// ─── `symbol` — ECMAScript `symbol` primitive
-//   - deferral                 no stable std/ primitive alias yet; lands
-//                              with kernel nominal/runtime carrier work
-//                              or explicit "modeled as Node" disposition.
-//
-// ─── `null` / `undefined` — null types in TS type system
-//   - deferral                 LanguageModel + strict-null checking live
-//                              outside D2 primitive-inhabitance slice.
+// Spec (A): https://tc39.es/ecma262/#sec-numeric-types-number-type
+// Spec (B): https://tc39.es/ecma262/#sec-numberbitwiseop (Number::BitwiseOp)
 
 
 // ─────────────────────────────────────────────────────────────────────
-// D2b — IEEE-754 `number` operation realizations.
+// TsNumberAdditiveMultiplicativeSemantics — axis (A).
 //
-// Per D2 row D2b: float primitives use `Transform → FunctionRef → Arrow`
-// with `body` in extdeps/. Arrow-body source tokens / precedence live in
-// the bundled T-4 TypeScript `LanguageModel` grammar — same deferral as
-// rust.dag D2b. Pending: std/float.dag `ApproximateField<Float>` instance
-// for `FunctionRef` attachment.
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: shared by every additive/multiplicative
+//      Number consumer uniformly.
+//   2. Variant-is-data — N/A (N=1 exhaustive for this axis in ECMA-262).
+//   3. Algebraic form — PARTIAL: IEEE-754 structure is std/float.dag +
+//      `ApproximateField` (D2b); this tag names the ECMA **Number-type**
+//      commitment to that axis, not the full float algebra body.
+//   4. Dimensional — N/A (singleton).
+//   5. Parameterized family — FAILS: not an indexed family over widths.
+//
+// N=1 note: ECMA-262 admits exactly one standard behavior class for (A) on
+// `Number` values; a second variant would fabricate a distinction the spec
+// does not own.
+type TsNumberAdditiveMultiplicativeSemantics
+  = Ieee754Binary64Ecma262NumberType
+
+
+data ts_number_additive_multiplicative_semantics: TsNumberAdditiveMultiplicativeSemantics = Ieee754Binary64Ecma262NumberType
+
+
+// ─────────────────────────────────────────────────────────────────────
+// TsNumberBitwiseSemantics — axis (B).
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: shared by every bitwise Number consumer.
+//   2. Variant-is-data — N/A (N=1 for this axis).
+//   3. Algebraic form — PARTIAL: modular 2³² arithmetic is a finite ring
+//      side-effect of ToInt32/ToUint32 coercion — the authoritative numeric
+//      story remains IEEE-754 for non-bitwise Number ops; this tag isolates
+//      the bitwise coercion track per ECMA-262.
+//   4. Dimensional — N/A (singleton).
+//   5. Parameterized family — FAILS: not parameterized over machine widths
+//      at the TS language-primitive layer (`number` is not `i32`).
+type TsNumberBitwiseSemantics
+  = Int32Uint32ModuloTwoPow32Ecma262
+
+
+data ts_number_bitwise_semantics: TsNumberBitwiseSemantics = Int32Uint32ModuloTwoPow32Ecma262
+
+
+// ═════════════════════════════════════════════════════════════════════
+// D2a(3) — ECMA-262 `BigInt` primitive semantics
+//
+// `bigint` is an exact, unbounded integer primitive — no Rust-style
+// fixed-width overflow/wrap axis; invalid operations throw (e.g. division
+// by zero) per ECMA-262, not silent modular wrap on a bounded width.
+//
+// Spec: https://tc39.es/ecma262/#sec-ecmascript-language-types-bigint-type
+//       https://www.typescriptlang.org/docs/handbook/2/everyday-types.html
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger — five patterns:
+//   1. Fact placement — FAILS: shared classifier for all BigInt consumers.
+//   2. Variant-is-data — N/A (N=1 for the primitive's core semantics class).
+//   3. Algebraic form — PARTIAL: exact integer algebra is std/integer.dag
+//      (`Int` chain) reached via **future** D2a(1) alias — this tag names the
+//      ECMA **BigInt-type** exact-unbounded commitment, not the `Int` body.
+//   4. Dimensional — N/A (singleton).
+//   5. Parameterized family — FAILS: not `BigInt<Width>`.
+type TsBigIntPrimitiveSemantics
+  = ExactUnboundedIntegerEcma262BigIntType
+
+
+data ts_bigint_primitive_semantics: TsBigIntPrimitiveSemantics = ExactUnboundedIntegerEcma262BigIntType
+
+
+// 🟡 TRACKED-SCAFFOLD — D2a(1) alias rows (no D2a(2) until operator pins
+// `GroundingMap` home)
+//
+//   - `type TsNumber = Float64` — owner: std/float.dag; trigger: Float64 +
+//     ApproximateField inhabitance on main.
+//   - `type TsBigInt = Int` (or ratified target) — owner: std/integer.dag;
+//     trigger: unbounded `Int` ladder + BigInt alignment decision.
+//   - `type TsString = String` — UTF-16 code units vs std/text `String`
+//     refinement — owner: std/text.dag + disposition policy (rust char/str
+//     precedent).
+//   - `symbol` / `null` / `undefined` — LanguageModel + nominal/runtime
+//     substrate; outside this D2 slice.
+
+
+// ═════════════════════════════════════════════════════════════════════
+// D2b — IEEE-754 `number` operation realizations (`Transform →
+// FunctionRef → Arrow` bodies). DEFERRED to bundled T-4 grammar + std/
+// float.dag ApproximateField attachment (DECISIONS D2b; same deferral
+// posture as rust.dag #3174).
