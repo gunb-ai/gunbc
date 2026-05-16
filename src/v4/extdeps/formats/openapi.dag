@@ -270,7 +270,11 @@ type OpenApiResponse {
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
 //
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
+// Coproduct dissolution (Practice 4) — N/A (`Conj` record). **`by_status` keys**
+// are **`String` lexemes** (status code, `default`, wildcards) — OAS key
+// grammar + future closed-ish sum dissolve under **`openapi_parse`** structural
+// validation (Deferred (1); INVARIANTS §2 honesty — no false structural
+// guarantee of key shape at the carrier layer).
 type OpenApiResponses {
   by_status: Map<String, OpenApiResponse>,
   responses_object_extensions: Map<String, JsonValue>,
@@ -385,7 +389,12 @@ type OpenApiDocument {
 //   dag + the json/yaml parse bodies. Fail-closed `Outcome<OpenApiDocument>`
 //   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
 //   lands + yaml/json parse operations land + operator pins reference
-//   substrate.
+//   substrate. Structural validation **includes** `OpenApiResponses.by_status`
+//   map keys (HTTP status code strings, `default`, and OAS wildcard buckets
+//   `1xx`/`2xx`/`3xx`/`4xx`/`5xx`): the carrier uses **`String` lexemes** today
+//   for faithful wire capture; lifting to a closed-ish sum (vs silent string
+//   abuse) rides the **same** parse/validation operation — not a parallel
+//   authority.
 //
 // (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
 //   comparison against supported spec revisions; trigger = operator version
