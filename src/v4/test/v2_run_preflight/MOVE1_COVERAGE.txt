@@ -5,10 +5,12 @@ Authority: `target/release/v2-compiler compile --source-root src/v4` (PASS,
 0 diagnostics) — this is the gate already exercised in CI job `v4`
 ("bootstrap viability").
 
-Instrument: `v2-compiler run --source-root src/v4 --function <name>` on small
-probe functions (see revision history on branch for attempted probes:
-nat_add/nat_mul recursion, kernel `1 == 1`, bool meet via lattice top/bottom,
-node_well_formed on empty Conj, trivial ProcessExit).
+Instrument: `v2-compiler run --source-root src/v4 --function <name>` was
+tried on small probe functions during Move 1 (see **git history** on this
+branch for the ephemeral probe sources: nat_add/nat_mul recursion, kernel
+`1 == 1`, bool meet via lattice top/bottom, node_well_formed on empty Conj,
+trivial ProcessExit). No placeholder `probes.dag` module is kept in-tree — real
+`dag run` probes should land with **T-22**, not as an empty reserved module.
 
 Findings (v2 seed interpreter, merged v4 graph)
 -----------------------------------------------
