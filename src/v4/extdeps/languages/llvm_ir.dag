@@ -56,7 +56,7 @@ module v4.extdeps.languages.llvm_ir
 // lands; importing algebra now while unused would be dead code, and
 // improvising the instances now would be the exact per-file
 // `<Algebra><Concrete>` form D2 forbids.
-import v4.std.node { Node }
+import v4.std.node { Symbol }
 
 
 // ─────────────────────────────────────────────────────────────────────
