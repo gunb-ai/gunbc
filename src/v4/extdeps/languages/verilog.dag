@@ -3765,7 +3765,9 @@ type ModuleKeyword
 //       BodyPortDeclarationItem per §12.3.4.
 //   - AnsiVerilogModule
 //       — ANSI style: header carries fully-declared ports
-//       (List<AnsiPortDeclaration>); body carries AnsiModuleItem
+//       (List<AnsiHeaderPort>, where AnsiHeaderPort wraps an
+//       attribute-free AnsiPortDeclaration payload with the §A.1.3
+//       outer attribute_instance prefix); body carries AnsiModuleItem
 //       only (the 18 items spec-admitted in any module body
 //       EXCLUDING port_declarations — per §12.3.3 ANSI ports are
 //       "completely declared" and body redeclarations are a syntax
@@ -3827,15 +3829,16 @@ type ModuleKeyword
 //      structure.
 //   4. Dimensional — FAILS: a single module declaration is EXACTLY
 //      ONE style; mutually-exclusive alternatives per §12.3.4.
-//   5. Parameterized family — FAILS: the two variants carry
+//   5. Parameterized family — FAILS: the variants carry
 //      structurally heterogeneous payloads (NonAnsi.header_ports:
 //      List<NonAnsiPort> + items: List<NonAnsiModuleItem> vs Ansi.
-//      header_ports: List<AnsiPortDeclaration> + items:
-//      List<AnsiModuleItem>) — the header port-list type AND the
-//      body item-set type both differ per style. NOT one generic
-//      `F<X>` / projection over a single source set (Practice 7).
-//      The compound payload-type difference IS the partition's
-//      defining structural fact.
+//      header_ports: List<AnsiHeaderPort> + items:
+//      List<AnsiModuleItem>; NoPortsModule has no header_ports at
+//      all + items: List<AnsiModuleItem>) — the header port-list
+//      type AND the body item-set type both differ per variant.
+//      NOT one generic `F<X>` / projection over a single source set
+//      (Practice 7). The compound payload-type difference IS the
+//      partition's defining structural fact.
 // Terminal: the closed three-way Verilog module-declaration-style
 // classifier of the IEEE 1364-2005 §12.3.4 spec (NoPortsModule +
 // per-style variants); ledger added per codex BLOCKING on PR #3176
