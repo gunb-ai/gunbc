@@ -983,138 +983,84 @@ type PubInPath {
 // Canonicalization rules (parser/resolver-side, per Reference's
 // path-resolution rules):
 //
-//   SOURCE FORM                  →  CANONICAL RustVisibility
-//   ───────────────────────────────────────────────────────────────────
-//   <no `pub` modifier>          →  Private
-//   `pub(self)`                  →  Private  (Reference equivalence)
-//   `pub(in self)`               →  Private  (Reference equivalence)
-//   `pub`                        →  Pub
-//   `pub(crate)`                 →  PubIn { path: { root: AtCrate,
-//                                                  suffix: [] } }
-//   `pub(in crate)`              →  same as `pub(crate)` (Reference
-//                                   equivalence)
-//   `pub(in crate::M::N::…)`     →  PubIn { path: { root: AtCrate,
-//                                                  suffix: [M, N, …] } }
-//                                   — APPLIES ONLY when the resolved
-//                                   path is a STRICT ANCESTOR of the
-//                                   declaring item (i.e. a proper
-//                                   super-module). If `crate::M::N::…`
-//                                   resolves to the EXACT CURRENT
-//                                   MODULE of the item (item declared
-//                                   INSIDE `crate::M::N::…`), the
-//                                   visibility is semantically
-//                                   equivalent to `pub(self)` ≡ Private
-//                                   (the path IS the current module —
-//                                   reflexively an ancestor, not a
-//                                   strict ancestor) and canonicalizes
-//                                   to Private. This is a CONTEXT-
-//                                   DEPENDENT canonicalization
-//                                   (resolver-time work, requires
-//                                   knowing the item's containing
-//                                   module path) — the same P2 axis
-//                                   as `pub(self)` ≡ Private, but
-//                                   parameterized by declaration
-//                                   context. Producers MUST
-//                                   canonicalize before constructing
-//                                   PubInPath; admitting
-//                                   `PubInPath { root: AtCrate,
-//                                   suffix: [a, b] }` for an item
-//                                   declared inside `crate::a::b`
-//                                   would be the P2 duplicate-
-//                                   authority defect for the
-//                                   no-modifier visibility scope.
-//   `pub(super)`                 →  PubIn { path: { root: AtSuperChain
-//                                                       { hops: OneSuper },
-//                                                  suffix: [] } }
-//   `pub(in super)`              →  same as `pub(super)` (Reference
-//                                   equivalence)
-//   `pub(in super::super)`       →  PubIn { path: { root: AtSuperChain
-//                                                       { hops:
-//                                                         MoreSuper { outer:
-//                                                                     OneSuper } },
-//                                                  suffix: [] } }
-//   `pub(in super::M::N::…)`     →  PubIn { path: { root: AtSuperChain
-//                                                       { hops: OneSuper },
-//                                                  suffix: [M, N, …] } }
-//   `pub(in self::super)`        →  PubIn { path: { root: AtSuperChain
-//                                                       { hops: OneSuper },
-//                                                  suffix: [] } }
-//                                   (the `self::super` syntactic form
-//                                   resolves to `super` per Reference
-//                                   §paths; canonical PubInPath
-//                                   represents `super`, not the
-//                                   syntactic `self::super` form)
-//   `pub(in self::super::super)` →  PubIn { path: { root: AtSuperChain
-//                                                       { hops: MoreSuper
-//                                                                  { outer: OneSuper } },
-//                                                  suffix: [] } }
-//                                   (any number of `super` segments
-//                                   after a leading `self` resolves to
-//                                   the equivalent chain without the
-//                                   leading self — `self::super::super`
-//                                   IS `super::super` at the resolution
-//                                   layer)
-//   `pub(in self::super::M::…)`  →  PubIn { path: { root: AtSuperChain
-//                                                       { hops: <chain> },
-//                                                  suffix: [M, …] } }
-//                                   (the `self::` prefix drops at name-
-//                                   resolution; the canonical form
-//                                   carries the super-chain followed by
-//                                   the named tail)
-//   `pub(in self::M)` where M    →  parse-REJECTED. Per Reference
-//   resolves to a DESCENDANT       `pub(in path)` requires path to
-//   (child of current module —     resolve to an ANCESTOR module; a
-//   so `self::M` resolves to M     child-of-current is not an
-//   as a child)                    ancestor. Resolver rejects upstream;
-//                                  no canonical PubInPath value exists.
-//   `pub(in foo::bar)` where      →  PubIn { path: { … } } with the
-//   foo::bar resolves to a        resolved root (Crate / SuperChain
-//   STRICT ANCESTOR via name      based on where foo::bar resolves) +
-//   resolution (i.e. a proper     suffix carrying the named segments
-//   super-module of the item)     (the resolver-determined canonical
-//                                 path, NOT the verbatim source).
-//                                 If the resolved path is the EXACT
-//                                 current module (not a strict
-//                                 ancestor), canonicalize to Private
-//                                 — same context-dependent rule as
-//                                 the `crate::M::N` case above.
+//   SOURCE FORM                    →  CANONICAL RustVisibility
+//   ─────────────────────────────────────────────────────────────────
+//   <no `pub` modifier>            →  Private
+//   `pub(self)`                    →  Private  (Reference equivalence)
+//   `pub(in self)`                 →  Private  (Reference equivalence)
+//   `pub`                          →  Pub
+//   `pub(crate)` / `pub(in crate)` →  PubIn { path:
+//                                     PubInPath { resolved_path: [] } }
+//                                     (empty absolute path = crate root)
+//   `pub(in <SimplePath>)`         →  the resolver computes the
+//                                     ABSOLUTE PATH from crate root to
+//                                     the module the SimplePath
+//                                     resolves to, then:
+//                                       — resolved module IS a STRICT
+//                                         ancestor of the item   →
+//                                         PubIn { path: PubInPath {
+//                                           resolved_path:
+//                                             <absolute-from-crate-root>
+//                                         } }
+//                                       — resolved module IS the item's
+//                                         current module (reflexive
+//                                         ancestor)              →
+//                                         Private (the no-modifier
+//                                         scope; same canonical form
+//                                         as `pub(self)` / no-modifier
+//                                         per Reference equivalence)
+//                                       — resolved module is NOT an
+//                                         ancestor of the item     →
+//                                         parse/resolver REJECTS
+//                                         (per Reference's ancestor
+//                                         rule for `pub(in path)`)
+//                                     Concretely, for an item declared
+//                                     in `crate::a::b::c`:
+//                                       `pub(super)`              →
+//                                         resolves to `crate::a::b`
+//                                         → PubIn { path: PubInPath {
+//                                           resolved_path: [a, b] } }
+//                                       `pub(super::super)`       →
+//                                         resolves to `crate::a`
+//                                         → PubIn { path: PubInPath {
+//                                           resolved_path: [a] } }
+//                                       `pub(in crate::a)`        →
+//                                         resolves to `crate::a`
+//                                         → PubIn { path: PubInPath {
+//                                           resolved_path: [a] } }
+//                                         (SAME canonical value as
+//                                         `pub(super::super)` — single
+//                                         authority per resolved scope)
+//                                       `pub(in crate::a::b::c)`  →
+//                                         resolves to current module
+//                                         → Private (reflexive case)
+//                                       `pub(in self::super)`     →
+//                                         resolves to `crate::a::b`
+//                                         → SAME as `pub(super)`
+//                                       `pub(in crate::other)`    →
+//                                         not an ancestor → REJECTED
+//   `pub(in $crate::…)` (macro     →  out-of-scope for this slice
+//   context)                          (SCOPE NEGATIVE per the header;
+//                                     hygienic-macro support is a
+//                                     future C1 edit to NamedSegment /
+//                                     a sibling macro-context carrier).
 //
-// CONTEXT-DEPENDENT CANONICALIZATION INVARIANT (BLOCKING operator
-// review 2026-05-16T07:30:48Z): the carrier represents POST-RESOLUTION
-// canonical scope. Two source forms with the SAME resolved scope MUST
-// canonicalize to the SAME RustVisibility value. Concretely: any
-// `pub(in path)` source form whose resolved path IS the item's
-// current module ≡ Private (regardless of whether `path` is `self`,
-// `crate::full::path`, `super::super::…::back_to_current`, or any
-// other syntactic form pointing at the current module). The
-// structural carrier doesn't know "current module" — that's
-// resolver context — so the canonicalization is a producer
-// obligation: producers (parser/resolver) MUST resolve the
-// `pub(in path)` to its target module, compare against the item's
-// containing module, and emit Private if equal / PubInPath if
-// strict-ancestor. P2 single-authority: the no-modifier scope has
-// EXACTLY ONE structural representation (Private); any other
-// representation is the duplicate-authority defect this discipline
-// prevents.
-//   `pub(in $crate::…)` (macro    →  out-of-scope for this slice
-//   context)                       (SCOPE NEGATIVE per the header —
-//                                  hygienic-macro support is a future
-//                                  C1 edit to RustPathSegment that
-//                                  adds a `MacroCrate` variant).
+// SINGLE-AUTHORITY INVARIANT (BLOCKING operator review 2026-05-16T07:
+// 30:48Z + openai-pro REQUEST_CHANGES 2026-05-16T08:36:04Z). Multiple
+// source forms with the SAME resolved module MUST canonicalize to the
+// SAME RustVisibility value. The absolute-path-from-crate-root form
+// makes this STRUCTURALLY enforced: there is exactly ONE
+// `List<NamedSegment>` per module under crate. The resolver does the
+// path-resolution work (walk up super-chains, look up self-prefix
+// paths, etc.) before constructing PubInPath; the carrier doesn't
+// distinguish source-spelling variants because there's no place to
+// put that distinction.
 //
-// The carrier itself enforces the post-resolution invariants
-// (PubInRoot has no Self anchor; SuperHops has no zero-hop case;
-// suffix admits only NamedSegments) — non-canonical states are
-// unrepresentable, NOT canonicalized-on-construction by this file.
-// The canonicalization above is the PARSER / RESOLVER's contract;
-// the carrier provides the destination types.
-//
-// (Source-syntax modeling, if a future slice wants to retain
-// pre-resolution paths for diagnostic-source-spans / IDE round-trip:
-// a separate carrier would live alongside PubInPath, distinct from
-// the visibility-scope carrier here. That's an explicit future-
-// substrate question; this carrier represents the canonical scope
-// only.)
+// The carrier provides the destination type; the parser/resolver
+// provides the canonicalization. Source-syntax modeling for IDE /
+// diagnostic-span use cases is an explicit future-substrate question
+// — a separate pre-resolution syntactic carrier would live alongside
+// PubInPath, not in place of it.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1129,29 +1075,22 @@ type PubInPath {
 // faithful structural partition is therefore THREE variants — the
 // absent / unrestricted / path-restricted axis — with the path-
 // restricted variant CARRYING its SimplePath as a head-rooted
-// `PubInPath { root: PubInRoot, suffix: List<NamedSegment> }`
-// (declared above this type). `pub(in crate::outer_mod)` is
-// REPRESENTABLE (`PubInPath { root: AtCrate, suffix: [outer_mod] }`),
-// and VALID self-prefixed source forms have NAMED canonical
-// destinations — `pub(in self)` ≡ Private (Reference equivalence);
-// `pub(in self::super)` ≡ `pub(in super)` → `PubInPath { root:
-// AtSuperChain { hops: OneSuper }, suffix: [] }`; deeper self-prefix
-// forms canonicalize per the rules table below the PubInPath
-// declaration (`self::super::M::…` → AtSuperChain chain + named
-// suffix). The carrier itself represents POST-RESOLUTION canonical
-// scope only — the parser/resolver is obligated under extdeps-
-// fidelity / P2 to canonicalize self-prefixed Rust source paths to
-// their non-self ancestor-rooted forms before constructing PubInPath
-// (the canonicalizations are NOT optional: valid aliases have a
-// REQUIRED canonical destination per the table). This is type-level
-// enforcement at the carrier (PubInRoot has no Self anchor; SuperHops
-// has no zero-hop case), NOT a documentation-only invariant. The
-// head-rooted shape ALSO makes Reference-invalid path-qualifier
-// orderings (empty path, Super after Crate, bare Named without root,
-// Super after Named, Crate after named) structurally unrepresentable
-// per BLOCKING operator review 2026-05-16T05:06:51Z. Self-prefixed
-// source-form canonicalization specified per BLOCKING operator
-// review 2026-05-16T07:30:47Z + 2026-05-16T06:26:19Z.
+// `PubInPath { resolved_path: List<NamedSegment> }` (declared above
+// this type). The carrier is keyed by the ABSOLUTE PATH FROM CRATE
+// ROOT to the resolved ancestor module — ONE canonical PubInPath
+// value per resolved scope, P2 single-authority TYPE-ENFORCED.
+// Reference-invalid path-qualifier orderings are upstream parse-
+// rejected by the resolver before construction. All valid source
+// forms (`pub(self)` / `pub(in self)` / no-modifier / `pub(crate)` /
+// `pub(in crate)` / `pub(super)` / `pub(in super::…)` / `pub(in
+// self::super::…)` / `pub(in <SimplePath>)`) canonicalize to either
+// Private (if resolved scope is the item's current module) or PubIn
+// { path: PubInPath { resolved_path: <absolute-from-crate-root> } }
+// (if resolved scope is a strict ancestor) per the canonicalization
+// rules table below the PubInPath declaration. Multiple source forms
+// with the SAME resolved scope produce the SAME canonical value.
+// Per BLOCKING reviews 2026-05-16T05:06:51Z / 06:26:18-19Z /
+// 07:30:47-48Z / 08:36:04Z (openai-pro REQUEST_CHANGES).
 // Spec: https://doc.rust-lang.org/reference/visibility-and-privacy.html
 //
 //   - Private — items without a `pub` modifier (the Rust default;
@@ -1162,56 +1101,44 @@ type PubInPath {
 //               (the Reference states all three are the same
 //               visibility). The three source forms (no-modifier,
 //               `pub(self)`, `pub(in self)`) ALL canonicalize to
-//               THIS variant — STRUCTURALLY: `PubInRoot` has no
-//               Self anchor (see its declaration above), so no
-//               PubIn value can represent the self-rooted scope.
-//               The canonicalization is type-enforced, not
-//               check-enforced; no separate well-formedness fn is
-//               needed.
+//               THIS variant — STRUCTURALLY: PubInPath carries an
+//               absolute-from-crate-root path; the resolver
+//               canonicalizes any source form whose resolved
+//               module IS the item's current module to Private
+//               (not PubIn). One canonical representation per
+//               resolved scope; the no-modifier scope has exactly
+//               one structural form: Private.
 //   - Pub     — `pub`         publicly visible (no restriction
 //               beyond the defining crate's API surface)
 //   - PubIn { path: PubInPath }
 //             — `pub(in SimplePath)` — visible to the module at
-//               the given SimplePath. The path is a head-rooted
-//               `PubInPath { root: PubInRoot, suffix:
-//               List<NamedSegment> }` (declared above this type):
-//               PubInRoot is `AtCrate` or `AtSuperChain { hops:
-//               SuperHops }` (SuperHops is the non-empty inductive
-//               super-chain `OneSuper | MoreSuper`), and suffix
-//               carries zero or more NamedSegments. The convenience
-//               forms `pub(crate)` / `pub(super)` canonicalize to
-//               `PubIn { path: { root: AtCrate, suffix: [] } }` /
-//               `PubIn { path: { root: AtSuperChain { hops:
-//               OneSuper }, suffix: [] } }` respectively;
-//               multi-segment paths like `pub(in crate::outer_mod)`
-//               are `PubIn { path: { root: AtCrate, suffix:
-//               [NamedSegment { id: outer_mod }] } }`.
-//               Reference-invalid path-qualifier orderings are all
-//               STRUCTURALLY UNREPRESENTABLE: empty path (root
-//               required by PubInPath shape); Super after Crate
-//               (suffix carries only NamedSegments, no keyword
-//               positions); bare Named without root (root required);
-//               Super after a Named segment (same — suffix
-//               keyword-free); Crate after named (same). Multi-
-//               segment paths starting with `self` are HANDLED at
-//               the parser/resolver boundary per the canonicalization
-//               rules table after the PubInPath declaration —
-//               `pub(in self::super)` ≡ `pub(in super)` resolves to
-//               AtSuperChain{OneSuper} (not unrepresentable);
-//               `pub(in self::outer_mod)` where outer_mod is a
-//               descendant of current is parse-REJECTED per the
-//               ancestor-resolution rule (a child-of-current is not
-//               an ancestor; no canonical PubInPath exists). The
-//               carrier represents post-resolution canonical scope;
-//               self-prefixed source forms are canonicalized BEFORE
-//               reaching it, not silently dropped to "out-of-scope."
-//               `pub(self)` / `pub(in self)` ≡ `Private`
-//               structurally — PubInRoot has no Self variant.
-//               P2 single-authority: each Reference visibility scope
-//               has EXACTLY ONE canonical representation in this
-//               partition, enforced structurally by PubInRoot +
-//               PubInPath's head-rooted shape (NOT by documented
-//               producer obligation).
+//               the resolved SimplePath. The path is
+//               `PubInPath { resolved_path: List<NamedSegment> }`
+//               (declared above this type) — an ABSOLUTE PATH FROM
+//               CRATE ROOT. Empty resolved_path denotes the crate
+//               root itself (= `pub(crate)`); non-empty denotes
+//               the module at `crate::<seg1>::<seg2>::…`.
+//               Canonical examples (for an item in `crate::a::b::c`):
+//               `pub(crate)` → `PubIn { path: { resolved_path: [] } }`;
+//               `pub(super)` → `PubIn { path: { resolved_path: [a, b] } }`;
+//               `pub(super::super)` → `PubIn { path: { resolved_path: [a] } }`;
+//               `pub(in crate::a)` → SAME as `pub(super::super)`
+//               (same resolved scope → same canonical value).
+//               Source-syntax variants pointing at the SAME resolved
+//               module produce the SAME canonical PubInPath value —
+//               there is no source-spelling distinction in the
+//               canonical form (P2 single-authority TYPE-ENFORCED
+//               via the absolute-from-crate-root shape). Reference-
+//               invalid path-qualifier orderings (a non-ancestor
+//               resolved module; an empty SimplePath) are parse/
+//               resolver-rejected before construction. Self-prefixed
+//               source forms (`pub(in self::super)`, etc.) resolve
+//               via name-resolution to their absolute ancestor path
+//               before construction; the carrier doesn't see the
+//               source-spelling prefix. `pub(self)` / `pub(in self)`
+//               / `pub(in <current-module-path>)` all canonicalize
+//               to Private (the no-modifier scope; one canonical
+//               representation).
 //
 // (Corrected 2026-05-16 per THREE BLOCKING reviews on PR #3174:
 //   1. Prior 4-way partition `Private | Crate | Super | Pub` dropped
@@ -1246,28 +1173,41 @@ type PubInPath {
 //      visibility paths […] are constructible despite Rust
 //      Reference path-qualifier rules, violating extdeps fidelity
 //      and INVARIANTS P2."
-// The final corrected partition replaces the flat List with a
-// head-rooted Conj `PubInPath { root: PubInRoot, suffix:
-// List<NamedSegment> }` (declared above this type):
-//   - PubInRoot = AtCrate | AtSuperChain { hops: SuperHops }, where
-//     SuperHops = OneSuper | MoreSuper { outer: SuperHops } (a non-
-//     empty inductive super-chain, NO zero-hop case — the zero-hop
-//     case would be ≡ self/Private, same duplicate-authority shape
-//     as the prior fix structurally excluded for Self).
-//   - The suffix is `List<NamedSegment>`, carrying ONLY named
-//     module-identifier segments. Keyword segments (Crate / Super)
-//     cannot appear in the suffix.
-// All Reference-invalid orderings are now STRUCTURALLY
-// UNREPRESENTABLE: empty path (root required); Super after Crate
-// (suffix has no Super); bare Named without root (root required);
-// Super after Named (suffix has no Super); Crate after Named (only
-// one root coordinate); zero super hops (SuperHops has no zero
-// base case); self-rooted any (PubInRoot has no Self). The earlier
-// doc wording that claimed `self::outer` "canonicalizes by
-// dropping the leading self" was WRONG — corrected per BLOCKING
-// operator review 2026-05-16T03:44:50Z; with the head-rooted shape
-// the self-prefixed paths simply don't reach this carrier at all,
-// removing the canonicalization claim entirely.)
+//   5. Round-4 introduced a head-rooted Conj
+//      `PubInPath { root: PubInRoot, suffix: List<NamedSegment> }`
+//      with PubInRoot = AtCrate | AtSuperChain { hops: SuperHops }.
+//      Reference-invalid orderings were structurally unrepresentable
+//      under that shape, but it admitted TWO structural values for
+//      the SAME resolved scope: `pub(super)` for an item in
+//      `crate::a::b` → `PubInPath { root: AtSuperChain { hops:
+//      OneSuper }, suffix: [] }`, while `pub(in crate::a)` for the
+//      same item → `PubInPath { root: AtCrate, suffix: [a] }`.
+//      Both denoted the parent-module scope; same resolved scope,
+//      two structural authorities = P2 violation. Operator BLOCKING
+//      2026-05-16T07:30:48Z + openai-pro REQUEST_CHANGES
+//      2026-05-16T08:36:04Z named this: "the canonical carrier
+//      should key the resolved module once, not preserve absolute-
+//      vs-relative source spelling in the canonical value."
+// The final corrected partition collapses to a single
+// absolute-path-from-crate-root shape: `PubInPath { resolved_path:
+// List<NamedSegment> }` (declared above this type). Empty
+// `resolved_path` = the crate root (≡ `pub(crate)`); non-empty =
+// `crate::<seg1>::<seg2>::…`. ONE canonical PubInPath value per
+// resolved ancestor scope — P2 single-authority TYPE-ENFORCED via
+// the absolute shape (no parallel absolute-vs-relative forms to
+// pick between). SuperHops + PubInRoot are DELETED as non-
+// canonical source-spelling artifacts; the resolver canonicalizes
+// every valid `pub(in <SimplePath>)` source form to its absolute
+// path before constructing PubInPath. Reference-invalid orderings
+// (non-ancestor resolved modules) are parse/resolver-rejected
+// upstream; the reflexive-current-module case canonicalizes to
+// Private (one canonical representation for the no-modifier
+// scope). The earlier doc wording that claimed `self::outer`
+// "canonicalizes by dropping the leading self" was WRONG —
+// corrected per BLOCKING operator review 2026-05-16T03:44:50Z; the
+// new absolute-path shape moots the self-prefix question entirely
+// (the resolver computes the absolute resolved path, regardless of
+// source-syntax prefix).)
 //
 // CLOSED (C1 stop-signal). A fourth top-level form is an edit to
 // THIS declaration under the L-2 pin discipline. The PubIn variant
@@ -1311,41 +1251,48 @@ type PubInPath {
 //   5. Parameterized family — FAILS: the three variants are NOT
 //      one generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). Private and Pub are nullary
-//      tags; PubIn carries a PubInPath (head-rooted: root +
-//      List<NamedSegment> suffix). They are structurally
-//      heterogeneous (the Disj-with-payloads shape is
-//      irreducible — collapsing PubIn into Private/Pub would lose
-//      the path fact, exactly the regression this BLOCKING fix
-//      undid).
+//      tags; PubIn carries a PubInPath (absolute-from-crate-root
+//      `{ resolved_path: List<NamedSegment> }`). They are
+//      structurally heterogeneous (the Disj-with-payloads shape
+//      is irreducible — collapsing PubIn into Private/Pub would
+//      lose the path fact, exactly the regression this BLOCKING
+//      fix undid).
 // Terminal: the closed three-way Rust item-visibility partition
-// reflecting the Reference's fundamental form. Reference equivalences
-// canonicalize to: `pub(crate)` / `pub(in crate)` → `PubIn { path:
-// PubInPath { root: AtCrate, suffix: [] } }`; `pub(super)` /
-// `pub(in super)` → `PubIn { path: PubInPath { root: AtSuperChain
-// { hops: OneSuper }, suffix: [] } }`; `pub(self)` / `pub(in self)`
-// / no-modifier → `Private` (STRUCTURALLY UNREPRESENTABLE as PubIn
-// — PubInRoot has no Self anchor).
+// reflecting the Reference's fundamental form. Reference
+// equivalences canonicalize to absolute-from-crate-root paths:
+// `pub(crate)` / `pub(in crate)` → `PubIn { path: PubInPath {
+// resolved_path: [] } }`; `pub(super)` for item in `crate::a::b`
+// → `PubIn { path: PubInPath { resolved_path: [a] } }` (the
+// parent module's absolute path); `pub(self)` / `pub(in self)` /
+// no-modifier / any `pub(in <path>)` resolving to current module
+// → `Private` (one canonical representation for the no-modifier
+// scope).
 type RustVisibility
   = Private
   | Pub
   | PubIn { path: PubInPath }
 
 
-// RustVisibility well-formedness — TYPE-ENFORCED via PubInRoot
-// (no Self anchor) + SuperHops (no zero-hop case) + PubInPath's
-// keyword-free suffix.
+// RustVisibility well-formedness — TYPE-ENFORCED via PubInPath's
+// absolute-from-crate-root single-canonical-form discipline.
 //
-// The single-authority invariant "pub(self) ≡ Private; never a
-// PubIn value rooted at Self or with a self segment" is structurally
-// enforced by PubInRoot's Disj having no Self variant. The
-// Reference's path-qualifier ordering invariants are likewise
-// type-enforced: empty path, Super-after-Crate, bare-Named-without-
-// root, and Super/Crate-after-Named are all unrepresentable
-// because the PubInPath shape requires a root coordinate and the
-// suffix admits only NamedSegments. Illegal states unrepresentable
-// per modeling-discipline.md §Practices 2/6 AND INVARIANTS P2;
-// NOT a doc-only producer obligation, NOT a noop well-formedness
-// fn.
+// The single-authority invariant "same resolved scope ⇒ same
+// RustVisibility value" is structurally enforced by PubInPath's
+// shape: there is exactly ONE `List<NamedSegment>` per module
+// under crate (the absolute path from crate root), so every valid
+// `pub(in <SimplePath>)` source form canonicalizes to a unique
+// PubInPath value at the resolver. Source-spelling variants (e.g.
+// `pub(super)` vs `pub(in crate::a)` for an item in `crate::a::b`)
+// resolve to the SAME absolute path and produce the SAME canonical
+// PubInPath value; the carrier has no place to encode source-
+// spelling distinctions. Reference's reflexive-current-module case
+// canonicalizes to Private (one structural representation for the
+// no-modifier scope). Illegal-non-ancestor and empty-path cases are
+// parse/resolver-rejected upstream; the carrier admits only valid
+// strict-ancestor + crate-root destinations. Illegal states
+// unrepresentable per modeling-discipline.md §Practices 2/6 AND
+// INVARIANTS P2; NOT a doc-only producer obligation, NOT a noop
+// well-formedness fn.
 
 
 // ─────────────────────────────────────────────────────────────────────
