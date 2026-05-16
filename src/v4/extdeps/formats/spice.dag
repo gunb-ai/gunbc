@@ -1051,25 +1051,36 @@ type DeckStatement
 // parallel-list shape silently bucketed the statements and dropped
 // the order.
 //
-// LIFTED NESTED `.SUBCKT` POSITION. Nested `.SUBCKT/.ENDS` pairs are
-// lifted to the top-level body (see "SUBCIRCUIT NESTING + LEXICAL
-// SCOPING" in the top-of-file modeling notes). A lifted nested
-// subcircuit appears in `body` as a `DeckSubcircuit` value with
-// non-empty `parent_scope`; the parser places it at a canonical
+// LIFTED NESTED `.SUBCKT` POSITION — 🟡 YELLOW scaffold (PR #3168
+// cursor exploratory: tightening the named-trigger to mirror
+// `Component` / `Directive` YELLOW shape). Nested `.SUBCKT/.ENDS`
+// pairs are lifted to the top-level body (see "SUBCIRCUIT NESTING +
+// LEXICAL SCOPING" in the top-of-file modeling notes). A lifted
+// nested subcircuit appears in `body` as a `DeckSubcircuit` value
+// with non-empty `parent_scope`; the parser places it at a canonical
 // post-lifting position, and emit re-nests it inside the named parent
 // `.SUBCKT/.ENDS` pair using the `parent_scope` chain. The exact
 // within-parent position of a nested SUBCKT (i.e. which statement of
 // the parent's body it appeared BETWEEN) is NOT preserved by this
 // shape — only its parent identity is. This is a documented secondary
 // fidelity concession (top-level interleave preserved; within-parent
-// nested-SUBCKT position not preserved), tracked as a YELLOW debt
-// item: dissolution would require either threading position metadata
-// through `SubcircuitDefinition` or moving nested SUBCKTs back into
-// the parent's `body` list (which would require admitting
-// `SubcircuitDefinition` itself as a `SubcircuitStatement` variant,
-// which in turn requires careful treatment of the recursion shape).
-// The current shape favors top-level interleave fidelity (the
-// reviewer's flagged concern) over within-parent nesting position.
+// nested-SUBCKT position not preserved), favoring top-level
+// interleave fidelity (the reviewer's flagged concern) over within-
+// parent nesting position.
+//   Named trigger: when a consumer requires byte-exact `parse ∘ emit`
+//   round-trip of decks where a nested `.SUBCKT` is interleaved
+//   between sibling statements of its parent body (rather than
+//   appearing at the parent's start or end), this concession
+//   dissolves. The fix paths are: (a) extend
+//   `SubcircuitDefinition` with `position_in_parent: List<Symbol>`-
+//   indexed positional metadata (a parallel ordering authority);
+//   (b) admit `SubcircuitDefinition` as a `SubcircuitStatement`
+//   variant + relax the lifting discipline (introduces a recursive
+//   carrier, std/-substrate-tier per A1); (c) accept the
+//   concession permanently and emit a lossless-but-not-byte-
+//   identical canonicalization. The current shape blocks none of
+//   these; the trigger is the first consumer asking for byte-exact
+//   nested-SUBCKT round-trip.
 //
 // Emptiness of `body` is not structurally ruled out — SPICE3 admits a
 // deck with only a title (semantically empty but syntactically legal).
