@@ -146,13 +146,13 @@ type FileSystemPath
 // a string label or `Other` variant.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// YELLOW, scope-limited by the frozen scaffold header. POSIX `stat`
-// exposes additional file types (`S_IFIFO`, `S_IFBLK`, `S_IFCHR`,
-// `S_IFSOCK`) beyond the v4 scaffold's regular/directory/symlink
-// subset. Named first-consumer trigger: the first v4 consumer that
-// needs complete POSIX `stat` classification must extend this carrier
-// under the manager-ratified header-scope decision rather than mapping
-// those kinds to `RegularFile` or a string label. Ledger:
+// YELLOW, first-consumer-confirmed. The frozen scaffold intentionally
+// models only the file-kind partition needed by read/write/list/kind in
+// v4 self-hosting. Named trigger: the first realization consumer of
+// `file_kind` must confirm that every successful result in this bounded
+// scope maps to one of these variants, and otherwise fail closed through
+// the D1 `Outcome<FileKind>` seam rather than inventing `Other` or a
+// string label. Ledger:
 //   1. Fact placement — FAILS: file kind is consumed uniformly by
 //      readers deciding whether to read text, list entries, or resolve
 //      a link; it is not per-consumer metadata.
@@ -175,7 +175,6 @@ type FileKind
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/stat.html
 //
 // Each `*Request` is a pure data description of the host operation. The
 // result seam is the shared `Outcome<T>` carrier named in this file's
