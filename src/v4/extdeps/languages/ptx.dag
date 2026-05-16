@@ -818,42 +818,113 @@ type RegisterScalarKind
 
 
 // ─────────────────────────────────────────────────────────────────────
-// RegisterScalar — the typed PTX scalar register carrier: kind ×
-// (kind-admissible width) × state-space residence. Disj-with-named-
-// field-variant-payloads so that the kind × width admissibility is
-// STRUCTURALLY ENFORCED — illegal pairs like `Predicate + Bits64`,
-// `Float + Bits8`, `Unsigned + Bits128`, or `Bits + Bits1` are
-// unrepresentable (not "rejected by a check" — UNREPRESENTABLE; the
-// INVARIANTS P2 illegal-states-unrepresentable shape, same design
-// choice rust.dag #3174 took for RustScalar). The state_space tag is
-// repeated on every variant: every typed register lives in some
-// state space (no scalar is "state-space-less"), and putting
-// state_space on each variant rather than wrapping a Conj record
-// AROUND the Disj keeps the carrier flat — same shape rust.dag chose
-// for declaring kind-admissibility per variant. (The prior Conj-
-// record `{ kind: RegisterScalarKind, width: RegisterWidth,
-// state_space: StateSpace }` made illegal kind × width combinations
-// constructible pending a "future check" — refactored 2026-05-16 per
-// operator BLOCKING review on PR #3170 to the Disj-with-payloads
-// shape that makes the admissibility STRUCTURAL.)
+// RegisterStateSpace — the closed PTX typed-scalar-resident state-
+// space sub-classifier. PTX ISA 8.5 §5.1 lists 8 state spaces; the
+// `.tex` state space (§5.1.10) is for TEXTURE/SAMPLER/SURFACE
+// DESCRIPTORS (the opaque types `texref` / `sampref` / `surfref`),
+// NOT for typed scalar storage — a typed scalar value cannot reside
+// in `.tex`. So the typed-scalar-residence admissibility set is the
+// 7-variant subset of StateSpace excluding `Tex`.
 //
-//   - BitsScalar      — { width: BitsWidth, state_space: StateSpace }
-//                       e.g. `.b32` in `.global` is BitsScalar { width:
-//                       Bits32, state_space: Global }
-//   - UnsignedScalar  — { width: IntegerWidth, state_space: StateSpace }
+// CLOSED (C1 stop-signal). If a future PTX revision adds a typed-
+// scalar-resident state space, both this enum AND StateSpace get
+// coordinated edits.
+//
+// Spec: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#state-spaces
+//       (Reference §5.1; the `.tex` exclusion is grounded in §5.1.10
+//       texture, sampler, and surface descriptor variables — opaque
+//       types, not typed-scalar storage).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every RegisterScalar consumer reads
+//      the residence to dispatch to the right memory-operation
+//      family (`ld.global` / `ld.shared::cta` / `ld.const` etc.);
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `StateSpace`
+//      reintroduces the `.tex`-residence illegal state this enum
+//      exists to forbid (a typed scalar cannot live in `.tex`); the
+//      sub-classifier IS the dissolved form (same admissibility-
+//      sub-enum pattern as BitsWidth / IntegerWidth / FloatWidth
+//      relative to a hypothetical AllPtxWidths meta-enum).
+//   3. Algebraic form — N/A by construction: these are the spec's
+//      typed-scalar-resident state spaces (StateSpace minus `.tex`);
+//      no richer std/ structure.
+//   4. Dimensional — FAILS: a single typed scalar lives in EXACTLY
+//      ONE residence; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the seven variants are
+//      structurally distinct (per-thread vs per-CTA vs per-grid;
+//      readable vs read-only; with vs without sub-qualifiers —
+//      Param and Shared carry payloads) — NOT projection-uniform
+//      over any richer source. The variants are the PTX-spec
+//      typed-scalar-resident partition, restricted from the full
+//      StateSpace partition by exclusion of `.tex` (which is for
+//      opaque descriptors, not typed scalars).
+// Terminal: the closed seven-way PTX typed-scalar-resident state-
+// space sub-classifier; a typed scalar in `.tex` is structurally
+// unrepresentable (per PTX 8.5 §5.1.10).
+type RegisterStateSpace
+  = ResReg
+  | ResSReg
+  | ResConst
+  | ResGlobal
+  | ResLocal
+  | ResParam { scope: ParamScope }
+  | ResShared { scope: SharedScope }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// RegisterScalar — the typed PTX scalar register carrier: kind ×
+// (kind-admissible width) × (kind-admissible residence). Disj-with-
+// named-field-variant-payloads so that BOTH kind × width AND kind ×
+// residence admissibility are STRUCTURALLY ENFORCED — illegal pairs
+// like `Predicate + Bits64`, `Float + Bits8`, `Unsigned + Bits128`,
+// `Bits + Bits1`, `Predicate + Global` (or any non-.reg state space
+// — `.pred` is reg-only per PTX 8.5 §5.1.1), or any-scalar + `.tex`
+// (per §5.1.10 `.tex` is for opaque descriptors not typed scalars)
+// are unrepresentable (not "rejected by a check" — UNREPRESENTABLE;
+// the INVARIANTS P2 illegal-states-unrepresentable shape, same
+// design choice rust.dag #3174 took for RustScalar).
+//
+// Per-variant residence admissibility (refactored 2026-05-16 per
+// operator REQUEST_CHANGES on PR #3170, openai-pro/gpt-5.5-pro
+// review: the prior `state_space: StateSpace` on every variant
+// admitted PTX-invalid combinations — `PredicateScalar { state_space
+// : Global }` was constructible despite §5.1.1 saying `.pred` is
+// reg-only, and any-scalar-in-`.tex` was constructible despite
+// §5.1.10 reserving `.tex` for opaque descriptors):
+//   - Bits / Unsigned / Signed / Float scalars carry `state_space:
+//     RegisterStateSpace` (the 7-variant `.tex`-excluding sub-
+//     classifier above); .tex residence is unrepresentable for
+//     typed scalars.
+//   - PredicateScalar carries NO state_space field — predicates are
+//     virtual predicate registers (`.reg .pred` per §5.1.1) with no
+//     memory load/store path; residence is implicit `.reg`, NOT a
+//     freely-chosen field. `PredicateScalar { state_space: Global }`
+//     was the canonical illegal state this refactor forecloses.
+//
+//   - BitsScalar      — { width: BitsWidth, state_space:
+//                          RegisterStateSpace }
+//                       e.g. `.b32` in `.global` is BitsScalar
+//                       { width: Bits32, state_space: ResGlobal }
+//   - UnsignedScalar  — { width: IntegerWidth, state_space:
+//                          RegisterStateSpace }
 //                       e.g. `.u32` in `.reg` is UnsignedScalar
-//                       { width: Bits32, state_space: Reg }
-//   - SignedScalar    — { width: IntegerWidth, state_space: StateSpace }
-//                       e.g. `.s64` in `.shared` is SignedScalar
-//                       { width: Bits64, state_space: Shared }
-//   - FloatScalar     — { width: FloatWidth, state_space: StateSpace }
-//                       e.g. `.f32` in `.const` is FloatScalar { width:
-//                       Bits32, state_space: Const }
-//   - PredicateScalar — { state_space: StateSpace }
-//                       Predicate is intrinsically 1-bit per PTX 8.5;
-//                       the width is implicit and carries no payload.
-//                       e.g. a `.pred` register in `.reg` is
-//                       PredicateScalar { state_space: Reg }
+//                       { width: Bits32, state_space: ResReg }
+//   - SignedScalar    — { width: IntegerWidth, state_space:
+//                          RegisterStateSpace }
+//                       e.g. `.s64` in `.shared::cta` is
+//                       SignedScalar { width: Bits64, state_space:
+//                       ResShared { scope: SharedCta } }
+//   - FloatScalar     — { width: FloatWidth, state_space:
+//                          RegisterStateSpace }
+//                       e.g. `.f32` in `.const` is FloatScalar
+//                       { width: Bits32, state_space: ResConst }
+//   - PredicateScalar — bare variant (no state_space field; implicit
+//                       `.reg`). Predicate is intrinsically 1-bit
+//                       per PTX 8.5 §5.1.1 and lives only in virtual
+//                       predicate registers; no memory residence
+//                       is admitted by the spec.
 //
 // `.bf16` is DELIBERATELY NOT a variant of this Disj: PTX 8.5 §5.2
 // treats `.bf16` as a separate kind distinct from `.f`, and modeling
@@ -861,22 +932,30 @@ type RegisterScalarKind
 // negative for this slice (header SCOPE NEGATIVE; a future C1 edit
 // when the bf16 surface lands).
 //
-// The state_space FIELD on every variant is the structural surface of
-// the IN-B claim "state space is an effect-typed parameter, intrinsic
-// to the type signature, NOT an annotation layer" (THESIS:401,
-// scaffold header IN-B note). Memory-op Transforms read this field
-// directly from operand types; there is no separate state-space-
-// annotation layer.
+// Texture/sampler/surface descriptors (`.tex` opaque types `texref`
+// / `sampref` / `surfref` per §5.1.10) are also DELIBERATELY NOT
+// modeled as variants of this Disj — they are opaque descriptor
+// types, not typed scalars; modeling them needs a separate
+// `TextureReference` / `SamplerReference` / `SurfaceReference`
+// carrier (scope-negative for this slice; lands when the texture-
+// op surface needs modeling).
+//
+// The state_space FIELD on the typed-scalar variants is the
+// structural surface of the IN-B claim "state space is an effect-
+// typed parameter, intrinsic to the type signature, NOT an
+// annotation layer" (THESIS:401, scaffold header IN-B note).
+// Memory-op Transforms read this field directly from operand types;
+// there is no separate state-space-annotation layer.
 //
 // SEAM (where D2 inhabitance plugs in). When the D2 form decision
 // lands (operator-pending), the per-variant inhabitance instance-
 // values land in this file with these typed variants as their
 // carriers — UnsignedScalar { width: Bits32, ... } is the carrier
-// for PTX `.u32` inhabitance into Semiring (or its v4-equivalent per
-// the D2-ratified form); FloatScalar { width: Bits32, ... } is the
-// carrier for `.f32` → ApproximateField; PredicateScalar is the
-// carrier for `.pred` → BooleanAlgebra. The seam itself is the typed
-// variant; the inhabitance value is the deferred row.
+// for PTX `.u32` inhabitance into Semiring (or its v4-equivalent
+// per the D2-ratified form); FloatScalar { width: Bits32, ... } is
+// the carrier for `.f32` → ApproximateField; PredicateScalar is
+// the carrier for `.pred` → BooleanAlgebra. The seam itself is the
+// typed variant; the inhabitance value is the deferred row.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -884,14 +963,16 @@ type RegisterScalarKind
 //      (operand typing for instructions, emission of `.b32` /
 //      `.u32` / `.f32` / `.pred` syntax, cost-realization, eventual
 //      inhabitance dispatch) reads the scalar's kind + kind-
-//      admissible width through this carrier; shared, not scattered.
+//      admissible width + kind-admissible residence through this
+//      carrier; shared, not scattered.
 //   2. Variant-is-data — FAILS: collapsing the variants to a
 //      uniform record `{ kind: RegisterScalarKind, width:
-//      Option<…>, state_space }` reintroduces exactly the illegal
-//      states this Disj-with-payloads design exists to forbid
-//      (Predicate-with-width, Float-with-Bits8, Unsigned-with-
-//      Bits128, etc.). The 5-variant Disj IS the dissolved form
-//      (P2 + Practice 2/6 + M4).
+//      Option<…>, state_space: Option<RegisterStateSpace> }`
+//      reintroduces exactly the illegal states this Disj-with-
+//      payloads design exists to forbid (Predicate-with-state-
+//      space, Float-with-Bits8, Unsigned-with-Bits128, etc.). The
+//      5-variant Disj IS the dissolved form (P2 + Practice 2/6 +
+//      M4).
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
 //      algebra structure (Unsigned → Semiring; Signed →
 //      OrderedRing; Float → ApproximateField; Predicate →
@@ -901,29 +982,31 @@ type RegisterScalarKind
 //      collapsing target.
 //   4. Dimensional — FAILS: a single typed PTX scalar IS EXACTLY
 //      ONE variant of this Disj; mutually-exclusive alternatives.
-//      The shapes differ across variants (PredicateScalar has only
-//      state_space; the typed variants each carry their kind-
-//      admissible width sub-enum) — they cannot be coordinates of
-//      a single record without the illegal-state smell.
+//      The shapes differ across variants (PredicateScalar has NO
+//      payload — bare; the typed variants each carry their kind-
+//      admissible width sub-enum + RegisterStateSpace residence) —
+//      they cannot be coordinates of a single record without the
+//      illegal-state smell.
 //   5. Parameterized family — FAILS: the five variants are the PTX
 //      spec's primitive-kind partition; they are NOT one generic
 //      `F<X>` / projection over a separately-declared source set
 //      (Practice 7). The variants correspond to STRUCTURALLY
 //      DISTINCT admissible-width sub-enums (BitsWidth /
-//      IntegerWidth / FloatWidth / no-width) and structurally
-//      distinct algebraic groundings — they are not projection-
-//      uniform over any richer source. The rust.dag #3174 precedent
-//      established this Disj-with-heterogeneous-payloads form for
-//      exactly this reason.
+//      IntegerWidth / FloatWidth / no-width-no-residence for
+//      Predicate) and structurally distinct algebraic groundings —
+//      they are not projection-uniform over any richer source. The
+//      rust.dag #3174 precedent established this Disj-with-
+//      heterogeneous-payloads form for exactly this reason.
 // Terminal: the closed five-variant PTX scalar-register typed-value
-// sum with kind × admissible-width admissibility STRUCTURALLY
-// enforced; illegal pairs are unrepresentable by construction.
+// sum with kind × admissible-width AND kind × admissible-residence
+// admissibility STRUCTURALLY enforced; illegal pairs are
+// unrepresentable by construction.
 type RegisterScalar
-  = BitsScalar { width: BitsWidth, state_space: StateSpace }
-  | UnsignedScalar { width: IntegerWidth, state_space: StateSpace }
-  | SignedScalar { width: IntegerWidth, state_space: StateSpace }
-  | FloatScalar { width: FloatWidth, state_space: StateSpace }
-  | PredicateScalar { state_space: StateSpace }
+  = BitsScalar { width: BitsWidth, state_space: RegisterStateSpace }
+  | UnsignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
+  | SignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
+  | FloatScalar { width: FloatWidth, state_space: RegisterStateSpace }
+  | PredicateScalar
 
 
 // ─────────────────────────────────────────────────────────────────────
