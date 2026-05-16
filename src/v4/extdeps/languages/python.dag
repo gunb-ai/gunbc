@@ -17,6 +17,15 @@
 //         the relevant declaration below + a coordinated version-pin
 //         bump on THIS line, never a silent extension via the floating
 //         URL. The per-carrier `// Spec:` URLs below mirror the pin.
+// SPEC-vs-IMPLEMENTATION (codex BLOCKING PR #3180 @51b26132 — verified on
+//         HEAD): declaration-class carriers in THIS file cite **only** the
+//         pinned Language Reference (`/3.14/…`). CPython-only facts (bytecode
+//         tables, object memory layout, a particular IEEE-754 realization) are
+//         **not** encoded as authoritative fields on these classifiers — they
+//         appear only as explicit implementation contrast where the Reference
+//         admits caveats, or land in a **future versioned implementation slice**
+//         / LanguageModel data (Owned ELSEWHERE) when ratified; never folded
+//         silently into floating-reference "spec" authority.
 // Unifies: (per THESIS:188) language spec = transport spec = interpreter
 //         runtime. ONE substrate carrier for all three roles. Different
 //         lenses read different facts from the same data (emission
@@ -44,7 +53,7 @@
 //   D2a(1) alias-identity lands here where std/ carriers exist; D2a(2)
 //   **entire facet deferred** — `GroundingMap` is operator-pending shared
 //   substrate (P2: do NOT re-declare per language-file); D2a(3) follows
-//   **this** spec (docs.python.org/3/reference — Python `int` is
+//   **this** spec (https://docs.python.org/3.14/reference/ — Python `int` is
 //   UNBOUNDED ⇒ no overflow disposition; NOT rust's `OverflowAction` /
 //   `OverflowDisposition`, which would be a B3 parallel-taxonomy leak).
 //   Discipline: mirror #3174's **dissolution** of improvised IrTo/registry/
@@ -167,7 +176,7 @@
 //     where substrate exists** (`PyBool = Bool`); **defers (2) in full**
 //     until operator pins shared `GroundingMap` (see Owns + D2 block);
 //     **lands no (3) carriers** in this file (peer-(a); D2a(3) anchor:
-//     https://docs.python.org/3/reference/). The seven retired
+//     https://docs.python.org/3.14/reference/). The seven retired
 //     `data python_*: PythonScalar = …` registry rows and the `IrToPython<>`
 //     correspondence + Layer-2 assert dissolved per #3174 @0328bee9 deletion provenance
 //     (INVARIANTS P1 parallel-cementing path). Remaining D2a(1) aliases for
@@ -997,8 +1006,8 @@ type PythonCost {
 //   (🟡 TRACKED-SCAFFOLD; trigger = operator pins `GroundingMap` home under
 //   escalation; import-never-redeclare-carriers / P2).
 // D2a(3) THIS FILE: **zero** operation-semantics carriers (mgr brief peer-
-//   (a)) — principal Python `int` is UNBOUNDED (docs.python.org/3/reference,
-//   datamodel — "Integers have unlimited precision"); it aliases std
+//   (a)) — principal Python `int` is UNBOUNDED (https://docs.python.org/3.14/reference/
+//   datamodel.html#numeric-types-int-integers-of-unlimited-size — "Integers have
 //   unbounded `Int` when that ladder lands — **no** overflow event ⇒ **no**
 //   `OverflowAction` / `OverflowDisposition` declared in python.dag at all.
 //
