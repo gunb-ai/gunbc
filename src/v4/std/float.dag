@@ -22,7 +22,7 @@
 //     The std/extdeps typescript.dag header already anticipates this shape;
 //     algebra.dag (T-2) owns its exact name and definition. The **machine-
 //     readable** `data float_approximate_field: ApproximateField<Float>`
-//     witness ships here (operator D3 2026-05-16): op fields are `fn` refs
+//     witness ships here (see DECISIONS.md **D3**): op fields are `fn` refs
 //     (THESIS:203 `FunctionRef` spine) to IEEE primitive-op signatures whose
 //     **executable** bodies are realized in `extdeps/languages/*` (T-4), not
 //     Peano-field componentwise stubs in this file (D2b).
@@ -132,7 +132,7 @@ import v4.std.node { Symbol }
 // respect nominal widths; the dissolution trigger is the same bounded
 // refinement substrate named in machine.dag's modeling notes.
 //
-// APPROXIMATEFIELD INHABITANCE — operator D3 (2026-05-16): the machine-readable
+// APPROXIMATEFIELD INHABITANCE — DECISIONS.md **D3**: the machine-readable
 // `data float_approximate_field: ApproximateField<Float>` witness **ships**
 // here. `add` / `mul` name IEEE primitive ops whose **executable** bodies are
 // T-4 `extdeps/languages/*` realizations (D2b — THESIS:203 primitive path), not
@@ -438,7 +438,7 @@ fn float_ieee754_primitive_compare(a: Float, b: Float) -> Ordering {
 
 
 // float_approximate_field — monomorphic `ApproximateField<Float>` witness
-// (operator D3 2026-05-16). Op fields reference the primitive `fn`s on the
+// (DECISIONS.md **D3**). Op fields reference the primitive `fn`s on the
 // THESIS:203 external-primitive spine (D2b).
 data float_approximate_field: ApproximateField<Float> = ApproximateField {
   add: float_ieee754_primitive_add,
