@@ -1107,7 +1107,25 @@ type PubInRoot
 //   - root      which ancestor anchor (AtCrate or AtSuperChain with
 //               a non-empty super-hop chain). The Self anchor is
 //               structurally excluded (PubInRoot has no Self
-//               variant).
+//               variant). This is NOT a claim that all
+//               self-prefixed Rust source paths are
+//               unrepresentable visibilities — Rust does admit
+//               `self` as the first SimplePath segment, and the
+//               combinations starting with `self` resolve to
+//               canonical non-self forms per Reference §paths:
+//               `pub(in self)` ≡ Private (Reference equivalence);
+//               `pub(in self::super)` ≡ `pub(in super)` (self::super
+//               resolves to super at name-resolution time);
+//               `pub(in self::super::super::M)` ≡
+//               `pub(in super::super::M)`; etc. Each VALID self-
+//               prefixed source form has a REQUIRED canonical
+//               PubInPath / Private destination, enumerated in the
+//               canonicalization rules table below this declaration.
+//               The PARSER/RESOLVER is obligated under extdeps-
+//               fidelity / P2 to apply those canonicalizations
+//               before constructing this carrier; the carrier
+//               itself represents the post-resolution canonical
+//               scope (NOT the source SimplePath syntax).
 //   - suffix    zero or more module-identifier segments that follow
 //               the root; `pub(in crate::outer::inner)` has
 //               `suffix = [outer, inner]`; `pub(in super::super)`
@@ -1176,11 +1194,28 @@ type PubInPath {
 //                                   §paths; canonical PubInPath
 //                                   represents `super`, not the
 //                                   syntactic `self::super` form)
+//   `pub(in self::super::super)` →  PubIn { path: { root: AtSuperChain
+//                                                       { hops: MoreSuper
+//                                                                  { outer: OneSuper } },
+//                                                  suffix: [] } }
+//                                   (any number of `super` segments
+//                                   after a leading `self` resolves to
+//                                   the equivalent chain without the
+//                                   leading self — `self::super::super`
+//                                   IS `super::super` at the resolution
+//                                   layer)
+//   `pub(in self::super::M::…)`  →  PubIn { path: { root: AtSuperChain
+//                                                       { hops: <chain> },
+//                                                  suffix: [M, …] } }
+//                                   (the `self::` prefix drops at name-
+//                                   resolution; the canonical form
+//                                   carries the super-chain followed by
+//                                   the named tail)
 //   `pub(in self::M)` where M    →  parse-REJECTED. Per Reference
 //   resolves to a DESCENDANT       `pub(in path)` requires path to
-//   (child of current module)      resolve to an ANCESTOR module; a
-//                                  child-of-current is not an
-//                                  ancestor. Resolver rejects upstream;
+//   (child of current module —     resolve to an ANCESTOR module; a
+//   so `self::M` resolves to M     child-of-current is not an
+//   as a child)                    ancestor. Resolver rejects upstream;
 //                                  no canonical PubInPath value exists.
 //   `pub(in foo::bar)` where      →  PubIn { path: { … } } with the
 //   foo::bar resolves to an        resolved root (Crate / SuperChain
