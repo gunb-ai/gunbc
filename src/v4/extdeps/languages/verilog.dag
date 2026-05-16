@@ -1239,18 +1239,105 @@ type AnsiPortDeclaration
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ParameterDeclaration — a Verilog compile-time constant
-// (`parameter WIDTH = 8;`). Conj record (no Practice-4 ledger).
+// ParameterTypeKind — the closed Verilog parameter-type classifier
+// (IEEE 1364-2005 §A.2.1.1). A parameter declaration's type is
+// either UNTYPED (inferring from the default-value's type per §3.10)
+// OR an explicit parameter_type (integer / real / realtime / time).
+// The explicit-type form FORBIDS [signed]/[range] modifiers per
+// spec — those apply only to the untyped form.
+//
+//   - UntypedParameter { packing: PackingShape, signedness: Signedness }
+//       — `parameter WIDTH = 8;`, `parameter signed [3:0] X = 4'sb1100;`
+//       The packing + signedness modifiers apply ONLY to this form.
+//   - IntegerParameter      — `parameter integer N = 4;`
+//   - RealParameter         — `parameter real PI = 3.14;`
+//   - TimeParameter         — `parameter time T = 10;`
+//   - RealTimeParameter     — `parameter realtime RT = 1.5;`
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §A.2.1.1 admits exactly
+// this five-way parameter-type partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every parameter consumer (override-
+//      conversion per §12.1.3, type-check legality, emission)
+//      reads the type kind uniformly; shared classifier.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{ kind:
+//      Symbol, packing?: PackingShape, signedness?: Signedness }`
+//      ratifies spec-forbidden states like "IntegerParameter with
+//      signed [3:0]" (per spec the explicit-type forms forbid
+//      range/signedness modifiers). Disj-with-heterogeneous-
+//      payloads makes the per-kind admissibility structural.
+//   3. Algebraic form — PARTIAL: each variant grounds in a std/
+//      algebra structure (UntypedParameter → polymorphic per the
+//      default-value's inferred type; IntegerParameter →
+//      OrderedRing<Int<32>>; RealParameter / RealTimeParameter →
+//      ApproximateField<Float>; TimeParameter → Semiring<UInt<64>>).
+//      D2-deferred per "Owned ELSEWHERE".
+//   4. Dimensional — FAILS: a single parameter has EXACTLY ONE
+//      type kind; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: heterogeneous payload-presence
+//      (UntypedParameter carries packing+signedness; the typed
+//      kinds carry neither) — NOT one generic `F<X>` / projection
+//      over a single source set (Practice 7). Mirror of body-side
+//      VariableDeclaration's kind × packing × signedness
+//      dissolution.
+// Terminal: the closed five-way Verilog parameter-type classifier.
+type ParameterTypeKind
+  = UntypedParameter { packing: PackingShape, signedness: Signedness }
+  | IntegerParameter
+  | RealParameter
+  | TimeParameter
+  | RealTimeParameter
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParameterAssignment — one (name, default-value) pair in a
+// parameter_declaration's list_of_param_assignments (IEEE 1364-2005
+// §A.2.4 / §3.10). A single declaration like `parameter WIDTH = 8,
+// DEPTH = 16;` carries TWO ParameterAssignments. Conj record (no
+// Practice-4 ledger).
 //
 //   - name              the parameter identifier (K-1-opaque Symbol)
-//   - default_lexeme    the default value as a verbatim lexeme
-//                       (sub-grammar deferred to the T-4 LanguageModel
-//                       expression productions; the spice.dag
-//                       `SpiceValue.lexeme` precedent — `parse ∘ emit`
-//                       is identity on the textual surface)
-type ParameterDeclaration {
+//   - default_lexeme    the default value as a verbatim expression
+//                       lexeme; per spec every parameter declaration
+//                       requires a default value (unlike net/variable
+//                       decls), so this field is non-empty in a
+//                       well-formed declaration. Sub-grammar deferred
+//                       to T-4 LanguageModel.
+type ParameterAssignment {
   name: Symbol
   default_lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ParameterDeclaration — a Verilog compile-time constant declaration
+// (`parameter WIDTH = 8;`, `parameter signed [3:0] X = 4'sb1100;`,
+// `parameter integer N = 4;`, `parameter WIDTH = 8, DEPTH = 16;`).
+// IEEE 1364-2005 §3.10 / §A.2.1.1. Conj record (no Practice-4
+// ledger).
+//
+//   - type_kind        which parameter-type form (ParameterTypeKind
+//                      Disj — UntypedParameter carries packing +
+//                      signedness; the typed forms IntegerParameter
+//                      / RealParameter / TimeParameter /
+//                      RealTimeParameter carry neither per spec
+//                      §A.2.1.1).
+//   - assignments      the list_of_param_assignments — each
+//                      ParameterAssignment carries name +
+//                      default_lexeme. Per spec a parameter
+//                      declaration must have at least one assignment.
+//
+// Multi-assignment + type_kind added per codex BLOCKING on PR #3176
+// 2026-05-16 — the prior {name, default_lexeme} shape collapsed the
+// spec's type/range/signedness facts that govern §12.1.3 override
+// conversion (when an instantiation #(...) overrides a parameter,
+// the spec defines conversion semantics based on the declared type;
+// without these facts the conversion is unspecified).
+type ParameterDeclaration {
+  type_kind: ParameterTypeKind
+  assignments: List<ParameterAssignment>
 }
 
 
@@ -1805,13 +1892,15 @@ type GenvarDeclaration {
 // (the spec's distinct binding rule). Conj record (no Practice-4
 // ledger).
 //
-//   - name              the localparam identifier (K-1-opaque Symbol)
-//   - default_lexeme    the value as a verbatim expression lexeme
-//                       (mirrors ParameterDeclaration; sub-grammar
-//                       deferred)
+//   - type_kind     which parameter-type form (ParameterTypeKind
+//                   Disj — same per-kind admissibility as
+//                   ParameterDeclaration). Mirrors ParameterDeclaration's
+//                   type-fact preservation per IEEE 1364-2005 §A.2.1.1.
+//   - assignments   the list_of_param_assignments per spec — each
+//                   ParameterAssignment carries name + default_lexeme.
 type LocalParameterDeclaration {
-  name: Symbol
-  default_lexeme: String
+  type_kind: ParameterTypeKind
+  assignments: List<ParameterAssignment>
 }
 
 
@@ -1941,17 +2030,24 @@ type UdpInstantiation {
 
 // ─────────────────────────────────────────────────────────────────────
 // SpecparamDeclaration — a Verilog `specparam` declaration. IEEE
-// 1364-2005 §14.3.1 + §12.2. Specify parameters are distinct from
-// ordinary parameters: they are intended for timing-check values
-// (rise/fall/hi-Z transitions, pulse-control limits) and CANNOT be
-// used as bit-vector widths or array indices per spec. Conj record
-// (no Practice-4 ledger).
+// 1364-2005 §14.3.1 + §12.2 + §A.2.1.1. Specify parameters are
+// distinct from ordinary parameters: they are intended for timing-
+// check values (rise/fall/hi-Z transitions, pulse-control limits)
+// and CANNOT be used as bit-vector widths or array indices per spec.
+// Per spec grammar specparam admits an optional range and a list of
+// specparam_assignments. Conj record (no Practice-4 ledger).
 //
-//   - name              the specparam identifier (K-1-opaque Symbol)
-//   - default_lexeme    the value as a verbatim expression lexeme
+//   - packing       optional range (`specparam [9:0]`); applies to
+//                   all assignments in this declaration.
+//   - assignments   the list_of_specparam_assignments — each
+//                   ParameterAssignment carries name + default_lexeme.
+//                   Reusing ParameterAssignment per the shared
+//                   (name, value-expression-lexeme) shape;
+//                   specparam-specific pulse-control variants are
+//                   admitted via the assignment's lexeme.
 type SpecparamDeclaration {
-  name: Symbol
-  default_lexeme: String
+  packing: PackingShape
+  assignments: List<ParameterAssignment>
 }
 
 
