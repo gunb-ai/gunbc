@@ -827,6 +827,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
     // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
+    // T-4 typescript D2-resolver slice: `compile_to_dag` smoke on
+    // `src/v4/extdeps/languages/typescript.dag` (zero module diagnostics).
+    // SG-0 ratchet per INVARIANTS §P5(b) + `extdeps_sql_transport_test` precedent.
+    "src/v3/compiler/tests/integration/v4_extdeps_typescript_dag_smoke_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
