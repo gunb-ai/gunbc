@@ -14,16 +14,12 @@ import v4.test.v2_run_preflight.process_exit_shim {
   ExitFailure,
   exit_code_general_error,
 }
-import v4.std.nat { Nat, Zero, Succ, nat_add, nat_mul }
-import v4.std.logic { Bool, True, False, bool_boolean_algebra }
+import v4.std.nat { Zero, Succ, nat_add, nat_mul }
+import v4.std.logic { True, False, bool_boolean_algebra }
 import v4.std.node {
   Node,
-  NodeKind,
   TypeNode,
-  Connective,
   Conj,
-  Edge,
-  List,
   node_locally_well_formed,
   node_well_formed,
 }
@@ -32,20 +28,21 @@ import v4.std.node {
 // Literals + Peano recursion (nat_add / nat_mul) + match (Branch discipline).
 
 func run_probe_nat_literals_and_recursion() -> ProcessExit {
-  let two: Nat = Succ { prev: Succ { prev: Zero } }
-  let three: Nat = Succ { prev: two }
+  let two = Succ { prev: Succ { prev: Zero } }
+  let three = Succ { prev: two }
   let five = nat_add(a: two, b: three)
   let six = nat_mul(a: two, b: three)
   let check_add = nat_add(a: Zero, b: five) == five
   let check_mul_zero = nat_mul(a: Zero, b: three) == Zero
-  let expect_six: Nat = Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } }
-  if check_add && check_mul_zero && six == expect_six {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: exit_code_general_error,
-      reason: "nat probe: unexpected arithmetic result"
-    }
+  let expect_six = Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } }
+  let ok = check_add && check_mul_zero && six == expect_six
+  match ok {
+    True => ExitSuccess
+    False =>
+      ExitFailure {
+        code: exit_code_general_error,
+        reason: "nat probe: unexpected arithmetic result"
+      }
   }
 }
 
@@ -53,16 +50,16 @@ func run_probe_nat_literals_and_recursion() -> ProcessExit {
 // Bool + function application to algebra-carried meet (Transform discipline).
 
 func run_probe_bool_branch() -> ProcessExit {
-  let x: Bool = True
-  let y: Bool = False
+  let x = True
+  let y = False
   let m = bool_boolean_algebra.bounded_lattice.lattice.meet(a: x, b: y)
-  if m == False {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: exit_code_general_error,
-      reason: "bool meet(True,False) expected False"
-    }
+  match m {
+    False => ExitSuccess
+    True =>
+      ExitFailure {
+        code: exit_code_general_error,
+        reason: "bool meet(True,False) expected False"
+      }
   }
 }
 
@@ -70,17 +67,18 @@ func run_probe_bool_branch() -> ProcessExit {
 // Type-node connective: empty Conj (connective / edge-discipline probe).
 
 func run_probe_empty_conj_wellformed() -> ProcessExit {
-  let n: Node = Node {
+  let n = Node {
     kind: TypeNode { connective: Conj },
     children: Empty
   }
-  if node_locally_well_formed(n: n) && node_well_formed(n: n) {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: exit_code_general_error,
-      reason: "empty Conj node should be locally and globally well-formed"
-    }
+  let w = node_locally_well_formed(n: n) && node_well_formed(n: n)
+  match w {
+    True => ExitSuccess
+    False =>
+      ExitFailure {
+        code: exit_code_general_error,
+        reason: "empty Conj node should be locally and globally well-formed"
+      }
   }
 }
 
