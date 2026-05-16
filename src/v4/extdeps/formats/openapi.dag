@@ -80,7 +80,8 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // the full Components object beyond `schemas` are 🟡 deferred with named
 // triggers — not silently omitted without a receipt: overflow lives in
 // `components_extras` / `path_extensions` / `operation_extensions` /
-// `info_extensions` / `root_extensions` as faithful `JsonValue` maps (M5).
+// `info_extensions` / **`contact_extensions` (nested under `OpenApiContact`)** /
+// `root_extensions` as faithful `JsonValue` maps (M5).
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -124,7 +125,10 @@ type OpenApiOptionalString
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiContact — OAS Contact Object (every member optional at the JSON
 // surface; empty `{}` is structurally admissible — OAS-level tightening is
-// 🟡 deferred to `openapi_parse` alongside URI/email shape checks).
+// 🟡 deferred to `openapi_parse` alongside URI/email shape checks). Includes
+// **`contact_extensions`** for Contact Object Specification Extensions (`^x-`)
+// and faithful overflow (M5 / P2 — same discipline as `license_extensions` /
+// `info_extensions`; no silent drop of nested `contact.*` wire facts).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#contact-object
 //
@@ -133,6 +137,7 @@ type OpenApiContact {
   name: OpenApiOptionalString,
   url: OpenApiOptionalString,
   email: OpenApiOptionalString,
+  contact_extensions: Map<String, JsonValue>,
 }
 
 
@@ -194,11 +199,11 @@ type OpenApiLicenseSlot
 
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiInfo — OAS 3.1.0 Info Object: required `title` + `version`, optional
-// `summary` / `description` / `termsOfService`, optional nested `contact` /
-// `license`, plus **`info_extensions`** for Specification Extension members
-// (`^x-`) and any future spec-added Info keywords until a pinned decomposition
-// lands (M5 — same discipline as `operation_extensions` / `components_extras`;
-// no silent drop of wire facts).
+// `summary` / `description` / `termsOfService`, optional nested `contact`
+// (with its own **`contact_extensions`**) / `license`, plus **`info_extensions`**
+// for Specification Extension members (`^x-`) and any future spec-added Info
+// keywords until a pinned decomposition lands (M5 — same discipline as
+// `operation_extensions` / `components_extras`; no silent drop of wire facts).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 //
@@ -359,3 +364,5 @@ type OpenApiDocument {
 //     structural `OpenApiLicenseUrlOrIdentifierSlot` forbids **both** `url` and
 //     `identifier` at the carrier layer; JSON surface repair for malformed
 //     both-present objects is parse authority, not silent coercion here.
+//     **`contact_extensions`** keys are carried structurally — validation of
+//     extension-member shapes vs `^x-` patterns remains 🟡 with trigger (1).
