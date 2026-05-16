@@ -29,6 +29,29 @@
 //     THIS effect", not "all effectful code". Not a new field; the
 //     distinction already lives in the signature (B3) — this forbids
 //     collapsing it. Reciprocal contract: lens/affected_set.dag R1.
+//   - B-5 COROLLARY — effects-as-parameters (DI-by-construction;
+//     side-session 2026-05-16, an interesting case worth recording for
+//     later readers). An effectful function takes its effect carrier as
+//     an EXPLICIT parameter (THESIS World-threading: "effects are
+//     explicit parameters, mocking is dependency-injection-by-
+//     construction"); it never reaches an ambient/global effect. Why
+//     this matters to affected_set: a test that injects a MOCK carrier
+//     passes a *different `Node`* as that argument, so its B-4
+//     node-precise dependency edge points at the mock, NOT the real
+//     effectful function. Editing the real function's body changes its
+//     content_hash but the traversal never reaches the mock-injected
+//     unit test ⇒ it SKIPS automatically; the integration test that
+//     passed the REAL carrier has the edge ⇒ it RE-RUNS. "Affected" is
+//     thus consumer-relative WITHOUT any unit-vs-integration mode in
+//     the lens — it falls out of each test's DI-resolved graph. This
+//     ONLY holds if effects are threaded parameters; AMBIENT/global
+//     effects re-couple the cone and are the anti-pattern this corollary
+//     forbids (T-13/T-21 must not model effects ambiently). (Honest
+//     boundary: a re-run integration test whose observed behavior
+//     changed may now have a STALE expected value — affected_set
+//     surfaces "re-run", it never rewrites the expectation; updating
+//     the TestClaim is a deliberate human act, no-engine. That failure
+//     is the intended signal, not a lens defect.)
 //
 // Owns:
 //   - lens read: Node -> Witness<EffectMap>   (READS the type signature;

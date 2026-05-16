@@ -67,6 +67,19 @@
 //     fine-grained — the effect-GRANULARITY contract, NOW ENCODED as
 //     lens/effect.dag B-5 (was "implied" in #3153): coarse effects ⇒
 //     cone = all effectful nodes ⇒ correct-but-useless.
+//   Ex.R1' CONSUMER-RELATIVE (DI) — worth recording for later readers.
+//     "Affected" is relative to WHICH graph. With effects-as-parameters
+//     (DI-by-construction, the lens/effect.dag B-5 COROLLARY) a unit
+//     test injecting a MOCK carrier has its B-4 edge to the mock `Node`,
+//     not the real effectful fn — so editing that fn's body SKIPS the
+//     mock-injected unit test automatically and RE-RUNS only the
+//     integration test that passed the real carrier. No unit-vs-
+//     integration mode in this lens; it falls out of each test's
+//     DI-resolved graph. Honest boundary: a re-run integration test
+//     whose behavior changed may have a STALE expected value — this
+//     lens surfaces "re-run", it NEVER rewrites the expectation
+//     (no-engine; updating the TestClaim is a deliberate human act).
+//     That failure is the intended signal, not a defect.
 //   Ex.R2 widely-shared sub-node, partial change (the DOMINANT gate):
 //     n_reason consumed by 50+ sites; edit ONE variant only n_emitR
 //     matches → minimal frontier = { changed variant sub-Node, n_emitR,
