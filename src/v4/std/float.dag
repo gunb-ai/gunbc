@@ -16,14 +16,15 @@
 //     std/machine.dag, with the non-finite values (NaN, ±Inf, signed
 //     zero) modeled as explicit structure. Every part is reachable —
 //     nothing opaque.
-//   - inhabitance: Float inhabits the rounding-aware ("approximate")
-//     algebra structure owned by std/algebra.dag — NOT an exact `Field`
-//     (rounding is non-associative). The std/extdeps typescript.dag
-//     header already anticipates this structure as `ApproximateField`;
-//     algebra.dag (T-2) owns its exact name and definition. Float's
-//     grounding is the IEEE-754 spec (the anchor) — a real external
-//     standard — composed with that weakened algebra; it is not an
-//     unreconciled exception to the minimal-primitive ontology.
+//   - inhabitance: Float is **typed** to inhabit the rounding-aware
+//     `ApproximateField` structure owned by std/algebra.dag (ontology +
+//     TASKS.md T-3), **not** an exact `Field` (rounding is non-associative).
+//     The std/extdeps typescript.dag header already anticipates this shape;
+//     algebra.dag (T-2) owns its exact name and definition. The **machine-
+//     readable** `data … ApproximateField<Float>` witness is **deferred**
+//     here (see modeling notes "APPROXIMATEFIELD INHABITANCE"); dissolution is
+//     grounded `add`/`mul` over interchange + U1 — not silent fabrication in
+//     `.dag`. Float's external anchor remains IEEE-754 (the Wikipedia link).
 //   - Tier-2 totalization for the partial / non-total operations
 //     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
 //     commitment #2
@@ -102,9 +103,11 @@ import v4.std.node { Symbol }
 // `Float64Interchange` (machine.dag `Word*`) on the homomorphism spine.
 //
 // Until then: **Tier-2** `float_ordered_compare_tier2` + `float_body_compare_total`
-// carry the honest partial ordering story (total semantic order for the
-// carrier; fail-closed `Outcome` for NaN — STRUCTURE.md commitment #2) without
-// an `ApproximateField` inhabitance witness.
+// carry ordering: fail-closed `Outcome` for NaN (IEEE `<` unordered), and on
+// non-NaN finite pairs a **totalOrder-consistent** magnitude compare on the
+// encoded fields (sign + inverted lex on exponent/significand when both
+// negative — IEEE 754 `totalOrder` discipline), extending numeric `<` on the
+// ordered subset. Still NOT a packaged `ApproximateField` witness.
 //
 // SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
 // `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
@@ -206,11 +209,43 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
 
 
 // sign_rank_lex — total deterministic rank for lex ordering: negative (True)
-// sorts before non-negative (False) at the first lex key (NOT IEEE value <).
+// sorts before non-negative (False) at the first lex key (IEEE totalOrder:
+// negatives before positives).
 fn sign_rank_lex(s: Bit) -> Nat {
   match s {
     true => Zero
     false => Succ { prev: Zero }
+  }
+}
+
+
+// ordering_invert — flips Less/Greater; used for negative finite magnitudes in
+// IEEE 754 `totalOrder` (larger unsigned exponent/significand encodings are
+// *smaller* numerically when both values are negative).
+fn ordering_invert(o: Ordering) -> Ordering {
+  match o {
+    Less => Greater
+    Greater => Less
+    Equal => Equal
+  }
+}
+
+
+// float_finite_unsigned_field_order — lexicographic Nat order on encoded
+// `(biased_exponent, trailing_significand)` as unsigned magnitude keys
+// (correct for **positive** IEEE finite values; negatives compose via
+// `ordering_invert` in `float_body_compare_total`).
+fn float_finite_unsigned_field_order(
+  ea: Nat,
+  fa: Nat,
+  eb: Nat,
+  fb: Nat,
+) -> Ordering {
+  let o2 = nat_compare(a: ea, b: eb)
+  match o2 {
+    Less => Less
+    Greater => Greater
+    Equal => nat_compare(a: fa, b: fb)
   }
 }
 
@@ -234,9 +269,11 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
 }
 
 
-// float_body_compare_total — deterministic total order on the semantic carrier
-// (lexicographic on sign-rank, exponent, significand, then non-finite tag
-// ordering). NOT IEEE `<`; see modeling notes + `float_ordered_compare_tier2`.
+// float_body_compare_total — IEEE 754 `totalOrder`-style total order on this
+// carrier (finite: sign rank, then unsigned exponent/significand lex with
+// **inverted** magnitude order when both signs are negative; non-finite: tag
+// rank). NOT the partial IEEE `<` relation; NaN unorderedness is Tier-2 only
+// (`float_ordered_compare_tier2`).
 fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
@@ -246,11 +283,15 @@ fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
           Less => Less
           Greater => Greater
           Equal => {
-            let o2 = nat_compare(a: ea, b: eb)
-            match o2 {
-              Less => Less
-              Greater => Greater
-              Equal => nat_compare(a: fa, b: fb)
+            let mag = float_finite_unsigned_field_order(
+              ea: ea,
+              fa: fa,
+              eb: eb,
+              fb: fb,
+            )
+            match sa {
+              true => ordering_invert(o: mag)
+              false => mag
             }
           }
         }
@@ -278,9 +319,10 @@ fn float_body_compare_total(a: FloatBody, b: FloatBody) -> Ordering {
 }
 
 
-// float_ordered_compare_tier2 — Tier-2 totalization for **unordered** `<|Equal|Greater>`
+// float_ordered_compare_tier2 — Tier-2 totalization for **unordered** IEEE `<`
 // in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
-// `Produced` with the semantic-carrier total compare (NOT IEEE `<`; see modeling notes).
+// `Produced` with `float_body_compare_total` (IEEE 754 `totalOrder` on the
+// non-NaN subset — extends numeric `<` on ordered finite values; see modeling notes).
 fn float_ordered_compare_tier2(a: Float, b: Float, diagnostic_anchor: Symbol) -> Outcome<Ordering> {
   if float_body_is_nan(a.body) {
     Rejected {
