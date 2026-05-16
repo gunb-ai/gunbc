@@ -251,20 +251,57 @@ type YamlValue
 //     (a) scaffold doc — THIS note; `yaml_parse`/`yaml_emit` are
 //         intentionally absent from yaml.dag today.
 //     (b) bounds on use — no consumer reads `yaml_parse`/`yaml_emit`
-//         from yaml.dag in this PR. The carrier seam is fixed: when
-//         authored, `yaml_parse : String -> Outcome<YamlValue>` and
-//         `yaml_emit : YamlValue -> String`, `Outcome<T>` the ratified
-//         D1 carrier — fail-closed (every non-conforming input, every
-//         unresolvable/cyclic alias, is `Rejected { diagnostic }`,
-//         never a partial/defaulted value). The SAME seam as the other
-//         five T-4.6 formats.
+//         from yaml.dag in this PR. The carrier seam is fixed and
+//         fail-closed in BOTH directions (the T-4 seam-gate-ratified
+//         corrected seam #3 — propagated from canonical json.dag
+//         #3184): when authored, `yaml_parse : String ->
+//         Outcome<YamlValue>` AND **`yaml_emit : YamlValue ->
+//         Outcome<String>`** — NOT a total `YamlValue -> String`.
+//         `Outcome<T>` is the operator-ratified D1 carrier
+//         (std/diagnostic.dag, DECISIONS item **I**). WHY EMIT IS ALSO
+//         FAIL-CLOSED (not total): `YamlInt`/`YamlFloat` carry a raw
+//         `String` lexeme and the type-level §10.3.2 guarantee is
+//         deferred (the canonical-key / refined-lexeme substrate, 🟡
+//         (3) + numeric (2)) — so a `YamlValue` carrying a
+//         non-§10.3.2 scalar lexeme is type-constructible OUTSIDE the
+//         parser. A total `YamlValue -> String` emit would have no
+//         typed channel to reject it and would FABRICATE an invalid
+//         YAML artifact — an INVARIANTS P3 / no-fabrication violation
+//         (the canonical json.dag #3184 finding, propagated here as
+//         the ratified seam #3). So emit returns `Outcome<String>`: a
+//         structurally-representable but spec-invalid `YamlValue`
+//         emits `Rejected { diagnostic }`, never a fabricated string.
+//         Every non-conforming input / unresolvable/cyclic alias
+//         (parse) AND every spec-invalid value (emit) is `Rejected
+//         { diagnostic }`, never partial/defaulted/fabricated. The
+//         other five T-4.6 formats mirror THIS
+//         fail-closed-both-directions seam.
+//         IMMUTABLE-HEADER RECONCILE REQUIRED (surfaced, not silently
+//         diverged — the std/collection.dag #3169 / std/witness.dag /
+//         csv-class precedent): the immutable scaffold header line
+//         "`emit(YamlValue) -> String`" documents a TOTAL emit. The
+//         T-4 seam-gate ratified the fail-closed `-> Outcome<String>`
+//         seam (correctness-tightening of seam #3, INVARIANTS P3); the
+//         literal immutable-header line edit is operator-tier (worker
+//         may not edit the immutable header — csv-class authority),
+//         batched into the operator header-reconcile (flagged by the
+//         T-4 mgr). This note is the fail-closed authority pending
+//         that reconcile; the header/note divergence is
+//         tracked-not-silent here.
 //     (c) dissolution trigger — when std/text.dag (T-3) lands its
 //         `Char` + `String` ↔ `List<Char>` decomposition, a follow-up
-//         PR adds `yaml_parse`/`yaml_emit` (with anchor/alias + tag
-//         resolution) as single self-recursive structural walks
-//         returning `Outcome<YamlValue>`; this note dissolves. The T-4
-//         directive's "operations deferred-with-named-owner" + TASKS.md
-//         T-4.6 record the same dependency.
+//         PR adds `yaml_parse : … -> Outcome<YamlValue>` /
+//         `yaml_emit : … -> Outcome<String>` (with anchor/alias + tag
+//         resolution) as single self-recursive structural walks. The
+//         emit body MUST validate any non-parser-constructed value
+//         fail-closed (a non-§10.3.2 scalar lexeme, pending the
+//         refined-lexeme substrate, is a `Rejected`, never emitted) —
+//         the trigger is NOT satisfied by a total `-> String` emit
+//         even once std/text.dag lands; the fail-closed
+//         `Outcome<String>` contract is part of THIS ratified seam #3,
+//         so the invalid-lexeme emission hole cannot survive the
+//         dissolution. The T-4 directive's "operations deferred-with-
+//         named-owner" + TASKS.md T-4.6 record the same dependency.
 //
 // (2) Numeric interpretation of `YamlInt.lexeme` / `YamlFloat.lexeme` —
 //   YAML 1.2.2 §10.3.2 tag resolution decides the int-vs-float VARIANT
