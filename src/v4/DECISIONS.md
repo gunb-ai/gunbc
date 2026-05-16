@@ -125,8 +125,12 @@ parent. Each is confirm-or-redirect, not a fresh fork.
   (pulled back from worker delegation — every consumer rests on it).
   B1 *depends on* that clause; it is not subsumed by A1. B1-CANON fixes
   the total deterministic normal form as a 6-point contract: (1)
-  post-normalize domain; (2) α-equivalence via K-1 De Bruijn for bound /
-  opaque identity for free; (3) **child order is unconditional
+  post-normalize domain; (2) α-equivalence is a `merkle_fold` property,
+  NOT a canonical-Node rewrite (no De Bruijn Node carrier — A1; the
+  fold hashes a bound occurrence binder-relatively, a free Symbol by
+  opaque K-1 identity; the α-fact lives in the fold's `Hash` codomain,
+  representable — review-corrected 2026-05-16); (3) **child order is
+  unconditional
   `children`-list order** (B-3 — an amendment 2026-05-16 to this
   2026-05-15 B1-CANON clause, not a separate ratification) — the
   commutative-quotient is structurally foreclosed (no order on opaque

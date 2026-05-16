@@ -104,11 +104,24 @@
 //      normalized kernel (the 4 sugar forms already dissolved). Raw
 //      parse trees are out of domain — sugar variance cannot reach the
 //      hash because it is gone before canonicalization.
-//   2. α-EQUIVALENCE (K-1). A BOUND occurrence is replaced by its
-//      binder-relative De Bruijn position; a FREE Symbol keeps opaque
-//      K-1 identity (equality only). ⇒ renaming a bound local is
-//      hash-invariant by construction (the full statement of the K-1
-//      "bonus"; this is affected_set Ex.2 "rename a local ⇒ same hash").
+//   2. α-EQUIVALENCE (K-1) — a `merkle_fold` property, NOT a
+//      canonical-Node rewrite. The Node substrate's ONLY identifier
+//      carrier is `Atom { identity: Symbol }` (opaque, K-1) — there is
+//      NO De Bruijn Node, and adding one is an A1 closed-kernel STOP.
+//      So `canonical : Node -> Node` does NOT replace bound occurrences
+//      with De Bruijn positions (that rewrite is unrepresentable —
+//      surfaced by review 2026-05-16). Binder-relative identity lives
+//      in the FOLD of `content_hash = merkle_fold ∘ canonical`: the
+//      fold tracks binder scope as it descends and hashes a BOUND
+//      occurrence by its binder-relative position, while a FREE Symbol
+//      hashes by opaque K-1 identity (equality only). The De Bruijn
+//      position is a transient fold-local value contributing to a
+//      `Hash` — never a Node needing a carrier — so the α-fact IS
+//      representable (it lives where it can: the fold, whose codomain
+//      is `Hash`, not `Node`; no INVARIANTS P2/P4 carrier gap). ⇒
+//      renaming a bound local is hash-invariant by construction (the
+//      full K-1 "bonus"; affected_set Ex.2 "rename a local ⇒ same
+//      hash").
 //   3. CHILD ORDER IS `children`-LIST ORDER, UNCONDITIONALLY — never
 //      algebra-derived, never hand-flagged (B-3 — an AMENDMENT to the
 //      2026-05-15 B1-CANON clause above, NOT a separate ratification;
