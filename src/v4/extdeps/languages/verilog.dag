@@ -734,6 +734,58 @@ type DelayClause
 
 
 // ─────────────────────────────────────────────────────────────────────
+// VectoredessClause — the closed Verilog vectored/scalared
+// declaration-boundary classifier on a net_declaration (IEEE
+// 1364-2005 §A.2.1.3 / §3.7.1). The clause is OPTIONAL per spec and
+// is DISTINCT from drive_strength: it carries a synthesizer hint
+// about whether the net is to be treated as a single addressable
+// unit (`vectored`) or as bit-addressable (`scalared`).
+//
+//   - NoVectoredness
+//       — neither `vectored` nor `scalared` keyword on the
+//       declaration (the spec default).
+//   - VectoredNet
+//       — `vectored` modifier; synthesizer treats the net as a
+//       single addressable unit (bit/part-select access constrained).
+//   - ScalaredNet
+//       — `scalared` modifier; synthesizer treats the net as
+//       bit-addressable.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 admits exactly the
+// three-way present/absent + which-keyword partition (vectored
+// and scalared are mutually exclusive per spec — both modifiers
+// in one declaration is a syntax error).
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every net-declaration emitter +
+//      every synthesizer-hint consumer reads the clause uniformly;
+//      shared classifier.
+//   2. Variant-is-data — FAILS: a `{ kind: Symbol }` proxy reopens
+//      the readable-string heuristic surface K-1 forecloses; a
+//      `{ vectored: Bool, scalared: Bool }` proxy ratifies the
+//      spec-forbidden "both keywords" state. The 3-variant Disj
+//      IS the dissolved form.
+//   3. Algebraic form — N/A by construction: synthesizer-hint
+//      partition, not a richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single net_declaration has EXACTLY
+//      ONE vectoredness state; mutually-exclusive alternatives.
+//   5. Parameterized family — FAILS: the three variants are
+//      structurally distinct (none-vs-vectored-vs-scalared
+//      semantically heterogeneous) — NOT one generic `F<X>`
+//      projection (Practice 7).
+// Terminal: the closed three-way Verilog vectored/scalared clause
+// classifier. Added per codex BLOCKING on PR #3176 2026-05-16 —
+// the vectored/scalared clause is a §A.2.1.3 declaration-boundary
+// fact distinct from drive_strength; the prior commentary "collapsed
+// into the strength lexeme position" overloaded the two clauses.
+type VectoredessClause
+  = NoVectoredness
+  | VectoredNet
+  | ScalaredNet
+
+
+// ─────────────────────────────────────────────────────────────────────
 // NetInitializerClause — the closed Verilog net_decl_assignment
 // initializer-presence classifier (IEEE 1364-2005 §A.2.4). Optional
 // per spec — present-or-absent partition as a closed Disj.
@@ -886,6 +938,7 @@ type NetDeclaration {
   packing: PackingShape
   signedness: Signedness
   drive_strength: DriveStrengthClause
+  vectoredness: VectoredessClause
   delay: DelayClause
   // 🟡 spec-non-empty (§A.2.1.3) — deferred to std/collection.dag
   // Wave-A2 `List<T> where non_empty` refinement; see shared
