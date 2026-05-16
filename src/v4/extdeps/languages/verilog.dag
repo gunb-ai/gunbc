@@ -2496,6 +2496,65 @@ type AnsiModuleItem
 // fix on PR #3176 2026-05-16: items list was previously
 // `List<ModuleItem>` regardless of port style, admitting the §12.3.3
 // "ANSI ports are completely declared" violation).
+//
+//   - NonAnsiAnsiCompatItem        — wraps any AnsiModuleItem
+//                                    variant (the 18-way common
+//                                    item set admitted in any
+//                                    module body).
+//   - NonAnsiPortDeclarationItem   — body port_declaration in
+//                                    direction-only form (`input
+//                                    a;`); spec §12.3.4 non-ANSI
+//                                    style only.
+//   - NonAnsiBodyPortDeclarationItem
+//                                  — body port_declaration in
+//                                    direction-plus-type combined
+//                                    form (`input wire [7:0] a;`);
+//                                    reuses the AnsiPortDeclaration
+//                                    carrier per the body-form-is-
+//                                    shape-equivalent-to-ANSI
+//                                    framing of §12.3.4.
+//
+// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.4 admits this
+// three-way non-ANSI module-item partition (the common-items
+// wrapper + the two body port_declaration forms); SystemVerilog
+// adds further forms — future language-version model EDITS this
+// Disj explicitly.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every non-ANSI module-body consumer
+//      branches on the variant to dispatch — common items go to
+//      the AnsiModuleItem walker (via the wrapped item), body
+//      port_declarations go to the §12.3.4 port-binding-resolution
+//      walker. Shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to a uniform `{ kind:
+//      ItemKind, … }` shape reintroduces the §12.3.3 illegal state
+//      this Disj-split exists to dissolve at the VerilogModule
+//      level (NonAnsiModuleItem variants belong ONLY to non-ANSI
+//      modules per VerilogModule's Disj; admitting them on ANSI
+//      modules would re-open the §12.3.3 "ANSI ports are completely
+//      declared" violation). The structural-membership constraint
+//      lives at the VerilogModule-Disj level; this Disj enumerates
+//      the per-style admissible items.
+//   3. Algebraic form — N/A by construction: the three variants
+//      are the §12.3.4 non-ANSI item-set partition (common-items
+//      wrapper + two body-port forms); they do not trace to a
+//      richer std/ algebraic structure.
+//   4. Dimensional — FAILS: a single non-ANSI module-body item is
+//      EXACTLY ONE variant; mutually-exclusive alternatives. (A
+//      module body's `items` is `List<NonAnsiModuleItem>` —
+//      multiple items co-exist as siblings, but each item is one
+//      variant.)
+//   5. Parameterized family — FAILS: the three variants carry
+//      structurally heterogeneous payloads (NonAnsiAnsiCompatItem
+//      wraps an AnsiModuleItem; NonAnsiPortDeclarationItem carries
+//      a PortDeclaration direction-only record;
+//      NonAnsiBodyPortDeclarationItem carries an
+//      AnsiPortDeclaration per-direction Disj) — NOT one generic
+//      `F<X>` / projection over a single source set (Practice 7).
+// Terminal: the closed three-way Verilog non-ANSI module-body-item
+// classifier of the IEEE 1364-2005 §12.3.4 spec; ledger added per
+// codex BLOCKING on PR #3176 2026-05-16.
 type NonAnsiModuleItem
   = NonAnsiAnsiCompatItem { item: AnsiModuleItem }
   | NonAnsiPortDeclarationItem { port_decl: PortDeclaration }
