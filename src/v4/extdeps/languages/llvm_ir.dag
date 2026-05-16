@@ -723,10 +723,17 @@ type LandingClause
 
 
 // ─────────────────────────────────────────────────────────────────────
-// AtomicOrdering — the memory-model ordering for atomic ops (LangRef
-// "Atomic Memory Ordering Constraints", C++11/C11 memory model). A
-// genuine totally-distinct LangRef set; the strength relation is a
-// derived lens read over this order, NOT a stored field.
+// AtomicOrdering — the CANONICAL FULL LangRef/C++11-C11 memory-model
+// ordering set ("Atomic Memory Ordering Constraints"). This is the
+// single-authority vocabulary of all six orderings; no instruction
+// field carries it directly (each atomic op restricts it to its
+// LangRef-valid subset — `Load/Store/Fence/AtomicRmw/CmpXchg*Ordering`,
+// each declared as its own closed sum so an invalid (op, ordering) pair
+// is structurally unrepresentable, P2). It is retained as the declared
+// authority those subsets are documented against (the complete
+// memory-model set is a real spec entity reviewers validate
+// completeness against — not accidental dead code). The strength
+// relation is a derived lens read over this order, NOT a stored field.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -753,6 +760,67 @@ type AtomicOrdering
   | OrderingRelease
   | OrderingAcqRel
   | OrderingSeqCst
+
+
+// Per-OPERATION-valid atomic-ordering subsets (LangRef LLVM 18). The
+// full `AtomicOrdering` is the memory-model authority; each atomic
+// instruction restricts it, and — verified against LLVM 18 LangRef —
+// every such restriction is a single closed SUBSET (no cross-field
+// relation): `cmpxchg`'s historical "failure not stronger than success"
+// rule was REMOVED in LLVM ≈3.9 and is NOT an LLVM-18 constraint
+// (asserting it would be the ConstExprOpcode-class inverse error). So
+// these are all STRUCTURALLY fixable with subset enums — illegal
+// (op,ordering) pairs unrepresentable (P2 / modeling-discipline.md §2),
+// the LoadOrdering/StoreOrdering precedent — NOT a 🟡 substrate-gap.
+//   - CmpXchgSuccessOrdering: ≥ monotonic (not unordered).
+//   - CmpXchgFailureOrdering: ≥ monotonic, NOT release/acq_rel.
+//   - FenceOrdering: ∈ {acquire, release, acq_rel, seq_cst} (a fence is
+//     not unordered/monotonic).
+//   - AtomicRmwOrdering: not unordered.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — all
+// four 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
+// attempted:
+//   1. Fact placement — FAILS: the ordering is read uniformly by the
+//      atomic-op lowering + the effect lens; a shared classifier.
+//   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
+//      anti-pattern and acquire/release are not linearly comparable
+//      (same rationale as `AtomicOrdering`); the named per-op subset is
+//      faithful.
+//   3. Algebraic form — N/A: the constraint names are the LangRef/
+//      C++-memory-model surface; the per-op valid subset is the spec's
+//      restriction, not an algebra carrier.
+//   4. Dimensional — FAILS: an op carries EXACTLY ONE ordering;
+//      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: not one `F<X>` over a declared set
+//      (the memory model is a partial order; each is a spec-defined
+//      per-op restriction, not a mechanical projection).
+// Terminal: the closed LangRef-18 per-operation-valid ordering subsets;
+// invalid (operation, ordering) pairs structurally unrepresentable (P2).
+type CmpXchgSuccessOrdering
+  = SuccessMonotonic
+  | SuccessAcquire
+  | SuccessRelease
+  | SuccessAcqRel
+  | SuccessSeqCst
+
+type CmpXchgFailureOrdering
+  = FailureMonotonic
+  | FailureAcquire
+  | FailureSeqCst
+
+type FenceOrdering
+  = FenceAcquire
+  | FenceRelease
+  | FenceAcqRel
+  | FenceSeqCst
+
+type AtomicRmwOrdering
+  = RmwOrdMonotonic
+  | RmwOrdAcquire
+  | RmwOrdRelease
+  | RmwOrdAcqRel
+  | RmwOrdSeqCst
 
 
 // AtomicRmwOp — the `atomicrmw` sub-operation (LangRef). One
@@ -880,17 +948,17 @@ type LlvmInstruction
       op: AtomicRmwOp
       pointer: LlvmValue
       operand: LlvmValue
-      ordering: AtomicOrdering
+      ordering: AtomicRmwOrdering
     }
   | CmpXchg {
       pointer: LlvmValue
       compare_value: LlvmValue
       new_value: LlvmValue
-      success_ordering: AtomicOrdering
-      failure_ordering: AtomicOrdering
+      success_ordering: CmpXchgSuccessOrdering
+      failure_ordering: CmpXchgFailureOrdering
     }
   | Fence {
-      ordering: AtomicOrdering
+      ordering: FenceOrdering
     }
   | ExtractValue {
       aggregate: LlvmValue
@@ -970,14 +1038,15 @@ type LlvmInstruction
 //     float operands, integer opcodes integer operands.
 //   - `insert/extractelement`, `shufflevector`: element/index/mask type
 //     and length relations.
-//   - atomic-ordering op-specific validity for the ops that KEEP the
-//     full `AtomicOrdering` (Load/Store were structurally split into
-//     `LoadOrdering`/`StoreOrdering` — no longer residual): `fence`
-//     ordering ∈ {acquire,release,acq_rel,seq_cst}; `atomicrmw` ordering
-//     ≠ unordered; `cmpxchg` failure ordering ≠ {release,acq_rel} AND
-//     failure ⊑ success. The cmpxchg failure⊑success relation is a
-//     genuine CROSS-FIELD refinement (not a single-subset enum, unlike
-//     Load/Store), so it stays here rather than enumerated.
+// (Atomic-ordering op-specific validity is NO LONGER in this residual:
+// Load/Store/Fence/AtomicRmw/CmpXchg orderings were ALL structurally
+// fixed via per-operation subset enums — `LoadOrdering`/`StoreOrdering`/
+// `FenceOrdering`/`AtomicRmwOrdering`/`CmpXchgSuccessOrdering`/
+// `CmpXchgFailureOrdering`. Verified against LLVM 18: the historical
+// `cmpxchg` "failure not stronger than success" cross-field rule was
+// REMOVED in LLVM ≈3.9, so NO cross-field atomic-ordering refinement
+// remains — all are single-subset, structurally unrepresentable-when-
+// invalid, not a substrate-gap.)
 // These are NOT collapsed-away facts — they are real LangRef invariants
 // the model currently leaves PRODUCER-SIDE because the substrate to
 // type-encode an operand-relation refinement (a dependent/refined
