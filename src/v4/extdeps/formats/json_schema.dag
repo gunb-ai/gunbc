@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/json_schema.dag
 //
 // Scope: JSON Schema model — schema-driven validation + type derivation. Direction-agnostic.
-// Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12)
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12 Core — fixed edition)
 //
 // Owns:
 //   - JsonSchema { type, properties, required, items, ... }
@@ -31,11 +31,11 @@ import v4.extdeps.formats.json { JsonValue }
 // CANONICAL-MIRROR (T-4.6 fan-out). Mirrors the ratified json.dag seam
 // family for **fail-closed outcomes** on any future operation symbols
 // (PR #3184 / msg_f5971a8a): when `json_schema_validate` /
-// `json_schema_emit` / `schema_to_type` land, they return `Outcome<…>` /
-// `Outcome<Node>` per std/diagnostic.dag DECISIONS **I** — NOT parallel
-// `Result<ok, err>` spellings and NOT total `emit -> JsonSchema` from an
-// ill-typed `Node` (json.dag #3184 P3 / seam #3 propagated). Single
-// authority = Deferred (1) below.
+// `json_schema_emit` / `schema_to_type` land, they return **`Outcome<…>`**
+// using the **D1** carrier from std/diagnostic.dag (DECISIONS **I**, PR
+// #3181) — NOT parallel `Result<ok, err>` spellings and NOT total emit from
+// an ill-typed `Node` (json.dag #3184 P3 / seam #3 propagated). **D2**
+// resolver discipline is ratified #3195. Single authority = Deferred (1).
 //
 // L-2 VERSION PIN (C5): Draft **2020-12** core document is the normative
 // JSON Schema release modeled here; the Anchor URL is the checkable
@@ -75,9 +75,17 @@ import v4.extdeps.formats.json { JsonValue }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// JsonSchemaTypeSlot — the `"type"` keyword (Core §4.2.1 + applicator
-// vocabulary). JSON Schema permits either a string or an array of strings;
+// JsonSchemaTypeSlot — the `"type"` keyword (Validation vocabulary §6.1.1).
+// JSON Schema permits either a string or an array of strings;
 // absent keyword is modeled as its own variant (not a fabricated default).
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
+// Ledger — five patterns: (1) fact placement FAILS — uniform classifier for
+// type-keyword shape; (2) variant-is-data FAILS — absent vs one-name vs
+// name-list are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
+// exactly one alternative; (5) parameterized family FAILS — not `F<X>`.
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeName { name: String }
@@ -89,6 +97,11 @@ type JsonSchemaTypeSlot
 // modeled here). `prefixItems` / `unevaluatedItems` / tuple forms remain
 // in `additional_keywords` until a pinned decomposition PR (named in
 // Deferred (1)) — not silently conflated with `items`.
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.1
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
+// scan as `JsonSchemaTypeSlot` (absent vs nested schema).
 type JsonSchemaItemsSlot
   = JsonSchemaItemsAbsent
   | JsonSchemaItemsSchema { item_schema: JsonSchema }
@@ -97,6 +110,8 @@ type JsonSchemaItemsSlot
 // ─────────────────────────────────────────────────────────────────────
 // JsonSchema — JSON Schema 2020-12 schema document: boolean form OR object
 // form carrying the typed keyword bundle + faithful keyword overflow map.
+//
+// Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-4.3
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
 // Ledger — five patterns attempted:
