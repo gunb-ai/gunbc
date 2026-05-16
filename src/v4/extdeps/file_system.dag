@@ -38,6 +38,11 @@
 module v4.extdeps.file_system
 
 
+import v4.std.algebra { FreeMonoid }
+import v4.std.diagnostic { Outcome }
+import v4.std.text { Char }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
 //
@@ -68,7 +73,7 @@ module v4.extdeps.file_system
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
 // (DECISIONS.md I). This file does not author bodiless `fn`
 // declarations because the frozen v2 seed rejects them; instead it
-// declares request carriers and names the Outcome result seam in prose.
+// declares request and result carriers over the shared Outcome seam.
 // The external realization layer reads these carriers and binds the
 // actual host-system effects.
 //
@@ -90,7 +95,7 @@ type PathComponent = String
 
 
 // ─────────────────────────────────────────────────────────────────────
-// AbsolutePath / RelativePath / FileSystemPath.
+// AbsolutePath / RelativePath / Path.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 //
 // `AbsolutePath` carries the root fact by variant, not by a leading
@@ -106,21 +111,11 @@ type RelativePath {
   components: List<PathComponent>
 }
 
-// The source concept is POSIX `Path`; the declaration name is
-// `FileSystemPath` because the bootstrap seed already has a global
-// `Path` declaration for diagnostic/test-claim positions. This is a
-// namespace workaround, not a second authority: within this file,
-// `FileSystemPath` is THE filesystem path carrier. Dissolution trigger:
-// when v4 module namespaces are load-bearing in the bootstrap resolver,
-// this can return to the header spelling `Path` without colliding.
-//
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
-// YELLOW, namespace-scaffold only. The POSIX absolute-vs-relative split
-// is terminal for the path root fact, but the declaration name differs
-// from the scaffold/header spelling `Path` solely because the bootstrap
-// resolver has a global preloaded `Path`. Named trigger: v4 module
-// namespaces become load-bearing in the resolver; rename
-// `FileSystemPath` to `Path` and keep these variants. Ledger:
+// YELLOW, first-consumer-confirmed. The POSIX absolute-vs-relative split
+// is grounded and bounded to this file's scaffold scope; the first
+// filesystem realization consumer must confirm component normalization
+// policy rather than smuggling it through strings. Ledger:
 //   1. Fact placement — FAILS: root-ness is consumed uniformly by path
 //      resolution and operation realization.
 //   2. Variant-is-data — FAILS: a flat `{ absolute: Bool, components }`
@@ -130,7 +125,7 @@ type RelativePath {
 //   4. Dimensional — FAILS: a path is absolute OR relative, not both.
 //   5. Parameterized family — FAILS: the variants are not projected
 //      over a separately-declared enumerable payload family.
-type FileSystemPath
+type Path
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
 
@@ -167,7 +162,7 @@ type FileSystemPath
 type FileKind
   = RegularFile
   | Directory
-  | Symlink { target: FileSystemPath }
+  | Symlink { target: Path }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -183,26 +178,29 @@ type FileKind
 //   - `write_file : WriteFileRequest -> Outcome<Unit>`
 //   - `list_dir : ListDirRequest -> Outcome<List<PathComponent>>`
 //   - `file_kind : FileKindRequest -> Outcome<FileKind>`
-// This file intentionally does not declare local `*Result` aliases while
-// v4 cross-file imports are not resolved by the seed single-file smoke
-// path; duplicating `Outcome<T>` here would violate DECISIONS.md I.
-type FileBody {
-  text: String
-}
+type FileBody = FreeMonoid<Char>
 
 type ReadFileRequest {
-  path: FileSystemPath
+  path: Path
 }
 
+type ReadFileResult = Outcome<FileBody>
+
 type WriteFileRequest {
-  path: FileSystemPath
+  path: Path
   body: FileBody
 }
 
+type WriteFileResult = Outcome<Unit>
+
 type ListDirRequest {
-  path: FileSystemPath
+  path: Path
 }
 
+type ListDirResult = Outcome<List<PathComponent>>
+
 type FileKindRequest {
-  path: FileSystemPath
+  path: Path
 }
+
+type FileKindResult = Outcome<FileKind>
