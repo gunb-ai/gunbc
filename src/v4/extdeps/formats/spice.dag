@@ -582,6 +582,25 @@ type AcSweepKind
 
 
 // ─────────────────────────────────────────────────────────────────────
+// NodeVoltageBinding — one `V(node) = value` assignment inside a
+// `.IC` / `.NODESET` card (Quarles 1993 §11.5.4). Both directives
+// are VARIADIC at the SPICE3 card surface — a single `.IC` or
+// `.NODESET` may carry an arbitrary number of bindings:
+//   `.IC V(1)=5V V(out)=2.5V V(in)=0`
+//   `.NODESET V(out)=2.5V V(n3)=1.2V`
+// One card maps to one `Directive` value carrying `assignments:
+// List<NodeVoltageBinding>` — see `InitialCondition` / `NodeSet`
+// below. Modeling each binding as its own directive variant would
+// SILENTLY NORMALIZE one card into multiple directive facts, breaking
+// `parse ∘ emit` round-trip fidelity (the user wrote one card; emit
+// must produce one card).
+type NodeVoltageBinding {
+  node: NodeRef
+  value: SpiceValue
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
 // Directive — a SPICE analysis or control statement (the dot-prefixed
 // cards; Quarles 1993 §11.5). Each variant carries the parameters the
 // spec requires for that directive.
@@ -623,10 +642,20 @@ type AcSweepKind
 //         - Dc: optional second-source nested sweep
 //           `[SRC2 VSTART2 VSTOP2 VINCR2]` — Quarles 1993 §11.5.2.
 //           Current shape is single-source only.
-//         - Ac / Op / InitialCondition / NodeSet / Options / Include:
-//           complete-for-mandatory-grammar at this layer (no known
-//           optional facts on these in SPICE3F5; surface honestly so
-//           any spec re-read can flag a miss).
+//         - InitialCondition / NodeSet: variadic per SPICE3 §11.5.4
+//           (`.IC V(n)=v V(n)=v ...`); ADDRESSED — both variants
+//           carry `assignments: List<NodeVoltageBinding>` (see
+//           `NodeVoltageBinding` declaration above). One `.IC` card
+//           maps to one `InitialCondition` value with N bindings;
+//           `parse ∘ emit` round-trip preserves single-card identity
+//           (no silent normalization into N directives). Fix landed
+//           per PR #3168 openai-pro review.
+//         - Ac / Op / Options / Include: complete-for-mandatory-grammar
+//           at this layer. `.AC` is `.AC SWEEP N FSTART FSTOP`
+//           (4 mandatory fields, no optional); `.OP` is nullary;
+//           `.OPTIONS` is variadic via `parameters: List<Parameter>`;
+//           `.INCLUDE` carries one filename. Surfaced honestly so any
+//           spec re-read can flag a miss.
 //
 // `.End`'s absence from this SUM is NOT part of the YELLOW debt — by
 // construction it does not belong here at all (file-terminator note
@@ -677,8 +706,8 @@ type Directive
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
   | Dc { source: Symbol, vstart: SpiceValue, vstop: SpiceValue, vincr: SpiceValue }
   | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
-  | InitialCondition { node: NodeRef, value: SpiceValue }
-  | NodeSet { node: NodeRef, value: SpiceValue }
+  | InitialCondition { assignments: List<NodeVoltageBinding> }
+  | NodeSet { assignments: List<NodeVoltageBinding> }
   | Options { parameters: List<Parameter> }
   | Include { path: String }
 
