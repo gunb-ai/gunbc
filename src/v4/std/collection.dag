@@ -40,8 +40,8 @@
 //   - FiniteSet<T> (or Set<T, n: Multiplicity>) — gated on the
 //     cardinality / enumerability substrate landing; the bare Set<T>
 //     here is the unrefined BooleanAlgebra carrier, by design.
-//   - Set<T> BooleanAlgebra inhabitance — pointwise-lift instance
-//     `set_boolean_algebra<T>` below.
+//   - Set<T> BooleanAlgebra inhabitance — pointwise-lift producer
+//     `set_boolean_algebra<T>()` below.
 //
 // Consumes:
 //   - std/node.dag: Cardinality, Instantiation — the type-substrate
@@ -113,8 +113,8 @@
 //
 // (3) `BooleanAlgebra<Set<T>>` inhabitance — DISSOLVED 2026-05-16
 //   (quick-ant-502). The prior prose-only pointwise-lift grounding is
-//   now the parametric instance value `set_boolean_algebra<T>` below.
-//   That instance is the single machine-readable authority for Set's
+//   now the parametric producer `set_boolean_algebra<T>()` below.
+//   That producer is the single machine-readable authority for Set's
 //   BooleanAlgebra operations: union/intersection/complement/top/bottom
 //   are pointwise lifts of Bool, not per-consumer tables.
 //
@@ -258,7 +258,7 @@ type List<T> = FreeMonoid<T>
 //
 // Every one of these falls out of the Bool BooleanAlgebra owned by
 // std/algebra.dag composed with this carrier. The
-// `set_boolean_algebra<T>` instance below is the machine-readable
+// `set_boolean_algebra<T>()` producer below is the machine-readable
 // pointwise-lift authority; consumers do not reconstruct it from prose.
 //
 // Cardinality is NOT intrinsic to Set<T>: counting `true` elements
@@ -277,9 +277,9 @@ type Set<T> {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Set<T> BooleanAlgebra instance — pointwise lift of Bool operations.
+// Set<T> BooleanAlgebra producer — pointwise lift of Bool operations.
 // This closes the prose-only Set-inhabitance scaffold: consumers can now
-// read Set's algebra through this instance instead of reconstructing it.
+// read Set's algebra through this producer instead of reconstructing it.
 fn set_union<T>(a: Set<T>, b: Set<T>) -> Set<T> {
   Set {
     member: fn(x) {
@@ -313,16 +313,18 @@ fn set_complement<T>(a: Set<T>) -> Set<T> {
   }
 }
 
-data set_boolean_algebra<T>: BooleanAlgebra<Set<T>> = BooleanAlgebra {
-  bounded_lattice: BoundedLattice {
-    lattice: Lattice {
-      meet: set_intersection,
-      join: set_union
+fn set_boolean_algebra<T>() -> BooleanAlgebra<Set<T>> {
+  BooleanAlgebra {
+    bounded_lattice: BoundedLattice {
+      lattice: Lattice {
+        meet: set_intersection,
+        join: set_union
+      },
+      top: Set { member: fn(x) { True } },
+      bottom: Set { member: fn(x) { False } }
     },
-    top: Set { member: fn(x) { True } },
-    bottom: Set { member: fn(x) { False } }
-  },
-  complement: set_complement
+    complement: set_complement
+  }
 }
 
 
