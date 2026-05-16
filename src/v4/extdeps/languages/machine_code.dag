@@ -182,7 +182,7 @@ type InstructionLength
 // Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
 // encoding; RISC-V Unprivileged ISA 20240411 instruction-length encoding.
 //
-// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+// Coproduct dissolution — 🟡 TRACKED-SCAFFOLD. Ledger:
 //   1. Fact placement — FAILS: encoded-width decisions are shared by
 //      grammar, cost, and disassembly.
 //   2. Variant-is-data — PARTIAL: a Nat byte-count would be tempting,
@@ -192,7 +192,9 @@ type InstructionLength
 //   4. Dimensional — FAILS: exactly one width token is selected.
 //   5. Parameterized family — DEFERRED: dissolves when bounded Nat-indexed
 //      width carriers land; until then the std/machine word aliases are
-//      the grounded width vocabulary.
+//      the grounded width vocabulary. Named trigger: fixed-cardinality /
+//      Nat-indexed width carrier lands in std/machine.dag or
+//      std/cardinality.dag.
 type InstructionWord
   = Instr16 { width: Word16 }
   | Instr32 { width: Word32 }
