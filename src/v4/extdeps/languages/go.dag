@@ -88,7 +88,7 @@
 //     opaque element-type-reference Symbol (K-1)
 //   - Go identifier export-status: GoExportStatus (Exported / Unexported,
 //     each carrying a `locus: GoExportLocus` payload) PLUS GoExportLocus
-//     (PackageBlock / StructField / InterfaceMethod — the three
+//     (PackageBlock / StructField / MethodName — the three
 //     export-eligible declaration loci per Go spec §Exported_identifiers).
 //     Go's export rule is TWO-CONDITION: an identifier is exported iff
 //     BOTH (a) the first character is a Unicode upper-case letter AND
@@ -1080,11 +1080,23 @@ type GoChannelDirection
 //                         Per spec §Struct_types the field name's
 //                         case-derived export-status governs cross-
 //                         package access to the field.
-//   - InterfaceMethod   — a method name in an interface type
-//                         declaration. Per spec §Interface_types the
-//                         method name's case-derived export-status
-//                         governs cross-package satisfaction of the
-//                         interface contract.
+//   - MethodName        — a method name. Per spec the "method name"
+//                         locus class covers BOTH (a) method names
+//                         declared inside an interface type (`type
+//                         X interface { Method() }` per §Interface_
+//                         types) AND (b) concrete-type method
+//                         declarations (`func (recv T) Method() {…}`
+//                         per §Method_declarations). The spec
+//                         enumerates these uniformly under "method
+//                         name" — both flavors carry the case-
+//                         derived export-status that governs cross-
+//                         package access to the method. (Broadened
+//                         2026-05-16 per cursor BLOCKING finding on
+//                         PR #3182: the prior InterfaceMethod
+//                         variant excluded concrete methods like
+//                         `func (T) Lock()`, leaving them with no
+//                         representable locus — INVARIANTS P1/P2
+//                         violation.)
 //
 // CLOSED (C1 stop-signal). The Go Specification names exactly these
 // three eligible loci for export-status. A fourth would be a future
@@ -1110,19 +1122,23 @@ type GoChannelDirection
 //      that ordering is derived FROM the closed enum, not a richer
 //      source).
 //   4. Dimensional — FAILS: a single export-eligible declaration is
-//      in EXACTLY ONE locus (a struct field is not also an interface
-//      method); mutually-exclusive alternatives.
+//      in EXACTLY ONE locus (a struct field is not a method name; a
+//      package-block declaration is not a field name); mutually-
+//      exclusive alternatives. (Concrete methods and interface
+//      methods both unify under MethodName per spec §Exported_
+//      identifiers, sharing one locus class.)
 //   5. Parameterized family — FAILS: the three loci are
 //      structurally distinct declaration kinds (package-level
-//      binding / member of a struct type / member of an interface
-//      type) — NOT one generic `F<X>` / projection over a
-//      separately-declared source set (Practice 7). The Go-Spec
-//      enumeration is the irreducible partition.
+//      binding / member of a struct type / method name — covering
+//      both interface and concrete method declarations) — NOT one
+//      generic `F<X>` / projection over a separately-declared
+//      source set (Practice 7). The Go-Spec enumeration is the
+//      irreducible partition.
 // Terminal: the closed three-way Go export-eligible-locus classifier.
 type GoExportLocus
   = PackageBlock
   | StructField
-  | InterfaceMethod
+  | MethodName
 
 
 // ─────────────────────────────────────────────────────────────────────
