@@ -103,9 +103,9 @@ import v4.std.node { Symbol }
 // `Float64Interchange` (machine.dag `Word*`) on the homomorphism spine.
 //
 // Until then: **Tier-2** `float_ordered_compare_tier2` carries IEEE **numeric**
-// ordered comparison on the non-NaN subset via `float_body_compare_ieee_ordered`
-// (`±0` magnitude with both `Nat` fields at Peano `Zero` ⇒ `Equal` — IEEE
-// numeric equality). For non-finite values, **NaN sign/payload are not modeled**
+// ordered comparison via `float_body_compare_ieee_ordered_outcome` on
+// `Float.body` (`±0` magnitude with both `Nat` fields at Peano `Zero` ⇒ `Equal`
+// in the `Produced` branch — IEEE numeric equality). For non-finite values, **NaN sign/payload are not modeled**
 // on `FloatBody` (`FloatSpecial` is class-only); a separate deterministic
 // total compare on the carrier — `float_body_compare_semantic_total` — is used
 // only as a **scaffold** order over modeled facts, **not** full interchange-
@@ -123,6 +123,13 @@ import v4.std.node { Symbol }
 //
 // INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
 // interchange authorities for Grounding edges (P2 single place for words).
+//
+// IMPORT CLOSURE — `float.dag` imports `v4.std.diagnostic`, `nat`, `logic`,
+// `machine`, `node`, `algebra` only as **declared** std carriers. On the merge
+// base (`main`), those modules are **fully modeled** substrate (e.g.
+// `diagnostic.dag` owns `Outcome`/`Diagnostic`/`PortLocus` — not a header stub);
+// float does not advance ahead of ghost dependencies or duplicate their authority
+// (INVARIANTS P1/P2).
 type Float32Interchange = Word32
 type Float64Interchange = Word64
 
@@ -299,7 +306,7 @@ fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
 // `Word32`/`Word64` + Grounding). This order is an honest **scaffold** over the
 // discriminant this file owns; do not treat it as interchange-grounded
 // `totalOrder`. Distinguishes `-0` before `+0` on the carrier. For Tier-2
-// numeric extension (incl. `±0` ⇒ `Equal`), use `float_body_compare_ieee_ordered`.
+// numeric extension (incl. `±0` ⇒ `Equal`), use `float_body_compare_ieee_ordered_outcome`.
 // NaN **unordered** IEEE `<` stays Tier-2-only (`Rejected`).
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
@@ -346,26 +353,47 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
 }
 
 
-// float_body_compare_ieee_ordered — total comparison used by Tier-2 **after**
-// NaN rejection: agrees with IEEE **numeric** ordering on the non-NaN subset
-// (`±0` with zero magnitude ⇒ `Equal`). Delegates all other cases to
-// `float_body_compare_semantic_total` (carrier scaffold; see that fn’s P1
-// note — not full interchange `totalOrder`).
-fn float_body_compare_ieee_ordered(a: FloatBody, b: FloatBody) -> Ordering {
-  match a {
-    Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
-      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
-        if float_finite_magnitude_zero(e: ea, f: fa)
-          && float_finite_magnitude_zero(e: eb, f: fb)
-        {
-          Equal
-        } else {
-          float_body_compare_semantic_total(a: a, b: b)
-        }
+// float_body_compare_ieee_ordered_outcome — IEEE **numeric** ordered compare on
+// `FloatBody` with **API-enforced** NaN fail-closed: returns `Rejected` (Tier-2
+// diagnostic shape) if either body is `QuietNan`/`SignalingNan`, else `Produced`
+// with the `Ordering` (±0 magnitude collapse per prior discipline). No raw
+// `Ordering` surface on NaN inputs (INVARIANTS P2 / P3).
+fn float_body_compare_ieee_ordered_outcome(
+  a: FloatBody,
+  b: FloatBody,
+  failure_reason: Symbol,
+  failure_at_port: Symbol,
+) -> Outcome<Ordering> {
+  if float_body_is_nan(a) {
+    float_ordered_compare_nan_rejected(
+      failure_reason: failure_reason,
+      failure_at_port: failure_at_port,
+    )
+  } else {
+    if float_body_is_nan(b) {
+      float_ordered_compare_nan_rejected(
+        failure_reason: failure_reason,
+        failure_at_port: failure_at_port,
+      )
+    } else {
+      Produced {
+        value: match a {
+          Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
+            Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => {
+              if float_finite_magnitude_zero(e: ea, f: fa)
+                && float_finite_magnitude_zero(e: eb, f: fb)
+              {
+                Equal
+              } else {
+                float_body_compare_semantic_total(a: a, b: b)
+              }
+            }
+            NonFinite { tag: tb } => float_body_compare_semantic_total(a: a, b: b)
+          }
+          NonFinite { tag: ta } => float_body_compare_semantic_total(a: a, b: b)
+        },
       }
-      NonFinite { tag: tb } => float_body_compare_semantic_total(a: a, b: b)
     }
-    NonFinite { tag: ta } => float_body_compare_semantic_total(a: a, b: b)
   }
 }
 
@@ -386,33 +414,37 @@ fn float_ordered_compare_nan_rejected(
 }
 
 
-// float_ordered_compare_tier2 — Tier-2 totalization for **unordered** IEEE `<`
-// in the presence of NaN: fail-closed `Rejected` carrying `Diagnostic`, else
-// `Produced` with `float_body_compare_ieee_ordered` (numeric ordered compare on
-// the non-NaN subset, `±0` ⇒ `Equal`; non-finite tie-breaks delegate to
-// `float_body_compare_semantic_total` — scaffold order on `FloatSpecial` only,
-// not interchange NaN payload `totalOrder`). Caller supplies **two** `Symbol`
-// anchors — see modeling notes "SYMBOL ANCHORS (P2 / diagnostic.dag)".
+// float_ieee_ordered_compare_outcome — `Float` wrapper over
+// `float_body_compare_ieee_ordered_outcome` (same Tier-2 `Symbol` pair).
+fn float_ieee_ordered_compare_outcome(
+  a: Float,
+  b: Float,
+  failure_reason: Symbol,
+  failure_at_port: Symbol,
+) -> Outcome<Ordering> {
+  float_body_compare_ieee_ordered_outcome(
+    a: a.body,
+    b: b.body,
+    failure_reason: failure_reason,
+    failure_at_port: failure_at_port,
+  )
+}
+
+
+// float_ordered_compare_tier2 — STRUCTURE.md Tier-2 name: delegates to
+// `float_ieee_ordered_compare_outcome` → `float_body_compare_ieee_ordered_outcome`
+// (`Outcome` + NaN fail-closed on `FloatBody`).
 fn float_ordered_compare_tier2(
   a: Float,
   b: Float,
   failure_reason: Symbol,
   failure_at_port: Symbol,
 ) -> Outcome<Ordering> {
-  if float_body_is_nan(a.body) {
-    float_ordered_compare_nan_rejected(
-      failure_reason: failure_reason,
-      failure_at_port: failure_at_port,
-    )
-  } else {
-    if float_body_is_nan(b.body) {
-      float_ordered_compare_nan_rejected(
-        failure_reason: failure_reason,
-        failure_at_port: failure_at_port,
-      )
-    } else {
-      Produced { value: float_body_compare_ieee_ordered(a.body, b.body) }
-    }
-  }
+  float_ieee_ordered_compare_outcome(
+    a: a,
+    b: b,
+    failure_reason: failure_reason,
+    failure_at_port: failure_at_port,
+  )
 }
 
