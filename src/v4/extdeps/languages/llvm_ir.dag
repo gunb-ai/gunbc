@@ -252,6 +252,29 @@ type FloatKind
 // Terminal: the closed LangRef type taxonomy; an addition is an upstream
 // LangRef revision (M3 spec-anchor analog of node.dag's C1 stop-signal),
 // never a silent open variant.
+//
+// RAW-Int WIDTH RESIDUAL — TRACKED 🟡 SCAFFOLD (isolated, the exact
+// std/diagnostic.dag `Locus`(🟢)/`Extent.ByteRange`(🟡) precedent). The
+// SUM is 🟢 terminal (the categories are genuine), but the numeric
+// payloads `IntegerType.bits` / `VectorType.count` / `ArrayType.count` /
+// `PointerType.address_space` are kernel-ambient `Int`, which
+// STRUCTURALLY ADMITS illegal LLVM values (a 0-bit / negative-width
+// integer, a negative element count) — modeling-discipline.md §2
+// (illegal states unrepresentable) forbids it, and no bounded-natural
+// substrate is consumable yet (std/cardinality.dag refinement +
+// std/nat.dag are parallel Wave-A1, NOT in this file's whitelist). It is
+// a TRACKED scaffold declared with the three bridge properties, verbatim
+// the merged diagnostic.dag discipline (PR #3161):
+//   (a) scaffold doc — THIS note; the raw `Int` widths are provisional,
+//       not the terminal bounded-width shape.
+//   (b) bounds on use — a producer MUST construct only LangRef-valid
+//       widths (`bits >= 1`; `count >= 0`; `address_space >= 0`). Until
+//       the substrate enforces it the invariant is producer-side; an
+//       out-of-range width is a producer bug, not a legal value.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands (its own T-3 entry), these refine to bounded
+//       non-negative widths type-enforced, and this residual
+//       reclassifies 🟢 (the SUM is already 🟢; only the payload moves).
 type LlvmType
   = VoidType
   | LabelType
@@ -1182,8 +1205,10 @@ type FidelityDisposition
 // ─────────────────────────────────────────────────────────────────────
 // Inhabitance (operator-ratified instance-value form: a
 // `data <name>: <Algebra><Carrier> = <Algebra> { … }` value IN THIS
-// FILE; never a carrier, never an `inhabits` keyword). The carrier is
-// `LlvmValue`; each algebra operation is the corresponding LangRef
+// FILE; never a carrier, never an `inhabits` keyword). The nominal
+// carrier is `LlvmValue` (precision residual — see "CARRIER-PRECISION
+// RESIDUAL" below; the faithful carrier is the typed-value subset);
+// each algebra operation is the corresponding LangRef
 // instruction, returned AS a value via `InstructionValue` — the value
 // IS its producing node (the value-graph finding): "operations fall out
 // of the instance" (THESIS epistemic stacking) — emitting `add` IS
@@ -1207,6 +1232,32 @@ type FidelityDisposition
 //   - pointers ⇒ NO numeric algebra (pointer arithmetic is partial/UB);
 //     `ptrtoint`/`inttoptr` are the honest bridge — asserting a pointer
 //     ring would be fabrication, so NO pointer instance is declared.
+//
+// CARRIER-PRECISION RESIDUAL — the three instances below are TRACKED 🟡
+// SCAFFOLDS (the reviewer-sanctioned "defer the witness as a tracked
+// scaffold" resolution; same honesty discipline as algebra.dag Float≠
+// Field + diagnostic.dag Extent.ByteRange). The TYPED nominal carrier is
+// `LlvmValue`, but the FAITHFUL mathematical carrier is narrower: only
+// the i-typed value subset is Z/2^N Z, only float-typed values are the
+// ApproximateField, only i1 values the BooleanAlgebra. `LlvmValue` also
+// spans float/pointer/aggregate/vector values, so the broad annotation
+// over-claims (M9/P1: the algebraic carrier must be faithfully grounded).
+// A refined "i-typed `LlvmValue`" subtype is NOT expressible: the
+// refinement substrate (std/cardinality.dag) is parallel Wave-A1, not in
+// this file's whitelist. Declared with the three bridge properties:
+//   (a) scaffold doc — THIS note; the broad `<LlvmValue>` annotation is
+//       provisional, not the terminal precisely-typed carrier.
+//   (b) bounds on use — the instance applies ONLY to values whose LLVM
+//       type is the matching scalar (integer / float / i1). Off-carrier
+//       application (e.g. ring-adding two pointers) is a producer error,
+//       not a legal use of the witness; this is a producer-side
+//       restriction until the substrate type-encodes it.
+//   (c) dissolution trigger — when std/cardinality.dag's refinement
+//       substrate lands, the annotation refines to the typed-value
+//       subset (`CommutativeRing<IntTypedValue>`, …) and this residual
+//       reclassifies 🟢. The operations themselves are already faithful
+//       (real LangRef `add`/`mul`/… instructions — no placeholder, no
+//       law-violating projection); only the carrier WIDTH is the residual.
 
 // Carrier-type helpers — the canonical scalar each inhabiting type
 // projects from (single authority, M7; return `LlvmType`, mint no
