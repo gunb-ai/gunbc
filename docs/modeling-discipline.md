@@ -99,12 +99,28 @@ Every enum with N ≥ 2 variants must be classified as one of:
   to irreducible distinctions at the user-input boundary (literals,
   keywords, source locations). Requires a **ledger entry**: a written
   record of which dissolution patterns were attempted and why they
-  failed.
+  failed. **GREEN is consumer-independent.** "No consumer needs the
+  decomposition yet" is *not* a basis for GREEN — only "no richer source
+  *exists*" is. The test: if you can *name* the richer structure the
+  variants project over — the axes, the source set — then a richer
+  source exists, and the coproduct is **not** GREEN, regardless of
+  whether anything consumes that structure today. A faithful enumeration
+  of a spec's surface labels whose meaning decomposes into namable axes
+  (e.g. a net-kind enum that is `{resolution, default, drivers}`) is
+  YELLOW, not GREEN — see the next bullet.
 
-- **🟡 YELLOW (scaffold)** — richer source exists but extracting it
-  requires substrate work that isn't ready. Requires a **named
-  trigger**: the specific condition under which dissolution becomes
-  cheap.
+- **🟡 YELLOW (scaffold)** — a richer source exists but the
+  decomposition is deferred. Requires a **named trigger**: the specific
+  condition that un-defers it. The trigger is *either* (a) substrate
+  work that isn't ready yet, *or* (b) **the first consumer of the
+  *meaning***. Decomposition is correctly bounded by consumers — do not
+  model meaning nothing reads — so an enumeration whose decomposition is
+  *known* but not yet *needed* is YELLOW-deferred-on-consumer, never
+  GREEN (the richer source exists; only the work is deferred). A
+  consumer-triggered YELLOW entry must **pre-assign the obligation**: it
+  states explicitly that the first consumer of the meaning owes the
+  structural decomposition — *not* a local lookup. Firing that trigger
+  is the sanctioned, expected path, not a reopening of settled work.
 
 - **🔴 RED (dissolvable-now)** — richer source exists and extraction
   is cheap. Do it immediately, before the next consumer is added.
@@ -145,6 +161,20 @@ terminal:
 checkpoint comment naming its classification (🟢/🟡/🔴), with a ledger
 entry if GREEN or a named trigger if YELLOW. Enums without any of these
 are unfinished modeling and block review.
+
+**The lookup smell (the consumer-trigger backstop).** A `match` over a
+foreign-label coproduct, written *inside a consumer* — a lens, a
+transform, any file that is not the type's own — to recover a structural
+fact, **is the decomposition written in the wrong place.** The match
+arms *are* the axis: `Wor => OR, Wand => AND, …` is literally the
+`resolution` axis of the net-kind decomposition. The fix is never to
+keep the lookup; it is to push that structure into the type — fire the
+YELLOW trigger and decompose. A reviewer who sees such a match flags it:
+structural content discovered in a consumer belongs in the type, not the
+consumer. This is the same channel K-1 closes for `Symbol` — a `match`
+on opaque labels is exactly where heuristics smuggle in. Until a
+machine-checked meta-lens detects fired triggers, this review smell *is*
+the enforcement.
 
 **Scaffold exception:** early-milestone code (marked `// scaffold:
 <sunset-milestone>`) can skip the classification annotation until the
@@ -286,7 +316,10 @@ For each relevant principle and its implementing practices:
 4. For new enums: verify the 🟢/🟡/🔴 classification annotation, and
    that Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
-   coproduct.
+   coproduct. Verify GREEN is consumer-**independent**: a namable richer
+   source ⇒ YELLOW (with a consumer trigger + pre-assigned obligation),
+   never GREEN. Flag any `match` over a foreign-label coproduct inside a
+   *consumer* as a misplaced decomposition (the lookup smell).
 5. For any new family of declarations (enum or not): verify it is a
    projection over its source set (Practice 7), not a hand-enumeration —
    the cost-of-change test is adding one element to the source set.
