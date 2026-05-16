@@ -149,15 +149,35 @@ type OpenApiContactSlot
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiLicense — OAS License Object (`name` required when the license
-// object exists at the JSON surface).
+// OpenApiLicenseUrlOrIdentifierSlot — OAS 3.1.0 License Object: `url` and
+// `identifier` are **mutually exclusive** fixed fields; neither is required
+// (`name`-only license is valid wire). Third arm = neither present.
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: URL path,
+// SPDX identifier path, and neither are three disjoint carrier shapes — not
+// two independent `Option`s admitting illegal both-present states (P2).
+type OpenApiLicenseUrlOrIdentifierSlot
+  = OpenApiLicenseUrlPresent { url: String }
+  | OpenApiLicenseIdentifierPresent { identifier: String }
+  | OpenApiLicenseUrlOrIdentifierNeither
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiLicense — OAS 3.1.0 License Object: **`name` REQUIRED**; optional
+// **`identifier`** (SPDX expression) **XOR** optional **`url`** (mutually
+// exclusive per spec — see `OpenApiLicenseUrlOrIdentifierSlot`); plus
+// **`license_extensions`** for Specification Extensions (`^x-`) and faithful
+// overflow (M5 / P2 — same class as `info_extensions` on `OpenApiInfo`).
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiLicense {
   name: String,
-  url: OpenApiOptionalString,
+  url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
+  license_extensions: Map<String, JsonValue>,
 }
 
 
@@ -333,7 +353,9 @@ type OpenApiDocument {
 //     layer pin (`HttpMethod` shared home).
 //
 // (4) Info Object **value validation** — `termsOfService` / `contact.url` URI
-//     shapes, `contact.email` addr-spec checks, and `license.url` URI checks
-//     remain 🟡 with the same dissolution trigger as (1) (`openapi_parse` +
-//     std/text substrate); structural carriers above are faithful **data**
-//     homes for wire fields, not executable validators yet.
+//     shapes, `contact.email` addr-spec checks, **`license.url` URI** checks,
+//     and **`license.identifier` SPDX expression** checks remain 🟡 with the
+//     same dissolution trigger as (1) (`openapi_parse` + std/text substrate);
+//     structural `OpenApiLicenseUrlOrIdentifierSlot` forbids **both** `url` and
+//     `identifier` at the carrier layer; JSON surface repair for malformed
+//     both-present objects is parse authority, not silent coercion here.

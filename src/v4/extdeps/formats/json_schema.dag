@@ -79,7 +79,9 @@ import v4.extdeps.formats.json { JsonValue }
 // JsonSchemaCoreTypeName — closed JSON Schema 2020-12 **instance type**
 // strings for the `"type"` keyword (Validation §6.1.1: exactly the seven
 // primitive names `"null"`, `"boolean"`, `"object"`, `"array"`, `"number"`,
-// `"string"`, `"integer"` — M4 closed set, not `String`).
+// `"string"`, `"integer"` — M4 closed set, not `String`). **Synonym in review
+// rubric:** *primitive type* / `JsonSchemaPrimitiveType` vocabulary — this
+// sum is that authority.
 //
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
 //

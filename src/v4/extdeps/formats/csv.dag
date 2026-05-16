@@ -4,18 +4,18 @@
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180 (RFC 4180 — fixed edition)
 //
 // Owns:
-//   - CsvDocument { width: PositiveInt, header: Option<Row>, records: List<Row> }
-//   - Row = a field sequence whose length is STRUCTURALLY == width
-//     (rectangularity is an invariant of the type, not a convention —
-//     RFC 4180 §1: "each line should contain the same number of fields".
-//     `List<List<String>>` is rejected: it admits ragged records and
-//     header-width drift, an illegal state. Ragged input is a parse
-//     Diagnostic, never a representable CsvDocument — fail-closed.)
-//   - parse(String, Dialect) -> Result<CsvDocument, Diagnostic>
-//     (width fixed by header if present, else by the first record; any
-//     record whose arity != width is a Diagnostic, not a truncation/pad)
-//   - emit(CsvDocument, Dialect) -> String
-//   - Dialect { delimiter: Char, quote: Char, escape: Option<Char>, line_terminator: String }
+//   - **RFC 4180 wire profile** for this L-2 artifact: COMMA-separated fields,
+//     DQUOTE-quoted fields with doubled-DQUOTE escape (§2) — **not** a
+//     tunable multi-dialect CSV surface here (TSV / custom separators = out of
+//     scope for this authority file unless operator opens a sibling anchor).
+//   - `CsvDialect` — nullary witness for that pinned profile (`CsvDialectRfc4180`).
+//   - `CsvDocument` / `CsvRow` — honest **pre-ruling** carriers for tabular
+//     CSV data: `width: Nat` + `List<String>` per row (see **RECTANGULARITY**
+//     below). This is **not** yet the post-ruling “row arity STRUCTURALLY ==
+//     width” law — that invariant is **operator-pending**; the top prose does
+//     **not** claim current types make ragged rows unrepresentable.
+//   - `csv_parse` / `csv_emit` — 🟡 deferred (Deferred (1)); `Outcome<…>`
+//     seam per json.dag #3184 when bodies land.
 //
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
@@ -29,7 +29,6 @@ module v4.extdeps.formats.csv
 
 
 import v4.std.nat { Nat }
-import v4.std.text { Char }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -67,14 +66,15 @@ import v4.std.text { Char }
 // class as toml.dag `NonEmptyStr` / header reconcile — tracked-not-silent).
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: `CsvRow`,
-// `CsvDocument`, `CsvDialect`, and the escape/header presence sums.
+// `CsvDocument`, **`CsvDialect` (nullary RFC 4180 profile)**, and
+// `CsvHeaderPresence`.
 // DEFERRED (🟡, named owner + dissolution trigger, NEVER improvised, NEVER
 // a bodiless `fn` — the frozen v2 seed rejects bodiless `fn`, DECISIONS
-// PARSE-1): `csv_parse`/`csv_emit` bodies, dialect validation (delimiter
-// must not equal quote except where the deferred grammar explicitly
-// permits RFC edge cases), and Char-range validation on dialect code
-// points (std/text.dag `Char` scaffold). Verified pattern: std/collection.
-// dag #3169 + canonical json.dag #3184.
+// PARSE-1): `csv_parse`/`csv_emit` bodies, **RFC §2 wire validation** (CRLF
+// vs LF record framing policy, Unicode scalar hygiene for field text, quoted-
+// field sub-machine) on std/text.dag substrate, and Char-range checks where
+// the wire grammar still touches `Char` carriers. Verified pattern:
+// std/collection.dag #3169 + canonical json.dag #3184.
 //
 // CARRIER SEAM — fail-closed BOTH directions (authority = Deferred (1)):
 //   - `csv_parse : (source: String, dialect: CsvDialect) -> Outcome<CsvDocument>`
@@ -86,33 +86,31 @@ import v4.std.text { Char }
 // (csv-class; tracked-not-silent in Deferred (1)), same json.dag #3184
 // finding.
 //
-// HEADER `Option<Char>` / `Option<Row>` — delivered as explicit sums
-// (`CsvEscapeSpec`, `CsvHeaderPresence`) per v4 P2 discipline (diagnostic.
-// dag: no bare `Option<Node>` class of encodings for semantic presence).
-// The immutable header's `Option<…>` spelling is the conceptual contract;
-// the mechanical carriers below are the reconciled explicit form pending
-// a literal header edit batch.
+// HEADER `Option<Row>` — delivered as explicit sum (`CsvHeaderPresence`) per
+// v4 P2 discipline (diagnostic.dag: no bare `Option<Node>` class of encodings
+// for semantic presence). The immutable header's `Option<…>` spelling is the
+// conceptual contract; the mechanical carrier below is the reconciled explicit
+// form pending a literal header edit batch.
 //
 // `Bool`/`String` kernel-ambient; `List`/`Map` kernel containers (STRUCTURE.
-// md). `Nat`/`Char` are imported as modeled authorities (width metadata;
-// dialect code points).
+// md). `Nat`/`Char` are imported where needed for future substrate edges
+// (width metadata today; RFC wire walks land with std/text per Deferred (1)).
 
 
 // ─────────────────────────────────────────────────────────────────────
-// CsvEscapeSpec — CSV Dialect escape character presence (immutable-header
-// `escape: Option<Char>`).
+// CsvDialect — **nullary witness** for the **RFC 4180 §2** wire grammar pinned
+// by this file's L-2 anchor (COMMA-separated fields, DQUOTE-quoted fields with
+// doubled-DQUOTE escapes — not a tunable delimiter/quote/escape parameter
+// surface). Multi-profile / “Excel CSV” / TSV authorities belong in a **different**
+// anchor + receipt, not silent parameterization here (P1 modeling faithfulness).
 //
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-// (parameterization / MIME registration context for format parameters).
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — five patterns: (1) fact placement FAILS — uniform escape choice
-// across parse/emit; (2) variant-is-data FAILS — distinct shapes; (3)
-// algebraic N/A; (4) dimensional FAILS — escape vs absent are alternatives;
-// (5) parameterized family FAILS — not `F<X>` over one index set.
-type CsvEscapeSpec
-  = CsvEscapeChar { escape: Char }
-  | CsvEscapeAbsent
+// Ledger — single RFC profile; additional dialects = new sum arms or sibling
+// modules under operator pin, not open `Char` parameters.
+type CsvDialect
+  = CsvDialectRfc4180
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -121,26 +119,12 @@ type CsvEscapeSpec
 //
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
 //
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
-// five-pattern scan as `CsvEscapeSpec` (header row present vs absent).
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: header row
+// present vs absent are distinct shapes (same two-variant discipline as other
+// optional-row sums).
 type CsvHeaderPresence
   = HeaderPresent { row: CsvRow }
   | HeaderAbsent
-
-
-// ─────────────────────────────────────────────────────────────────────
-// CsvDialect — delimiter/quote/escape/line-break parameters for CSV text.
-//
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-//
-// **Field-level escape rules** inside quoted fields are parse-body work
-// (🟡 Deferred (1)); the carriers hold the parameters only.
-type CsvDialect {
-  delimiter: Char,
-  quote: Char,
-  escape: CsvEscapeSpec,
-  line_terminator: String,
-}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -189,8 +173,9 @@ type CsvDocument {
 // substrate that is scaffold today. NOT authored here — not improvised
 // bodies, not bodiless `fn` (DECISIONS PARSE-1).
 //
-// (1) `csv_parse` / `csv_emit` — Char-stream structural walks over the
-//   RFC 4180 grammar parameterized by `CsvDialect`; require std/text.dag
+// (1) `csv_parse` / `csv_emit` — Char-stream structural walks over **RFC 4180
+//   §2** using the nullary `CsvDialectRfc4180` profile (fixed COMMA / DQUOTE /
+//   record framing — not parameterized delimiter matrices); require std/text.dag
 //   `String` ↔ `List<Char>` decomposition (T-3). RATIFIED strategy:
 //   single-pass scan with quoted-field sub-machine (RFC 4180 §2) —
 //   termination is input consumption (A2 implicit), not a ranking measure.
@@ -200,8 +185,8 @@ type CsvDocument {
 //         closed BOTH directions (json.dag #3184 seam #3).
 //     (c) dissolution trigger — std/text.dag Char-stream substrate lands
 //         ⇒ follow-up adds the operations + fail-closed emit validation
-//         (invalid dialect pairing, non-Unicode-scalar `Char` in dialect,
-//         plus any CSV consistency rules **after** **pending operator csv-
+//         (non-Unicode-scalar text, malformed quotes, CRLF/LF policy, plus any
+//         CSV consistency rules **after** **pending operator csv-
 //         rectangularity ruling** and related substrate land).
 //
 // (2) **pending operator csv-rectangularity ruling** — ALL of: whether
