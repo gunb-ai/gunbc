@@ -1503,311 +1503,307 @@ type RustCost {
 
 
 // ═════════════════════════════════════════════════════════════════════
-// Per-primitive named registry + IrToRust mapping shape.
+// D2 RESOLVER SHAPE — per-primitive three-thin-facts declarations.
 //
-// The two halves of the IR ↔ Rust connection (operator-directed
-// 2026-05-16, conversational ratification — the SHAPE goes in this
-// PR; the connecting rows land as their `ir_carrier` std/ types
-// reach merged state).
+// Per the operator-ratified DECISIONS.md D2 row (2026-05-16, encoded
+// via PR #3195 merge at 44a37ad46), a language extdeps file is a
+// RESOLVER for the abstract std/ carriers — the
+// `infra(abstract) → gcloud/aws(concrete)` pattern. Per primitive,
+// THREE thin declarations:
 //
-//   (1) Per-primitive named inhabitants — each Rust primitive type
-//       gets a stable named identity as a `data X: RustScalar = ...`
-//       closed-enum value. These are STRUCTURAL FACTS (not algebra-
-//       inhabitance — no D2 trap; just typed values of the closed
-//       RustScalar Disj). emit / ingest dispatch on these by
-//       STRUCTURAL identity, never on a spelling.
+//   (1) alias-identity to the std/ carrier (`type RustI32 = Int32`)
+//       — the machine-readable-inhabitance form (`List<T> =
+//       FreeMonoid<T>` precedent); the algebra inhabitance flows
+//       through the alias, so "see through the labels" is literal
+//       Node identity.
+//   (2) grounding map (surface spelling — `i32`).
+//   (3) operation-semantics carriers (OverflowDisposition,
+//       NaN/Inf handling) — genuine per-language facts, siblings
+//       to the alias.
 //
-//   (2) IrToRust Conj carrier — names a single IR-type ↔ Rust-type
-//       correspondence row. emit (T-10) reads these rows; ingest
-//       (the C5 reverse direction) walks them backwards. The
-//       carrier SHAPE lands now; the row instances ride T-3
-//       (each row's `ir_carrier` references a std/ type Node that
-//       must exist in the namespace before the row can resolve).
+// Per the D2 row: a per-language `data <lang>_<prim>:
+// OrderedRing<<lang>Prim, …>` inhabitance is the parallel-substrate
+// INVARIANTS P1:42 forbids (`numeric_aliases_align_to_refinements`)
+// — superseded. The prior #3174 head's RustScalar Disj REGISTRY
+// (18 named `data rust_X: RustScalar = …` rows) + IrToRust<IRCarrier>
+// carrier + bool_to_rust_bool row + assert_bool_to_rust_bool_consistency
+// fn DISSOLVE into the three-thin-facts shape (this commit). The
+// faithful RustScalar TYPE vocabulary (the Disj of source-syntax
+// scalar categories with payload-bearing variants — IntScalar /
+// FloatScalar / BoolScalar / CharScalar / StrScalar / NeverScalar —
+// declared above) STAYS as the parse-stage source-syntax
+// classifier; only the inhabitance-form items dissolve.
 //
-// This is the SEAM through which all IR → Rust emission flows.
-// One row per std/ ↔ Rust primitive correspondence; emit dispatches
-// by structural-identity match on `ir_carrier`, never by name.
+// Per the D2 row's D2.2: coercion = the U1 homomorphism realized by
+// the generic B2-OMNI emit fold reading the resolver data. NOT a
+// hand table (the prior IrToRust<> per-target string table is the
+// shape INVARIANTS P1 forbids — its dissolution is exactly this
+// reshape). NOT a per-language emit lens (B2-OMNI/B4: one generic
+// emit, target-specificity is declarative T-11 data).
+//
+// Per the D2 row's D2.3: compound/generic coercion composes for
+// FREE via the Node catamorphism (A1's single recursive type;
+// `List<Int32>` = `Instantiation` recursed); no per-instantiation
+// rows. Not blocked on the Functor hierarchy.
+//
+// Per the D2 row's D2.4: round-trip guarantee is structural-on-F
+// per C5-1; TestClaims document it, never establish it. The prior
+// Layer-2 `assert_bool_to_rust_bool_consistency` fn — a forward-
+// anchor that documented an assertion the structural law makes
+// redundant — dissolves with this commit.
+//
+// Per the D2 row's D2.5: overflow/UB/arbitrary-precision are
+// DISTINCT std/ carriers selected by the alias target + the
+// per-language OverflowDisposition carrier, never a re-declared
+// semantics.
+//
+// Per the D2 row's scope guard: D2 covers per-primitive inhabitance
+// form ONLY. It does NOT decide LanguageModel-grammar facts (C++
+// most-vexing-parse, TypeScript structural typing) — those ride
+// C5-3 / B2-OMNI / B4 per their own cascade. Grammar-slice workers
+// must not import D2 reasoning into them.
+//
+// CURRENT-MAIN GROUNDING STATE (snapshot 2026-05-16 post-#3195 merge):
+//   - std/logic.dag: `Bool` LANDED (#3166) → RustBool alias-identity
+//     + grounding-map land NOW (this commit).
+//   - std/nat.dag: `Nat` LANDED — but Rust doesn't have an arbitrary-
+//     precision-Nat primitive (every Rust numeric primitive is
+//     bounded); no direct alias.
+//   - std/machine.dag: `Word*` / `MachineWidth` / `PointerWidth`
+//     LANDED — these are the machine-width substrate. Integer
+//     aliases compose them with std/integer.dag's eventual `Int`
+//     concept; they don't standalone-alias from rust.dag.
+//   - std/text.dag: `Char = Nat` and `String = FreeMonoid<Char>`
+//     LANDED — but `Char` is unrefined Nat (no Unicode-scalar-
+//     value bound), and `String` is unrefined FreeMonoid<Char> (no
+//     UTF-8 well-formedness). Rust's `char` (Unicode scalar value
+//     excluding surrogate range) and `str` (UTF-8) are
+//     REFINEMENTS, not direct alias targets. Alias-identity DEFERRED
+//     pending refined std/text.dag carriers OR a per-language
+//     refinement-disposition carrier (D2 scope-guard ambiguity —
+//     escalate if/when authoring the char/str alias surfaces this).
+//   - std/integer.dag: NOT YET FILLED (scaffold only). Integer
+//     aliases (RustI8 = Int8 through RustI128 = Int128 / RustIsize
+//     / RustU8..U128 / RustUsize) DEFERRED pending T-3 Wave-A3.
+//   - std/float.dag: NOT YET FILLED. Float aliases (RustF32 =
+//     Float32 / RustF64 = Float64) DEFERRED pending T-3 Wave-A3.
+//   - Never carrier: std/cardinality.dag has Multiplicity but no
+//     explicit empty-cardinality / Never type. RustNever alias
+//     DEFERRED pending its std/ source.
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Per-primitive named inhabitants — 18 typed scalar values, one per
-// Rust primitive type. Each is a `data` instance of `RustScalar`'s
-// closed-enum payload-bearing variants; the `(kind, width)`
-// combinations are STRUCTURALLY enforced by RustScalar's Disj-with-
-// payloads (Bool/Char/Str/Never carry no width; only Int/Float do).
+// GroundingMap<IRCarrier> — the per-primitive surface-spelling
+// carrier. Conj record (no Practice-4 ledger).
 //
-// These are NOT algebra-inhabitance instance-values (D2-pending) —
-// they are just typed VALUES of the closed Disj. Authorable today;
-// fan-out to python/go/cpp/typescript mirrors this shape.
-
-// Signed integers — `i8` / `i16` / `i32` / `i64` / `i128` / `isize`
-data rust_i8:    RustScalar = IntScalar { kind: Signed,   width: Bits8   }
-data rust_i16:   RustScalar = IntScalar { kind: Signed,   width: Bits16  }
-data rust_i32:   RustScalar = IntScalar { kind: Signed,   width: Bits32  }
-data rust_i64:   RustScalar = IntScalar { kind: Signed,   width: Bits64  }
-data rust_i128:  RustScalar = IntScalar { kind: Signed,   width: Bits128 }
-data rust_isize: RustScalar = IntScalar { kind: Signed,   width: Pointer }
-
-// Unsigned integers — `u8` / `u16` / `u32` / `u64` / `u128` / `usize`
-data rust_u8:    RustScalar = IntScalar { kind: Unsigned, width: Bits8   }
-data rust_u16:   RustScalar = IntScalar { kind: Unsigned, width: Bits16  }
-data rust_u32:   RustScalar = IntScalar { kind: Unsigned, width: Bits32  }
-data rust_u64:   RustScalar = IntScalar { kind: Unsigned, width: Bits64  }
-data rust_u128:  RustScalar = IntScalar { kind: Unsigned, width: Bits128 }
-data rust_usize: RustScalar = IntScalar { kind: Unsigned, width: Pointer }
-
-// IEEE-754 floating-point — `f32` / `f64` (stable Rust set)
-data rust_f32:   RustScalar = FloatScalar { width: Bits32 }
-data rust_f64:   RustScalar = FloatScalar { width: Bits64 }
-
-// Reference-primitive scalars — `bool` / `char` / `str` / `!`
-data rust_bool:  RustScalar = BoolScalar
-data rust_char:  RustScalar = CharScalar
-data rust_str:   RustScalar = StrScalar
-data rust_never: RustScalar = NeverScalar
-
-
-// ─────────────────────────────────────────────────────────────────────
-// IrToRust<IRCarrier> — the IR-type ↔ Rust-primitive correspondence
-// carrier, parameterized over the IR-side type. One row per std/
-// canonical carrier ↔ Rust primitive emission. Conj record (no
-// Practice-4 ledger).
-// Spec: this carrier IS the U1 "coercion = emission" projection
-//       (algebra.dag U1 header) made concrete per language. Same
-//       shape per-language across fan-out.
+// Per the D2 row D2a(2): a "grounding map (surface spelling)".
+// Each Rust primitive's alias-identity declaration is paired with a
+// `data <name>_grounding: GroundingMap<<AliasName>> = GroundingMap
+// { spelling: "<source-token>" }` row that names the Rust source
+// token for emit / ingest. The spelling is a `String` boundary value
+// (the canonical surface text); it lives at the source-syntax
+// boundary, not in kernel/lens code.
 //
-// IRCarrier (type-parameter)  the std/ canonical type this row maps
-//                             to/from (a type-level reference — e.g.
-//                             `v4.std.logic.Bool` or
-//                             `v4.std.nat.Nat`). Each row's IR side
-//                             is named at the TYPE level, not as a
-//                             value field — same shape as
-//                             `algebra.dag`'s
-//                             `Homomorphism<C, Source, Target>` which
-//                             carries the algebra class C and the
-//                             two carriers at the type-parameter
-//                             positions. Type-level keying is the
-//                             U1-canonical form; emit dispatches by
-//                             type-identity match on IRCarrier,
-//                             never by name (K-1).
-//   - rust_repr               the Rust-side typed scalar value — one
-//                             of the 18 per-primitive named
-//                             inhabitants above.
-//
-// SEAM (where rows land). Each row's `IrToRust<IRCarrier>` type
-// instantiation requires IRCarrier to be a declared std/ type. As
-// the T-3 wave merges land std/ scalar types, the corresponding
-// `IrToRust<...>` rows land here. The row authoring is mechanical —
-// one per std/-↔-Rust correspondence — and incremental: a row can
-// land the moment its IRCarrier std/ type reaches merged state,
-// without waiting for the whole std/ wave.
-//
-// Worked example: `Bool → rust_bool` (concrete, LANDED below — see
-// `data bool_to_rust_bool` row after this declaration). emit (T-10)
-// consumes the row:
-//   given a Bool-typed value in InferredTree
-//   →  lookup `bool_to_rust_bool` by type-identity match on the
-//      Bool IRCarrier (compile-time-typed; no runtime string match)
-//   →  read `rust_repr` = `rust_bool` = `BoolScalar`
-//   →  emit Rust source token `"bool"` (the spelling determined by
-//      the RustScalar's variant — BoolScalar maps to "bool" via the
-//      LanguageModel grammar)
-// ingest (reverse direction, C5) walks the row backwards:
-//   parsed Rust `bool` keyword
-//   →  produces BoolScalar Node
-//   →  reverse-lookup: rust_repr == rust_bool ⇒ Bool IRCarrier
-//   →  Bool-typed Node into the IR
-//
-// The whole IR ↔ Rust pipeline IS one declarative correspondence
-// table consumed in both directions. No name-convention dispatch,
-// no string matching — type-level identity match on IRCarrier.
-type IrToRust<IRCarrier> {
-  rust_repr: RustScalar
+// Spec: https://doc.rust-lang.org/reference/types.html
+//       (per-primitive Reference URLs are on the alias-identity
+//       declarations below.)
+type GroundingMap<IRCarrier> {
+  spelling: String
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Bool → rust_bool — the first concrete IR ↔ Rust mapping row.
+// OverflowAction — the closed disposition Rust applies to integer
+// arithmetic at overflow. Per Reference §types-numeric: in debug
+// builds the default is panic on overflow; in release builds the
+// default is two's-complement wrap; explicit per-op variants
+// (wrapping_*, checked_*, saturating_*, overflowing_*) opt the
+// caller into specific behavior.
+// Spec: https://doc.rust-lang.org/reference/types/numeric.html
 //
-// std/logic.dag declares `Bool = True | False` (a closed Disj per
-// the classical-bivalent logic anchor) and the
-// `bool_boolean_algebra: BooleanAlgebra<Bool>` inhabitance. Rust's
-// `bool` per Reference §types-boolean is the same two-valued type
-// inhabiting the same BooleanAlgebra; the IR ↔ Rust correspondence
-// is 1:1, and this row encodes it.
+//   - PanicOnOverflow      — Rust debug-build default for
+//                            arithmetic operators (`+`, `-`, `*`)
+//   - TwoComplementWrap    — Rust release-build default for the
+//                            same operators
 //
-// Spec (IR side):   std/logic.dag (single authority; its own
-//                   `Anchor:` line cites the upstream Boolean-algebra
-//                   reference — don't duplicate that anchor here)
-// Spec (Rust side): https://doc.rust-lang.org/reference/types/boolean.html
+// CLOSED (C1 stop-signal). A third action variant (e.g. SaturatingClamp
+// for explicit saturating_* ops) is an edit to THIS declaration under
+// the L-2 pin discipline.
 //
-// post-T-3-Wave-A1 (std/logic.dag merged 2026-05-16): this row is
-// now AUTHORED (not commented). emit (T-10) reads it; ingest (C5)
-// reads it backwards. When the LanguageModel grammar lands the Rust
-// source spelling for BoolScalar (the token `"bool"`), the
-// end-to-end correspondence is complete: a `Bool`-typed `.dag`
-// value emits to Rust source as `bool`, and Rust source `bool`
-// ingests back to a `Bool`-typed Node.
-//
-// (This is the answer to the operator's conversational question
-// 2026-05-16: "can we actually write testcases for the IR <---> rust
-// side now?" — for Bool, yes, the SHAPE is now ready. The
-// TestClaim itself awaits std/verification.dag's TestClaim schema,
-// pending in the same T-3 Wave-A2.)
-data bool_to_rust_bool: IrToRust<Bool> = IrToRust {
-  rust_repr: rust_bool
-}
-
-
-// ═════════════════════════════════════════════════════════════════════
-// Layer-2 structural-assertion fns (the per-row "expectation" pattern
-// every language file mirrors during fan-out).
-//
-// v4 testing has THREE layers, with the gating dependencies named:
-//
-//   Layer 1 — 0-diag structural typing (live now, every PR).
-//     Every `data X: T = ...` instance is itself a type-check
-//     assertion v2-compiler verifies. The row
-//     `data bool_to_rust_bool: IrToRust<Bool> = IrToRust { rust_repr:
-//     rust_bool }` already proves: Bool resolves, IrToRust<Bool> is a
-//     well-typed instantiation, rust_bool is a real RustScalar value,
-//     and the Conj record matches the carrier's shape. Drift breaks
-//     the build. Not a "test" in the TestClaim sense, but real
-//     structural verification.
-//
-//   Layer 2 — Structural-assertion fns (the pattern below, AUTHORABLE
-//     NOW). A `fn assert_<row>_consistency() -> Bool` exhaustive-
-//     matches on the row's `rust_repr` field and asserts which
-//     RustScalar variant it MUST be. v2-compiler's exhaustiveness
-//     check ensures all variants are covered; the fn body encodes
-//     the expected variant. Today the fn compiles via 0-diag (the
-//     match arms type-check); the BEHAVIORAL fact (the fn returns
-//     `true` when the row is correct) becomes verifiable when an
-//     interpreter exists (T-22 eval) or when a TestClaim with
-//     `kind: Equals` asserts the return value (T-3 Wave-A2 +
-//     std/verification.dag, PR #3183 in flight).
-//
-//     The fn is a FORWARD-ANCHOR: it documents the expected variant
-//     as a structural property (a reader pattern-matching against
-//     each variant sees the canonical answer), and when TestClaim
-//     infrastructure lands, the fn body becomes the `expected`
-//     side of an `Equals` TestClaim. If a future PR changes
-//     `bool_to_rust_bool` to point at `rust_i32` instead of
-//     `rust_bool`, the fn still compiles (the match exhausts) but
-//     RETURNS `false` — flag-when-runnable.
-//
-//   Layer 3 — TestClaim data (gate: PR #3183 std/verification.dag).
-//     The real "tests" in the v4 self-hosting sense are TestClaim
-//     instances:
-//
-//       data t_bool_to_rust_bool_roundtrip: TestClaim = TestClaim {
-//         kind:     RoundTrips,
-//         label:    "IR Bool ↔ Rust bool roundtrips",
-//         input:    <Bool-typed Node>,
-//         expected: <... same Node after emit + parse roundtrip ...>
-//       }
-//
-//     RoundTrips claims need emit (T-10) + parse (T-7) — both also
-//     gated. The DECLARATIVE TestClaim data is the first layer that
-//     unlocks the moment #3183 merges; EXECUTABLE roundtrips need
-//     #3183 + T-7 + T-10.
-//
-// Per-language fan-out (python.dag / go.dag / cpp.dag / typescript.dag):
-//   Each language file mirrors this layer-2 shape. Their per-primitive
-//   Bool row will have an analogous `assert_bool_to_<lang>_bool_consistency`
-//   fn matching on their language's bool variant. The PATTERN is
-//   identical; only the carrier names change. Authoring this fn for
-//   Rust BEFORE fan-out establishes the template every fan-out worker
-//   copies, removing one decision-point from their slice.
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every integer-op consumer reading
+//      the disposition tag uniformly to determine runtime behavior;
+//      shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens
+//      the readable-string-as-tag K-1 anti-pattern. Two nullary
+//      structural alternatives — the enum IS the faithful form.
+//   3. Algebraic form — N/A by construction: PanicOnOverflow vs
+//      TwoComplementWrap is a Rust-specific runtime-dispatch
+//      partition; it doesn't trace to a richer std/ algebraic
+//      structure (no Monoid / Lattice on these two actions). No
+//      richer std/ source.
+//   4. Dimensional — FAILS: a single configuration applies EXACTLY
+//      ONE default action at a given runtime configuration;
+//      alternatives, not coordinates.
+//   5. Parameterized family — FAILS: the two are distinct Rust-
+//      Reference runtime-dispatch primitives; NOT one generic
+//      `F<X>` / projection over a separately-declared source set
+//      (Practice 7).
+// Terminal: the closed two-way Rust integer-overflow runtime-action
+// classifier; saturating/checked are EXPLICIT-PER-OP forms recorded
+// via the OverflowDisposition record's separate availability fields
+// rather than a third default-action variant.
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
 
 
 // ─────────────────────────────────────────────────────────────────────
-// assert_bool_to_rust_bool_consistency — Layer-2 structural assertion
-// for the live Bool → rust_bool IrToRust row.
+// OverflowDisposition<IRCarrier> — the per-language operation-
+// semantics carrier for Rust integer arithmetic (D2a(3)). Conj
+// record (no Practice-4 ledger).
 //
-// Verifies via exhaustive match that `bool_to_rust_bool.rust_repr` IS
-// the `BoolScalar` variant, not any other RustScalar kind. If a future
-// edit changes the row to use a different per-primitive inhabitant
-// (e.g. `rust_i32`), the fn still compiles (the match exhausts) but
-// returns `false` — a structural change with a behavioral signal.
+//   - debug_default     the default OverflowAction in Rust debug
+//                       builds (canonically PanicOnOverflow per
+//                       Reference §numeric)
+//   - release_default   the default OverflowAction in Rust release
+//                       builds (canonically TwoComplementWrap)
 //
-// Forward-anchor for the `Equals` TestClaim that will assert this fn
-// returns `true` once T-3 Wave-A2 (std/verification.dag, PR #3183)
-// merges:
+// Per the D2 row D2.5: overflow/UB/arbitrary-precision are DISTINCT
+// std/ carriers selected by the alias target + the per-language
+// OverflowDisposition carrier, never a re-declared semantics. This
+// record carries Rust's runtime-action selection; the abstract-vs-
+// bounded-integer-semantics axis is selected via the alias target
+// (e.g. RustI32 → Int32 vs RustNat-no-bound → Int; the former is
+// bounded and overflow-disposed, the latter is arbitrary-precision
+// and overflow-impossible).
 //
-//   // (post-#3183 merge — comment-only sketch:)
-//   // data t_bool_to_rust_bool_kind: TestClaim = TestClaim {
-//   //   kind:     Equals,
-//   //   label:    "bool_to_rust_bool maps to BoolScalar variant",
-//   //   input:    assert_bool_to_rust_bool_consistency(),
-//   //   expected: true
-//   // }
-fn assert_bool_to_rust_bool_consistency() -> Bool {
-  match bool_to_rust_bool.rust_repr {
-    BoolScalar                       => true
-    IntScalar { kind: _, width: _ }  => false
-    FloatScalar { width: _ }         => false
-    CharScalar                       => false
-    StrScalar                        => false
-    NeverScalar                      => false
-  }
+// Floats use a separate operation-semantics carrier (NaN/Inf
+// handling per IEEE-754) — that one lands when the float aliases
+// land (pending std/float.dag T-3 Wave-A3). The integer-overflow
+// case is the canonical instance of the D2a(3) shape; the float
+// case mirrors structurally with different fields.
+type OverflowDisposition<IRCarrier> {
+  debug_default: OverflowAction
+  release_default: OverflowAction
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// IrToRust row authoring — DEFERRED per row to the std/ carrier's
-// merged state.
+// Per-primitive alias-identity + grounding declarations.
 //
-// Below is a comment-only authoring guide. Each row is independent:
-// it lands as soon as its `ir_carrier` is declared in the relevant
-// std/ file. The rows are NOT all-or-nothing — incremental landing
-// is fine and recommended (one per PR if std/* lands incrementally).
+// Each Rust primitive type below is declared as a thin three-fact
+// resolver: (1) alias-identity to its std/ carrier, (2) grounding-
+// map for surface spelling, (3) operation-semantics carrier (for
+// integers, OverflowDisposition; for floats, a future NaN/Inf
+// disposition carrier; Bool/Char/Str/Never have no per-op runtime
+// dispatch and don't carry one).
 //
-// Status of std/ scalar carriers (snapshot 2026-05-16 post-T-3 merge):
-//   - std/logic.dag (Bool)          ✅ LANDED (#3166)  → bool_to_rust_bool LANDED above
-//   - std/nat.dag (Nat)             ✅ LANDED (#3165)  → needs std/integer.dag for u* mapping
-//   - std/integer.dag (Int + widths) ❌ MISSING — unlocks rust_i* + rust_u* rows
-//   - std/machine.dag (MachineWidth) ❌ MISSING — unlocks Pointer-width for rust_isize / rust_usize
-//   - std/float.dag (Float)          ❌ MISSING — unlocks rust_f32 / rust_f64 rows
-//   - std/text.dag (Char + Str)      ❌ MISSING — unlocks rust_char / rust_str rows
+// LANDABLE NOW — grounded against current origin/main carriers:
+
+// Rust `bool` ↔ std/logic.dag's `Bool` (LANDED via #3166).
+// Alias-identity: literal Node identity per the D2 row's
+// "see through the labels" framing.
+type RustBool = Bool
+
+data rust_bool_grounding: GroundingMap<RustBool> = GroundingMap {
+  spelling: "bool"
+}
+
+// Bool has no overflow / runtime-dispatch operation semantics; no
+// OverflowDisposition row.
+
+
+// DEFERRED — alias-identity declarations awaiting their std/
+// carrier landings. Each row below lands as a one-line amend the
+// moment its `Consumes:` target reaches merged state on origin/main.
 //
-// As each std/ scalar lands, add a one-line `data <name>_to_<rust>:
-// IrToRust<<Type>> = IrToRust { rust_repr: <rust_prim> }` row +
-// the corresponding `import v4.std.<file> { <Type> }` line. v2-compiler
-// verifies 0-diag at each landing (structural resolution check).
+//   // Rust signed integers — pending std/integer.dag T-3 Wave-A3
+//   type RustI8    = Int8        // pending
+//   type RustI16   = Int16       // pending
+//   type RustI32   = Int32       // pending
+//   type RustI64   = Int64       // pending
+//   type RustI128  = Int128      // pending
+//   type RustIsize = IntPointer  // pending (composes std/integer.dag
+//                                //          + std/machine.dag PointerWidth)
 //
-// Authoring template (use the live `bool_to_rust_bool` row above as
-// the precedent — the IrToRust<IRCarrier> type-parameter form, NOT
-// a value field):
+//   // Rust unsigned integers — pending std/integer.dag T-3 Wave-A3
+//   type RustU8    = UInt8       // pending
+//   type RustU16   = UInt16      // pending
+//   type RustU32   = UInt32      // pending
+//   type RustU64   = UInt64      // pending
+//   type RustU128  = UInt128     // pending
+//   type RustUsize = UIntPointer // pending
 //
-//   import v4.std.<file> { <IRCarrier> }
+//   // Rust floats — pending std/float.dag T-3 Wave-A3
+//   type RustF32   = Float32     // pending
+//   type RustF64   = Float64     // pending
 //
-//   data <ir>_to_<rust>: IrToRust<<IRCarrier>> = IrToRust {
-//     rust_repr: <rust_primitive>
-//   }
+//   // Rust char — pending std/text.dag refinement-question
+//   // resolution. Rust's char is a Unicode scalar value excluding
+//   // surrogates; std/text.dag's Char = Nat is unrefined. Direct
+//   // alias would equate two semantically-distinct carriers
+//   // (refined-Unicode-scalar vs arbitrary-Nat). Authoring this
+//   // alias is gated on either:
+//   //   (a) std/text.dag refining Char to its Unicode-scalar-
+//   //       value form, OR
+//   //   (b) an operator-ratified per-language refinement-
+//   //       disposition carrier capturing the Rust-side refinement.
+//   // Same question for RustStr (UTF-8 vs unrefined
+//   // FreeMonoid<Char>). Both deferred pending the substrate
+//   // decision.
+//   //   type RustChar  = Char    // pending refinement decision
+//   //   type RustStr   = String  // pending refinement decision
 //
-//   // Layer-2 assertion fn (forward-anchor for Equals TestClaim):
-//   fn assert_<ir>_to_<rust>_consistency() -> Bool {
-//     match <ir>_to_<rust>.rust_repr {
-//       <expected RustScalar variant> => true
-//       <all other variants>          => false
-//     }
-//   }
+//   // Rust never type — pending std/ empty-cardinality / Never
+//   // carrier (currently no direct std/ source).
+//   //   type RustNever = ???     // pending
 //
-// Per-row TestClaim shape (pending std/verification.dag — PR #3183
-// in flight; not yet merged):
+// Each deferred alias lands with:
+//   - its `type Rust<X> = <StdCarrier>` declaration
+//   - its `data rust_<x>_grounding: GroundingMap<Rust<X>> =
+//     GroundingMap { spelling: "<token>" }` row
+//   - for integer aliases: its `data rust_<x>_overflow:
+//     OverflowDisposition<Rust<X>> = OverflowDisposition {
+//     debug_default: PanicOnOverflow,
+//     release_default: TwoComplementWrap }` row (Rust integer
+//     defaults per Reference §numeric apply uniformly to all
+//     widths).
+//   - for float aliases: a future NaN/Inf disposition carrier
+//     row (the carrier itself lands with std/float.dag).
+
+
+// ─────────────────────────────────────────────────────────────────────
+// D2b — Rust's IEEE-754 float operation realizations.
 //
-//   data t_<ir>_to_<rust>_roundtrip: TestClaim = TestClaim {
-//     kind:     RoundTrips,
-//     label:    "IR <IRCarrier> ↔ Rust <rust> roundtrips through emit + ingest",
-//     input:    <IRCarrier-typed Node>,
-//     expected: <same Node — emit(input) → Rust-source-token,
-//                ingest(token) → same Node by structural-identity>
-//   }
+// Per the D2 row D2b: IEEE-754 float arithmetic is a genuinely-
+// irreducible spec primitive. It flows through THESIS:203's
+// `Transform → FunctionRef → Arrow` pattern, where the Arrow's
+// `body` is a REALIZATION DECLARATION in `extdeps/languages/*` —
+// the per-target resolver. D2b coins NO new carrier (no
+// `Symbol`+`Anchor` data node referenced directly by the
+// inhabitance — that would be the second external-primitive path
+// P2 forbids).
 //
-// The TestClaim row IS the IR ↔ Rust testcase the operator asked
-// about; it becomes authorable once std/verification.dag merges +
-// the corresponding IrToRust row lands. The fully-instrumented
-// testcase thus rides three landings: (a) std/<scalar>.dag, (b)
-// this PR's shape (live for Bool now), (c) std/verification.dag's
-// TestClaim schema (#3183).
+// For Rust specifically, the IEEE-754 op Arrow body realizations
+// (the per-op declarations that capture how Rust source represents
+// `+ / - / * / /` etc. on `f32` / `f64`) live in this file. BUT:
+// per the D2 row's SCOPE GUARD, "D2 covers per-primitive
+// inhabitance form ONLY: it does NOT decide LanguageModel-grammar
+// facts." The Arrow-body realization data IS grammar/emission
+// facts (Rust source tokens for arithmetic operators, precedence,
+// associativity). Those land with the bundled T-4 LanguageModel
+// grammar work; the D2 row directs the SHAPE (Transform →
+// FunctionRef → Arrow with body = extdeps realization) but doesn't
+// author the realizations themselves.
+//
+// For this slice: the realizations are DEFERRED to the bundled T-4
+// LanguageModel grammar bundle. They land alongside the broader
+// grammar production data; not in this canonical reshape.
+//
+// (Also pending: std/float.dag's ApproximateField inhabitance, which
+// the FunctionRefs to op Arrows live INSIDE. Until std/float.dag
+// lands its ApproximateField<Float> instance and the per-op Arrow
+// declarations are bound to FunctionRefs, the D2b realization
+// surface in rust.dag has nothing to attach to.)
