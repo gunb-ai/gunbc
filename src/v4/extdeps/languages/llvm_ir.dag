@@ -972,8 +972,11 @@ type AtomicRmwOp
 // distinct. This is NOT a claim that EVERY LangRef opcode is enumerated
 // here: a LangRef instruction outside the modeled core (a target-
 // specific / deprecated / newly-added LangRef opcode) is the EXPLICIT
-// `FidelityDisposition.FailClosed` boundary — declared, diagnosed, never
-// silently dropped or fabricated (the no-engine discipline; the honest
+// `FidelityDisposition.FailClosed` boundary, the concrete
+// machine-consumable `FidelityFeature.UnmodeledInstruction`
+// (`feature_disposition` maps it to `FailClosed`) — declared,
+// diagnosed, never silently dropped or fabricated (the no-engine
+// discipline; the honest
 // reconciliation of "modeled spec core" vs "the full LangRef surface" —
 // completeness of F is declared, not over-claimed). Extending the
 // modeled core is an upstream-LangRef-driven edit to THIS declaration
