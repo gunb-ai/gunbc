@@ -14,7 +14,7 @@
 //   whose connective is **`Conj` with zero children** — exactly zero
 //   lexical productions. The walker recognizes this shape **structurally**
 //   (discriminant + `count(children)==0`), never by `Symbol` spelling.
-//   E0 + empty `String` (`FreeMonoid` spine `Empty`) ⇒ `Produced` empty
+//   E0 + empty `String` (`std/text.dag` `string_is_empty`) ⇒ `Produced` empty
 //   `TokenStream`. E0 + non-empty source ⇒ `Rejected` (source not exhausted
 //   — fail-closed; no fabricated tokens).
 //   Further encodings (E1+, keywords, …) land as additional **data**
@@ -27,8 +27,8 @@
 //   - tokenize: (String, file: Symbol, LexRules) -> Outcome<TokenStream>
 //
 // Consumes:
-//   - std/text.dag: String (= FreeMonoid<Char> alias; see std/algebra.dag)
-//   - std/algebra.dag: FreeMonoid<Char> (spine walk for `string_is_empty`)
+//   - std/text.dag: String, string_is_empty (= FreeMonoid<Char> boundary;
+//     see std/algebra.dag `free_monoid_is_empty`)
 //   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
 //     Symbol, node_well_formed
 //   - std/collection.dag: List<T>
@@ -58,7 +58,6 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile,
 }
-import v4.std.algebra { FreeMonoid }
 import v4.std.node {
   ComputationNode,
   Conj,
@@ -68,7 +67,7 @@ import v4.std.node {
   TypeNode,
   node_well_formed,
 }
-import v4.std.text { Char, String }
+import v4.std.text { Char, String, string_is_empty }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -128,23 +127,6 @@ fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// free_monoid_char_len — walk the `FreeMonoid<Char>` spine (`String` alias).
-fn free_monoid_char_len(xs: FreeMonoid<Char>) -> Int {
-  match xs {
-    Empty => 0
-    Cons { head: _, tail: t } => 1 + free_monoid_char_len(xs: t)
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// string_is_empty — `String` = `FreeMonoid<Char>` (std/text.dag).
-fn string_is_empty(s: String) -> Bool {
-  free_monoid_char_len(xs: s) == 0
 }
 
 
