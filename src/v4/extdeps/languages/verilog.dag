@@ -1850,8 +1850,15 @@ type SpecparamDeclaration {
 //      — NOT one generic `F<X>` / projection over a separately-
 //      declared source set (Practice 7). The IEEE 1364-2005 module-
 //      body item set is the irreducible partition.
-// Terminal: the closed eighteen-way module-body-item classifier of
-// the IEEE 1364-2005 §12.2 + §14.3.1 spec.
+// Terminal: the closed twenty-way module-body-item classifier of
+// the IEEE 1364-2005 §12.2 + §14.3.1 spec (corrected per codex
+// BLOCKING on PR #3176 2026-05-16 — added PortDeclarationItem
+// (direction-only body port_declaration) and BodyPortDeclarationItem
+// (body port_declaration with inline type, reusing the
+// AnsiPortDeclaration carrier; the body-form combined declaration
+// is structurally equivalent to ANSI per §12.3.4). The body port_
+// declaration is itself a §12.2 module_item the spec lists; the
+// prior 18-way cut missed both body forms.
 type ModuleItem
   = ContinuousAssignItem { assign: ContinuousAssign }
   | AlwaysBlockItem { always_block: AlwaysBlock }
