@@ -1519,10 +1519,103 @@ type VariableDeclarator
 // §12.3.3 separate-declaration inheritance OR defaults to wire);
 // real/realtime outputs unrepresentable by construction per IEEE
 // 1364-2005 §12.3.3.
-type OutputPortAnsiTypeKind
-  = OutputAnsiNetType { net_type: NetType, packing: PackingShape, signedness: Signedness }
+// (DELETED 2026-05-16 per openai-pro REQUEST_CHANGES on PR #3176
+// sha 98953d5f: this single 5-way Disj conflated two §A.1.3 spec-
+// alternatives — net-form outputs (list_of_port_identifiers, no
+// initializers) and variable-form outputs (list_of_variable_port_
+// identifiers, with initializers). Replaced with two sibling Disjs
+// OutputPortAnsiNetTypeKind + OutputPortAnsiVariableTypeKind below,
+// consumed by separate AnsiOutputNetPort / AnsiOutputVariablePort
+// variants of AnsiPortDeclaration, structurally forbidding `output
+// wire y = 1'b0` while admitting all spec-legal output forms.)
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OutputPortAnsiNetTypeKind — the closed Verilog ANSI-output-port
+// type/kind classifier for the NET form: `output [net_type] [signed]
+// [range] list_of_port_identifiers` (IEEE 1364-2005 §A.1.3, first
+// output_declaration alternative). The list of identifiers uses
+// `list_of_port_identifiers` — plain port_identifier elements with
+// NO per-port initializers. Per port_declaration spec the net_type
+// keyword (when present) excludes `trireg` — this carrier therefore
+// uses NonTriregNetKind directly, not the broader NetType. Real/
+// realtime are not net types and are not admitted here.
+//
+//   - OutputAnsiNetType { kind: NonTriregNetKind, packing, signedness }
+//       — `output wire [7:0] y`, `output wand a`, etc.; explicit
+//       non-trireg net-type keyword.
+//   - OutputAnsiNoNetType { packing, signedness }
+//       — `output [7:0] y` (no net_type keyword); spec §A.1.3 makes
+//       net_type bracketed/optional. Resolves to default wire OR
+//       inherits from a separate later declaration per §12.3.3.
+//
+// CLOSED (C1 stop-signal). Two-way net-form output partition; a
+// third would be an L-2 pin edit.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Five-pattern ledger abbreviated (same shape
+// arguments as the prior OutputPortAnsiTypeKind ledger):
+//   1. Fact placement — FAILS: shared classifier across output-port
+//      emitters/recognizers.
+//   2. Variant-is-data — FAILS: collapsing to `{kind:
+//      Option<NonTriregNetKind>, packing, signedness}` re-admits the
+//      illegal "trireg-output" + the "net-form-with-initializer"
+//      states this Disj exists to dissolve.
+//   3. Algebraic form — N/A by construction: spec's §A.1.3
+//      net-output partition.
+//   4. Dimensional — FAILS: exactly one form per output port; mutually
+//      exclusive.
+//   5. Parameterized family — FAILS: heterogeneous payloads
+//      (OutputAnsiNetType carries `kind`; OutputAnsiNoNetType does
+//      not). Practice 7.
+// Terminal: the closed two-way Verilog ANSI-output-port NET-form
+// type/kind classifier.
+type OutputPortAnsiNetTypeKind
+  = OutputAnsiNetType { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
   | OutputAnsiNoNetType { packing: PackingShape, signedness: Signedness }
-  | OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OutputPortAnsiVariableTypeKind — the closed Verilog ANSI-output-
+// port type/kind classifier for the VARIABLE form: `output [reg]
+// [signed] [range] list_of_variable_port_identifiers` /
+// `output output_variable_type list_of_variable_port_identifiers`
+// (IEEE 1364-2005 §A.1.3, second + third output_declaration
+// alternatives). The list of identifiers uses
+// `list_of_variable_port_identifiers` — each port_identifier admits
+// an OPTIONAL initializer expression. Real/realtime are excluded
+// per §12.3.3 ("An output port can be of any net or variable type
+// EXCEPT a real type").
+//
+//   - OutputAnsiRegType { packing, signedness }
+//       — `output reg [7:0] count`; spec-form 2.
+//   - OutputAnsiIntegerType
+//       — `output integer counter`; 32-bit signed (spec-form 3).
+//   - OutputAnsiTimeType
+//       — `output time t`; 64-bit unsigned simulation-time
+//       (spec-form 3).
+//
+// CLOSED (C1 stop-signal). Three-way variable-form output partition.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Five-pattern ledger abbreviated:
+//   1. Fact placement — FAILS: shared output-port classifier.
+//   2. Variant-is-data — FAILS: collapsing to `{kind, packing?,
+//      signedness?}` admits the §12.3.3 illegal `output real` /
+//      `output realtime` + reg-fixed-width violations the per-variant
+//      payload-presence rule dissolves.
+//   3. Algebraic form — PARTIAL: each variant grounds in std/
+//      algebra (Reg→Semiring/OrderedRing per packing×signedness;
+//      Integer→OrderedRing<Int<32>>; Time→Semiring<UInt<64>>);
+//      D2-deferred per Owned ELSEWHERE.
+//   4. Dimensional — FAILS: exactly one form per output port.
+//   5. Parameterized family — FAILS: structurally heterogeneous
+//      payloads + algebraic groundings (Practice 7).
+// Terminal: the closed three-way Verilog ANSI-output-port VARIABLE-
+// form type/kind classifier; real/realtime outputs unrepresentable
+// by construction per §12.3.3.
+type OutputPortAnsiVariableTypeKind
+  = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
   | OutputAnsiIntegerType
   | OutputAnsiTimeType
 
@@ -1660,7 +1753,7 @@ type PortDeclaration {
 // "port_declaration without type, type provided by a separate
 // later net/reg declaration" §12.3.3 form).
 type AnsiNetPortType
-  = AnsiInputInoutNet { net_type: NetType, packing: PackingShape, signedness: Signedness }
+  = AnsiInputInoutNet { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
   | AnsiInputInoutNoNetType { packing: PackingShape, signedness: Signedness }
 
 
