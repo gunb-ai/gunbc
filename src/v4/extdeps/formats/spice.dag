@@ -22,19 +22,443 @@
 //   simulates (omni-emission reaches analog hardware).
 //
 // Owns:
-//   - SpiceNetlist { components, nodes, models, directives } — well-formed
-//     by construction; malformed input is a Diagnostic, never a partial
-//     parse (same fail-closed discipline as csv.dag's rectangularity)
-//   - parse(String) -> Result<SpiceNetlist, Diagnostic>
+//   - SpiceNetlist { title, components, models, subcircuits, directives }
+//     — well-formed by construction; malformed input is a Diagnostic,
+//     never a partial parse (same fail-closed discipline as csv.dag's
+//     rectangularity). The original scaffold Owns line read `{components,
+//     nodes, models, directives}`; the `nodes` field is dropped per
+//     Practice 7 (the set of referenced nodes is a projection over
+//     component terminals — a parallel `nodes: List<NodeRef>` field
+//     would be a second authority, cost-of-change ≥ 2; INVARIANTS P2).
+//     Node-STATE declarations (`.IC` / `.NODESET`) are NOT lost — they
+//     live as `Directive` variants where they belong. `subcircuits` is
+//     added: `.SUBCKT` is a first-class SPICE3 construct and must have a
+//     structural home rather than dissolving into "directives". See the
+//     modeling-notes section below for the full reasoning.
+//   - parse(String) -> Result<SpiceNetlist, Diagnostic>      (declared
+//     signature; the parse body is pipeline-stage work — T-6/T-7 — and
+//     does not live in this format-model file, matching the sibling
+//     csv/json/yaml format-scaffolds.)
 //   - emit(SpiceNetlist) -> String   (Shape B: a `.dag` program walks
-//     typed values to produce the netlist; not a compiler render target)
+//     typed values to produce the netlist; not a compiler render target.
+//     Signature only; body deferred for the same reason as `parse`.)
 //
 // Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/primitive.dag
+//   - std/diagnostic.dag — the fail-closed Diagnostic carrier for
+//     malformed input.
+//   (Symbol is substrate-ambient per std/node.dag K-1; String, Int,
+//   List are kernel-ambient per STRUCTURE.md — none is imported. Node
+//   is deliberately NOT imported: this is a Shape-B data format, not a
+//   `LanguageModel` — the probe's premise. The scaffold-header
+//   `Consumes` line originally read `std/node.dag, std/diagnostic.dag,
+//   std/collection.dag, std/primitive.dag`; `std/primitive.dag` was
+//   deleted by PR #3152 (STRUCTURE.md §"Scalar/numeric concept
+//   decomposition"); `std/node.dag` is not needed at the Shape-B
+//   boundary; `std/collection.dag` is not consumed because `List` is
+//   kernel-ambient and no modeled collection facts are used here. The
+//   line is corrected to actual modeled dependencies — a stale citation
+//   from the primitive.dag decomposition is mechanical cleanup, not a
+//   contract revision; the Scope/Owns/Stress/Clear-win contract above
+//   stands.)
 //
-// Status: scaffold — fill per TASKS.md T-4.10
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-4.10 modeled 2026-05-16 (smart-raven-655). The I/O contract
+// in this header is immutable for downstream workers. Splitting this
+// file requires explicit operator ratification (substrate extension =
+// stop signal).
+
 
 module v4.extdeps.formats.spice
+
+
+import v4.std.diagnostic { Diagnostic }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Modeling notes (read before validating against the anchor)
+//
+// THE PROBE'S FINDING (stated up front so reviewers can verify).
+// SPICE3 is a flat component + connection-graph data format with no
+// control flow, no recursion-in-execution, no algebraic carrier. The
+// substrate's 6 type connectives + Conj/Disj surface express it
+// directly: a `SpiceNetlist` is a `Conj` of lists of `Conj`/`Disj`
+// statements. No 6th L1 behavior is required — components do not
+// COMPUTE, they DECLARE a topology that an external simulator solves.
+// No 7th type connective is required — every netlist element decomposes
+// into the existing connectives. The B2-OMNI O(N+M) claim is upheld for
+// this target: adding SPICE costs one file (this file), and that file
+// does not perturb the substrate. The substrate-design signal the probe
+// was authored to surface (a contortion in the connectives or the
+// behavior set) is ABSENT.
+//
+// PROBE LIMITS (honest framing — what this file does NOT validate).
+// The B2-OMNI claim covers the format DATA-MODEL. It does NOT validate:
+//   - that an external SPICE simulator can be DRIVEN from `emit`'s
+//     output (the "clear win" in the header — that requires invoking a
+//     simulator process; an `extdeps/process.dag` consumer that
+//     coordinates with the emitted netlist is a separate boundary
+//     concern, not modeled here).
+//   - that SPICE's NUMERIC sub-grammar (suffix-units `1k`/`1u`/`100p`,
+//     scientific notation, parameter expressions) round-trips through
+//     parse/emit faithfully (the numeric sub-format is itself a Shape-B
+//     concern; `SpiceValue` here carries the lexeme verbatim — see
+//     `SpiceValue` below — so `parse∘emit` is identity on the lexical
+//     surface and the numeric semantics is the simulator's concern, not
+//     this file's. A future probe may model the SPICE numeric sub-
+//     grammar; that is not in T-4.10's scope.)
+//
+// WHY NO `nodes: List<NodeRef>` INVENTORY FIELD (Practice 7).
+// SPICE does not DECLARE its nodes — they emerge from being referenced
+// by component terminals (Quarles 1993 §2: nodes are name-referenced,
+// not pre-declared; ground is the conventional Symbol whose spelling is
+// "0" — kernel-opaque per K-1, so this file never branches on the
+// spelling). A separate `nodes` field would be a parallel representation
+// of the projection `union over (component, terminal)` — INVARIANTS P2
+// single-authority violation, cost-of-change ≥ 2 (every component-
+// edit would force a parallel nodes-edit). The projection lives where
+// it is consumed; this file does not materialize it. NODE-STATE
+// directives (`.IC v(n) = ...`, `.NODESET v(n) = ...`) are first-class
+// `Directive` variants and DO appear — they are the "facts about a
+// node" the spec recognizes, separate from the node's existence (which
+// is just being referenced).
+//
+// WHY CLOSED `Component` COPRODUCT (P2 vs Practice 7 tension —
+// resolved). The SPICE3 element set is closed by the spec (a versioned
+// fact, per the anchor); each element-prefix character (R/C/L/V/I/D/Q/
+// M/X/K/T/…) carries a SPECIFIC structural shape (terminal count,
+// parameter schema). Two designs were attempted:
+//   (a) one record `Component { kind: Symbol, terminals: List<NodeRef>,
+//       parameters: List<Parameter> }` projected over a closed
+//       `ElementSpec` table (Practice 7). REJECTED: makes illegal
+//       arities REPRESENTABLE (a `Resistor` with 3 terminals is a legal
+//       Component value, rejected only by a check) — INVARIANTS P2
+//       (modeling-discipline.md Practice 2) forbids checked-rather-than-
+//       unrepresentable illegal states when the type system can express
+//       the constraint. The per-element terminal-count IS expressible:
+//       it is a fixed natural per kind.
+//   (b) closed `Component` coproduct, one variant per kind, each variant
+//       carrying NAMED terminal slots (P2). ADOPTED. Cost-of-change is
+//       still 1: adding a new SPICE element kind = adding ONE variant
+//       here. There is no PARALLEL representation forced elsewhere (no
+//       arity-table, no parameter-schema-table to keep in sync), so
+//       Practice 7's cost-of-change test is satisfied. The 5-pattern
+//       ledger on the type below explains why this is terminal: the
+//       variants are STRUCTURALLY heterogeneous (different named terminal
+//       slots; Diode/Bjt/Mosfet additionally carry model name-refs) —
+//       they are NOT `F<X>` over a separately-declared set (Practice 5
+//       fails by inspection of the payloads).
+//   The tension was apparent, not real: Practice 7's bite is on parallel
+//   representations of a SECOND authority. The coproduct dissolution IS
+//   the authority — there is no second table the variants mirror.
+//
+// CLOSED-SET COVERAGE. The variants enumerated below cover the SPICE3
+// core element set (Quarles 1993 §11): R/C/L (passives), V/I
+// (independent sources), D/Q/M (semiconductor devices, model-referenced),
+// K (mutual inductance), X (subcircuit invocation). The four controlled-
+// source variants (E/F/G/H), JFET (J), transmission line (T), and
+// switches (S/W) are NOT enumerated in this initial cut — a follow-up
+// covers them once the core variants have flowed through to a consumer.
+// Adding them is mechanical (one variant each) and the 5-pattern ledger
+// stays unchanged; this is the deliberate non-exhaustive scoping the
+// probe permits because it does not affect the B2-OMNI finding.
+//
+// SUBCIRCUIT RECURSION. SPICE3 permits nested `.SUBCKT` definitions
+// (Quarles 1993 §3.4). Modeling that as a recursive `SubcircuitDefinition`
+// type would introduce a self-referential type that is NOT `Node` —
+// and node.dag's A1 reserves recursion-via-type-self-reference for the
+// substrate root. The faithful flat form: top-level `SpiceNetlist`
+// carries the FLAT list of all subcircuit definitions; cross-references
+// (one subckt's `X`-element invoking another) are NAME-references
+// (`Symbol`, the cross-declaration idiom — node.dag header). Nested
+// `.SUBCKT name (...)` syntactic forms in the input are lifted to the
+// top-level list by the parser. This matches v2's flat handling of
+// nested declarations and avoids introducing a parallel-substrate
+// recursive type for a non-substrate concern.
+//
+// EVERY COPRODUCT BELOW carries the full Practice-4 🟢/🟡/🔴
+// classification + the 5-pattern dissolution ledger (modeling-
+// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
+// enumerates FIVE patterns, the fifth being Parameterized-family).
+// Records (`Conj` — `SpiceNetlist`, `ModelCard`, `Parameter`, `NodeRef`,
+// `SpiceValue`, `SubcircuitDefinition`) are not coproducts and carry no
+// ledger.
+
+
+// ─────────────────────────────────────────────────────────────────────
+// NodeRef — a reference to a SPICE node. A node is a connection point
+// between component terminals; SPICE identifies nodes purely by name
+// (Quarles 1993 §2). The name is a `Symbol` (K-1-opaque per
+// std/node.dag) — this file never branches on the spelling; the
+// conventional ground name `"0"` lives in the boundary intern table the
+// parser populates.
+type NodeRef {
+  identity: Symbol
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SpiceValue — a lexical-surface value as it appears in a SPICE deck.
+// SPICE values carry their own sub-grammar (decimal / scientific
+// notation / suffix units `T`/`G`/`Meg`/`K`/`m`/`u`/`n`/`p`/`f` /
+// parameter expressions). At the Shape-B netlist data-model layer this
+// file owns the netlist's STATEMENT shape — the numeric sub-grammar is
+// a separate format model (NOT in T-4.10's scope per "PROBE LIMITS"
+// above). The lexeme is carried verbatim so `parse ∘ emit` is identity
+// at the textual surface; numeric semantics is the simulator's concern.
+// This is the same composition discipline json.dag uses for its
+// arbitrary-precision number opt-in (RFC 8259 §6) — the format model
+// names the carrier, the numeric model interprets it.
+type SpiceValue {
+  lexeme: String
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=1.5`).
+// Used by parameterized component declarations (`Mosfet`, `Diode`'s
+// optional `AREA`), `.MODEL` parameter sets, and `.OPTIONS` directives
+// (Quarles 1993 §11.3, §15). `name` is a `Symbol` (K-1-opaque); `value`
+// is a `SpiceValue` (lexeme; sub-grammar deferred per `SpiceValue`).
+type Parameter {
+  name: Symbol
+  value: SpiceValue
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Component — one element instance in a SPICE netlist. Closed coproduct,
+// one variant per SPICE3 element kind (Quarles 1993 §11). Each variant
+// carries NAMED terminal slots fixing its arity by construction (P2
+// illegal states unrepresentable: a `Resistor` with three terminals is
+// not a representable value of this type). See modeling notes
+// "WHY CLOSED `Component` COPRODUCT" for the design rationale.
+//
+// Closed-set coverage: passives (R/C/L), independent sources (V/I),
+// semiconductor devices (D/Q/M), mutual inductance (K), subcircuit
+// invocation (X). Controlled sources (E/F/G/H), JFETs (J), transmission
+// lines (T), and switches (S/W) are not enumerated in this initial cut
+// (see modeling notes "CLOSED-SET COVERAGE"). Adding them is one
+// variant each; the ledger does not change.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every netlist consumer (well-formedness
+//      check, simulator-driver, emit) dispatches on ALL kinds (a
+//      netlist walker handles each element type uniformly); kind is a
+//      shared classifier, not a per-consumer scattered fact.
+//   2. Variant-is-data — FAILS: the variants carry STRUCTURALLY
+//      heterogeneous payloads — Resistor has `n_plus`/`n_minus`/`value`
+//      (2 terminals + a value); Mosfet has `drain`/`gate`/`source`/
+//      `body`/`model`/`parameters` (4 terminals + a model ref + a
+//      parameter list); MutualInductance has `l1`/`l2` (Symbol refs to
+//      other inductors) + a `coupling` value, not terminals at all.
+//      Collapsing to `{ kind, terminals?, value?, model?, params? }`
+//      makes illegal-shape combinations (a Mosfet with no `drain`, a
+//      Resistor carrying a model ref) representable — the inverse of
+//      P2.
+//   3. Algebraic form — N/A: a SPICE element is not an algebra carrier;
+//      no richer std/ algebraic source the variants trace to. The
+//      partition is the SPICE3 spec's own enumeration, not a
+//      composition of algebraic facts.
+//   4. Dimensional — FAILS: a component is EXACTLY ONE element kind
+//      (an R is not also a C); mutually-exclusive alternatives, never
+//      simultaneous coordinates.
+//   5. Parameterized family — FAILS: the variants are NOT `F<X>` over a
+//      declared set — their payloads are structurally distinct (2- vs
+//      3- vs 4-terminal slots, value-vs-model-vs-nary-parameters), not
+//      a mechanical copy of an enumerable source set. A `Component
+//      { kind: Symbol, terminals: List<NodeRef>, params: List<Parameter>
+//      }` projection over an `ElementSpec` table was attempted (see
+//      modeling notes design (a)) and rejected because it makes
+//      illegal arities representable — Practice-7 fails on the same
+//      structural-heterogeneity ground that Practice-2 (variant-is-
+//      data) does.
+// Terminal: the closed SPICE3 element set as a coproduct with per-kind
+// terminal-arity enforced structurally; a 7th element kind (E/F/G/H/J/
+// T/S/W or a spec extension) is a one-variant addition, cost-of-change
+// = 1, no parallel representation forced elsewhere.
+type Component
+  = Resistor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Capacitor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Inductor { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | VoltageSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | CurrentSource { identity: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
+  | Diode { identity: Symbol, anode: NodeRef, cathode: NodeRef, model: Symbol }
+  | Bjt { identity: Symbol, collector: NodeRef, base: NodeRef, emitter: NodeRef, model: Symbol }
+  | Mosfet { identity: Symbol, drain: NodeRef, gate: NodeRef, source_terminal: NodeRef, body: NodeRef, model: Symbol, parameters: List<Parameter> }
+  | MutualInductance { identity: Symbol, l1: Symbol, l2: Symbol, coupling: SpiceValue }
+  | SubcircuitCall { identity: Symbol, terminals: List<NodeRef>, subcircuit: Symbol, parameters: List<Parameter> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModelKind — the closed set of `.MODEL` device kinds in SPICE3. Each
+// `.MODEL` card declares a NAMED parameter set for one of these device
+// types (Quarles 1993 §11.3 + §6); component instances reference the
+// model by name (`Diode.model`, `Bjt.model`, `Mosfet.model`).
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every `.MODEL`-consumer (parameter-schema
+//      checker, emitter) dispatches on the model kind to know which
+//      parameter names are valid; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: collapsing the closed kind set to a
+//      `{ name: Symbol }` field makes the kind opaque — the parameter-
+//      schema check loses its dispatch target and degenerates to a
+//      string match on the spelling (the M4 closed-sets-are-enums-not-
+//      strings violation; feedback_opaque_strings_attract_heuristics).
+//   3. Algebraic form — N/A: a device-model kind is not an algebra
+//      carrier; it is the SPICE3 spec's enumeration of device classes,
+//      not a composition of std/ algebraic facts.
+//   4. Dimensional — FAILS: a `.MODEL` card has EXACTLY ONE device
+//      kind; alternatives, never coordinates.
+//   5. Parameterized family — FAILS: the variants share no `F<X>`
+//      shape — they are bare nullary discriminants (the per-kind
+//      parameter schema lives at the `ModelCard.parameters` slot, NOT
+//      as variant payload; the schema is itself a separately
+//      enumerable concern the consuming check projects over). No
+//      mechanical copy of a source set; not a Practice-7 projection.
+// Terminal: the closed SPICE3 `.MODEL` device-kind enumeration.
+type ModelKind
+  = DiodeModel
+  | BjtNpn
+  | BjtPnp
+  | MosfetNmos
+  | MosfetPmos
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModelCard — a `.MODEL name kind ( param=value ... )` declaration. A
+// model card binds a NAME to a parameter set under a given device kind;
+// component instances reference the name (Quarles 1993 §6).
+//
+// `parameters` is the kind-specific parameter set — the schema (which
+// names are valid for which `ModelKind`) is a consumer-side check, not
+// a parallel field here (Practice 7: schema is a projection over the
+// kind set). This file does not enumerate per-kind schemas — that is a
+// SPICE3-spec lookup the consumer performs.
+type ModelCard {
+  name: Symbol
+  kind: ModelKind
+  parameters: List<Parameter>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// AcSweepKind — the sweep kind of an `.AC` analysis directive (Quarles
+// 1993 §11.5.1): linear, decade, or octave sweep.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: the sweep kind is consumed uniformly by
+//      the analysis-driver and the emitter; shared, not scattered.
+//   2. Variant-is-data — FAILS: collapsing to `{ name: Symbol }`
+//      reduces the closed three-way kind to an opaque-string proxy
+//      (M4 violation).
+//   3. Algebraic form — N/A: a frequency-sweep kind is not an algebra
+//      carrier; it is the SPICE3 spec's enumeration.
+//   4. Dimensional — FAILS: a sweep is EXACTLY ONE kind; mutually-
+//      exclusive alternatives, never simultaneous coordinates.
+//   5. Parameterized family — FAILS: the three are bare nullary
+//      discriminants; no `F<X>` shape, no separately-declared source
+//      set to project over.
+// Terminal: the closed AC-analysis sweep-kind enumeration.
+type AcSweepKind
+  = Linear
+  | Decade
+  | Octave
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Directive — a SPICE control statement (the dot-prefixed cards;
+// Quarles 1993 §11.5). Closed coproduct over the core analysis +
+// control set; each variant carries the parameters the spec requires
+// for that directive.
+//
+// Closed-set coverage (initial cut): `.OP`, `.TRAN`, `.DC`, `.AC`,
+// `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`, `.END`. The remaining
+// SPICE3 directives (`.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`,
+// `.PRINT`, `.PLOT`, `.SAVE`, `.LIB`) are not enumerated in this
+// initial cut for the same reason as `Component`'s subset coverage
+// (modeling notes "CLOSED-SET COVERAGE") — adding them is one variant
+// each, ledger unchanged.
+//
+// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
+// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
+// five patterns attempted:
+//   1. Fact placement — FAILS: every netlist consumer (analysis-driver,
+//      emitter) dispatches on the directive kind to know what to do
+//      (run a transient analysis, set an initial condition, include a
+//      file); shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: the variants carry STRUCTURALLY
+//      heterogeneous payloads — `Tran` carries `tstep` + `tstop`;
+//      `Dc` carries a swept source + range; `Ac` carries a sweep kind
+//      + `n` + frequency range; `Op` is nullary; `Options` carries a
+//      parameter list. Collapsing to `{ kind, parameters: List<...> }`
+//      makes illegal-shape combinations (a `Tran` with no `tstep`)
+//      representable — the inverse of P2.
+//   3. Algebraic form — N/A: a SPICE directive is not an algebra
+//      carrier; it is the spec's enumeration of analysis + control
+//      commands.
+//   4. Dimensional — FAILS: a directive is EXACTLY ONE kind; mutually-
+//      exclusive alternatives.
+//   5. Parameterized family — FAILS: the variants are structurally
+//      heterogeneous (different field counts and shapes), not `F<X>`
+//      over a declared set; not a Practice-7 projection.
+// Terminal: the closed SPICE3 directive set as a coproduct, per-kind
+// payload shape enforced structurally; a new directive is one variant,
+// no parallel representation forced elsewhere.
+type Directive
+  = Op
+  | Tran { tstep: SpiceValue, tstop: SpiceValue }
+  | Dc { source: Symbol, vstart: SpiceValue, vstop: SpiceValue, vincr: SpiceValue }
+  | Ac { sweep: AcSweepKind, n: SpiceValue, fstart: SpiceValue, fstop: SpiceValue }
+  | InitialCondition { node: NodeRef, value: SpiceValue }
+  | NodeSet { node: NodeRef, value: SpiceValue }
+  | Options { parameters: List<Parameter> }
+  | Include { path: String }
+  | End
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SubcircuitDefinition — a `.SUBCKT name (terminals) ... .ENDS`
+// declaration (Quarles 1993 §3.4). A subcircuit defines a NAMED
+// parameterized topology that `Component.SubcircuitCall` instances
+// invoke by name. The body carries its own component list, model
+// list, and directive list (most analysis directives are illegal
+// inside a `.SUBCKT`; that constraint is a consumer-side well-
+// formedness check, not a parallel-type concern at the data-model
+// layer).
+//
+// NESTED `.SUBCKT` are LIFTED TO THE TOP LEVEL by the parser (modeling
+// notes "SUBCIRCUIT RECURSION"); this type carries NO `subcircuits`
+// field of its own — cross-subcircuit invocations are name-references
+// (`SubcircuitCall.subcircuit: Symbol`) resolved against the top-level
+// flat list. This avoids introducing a recursive type that parallels
+// `Node`'s substrate-root role (node.dag A1).
+type SubcircuitDefinition {
+  name: Symbol
+  terminals: List<NodeRef>
+  components: List<Component>
+  models: List<ModelCard>
+  directives: List<Directive>
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// SpiceNetlist — the top-level deck. The title is the first line of
+// any SPICE deck (Quarles 1993 §2); the spec treats it as a required
+// label, not a comment.
+//
+// Lists are non-empty by no structural constraint at this layer —
+// SPICE3 admits empty body sections (a deck with only directives is
+// legal, e.g. an `.INCLUDE`-only deck). Consumer-side checks
+// (simulator-driver) enforce semantic non-emptiness where applicable.
+type SpiceNetlist {
+  title: String
+  components: List<Component>
+  models: List<ModelCard>
+  subcircuits: List<SubcircuitDefinition>
+  directives: List<Directive>
+}
