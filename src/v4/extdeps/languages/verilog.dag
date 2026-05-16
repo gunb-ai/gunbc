@@ -1716,10 +1716,15 @@ type PortDeclaration {
 // time / realtime are output-only per spec). This carrier is the
 // closed type-payload set for input / inout — strictly the net family.
 //
-//   - AnsiInputInoutNet { net_type: NetType, packing: PackingShape,
+//   - AnsiInputInoutNet { kind: NonTriregNetKind, packing: PackingShape,
 //                         signedness: Signedness }
-//       — any NetType variant (wire/wand/wor/tri/etc.) with optional
-//       packing + signedness per spec §5.6.
+//       — any non-trireg net-type variant (wire/wand/wor/tri/etc.)
+//       with optional packing + signedness per spec §5.6. Per
+//       port_declaration §A.1.3 grammar, `trireg` is excluded at
+//       port positions (it is a net-declaration-only form);
+//       NonTriregNetKind enforces this structurally (openai-pro
+//       REQUEST_CHANGES on PR #3176 sha 98953d5f — the prior `NetType`
+//       field admitted spec-illegal `input trireg p` / `output trireg p`).
 //
 // CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits exactly net
 // types for input/inout ANSI ports; SystemVerilog `logic` would EDIT
@@ -1779,18 +1784,29 @@ type AnsiNetPortType
 //   - AnsiInputPort { net: AnsiNetPortType, names: List<Symbol> }
 //       — input ports are net-typed only (the spec forbids
 //       `input reg`); names form a §A.1.3 list_of_port_identifiers.
-//   - AnsiOutputPort { type_kind: OutputPortAnsiTypeKind,
-//                     names: List<AnsiOutputPortDeclarator> }
-//       — output ports admit the OutputPortAnsiTypeKind 5-way set
-//       (net / no-net-type / reg / integer / time per §12.3.3 —
-//       REAL / REALTIME outputs are excluded per spec). Names form
-//       a §A.1.3 list_of_variable_port_identifiers (each declarator
-//       admits an optional initializer for variable-typed output
-//       ports). The closed 5-way partition is structural per the
-//       OutputPortAnsiTypeKind ledger below; corrected per codex
-//       BLOCKING on PR #3176 2026-05-16 — the prior reuse of a
-//       generic 6-way ANSI-port carrier admitted spec-forbidden
-//       `output real` / `output realtime`.
+//   - AnsiOutputNetPort { type_kind: OutputPortAnsiNetTypeKind,
+//                        names: List<Symbol> }
+//       — output net-form (§A.1.3 output_declaration alternative 1:
+//       `output [net_type] [signed] [range] list_of_port_identifiers`).
+//       The 2-way OutputPortAnsiNetTypeKind partition (explicit
+//       non-trireg net-type / no-net-type) covers the spec alternatives;
+//       names use plain port_identifiers — NO per-port initializers
+//       structurally representable.
+//   - AnsiOutputVariablePort { type_kind: OutputPortAnsiVariableTypeKind,
+//                             names: List<AnsiOutputPortDeclarator> }
+//       — output variable-form (§A.1.3 output_declaration alternatives
+//       2+3: `output [reg] [signed] [range]` /
+//       `output output_variable_type` followed by
+//       list_of_variable_port_identifiers). The 3-way
+//       OutputPortAnsiVariableTypeKind partition (reg / integer / time)
+//       covers spec-admissible variable kinds; names use
+//       list_of_variable_port_identifiers with optional per-port
+//       initializers via AnsiOutputPortDeclarator. Real/realtime
+//       outputs excluded per §12.3.3. The net-vs-variable AnsiOutputPort
+//       split corrected the prior unified-declarator shape per openai-pro
+//       REQUEST_CHANGES on PR #3176 sha 98953d5f — the prior shape
+//       admitted spec-illegal `output wire y = 1'b0` net-output-with-
+//       initializer states.
 //   - AnsiInoutPort { net: AnsiNetPortType, names: List<Symbol> }
 //       — inout ports are net-typed only (bidirectional requires
 //       nets; `inout reg` is a spec violation); names form a
@@ -1825,13 +1841,17 @@ type AnsiNetPortType
 //   4. Dimensional — FAILS: a single ANSI port is EXACTLY ONE
 //      direction variant; mutually-exclusive alternatives.
 //   5. Parameterized family — FAILS: AnsiInputPort and AnsiInoutPort
-//      carry `net: AnsiNetPortType` (net-only, 1-variant); AnsiOutputPort
-//      carries `type_kind: OutputPortAnsiTypeKind` (the 4-way output-
-//      admissible type-kind set: net / reg / integer / time). The
+//      carry `net: AnsiNetPortType` (net-only, 2-variant: explicit
+//      non-trireg-kind + no-net-type); AnsiOutputNetPort carries
+//      `type_kind: OutputPortAnsiNetTypeKind` (2-variant net forms)
+//      + `names: List<Symbol>`; AnsiOutputVariablePort carries
+//      `type_kind: OutputPortAnsiVariableTypeKind` (3-variant
+//      variable forms: reg/integer/time) + `names: List<
+//      AnsiOutputPortDeclarator>` (with optional initializers). The
 //      payload types differ structurally — NOT one generic
 //      `F<direction>` projection over a single source set
 //      (Practice 7).
-// Terminal: the closed three-way Verilog ANSI-port direction-kind
+// Terminal: the closed four-way Verilog ANSI-port direction-kind
 // classifier; illegal direction × type-kind combinations are
 // unrepresentable by construction.
 // As of sha 7b7dd0b54+ (codex L3563 BLOCKING on PR #3176): the
@@ -1855,12 +1875,31 @@ type AnsiPortDeclaration
       // refinement; see shared TRACKED-SCAFFOLD note below.
       names: List<Symbol>
     }
-  | AnsiOutputPort {
-      type_kind: OutputPortAnsiTypeKind
-      // 🟡 spec-non-empty (§A.1.3 list_of_variable_port_identifiers /
-      // list_of_port_identifiers) — deferred to std/collection.dag
-      // Wave-A2 `List<T> where non_empty` refinement; see shared
-      // TRACKED-SCAFFOLD note below.
+  | AnsiOutputNetPort {
+      // Spec §A.1.3 output_declaration form 1: `output [net_type]
+      // [signed] [range] list_of_port_identifiers`. Net-form outputs
+      // use plain port_identifiers — NO per-port initializers
+      // structurally representable (openai-pro REQUEST_CHANGES on
+      // PR #3176 sha 98953d5f: prior unified AnsiOutputPort admitted
+      // `output wire y = 1'b0` which the spec forbids).
+      type_kind: OutputPortAnsiNetTypeKind
+      // 🟡 spec-non-empty (§A.1.3 list_of_port_identifiers) —
+      // deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note below.
+      names: List<Symbol>
+    }
+  | AnsiOutputVariablePort {
+      // Spec §A.1.3 output_declaration forms 2+3: `output [reg]
+      // [signed] [range] list_of_variable_port_identifiers` /
+      // `output output_variable_type list_of_variable_port_
+      // identifiers`. Variable-form outputs use
+      // list_of_variable_port_identifiers — each port_identifier
+      // admits an OPTIONAL initializer expression. Real/realtime
+      // excluded per §12.3.3.
+      type_kind: OutputPortAnsiVariableTypeKind
+      // 🟡 spec-non-empty (§A.1.3 list_of_variable_port_identifiers)
+      // — deferred to std/collection.dag Wave-A2 `List<T> where
+      // non_empty` refinement; see shared TRACKED-SCAFFOLD note below.
       names: List<AnsiOutputPortDeclarator>
     }
   | AnsiInoutPort {
@@ -1996,7 +2035,7 @@ type ParameterTypeKind
 // 🟡 TRACKED-SCAFFOLD: spec-non-empty list fields (relayed
 // disposition from T-4 mgr vivid-carp-207 msg_30a7ec7c, 2026-05-16).
 //
-// Twenty-six sites in this file carry `List<T>` payloads where IEEE
+// Twenty-seven sites in this file carry `List<T>` payloads where IEEE
 // 1364-2005 requires AT LEAST ONE entry — the spec-illegal empty
 // state is structurally representable, the same INVARIANTS P2
 // illegal-states-unrepresentable concern codex / openai-pro
@@ -2023,7 +2062,7 @@ type ParameterTypeKind
 // SANCTIONED DEFERRAL (the deferral middle-path, mirroring
 // collection.dag's own Wave-A2 scaffold + the ptx #3170 / spice #3168
 // inhabitance-deferral pattern):
-// - Each of the twenty-six spec-non-empty sites keeps `List<T>` for now.
+// - Each of the twenty-seven spec-non-empty sites keeps `List<T>` for now.
 // - Each site carries a back-pointer comment to THIS shared note.
 // - The empty-list illegal state is a PRODUCER-SIDE invariant
 //   pending the refinement substrate landing.
@@ -2032,7 +2071,7 @@ type ParameterTypeKind
 //   `List<T> where non_empty` uniformly in one sweep — single-
 //   authority preserved.
 //
-// The twenty-six spec-non-empty sites (back-pointers to this note):
+// The twenty-seven spec-non-empty sites (back-pointers to this note):
 //   (sites 25-26 below — VerilogModule per-style header_ports)
 //   1. NetDeclaration.NonTriregIdentifierForm.identifiers (§A.2.1.3)
 //   2. NetDeclaration.NonTriregAssignForm.assignments     (§A.2.1.3)
@@ -2056,11 +2095,12 @@ type ParameterTypeKind
 //  19. GenvarDeclaration.genvar_names                (§A.2.1.1)
 //  20. UdpInstantiation.instances                    (§A.5.2)
 //  21. PortDeclaration.names                          (§A.2.1.2)
-//  22. AnsiPortDeclaration.AnsiInputPort.names        (§A.1.3)
-//  23. AnsiPortDeclaration.AnsiOutputPort.names       (§A.1.3)
-//  24. AnsiPortDeclaration.AnsiInoutPort.names        (§A.1.3)
-//  25. VerilogModule.NonAnsiVerilogModule.header_ports (§12.3.4)
-//  26. VerilogModule.AnsiVerilogModule.header_ports    (§12.3.4)
+//  22. AnsiPortDeclaration.AnsiInputPort.names           (§A.1.3)
+//  23. AnsiPortDeclaration.AnsiOutputNetPort.names       (§A.1.3)
+//  24. AnsiPortDeclaration.AnsiOutputVariablePort.names  (§A.1.3)
+//  25. AnsiPortDeclaration.AnsiInoutPort.names           (§A.1.3)
+//  26. VerilogModule.NonAnsiVerilogModule.header_ports (§12.3.4)
+//  27. VerilogModule.AnsiVerilogModule.header_ports    (§12.3.4)
 //
 // Sites previously numbered 7-9 added 2026-05-16 per codex
 // REQUEST_CHANGES on PR #3176 at sha f87fdf189; site previously 10
