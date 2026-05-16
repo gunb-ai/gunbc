@@ -30,12 +30,29 @@
 //
 // Consumes:
 //   - std/node.dag: Conj (the sign/exponent/mantissa record),
-//     Disj (the finite | NaN | Inf cases)
-//   - std/machine.dag: the bit-widths (Float32 / Float64)
-//   - std/algebra.dag: the rounding-aware algebra structure Float inhabits
+//     Disj (the finite | NaN | Inf cases); `Symbol` for K-1 opaque anchors
+//     on Tier-2 `Rejected` diagnostics (caller-supplied name-reference).
+//   - std/machine.dag: `Bit`; `Word32` / `Word64` interchange nominals for
+//     `Float32Interchange` / `Float64Interchange` (P2 single authority for
+//     interchange words — same spirit as machine.dag's width scaffold).
+//   - std/algebra.dag: `ApproximateField`, `Ordering` (+ Less/Equal/Greater
+//     arms consumed by `nat_compare` / match exhaustiveness).
+//   - std/diagnostic.dag: `Outcome`, `Diagnostic`, `PortLocus`, `Produced` /
+//     `Rejected`, `Unavailable`, `UserInputBoundary` — Tier-2 totalization
+//     surface (STRUCTURE.md commitment #2); not re-invented here.
+//   - std/logic.dag: `Bool` (IEEE sign bit; same carrier as machine `Bit`).
+//   - std/nat.dag: `Nat`, `nat_add`, `nat_mul` — Peano fields on `Finite`
+//     (width-as-count honest deferral per modeling notes below).
 //
-// Status: scaffold — fill per TASKS.md T-3 (scalar/numeric stack). Replaces
-//   part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
+// HEADER RECONCILE (T-3 verification / smart-fox-602, 2026-05-16) — frozen
+// Consumes/imports drift class (operator precedent: text.dag #3186,
+// machine.dag #3185): the delivered file imported `diagnostic`, `logic`,
+// `nat`, and `node::Symbol` while the scaffold header named only node /
+// machine / algebra. Status/Consumes updated to match machine-evident deps;
+// carriers + Practice-4 ledgers unchanged.
+//
+// Status: T-3 modeled 2026-05-16 (eager-fox-326 + verification closeout).
+//   Replaces part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
