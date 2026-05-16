@@ -1289,104 +1289,29 @@ type VariableDeclarator {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PortAnsiTypeKind — the closed Verilog ANSI-port type/kind
-// classifier (IEEE 1364-2005 §12.3.3, §5.6, §5.7). An ANSI-style port
-// declares EITHER a net-type or a variable-kind; spec-admissibility
-// of `packing` and `signedness` modifiers DIFFERS per variant — only
-// net-types and `reg` admit them, the spec-fixed-width variable kinds
-// (integer/real/time/realtime) forbid them. The kind × packing × sign
-// admissibility is modeled STRUCTURALLY via Disj-with-heterogeneous-
-// payloads: only the variants whose spec form admits packing/sign
-// carry those payloads (codex BLOCKING fix on PR #3176 — the prior
-// uniform `packing + signedness` on every ANSI-port admitted spec-
-// forbidden states like `output integer signed [N:0]`, mirroring
-// what the body-side VariableDeclaration Disj already dissolves).
-//
-//   - AnsiNetType { net_type: NetType, packing: PackingShape,
-//                   signedness: Signedness }
-//       — `input wire`, `output wand`, `inout tri0`, etc. Net ports
-//       admit any net-type from the closed NetType set, any
-//       PackingShape, and any signedness (per IEEE 1364-2005 §5.6).
-//   - AnsiRegType { packing: PackingShape, signedness: Signedness }
-//       — `output reg [N:0]`, `output reg signed`, etc. Reg-typed
-//       ANSI ports admit both packing and signedness (§5.6).
-//   - AnsiIntegerType
-//       — `output integer`. Spec-fixed 32-bit signed (§3.7.2); NO
-//       packing, NO signedness modifier.
-//   - AnsiRealType
-//       — `output real`. IEEE-754 double; NO packing, NO signedness
-//       (sign is internal to IEEE-754).
-//   - AnsiTimeType
-//       — `output time`. Spec-fixed 64-bit unsigned (§3.7.2); NO
-//       packing, NO signedness modifier.
-//   - AnsiRealTimeType
-//       — `output realtime`. Aliased to `real` per §3.7.2; NO
-//       packing, NO signedness modifier (parse∘emit preserves the
-//       keyword choice).
-//
-// CLOSED (C1 stop-signal). IEEE 1364-2005 §12.3.3 admits this six-
-// way ANSI-port type/kind partition; a future language-version model
-// (SystemVerilog `logic`/`bit`/etc.) would EDIT this Disj explicitly.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: ANSI-port consumers branch on the
-//      kind uniformly to dispatch emission / type-check legality /
-//      eventual algebra inhabitance; shared classifier, not
-//      scattered.
-//   2. Variant-is-data — FAILS: collapsing to a uniform `{ kind:
-//      Symbol, packing: PackingShape, signedness: Signedness }`
-//      record reopens BOTH (a) the readable-string K-1 heuristic
-//      surface AND (b) the spec-forbidden illegal states like
-//      "AnsiIntegerType with signedness=Signed" that the per-variant
-//      payload-presence rule dissolves. Disj-with-heterogeneous-
-//      payloads is the dissolved form (P2 + Practice 2/6 + M4) —
-//      same shape as body-side VariableDeclaration's kind × packing
-//      × signedness dissolution.
-//   3. Algebraic form — PARTIAL: each variant grounds in a std/
-//      algebra structure (AnsiNetType / AnsiRegType → Semiring or
-//      OrderedRing per packing × signedness; AnsiIntegerType →
-//      OrderedRing<Int<32>>; AnsiRealType / AnsiRealTimeType →
-//      ApproximateField<Float>; AnsiTimeType → Semiring<UInt<64>>);
-//      D2-deferred per "Owned ELSEWHERE".
-//   4. Dimensional — FAILS: an ANSI port has EXACTLY ONE type/kind;
-//      mutually-exclusive alternatives. The shapes differ across
-//      variants (net + reg carry packing+signedness; integer/real/
-//      time/realtime carry neither) — they cannot be coordinates of
-//      a single record without the illegal-state smell.
-//   5. Parameterized family — FAILS: the six are structurally
-//      heterogeneous in BOTH their payload shapes AND their
-//      algebraic groundings (Semiring/OrderedRing depending on
-//      packing×signedness / OrderedRing<Int<32>> / ApproximateField
-//      / Semiring<UInt<64>> / aliased ApproximateField — five
-//      distinct std/algebra groundings plus an additional NetType-
-//      payload-bearing variant). NOT one generic `F<X>` / projection
-//      over a separately-declared source set (Practice 7).
-// Terminal: the closed six-variant Verilog ANSI-port type/kind
-// classifier; illegal kind × packing / kind × signedness combinations
-// are unrepresentable by construction.
-type PortAnsiTypeKind
-  = AnsiNetType { net_type: NetType, packing: PackingShape, signedness: Signedness }
-  | AnsiRegType { packing: PackingShape, signedness: Signedness }
-  | AnsiIntegerType
-  | AnsiRealType
-  | AnsiTimeType
-  | AnsiRealTimeType
+// (PortAnsiTypeKind was DELETED on PR #3176 2026-05-16 per codex
+// non-blocking improvement. The earlier generic-set carrier became
+// orphaned once AnsiPortDeclaration adopted direction-specific
+// payload types — input/inout use AnsiNetPortType, output uses
+// OutputPortAnsiTypeKind. Keeping the unused 6-way generic carrier
+// risked a parallel-authority drift between two carriers modeling
+// the same ANSI-port type/kind space. The direction-specific
+// classifiers below are the SOLE authority; future ANSI-port
+// type/kind extensions (SystemVerilog `logic`, etc.) edit the
+// direction-specific classifiers directly.)
 
 
 // ─────────────────────────────────────────────────────────────────────
 // OutputPortAnsiTypeKind — the closed Verilog ANSI-OUTPUT-port
-// type/kind classifier. IEEE 1364-2005 §12.3.3 admits ALL six
-// PortAnsiTypeKind variants for outputs MINUS real / realtime (the
-// spec explicitly states "An output port can be of any net or
-// variable type EXCEPT a real type" — floating-point types are not
-// admitted as output ports because they have no well-defined
-// inter-module wire representation). The OUTPUT-specific subset is
-// modeled here; the spec-illegal AnsiRealType / AnsiRealTimeType
-// outputs are unrepresentable by construction (codex BLOCKING fix on
-// PR #3176 2026-05-16 — the prior AnsiOutputPort reused
-// PortAnsiTypeKind directly, admitting `output real` / `output
-// realtime` which the spec forbids).
+// type/kind classifier. IEEE 1364-2005 §12.3.3: "An output port can
+// be of any net or variable type EXCEPT a real type" — floating-
+// point types are not admitted as output ports because they have no
+// well-defined inter-module wire representation. The output-specific
+// admissible four-way partition is modeled here; the spec-illegal
+// real / realtime output variants are unrepresentable by construction
+// (codex BLOCKING fix on PR #3176 2026-05-16 — the prior shape
+// reused a generic-output-port carrier admitting `output real` /
+// `output realtime` which the spec forbids).
 //
 //   - OutputAnsiNetType { net_type: NetType, packing: PackingShape,
 //                         signedness: Signedness }
@@ -1408,10 +1333,11 @@ type PortAnsiTypeKind
 //   1. Fact placement — FAILS: every output-port consumer reads the
 //      kind to dispatch emission / type-check legality; shared
 //      classifier, not scattered.
-//   2. Variant-is-data — FAILS: reusing PortAnsiTypeKind directly
-//      (the prior shape) admits AnsiRealType / AnsiRealTimeType
-//      outputs — exactly the §12.3.3 illegal state this Disj
-//      dissolves. P2 illegal-states-unrepresentable.
+//   2. Variant-is-data — FAILS: reusing a generic 6-variant output-
+//      port carrier (the prior shape, predecessor to the direction-
+//      specific split) admits `output real` / `output realtime` —
+//      exactly the §12.3.3 illegal state this Disj dissolves. P2
+//      illegal-states-unrepresentable.
 //   3. Algebraic form — PARTIAL: each variant grounds in a std/
 //      algebra structure (OutputAnsiNetType / OutputAnsiRegType →
 //      Semiring or OrderedRing per packing × signedness;
@@ -1420,12 +1346,14 @@ type PortAnsiTypeKind
 //      "Owned ELSEWHERE".
 //   4. Dimensional — FAILS: an ANSI output port has EXACTLY ONE
 //      type/kind; mutually-exclusive alternatives.
-//   5. Parameterized family — PARTIAL: this Disj is a SUBSET
-//      projection of PortAnsiTypeKind (the 6-variant general
-//      partition minus real/realtime). The projection is the spec's
-//      output-port-admissibility filter — not a generic `F<X>` over
-//      a richer source set (Practice 7), because the real/realtime
-//      exclusion IS the partition's defining filter.
+//   5. Parameterized family — FAILS: the four variants are
+//      structurally heterogeneous (OutputAnsiNetType carries net_type
+//      + packing + signedness; OutputAnsiRegType carries packing +
+//      signedness; OutputAnsiIntegerType + OutputAnsiTimeType are
+//      nullary). NOT one generic `F<X>` projection over a richer
+//      source set (Practice 7); the real/realtime exclusion is the
+//      §12.3.3 spec's output-port-admissibility partition, not a
+//      derived projection.
 // Terminal: the closed four-way Verilog ANSI-output-port type/kind
 // classifier; real/realtime outputs unrepresentable by construction
 // per IEEE 1364-2005 §12.3.3.
@@ -1570,13 +1498,13 @@ type AnsiNetPortType
 //       — input ports are net-typed only (the spec forbids
 //       `input reg`).
 //   - AnsiOutputPort { name: Symbol, type_kind: OutputPortAnsiTypeKind }
-//       — output ports admit the OutputPortAnsiTypeKind subset (net,
-//       reg, integer, time per §12.3.3 — REAL / REALTIME outputs
-//       are excluded per spec). The closed 4-way subset is structural
-//       per the OutputPortAnsiTypeKind ledger below; corrected per
-//       codex BLOCKING on PR #3176 2026-05-16 — the prior reuse of
-//       the full 6-way PortAnsiTypeKind admitted spec-forbidden
-//       `output real` / `output realtime`.
+//       — output ports admit the OutputPortAnsiTypeKind 4-way set
+//       (net, reg, integer, time per §12.3.3 — REAL / REALTIME
+//       outputs are excluded per spec). The closed 4-way partition
+//       is structural per the OutputPortAnsiTypeKind ledger below;
+//       corrected per codex BLOCKING on PR #3176 2026-05-16 — the
+//       prior reuse of a generic 6-way ANSI-port carrier admitted
+//       spec-forbidden `output real` / `output realtime`.
 //   - AnsiInoutPort { name: Symbol, net: AnsiNetPortType }
 //       — inout ports are net-typed only (bidirectional requires
 //       nets; `inout reg` is a spec violation).
@@ -1592,22 +1520,24 @@ type AnsiNetPortType
 //      legality / drive net-vs-reg-assignment-legality; shared
 //      classifier, not scattered.
 //   2. Variant-is-data — FAILS: collapsing to a uniform
-//      `{ direction: PortDirection, name: Symbol, type_kind:
-//      PortAnsiTypeKind }` ratifies spec-forbidden combinations
-//      (Input + AnsiRegType, Inout + AnsiIntegerType, etc.) — the
-//      product-axis admits illegal states this per-direction Disj
-//      dissolves. INVARIANTS P2 illegal-states-unrepresentable.
+//      `{ direction: PortDirection, name: Symbol, type_payload:
+//      <generic-ANSI-type-set> }` ratifies spec-forbidden
+//      combinations (Input + reg-typed payload, Inout + integer-
+//      typed payload, etc.) — the product-axis admits illegal states
+//      this per-direction Disj dissolves. INVARIANTS P2 illegal-
+//      states-unrepresentable.
 //   3. Algebraic form — N/A by construction: the three direction-
 //      bearing ANSI forms are the spec's primitive direction × type
 //      admissibility table — not a richer std/ algebraic structure.
 //   4. Dimensional — FAILS: a single ANSI port is EXACTLY ONE
 //      direction variant; mutually-exclusive alternatives.
 //   5. Parameterized family — FAILS: AnsiInputPort and AnsiInoutPort
-//      carry `net: AnsiNetPortType` (net-only); AnsiOutputPort
-//      carries `type_kind: PortAnsiTypeKind` (full type-kind set
-//      including reg/integer/real/time/realtime). The payload
-//      types differ structurally — NOT one generic `F<direction>` /
-//      projection over a single source set (Practice 7).
+//      carry `net: AnsiNetPortType` (net-only, 1-variant); AnsiOutputPort
+//      carries `type_kind: OutputPortAnsiTypeKind` (the 4-way output-
+//      admissible type-kind set: net / reg / integer / time). The
+//      payload types differ structurally — NOT one generic
+//      `F<direction>` projection over a single source set
+//      (Practice 7).
 // Terminal: the closed three-way Verilog ANSI-port direction-kind
 // classifier; illegal direction × type-kind combinations are
 // unrepresentable by construction.
