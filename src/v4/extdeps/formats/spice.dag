@@ -35,10 +35,23 @@
 //     parent positional offset — a documented secondary fidelity
 //     concession tracked as 🟡 YELLOW debt with a named consumer
 //     trigger (see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
-//     in the SpiceNetlist declaration's header). The contract
-//     promised here is therefore "top-level interleave round-trip" +
-//     "nested-SUBCKT parent-identity preservation", not "byte-exact
-//     deck round-trip". The original scaffold Owns line read
+//     in the SpiceNetlist declaration's header). FLAG-FORM
+//     PARAMETER NORMALIZATION (PR #3168 claude exploratory): bare-
+//     flag SPICE3 instance modifiers like `Q1 c b e m OFF` are
+//     parsed into `Parameter { name = OFF, value = SpiceValue
+//     { lexeme = "" } }`; `parse ∘ emit` may normalize the bare
+//     flag to the `name=` form (`OFF=`) on the output side. Two
+//     distinct surface forms (`OFF` and `OFF=`) thus map to the
+//     same modeled value; emit's choice of surface form is one of
+//     the two equally-valid SPICE3 spellings, not a round-trip
+//     mismatch. A byte-exact flag-form-preservation consumer would
+//     dissolve this with the same trigger as the typed `Modifier =
+//     Flag(Symbol) | KeyValue(Symbol, SpiceValue)` sub-coproduct
+//     mentioned in `Parameter`'s FLAG-FORM INSTANCE MODIFIERS note.
+//     The contract promised here is therefore "top-level interleave
+//     round-trip" + "nested-SUBCKT parent-identity preservation" +
+//     "instance-modifier semantic-equivalent round-trip (modulo
+//     bare-flag vs `name=` form)", not "byte-exact deck round-trip". The original scaffold Owns line read
 //     `{components, nodes, models, directives}`; the `nodes` field
 //     is dropped per Practice 7 (the set of referenced nodes is a
 //     projection over component terminals — a parallel `nodes:
@@ -1150,16 +1163,25 @@ type DeckStatement
 //   round-trip of decks where a nested `.SUBCKT` is interleaved
 //   between sibling statements of its parent body (rather than
 //   appearing at the parent's start or end), this concession
-//   dissolves. The fix paths are: (a) extend
-//   `SubcircuitDefinition` with `position_in_parent: List<Symbol>`-
-//   indexed positional metadata (a parallel ordering authority);
-//   (b) admit `SubcircuitDefinition` as a `SubcircuitStatement`
-//   variant + relax the lifting discipline (introduces a recursive
-//   carrier, std/-substrate-tier per A1); (c) accept the
-//   concession permanently and emit a lossless-but-not-byte-
-//   identical canonicalization. The current shape blocks none of
-//   these; the trigger is the first consumer asking for byte-exact
-//   nested-SUBCKT round-trip.
+//   dissolves. The fix paths, in PREFERENCE ORDER (PR #3168 claude
+//   exploratory):
+//     **(b) PREFERRED** — admit `SubcircuitDefinition` as a
+//        `SubcircuitStatement` variant + relax the lifting discipline.
+//        Most faithful (within-parent position preserved by list
+//        position, no parallel ordering authority), but introduces
+//        a recursive carrier and is std/-substrate-tier per A1; this
+//        is the path that actually closes the YELLOW classification
+//        on the structural side.
+//     (a) FALLBACK — extend `SubcircuitDefinition` with
+//        `position_in_parent: Nat`-indexed positional metadata. A
+//        parallel ordering authority (INVARIANTS P2 trade-off) but
+//        worker-tier and substrate-neutral; usable while A1 is held.
+//     (c) PERMANENT — accept the concession and emit a lossless-
+//        but-not-byte-identical canonicalization. Cleanest if no
+//        consumer ever needs byte-exact nested-SUBCKT round-trip;
+//        the concession just stays YELLOW indefinitely.
+//   The current shape blocks none of these; the trigger is the first
+//   consumer asking for byte-exact nested-SUBCKT round-trip.
 //
 // Emptiness of `body` is not structurally ruled out — SPICE3 admits a
 // deck with only a title (semantically empty but syntactically legal).
