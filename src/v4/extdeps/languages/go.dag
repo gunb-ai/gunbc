@@ -542,8 +542,9 @@ import v4.std.node { Symbol }
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
 //   1. Fact placement — FAILS: every signed-integer-scalar consumer
 //      (emission of `int32` vs `int64`; per-target cost-realization
-//      sizes; the eventual OrderedRing inhabitance walk) reads the
-//      width tag uniformly; shared classifier, not scattered.
+//      sizes; the eventual std/integer.dag inhabitance + D2a(3)
+//      silent-wrap semantics per https://go.dev/ref/spec#Integer_overflow)
+//      reads the width tag uniformly; shared classifier, not scattered.
 //   2. Variant-is-data — FAILS: a `{ bits: Int }` proxy (8/16/32/
 //      64/<platform>) replaces a closed 5-valued exhaustive sum
 //      with an unbounded Int (bits=42 representable), AND fails to
@@ -552,11 +553,19 @@ import v4.std.node { Symbol }
 //      Go-Specification-admitted signed subset, so a free-Int
 //      carrier would ratify illegal widths (P2 illegal-states-
 //      unrepresentable shape, same as ptx.dag RegisterWidth).
-//   3. Algebraic form — N/A by construction: the five widths
-//      structurally inhabit the SAME algebra (OrderedRing — signed
-//      two's-complement); they do not partition into distinct
-//      algebraic structures. The inhabitance ride D2 per "Owned
-//      ELSEWHERE".
+//   3. Algebraic form — N/A as a **five-way algebra partition** by
+//      construction: the five widths are five **tags** over one bounded
+//      signed-integer story on std/ (T-3), not five unrelated algebras.
+//      Per Go spec https://go.dev/ref/spec#Integer_overflow, built-in
+//      `+ - * /` on typed signed integers **truncates modulo the result
+//      type's width** (silent two's-complement wrap) — that runtime fact
+//      is D2a(3) in this file (`GoBuiltinIntegerArithmeticOverflow` /
+//      `GoIntegerOverflowDisposition`; resolves codex review thread
+//      #3252128030: **do not** read this width enum as promising abstract
+//      unbounded OrderedRing arithmetic alone). Any OrderedRing / ordering
+//      structure on std/'s bounded `Int*` carriers is an **orthogonal**
+//      comparison story, not a substitute for §Integer_overflow. The
+//      inhabitance + resolver composition rides D2 per "Owned ELSEWHERE".
 //   4. Dimensional — FAILS: a single typed signed integer has
 //      EXACTLY ONE width; mutually-exclusive alternatives.
 //   5. Parameterized family — FAILS: the five widths are the Go-
@@ -834,18 +843,21 @@ type GoComplexWidth
 //      `match name { "int32" => … }` smell, exactly the v3
 //      regression the K-1 opacity discipline structurally
 //      prevents). The enum IS the faithful form.
-//   3. Algebraic form — PARTIAL: each kind grounds in a std/algebra
-//      structure (Int → OrderedRing for SignedIntScalar / Semiring
-//      for UnsignedIntScalar, Float
-//      → ApproximateField, Complex → ApproximateField over a Conj
-//      of two same-width floats, Bool → BooleanAlgebra, String →
-//      FreeMonoid<Byte> per the spec's byte-sequence semantics).
-//      That grounding is the INHABITANCE walk owned by the std/
-//      scalar files per P2 (rides D2 + T-3 wave A3). The kind enum
-//      itself stays a closed classifier; the "kind → algebra" map
-//      IS the future inhabitance walk, not a richer std/ source to
-//      collapse this enum INTO. Same shape as ptx.dag
-//      RegisterScalarKind and rust.dag RustScalarKind.
+//   3. Algebraic form — PARTIAL: each kind eventually **grounds** in
+//      std/ carriers composed with D2 resolver facets (NOT a collapse of
+//      this enum INTO a richer source): signed / unsigned ints →
+//      std/integer.dag bounded ladder carriers **plus** D2a(3) silent wrap
+//      on built-in `+ - * /` per https://go.dev/ref/spec#Integer_overflow
+//      (`GoIntegerOverflowDisposition` — cf. codex #3252128030: never equate
+//      Go signed ints with abstract unbounded OrderedRing arithmetic
+//      alone); Float → ApproximateField; Complex → ApproximateField over
+//      a Conj of two same-width floats; Bool → BooleanAlgebra; String →
+//      FreeMonoid<Byte> per byte-sequence semantics. That full grounding
+//      is the INHABITANCE walk owned by std/ + D2 per P2 (rides T-3 wave
+//      A3). The kind enum itself stays a closed classifier; the "kind →
+//      grounding" map IS the future walk, not a richer std/ source to
+//      collapse this enum INTO. Same shape as ptx.dag RegisterScalarKind
+//      and rust.dag RustScalarKind.
 //   4. Dimensional — FAILS: a single Go scalar value has EXACTLY
 //      ONE kind; mutually-exclusive alternatives. (Kind × Width is
 //      the per-variant width carrier on GoScalar's SignedIntScalar /
@@ -859,10 +871,13 @@ type GoComplexWidth
 //      Specification primitive-type partition; they are NOT one
 //      generic `F<X>` / projection over a separately-declared
 //      source set (Practice 7). The kinds ground in STRUCTURALLY
-//      HETEROGENEOUS algebraic structures (OrderedRing/Semiring/
-//      ApproximateField/ApproximateField-over-Conj-of-floats/
-//      BooleanAlgebra/FreeMonoid — five distinct std/algebra
-//      structures). The partition is the spec's irreducible
+//      HETEROGENEOUS targets (bounded signed/unsigned int carriers on
+//      std/ + D2a(3) §Integer_overflow wrap / ApproximateField /
+//      ApproximateField-over-Conj-of-floats / BooleanAlgebra / FreeMonoid
+//      — five distinct kind-level stories; integers **pair** machine-
+//      bounded std/ carriers with silent built-in wrap per
+//      https://go.dev/ref/spec#Integer_overflow, not OrderedRing-alone).
+//      The partition is the spec's irreducible
 //      primitive-kind distinction, not a copy of any enumerable
 //      source.
 // Terminal: the closed five-way Go primitive-scalar-kind classifier
@@ -969,15 +984,17 @@ type GoScalarKind
 //      the Cartesian-product anti-pattern this PR specifically
 //      dissolves. The six-variant Disj IS the dissolved form
 //      (P2 + Practice 2/6 + M4).
-//   3. Algebraic form — PARTIAL: each variant grounds in a std/
-//      algebra or cardinality structure (SignedIntScalar →
-//      OrderedRing; UnsignedIntScalar → Semiring; FloatScalar →
-//      ApproximateField; ComplexScalar → ApproximateField over a
-//      Conj of two same-width floats; BoolScalar → BooleanAlgebra;
-//      StringScalar → FreeMonoid<Byte> per the spec's byte-sequence
-//      semantics). That grounding IS the inhabitance walk owned
-//      ELSEWHERE per P2; the Disj structure here is the closed
-//      surface, not a collapsing target.
+//   3. Algebraic form — PARTIAL: each variant eventually **grounds** in
+//      std/ carriers + D2 facets (SignedIntScalar → std/ bounded signed
+//      ladder **and** `GoIntegerOverflowDisposition` for built-in ops per
+//      https://go.dev/ref/spec#Integer_overflow — **not** "OrderedRing
+//      alone" per codex #3252128030; UnsignedIntScalar → std/ unsigned
+//      ladder + same §Integer_overflow overlay; FloatScalar →
+//      ApproximateField; ComplexScalar → ApproximateField over a Conj of
+//      two same-width floats; BoolScalar → BooleanAlgebra; StringScalar →
+//      FreeMonoid<Byte> per byte-sequence semantics). That full grounding
+//      IS the inhabitance walk owned ELSEWHERE per P2; the Disj structure
+//      here is the closed surface, not a collapsing target.
 //   4. Dimensional — FAILS: a single Go scalar value IS EXACTLY ONE
 //      variant of this Disj; mutually-exclusive alternatives. The
 //      shapes differ across variants (Signed/Unsigned integer
