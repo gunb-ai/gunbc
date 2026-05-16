@@ -57,7 +57,7 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
-import v4.std.nat { Nat, nat_add, nat_mul }
+import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 
 
@@ -88,17 +88,20 @@ import v4.std.node { Symbol }
 // (a)(b)(c) posture as machine.dag; INVARIANTS P2 single authority for words
 // stays in machine.dag, not duplicated here).
 //
-// APPROXIMATEFIELD OPS — `add` / `mul` below are **componentwise** on the
-// three finite `Nat` fields when BOTH operands are `Finite` (NOT IEEE-754
-// floating-point rounding — that realization is explicitly downstream of
-// this substrate, at Grounding / host numerics). They are nevertheless a
-// **total** structural definition on this carrier (no silent `none` on
-// the success path). `compare` is a **deterministic total order** on the
-// semantic carrier (lexicographic on sign-rank, exponent, significand,
-// then non-finite tag ordering) — NOT the IEEE `<` relation; it exists so
-// `ApproximateField.compare` stays total while **Tier-2**
-// `float_ordered_compare_tier2` carries the fail-closed **unordered**
-// surface for NaN via `Outcome<Ordering>` (STRUCTURE.md commitment #2).
+// APPROXIMATEFIELD OPS — `ApproximateField` **requires** total `add`/`mul`
+// slots (algebra.dag). Those slots here are **NOT** IEEE-754 `+` / `×` on
+// the unrefined `Nat` axes (that would fabricate an intersubjective float
+// operation without interchange grounding — INVARIANTS P1 / M9). For two
+// `Finite` operands, `float_body_add` / `float_body_mul` are **left-
+// projection totality stubs** (return `a` unchanged) — v2-total, honest
+// “no numeric combine asserted in `.dag`”, with real IEEE arithmetic deferred
+// to **Grounding** over `Word32`/`Word64` interchange (THESIS U1 spine).
+// `compare` is a **deterministic total order** on the semantic carrier
+// (lexicographic on sign-rank, exponent, significand, then non-finite tag
+// ordering) — NOT the IEEE `<` relation; it exists so `ApproximateField.compare`
+// stays total while **Tier-2** `float_ordered_compare_tier2` carries the
+// fail-closed **unordered** surface for NaN via `Outcome<Ordering>`
+// (STRUCTURE.md commitment #2).
 //
 // SYMBOL ANCHOR — Tier-2 `Rejected` diagnostics take `reason: Symbol` and
 // `PortLocus { port: Symbol }` from the **caller-supplied** opaque anchor
@@ -248,13 +251,21 @@ fn float_body_negate(x: FloatBody) -> FloatBody {
 // the match returns **only `a`'s** tag (`NonFinite { tag: ta } => …`);
 // this is NOT IEEE NaN/∞ propagation (e.g. +∞ on the left does not lose to
 // NaN on the right). Real IEEE exceptional arithmetic waits on Grounding.
+//
+// When **both** are `Finite`, these return **the left operand** (see modeling
+// notes: NOT IEEE `+` / `×`; Peano combine on exponent/significand is forbidden
+// here as a false numeric fact).
 fn float_body_add(a: FloatBody, b: FloatBody) -> FloatBody {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
-      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
+      Finite {
+        sign: sb
+        biased_exponent: eb
+        trailing_significand: fb
+      } => Finite {
         sign: sa,
-        biased_exponent: nat_add(a: ea, b: eb),
-        trailing_significand: nat_add(a: fa, b: fb),
+        biased_exponent: ea,
+        trailing_significand: fa,
       }
       NonFinite { tag: tb } => NonFinite { tag: tb }
     }
@@ -266,10 +277,14 @@ fn float_body_add(a: FloatBody, b: FloatBody) -> FloatBody {
 fn float_body_mul(a: FloatBody, b: FloatBody) -> FloatBody {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
-      Finite { sign: sb, biased_exponent: eb, trailing_significand: fb } => Finite {
+      Finite {
+        sign: sb
+        biased_exponent: eb
+        trailing_significand: fb
+      } => Finite {
         sign: sa,
-        biased_exponent: nat_mul(a: ea, b: eb),
-        trailing_significand: nat_mul(a: fa, b: fb),
+        biased_exponent: ea,
+        trailing_significand: fa,
       }
       NonFinite { tag: tb } => NonFinite { tag: tb }
     }
@@ -369,6 +384,12 @@ fn float_alg_compare(a: Float, b: Float) -> Ordering {
 // free functions (`float_alg_*`) so v2 monomorphizes `T` to the concrete
 // float carrier (inline `fn` bodies inside `ApproximateField {…}` stay
 // generically typed as `T` and cannot project `.body`).
+//
+// `one` below is **not** asserted to be the IEEE binary64 `1.0` interchange
+// pattern (biased exponent 1023, etc.) on the unrefined `Nat` fields — it is a
+// **distinguished non-zero ordinal sentinel** in this carrier so the record
+// shape distinguishes `zero` from `one` without claiming a grounded IEEE bit
+// decode in `.dag` (P1). Interchange-grounded unit lands at Grounding.
 data float_approximate_field: ApproximateField<Float> = ApproximateField {
   add: float_alg_add,
   zero: Float {
