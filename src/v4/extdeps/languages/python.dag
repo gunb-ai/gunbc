@@ -35,17 +35,22 @@
 //   declaration-class data; it deliberately STOPS at the carrier-
 //   shaped seams where D1 (parse/emit operations — ratified
 //   `Outcome<T> = Produced { value: T } | Rejected { diagnostic:
-//   Diagnostic }`, NOT YET LANDED in std/diagnostic.dag) and D2 (per-
-//   language primitive inhabitance instance-values + fn-value-
-//   expression form — operator-pending SEMANTIC decision, msg_640d429c;
-//   §0 ratifies v2-syntax legality only, NOT the inhabitance shape
-//   per msg_8b477982) plug in.
+//   Diagnostic }`, NOT YET LANDED in std/diagnostic.dag) and the
+//   bundled LanguageModel / pipeline-stage operations plug in.
 //
-//   The seams are NAMED in "Owned ELSEWHERE" below with their owners
-//   and dissolution triggers. Authoring those seams here would have
-//   improvised past D1/D2 — exactly the keen-wren-419 (T-4.6) /
-//   loyal-koi-702 (T-4 rust) STOP-and-escalate precedent established
-//   2026-05-16. Deferral-with-named-trigger, never improvisation.
+//   D2 (per-language primitive resolver — three thin facts per DECISIONS.md
+//   D2 row, encoded 2026-05-16) is RATIFIED; the resolver-shape carriers
+//   + landable alias-identity rows live in THIS file per the D2 RESOLVER
+//   block below (mirrors rust.dag #3174 @0328bee9). D2 does NOT subsume
+//   D1; parse/emit ops remain Owned ELSEWHERE until std/diagnostic.dag
+//   lands Outcome<T>.
+//
+//   The remaining seams are NAMED in "Owned ELSEWHERE" below with their
+//   owners and dissolution triggers. Authoring D1 ops or per-primitive
+//   algebra-inhabitance `data` rows here pre-substrate would improvise
+//   past ratified boundaries — the keen-wren-419 (T-4.6) /
+//   loyal-koi-702 STOP precedent. Deferral-with-named-trigger, never
+//   improvisation.
 //
 //   PYTHON-SPECIFIC STRUCTURAL NOTE (the substrate fit's Python
 //   particulars vs the rust analog):
@@ -125,40 +130,60 @@
 //     detail per the `dis` module disclaimer — the per-target
 //     projection U1 reads; the carrier SHAPE only, no instance-values
 //     pre-T-3 / pre-D2)
+//   - Python D2 RESOLVER shape (per the encoded DECISIONS.md D2 row,
+//     2026-05-16 commit 44a37ad46; mirror rust.dag #3174 @0328bee9):
+//     `GroundingMap<IRCarrier>` (surface-spelling Conj),
+//     `OverflowAction` (closed two-way Disj — PanicOnOverflow /
+//     TwoComplementWrap; the Rust Reference §numeric pattern, carried
+//     here for TRACKED-SCAFFOLD parity on **future bounded-width**
+//     Python numeric aliases when std/integer.dag lands — NOT asserted
+//     for Python's principal built-in `int`, which is arbitrary-
+//     precision per Reference §3.2 numeric-types-int),
+//     `OverflowDisposition<IRCarrier>` (debug_default + release_default);
+//     plus the LANDABLE NOW alias-identity row `type PythonBool = Bool` +
+//     `data python_bool_grounding: GroundingMap<PythonBool> =
+//     GroundingMap { spelling: "bool" }` (std/logic.dag's Bool landed
+//     via #3166). Remaining per-primitive alias-identity + grounding +
+//     operation-semantics rows are 🟡 TRACKED-SCAFFOLD with named owner +
+//     dissolution trigger per the D2-resolver block below.
 //
 // Owned ELSEWHERE (deliberately NOT in this slice — named owners +
 //   dissolution triggers per directive item 3 "DEFER explicitly, with
 //   named owner + dissolution trigger"; precedent: rust.dag #3174,
 //   ptx.dag #3170):
 //
-//   - Python scalar inhabitance instance-values: `data
-//     python_int_integral: <Integral-shape>(<int-carrier>) = …` and
-//     the parallel rows for float / bool / complex (numeric tower
-//     groundings), str (FreeMonoid<UnicodeScalarValue>), bytes /
-//     bytearray (FreeMonoid<Byte>), and the singleton cardinality
-//     witnesses. RIDES the operator D2 form-decision (msg_640d429c —
-//     STOP-2/STOP-3 escalated by loyal-koi-702; brief §B's per-
-//     language inhabitance form conflicts with INVARIANTS P1:42's
-//     `Compose<Int, MachineWidth<Word*>>` worked example AND the
-//     fn-value-expression form for spec-primitive operations
-//     (3a/3b/3c — name-reference Atom vs relaxed instance vs new
-//     substrate carrier) is unspecified). §0 ratifies v2-SYNTAX
-//     LEGALITY ONLY; per-target inhabitance shape is a SEPARATE
-//     operator-pending SEMANTIC decision (manager reinforcement
-//     msg_8b477982). AND rides std/integer.dag / std/float.dag /
-//     std/logic.dag / std/text.dag (T-3 wave A3) carrier landing for
-//     P2 single-authority: pre-D2 / pre-T-3 inhabitance would
-//     foreclose the eventual canonical authority.
-//     STOP-TRIGGER (named, binding): authoring even a "placeholder"
-//     `data python_int_integral: <…> = …` row here pre-D2 is the
-//     FORBIDDEN deferral (the v3 cross-layer-drift failure mode this
-//     file's restraint exists to prevent). Stub-to-keep-moving is
-//     forbidden; defer-with-named-trigger is the legitimate form.
-//     SEAM (where it plugs in): the closed PythonScalar Disj
-//     declared below is the SURFACE through which each Python scalar's
-//     inhabitance parameterizes — when D2 ratifies the instance-value
-//     form AND T-3 wave A3 lands, the inhabitance rows land in this
-//     file with the typed scalar variants below as their carriers.
+//   - Python scalar resolver completion — D2 RATIFIED 2026-05-16 (encoded
+//     DECISIONS.md D2 row, commit 44a37ad46, via PR #3195 merge). The
+//     RATIFIED FORM is NOT per-language `data python_int: OrderedRing<…>
+//     = …` rows (INVARIANTS P1:42 `numeric_aliases_align_to_refinements`
+//     forbids parallel-substrate algebra inhabitance). The ratified form
+//     is the THREE-THIN-FACTS D2a resolver: alias-identity to the std/
+//     carrier (`type PythonI32 = Int32` when std/ lands — algebra
+//     inhabitance flows through the alias) + grounding map (surface
+//     spelling) + operation-semantics carrier (OverflowDisposition for
+//     **bounded** integer aliases; NaN/Inf / dynamic-range carriers for
+//     floats per std/float.dag; principal Python `int` is unbounded per
+//     Reference §3.2 — no fixed-width overflow row at that alias). The
+//     resolver-shape carriers (`GroundingMap`, `OverflowAction`,
+//     `OverflowDisposition`) + the bool alias-identity row LAND IN THIS
+//     SLICE (per the Owns bullet above). The seven retired `data python_*:
+//     PythonScalar = …` registry rows and the `IrToPython<>` / Layer-2
+//     assert pattern dissolved with rust.dag's `RustScalar` registry /
+//     `IrToRust<>` / `assert_bool_to_rust_bool_consistency` (#3174
+//     @0328bee9) — they were the parallel INVARIANTS P1 cementing path.
+//     Remaining per-primitive alias-identity rows are 🟡 TRACKED-SCAFFOLD
+//     deferred to named std/ targets per the resolver-block deferral
+//     table below.
+//     SUBSTRATE SINGLE-AUTHORITY GUARD (mirror rust msg_2c2716dd):
+//     python.dag MUST NOT mint std/ Int / UInt / Float / Nat / text
+//     carriers locally; alias-identity to the existing std/ source is
+//     the only legitimate landing.
+//     STOP-TRIGGER (named, binding): authoring a placeholder `data
+//     python_*: <algebra-carrier> = …` inhabitance row here pre-std/
+//     landing is the FORBIDDEN deferral. SEAM: the closed `PythonScalar`
+//     Disj below remains the spec-surface vocabulary through which D2
+//     alias targets parameterize emission/coercion once std/ carriers
+//     exist; the vocabulary record is not a second inhabitance authority.
 //
 //   - Bidirectional Python LanguageModel substrate (grammar
 //     productions as declarative B2-OMNI data — Python's PEG grammar
@@ -248,40 +273,23 @@
 //     no-engine smell (algebra.dag U1).
 //
 // Consumes:
-//   - std/logic.dag: `Bool` — used as the IRCarrier type parameter
-//     of the `IrToPython<Bool>` row (`bool_to_python_bool`) and as
-//     the return type of the Layer-2 structural-assertion fn
-//     `assert_bool_to_python_bool_consistency`. std/logic.dag
-//     merged 2026-05-16 (T-3 Wave-A1, PR #3163), enabling this
-//     first concrete IR ↔ Python correspondence row + its
-//     structural-assertion fn (the cross-PR alignment ask from
-//     loyal-koi-702 / rust slice #3174 author 2026-05-16, mirroring
-//     rust.dag's `bool_to_rust_bool` + `assert_bool_to_rust_bool_
-//     consistency` pattern for IR↔language pipeline uniformity).
-//     `Int` is kernel-ambient (the PythonCost components' raw Int
-//     carrier per the 🟡 scaffold bridge to std/cardinality.dag);
-//     `Bool` is also kernel-ambient as a return-type primitive,
-//     but the IMPORT brings the std/logic.dag-declared `Bool`
-//     type-identity into scope for IRCarrier matching — distinct
-//     from the kernel-ambient `Bool` value-shape (the import names
-//     the declaration; the kernel-ambient form is the value
-//     primitive).
-//   (The scaffold header's prior `std/node.dag, std/algebra.dag
-//   (same as rust.dag)` Consumes line was anticipatory — both
-//   originally named for the inhabitance instance-values this
-//   slice DEFERS per D2 (so algebra.dag remains NOT imported — it
-//   returns when D2 ratifies and the algebra-inhabitance rows
-//   land here), and std/node.dag was named because rust.dag
-//   imports `Symbol` from it for its lifetime axis (which Python
-//   doesn't have, so std/node.dag isn't imported here either).
-//   The revised Consumes line above reflects what the file
-//   actually imports — `Bool` from std/logic.dag, for the IR↔
-//   Python correspondence rows. This Consumes correction rides
-//   the systemic operator scaffold-Consumes reconciliation, T-4
-//   mgr synthesis msg_1fddb75c — the surface+trigger discipline
-//   lets the operator ratify all per-file Consumes strikes
-//   uniformly in one pass; this is not worker-settled. Same
-//   discipline as ptx.dag #3170 and rust.dag #3174.)
+//   - std/logic.dag: `Bool` — imported for the D2a alias-identity row
+//     `type PythonBool = Bool` (DECISIONS.md D2 row; mirror rust.dag
+//     #3174 @0328bee9 `RustBool = Bool`). std/logic.dag merged 2026-05-16
+//     (T-3 Wave-A1, PR #3163). The `IrToPython<>` correspondence carrier,
+//     the seven `data python_*: PythonScalar = …` registry rows, and
+//     the Layer-2 `assert_bool_to_python_bool_consistency` fn dissolved
+//     with rust's `IrToRust<>` / per-primitive `RustScalar` registry /
+//     assert — they were the INVARIANTS P1 parallel-cementing path #3174
+//     removed. `Int` is kernel-ambient (the PythonCost components' raw
+//     Int carrier per the 🟡 scaffold bridge to std/cardinality.dag).
+//   (The scaffold header's prior `std/node.dag, std/algebra.dag`
+//   Consumes line was anticipatory — algebra.dag is NOT imported
+//   (inhabitance flows through std/ + D2 alias-identity, not extdeps
+//   `OrderedRing<…>` rows), and std/node.dag is not imported here
+//   (Python has no lifetime `Symbol` axis). This Consumes correction
+//   rides the systemic operator scaffold-Consumes reconciliation, T-4
+//   mgr synthesis msg_1fddb75c.)
 //
 // Status: T-4 python-slice modeled 2026-05-16 (gentle-deer-446);
 //   structural finding: NO STOP from the type-system surface. The I/O
@@ -308,10 +316,10 @@ import v4.std.logic { Bool }
 // canonical declarative LanguageModel shape on one language (rust),
 // then fan out to the other 4 (python is this fan-out instance).
 // THIS slice is the python HALF of fix-the-shape-once: the type-
-// system VOCABULARY and Python-side carrier shapes, with the D1/D2-
-// dependent pieces (parse/emit operations + scalar algebra
-// inhabitance instance-values) explicitly DEFERRED to their named
-// owners. Deferral ≠ improvisation: every deferred item is named in
+// system VOCABULARY and Python-side carrier shapes, with the D1-
+// dependent pieces (parse/emit operations) and remaining D2 per-
+// primitive alias rows (TRACKED-SCAFFOLD until std/ carriers land)
+// explicitly DEFERRED to their named owners. Deferral ≠ improvisation: every deferred item is named in
 // "Owned ELSEWHERE" with its owner and dissolution trigger. The
 // canonical-rust shape (PR #3174 loyal-koi-702) is mirrored here
 // section-by-section; differences are STRUCTURAL Python-spec facts
@@ -398,9 +406,10 @@ import v4.std.logic { Bool }
 //     a Value. The literal's typed interpretation (its scalar kind:
 //     Int / Float / Bool / Complex / Str / Bytes / NoneT /
 //     NotImplementedT / EllipsisT — the partition encoded by
-//     PythonScalar below) is the inhabitance walk that RIDES
-//     D2 — pre-D2 the Value's TYPED interpretation is unspecified;
-//     the Value carrier itself is just a Node.
+//     PythonScalar below) is the inhabitance walk that RIDES the
+//     D2 resolver (alias + grounding + operation-semantics per DECISIONS
+//     D2a) once each primitive's std/ carrier + alias rows land; the
+//     Value carrier itself is just a Node until those rows exist.
 //
 //   - CONTEXT MANAGER (`with cm as x: body`) ↦ Bind composed with
 //     Branch (the cleanup path). The `with` statement is structural
@@ -819,14 +828,14 @@ type PythonSingletonKind
 //       partition this enum encodes; specifically §3.2.4 for
 //       numerics and §3.2.1 / §3.2.2 / §3.2.3 for singletons).
 //
-// SEAM (where D2 inhabitance plugs in). When the D2 form decision
-// lands (operator-pending, msg_640d429c), the per-variant
-// inhabitance instance-values land in this file with these typed
-// variants as their carriers — Numeric { tower: IntegralLevel } is
-// the carrier for Python's `int` inhabitance into Integral (or its
-// v4-equivalent per the D2-ratified form); Singleton { kind: NoneT }
-// is the carrier for `None` → one-cardinality. The seam itself is
-// the typed variant; the inhabitance value is the deferred row.
+// SEAM (where D2 resolver plugs into spec vocabulary). D2 is ratified
+// (DECISIONS.md D2 row); per-primitive **alias-identity + grounding +
+// operation-semantics** rows land per the D2 RESOLVER block below, not
+// as parallel `data …: PythonScalar = …` algebra stubs. `PythonScalar`
+// remains the closed Reference §3.2 scalar-surface partition (Numeric /
+// Singleton); Numeric { tower: IntegralLevel } classifies Python `int`;
+// Singleton { kind: NoneT } classifies `None` — the D2 alias rows
+// wire each to std/ carriers when T-3 lands.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
@@ -977,207 +986,166 @@ type PythonCost {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Per-primitive named inhabitants — 7 typed scalar values, one per
-// Python primitive (Numeric × 4 tower levels + Singleton × 3
-// spec-defined singleton types). Each is a `data` instance of
-// PythonScalar's closed-Disj variants; the category × sub-classifier
-// combinations are STRUCTURALLY enforced by PythonScalar's Disj-
-// with-payloads (Numeric carries a tower; Singleton carries a kind;
-// no illegal cross-category combinations).
+// D2 RESOLVER SHAPE — per-primitive three-thin-facts declarations.
 //
-// These are NOT algebra-inhabitance instance-values (D2-pending —
-// per "Owned ELSEWHERE", per-Python-primitive algebra inhabitance
-// `data python_int_integral: <Integral>(<int-carrier>) = …` rides
-// the operator D2 form-decision + T-3 wave A3 carrier landing).
-// They are just typed VALUES of the closed Disj — analogous to
-// rust.dag #3174's 18 `data rust_X: RustScalar = ...` rows.
-// Authorable today; fan-out from rust mirrors this shape.
-
-// Numerics — `bool` / `int` / `float` / `complex`
-data python_bool:            PythonScalar = Numeric { tower: BoolLevel }
-data python_int:             PythonScalar = Numeric { tower: IntegralLevel }
-data python_float:           PythonScalar = Numeric { tower: RealLevel }
-data python_complex:         PythonScalar = Numeric { tower: ComplexLevel }
-
-// Singletons — `None` / `NotImplemented` / `...`
-data python_none:            PythonScalar = Singleton { kind: NoneT }
-data python_not_implemented: PythonScalar = Singleton { kind: NotImplementedT }
-data python_ellipsis:        PythonScalar = Singleton { kind: EllipsisT }
-
-
+// Per the operator-ratified DECISIONS.md D2 row (2026-05-16, encoded
+// commit 44a37ad46 via PR #3195). Mirror: rust.dag #3174 @0328bee9
+// (loyal-koi-702) — same dissolution as that commit:
+//   - retired seven `data python_*: PythonScalar = …` registry rows
+//     (parallel to rust's retired `data rust_*: RustScalar` rows)
+//   - retired `IrToPython<IRCarrier>` + `bool_to_python_bool` +
+//     `assert_bool_to_python_bool_consistency` (parallel to rust's
+//     retired `IrToRust<>` + `bool_to_rust_bool` + assert fn)
+//
+// D2a — three thin per-primitive declarations, NO re-declared algebra
+// inhabitance: (1) alias-identity to the std/ carrier; (2) grounding
+// map (surface spelling); (3) operation-semantics carriers.
+//
+// D2.2 / D2.3 / D2.4 / D2.5 / scope guard — same encoded row as rust.dag;
+// coercion = generic B2-OMNI emit fold over resolver data; compound
+// coercion composes via Node catamorphism; round-trip = C5-1 TestClaims;
+// overflow vs unboundedness are DISTINCT carriers selected by alias +
+// disposition — Python's principal built-in `int` is unbounded per
+// Reference §3.2 numeric-types-int, so bounded-width `OverflowDisposition`
+// applies only to **future** `PythonI32 = Int32`-style aliases when
+// std/integer.dag lands, not as a falsely-attached row on unbounded `int`.
+//
 // ─────────────────────────────────────────────────────────────────────
-// IrToPython<IRCarrier> — the IR-type ↔ Python-primitive
-// correspondence carrier, parameterized over the IR-side type. One
-// row per std/ canonical carrier ↔ Python primitive emission. Conj
-// record (no Practice-4 ledger).
+// GroundingMap<IRCarrier> — the per-primitive surface-spelling
+// carrier. Conj record (no Practice-4 ledger).
 //
-// Spec: this carrier IS the U1 "coercion = emission" projection
-//       (algebra.dag U1 header) made concrete per language. Same
-//       shape per-language across fan-out (mirrors rust.dag
-//       #3174's `IrToRust<IRCarrier>`).
+// Per DECISIONS D2a(2): each alias pairs with a `data …_grounding:
+// GroundingMap<<Alias>> = GroundingMap { spelling: "…" }` row.
+// `spelling` is a `String` boundary value at the source-syntax edge.
 //
-// IRCarrier (type-parameter)  the std/ canonical type this row maps
-//                             to/from (a type-level reference — e.g.
-//                             `v4.std.logic.Bool` or
-//                             `v4.std.nat.Nat`). Each row's IR side
-//                             is named at the TYPE level, not as a
-//                             value field — same shape as
-//                             `algebra.dag`'s
-//                             `Homomorphism<C, Source, Target>`
-//                             which carries the algebra class C and
-//                             the two carriers at the type-parameter
-//                             positions. Type-level keying is the
-//                             U1-canonical form; emit dispatches by
-//                             type-identity match on IRCarrier,
-//                             never by name (K-1).
-//   - python_repr             the Python-side typed scalar value —
-//                             one of the 7 per-primitive named
-//                             inhabitants above.
-//
-// SEAM (where rows land). Each row's `IrToPython<IRCarrier>` type
-// instantiation requires IRCarrier to be a declared std/ type. As
-// the T-3 wave merges land std/ scalar types, the corresponding
-// `IrToPython<...>` rows land here. The row authoring is mechanical
-// — one per std/-↔-Python correspondence — and incremental: a row
-// can land the moment its IRCarrier std/ type reaches merged state,
-// without waiting for the whole std/ wave.
-//
-// Worked example: `Bool → python_bool` (concrete, LANDED below — see
-// `data bool_to_python_bool` row after this declaration). emit
-// (T-10) consumes the row:
-//   given a Bool-typed value in InferredTree
-//   →  lookup `bool_to_python_bool` by type-identity match on the
-//      Bool IRCarrier (compile-time-typed; no runtime string match)
-//   →  read `python_repr` = `python_bool` =
-//      Numeric { tower: BoolLevel }
-//   →  emit Python source token `"bool"` (the spelling determined
-//      by the PythonScalar value via the LanguageModel grammar)
-// ingest (reverse direction, C5) walks the row backwards:
-//   parsed Python `bool` keyword
-//   →  produces Numeric { tower: BoolLevel } Node
-//   →  reverse-lookup: python_repr == python_bool ⇒ Bool IRCarrier
-//   →  Bool-typed Node into the IR
-//
-// The whole IR ↔ Python pipeline IS one declarative correspondence
-// table consumed in both directions. No name-convention dispatch,
-// no string matching — type-level identity match on IRCarrier.
-type IrToPython<IRCarrier> {
-  python_repr: PythonScalar
+// Spec: https://docs.python.org/3.14/reference/lexical_analysis.html
+type GroundingMap<IRCarrier> {
+  spelling: String
 }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Bool → python_bool — the first concrete IR ↔ Python mapping row.
+// OverflowAction — closed disposition for **bounded-width** integer
+// arithmetic overflow (TRACKED-SCAFFOLD parity with rust.dag's carrier).
+// Python's principal `int` is unlimited-precision (Reference §3.2
+// numeric-types-int) — this enum does NOT classify `int` itself; it
+// classifies future std/-backed bounded aliases (e.g. fixed machine
+// widths) when those alias rows land.
 //
-// std/logic.dag declares `Bool = True | False` (a closed Disj per
-// the classical-bivalent logic anchor) and the
-// `bool_boolean_algebra: BooleanAlgebra<Bool>` inhabitance. Python's
-// `bool` per Reference 3.14 §3.2.4 (Numerics) is a STRICT SUBTYPE
-// of `int` per PEP 285 (True == 1, False == 0). Modeling-wise:
-// Python's `bool` IS the BoolLevel of the numeric tower, which IS
-// PythonScalar's `Numeric { tower: BoolLevel }`. The IR Bool ↔
-// Python bool correspondence is 1:1 at the scalar layer.
+// Spec (pattern authority, same as rust slice): Rust Reference
+// §types-numeric — https://doc.rust-lang.org/reference/types/numeric.html
 //
-// Spec (IR side):     https://en.wikipedia.org/wiki/Boolean_algebra
-//                     (and std/logic.dag header)
-// Spec (Python side): https://docs.python.org/3.14/library/functions.html#bool
-//                     (Python `bool` is a strict int-subtype per PEP
-//                     285 https://peps.python.org/pep-0285/)
+//   - PanicOnOverflow      — debug-build default pattern (rust slice)
+//   - TwoComplementWrap    — release-build default pattern (rust slice)
 //
-// post-T-3-Wave-A1 (std/logic.dag merged 2026-05-16): this row is
-// now AUTHORED. emit (T-10) reads it; ingest (C5) reads it
-// backwards. When the LanguageModel grammar lands the Python source
-// spelling for `Numeric { tower: BoolLevel }` (the token `"bool"`),
-// the end-to-end correspondence is complete.
-data bool_to_python_bool: IrToPython<Bool> = IrToPython {
-  python_repr: python_bool
+// CLOSED (C1 stop-signal). A third default-action variant is an edit to
+// THIS declaration under the L-2 pin discipline.
+//
+// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
+// 🟢 GREEN (terminal). Ledger — five patterns attempted:
+//   1. Fact placement — FAILS: every bounded-int-op consumer reads the
+//      disposition uniformly; shared classifier, not scattered.
+//   2. Variant-is-data — FAILS: a `{ name: Symbol }` proxy reopens K-1
+//      string-as-tag anti-pattern. Two nullary structural alternatives.
+//   3. Algebraic form — N/A: bounded overflow dispatch is Python-host /
+//      implementation policy on fixed-width ints, not a richer std/
+//      algebraic collapse here.
+//   4. Dimensional — FAILS: exactly ONE default action per runtime mode.
+//   5. Parameterized family — FAILS: not one generic `F<X>` over a
+//      richer source set (Practice 7).
+// Terminal: closed two-way bounded-integer-overflow action classifier.
+type OverflowAction
+  = PanicOnOverflow
+  | TwoComplementWrap
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OverflowDisposition<IRCarrier> — per-language operation-semantics
+// Conj for bounded integers (D2a(3)). Same SHAPE as rust.dag #3174
+// @0328bee9; rows land only on bounded-width Python↔std/ aliases.
+//
+// Floats use a separate operation-semantics carrier when float aliases
+// land (std/float.dag — NaN/Inf / dynamic range per D2 row).
+type OverflowDisposition<IRCarrier> {
+  debug_default: OverflowAction
+  release_default: OverflowAction
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Per-primitive alias-identity + grounding (LANDABLE NOW).
+//
+// Python `bool` ↔ std/logic.dag `Bool` (LANDED #3166). PEP 285
+// (`bool` strict subtype of `int`) is a numeric-tower fact at the
+// PythonScalar vocabulary layer (`BoolLevel` ⊑ `IntegralLevel`), not
+// a contradiction to alias-identity: the std/ logic carrier is the
+// abstract bivalent value domain; Python's surface `bool` keyword
+// spells per the grounding map below.
+//
+// Spec (Python): https://docs.python.org/3.14/library/functions.html#bool
+//               + https://peps.python.org/pep-0285/
+type PythonBool = Bool
+
+data python_bool_grounding: GroundingMap<PythonBool> = GroundingMap {
+  spelling: "bool"
+}
+
+// Bool has no bounded-integer overflow runtime dispatch; no
+// OverflowDisposition row.
+
+
+// 🟡 TRACKED-SCAFFOLD — DEFERRED ALIAS-IDENTITY ROWS
+//
+// Per DECISIONS.md D2 row + substrate single-authority guard (mirror
+// rust.dag #3174 @0328bee9 TRACKED-SCAFFOLD block). Land each primitive
+// as D2a three facts when its std/ carrier exists — NEVER mint std/
+// types in extdeps.
+//
+// FORM CONTRACT — for each deferred alias:
+//   - `type Python<X> = <StdCarrier>` alias-identity (D2a(1))
+//   - `data python_<x>_grounding: GroundingMap<Python<X>> =
+//     GroundingMap { spelling: "<token>" }` (D2a(2))
+//   - for **bounded** integer aliases only: `data python_<x>_overflow:
+//     OverflowDisposition<Python<X>> = OverflowDisposition {
+//     debug_default: PanicOnOverflow, release_default: TwoComplementWrap
+//     }` or host-true defaults per the pinned implementation contract
+//     (D2a(3))
+//   - for principal unbounded `int`: overflow row absent — semantics
+//     ride the unbounded std/ carrier per D2.5 (distinct from wrap)
+//
+// ─── DEFERRED ROWS — TRACKED ───────────────────────────────────────
+//
+// Principal built-in `int` (unbounded) — alias to std/ unbounded
+//   integer carrier when std/integer.dag exposes it (T-3 Wave-A3).
+//   Named owner: std/integer.dag. Dissolution: same as rust `RustNat` /
+//   arbitrary-precision row pattern.
+//
+// `float` / `complex` (machine-level double / pair-of-float per Reference
+//   §3.2 caveats) — alias + grounding + float operation-semantics carrier
+//   when std/float.dag lands. Owner: std/float.dag.
+//
+// Singleton types `None` / `NotImplemented` / `Ellipsis` — alias +
+//   grounding + one-cardinality witness when std/cardinality.dag exposes
+//   the empty / unit carriers for each. Owner: std/cardinality.dag (+
+//   std/node.dag Unit pattern as ratified).
+//
+// SUBSTRATE SINGLE-AUTHORITY GUARD — python.dag MUST NOT mint std/
+// Int / UInt / Float / Nat / text carriers locally. Alias-identity to
+// std/ source only.
 
 
 // ═════════════════════════════════════════════════════════════════════
-// Layer-2 structural-assertion fns (the per-row "expectation" pattern
-// every language file mirrors during fan-out — see rust.dag #3174
-// Layer-1/2/3 doc-block for the canonical 3-layer testing pattern).
+// v4 verification posture (mirror rust #3174 @0328bee9 post-reshape).
 //
-// v4 testing has THREE layers, with the gating dependencies named:
+// Layer 1 — 0-diag structural typing: `type PythonBool = Bool`,
+// `GroundingMap<PythonBool>`, and `data python_bool_grounding` are
+// checked by the v2-compiler bridge on every PR.
 //
-//   Layer 1 — 0-diag structural typing (live now, every PR).
-//     Every `data X: T = ...` instance is itself a type-check
-//     assertion v2-compiler verifies. The row
-//     `data bool_to_python_bool: IrToPython<Bool> = IrToPython
-//     { python_repr: python_bool }` already proves: Bool resolves,
-//     IrToPython<Bool> is a well-typed instantiation, python_bool is
-//     a real PythonScalar value, and the Conj record matches the
-//     carrier's shape. Drift breaks the build. Not a "test" in the
-//     TestClaim sense, but real structural verification.
+// Layer 2 — IrTo-style structural-assertion fns: **dissolved** with
+// the IrToPython retire (same as rust's `assert_bool_to_rust_bool_
+// consistency` removal — forward verification is TestClaim-shaped per
+// DECISIONS D2.4 / C5-1, not parallel cementing tables).
 //
-//   Layer 2 — Structural-assertion fns (the pattern below,
-//     AUTHORABLE NOW). A `fn assert_<row>_consistency() -> Bool`
-//     exhaustive-matches on the row's `python_repr` field and
-//     asserts which PythonScalar variant + sub-tower-level it MUST
-//     be. v2-compiler's exhaustiveness check ensures all variants
-//     are covered; the fn body encodes the expected variant. Today
-//     the fn compiles via 0-diag (the match arms type-check); the
-//     BEHAVIORAL fact (the fn returns `true` when the row is
-//     correct) becomes verifiable when an interpreter exists (T-22
-//     eval) or when a TestClaim with `kind: Equals` asserts the
-//     return value (T-3 Wave-A2 + std/verification.dag, PR #3183
-//     in flight).
-//
-//     The fn is a FORWARD-ANCHOR: it documents the expected variant
-//     as a structural property, and when TestClaim infrastructure
-//     lands, the fn body becomes the `expected` side of an `Equals`
-//     TestClaim. If a future PR changes `bool_to_python_bool` to
-//     point at `python_int` instead of `python_bool`, the fn still
-//     compiles (the match exhausts) but RETURNS `false` —
-//     flag-when-runnable.
-//
-//   Layer 3 — TestClaim data (gate: PR #3183 std/verification.dag).
-//     The real "tests" in the v4 self-hosting sense are TestClaim
-//     instances:
-//
-//       data t_bool_to_python_bool_roundtrip: TestClaim = TestClaim {
-//         kind:     RoundTrips,
-//         label:    "IR Bool ↔ Python bool roundtrips",
-//         input:    <Bool-typed Node>,
-//         expected: <... same Node after emit + parse roundtrip ...>
-//       }
-//
-//     RoundTrips claims need emit (T-10) + parse (T-7) — both also
-//     gated. The DECLARATIVE TestClaim data is the first layer that
-//     unlocks the moment #3183 merges; EXECUTABLE roundtrips need
-//     #3183 + T-7 + T-10.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// assert_bool_to_python_bool_consistency — Layer-2 structural
-// assertion for the live Bool → python_bool IrToPython row.
-//
-// Verifies via exhaustive match that `bool_to_python_bool.python_repr`
-// IS the `Numeric { tower: BoolLevel }` shape, not any other
-// PythonScalar variant or numeric-tower level. If a future edit
-// changes the row to use a different per-primitive inhabitant
-// (e.g. `python_int`), the fn still compiles (the match exhausts)
-// but returns `false` — a structural change with a behavioral
-// signal.
-//
-// Forward-anchor for the `Equals` TestClaim that will assert this
-// fn returns `true` once T-3 Wave-A2 (std/verification.dag, PR
-// #3183) merges:
-//
-//   // (post-#3183 merge — comment-only sketch:)
-//   // data t_bool_to_python_bool_kind: TestClaim = TestClaim {
-//   //   kind:     Equals,
-//   //   label:    "bool_to_python_bool maps to Numeric BoolLevel",
-//   //   input:    assert_bool_to_python_bool_consistency(),
-//   //   expected: true
-//   // }
-fn assert_bool_to_python_bool_consistency() -> Bool {
-  match bool_to_python_bool.python_repr {
-    Numeric { tower: BoolLevel }     => true
-    Numeric { tower: IntegralLevel } => false
-    Numeric { tower: RealLevel }     => false
-    Numeric { tower: ComplexLevel }  => false
-    Singleton { kind: _ }            => false
-  }
-}
+// Layer 3 — TestClaim data (std/verification.dag, PR #3183 gate):
+//   `RoundTrips` / `Equals` claims assert `ingest∘emit` node-level
+//   identity when T-7 + T-10 land; not stubbed here.
