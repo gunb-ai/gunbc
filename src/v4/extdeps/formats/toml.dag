@@ -28,9 +28,13 @@ module v4.extdeps.formats.toml
 // src/v4/extdeps/formats/json.dag seam (PR #3184, T-4 mgr seam-review
 // ratification msg_f5971a8a): the format's closed recursive value sum +
 // node.dag A1 name-reference recursion + the Practice-4 five-pattern
-// ledger; parse/emit carrier seam = `Outcome<TomlValue>` (the ONE
-// operator-ratified D1 carrier, std/diagnostic.dag DECISIONS item **I**
-// — NOT a per-file sum); operations deferred-with-named-owner. Same
+// ledger; the parse/emit carrier seam is the ratified corrected seam #3
+// — fail-closed BOTH directions: `toml_parse : String ->
+// Outcome<TomlValue>` AND `toml_emit : TomlValue -> Outcome<String>`
+// (the ONE operator-ratified D1 carrier `Outcome<T>`, std/diagnostic.dag
+// DECISIONS item **I** — NOT a per-file sum); operations deferred-with-
+// named-owner. (Single authority = the Deferred (1) block below; this
+// summary states it, the block specifies it — no divergence.) Same
 // discipline, TOML-anchored facts.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
@@ -42,14 +46,25 @@ module v4.extdeps.formats.toml
 // refinement. The operator-sanctioned pattern verified on
 // std/collection.dag #3169 + canonical json.dag #3184.
 //
-// CARRIER SEAM = Outcome<TomlValue> (NOT a per-file sum). The header's
-// `parse(String) -> Result<TomlValue, Diagnostic>` prose denotes the
-// ratified D1 carrier `Outcome<T> = Produced { value: T } | Rejected
-// { diagnostic: Diagnostic }` (std/diagnostic.dag, DECISIONS item **I**;
-// `Result<…, Diagnostic>` prose names this same surface — no parallel
-// `Result<ok, err>` in std/). When the parse op is authored (trigger
-// below) it returns `Outcome<TomlValue>` — the SAME carrier all six
-// T-4.6 formats consume.
+// CARRIER SEAM (NOT a per-file sum) — the ratified corrected seam #3,
+// fail-closed BOTH directions (single authority = the Deferred (1)
+// block below; this is the summary, not a second authority — no
+// divergence):
+//   - `toml_parse : String -> Outcome<TomlValue>`
+//   - `toml_emit  : TomlValue -> Outcome<String>`  (NOT a total
+//      `-> String`; a spec-invalid TomlValue → `Rejected{diagnostic}`,
+//      never a fabricated artifact — the #3184 P3 finding, ratified
+//      seam-gate-active-propagated, msg_c7704bd6).
+// Both use the ONE operator-ratified D1 carrier `Outcome<T> = Produced
+// { value: T } | Rejected { diagnostic: Diagnostic }` (std/diagnostic.
+// dag, DECISIONS item **I**). The immutable scaffold header's
+// `parse(String) -> Result<TomlValue, Diagnostic>` prose denotes
+// `Outcome<TomlValue>`; its `emit(TomlValue) -> String` line is the
+// total-emit shape superseded by this ratified fail-closed seam — the
+// literal header-line edit is the operator-tier batched header-reconcile
+// (csv-class; tracked-not-silent, see the Deferred (1) block). No
+// parallel `Result<ok, err>` in std/. The SAME fail-closed-both-
+// directions carrier all six T-4.6 formats consume.
 //
 // FAIL-CLOSED, NO FABRICATION (TOML v1.0.0; brief §C binding STOP).
 // Every non-conforming input is `Rejected { diagnostic }` — never a
