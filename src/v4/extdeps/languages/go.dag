@@ -300,10 +300,18 @@ import v4.std.node { Symbol }
 //     semantics (fall-through is opt-in via the `fallthrough`
 //     keyword, NOT the default) is a SCHEDULING property of the
 //     Branch's arms, modeled at the LanguageModel grammar layer.
-//     Type-switch over an interface (`switch v := x.(type)`) is a
+//     Type-switch (`switch v := x.(type) { case T1: …; case T2: …;
+//     default: … }`) is a Branch over the EXPLICIT case-type list
+//     authored at the switch site, matching the dynamic type of `x`
+//     against each case-type per Spec §Switch_statements (NOT a
 //     Branch over the closed set of concrete types implementing the
-//     interface; the closure is structural (the implementing-type
-//     set is known at the program-resolution boundary).
+//     interface — corrected 2026-05-16 per cursor non-blocking
+//     finding on PR #3182; Go type-switches match against the
+//     site-authored case list, with `default` covering the residual.
+//     The closed-implementing-type framing is a SEPARATE, optional
+//     exhaustiveness analysis the LanguageModel grammar lane may
+//     perform on closed interfaces; it is NOT how the type-switch
+//     itself dispatches per spec).
 //
 //   - FOR LOOP (`for init; cond; post { … }`, `for cond { … }`,
 //     `for x := range y { … }`) ↦ Loop with BOUNDED descent
