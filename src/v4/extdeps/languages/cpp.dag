@@ -162,14 +162,17 @@ module v4.extdeps.languages.cpp
 //      carrier. This C++ carrier records the language's operation
 //      overflow/range disposition, not a second algebra instance.
 //   4. Dimensional — FAILS: signed representability and unsigned modulo
-//      are alternatives selected by the primitive family, not
-//      simultaneous coordinates. The undefined signed-overflow case is
-//      outside F, so it is absence/fail-closed, not a value carried
-//      simultaneously with the in-F disposition.
-//   5. Parameterized family — FAILS: the two variants are the C++
-//      standard's own signed-vs-unsigned overflow/range dispositions.
-//      The type parameter on `IntegerOverflowDisposition<IRCarrier>` supplies the
-//      concrete carrier; no richer source set collapses this variant.
+//      are alternatives selected by the primitive family's signedness
+//      fact, not simultaneous coordinates. The undefined signed-overflow
+//      case is outside F, so it is absence/fail-closed, not a value
+//      carried simultaneously with the in-F disposition.
+//   5. Parameterized family — FAILS for this closed vocabulary: these
+//      are the C++ standard's own signed-vs-unsigned overflow/range
+//      dispositions. Per-alias attachment is deliberately NOT modeled as
+//      `IntegerOverflowDisposition<IRCarrier>`, because that unconstrained
+//      generic would allow any carrier to pair with either disposition.
+//      Future rows must attach through the signed/unsigned alias target
+//      selected by the std integer ladder + C++ implementation model.
 // Terminal: the closed in-F C++ core integer overflow/range disposition set.
 type CppIntegerOverflowDisposition
   = RepresentableResultRequired
@@ -177,33 +180,36 @@ type CppIntegerOverflowDisposition
 
 
 // ─────────────────────────────────────────────────────────────────────
-// IntegerOverflowDisposition<IRCarrier> — the C++ integer overflow/range
-// disposition carrier for a primitive alias. Conj record (no coproduct
-// ledger).
+// Per-alias integer overflow/range disposition — 🟡 TRACKED-SCAFFOLD
+// DEFERRED.
 // Anchor: C++ draft [basic.fundamental], unsigned arithmetic modulo 2^N:
 //   https://eel.is/c++draft/basic.fundamental
 // Anchor: C++ draft [expr.pre], result not mathematically defined or not
 // in representable range is undefined behavior:
 //   https://eel.is/c++draft/expr.pre
 //
-//   - overflow_disposition  the C++ core-language overflow/range
-//                           disposition for this primitive family.
-//
 // Signed core integer aliases use `RepresentableResultRequired`;
 // overflow itself is undefined behavior and therefore fail-closed /
 // out-of-F unless a proof or explicit totalized carrier makes the
 // operation defined. Unsigned aliases use `UnsignedModuloArithmetic`.
-// This record is deliberately a sibling of the alias, not a field on
-// the std/ integer carrier, because the same abstract integer carrier
-// may realize differently across languages.
+//
+// This file intentionally does NOT declare an unconstrained generic
+// `IntegerOverflowDisposition<IRCarrier>` record. Such a record would
+// make the signedness invariant a row-authoring convention: any carrier
+// could be paired with either the signed representability precondition or
+// the unsigned modulo rule. That is not a sufficient API boundary.
+//
+// Dissolution trigger: when std/integer.dag exposes the signed/unsigned
+// integer ladder and the C++ implementation model selects each source
+// type's target carrier, per-alias rows amend in through a signedness-
+// indexed attachment shape that mechanically prevents signed carriers
+// from receiving `UnsignedModuloArithmetic` and unsigned carriers from
+// receiving `RepresentableResultRequired`.
 //
 // Operator-specific safety preconditions are excluded from this carrier:
 // division/modulo zero, quotient representability for `/`, shift-count
 // bounds, and analogous per-operator facts attach to the relevant
 // operation-realization declarations.
-type IntegerOverflowDisposition<IRCarrier> {
-  overflow_disposition: CppIntegerOverflowDisposition
-}
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -230,10 +236,9 @@ type CppBool = Bool
 // amends in as:
 //   - `type Cpp<X> = <StdCarrier>` alias-identity;
 //   - grounding row ONLY after the shared `GroundingMap` home is pinned;
-//   - for integer aliases, `data cpp_<x>_overflow_disposition:
-//      IntegerOverflowDisposition<Cpp<X>> = IntegerOverflowDisposition {
-//        overflow_disposition: <RepresentableResultRequired |
-//        UnsignedModuloArithmetic> }`.
+//   - for integer aliases, a signedness-indexed overflow/range
+//     disposition attachment that derives from the selected std signed or
+//     unsigned carrier, not a free choice over a generic `IRCarrier`.
 // Signed aliases carry `RepresentableResultRequired`; signed overflow
 // itself is fail-closed/out-of-F unless separately proven safe or
 // totalized. There is no undefined-behavior variant.
@@ -243,8 +248,7 @@ type CppBool = Bool
 // files are the sole authority. C++ supplies resolver facts and genuine
 // per-language operation semantics only.
 //
-// C++ signed core integers — signed char / short int / int / long int /
-//                            long long int
+// C++ signed core integers — short int / int / long int / long long int
 //   - target form        alias to the std signed integer carrier selected
 //                        by the declared C++ implementation data model,
 //                        plus a future shared grounding row and
@@ -258,9 +262,8 @@ type CppBool = Bool
 //                        AND the C++ target data-model resolver can pick
 //                        the width without guessing.
 //
-// C++ unsigned core integers — unsigned char / unsigned short int /
-//                              unsigned int / unsigned long int /
-//                              unsigned long long int
+// C++ unsigned core integers — unsigned short int / unsigned int /
+//                              unsigned long int / unsigned long long int
 //   - target form        alias to the std unsigned integer carrier
 //                        selected by the declared implementation model,
 //                        plus a future shared grounding row and
@@ -271,12 +274,16 @@ type CppBool = Bool
 //   - dissolution trigger
 //                        same as signed, with unsigned carrier targets.
 //
-// C++ character types — char / signed char / unsigned char / wchar_t /
-//                       char8_t / char16_t / char32_t
+// C++ character/code-unit types — char / signed char / unsigned char /
+//                                 wchar_t / char8_t / char16_t / char32_t
 //   - target form        char8_t/char16_t/char32_t are code-unit types,
 //                        not automatically std/text.dag `Char` (Unicode
 //                        scalar value). `char` / `wchar_t` are
 //                        implementation-defined code-unit carriers.
+//                        `signed char` and `unsigned char` do NOT get a
+//                        second alias lane here: they are the integer
+//                        carriers above with character/code-unit facets
+//                        attached when that refinement has a pinned home.
 //   - named owner        std/text.dag refined code-point / code-unit
 //                        carriers plus the C++ implementation model.
 //   - dissolution trigger
