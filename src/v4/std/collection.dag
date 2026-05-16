@@ -40,6 +40,11 @@
 //   - FiniteSet<T> (or Set<T, n: Multiplicity>) — gated on the
 //     cardinality / enumerability substrate landing; the bare Set<T>
 //     here is the unrefined BooleanAlgebra carrier, by design.
+//   - Machine-readable BooleanAlgebra<Set<T>> inhabitance edge —
+//     gated on parametric `data` instances OR a pipeline-level
+//     structural-grounding-reader landing; the BooleanAlgebra
+//     grounding for Set<T> lives in prose today (pointwise-lift
+//     derivation), not as a substrate-readable edge.
 //
 // Consumes:
 //   - std/node.dag: Cardinality, Instantiation — the type-substrate
@@ -117,6 +122,49 @@
 //         `member` with that witness; bare Set<T> remains as the
 //         arbitrary-subset BooleanAlgebra carrier. (Tracking the
 //         same operator-ratified deferral pattern as Map.)
+//
+// (3) `BooleanAlgebra<Set<T>>` inhabitance — PROSE-ONLY grounding,
+//   pending a machine-readable substrate edge. Codex BLOCKING review
+//   on #3169 (sha bc10dfb3) correctly observed that Set<T>'s
+//   BooleanAlgebra grounding (the pointwise-lift section in the
+//   Set<T> docstring below) lives only in COMMENTS — not as a
+//   substrate-readable inhabitance edge a downstream pipeline /
+//   lens consumer can mechanically traverse. This is genuinely an
+//   expressiveness gap, NOT a one-off omission:
+//     - List<T> = FreeMonoid<T> grounds by TYPE ALIAS — the
+//       inhabitance IS machine-readable via the alias edge (the
+//       type IS the FreeMonoid carrier).
+//     - Set<T> = { member: fn(T) -> Bool } is NOT an alias to
+//       BooleanAlgebra's carrier (BooleanAlgebra is a STRUCTURE
+//       record, not a carrier); the inhabitance is by POINTWISE
+//       LIFT — a derivation, not an alias. No type-alias edge to
+//       read, no `data` instance encoded (parametric `data
+//       set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>` has no
+//       precedent in the v2 seed; and even if it did, a stored
+//       instance would be a second authority for the algebra the
+//       carrier already structurally is — the INVARIANTS P2 +
+//       algebra.dag U1 "engine debt" the modeling notes below
+//       cite for declining the data-instance route).
+//   Three bridge properties:
+//     (a) scaffold doc — THIS note; the BooleanAlgebra<Set<T>>
+//         inhabitance is documented prose under the Set<T> type
+//         below, and is NOT machine-readable as a substrate edge.
+//     (b) bounds on use — Wave-A1 consumers that need Set's
+//         BooleanAlgebra ops compose them from `Bool`'s
+//         BooleanAlgebra by pointwise lift at the call site,
+//         using the prose-documented constructions; no consumer
+//         reads a `BooleanAlgebra<Set<T>>` instance edge today
+//         because none exists.
+//     (c) dissolution trigger — when EITHER the v2/seed gains a
+//         parametric `data` instance form (so we can author
+//         `data set_T_boolean_algebra<T>: BooleanAlgebra<Set<T>>`
+//         without breaking P2 / engine-debt by also making it the
+//         single authority), OR the pipeline / lens framework
+//         lands a structural-grounding-reader that mechanically
+//         derives BooleanAlgebra instances from pointwise-lift
+//         declarations, this note dissolves and the inhabitance
+//         becomes machine-readable. Until then the gap is named
+//         here, bounded as above, and not silently expanded.
 //
 // NO ENGINE — NO ENUMERATED OPS. There is deliberately no
 // `list_concat` / `set_union` table here: those would be a parallel
@@ -245,7 +293,13 @@ type List<T> = FreeMonoid<T>
 // no `data set_T_boolean_algebra: BooleanAlgebra<Set<T>>` instance
 // here (the parametric-data + single-authority reasoning in the
 // modeling notes). The pointwise lift IS the inhabitance, exactly
-// the algebra.dag "aliasing is the inhabitant's concern" pattern.
+// the algebra.dag "aliasing is the inhabitant's concern" pattern —
+// BUT note that this grounding lives in PROSE here, not as a
+// substrate-readable inhabitance edge a pipeline / lens consumer
+// can mechanically traverse; that prose-only-grounding gap is
+// itself a tracked scaffold (see "Deferred to Wave-A2 — TRACKED
+// SCAFFOLD" block (3) in the file header for bounds + dissolution
+// trigger).
 //
 // Cardinality is NOT intrinsic to Set<T>: counting `true` elements
 // requires an enumeration of T, and this carrier does not witness
