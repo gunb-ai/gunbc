@@ -1572,14 +1572,19 @@ type ParameterTypeKind
 //   8. ParameterOverrides.OrderedParameterOverrides.actuals (§12.1.3)
 //   9. ParameterOverrides.NamedParameterOverrides.overrides (§12.1.3)
 //  10. ContinuousAssign.assignments                  (§6.1)
+//  11. ModuleInstantiation.instances                 (§A.4.1.1)
 //
 // Sites 7-9 added 2026-05-16 per codex REQUEST_CHANGES on PR #3176
 // at sha f87fdf189; site 10 added 2026-05-16 per codex BLOCKING on
 // PR #3176 at sha bcc6b5f89 (ContinuousAssign restructured to carry
 // drive_strength + delay + list_of_net_assignments per §6.1, with
 // the non-empty assignments list deferred under the same RQ-3
-// disposition). Codex's motivation is spec-correct in each case;
-// the FORM is the deferred refinement, not a verilog-local mint.
+// disposition); site 11 added 2026-05-16 per codex BLOCKING on
+// PR #3176 at sha 2bf0024ba (ModuleInstantiation restructured to
+// carry shared module_name + parameter_overrides + non-empty
+// instances per §A.4.1.1 multi-instance form). Codex's motivation
+// is spec-correct in each case; the FORM is the deferred refinement,
+// not a verilog-local mint.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2063,31 +2068,56 @@ type ParameterOverrides
 
 
 // ─────────────────────────────────────────────────────────────────────
-// ModuleInstance — a Verilog module instantiation (`Adder a1 (.a(x),
-// .b(y), .sum(z));` or `Adder a1 (x, y, sum);` or `Adder #(.WIDTH(8))
-// a1 (...)`). IEEE 1364-2005 §12.1. Conj record (no Practice-4
-// ledger).
+// ModuleInstance — one instance within a module_instantiation
+// statement (`a1 (.a(x), .b(y), .sum(z))`). IEEE 1364-2005 §12.1 +
+// §A.4.1.1. A single module_instantiation can declare MULTIPLE
+// instances sharing a common (module_name, parameter_overrides);
+// each instance carries its own (instance_name, port_connections).
+// Conj record (no Practice-4 ledger).
+//
+//   - instance_name   this instance's local name (K-1-opaque Symbol)
+//   - connections     the port-binding list per spec §12.1.2
+//                     (PositionalConnections OR NamedConnections;
+//                     uniform per instance).
+type ModuleInstance {
+  instance_name: Symbol
+  connections: PortConnections
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// ModuleInstantiation — a Verilog module_instantiation statement
+// (`Adder #(.WIDTH(8)) a1 (.a(x1), .b(y1)), a2 (.a(x2), .b(y2));`).
+// IEEE 1364-2005 §12.1 + §A.4.1.1. Per spec grammar
+// module_instantiation is ONE shared (module_identifier +
+// parameter_value_assignment) clause followed by a NON-EMPTY LIST of
+// module_instance entries — multi-instance declarations share the
+// statement's module-name and parameter-override authority across
+// all listed instances. The prior shape modeled ONE instance per
+// ModuleInstance carrier and lost the §12.1 statement-boundary
+// (shared module + shared overrides) for multi-instance forms
+// (codex BLOCKING on PR #3176 2026-05-16). INVARIANTS P1/P2.
 //
 //   - module_name           the instantiated module's name (K-1-
 //                           opaque Symbol; resolved through the
 //                           namespace to the matching top-level
-//                           `VerilogModule`)
-//   - instance_name         this instance's local name (K-1-opaque
-//                           Symbol)
-//   - parameter_overrides   the `#(...)` parameter-override clause —
-//                           none, ordered, or named per spec §12.1.3
-//                           (corrected per codex BLOCKING on
-//                           PR #3176: the prior ModuleInstance had
-//                           NO parameter-override carrier, omitting
-//                           a §12.1 spec construct).
-//   - connections           the port-binding list (PositionalConnections
-//                           OR NamedConnections per spec §12.1.2;
-//                           uniform per instance)
-type ModuleInstance {
+//                           `VerilogModule`). Shared across all
+//                           instances in this statement.
+//   - parameter_overrides   the `#(...)` parameter-override clause
+//                           per spec §12.1.3. Shared across all
+//                           instances; the same overrides bind to
+//                           every instance in the multi-instance
+//                           form.
+//   - instances             the per-instance entries — each carries
+//                           its own (instance_name, connections).
+// Conj record (no Practice-4 ledger).
+type ModuleInstantiation {
   module_name: Symbol
-  instance_name: Symbol
   parameter_overrides: ParameterOverrides
-  connections: PortConnections
+  // ModuleInstantiation.instances: 🟡 spec-non-empty (§A.4.1.1) —
+  // deferred to std/collection.dag Wave-A2 `List<T> where non_empty`
+  // refinement; see shared TRACKED-SCAFFOLD note above.
+  instances: List<ModuleInstance>
 }
 
 
@@ -2445,7 +2475,8 @@ type SpecparamDeclaration {
 //   - VariableDeclarationItem     `reg`, `integer`, … declarations
 //   - ParameterDeclarationItem    `parameter NAME = expr;`
 //   - LocalParameterDeclarationItem `localparam NAME = expr;` (§3.10)
-//   - ModuleInstanceItem          nested `ModuleName inst (...);`
+//   - ModuleInstantiationItem     nested `ModuleName inst (...);` (or
+//                                 multi-instance form `Name a1(...), a2(...)`)
 //   - DefparamDeclarationItem     `defparam top.sub.PARAM = value;` (§4.10.2.1)
 //   - GenerateRegionItem          `generate ... endgenerate` (§12.4)
 //   - SpecifyBlockItem            `specify ... endspecify` (§14)
@@ -2527,7 +2558,7 @@ type AnsiModuleItem
   | VariableDeclarationItem { variable: VariableDeclaration }
   | ParameterDeclarationItem { parameter: ParameterDeclaration }
   | LocalParameterDeclarationItem { local_parameter: LocalParameterDeclaration }
-  | ModuleInstanceItem { instance: ModuleInstance }
+  | ModuleInstantiationItem { instantiation: ModuleInstantiation }
   | DefparamDeclarationItem { defparam: DefparamDeclaration }
   | GenerateRegionItem { generate_region: GenerateRegion }
   | LoopGenerateConstructItem { loop_generate: LoopGenerateConstruct }
