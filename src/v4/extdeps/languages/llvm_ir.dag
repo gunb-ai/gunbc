@@ -1,198 +1,20 @@
 // src/v4/extdeps/languages/llvm_ir.dag
-//
-// Scope: LLVM IR model — direction-agnostic. Typed SSA intermediate
-//        representation: modules, functions, basic blocks, SSA values,
-//        instructions, types. A LOWER-level language than rust/py/ts.
-// Anchor: LLVM Language Reference Manual — pin a concrete release
-//         (e.g. LLVM 18 LangRef) as the versioned fidelity authority
-//         (L-2: model the spec, not a library; the spec IS the anchor).
-// Stress (T-4.12 — a B2-OMNI falsification probe): does the Node
-//   substrate + B2-OMNI generalize DOWN the abstraction stack, not just
-//   across surface languages? SSA form (every value defined once;
-//   phi nodes; dominance) is a structural shape unlike source ASTs. If
-//   LLVM IR cannot be a plain `LanguageModel` without core/pipeline
-//   changes, B2-OMNI is leaking — surfaced now, before load-bearing.
-// Clear win: `.dag → LLVM IR` (then LLVM lowers to machine code), AND
-//   `LLVM IR → Node` ingest — the down-stack half of O(N+M).
-// C5-fidelity note: F here is essentially all-structural — LLVM IR has
-//   negligible cosmetic surface, so `emit∘ingest` is ~identity (no
-//   trivia to normalize). Contrast source models where F may include
-//   comments/formatting by intent.
-//
-// Owns:
-//   - LLVM IR grammar as declarative bidirectional data (B2-OMNI):
-//     module / function / basic-block / instruction / SSA value / type
-//   - SSA + dominance modeled structurally (NOT a 6th behavior — the
-//     value graph is Node edges; phi is a Node, per IN-B discipline)
-//   - Inhabitance: LLVM integer/float/vector/pointer types per std/algebra.dag
-//   - Cost realization: per-instruction cost on an LLVM target
-//
-// Consumes:
-//   - std/node.dag, std/algebra.dag, std/primitive.dag
-//
-// Status: T-4.12 modeled 2026-05-16 (snappy-badger-570). B2-OMNI probe
-//   RESULT: PASS — LLVM IR is a plain declarative LanguageModel over the
-//   closed Node substrate with NO 6th behavior and NO core/pipeline
-//   change (see modeling notes "B2-OMNI probe finding"). The header I/O
-//   contract is immutable for downstream workers; the `std/primitive.dag`
-//   line in Consumes is a pre-T-1-closeout staleness (primitive.dag was
-//   decomposed; `Symbol`/`Hash` re-homed to std/node.dag per PR #3152 —
-//   this file imports from node.dag accordingly; surfaced, not edited,
-//   since the contract lines are immutable and the re-home is already
-//   operator-ratified). Splitting this file requires explicit operator
-//   ratification (substrate extension = stop signal).
-
+// Scope: LLVM 18 LangRef IR structural vocabulary (T-4.12).
+// Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, terminator_is_catchswitch, block_well_formed, FidelityDisposition, FidelityFeature, feature_disposition, llvm_instruction_cost
+// Consumes: std/node.dag; Int kernel-ambient.
+// Status: T-4.12 PASS (B2-OMNI); import v4.std.node Symbol only.
+// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
+// Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WIDTH.
 
 module v4.extdeps.languages.llvm_ir
 
 
-// std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
-// name-reference identity used pervasively in the grammar — block
-// labels, SSA/parameter/global names) resolvable through this file's
-// import closure. std/algebra.dag is NOT imported: this file's declared
-// `Consumes` of it is its INHABITANCE, which is DEFERRED to the
-// operator-pending D2 STOP (see the Inhabitance section). The algebra
-// import + the ratified instance-value form are added only once D2
-// lands; importing algebra now while unused would be dead code, and
-// improvising the instances now would be the exact per-file
-// `<Algebra><Concrete>` form D2 forbids.
 import v4.std.node { Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// SPEC, NOT LIBRARY (M3 / L-2). Anchor = the LLVM Language Reference
-// Manual, pinned at LLVM 18. The model is the LangRef grammar + type
-// system + value/instruction taxonomy. LLVM intrinsics, target
-// libraries, and pass-specific metadata are NOT modeled — an intrinsic
-// call is just a `Call` whose callee is a named function (a program in
-// the modeled language = a `Node`), exactly as M3 / the T-4 authoring
-// contract requires. Modeling the intrinsic/library universe is infinite
-// and the wrong layer.
-//
-// DECLARATIVE MODEL, NOT A RECOGNIZER (T-4 authoring contract). This
-// file is the grammar/type/semantics as DATA. It declares no
-// `ingest`/`emit` procedure: those are the GENERIC walker (compiler
-// 01_tokenize/02_parse/05_emit, B2-OMNI) reading this model. Concretely
-// this is why the file consumes neither a `Result<T, Diagnostic>` carrier
-// nor std/diagnostic.dag: there is an open operator-tier STOP on the
-// absence of a shared value-or-Diagnostic carrier in src/v4 (first
-// surfaced by T-4.6); a declarative LanguageModel does not need it and
-// must not improvise one. Fail-closed behavior off the lossless core is
-// the walker's obligation; this file's contribution is to DECLARE the
-// lossless core F structurally (see `FidelityDisposition`), which is
-// pure node.dag Disj data — no Diagnostic, no Result.
-//
-// B2-OMNI PROBE FINDING (the deliverable — the STOP discipline is the
-// product). LLVM IR models as a plain `LanguageModel` with NO 6th
-// behavior and NO core/pipeline change. The structurally-unusual SSA
-// shapes resolve to ORDINARY Node structure — and modeling them HONESTLY
-// drove the right structural form:
-//   - "every value defined once" (SSA) — the value graph (operands
-//     reference their producers) realized the A1-FAITHFUL, FINITE way:
-//     a value-producing instruction / φ carries `result: Symbol` (its
-//     def-site name); an operand is a NAME-REFERENCE
-//     (`LlvmValue.LocalRef`) resolved through function scope to that
-//     def-site (or a parameter / a global / an inline constant). This
-//     IS the scaffold's "value graph is Node edges" — node.dag A1's
-//     cross-declaration idiom (references are name `Atom`s resolved
-//     through the namespace; precedent: diagnostic.dag `reason:
-//     Symbol`). Single-assignment is the structural fact that exactly
-//     one def-site declares each name (INVARIANTS P2). CRUCIAL: the
-//     def-use graph is CYCLIC for every loop (a loop-carried φ names an
-//     instruction whose operand names the φ) — a name-reference keeps
-//     the bounded Node tree FINITE while expressing that cycle, which is
-//     PRECISELY why A1 mandates name-reference recursion. An EARLIER cut
-//     INLINED the producer node into each use (`InstructionValue {
-//     instruction }` / `PhiValue { phi }`); that could not finitely
-//     represent cyclic loop-carried SSA — it excluded ALL loops, a
-//     P1/M3 spec-narrowing and the exact A1 violation A1 exists to
-//     prevent. The name-reference form is the correct finite
-//     REALIZATION of the value-graph intent (operands → producers), not
-//     an abandonment of it. `result: Symbol` is a
-//     declaration FIELD = a name-reference (K-1-opaque, resolved
-//     structurally), NOT a runtime Symbol mint — the K-1 no-mint rule
-//     was specific to the removed inhabitance LAMBDAS, not declaration-
-//     class fields. The textual `%x`/`%1` spelling is `DeclaredNormalized`
-//     (α-equivalent — `Symbol` is opaque, the content-hash fold is
-//     rename-invariant).
-//   - phi — phi is an ORDINARY Node, hoisted to the block's structural
-//     `phis` region (`PhiNode`), so "a phi after a non-phi instruction"
-//     is UNREPRESENTABLE (P2), not a checker rule. It is NOT a variant
-//     of the general instruction sum (its block-start position is
-//     structural). At the computation layer phi is `Branch`-shaped (it
-//     selects an incoming value by which CFG edge was taken) — it reuses
-//     the EXISTING closed `Behavior::Branch`, it does not add one. Per
-//     IN-B: control/data flow is Node edges; phi is a Node.
-//   - dominance — NOT a field or flag (feedback_no_annotations). The CFG
-//     is carried structurally (each block's terminator names its
-//     successor labels — `block_successors`). "Definition dominates all
-//     uses" is a LENS read over that Node graph (the same shape as the
-//     complexity/effect lenses), derived, never stored; a `dominates`
-//     edge would be a second authority for what the CFG already
-//     determines (INVARIANTS P2).
-//
-// A2 TOTALITY IS A `.dag`-PROGRAM PROPERTY, NOT A MODELED-LANGUAGE ONE.
-// An LLVM CFG can contain irreducible / non-terminating loops (a back-
-// edge `br` to a dominating block). That is faithful to LangRef and is
-// MODELED here as ordinary CFG data — std/node.dag A2 (Loop is bounded,
-// total-by-construction) constrains `.dag` programs the compiler
-// ACCEPTS, never the external languages it models/emits (M3: extdeps
-// model real specs). `emit (.dag → LLVM IR)` only ever emits the bounded
-// forms a `.dag` program can express; ingesting arbitrary LLVM whose
-// termination is not structurally evident is the walker's fail-closed
-// boundary (declared in F below), not a totality this file may claim.
-//
-// INHABITANCE IS OWNED ELSEWHERE (P2) — see the "Inhabitance — OWNED
-// ELSEWHERE" section near the end. This file declares only the LLVM
-// type/value/instruction VOCABULARY; WHICH algebra a scalar grounds in
-// is owned by the std/ scalar wave (std/integer.dag/float.dag/logic.dag,
-// T-3) + the operator-pending D2 FORM decision, by P2 single-authority.
-// This file does NOT declare, assert, or restate that grounding (an
-// extdeps language file restating it is a second-authority P2
-// violation).
-// Faithful observations for that owner / the D2 decision (NOT this
-// file's authority): LLVM `iN` arithmetic wraps mod 2^N ⇒ a finite ring
-// that is NOT order-compatible (the algebra.dag Float≠Field analog);
-// `fcmp` is NaN-unordered; pointers have no total numeric algebra.
-//
-// Every coproduct below carries the full Practice-4 🟢/🟡/🔴
-// classification + the 5-pattern dissolution ledger (modeling-
-// discipline.md §4 — operator-ratified binding 2026-05-15; FIVE patterns
-// attempted, the fifth being Parameterized-family / Practice-7).
-// Records (Conj) carry no ledger. The closed opcode/predicate enums are
-// the LangRef-defined sets: an addition is an upstream LangRef revision
-// (the M3 spec-anchor analog of std/node.dag's C1 stop-signal — a
-// visible, ratified edit, never a silent `Other`/`...`).
 
 
-// ─────────────────────────────────────────────────────────────────────
-// FloatKind — the LLVM floating-point type set (LangRef "Floating-Point
-// Types"). Closed: half / bfloat / float / double / fp128 / x86_fp80 /
-// ppc_fp128.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every consumer that handles a float type
-//      (inhabitance, emit, cost) dispatches on the kind uniformly; it is
-//      not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: promoting to `{ exponent_bits,
-//      mantissa_bits }` looks uniform but x86_fp80 / ppc_fp128 are NOT
-//      mechanical (80-bit extended has an explicit integer bit;
-//      ppc_fp128 is a double-double, not an IEEE format) — a numeric
-//      record makes "an IEEE format with a double-double layout"
-//      representable, the inverse of P2. The named LangRef set is the
-//      faithful form.
-//   3. Algebraic form — N/A: this IS the modeled LangRef set (M3); there
-//      is no richer std/ source it traces to — it is the source.
-//   4. Dimensional — FAILS: a float type is EXACTLY ONE kind; never
-//      several at once — alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the seven are not `F<X>` over a
-//      separately-declared set (x86_fp80 / ppc_fp128 break any uniform
-//      width projection — see pattern 2); not a Practice-7 projection.
-// Terminal: the closed LangRef floating-point type set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FloatKind
   = HalfFloat
   | BFloatFloat
@@ -203,98 +25,7 @@ type FloatKind
   | PpcFp128Float
 
 
-// ─────────────────────────────────────────────────────────────────────
-// LlvmType — the LLVM type system (LangRef "Type System"). Recursive:
-// aggregate / pointer / vector / function types contain types. This is a
-// downstream domain type (surface sugar over node.dag Conj/Disj), NOT a
-// second recursive kernel type — exactly the std/algebra.dag
-// `FreeMonoid<T>` precedent (a recursive generic sum is admissible
-// downstream; node.dag A1 closes the KERNEL, not domain models).
-//
-//   - VoidType / LabelType / TokenType / MetadataType — the non-value
-//     and special types (LangRef).
-//   - IntegerType { bits } — `iN`, any bit width ≥ 1 (LangRef: arbitrary
-//     precision). `bits` is a kernel-ambient `Int`; the i1..i128 spellings
-//     are NOT enumerated siblings — they are this one type projected over
-//     the width (Practice 7 / INVARIANTS P1 integer worked example).
-//   - FloatingType { kind } — projects over the closed `FloatKind`.
-//   - PointerType { address_space } — LLVM ≥ 15 OPAQUE pointer: it
-//     carries no pointee (that was removed from LangRef); address space
-//     is a kernel-ambient `Int` (0 = default).
-//   - VectorType { element, count, scalable } — `<N x T>` /
-//     `<vscale x N x T>`. `scalable` is a genuine 2-valued LangRef
-//     distinction (fixed vs scalable), modeled as the closed
-//     `VectorScaling` (not a bare Bool — keeps "scalable fixed-vector"
-//     unrepresentable, P2).
-//   - ArrayType { element, count } — `[N x T]`.
-//   - StructType { fields, packed } — literal struct; `packed`
-//     (`<{ }>`) is the closed `StructPacking`.
-//   - FunctionType { result, params, var_arg } — `RetTy (Args...)`;
-//     `var_arg` is the closed `VarArg` (C-style `...`).
-//   - NamedType { name } — a reference to a module-level identified
-//     struct, by opaque `Symbol` (K-1) resolved through the module
-//     namespace; this is how LLVM expresses recursive/forward struct
-//     types (`%T = type { ptr, %T* }`) WITHOUT a self-referential type
-//     definition here — the recursion is the namespace edge, exactly
-//     node.dag A1's name-reference recursion discipline.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every type consumer (inhabitance, emit,
-//      cost, GEP index walking) branches on the type category; it is the
-//      shared classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the categories carry disjoint shapes
-//      (IntegerType { bits }; VectorType { element, count, scalable };
-//      VoidType nullary). A flat `{ tag, bits?, element?, … }` record
-//      makes "VoidType with bits" and "IntegerType with an element type"
-//      representable — the inverse of P2.
-//   3. Algebraic form — N/A: this IS the modeled LangRef type taxonomy
-//      (M3 spec anchor); there is no richer std/ algebra it traces to —
-//      it is the grounding source other LLVM structure stands on.
-//   4. Dimensional — FAILS: an LLVM type is EXACTLY ONE category;
-//      genuine alternatives, never simultaneous coordinates.
-//   5. Parameterized family — FAILS: the categories are structurally
-//      heterogeneous (scalar widths vs aggregates vs function vs opaque
-//      pointer vs named reference) — NOT one `F<X>` over a declared set.
-//      The width AXIS *inside* IntegerType IS a projection (pattern-5
-//      applied there: `bits: Int`, not enumerated iN siblings), but the
-//      category sum itself is not a mechanical copy of any set.
-// Terminal: the MODELED LangRef (LLVM 18) type taxonomy — void/label/
-// token/metadata + the integer/float/pointer scalar core + the
-// aggregate/vector/function/named constructors. A LangRef type OUTSIDE
-// this modeled set (e.g. `x86_amx`, a `target("…")` target-extension
-// type) is the EXPLICIT `FidelityDisposition.FailClosed` boundary, the
-// concrete machine-consumable `FidelityFeature.UnmodeledType`
-// (`feature_disposition` maps it to `FailClosed`) — declared,
-// diagnosed, never a silent fabricated parse (no-engine):
-// completeness of F is declared, not over-claimed. Extending the modeled
-// core is an upstream-LangRef-revision edit to THIS declaration (the M3
-// spec-anchor analog of node.dag's C1 stop-signal), never a silent open
-// variant.
-//
-// RAW-Int WIDTH RESIDUAL — TRACKED 🟡 SCAFFOLD (isolated, the exact
-// std/diagnostic.dag `Locus`(🟢)/`Extent.ByteRange`(🟡) precedent). The
-// SUM is 🟢 terminal (the categories are genuine), but the numeric
-// payloads `IntegerType.bits` / `VectorType.count` / `ArrayType.count` /
-// `PointerType.address_space` are kernel-ambient `Int`, which
-// STRUCTURALLY ADMITS illegal LLVM values (a 0-bit / negative-width
-// integer, a negative element count) — modeling-discipline.md §2
-// (illegal states unrepresentable) forbids it, and no bounded-natural
-// substrate is consumable yet (std/cardinality.dag refinement +
-// std/nat.dag are parallel Wave-A1, NOT in this file's whitelist). It is
-// a TRACKED scaffold declared with the three bridge properties, verbatim
-// the merged diagnostic.dag discipline (PR #3161):
-//   (a) scaffold doc — THIS note; the raw `Int` widths are provisional,
-//       not the terminal bounded-width shape.
-//   (b) bounds on use — a producer MUST construct only LangRef-valid
-//       widths (`bits >= 1`; `count >= 0`; `address_space >= 0`). Until
-//       the substrate enforces it the invariant is producer-side; an
-//       out-of-range width is a producer bug, not a legal value.
-//   (c) dissolution trigger — when std/cardinality.dag's refinement
-//       substrate lands (its own T-3 entry), these refine to bounded
-//       non-negative widths type-enforced, and this residual
-//       reclassifies 🟢 (the SUM is already 🟢; only the payload moves).
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-LLVM-WIDTH.
 type LlvmType
   = VoidType
   | LabelType
@@ -310,115 +41,25 @@ type LlvmType
   | NamedType { name: Symbol }
 
 
-// VectorScaling — `<N x T>` (fixed) vs `<vscale x N x T>` (scalable,
-// SVE/RVV-style). A closed LangRef distinction, modeled as a sum rather
-// than a Bool so that no third state is representable and the spelling
-// difference is structural, not a flag (feedback_no_annotations).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: a vector's scaling is read uniformly
-//      wherever a vector type is consumed (emit, cost); not scattered.
-//   2. Variant-is-data — FAILS: the only "data" reduction is a Bool,
-//      which is the M4 stringly/boolean-proxy anti-pattern for a closed
-//      named LangRef distinction; the two-name sum is the faithful form.
-//   3. Algebraic form — N/A: it is a leaf LangRef spelling distinction;
-//      no richer std/ source.
-//   4. Dimensional — FAILS: a vector type is fixed XOR scalable, never
-//      both — alternatives, not coordinates.
-//   5. Parameterized family — FAILS: two heterogeneous nullary spellings,
-//      not `F<X>` over a declared set.
-// Terminal: the closed fixed-vs-scalable LangRef distinction.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type VectorScaling
   = FixedVector
   | ScalableVector
 
 
-// StructPacking — `{ }` (natural alignment) vs `<{ }>` (packed, byte-
-// aligned). Closed LangRef distinction; same rationale as VectorScaling.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: packing is read uniformly by layout/emit/
-//      cost consumers; not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: reduces only to a Bool — the M4 boolean-
-//      proxy for a closed named spelling; the two-name sum is faithful.
-//   3. Algebraic form — N/A: a leaf LangRef spelling distinction; no
-//      richer std/ source.
-//   4. Dimensional — FAILS: a struct is packed XOR unpacked; never both.
-//   5. Parameterized family — FAILS: two nullary spellings, not `F<X>`.
-// Terminal: the closed packed-vs-unpacked LangRef distinction.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type StructPacking
   = NaturalAligned
   | Packed
 
 
-// VarArg — a function type either is variadic (`...`) or is not. Closed
-// LangRef distinction; same Bool-proxy rationale as above.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: variadicity is read uniformly by call/
-//      emit/ABI consumers; not scattered.
-//   2. Variant-is-data — FAILS: reduces only to a Bool — M4 boolean-
-//      proxy; the two-name sum is faithful.
-//   3. Algebraic form — N/A: a leaf LangRef spelling distinction.
-//   4. Dimensional — FAILS: a function type is variadic XOR fixed-arity.
-//   5. Parameterized family — FAILS: two nullary spellings, not `F<X>`.
-// Terminal: the closed variadic-vs-fixed LangRef distinction.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type VarArg
   = FixedArity
   | Variadic
 
 
-// ─────────────────────────────────────────────────────────────────────
-// LlvmConstant — compile-time constants (LangRef "Constants" /
-// "Complex Constants" / "Constant Expressions"). Recursive: aggregate
-// constants nest constants; a constant expression is a frozen, side-
-// effect-free instruction-shaped form.
-//
-//   - IntConstant { ty, value } / FloatConstant { ty, bits } —
-//     `value`/`bits` are kernel-ambient `Int` (the bit-pattern; the
-//     float literal value is the IEEE bit pattern, not a lossy decimal —
-//     the C5 lossless-core discipline).
-//   - NullPointer { ty } / NoneToken — `null` / `none`.
-//   - AggregateConstant { ty, elements } — struct/array/vector literal.
-//   - ZeroInitializer { ty } — `zeroinitializer` (whole-aggregate zero;
-//     a distinct LangRef spelling, not an all-zero AggregateConstant —
-//     keeping them distinct is faithful to the spec surface).
-//   - UndefValue { ty } / PoisonValue { ty } — `undef` / `poison` (two
-//     genuinely distinct LangRef deferred-UB forms; NOT one flagged
-//     case — collapsing makes the UB semantics indistinguishable).
-//   - BlockAddress { function, block } — `blockaddress(@f, %bb)`,
-//     name-references (K-1 Symbols) into the namespace.
-//   - GlobalAddress { name } — the address of a module global, a
-//     name-reference Symbol.
-//   - ConstantExpr { op, operands, result_type } — the restricted
-//     constant-expression grammar (LangRef): a Practice-7 projection
-//     over the constexpr-admissible opcode subset (`ConstExprOpcode`),
-//     NOT a re-enumeration of the instruction set.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: a constant is consumed uniformly wherever
-//      an operand/initializer is read; not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: disjoint shapes (IntConstant { ty,
-//      value }; AggregateConstant { ty, elements }; NoneToken nullary).
-//      A flat record makes "a NoneToken with elements" representable —
-//      the inverse of P2.
-//   3. Algebraic form — the NUMERIC constants' algebra grounding is
-//      OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 — see the
-//      Inhabitance section; not declared here) — and the SUM itself is
-//      the LangRef constant taxonomy, not one algebra carrier; N/A as a
-//      whole-sum dissolution.
-//   4. Dimensional — FAILS: a constant is EXACTLY ONE form; never
-//      several simultaneously.
-//   5. Parameterized family — FAILS: the forms are heterogeneous (scalar
-//      / aggregate / deferred-UB / address / constexpr); NOT one `F<X>`
-//      over a declared set. The constexpr OPCODE axis IS a projection
-//      (pattern-5 applied inside ConstantExpr), but the form sum is not.
-// Terminal: the closed LangRef constant taxonomy.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LlvmConstant
   = IntConstant { ty: LlvmType, value: Int }
   | FloatConstant { ty: LlvmType, bits: Int }
@@ -433,119 +74,22 @@ type LlvmConstant
   | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// LlvmValue — an SSA operand. THE SSA crux, modeled as a NAME-REFERENCE
-// (node.dag A1's cross-declaration idiom — precedent: diagnostic.dag
-// `reason: Symbol`): an operand naming its def-site by the K-1-opaque
-// `Symbol`, resolved through function scope. This is the FINITE,
-// A1-faithful REALIZATION of the value-graph intent (operands reference
-// their producers): because the def-use graph is CYCLIC for every loop
-// (a loop-carried phi references an instruction that references the
-// phi), the reference MUST be a name (finite Node tree, cycle expressed
-// through scope) — A1 mandates name-reference recursion for exactly this
-// reason. An earlier cut INLINED the producer node; that could not
-// finitely represent cyclic loop-carried SSA (excluding ALL loops — a
-// P1/M3 spec-narrowing, the A1 violation A1 exists to prevent). The
-// name-reference here PRESERVES the value-graph (operands → producers);
-// it is its correct realization, not an abandonment.
-//   - LocalRef { name } — a use of an in-function def-site by its
-//     `Symbol` name, resolved through function scope to a value-
-//     producing instruction's `result`, a `PhiNode.result`, or a
-//     function parameter (all share LLVM's local `%`-namespace).
-//     Single-assignment is the structural fact that exactly one def-site
-//     declares each name (INVARIANTS P2); a use is finite (a name), so a
-//     def-use CYCLE is representable (the loop-carried-phi case).
-//   - ConstantOperand { constant } — an inline `LlvmConstant`.
-//   - GlobalRef { name } — a module-level global/function address by
-//     `Symbol` name, resolved through the module namespace.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every instruction operand is resolved
-//      uniformly; the value kind is a shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: the variants carry disjoint payloads (a
-//      local-scope `Symbol`; an `LlvmConstant`; a module-scope
-//      `Symbol`); a flat `{ kind, name?, constant? }` makes "a LocalRef
-//      carrying a constant" representable — the inverse of P2. (`LocalRef`
-//      and `GlobalRef` are NOT one labelled case: the resolution SCOPE
-//      differs — function vs module namespace — a real distinction, not
-//      a spelling.)
-//   3. Algebraic form — N/A: operand-kind is the LangRef value-use
-//      taxonomy; no richer std/ source — it is the boundary itself.
-//   4. Dimensional — FAILS: an operand is EXACTLY ONE kind; alternatives,
-//      not coordinates.
-//   5. Parameterized family — FAILS: heterogeneous payloads / scopes (a
-//      function-scope name / a constant / a module-scope name); not one
-//      `F<X>` over a declared set.
-// Terminal: the irreducible SSA operand kinds; single-assignment is the
-// one-def-site-per-name structural fact (INVARIANTS P2), and the
-// name-reference keeps the Node tree finite while admitting cyclic
-// def-use (loops) — the A1-faithful value-graph realization.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LlvmValue
   = LocalRef { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
   | GlobalRef { name: Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Opcode projection sets (Practice 7 — "the bidirectional relation read
-// as a projection over a closed set", not N hand-enumerated instruction
-// variants). Each is a closed LangRef set; an addition is an upstream
-// LangRef revision (M3 spec-anchor stop-signal), never a silent `Other`.
 
-// BinaryOpcode — integer/float/bitwise binary ops (LangRef "Binary
-// Operations" + "Bitwise Binary Operations"). One instruction SHAPE
-// (`Binary` below) is projected over this set — adding a binary op costs
-// 1 (extend this set), not a new instruction variant (cost-of-change 1,
-// CLAUDE.md / Practice 7).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: the opcode is read by every binary-
-//      instruction consumer (emit, cost, inhabitance dispatch); shared,
-//      not scattered.
-//   2. Variant-is-data — N/A in the dissolving direction: this set IS
-//      the "label promoted to data" result (Practice-2 already applied)
-//      — it is the projected axis of the `Binary` shape, the faithful
-//      form, not a coproduct awaiting promotion.
-//   3. Algebraic form — PARTIAL and DELIBERATELY NOT TAKEN as the
-//      carrier: add/sub/mul DO trace to the abstract algebra, but that
-//      grounding is OWNED ELSEWHERE (std/ scalar wave + pending D2, P2 —
-//      see the Inhabitance section; not declared here). The *instruction
-//      opcode* is the concrete-syntax token the bidirectional grammar
-//      needs — the LangRef surface, faithfully named; its algebra
-//      grounding is the std/ owner's authority, NOT restated here (two
-//      faithful facts in two owners, never a duplicate authority).
-//   4. Dimensional — FAILS: a binary instruction has EXACTLY ONE opcode.
-//   5. Parameterized family — APPLIED: this enum IS the closed source
-//      set the single `Binary` shape projects over (Practice 7); it is
-//      not itself further dissolvable — it is the dissolution target.
-// Terminal: the closed LangRef binary-opcode set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type BinaryOpcode
   = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
   | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
   | OpFAdd | OpFSub | OpFMul | OpFDiv | OpFRem
 
 
-// ConversionOpcode — the cast/conversion ops (LangRef "Conversion
-// Operations"). One `Conversion` shape projects over this set.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by every conversion
-//      consumer; shared classifier, not scattered.
-//   2. Variant-is-data — N/A dissolving: this IS the promoted-label
-//      projected axis of the `Conversion` shape (Practice-2 applied).
-//   3. Algebraic form — N/A: a conversion is a representation change at
-//      the machine boundary, not an algebra operation on a carrier; no
-//      richer std/ source.
-//   4. Dimensional — FAILS: a conversion instruction has EXACTLY ONE
-//      opcode.
-//   5. Parameterized family — APPLIED: the closed source set the single
-//      `Conversion` shape projects over (Practice 7); the dissolution
-//      target itself.
-// Terminal: the closed LangRef conversion-opcode set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type ConversionOpcode
   = OpTrunc | OpZExt | OpSExt
   | OpFPTrunc | OpFPExt
@@ -553,51 +97,14 @@ type ConversionOpcode
   | OpPtrToInt | OpIntToPtr | OpBitCast | OpAddrSpaceCast
 
 
-// IntPredicate — `icmp` predicates (LangRef). The order codomain is
-// std/algebra.dag's `Ordering` (consumed via inhabitance, not re-spelled).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: the predicate is read uniformly by the
-//      `icmp` consumer; shared, not scattered.
-//   2. Variant-is-data — FAILS: promoting to `{ signed: Bool, op: ... }`
-//      reintroduces the M4 boolean-proxy AND makes `eq`/`ne` (which have
-//      no signedness) carry a meaningless `signed` — illegal-state, P2.
-//   3. Algebraic form — PARTIAL: the RESULT is `Ordering` (trichotomy,
-//      grounded in algebra.dag), but the PREDICATE is the LangRef
-//      surface token selecting which trichotomy cell(s) yield true;
-//      faithfully the spec set, with its order grounding carried by the
-//      comparison's Ordering codomain — not a duplicate authority.
-//   4. Dimensional — FAILS: an `icmp` has EXACTLY ONE predicate.
-//   5. Parameterized family — FAILS: the ten are not `F<X>` over a
-//      separately-declared set (signed/unsigned/equality are not a
-//      single uniform projection — see pattern 2).
-// Terminal: the closed LangRef integer-comparison predicate set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type IntPredicate
   = IcmpEq | IcmpNe
   | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
   | IcmpSgt | IcmpSge | IcmpSlt | IcmpSle
 
 
-// FloatPredicate — `fcmp` predicates (LangRef). Ordered/unordered
-// variants exist because IEEE-754 NaN comparisons are unordered (the
-// same reason `Float` is `ApproximateField`, not `Field`).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the `fcmp` consumer.
-//   2. Variant-is-data — FAILS: an `{ ordered: Bool, … }` record makes
-//      `fcmp true`/`fcmp false` (which have no ordering sense) carry a
-//      meaningless `ordered` — illegal-state, P2; the named set is
-//      faithful.
-//   3. Algebraic form — PARTIAL: grounded in IEEE-754 ordering (the
-//      ApproximateField rationale), but the predicate is the LangRef
-//      surface token; faithfully the spec set, grounding via the float
-//      inhabitance, not a duplicate authority.
-//   4. Dimensional — FAILS: an `fcmp` has EXACTLY ONE predicate.
-//   5. Parameterized family — FAILS: ordered/unordered/true/false do not
-//      form one uniform `F<X>` projection over a declared set.
-// Terminal: the closed LangRef float-comparison predicate set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FloatPredicate
   = FcmpFalse
   | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
@@ -605,41 +112,7 @@ type FloatPredicate
   | FcmpTrue
 
 
-// ConstExprOpcode — the constant-expression-admissible opcode subset
-// (LangRef "Constant Expressions": a strict subset — no memory side
-// effects). One `ConstantExpr` shape projects over this set.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the constexpr consumer;
-//      shared classifier.
-//   2. Variant-is-data — N/A dissolving: the promoted projected axis of
-//      `ConstantExpr` (Practice-2 applied).
-//   3. Algebraic form — N/A: a constexpr opcode is the LangRef surface;
-//      its numeric cases' algebra grounding is owned elsewhere (std/
-//      scalar wave + pending D2, P2 — not declared here).
-//   4. Dimensional — FAILS: a constexpr has EXACTLY ONE opcode.
-//   5. Parameterized family — APPLIED: the closed source set
-//      `ConstantExpr` projects over (Practice 7); the dissolution target.
-// Terminal: the LLVM-18.1.8 LangRef constant-expression-admissible
-// opcode set, PINNED to that version. Authority = the spec itself
-// (L-2), specifically
-// https://releases.llvm.org/18.1.8/docs/LangRef.html#constant-expressions
-// — membership is per that pinned LangRef, NOT model memory (memory is
-// unreliable here: LangRef has reduced constexprs across versions, so
-// the set is version-sensitive and must be read from the pinned spec).
-// As of 18.1.8: `zext`/`sext` and the fp/div/select forms are gone, but
-// `add`/`sub`/`mul`/`shl`/`xor`, `icmp`/`fcmp`, and `extractelement`/
-// `insertelement`/`shufflevector` remain valid alongside the
-// `trunc`/`ptrtoint`/`inttoptr`/`bitcast`/`addrspacecast`/
-// `getelementptr` core. A constexpr opcode
-// OUTSIDE this version-pinned set is the EXPLICIT
-// `FidelityDisposition.FailClosed` boundary, the concrete
-// machine-consumable `FidelityFeature.UnmodeledConstExpr`
-// (`feature_disposition` maps it to `FailClosed`) — declared, never a
-// silent fabricated parse or silent exclusion; a future LangRef revision that
-// adds/removes one is an edit to THIS declaration against the pinned
-// spec URL (the M3 spec-anchor analog of node.dag's C1 stop-signal).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type ConstExprOpcode
   = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
   | CeAddrSpaceCast | CeGetElementPtr
@@ -648,27 +121,12 @@ type ConstExprOpcode
   | CeExtractElement | CeInsertElement | CeShuffleVector
 
 
-// ─────────────────────────────────────────────────────────────────────
-// PhiIncoming — one (value, predecessor-block) pair of a phi node. A
-// record (Conj), no ledger. `block` is a name-reference Symbol (K-1)
-// resolved through the enclosing function's block namespace — the CFG
-// predecessor edge is THIS structural pair, not a separate stored graph.
 type PhiIncoming {
   value: LlvmValue
   block: Symbol
 }
 
 
-// PhiNode — an SSA φ. A record (Conj), no ledger. NOT a variant of
-// `LlvmInstruction`: its block-start position is STRUCTURAL (it lives in
-// `BasicBlock.phis`), so "a phi after a non-phi" is unrepresentable (P2)
-// rather than a checker rule. Carries `result: Symbol` — the def-site
-// name a φ defines; uses reference it via `LlvmValue.LocalRef` resolved
-// through function scope (the A1 name-reference idiom). This is what
-// makes loop-carried SSA representable: a φ's incoming may name an
-// instruction whose operand names the φ — a finite cyclic def-use graph,
-// not an infinite inlined tree. `result_type` is the load-bearing
-// LangRef-typed result type.
 type PhiNode {
   result: Symbol
   result_type: LlvmType
@@ -676,140 +134,37 @@ type PhiNode {
 }
 
 
-// SwitchCase — one (constant, target-block) arm of a `switch`. Record,
-// no ledger.
 type SwitchCase {
   match_value: LlvmConstant
   target: Symbol
 }
 
 
-// CallArgument — one actual argument of a `call`. Record, no ledger.
-// (Parameter attributes that change ABI semantics — `byval`, `sret`,
-// `signext` — are a declared C5 boundary: see `FidelityDisposition`;
-// the structurally load-bearing operand is modeled here.)
 type CallArgument {
   ty: LlvmType
   value: LlvmValue
 }
 
 
-// CallResult — a `call`/`invoke` either returns void (no def-site name,
-// no result type) OR produces a value (a `result: Symbol` def-site name
-// + result type). LangRef: `call void @f(...)` has NO `%x =`;
-// `%r = call <ty> @f(...)` does. The earlier `Call { result: Symbol,
-// result_type, … }` forced a result name onto EVERY call, making the
-// LangRef-illegal "void call with a result name" representable
-// (P2/extdeps-fidelity). Modeled as a typed two-case —
-// the SAME alternative-forms-as-distinct-shapes discipline as
-// `RetVoid`-vs-`RetValue` / `FunctionBody.Declared`-vs-`Defined`
-// (never a sentinel/empty name by convention). Shared by `Call`
-// (instruction) and `Invoke` (terminator) — both can be void or
-// value-producing per LangRef (this also fills the prior gap where a
-// value-producing `invoke`'s result was unmodeled).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by every call/invoke
-//      consumer (emit, the SSA def-site resolver, cost); a shared
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the reduction is a nullable/sentinel
-//      result name ("" meaning void) — exactly the in-band-absence
-//      anti-pattern INVARIANTS P2 + diagnostic.dag `Correction` forbid;
-//      the typed two-case is faithful.
-//   3. Algebraic form — N/A: a LangRef call-shape distinction, not an
-//      algebra carrier; no richer std/ source.
-//   4. Dimensional — FAILS: a call is void XOR value-producing, never
-//      both — alternatives, not coordinates.
-//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs name+type-carrying), not `F<X>` over a declared set.
-// Terminal: the void-vs-value call-result partition; the typed sum makes
-// "void call with a result name" structurally unrepresentable (P2).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type CallResult
   = VoidCall
   | ValueCall { name: Symbol, result_type: LlvmType }
 
 
-// LandingPadCleanup — a `landingpad` either has the `cleanup` flag or it
-// does not (LangRef "landingpad Instruction"). A genuine closed 2-valued
-// LangRef distinction; a named sum, not a Bool (M4 — closed named
-// distinction is an enum, not a boolean proxy; same rationale as
-// VectorScaling/StructPacking).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the EH/unwind consumer
-//      wherever a landingpad is lowered; not a per-consumer scattered
-//      fact.
-//   2. Variant-is-data — FAILS: reduces only to a Bool — the M4
-//      boolean-proxy for a closed named LangRef keyword.
-//   3. Algebraic form — N/A: a leaf LangRef EH spelling distinction; no
-//      richer std/ source.
-//   4. Dimensional — FAILS: a landingpad is cleanup XOR not; never both.
-//   5. Parameterized family — FAILS: two nullary spellings, not `F<X>`
-//      over a declared set.
-// Terminal: the closed cleanup-vs-not LangRef landingpad distinction.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LandingPadCleanup
   = IsCleanup
   | NotCleanup
 
 
-// LandingClause — one clause of a `landingpad` (LangRef "landingpad
-// Instruction"): `catch <type>` (a single type-info operand) or
-// `filter <array-of-type>` (a list of type-infos). Two genuinely
-// distinct LangRef clause forms with different payload shapes.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every landingpad consumer iterates the
-//      clause list uniformly; not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: `CatchClause` carries ONE type,
-//      `FilterClause` a type LIST — disjoint shapes; a flat
-//      `{ kind, ty?, types? }` makes "a catch clause with a type list"
-//      representable, the inverse of P2.
-//   3. Algebraic form — N/A: a leaf LangRef EH clause taxonomy; no
-//      richer std/ source.
-//   4. Dimensional — FAILS: a clause is EXACTLY catch XOR filter; never
-//      both — alternatives, not coordinates.
-//   5. Parameterized family — FAILS: a single type vs a type list are
-//      not one `F<X>` over a declared set (heterogeneous arities).
-// Terminal: the closed LangRef landingpad clause set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LandingClause
   = CatchClause { type_info: LlvmValue }
   | FilterClause { type_infos: List<LlvmValue> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// AtomicOrdering — the CANONICAL FULL LangRef/C++11-C11 memory-model
-// ordering set ("Atomic Memory Ordering Constraints"). This is the
-// single-authority vocabulary of all six orderings; no instruction
-// field carries it directly (each atomic op restricts it to its
-// LangRef-valid subset — `Load/Store/Fence/AtomicRmw/CmpXchg*Ordering`,
-// each declared as its own closed sum so an invalid (op, ordering) pair
-// is structurally unrepresentable, P2). It is retained as the declared
-// authority those subsets are documented against (the complete
-// memory-model set is a real spec entity reviewers validate
-// completeness against — not accidental dead code). The strength
-// relation is a derived lens read over this order, NOT a stored field.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: the ordering is read uniformly by every
-//      atomic-op consumer (emit, the effect lens); shared, not scattered.
-//   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
-//      stringly/number anti-pattern for a closed named memory-model set;
-//      and acquire/release are NOT linearly comparable (acq_rel is not
-//      "stronger acquire") — a scalar makes an illegal total order
-//      representable, P2.
-//   3. Algebraic form — the strength PARTIAL ORDER traces to lattice
-//      theory, but the *constraint names* are the LangRef/C++-memory-
-//      model surface; faithfully the spec set, its order a derived lens
-//      read, not a stored authority.
-//   4. Dimensional — FAILS: an atomic op carries EXACTLY ONE ordering.
-//   5. Parameterized family — FAILS: the six are not `F<X>` over a
-//      uniform declared set (the memory model is a partial order, not a
-//      linear projection).
-// Terminal: the closed LangRef/C++-memory-model ordering set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type AtomicOrdering
   = OrderingUnordered
   | OrderingMonotonic
@@ -819,41 +174,7 @@ type AtomicOrdering
   | OrderingSeqCst
 
 
-// Per-OPERATION-valid atomic-ordering subsets (LangRef LLVM 18). The
-// full `AtomicOrdering` is the memory-model authority; each atomic
-// instruction restricts it, and — verified against LLVM 18 LangRef —
-// every such restriction is a single closed SUBSET (no cross-field
-// relation): `cmpxchg`'s historical "failure not stronger than success"
-// rule was REMOVED in LLVM ≈3.9 and is NOT an LLVM-18 constraint
-// (asserting it would be the ConstExprOpcode-class inverse error). So
-// these are all STRUCTURALLY fixable with subset enums — illegal
-// (op,ordering) pairs unrepresentable (P2 / modeling-discipline.md §2),
-// the LoadOrdering/StoreOrdering precedent — NOT a 🟡 substrate-gap.
-//   - CmpXchgSuccessOrdering: ≥ monotonic (not unordered).
-//   - CmpXchgFailureOrdering: ≥ monotonic, NOT release/acq_rel.
-//   - FenceOrdering: ∈ {acquire, release, acq_rel, seq_cst} (a fence is
-//     not unordered/monotonic).
-//   - AtomicRmwOrdering: not unordered.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — all
-// four 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
-// attempted:
-//   1. Fact placement — FAILS: the ordering is read uniformly by the
-//      atomic-op lowering + the effect lens; a shared classifier.
-//   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
-//      anti-pattern and acquire/release are not linearly comparable
-//      (same rationale as `AtomicOrdering`); the named per-op subset is
-//      faithful.
-//   3. Algebraic form — N/A: the constraint names are the LangRef/
-//      C++-memory-model surface; the per-op valid subset is the spec's
-//      restriction, not an algebra carrier.
-//   4. Dimensional — FAILS: an op carries EXACTLY ONE ordering;
-//      alternatives, not coordinates.
-//   5. Parameterized family — FAILS: not one `F<X>` over a declared set
-//      (the memory model is a partial order; each is a spec-defined
-//      per-op restriction, not a mechanical projection).
-// Terminal: the closed LangRef-18 per-operation-valid ordering subsets;
-// invalid (operation, ordering) pairs structurally unrepresentable (P2).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type CmpXchgSuccessOrdering
   = SuccessMonotonic
   | SuccessAcquire
@@ -861,17 +182,20 @@ type CmpXchgSuccessOrdering
   | SuccessAcqRel
   | SuccessSeqCst
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type CmpXchgFailureOrdering
   = FailureMonotonic
   | FailureAcquire
   | FailureSeqCst
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FenceOrdering
   = FenceAcquire
   | FenceRelease
   | FenceAcqRel
   | FenceSeqCst
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOrdering
   = RmwOrdMonotonic
   | RmwOrdAcquire
@@ -880,102 +204,14 @@ type AtomicRmwOrdering
   | RmwOrdSeqCst
 
 
-// AtomicRmwOp — the `atomicrmw` sub-operation (LangRef). One
-// `AtomicRmw` instruction projects over this closed set (Practice 7).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the atomicrmw consumer.
-//   2. Variant-is-data — N/A dissolving: the promoted projected axis.
-//   3. Algebraic form — PARTIAL: xchg/add/and/or/xor/max/min trace to
-//      the `iN` ring/lattice instances, grounded THERE; the opcode is
-//      the LangRef surface token, not a duplicate authority.
-//   4. Dimensional — FAILS: an atomicrmw has EXACTLY ONE sub-op.
-//   5. Parameterized family — APPLIED: the closed source set the single
-//      `AtomicRmw` shape projects over (Practice 7).
-// Terminal: the LLVM-18 LangRef `atomicrmw` sub-operation set, COMPLETE
-// for LLVM 18 (incl. `fmax`/`fmin`/`uinc_wrap`/`udec_wrap` — added here
-// as the spec-faithfulness fix; earlier cuts omitted them). A future
-// LangRef revision adding a sub-op is an edit to THIS declaration (the
-// M3 spec-anchor analog of node.dag's C1 stop-signal).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOp
   = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
   | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
   | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
 
 
-// ─────────────────────────────────────────────────────────────────────
-// LlvmInstruction — the non-terminator, non-phi instruction set (LangRef
-// "Instruction Reference", minus terminators (`Terminator`) and phi
-// (`PhiNode`, structurally hoisted to the block)). Practice-7
-// projections (`Binary`/`Conversion`/`AtomicRmw`) collapse the
-// mechanically-uniform families to one shape over a closed opcode set;
-// the genuinely structurally-distinct instructions stay faithful
-// variants.
-//
-// `result: Symbol` — the SSA def-site NAME. A value-producing
-// instruction carries the K-1-opaque `Symbol` it defines (`%x`/`%1`);
-// uses are NAME-REFERENCES (`LlvmValue.LocalRef`) resolved through
-// function scope — node.dag A1's cross-declaration idiom (precedent:
-// diagnostic.dag `reason: Symbol`). This is the FINITE, A1-faithful
-// REALIZATION of the value-graph intent (operands reference their
-// producers): the def-use graph may be CYCLIC (every loop has a
-// loop-carried phi referencing an instruction that references the phi),
-// and a name-reference keeps the bounded Node tree FINITE while
-// expressing that cycle — exactly why A1 mandates name-reference
-// recursion. (An earlier cut INLINED the producer node; that could not
-// finitely represent cyclic loop-carried SSA — a P1/M3 spec-narrowing
-// excluding ALL loops — and was the A1 violation A1 exists to prevent.
-// `result: Symbol` is a declaration FIELD = a name-reference, NOT a
-// runtime Symbol mint; the K-1 no-mint rule was specific to the removed
-// inhabitance lambdas, not declaration-class fields.) The textual `%x`
-// spelling is `DeclaredNormalized` (α-equivalent — `Symbol` is opaque,
-// so the content-hash is rename-invariant). `result_type` IS
-// load-bearing (LLVM is typed). `Store`/`Fence` produce NO value and
-// carry no `result`/`result_type` — modeled by the absence of those
-// fields, not a nullable result (P2 — "a store with a result" is
-// unrepresentable).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every instruction is dispatched on by
-//      the emit/cost/effect/SSA consumers; it is THE shared classifier
-//      of the computation surface, not a per-consumer scattered fact.
-//   2. Variant-is-data — PARTIALLY APPLIED then FAILS to fully dissolve:
-//      the mechanically-uniform families ARE folded to data
-//      (`Binary`/`Conversion`/`AtomicRmw` over opcode sets — Practice-2/7
-//      done). The residual variants (Load/Store/GEP/Select/Call/…) have
-//      genuinely disjoint shapes (Store { value, ptr }; Call { callee,
-//      args }); a flat record makes "a Store with call arguments"
-//      representable — the inverse of P2. Cannot fully fold.
-//   3. Algebraic form — arithmetic opcodes DO trace to the abstract
-//      algebra, but that grounding is OWNED ELSEWHERE (std/ scalar wave
-//      + pending D2, P2 — not declared here); the instruction is the
-//      bidirectional grammar surface the model needs — two faithful
-//      facts in two owners, not duplication.
-//   4. Dimensional — FAILS: an instruction is EXACTLY ONE kind; never a
-//      coordinate tuple of all kinds.
-//   5. Parameterized family — APPLIED to the uniform sub-families
-//      (the opcode-set projections) and FAILS for the residual: Load/
-//      Store/GEP/Select/Call/… are not one `F<X>` over a single declared
-//      set (heterogeneous arities and operand roles).
-// Terminal: the MODELED LangRef (LLVM 18) non-terminator non-phi
-// instruction set — the arithmetic / bitwise / conversion / comparison /
-// memory / aggregate / vector / EH-pad / call / freeze / fneg / va_arg
-// core, maximally Practice-7-collapsed; residual variants irreducibly
-// distinct. This is NOT a claim that EVERY LangRef opcode is enumerated
-// here: a LangRef instruction outside the modeled core (a target-
-// specific / deprecated / newly-added LangRef opcode) is the EXPLICIT
-// `FidelityDisposition.FailClosed` boundary, the concrete
-// machine-consumable `FidelityFeature.UnmodeledInstruction`
-// (`feature_disposition` maps it to `FailClosed`) — declared,
-// diagnosed, never silently dropped or fabricated (the no-engine
-// discipline; the honest
-// reconciliation of "modeled spec core" vs "the full LangRef surface" —
-// completeness of F is declared, not over-claimed). Extending the
-// modeled core is an upstream-LangRef-driven edit to THIS declaration
-// (the M3 spec-anchor analog of node.dag's C1 stop-signal).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LlvmInstruction
   = Binary {
       result: Symbol
@@ -1114,101 +350,16 @@ type LlvmInstruction
     }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OPERATION-SPECIFIC OPERAND CONSTRAINTS — consolidated TRACKED 🟡
-// SCAFFOLD (the merged diagnostic.dag `Extent.ByteRange` three-bridge
-// precedent — a CHECKABLE trigger, not a prose-only disposition).
-//
-// Several instructions carry LangRef operand-relation constraints that
-// the broad `LlvmValue` / `LlvmType` carriers do NOT type-enforce, e.g.:
-//   - `icmp`/`fcmp`: both operands same type; `icmp` int/ptr, `fcmp`
-//     float (or same-shaped vector); result is `i1`/vector-of-`i1`.
-//   - `getelementptr`: indices are integer-typed; struct indices are
-//     `i32` constants; result type is the GEP-walked type.
-//   - `select`: condition is `i1` (or vector-of-`i1` matching operands);
-//     the two arms share the result type.
-//   - `Binary`: `lhs`/`rhs`/result share one type; float opcodes need
-//     float operands, integer opcodes integer operands.
-//   - `insert/extractelement`, `shufflevector`: element/index/mask type
-//     and length relations.
-// (Atomic-ordering op-specific validity is NO LONGER in this residual:
-// Load/Store/Fence/AtomicRmw/CmpXchg orderings were ALL structurally
-// fixed via per-operation subset enums — `LoadOrdering`/`StoreOrdering`/
-// `FenceOrdering`/`AtomicRmwOrdering`/`CmpXchgSuccessOrdering`/
-// `CmpXchgFailureOrdering`. Verified against LLVM 18: the historical
-// `cmpxchg` "failure not stronger than success" cross-field rule was
-// REMOVED in LLVM ≈3.9, so NO cross-field atomic-ordering refinement
-// remains — all are single-subset, structurally unrepresentable-when-
-// invalid, not a substrate-gap.)
-// These are NOT collapsed-away facts — they are real LangRef invariants
-// the model currently leaves PRODUCER-SIDE because the substrate to
-// type-encode an operand-relation refinement (a dependent/refined
-// typed-value carrier) is std/cardinality.dag's refinement substrate,
-// which is parallel Wave-A1 and NOT in this file's whitelist.
-// Introducing a constrained carrier here would be exactly the
-// improvise-past-not-ready-substrate failure mode; the sanctioned path
-// (operator-ratified, merged in diagnostic.dag) is the tracked scaffold
-// with the three bridge properties:
-//   (a) scaffold doc — THIS note; the broad operands are provisional,
-//       not the terminal operand-relation-refined shape.
-//   (b) bounds on use — a producer MUST construct only LangRef-valid
-//       operand-type relations (same-type binary/compare; i1 select
-//       cond; integer GEP indices; …). Until the substrate enforces it
-//       the invariant is producer-side; a violating instruction is a
-//       producer bug, not a legal value.
-//   (c) dissolution trigger — CHECKABLE, not prose: when
-//       std/cardinality.dag's refinement substrate lands (its own T-3
-//       entry — a concrete, observable file/feature-landing event, the
-//       SAME trigger the merged diagnostic.dag `Extent.ByteRange` 🟡
-//       uses), these operand relations refine to type-enforced
-//       constraints and this residual reclassifies 🟢. The trigger is a
-//       substrate-landing fact a reviewer can check, not a vague
-//       "later".
-// This converts root-cause #3's "broad carriers + prose-only
-// dispositions" into a single tracked residual with a checkable trigger,
-// without improvising refinement substrate that is not yet ratified.
 
 
-// LoadOrdering / StoreOrdering — the LangRef per-DIRECTION-valid atomic
-// memory-ordering subsets. LangRef forbids `release`/`acq_rel` on an
-// atomic LOAD and `acquire`/`acq_rel` on an atomic STORE; reusing the
-// full `AtomicOrdering` for both made those invalid accesses
-// representable. The fix is STRUCTURAL, no new
-// substrate: two distinct closed subset enums so an invalid
-// direction/ordering pair is UNREPRESENTABLE (P2 / modeling-discipline.md
-// §2 — illegal states unrepresentable), the same discipline as
-// ConditionalBr-vs-Br and FunctionBody entry/rest. The full six-valued
-// `AtomicOrdering` remains the authority for Fence/AtomicRmw/CmpXchg
-// (their own op-specific validity is the consolidated 🟡 note above).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — both
-// enums 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
-// attempted:
-//   1. Fact placement — FAILS: the ordering is read uniformly by the
-//      atomic-load/store lowering + the effect lens; a shared
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: a numeric "strength" proxy is the M4
-//      anti-pattern AND acquire/release are not linearly comparable
-//      (same rationale as `AtomicOrdering`); the named per-direction
-//      subset is the faithful form.
-//   3. Algebraic form — N/A: the constraint NAMES are the LangRef/
-//      C++-memory-model surface; the per-direction valid subset is the
-//      spec's direction restriction, not an algebra carrier.
-//   4. Dimensional — FAILS: a load/store carries EXACTLY ONE ordering;
-//      alternatives, not coordinates.
-//   5. Parameterized family — FAILS: not one `F<X>` over a declared set
-//      (the memory model is a partial order; the per-direction subset is
-//      a spec-defined restriction, not a mechanical projection).
-// Terminal: the closed LangRef per-direction-valid ordering subsets
-// (load excludes release/acq_rel; store excludes acquire/acq_rel) —
-// invalid direction/ordering pairs structurally unrepresentable (P2),
-// which is exactly why these are distinct from the full `AtomicOrdering`.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LoadOrdering
   = LoadUnordered
   | LoadMonotonic
   | LoadAcquire
   | LoadSeqCst
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type StoreOrdering
   = StoreUnordered
   | StoreMonotonic
@@ -1216,78 +367,18 @@ type StoreOrdering
   | StoreSeqCst
 
 
-// LoadAtomicity / StoreAtomicity — a load/store is either plain or
-// atomic-with-a-DIRECTION-valid-ordering. Modeled as a sum (NOT an
-// optional ordering) so the diagnostic.dag/Correction discipline holds:
-// "plain" is a structural case, never a bare absence; a plain access
-// carrying an ordering, or an atomic access with none, is
-// unrepresentable (P2).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) — both
-// 🟢 GREEN (terminal). Ledger (applies to each) — five patterns
-// attempted:
-//   1. Fact placement — FAILS: read uniformly wherever a load/store is
-//      lowered or its effects analyzed; not scattered.
-//   2. Variant-is-data — FAILS: the "data" reduction is exactly
-//      `Option<{Load,Store}Ordering>`, the bare-`None`-by-convention
-//      shape INVARIANTS P2 + the diagnostic.dag `Correction` forbid.
-//   3. Algebraic form — N/A: a LangRef access-mode distinction, not an
-//      algebra carrier.
-//   4. Dimensional — FAILS: an access is plain XOR atomic, never both.
-//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs ordering-carrying), not `F<X>` over a declared set.
-// Terminal: the plain-vs-atomic access partition (per direction); the
-// typed-sum is the dissolved shape (an `Option` would be the smell).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type LoadAtomicity
   = PlainLoad
   | AtomicLoad { ordering: LoadOrdering }
 
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type StoreAtomicity
   = PlainStore
   | AtomicStore { ordering: StoreOrdering }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Terminator — the single block-ending instruction (LangRef "Terminator
-// Instructions"). A basic block has EXACTLY ONE; modeled as a distinct
-// type (not an `LlvmInstruction` variant) so "a block ending in `add`"
-// or "a `ret` mid-block" is structurally unrepresentable — the
-// BasicBlock record (below) carries body and terminator separately, the
-// P2 illegal-state-unrepresentable discipline.
-//
-//   - RetVoid / RetValue { value } — `ret void` vs `ret <ty> <v>`, two
-//     distinct LangRef forms (NOT `Option<value>` — the Correction
-//     precedent: a typed two-case, never a bare absence).
-//   - UnconditionalBr { target } / ConditionalBr { condition, if_true,
-//     if_false } — `br label` vs `br i1, label, label`, two distinct
-//     LangRef forms (NOT a Bool + optional targets — illegal "conditional
-//     branch with no condition" unrepresentable, P2).
-//   - Switch { value, default_target, cases }.
-//   - IndirectBr { address, possible_targets }.
-//   - Unreachable.
-//   - Invoke / CallBr / Resume / CatchSwitch / CleanupRet / CatchRet —
-//     the exception/funclet terminators (LangRef "Exception Handling").
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: the terminator IS the CFG-edge authority
-//      every control-flow / dominance / effect consumer reads; shared,
-//      not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: disjoint shapes (RetVoid nullary;
-//      Switch { value, default, cases }; ConditionalBr { cond, t, f }).
-//      A flat record makes "Unreachable with switch cases"
-//      representable — the inverse of P2.
-//   3. Algebraic form — N/A: a terminator is a CFG-edge constructor, not
-//      an algebra operation on a carrier; no richer std/ source.
-//   4. Dimensional — FAILS: a block has EXACTLY ONE terminator kind;
-//      genuine alternatives, never simultaneous coordinates.
-//   5. Parameterized family — FAILS: the terminators are structurally
-//      heterogeneous (0–N successor edges, distinct operand roles); NOT
-//      one `F<X>` over a declared set.
-// Terminal: the closed LangRef terminator set; the CFG edges fall out of
-// THIS structure (see `block_successors`), dominance is a lens read over
-// it — never a stored field.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type Terminator
   = RetVoid
   | RetValue { value: LlvmValue }
@@ -1316,59 +407,12 @@ type Terminator
   | CatchRet { catch_pad: LlvmValue, successor: Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// UnwindDest — the unwind destination of an EH terminator. LangRef
-// `catchswitch`/`cleanupret` each allow EITHER `unwind label <bb>` OR
-// `unwind to caller` — two genuinely distinct legal forms. The earlier
-// `unwind_target: Symbol` forced a block label, making the LangRef-legal
-// `unwind to caller` UNREPRESENTABLE (a P1/M3 spec-narrowing: valid
-// source programs not modelable). Fixed as a
-// typed two-case sum, the SAME alternative-forms-as-distinct-shapes
-// discipline as `RetVoid`-vs-`RetValue` / `UnconditionalBr`-vs-
-// `ConditionalBr` (a typed case, NEVER an in-band sentinel label). Only
-// `catchswitch`/`cleanupret` carry it — `invoke`/`catchret` unwind/jump
-// is ALWAYS a label per LangRef (verified — no inverse over-application).
-// (The companion `catchswitch within none` form is NOT a narrowing: the
-// parent operand is a token VALUE in LLVM's own model — `within none`
-// is faithfully `parent_pad = ConstantOperand { constant: NoneToken }`,
-// `within %pad` is the pad's token result; both representable.)
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the CFG/unwind
-//      consumer (`block_successors`, the effect lens); a shared
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the reduction is a nullable/sentinel
-//      label (`unwind_target` = "" meaning to-caller) — exactly the
-//      in-band-absence anti-pattern INVARIANTS P2 + diagnostic.dag
-//      `Correction` forbid; the typed two-case is faithful.
-//   3. Algebraic form — N/A: a LangRef EH control-flow form, not an
-//      algebra carrier; no richer std/ source.
-//   4. Dimensional — FAILS: an unwind is EXACTLY to-caller XOR
-//      to-a-label; never both — alternatives, not coordinates.
-//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs label-carrying), not `F<X>` over a declared set.
-// Terminal: the closed LangRef unwind-destination partition; the typed
-// sum makes `unwind to caller` representable WITHOUT a sentinel label
-// (P1/M3 faithful — neither over- nor under-constrained).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type UnwindDest
   = UnwindToCaller
   | UnwindToLabel { target: Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// BasicBlock — a label + the SSA-mandated structure: phi nodes FIRST,
-// then ordinary instructions, then EXACTLY ONE terminator. Record (Conj),
-// no ledger. The phi-before-body LangRef rule is STRUCTURAL here (a
-// separate `phis` field of `PhiNode`) — "a phi after a non-phi
-// instruction" is unrepresentable, not a checker rule (P2 / modeling-
-// discipline.md §2, the std/node.dag EdgeLabel no-stored-index
-// discipline applied to block structure). Block textual order in a
-// function is NOT semantic (the CFG defines order); the entry block is
-// the explicit required `FunctionBody.Defined.entry` field — a named
-// distinguished block, NOT first-of-a-list by convention (so an
-// entry-less definition is structurally unrepresentable, P2); no
-// `is_entry` flag.
 type BasicBlock {
   label: Symbol
   phis: List<PhiNode>
@@ -1377,21 +421,7 @@ type BasicBlock {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Linkage — symbol linkage (LangRef "Linkage Types"). Closed set.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: linkage is read uniformly by emit/the
-//      symbol-resolution model; not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: reduces to an opaque keyword string —
-//      the M4 stringly anti-pattern for a closed named LangRef set.
-//   3. Algebraic form — N/A: a leaf LangRef linkage taxonomy; no richer
-//      std/ source.
-//   4. Dimensional — FAILS: a symbol has EXACTLY ONE linkage.
-//   5. Parameterized family — FAILS: the linkages are heterogeneous
-//      keyword spellings, not `F<X>` over a declared set.
-// Terminal: the closed LangRef linkage set.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type Linkage
   = LinkagePrivate
   | LinkageInternal
@@ -1406,59 +436,18 @@ type Linkage
   | LinkageExternalWeak
 
 
-// ─────────────────────────────────────────────────────────────────────
-// FunctionBody — a function is a declaration (no blocks) OR a definition
-// with AT LEAST ONE block whose first is the entry. Modeled as a sum,
-// and the definition arm is `entry: BasicBlock, rest: List<BasicBlock>`
-// — NOT `blocks: List<BasicBlock>`. The split makes the LangRef
-// "a definition has ≥1 block, control enters the first" invariant
-// STRUCTURAL: "a definition with no entry block" (an empty block list)
-// is now UNREPRESENTABLE (P2 / modeling-discipline.md §2 — illegal
-// states unrepresentable), not merely asserted in prose. `entry` is the
-// distinguished entry block (no `is_entry` flag, no first-of-list
-// convention — the entry IS a named required field); `rest` is the
-// remaining blocks, whose textual order is not semantic (the CFG defines
-// order). This is the same illegal-state-unrepresentable discipline as
-// std/node.dag's EdgeLabel no-stored-index and diagnostic.dag's
-// `Correction` (a typed shape, never a bare absence / empty-list-by-
-// convention). (A plain `List<BasicBlock>` would admit the empty list —
-// an entry-less definition — contradicting this note; the entry/rest
-// split excludes it structurally.)
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every function consumer (emit, the call
-//      graph, cost) branches declaration-vs-definition uniformly.
-//   2. Variant-is-data — FAILS: the "data" reduction is an empty-vs-
-//      nonempty `List<BasicBlock>` standing in for the distinction —
-//      exactly the convention-enforced absence INVARIANTS P2 and the
-//      Correction precedent forbid (and which the `entry`/`rest` split
-//      now structurally excludes).
-//   3. Algebraic form — N/A: not an algebra carrier.
-//   4. Dimensional — FAILS: a function is declared XOR defined, never
-//      both.
-//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs entry+rest-carrying), not `F<X>` over a declared set.
-// Terminal: the declared-vs-defined partition; the typed-sum with an
-// explicit required `entry` is the dissolved form (an empty-list
-// convention would be the smell — now structurally impossible).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FunctionBody
   = Declared
   | Defined { entry: BasicBlock, rest: List<BasicBlock> }
 
 
-// FunctionParameter — one formal parameter: its type and SSA name.
-// Record, no ledger. (ABI-affecting parameter attributes are a declared
-// C5 boundary — see `FidelityDisposition`.)
 type FunctionParameter {
   ty: LlvmType
   name: Symbol
 }
 
 
-// LlvmFunction — a module-level function (LangRef "Functions"). Record,
-// no ledger. `name` is the global symbol; the body sum carries the
-// declaration/definition distinction structurally.
 type LlvmFunction {
   name: Symbol
   result_type: LlvmType
@@ -1469,47 +458,18 @@ type LlvmFunction {
 }
 
 
-// GlobalMutability — `@g = global …` (mutable) vs `@g = constant …`
-// (read-only). A genuine 2-valued LangRef distinction; a named sum, not
-// a Bool (M4 — closed named distinction is an enum, not a boolean proxy).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by emit / the
-//      const-propagation effect read; not scattered.
-//   2. Variant-is-data — FAILS: reduces only to a Bool — the M4
-//      boolean-proxy for a closed named LangRef keyword.
-//   3. Algebraic form — N/A: a leaf LangRef spelling distinction.
-//   4. Dimensional — FAILS: a global is mutable XOR constant.
-//   5. Parameterized family — FAILS: two nullary spellings, not `F<X>`.
-// Terminal: the closed mutable-vs-constant LangRef distinction.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type GlobalMutability
   = MutableGlobal
   | ConstantGlobal
 
 
-// GlobalInitializer — a global is either externally-initialized (a
-// declaration) or carries a constant initializer. Sum, not optional
-// (the Correction / FunctionBody discipline).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by emit / the linker
-//      model; not scattered.
-//   2. Variant-is-data — FAILS: the reduction is `Option<LlvmConstant>`
-//      — the bare-absence-by-convention shape P2 / Correction forbid.
-//   3. Algebraic form — N/A: not an algebra carrier.
-//   4. Dimensional — FAILS: a global is external XOR initialized.
-//   5. Parameterized family — FAILS: two heterogeneous shapes (nullary
-//      vs constant-carrying), not `F<X>` over a declared set.
-// Terminal: the external-vs-initialized partition; typed-sum dissolved.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type GlobalInitializer
   = ExternalInit
   | InitializedWith { constant: LlvmConstant }
 
 
-// LlvmGlobal — a module-level global variable (LangRef "Global
-// Variables"). Record, no ledger.
 type LlvmGlobal {
   name: Symbol
   value_type: LlvmType
@@ -1520,28 +480,12 @@ type LlvmGlobal {
 }
 
 
-// NamedStructDef — a module-level identified struct (`%T = type { … }`).
-// Record, no ledger. Recursion through `%T` is the `NamedType { name }`
-// reference resolved here through the module namespace (node.dag A1
-// name-reference recursion — NOT a self-referential type definition).
 type NamedStructDef {
   name: Symbol
   definition: LlvmType
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// LlvmModule — the translation unit (LangRef "Module Structure"). Record,
-// no ledger.
-//
-// `data_layout` and `target_triple` are opaque `Symbol`s (K-1): they are
-// target-configuration TOKENS the Node graph never branches on — their
-// internal grammar is a target concern, not IR semantics. They are a
-// DECLARED-NORMALIZED C5 boundary (preserved verbatim through
-// emit∘ingest as an opaque token, never re-spelled or guessed) — see
-// `FidelityDisposition`. Modeling the datalayout sub-grammar would be
-// out-of-scope spec inflation (M3 — model the IR, not every target
-// triple); declaring it opaque is the honest boundary, not a fabrication.
 type LlvmModule {
   data_layout: Symbol
   target_triple: Symbol
@@ -1551,23 +495,6 @@ type LlvmModule {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SSA / CFG / dominance — STRUCTURAL, not stored (the B2-OMNI probe made
-// concrete). `block_successors` derives a block's CFG out-edges purely
-// from its terminator — proving the CFG is plain Node structure, not a
-// separate stored graph (INVARIANTS P2 single-authority). Dominance
-// ("every definition dominates all its uses", the SSA well-formedness
-// law) is then a LENS read over this derived CFG + the def-site Node
-// graph — the same shape as the complexity/effect lenses (lens/*), never
-// a `dominates` field here (feedback_no_annotations: a stored dominator
-// edge would be a second authority for what the CFG already determines).
-// One self-recursion-free fold, terminating by structural list descent
-// (std/node.dag A2 implicit case).
-//
-// `unwind_successors` projects an `UnwindDest` to its CFG edge(s):
-// `unwind to caller` adds NO intra-function successor (control leaves
-// the function), `unwind label %bb` adds that one edge — the structural
-// reason `UnwindDest` is a typed sum, not a sentinel label.
 fn unwind_successors(d: UnwindDest) -> List<Symbol> {
   match d {
     UnwindToCaller => []
@@ -1596,30 +523,6 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// block_well_formed — a CHECKED structural invariant, resolved per the
-// operator-ratified directive **D3** (std/node.dag header, "operator
-// directive D3, 2026-05-15": a structural rule whose type-unrepresentable
-// form would require a core-type redesign is CHECK-enforced via a
-// well-formed predicate — "keep one shape; the illegal state is
-// CHECK-enforced, not type-unrepresentable" — NOT a shape redesign;
-// node.dag's own `node_well_formed` is exactly this pattern for the
-// edge-discipline rule).
-//
-// Applied here (NO `BasicBlock`/`Terminator` shape redesign — D3's
-// no-redesign call): LLVM 18 LangRef requires a `catchswitch` to be the
-// FIRST non-phi instruction in its block AND the block to contain no
-// other instructions. Since `CatchSwitch` IS the block's `terminator`,
-// that rule reduces to: a catchswitch-terminated block's `body` must be
-// EMPTY. Making this type-unrepresentable would require a per-terminator
-// `BasicBlock` shape (the core-type redesign D3 explicitly declines);
-// so — exactly as node.dag's D3 case — it is the checked structural
-// invariant consumers (parse / normalize) evaluate fail-closed
-// (INVARIANTS P3), never a silently-representable illegal state by
-// convention. `BasicBlock` is NOT self-recursive (a block contains no
-// blocks), so the faithful analog of node.dag's whole-tree
-// `node_well_formed` is a single pure total LOCAL predicate (the
-// `node_locally_well_formed` shape) — not artificial recursion.
 fn terminator_is_catchswitch(t: Terminator) -> Bool {
   match t {
     CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => true
@@ -1636,121 +539,14 @@ fn block_well_formed(b: BasicBlock) -> Bool {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// FidelityDisposition — the C5-fidelity model (DECISIONS C5-fidelity;
-// T-4 authoring contract: "declare every surface feature's disposition").
-// LLVM IR has negligible cosmetic surface, so F is essentially all-
-// structural. The three dispositions are the exhaustive C5 partition;
-// this mirrors std/diagnostic.dag `NoCorrectionReason`'s shape (a closed
-// epistemic-partition sum). No Diagnostic / Result is referenced — the
-// disposition is DATA the generic walker reads to know F; producing the
-// fail-closed Diagnostic off-F is the walker's obligation, not this
-// declarative model's (modeling notes: the open Result-carrier STOP does
-// not touch a declarative LanguageModel).
-//
-//   - Modeled — ∈ F: Node-bearing, round-trips both directions.
-//     Everything structural above (types, values, constants,
-//     instructions, terminators, blocks, functions, globals, module
-//     skeleton, atomic orderings, linkage).
-//   - DeclaredNormalized — deliberately NOT in F; `emit∘ingest`
-//     canonicalizes it, a DECLARED reviewable loss, never silent:
-//       * SSA value spellings (`%1` vs `%x`) — the `result: Symbol`
-//         def-site name and its `LocalRef` uses are K-1-opaque, so the
-//         spelling is α-equivalent (the SAME rename-invariance
-//         node.dag's content-hash fold already has — identity is the
-//         structural one-def-site-per-name fact, the spelling
-//         normalizes).
-//       * non-entry basic-block textual order — the CFG defines order.
-//       * comments (`;`), blank lines, horizontal whitespace.
-//       * `data_layout` / `target_triple` opaque token (preserved
-//         verbatim, not re-spelled — modeling notes / LlvmModule).
-//       * purely-advisory metadata and non-semantic attributes
-//         (`!dbg` debug info, optimization hints) — dropped by declared
-//         choice; an ingest that needs them is a re-scope, not a guess.
-//   - FailClosed — encountered but neither modeled nor declared-
-//     normalizable ⇒ the walker emits a Diagnostic, NEVER a fabricated
-//     parse (no-engine; the down-stack analog of the disassembly
-//     fail-closed boundary):
-//       * target-specific inline `asm` with constraint strings whose
-//         semantics are not modeled.
-//       * a SEMANTIC attribute that changes ABI/codegen meaning and is
-//         not modeled (e.g. an unmodeled `byval`/`sret`/`align` whose
-//         omission would silently change behavior) — fail-closed, never
-//         dropped-as-if-advisory.
-//       * IR that fails structural well-formedness (a phi after a non-
-//         phi; >1 terminator; a use with no dominating def).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: the disposition is consumed uniformly by
-//      the generic ingest/emit walker to know F; it is the shared C5
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the only "data" reduction is a free
-//      string describing the loss — the opaque-string no-engine smell;
-//      the closed three-way partition is the faithful form. (The
-//      `feature: FidelityFeature` payloads are a CLOSED enum, NOT an
-//      opaque Symbol or readable string — so the per-feature disposition
-//      is machine-consumable substrate DATA via `feature_disposition`,
-//      not prose; P2/P3 — the generic walker reads the projection.)
-//   3. Algebraic form — N/A: this is the C5 epistemic-boundary
-//      partition, not an algebra carrier; no richer std/ source — it IS
-//      the lossless-core boundary definition.
-//   4. Dimensional — FAILS: a surface feature has EXACTLY ONE
-//      disposition; modeled / declared-lost / fail-closed are mutually
-//      exclusive — alternatives, never simultaneous coordinates.
-//   5. Parameterized family — FAILS: `Modeled` is nullary while the
-//      other two carry a feature name-reference; heterogeneous, NOT one
-//      `F<X>` over a declared set (not a Practice-7 projection).
-// Terminal: the exhaustive, irreducible C5-fidelity partition — every
-// surface feature answers structurally which side of F it is on.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FidelityDisposition
   = Modeled
   | DeclaredNormalized { feature: FidelityFeature }
   | FailClosed { feature: FidelityFeature }
 
 
-// FidelityFeature — the CLOSED set of C5-relevant LLVM-IR surface
-// feature classes the model declares a disposition for (the prose
-// bullets above, promoted to substrate so the generic ingest/emit
-// walker reads DATA, not comments — P2/P3, a machine-consumable
-// boundary, no opaque-Symbol/prose-only smell).
-// Closed, and EXHAUSTIVE over the FailClosed boundaries the rest of the
-// file routes here: the "valid-but-unmodeled LangRef X" surfaces that
-// `LlvmType` / `LlvmInstruction` / `ConstExprOpcode` comments declare as
-// the explicit FailClosed boundary are FIRST-CLASS variants here —
-// `UnmodeledType` / `UnmodeledInstruction` / `UnmodeledConstExpr` —
-// alongside `UnmodeledSemanticAttribute` / `UnmodeledInlineAsm` /
-// `MalformedStructure`. So every "outside the modeled set ⇒ FailClosed"
-// cross-reference resolves to a concrete `FidelityFeature` the
-// `feature_disposition` projection maps — the generic walker reads a
-// machine-consumable disposition for those boundaries (P2/P3), not a
-// dangling prose route (a closed set is not enough unless it actually
-// ENUMERATES the boundary classes the model defers to it). Not Symbol-keyed: a disposition TABLE/projection is
-// authored data, and K-1 forbids minting a `Symbol` VALUE in a data
-// literal — so a Symbol-keyed table is un-authorable (distinct from a
-// declaration-class `result: Symbol` FIELD, which is a name-reference,
-// not a mint — that is the SSA def-site idiom and is fine). A closed
-// enum keyed by the feature CLASS is the faithful, authorable carrier.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: read uniformly by the generic walker via
-//      `feature_disposition` to know F; a shared C5 classifier.
-//   2. Variant-is-data — FAILS: the reduction is a free string naming
-//      the feature — the opaque-string no-engine smell; the closed
-//      enumerated feature-class set is the faithful form.
-//   3. Algebraic form — N/A: a C5 boundary taxonomy, not an algebra
-//      carrier; no richer std/ source.
-//   4. Dimensional — FAILS: the walker is handling EXACTLY ONE feature
-//      class at a decision point; alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the classes are heterogeneous
-//      (spelling / order / trivia / token / metadata / asm / attribute /
-//      unmodeled-type / unmodeled-instruction / unmodeled-constexpr /
-//      malformed / structural-core), NOT one `F<X>` over a declared set.
-// Terminal: the closed C5 surface-feature-class set, EXHAUSTIVE over
-// every FailClosed boundary the model routes here; its disposition is
-// the total `feature_disposition` projection (single authority, M7).
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FidelityFeature
   = StructuralCore
   | SsaValueSpelling
@@ -1766,12 +562,6 @@ type FidelityFeature
   | MalformedStructure
 
 
-// feature_disposition — the machine-consumable C5 boundary the generic
-// ingest/emit walker reads (substrate DATA, not prose; INVARIANTS P2
-// single-authority / P3 fail-closed). A total
-// projection over the closed `FidelityFeature` set — adding a feature
-// class is cost-of-change 1 here (Practice 7 / M7), never a scattered
-// per-consumer comment.
 fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
   match f {
     StructuralCore => Modeled
@@ -1790,72 +580,7 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Inhabitance — OWNED ELSEWHERE (P2 single-authority); DEFERRED, not
-// declared here. (The ptx.dag / spice.dag deferral shape — a probe
-// CONSUMES the canonical shape, it does not AUTHOR it.)
-//
-// This file declares ONLY the LLVM type/value/instruction VOCABULARY
-// (the declaration-class grammar above). It does NOT declare, assert, or
-// even restate which algebra an LLVM scalar grounds in. WHY-here vs
-// where-owned:
-//   - WHICH algebra a scalar inhabits is owned by the std/ scalar wave
-//     (std/integer.dag, std/float.dag, std/logic.dag — T-3), by P2
-//     single-authority: a concrete type declares its OWN inhabitance in
-//     its OWN concept file (std/algebra.dag header SCOPE; node.dag T-1
-//     disposition). An extdeps language file restating it — even as
-//     prose — is a SECOND authority that forecloses that owner (the
-//     exact P2 violation).
-//   - The instance-value FORM (per-target `<Algebra><Concrete>` vs
-//     abstract; the fn-body convention for spec-primitive ops) is the
-//     OPEN, OPERATOR-PENDING **D2 STOP**: TASKS.md T-4 "i32 →
-//     OrderedRing" DIRECTLY CONTRADICTS INVARIANTS P1 (~:42 — "operator
-//     dispatch consumes abstract algebra facts, NOT a parallel
-//     `OrderedRing<Word*>` substrate per width class"; R3 gate #19);
-//     D2b's fn-body form (name-ref Atom / relaxed / new C1 carrier) is
-//     one of three resolutions a worker may NOT pick.
-//
-// Per-file `data llvm_*: <Algebra><LlvmValue> = …` inhabitance
-// instances are deliberately ABSENT: they ARE the D2-gated surface
-// (P2 + INVARIANTS P1:42), and an operator-pending substrate-design
-// decision is a HOLD/defer, never a 🟡-track-and-ship (🟡 is "richer
-// source exists, substrate not ready", NOT "ship past an active
-// escalation"). The no-6th-behavior probe result stands on the
-// declarative model ALONE and does not need them.
-//
-// When D2 lands AND the std/ scalar owner declares the grounding, the
-// connection (per-target SPELLING of the abstract algebra, not a
-// re-inhabitance) is added at the ratified owner per the ratified form —
-// CONSUMED here, never authored here. Empirical datum handed to the D2b
-// decision (NOT a green-light): the deep nested-constructor + lambda-
-// field `data`-instance form parses 0-diag under the frozen v2 seed
-// (verified while probing) — so D2b is a FORM-authority decision, not a
-// v2-admissibility blocker. Faithful grounding OBSERVATIONS for that
-// owner (LLVM `iN` wraps ⇒ a finite ring, NOT order-compatible — the
-// Float≠Field analog; `fcmp` NaN-unordered; pointers have no total
-// numeric algebra) are carried to D2 / the std/ owner, NOT asserted as
-// this file's authority.
-//
-// Scaffold "Owns: Inhabitance" is satisfied by this principled
-// deferral-to-owner — NOT by improvising the D2-contested instance
-// ahead of ratification (that improvisation IS the v3 cross-layer-drift
-// failure mode v4 exists to kill — the STOP is the contribution).
 
-// ─────────────────────────────────────────────────────────────────────
-// Cost realization — per-instruction realization cost on an LLVM target
-// (scaffold "Owns"). SINGLE AUTHORITY (M7 / Practice 7): a fn projecting
-// the instruction structure to a kernel-ambient `Int` cost weight. It is
-// NOT a parallel per-opcode table and NOT re-listed anywhere — the U1
-// cost lens (lens/cost.dag, T-12; the homomorphism-with-cost spine
-// THESIS:185-186) COMPOSES these per-instruction weights into a
-// SymbolicCost; this file owns only the leaf realization datum the lens
-// reads (the rust.dag-scaffold "cost realization" discipline). Weights
-// are target-microarchitecture-relative latencies grounded in the LLVM
-// `TargetTransformInfo` cost convention (the LangRef-adjacent cost
-// authority): a memory/atomic op dominates an arithmetic op dominates a
-// bitcast (a no-op move). The numbers are the conventional relative
-// scale, not a fabricated precise cycle count (honest: the lens carries
-// the symbolic composition; this is the per-leaf ground weight).
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
     Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
