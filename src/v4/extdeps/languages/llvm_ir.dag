@@ -579,10 +579,15 @@ type BinaryOpcode
 // source EXISTS:
 //   Richer source: a two-axis lattice {source-domain, target-domain} ×
 //     {sign-extend, zero-extend, truncate, reinterpret, fp-narrow,
-//     fp-widen, fp↔int-saturating, address-space-cast} over std/integer
-//     .dag, std/float.dag, std/ptr.dag domains. The 13 LangRef cast
-//     opcodes are the discriminant-projection of (src-domain,
-//     dst-domain, kind) onto LangRef's enumerated names.
+//     fp-widen, fp↔int-ub-on-overflow, address-space-cast} over std/
+//     integer.dag, std/float.dag, std/ptr.dag domains. (LangRef
+//     fptoui/fptosi/uitofp/sitofp are UB-on-out-of-range per
+//     "Conversion Operations"; the saturating fp↔int forms are the
+//     `llvm.fptoui.sat` / `llvm.fptosi.sat` intrinsics — distinct
+//     declarations modeled outside this opcode set, never reachable via
+//     this enum.) The 13 LangRef cast opcodes are the discriminant-
+//     projection of (src-domain, dst-domain, kind) onto LangRef's
+//     enumerated names.
 //   Trigger: first consumer of conversion MEANING (cost model /
 //     numeric-precision lens / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the (src-domain,
@@ -1021,9 +1026,10 @@ type AtomicRmwOrdering
 // "grounded THERE"). Under the post-#3200 consumer-INDEPENDENT rule
 // this is 🟡 YELLOW because a namable richer source EXISTS:
 //   Richer source: std/algebra.dag carriers — Semigroup/Monoid (xchg
-//     as the last-write identity-on-second-arg), Semiring (add/sub),
-//     BooleanRing/lattice (and/or/xor/nand), JoinSemilattice and
-//     MeetSemilattice (max/min, signed and unsigned variants),
+//     as the last-write identity-on-second-arg), Semiring (add — `iN`
+//     additive monoid), Ring (sub — needs the additive inverse Semiring
+//     lacks), BooleanRing/lattice (and/or/xor/nand), JoinSemilattice
+//     and MeetSemilattice (max/min, signed and unsigned variants),
 //     ApproximateField (fadd/fsub/fmax/fmin via std/float.dag), and
 //     wrap-counter (uinc_wrap/udec_wrap). Each LangRef sub-op names
 //     ONE algebra operation on the operand-type's std/ inhabitance.
