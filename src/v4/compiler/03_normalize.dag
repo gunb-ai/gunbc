@@ -17,11 +17,9 @@ import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_type
 }
 import v4.std.diagnostic {
-  AmbiguousIntent,
   Diagnostic,
   NodeLocus,
   Outcome,
-  PortLocus,
   UserInputBoundary
 }
 import v4.std.node {
@@ -39,7 +37,6 @@ type NormalizedTree = Node
 
 
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
-data normalize_port_surface_sugar: Symbol = normalize_port_surface_sugar
 
 
 type SurfaceSugarKind
@@ -226,8 +223,8 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
         Rejected {
           diagnostic: Diagnostic {
             reason: normalize_reason_malformed_sugar,
-            at: PortLocus { port: normalize_port_surface_sugar },
-            correction: Unavailable { reason: AmbiguousIntent }
+            at: NodeLocus { node: normalized },
+            correction: Unavailable { reason: UserInputBoundary }
           }
         }
       }
