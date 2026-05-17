@@ -13,16 +13,7 @@
 
 module v4.test.claim.manual.nat_law_anchors
 
-import v4.std.verification {
-  TestClaim,
-  Compiles,
-  Equals,
-  TestClassification,
-  Tier1,
-  Tier3,
-  Unit,
-  Integration,
-}
+import v4.std.verification { TestClaim, Compiles, Equals, TestClassification, Tier1, Tier3, Unit, Integration }
 import v4.std.diagnostic { Produced }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
