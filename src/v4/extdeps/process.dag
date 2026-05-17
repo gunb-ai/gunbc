@@ -15,6 +15,7 @@ import v4.std.machine { Byte }
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
+// scaffold: POSIX numeric refinements; trigger T-25-core/T-30.
 type ProcessId = Int
 type ExitCode = Int
 type SignalNum = Int
@@ -22,6 +23,7 @@ type SignalNum = Int
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 // tag: POSIX exec byte strings.
+// scaffold: POSIX exec byte refinements; trigger T-25-core/T-30.
 type PosixArgument {
   bytes: PosixByteString
 }
