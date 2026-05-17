@@ -98,14 +98,6 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
 }
 
 
-fn first_child(children: List<Edge>) -> Node? {
-  match children |> first {
-    Some { value: head } => Some { value: head.target }
-    None => None
-  }
-}
-
-
 fn exactly_one_child(children: List<Edge>) -> Bool {
   count(children) == 1
 }
@@ -188,9 +180,13 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
       }
     TypeSugar =>
       if exactly_one_child(children: children) {
-        match first_child(children: children) {
-          Some { value: lowered_type } =>
-            Produced { value: lowered_type }
+        match children |> first {
+          Some { value: e0 } =>
+            if edge_is_positional(e: e0) {
+              Produced { value: e0.target }
+            } else {
+              Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
+            }
           None =>
             Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
         }
