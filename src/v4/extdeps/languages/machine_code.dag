@@ -26,6 +26,7 @@ import v4.std.node { Symbol }
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type IsaFamily
   = X86_64Isa
   | Aarch64Isa
@@ -40,12 +41,14 @@ type Isa {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type ByteOrder
   = LittleEndian
   | BigEndian
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type InstructionLength
   = FixedLength { width: InstructionWord }
   | VariableLength { max_bytes: InstructionByteLimitRef }
@@ -66,6 +69,7 @@ type OperandFieldWidthRef {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟡 coproduct dissolution — DECISIONS.md P4-3208
 type InstructionWord
   = Instr16
   | Instr32
@@ -74,6 +78,7 @@ type InstructionWord
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type RegisterClass
   = GeneralPurposeRegister
   | FloatingPointRegister
@@ -89,6 +94,7 @@ type RegisterRef {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type IndexScale
   = Scale1
   | Scale2
@@ -97,6 +103,7 @@ type IndexScale
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type AddressingMode
   = AbsoluteAddress { displacement: MachineI64 }
   | RegisterIndirect { base: RegisterRef }
@@ -106,6 +113,7 @@ type AddressingMode
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
@@ -139,6 +147,7 @@ type MemoryOperandSlotRef {
 
 
 // Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type ImmediateOperandTarget
   = LiteralImmediate
   | PcRelativeImmediate
@@ -153,6 +162,7 @@ type ImmediateOperandConstraint {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MemoryOperandConstraint
   = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
   | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
@@ -170,6 +180,7 @@ type MemoryOperandConstraint
 
 
 // Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type InstructionOperandSlot
   = RegisterInstructionSlot {
       name: RegisterOperandSlotRef,
@@ -191,6 +202,7 @@ type InstructionProduction {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type OperandBinding
   = RegisterOperandBinding {
       slot: RegisterOperandSlotRef,
@@ -213,6 +225,7 @@ type DecodedInstruction {
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -223,6 +236,7 @@ type MachineFidelityFeature
   | AmbiguousDecode
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineFidelityDisposition
   = MachineModeled
   | MachineDeclaredNormalized { feature: MachineFidelityFeature }
@@ -243,6 +257,7 @@ fn machine_feature_disposition(f: MachineFidelityFeature) -> MachineFidelityDisp
 
 
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
@@ -255,6 +270,7 @@ type MachineIntegerOperationSemantics<IRCarrier> {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type FlagWriteDisposition
   = DoesNotWriteFlags
   | WritesArchitecturalFlags
@@ -273,5 +289,4 @@ type MachineU16 = UInt16
 type MachineU32 = UInt32
 type MachineU64 = UInt64
 type MachineU128 = UInt128
-
 

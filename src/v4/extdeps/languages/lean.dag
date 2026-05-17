@@ -23,6 +23,7 @@ import v4.std.node { Symbol }
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanDeclarationKind
   = LeanDef
   | LeanTheorem
@@ -39,6 +40,7 @@ type LeanName {
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/The-Type-System/Universes/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanLevel
   = LeanLevelZero
   | LeanLevelSucc { predecessor: LeanLevelRef }
@@ -59,6 +61,7 @@ type LeanLevelNode {
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Terms/Functions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanBinderInfo
   = ExplicitBinder
   | ImplicitBinder
@@ -85,6 +88,7 @@ type LeanTermNode {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanTermForm
   = LeanSort { level: LeanLevelRef }
   | LeanConst { name: LeanName, levels: List<LeanLevelRef> }
@@ -111,6 +115,7 @@ type LeanTerminationMeasure {
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanTerminationBy
   = LeanStructuralTermination { decreasing_parameter: LeanName }
   | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
@@ -121,12 +126,14 @@ type LeanDecreasingProof {
 }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanTerminationClause
   = LeanTerminationByClause { termination: LeanTerminationBy }
   | LeanDecreasingBy { proof: LeanDecreasingProof }
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanDefinitionTermination
   = LeanNoExplicitTermination
   | LeanTerminationByOnly { termination: LeanTerminationBy }
@@ -137,6 +144,7 @@ type LeanDefinitionTermination
     }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanProofArtifact
   = LeanTheoremProofArtifact {
       name: LeanName,
@@ -152,6 +160,7 @@ type LeanProofArtifact
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanFidelityFeature
   = LeanKernelTerm
   | LeanPrettyNameSpelling
@@ -162,6 +171,7 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 
+// 🟢 coproduct dissolution — DECISIONS.md P4-3208
 type LeanFidelityDisposition
   = LeanModeled
   | LeanDeclaredNormalized { feature: LeanFidelityFeature }
@@ -198,5 +208,4 @@ type LeanUInt8 = UInt8
 type LeanUInt16 = UInt16
 type LeanUInt32 = UInt32
 type LeanUInt64 = UInt64
-
 
