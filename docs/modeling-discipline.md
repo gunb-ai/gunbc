@@ -159,13 +159,19 @@ terminal:
    *shape*, not parameterized mechanical repetition; that is exactly why
    this pattern exists.
 
-**What to check:** Any new Rust enum with N ≥ 2 variants must be
-classified (🟢/🟡/🔴), with a ledger entry if GREEN or a named trigger
-if YELLOW. Per Practice 9 the classification, the ledger, and the
-trigger live in `src/v4/DECISIONS.md` — *not* an in-file `Practice 4:
-...` block; the `.dag` file carries at most the one-line
-`// coproduct dissolution` concept tag. An enum with no `DECISIONS.md`
-classification entry is unfinished modeling and blocks review.
+**What to check:** Any new coproduct with N ≥ 2 variants (a Rust enum,
+or a `.dag` `type X = A | B | …`) must be classified (🟢/🟡/🔴), with a
+ledger entry if GREEN or a named trigger if YELLOW. Per Practice 9 the
+classification *ledger* and the *trigger* live in `src/v4/DECISIONS.md`
+— *not* an in-file `Practice 4: ...` block. **But the coproduct itself
+keeps a required one-line classification tag carrying the 🟢/🟡/🔴
+emoji** (operator directive 2026-05-17) — e.g. `// 🟡 coproduct
+dissolution — DECISIONS.md OS-1`. The emoji stays *on the coproduct* so
+a reader sees the classification at the type; the decision-making (the
+ledger, the dissolution patterns tried, the named trigger) lives in
+`DECISIONS.md`. A coproduct with no in-file 🟢/🟡/🔴 tag, or no
+`DECISIONS.md` classification entry, is unfinished modeling and blocks
+review.
 
 **The lookup smell (the consumer-trigger backstop).** A `match` over a
 foreign-label coproduct, written *inside a consumer* — a lens, a
@@ -419,12 +425,21 @@ four things — nothing else survives:
    `Status:` (one line). Nothing else: no `Brief:`, no `Seams:`, no
    `HEADER RECONCILE`, no `Deferred (N)` rationale, no multi-line block.
 3. **A per-carrier anchor** — at most one `// Anchor: <spec URL>` line.
-4. **A one-line concept tag** — at most one per type, and *only* where
-   the concept is genuinely non-obvious from the name + structure (e.g.
-   `// coproduct dissolution`), *or* a one-line cite to a `DECISIONS.md`
-   entry (e.g. `// coincides: <DECISIONS.md ref>` — the Practice-8
-   coincidence cite). Not a description of the type; not a
-   `Practice N: ...` rationale line, not a `see docs/X` pointer.
+4. **A one-line tag.** Two cases:
+   - **Required — coproduct classification tag.** Every coproduct (a
+     `type` with N ≥ 2 variants) carries a one-line tag with its
+     🟢/🟡/🔴 classification emoji (operator directive 2026-05-17), e.g.
+     `// 🟡 coproduct dissolution — DECISIONS.md OS-1`. The emoji stays
+     *on the coproduct*; the ledger / dissolution patterns / named
+     trigger live in `DECISIONS.md` (Practice 4). This is not optional —
+     a coproduct with no in-file 🟢/🟡/🔴 tag blocks review.
+   - **Optional — concept tag / cite.** For any type, at most one
+     further one-liner where genuinely useful: a concept tag where the
+     concept is non-obvious from name + structure, *or* a one-line cite
+     to a `DECISIONS.md` entry (e.g. `// coincides: <DECISIONS.md ref>`
+     — the Practice-8 coincidence cite).
+   Never a description of the type; never a `Practice N: ...` rationale
+   line; never a `see docs/X` pointer.
 
 Everything else is **removed**: per-type descriptions, all Practice-N
 rationale, all multi-line rationale, `Seams`/`Brief`/process-meta
@@ -458,13 +473,16 @@ classification + ledger/trigger (Practice 4), a coincidence-evidence
 proof (Practice 8). Practice 9 supersedes all of them, under one uniform
 rule:
 
-- the **record relocates** — an architectural decision, a classification,
-  a ledger, a discard justification, a coincidence proof all move to
+- the **record relocates** — an architectural decision, a classification
+  *ledger*, a discard justification, a coincidence proof all move to
   `src/v4/DECISIONS.md`; a process receipt (`HEADER RECONCILE`, "per
   directive X", a de-prose note) moves to the **commit message**;
-- the `.dag` file keeps **at most a one-line concept tag** (item 4) —
-  e.g. `// coproduct dissolution`, or a one-line cite
-  `// coincides: <DECISIONS.md ref>`.
+- the `.dag` file keeps the **item-4 one-line tag** — for a coproduct, a
+  *required* 🟢/🟡/🔴 classification tag (e.g.
+  `// 🟡 coproduct dissolution — DECISIONS.md OS-1`); optionally one
+  further concept tag or a one-line `// coincides: <DECISIONS.md ref>`
+  cite. The classification *emoji* stays on the coproduct; only the
+  *ledger / patterns-tried / named trigger* relocate.
 
 Wherever an earlier Practice says "record X in a comment," read it as
 "record X in `DECISIONS.md`; the file keeps the one-line tag." The same
@@ -509,9 +527,11 @@ For each relevant principle and its implementing practices:
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
-4. For new enums: verify the 🟢/🟡/🔴 classification has a `DECISIONS.md`
-   entry (Practice 9 — the classification + ledger/trigger live there,
-   not as an in-file annotation), and
+4. For new coproducts: verify the coproduct carries its required
+   one-line 🟢/🟡/🔴 classification tag *in the file* (Practice 4 /
+   Practice 9 item 4) **and** has a `DECISIONS.md` entry for the ledger /
+   patterns-tried / named trigger — the emoji on the type, the
+   decision-making in `DECISIONS.md`. Also verify
    that Practice 4 pattern 5 (parameterized family) was applied — an
    enum that is `F<X>` per variant is an enumerated copy, not a
    coproduct. Verify GREEN is consumer-**independent**: a namable richer
@@ -532,7 +552,8 @@ For each relevant principle and its implementing practices:
    total-lines`. A modeled file substantially above ~20% comment lines
    has not been de-prosed — the comments must reduce to the four allowed
    things (file-path line, terse four-line header, per-carrier anchor,
-   optional one-line concept tag). Process-meta prose in the file
+   one-line tag: the required 🟢/🟡/🔴 tag on each coproduct plus an
+   optional concept tag / `DECISIONS.md` cite). Process-meta prose in the file
    (`HEADER RECONCILE`, de-prose receipts) is itself a finding.
 8. For cross-stage boundaries: verify facts flow forward.
 9. Classify every finding as BLOCKING or NON-BLOCKING per the calibration
