@@ -1,18 +1,21 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, ReExecNode, ReExecFrontier, AffectedSetRead.
-// Consumes: List, Diff, Node, Path, Witness; B-4 resolve/infer facts; B-5 effect facts.
+// Owns: Dag, AffectedDimension, ReExecNode, ExclusionKey, ExclusionReceipt, ReExecFrontier, AffectedSetRead.
+// Consumes: Map, Diff, Node, Path, Symbol, Witness; B-4 resolve/infer facts; B-5 effect facts.
 // Status: scaffold; dissolves when T-21 read body, CI use, and .dag TestClaims land.
 
 module v4.lens.affected_set
 
 
-import v4.std.collection { List }
-import v4.std.node { Diff, Node, Path }
+import v4.std.collection { Map }
+import v4.std.node { Diff, Node, Path, Symbol }
 import v4.std.witness { Witness }
 
 
 type Dag = Node
+
+
+type AffectedDimension = Symbol
 
 
 type ReExecNode {
@@ -21,8 +24,22 @@ type ReExecNode {
 }
 
 
+type ExclusionKey {
+  at: Path
+  dimension: AffectedDimension
+}
+
+
+type ExclusionReceipt {
+  at: Path
+  dimension: AffectedDimension
+  node: Node
+}
+
+
 type ReExecFrontier {
-  rerun: List<ReExecNode>
+  rerun: Map<Path, ReExecNode>
+  excluded: Map<ExclusionKey, ExclusionReceipt>
 }
 
 
