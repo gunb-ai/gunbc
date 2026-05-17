@@ -497,8 +497,8 @@ milestones before anyone notices.
 ## For Reviewers
 
 A review applies the **five invariant principles from
-[INVARIANTS.md](../INVARIANTS.md)**. The seven modeling practices above
-are the concrete patterns that inform each check — consult them when a
+[INVARIANTS.md](../INVARIANTS.md)**. The nine modeling practices in this
+document are the concrete patterns that inform each check — consult them when a
 principle's abstract statement needs a recognizable failure shape.
 
 For each relevant principle and its implementing practices:
