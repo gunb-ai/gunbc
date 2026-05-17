@@ -532,19 +532,57 @@ type LlvmValue
 // inhabitance was "Owned ELSEWHERE" / not-yet-landed in pattern 3).
 // Under the post-#3200 consumer-INDEPENDENT rule this is 🟡 YELLOW
 // because a namable richer source EXISTS:
-//   Richer source: LANDED std/algebra.dag carriers (verified at
-//     std/algebra.dag:183/195/209/255/271/289) — Semiring<iN>
-//     (OpAdd / OpMul), Ring<iN> (OpSub — additive inverse), OrderedRing
-//     <iN> with signed/unsigned ordering inhabitances (OpSDiv/OpUDiv,
-//     OpSRem/OpURem — quotient/remainder over the corresponding signed
-//     or unsigned Ord), BooleanAlgebra<iN-bitwise> (OpAnd/OpOr/OpXor —
-//     bitwise across `iN` as a Boolean algebra over its bits), Lattice
-//     <iN-shift-action> (OpShl/OpLShr/OpAShr — bounded shift actions;
-//     OpAShr selects the signed-Ord arithmetic-shift inhabitance,
-//     OpLShr the unsigned), and ApproximateField<floatN> via
-//     std/float.dag:255 (OpFAdd/OpFSub/OpFMul/OpFDiv/OpFRem). Each
-//     LangRef opcode names ONE landed algebra operation on the
-//     operand-type's std/ inhabitance.
+//   Richer source: each LLVM binary opcode names ONE algebra operation
+//     on the operand-type's inhabitance. The richer source SPLITS into
+//     two distinct facts per M9/INVARIANTS P1 — (a) the landed std/
+//     algebra.dag STRUCTURE ONTOLOGY the opcode would inhabit, and
+//     (b) the per-(type, op) WITNESS, which may or may not yet be
+//     landed at the inhabitant. Conflating the two is the trap
+//     (briansrls + codex BLOCKING on prior 83afba81/69392ed80 caught
+//     this).
+//     (a) LANDED ONTOLOGY (the structure types exist on origin/main):
+//       - OpAdd / OpMul → Semiring (std/algebra.dag:185); landed data
+//         witness on origin/main = `int_ordered_ring: OrderedRing<Int>`
+//         (std/integer.dag:244, abstract Int — Semiring is its `add` /
+//         `mul` sub-structure). Per-iN-width witnesses are deferred to
+//         std/integer.dag D2 fan-out (no per-width data instance
+//         landed yet).
+//       - OpSub → Ring (std/algebra.dag:197); Ring witness rides the
+//         same `int_ordered_ring` (Ring is its base). Per-iN per-width
+//         witnesses deferred to D2 fan-out.
+//       - OpAnd / OpOr / OpXor → BooleanAlgebra (std/algebra.dag:291);
+//         landed data witness on origin/main = `bool_boolean_algebra:
+//         BooleanAlgebra<Bool>` (std/logic.dag:120). The per-iN
+//         bitwise inhabitance (iN-as-Bool^N) is deferred to the D2
+//         fan-out — no `data: BooleanAlgebra<iN>` witness landed.
+//       - OpFAdd / OpFSub / OpFMul / OpFDiv → ApproximateField
+//         (std/algebra.dag:257); machine-readable per-Float witness is
+//         EXPLICITLY WITHHELD on origin/main per std/float.dag
+//         DECISIONS.md D3 / INVARIANTS P1/P3 (std/float.dag:136 —
+//         "machine-readable `data …: ApproximateField<Float>` witness
+//         is NOT encoded in this file"). The ontology binding holds;
+//         the witness lands in a later std/float.dag phase.
+//     (b) NAMED-MISSING CARRIERS (no landed std/algebra.dag ontology
+//     match — future authority + trigger named here):
+//       - OpSDiv / OpUDiv / OpSRem / OpURem → integer
+//         Euclidean-division-with-rounding-mode authority. Ring has
+//         NO quotient/remainder operation (a Ring with zero-divisors
+//         like `Z/2^N` is not a Field; integer division is a separate
+//         algebraic structure, EuclideanDomain-like). MISSING future
+//         authority = std/integer.dag bounded-integer-division carrier
+//         (truncating / signed-vs-unsigned rounding mode discipline);
+//         trigger = first consumer of integer-division MEANING.
+//       - OpShl / OpLShr / OpAShr → bit-shift authority. NOT a Lattice
+//         operation (meet/join are bitwise AND/OR, not shifts). MISSING
+//         future authority = std/integer.dag bit-shift-action carrier
+//         (Monoid action of Nat on iN with width-bounded modular
+//         reduction; OpAShr selects sign-preserving, OpLShr unsigned-
+//         fill); trigger = first consumer of shift MEANING.
+//       - OpFRem → IEEE-754 float-remainder authority. ApproximateField
+//         has NO remainder operation. MISSING future authority = std/
+//         float.dag IEEE-754-remainder op (distinct from the
+//         ApproximateField surface); trigger = first consumer of
+//         float-remainder MEANING.
 //   Trigger: first consumer of binary-op MEANING (cost model / algebraic
 //     simplification / inhabitance dispatch — D2 pathway).
 //   Obligation: the first meaning-consumer owes the structural opcode →
