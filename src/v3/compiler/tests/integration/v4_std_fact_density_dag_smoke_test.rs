@@ -2,7 +2,7 @@
 //!
 //! Smoke `compile_to_dag` on `src/v4/std/fact_density.dag` — T-30 structural
 //! gate must lower+infer with **zero** module diagnostics (same bar as
-//! `v4_extdeps_typescript_dag_smoke_test`).
+//! `v4_extdeps_typescript_dag_smoke_test`). Rust mirror: `v4_hollow_alias_gate`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;

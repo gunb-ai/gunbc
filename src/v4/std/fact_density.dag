@@ -4,225 +4,54 @@
 //        DECISIONS.md D2 reversal, TASKS.md T-30).
 // Anchor: docs/modeling/grounding-worked-examples.md (carrier + meaning;
 //        grounding demonstrates decomposition into shared `std/` vocabulary
-//        as `Node`) + docs/modeling-discipline.md (Practice 6 — API-level /
-//        structural enforcement) + INVARIANTS P1.
+//        as `Node`) + docs/modeling-discipline.md (Practice 6 — structural
+//        enforcement) + INVARIANTS P1.
 //
 // Owns:
 //   - SourceSpecReadFact — obligates a non-empty **meaning** subtree
 //     (`body: Node`): machine-readable evidence that the model reads at
-//     least one fact from the source spec into the substrate (NOT the
-//     superseded mid-layer "axes bundle" prose — the bar is grounded
-//     structure per the canonical grounding doc).
-//   - hollow_alias_gate : Node -> Outcome<Bool> — pure whole-tree check;
-//     Produced { value: true } when no hollow pattern is found; Rejected
-//     with a typed Diagnostic on violation (fail-closed).
+//     least one fact from the source spec into the substrate.
 //
 // Consumes:
-//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Edge,
-//     EdgeLabel (Named / Positional), Connective patterns (Atom,
-//     Instantiation, Disj), all_edges_positional, count, fold
-//   - std/diagnostic.dag: Outcome, Produced, Rejected, Diagnostic, NodeLocus,
-//     Unavailable, UserInputBoundary
+//   - std/node.dag: Node (field payload only)
+//
+// Implementation split (M1(2.8) / lower.rs `reject_user_unparsed_scaffolds`):
+//   Block-bodied `fn` definitions that use `match` / folds over `Node` are
+//   not yet lowerable through `compile_to_dag` in the user declaration range.
+//   The mechanical **Node → Outcome** gate is mirrored in bootstrap Rust as
+//   `v3_compiler::v4_hollow_alias_gate` (kept in lockstep with this file's
+//   contract). When M1(2.8) lifts, the walker should land here as `.dag`
+//   bodies and the Rust mirror can shrink.
 //
 // Modeling — T-30 structural tier (prerequisite of T-4):
-//   **Hollow alias** (D2 anti-pattern, operator-reversed 2026-05-17): a
-//   carrier that asserts **identity** to a `std/` vocabulary type while
-//   contributing **zero** machine-readable grounding from the external
-//   spec — the carrier-isolation extreme (`type RustI32 = Int32` and its
-//   kind: identity spine only, no demonstrated decode / no `SourceSpecReadFact`).
-//   **Positive witness:** extdeps models MUST embed ≥1 `SourceSpecReadFact`
-//   subtree on each primitive bundle so the gate has structural material
-//   to count (Practice 3 — facts flow forward into the checkable graph).
-//   **Proxy (until T-8 normalize distinguishes alias sites):** an
-//   `Instantiation` with exactly two positional children, both bare type
-//   `Atom`s, and no `SourceSpecReadFact` anywhere under that node — the
-//   mechanical spine of bare Lang→Std identity with no spec read. Known
-//   ambiguity: innocent two-atom `Instantiation` shapes (e.g. some generic
-//   applications) share the spine; **embedding the witness** is the
-//   authoritative escape hatch (same doc-set rubric the gate mechanizes).
+//   **Hollow alias:** identity to a `std/` vocabulary type with **zero**
+//   machine-readable grounding from the external spec (carrier isolation).
+//   **Witness:** embed ≥1 `SourceSpecReadFact` subtree per primitive bundle.
+//   **Proxy:** `Instantiation` with exactly two positional bare-`Atom`
+//   children and no witness under that node — bare Lang→Std spine. Innocent
+//   two-atom instantiations share the shape; the witness is the escape hatch.
 //
 // Status: T-30 modeled (warm-dove-632).
-// Brief: see BRIEF_TEMPLATE.md; splitting this file requires explicit
-// operator ratification (substrate extension = stop signal).
+// Brief: see BRIEF_TEMPLATE.md; splitting this file requires explicit operator
+// ratification (substrate extension = stop signal).
 
 
 module v4.std.fact_density
 
 
-import v4.std.diagnostic {
-  Diagnostic,
-  NodeLocus,
-  Outcome,
-  Produced,
-  Rejected,
-  Unavailable,
-  UserInputBoundary
-}
-import v4.std.node {
-  all_edges_positional,
-  Atom,
-  ComputationNode,
-  Disj,
-  Edge,
-  Instantiation,
-  Named,
-  Node,
-  NodeKind,
-  Positional,
-  TypeNode,
-  count,
-  fold
-}
+import v4.std.node { Node }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// SourceSpecReadFact — obligates a non-empty `body: Node` (meaning decode).
-// Extdeps / format carriers embed this sum on each primitive bundle; the
-// hollow-alias gate counts its presence (grounding-worked-examples: carrier
-// + demonstrated meaning; Practice 3 facts-flow-forward).
+// SourceSpecReadFact — witness carrier: a non-empty `body: Node` decode.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: the witness is the shared positive
-//      evidence every extdeps bundle must carry; not per-consumer.
-//   2. Variant-is-data — FAILS: `SourceSpecRead` carries a `body: Node`.
-//   3. Algebraic form — N/A: witness tag is not an algebra carrier.
-//   4. Dimensional — FAILS: exactly one witness form at this layer.
-//   5. Parameterized family — FAILS: not a mechanical `F<X>` family.
-// Terminal: the irreducible one-variant sum introducing the witness tag.
+//   1. Fact placement — FAILS: shared witness for every extdeps bundle.
+//   2. Variant-is-data — FAILS: `SourceSpecRead` carries `body: Node`.
+//   3. Algebraic form — N/A.
+//   4. Dimensional — FAILS: single witness form at this layer.
+//   5. Parameterized family — FAILS.
+// Terminal: one-variant sum introducing the witness tag.
 type SourceSpecReadFact
   = SourceSpecRead { body: Node }
-
-
-// Symbol identities owned by this dimension (diagnostic.dag schema).
-data hollow_alias_gate_reason: Symbol = hollow_alias_gate_reason
-
-// The `SourceSpecRead` variant label on `SourceSpecReadFact`'s Disj spine.
-data source_spec_read_variant: Symbol = source_spec_read_variant
-
-
-// edge_target_is_type_atom — template or argument is a bare type Atom.
-fn edge_target_is_type_atom(e: Edge) -> Bool {
-  match e.target.kind {
-    TypeNode { connective: Atom { identity: _ } } => true
-    ComputationNode { behavior: _ } => false
-    TypeNode { connective: _ } => false
-  }
-}
-
-
-// positional_atom_targets_count — how many positional children resolve to
-// bare type Atoms (used with arity + discipline guards).
-fn positional_atom_targets_count(children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
-    match e.label {
-      Positional =>
-        if edge_target_is_type_atom(e: e) {
-          acc + 1
-        } else {
-          acc
-        }
-      Named { name: _ } => acc
-    }
-  })
-}
-
-
-// hollow_instantiation_two_positional_atoms — structural proxy for the D2
-// bare-alias spine: `Instantiation` with exactly two positional Atom targets.
-fn hollow_instantiation_two_positional_atoms(children: List<Edge>) -> Bool {
-  count(children) == 2
-    && all_edges_positional(children: children)
-    && positional_atom_targets_count(children: children) == 2
-}
-
-
-// disj_edge_is_source_spec_read_variant — Named edge tagged SourceSpecRead.
-fn disj_edge_is_source_spec_read_variant(e: Edge) -> Bool {
-  match e.label {
-    Named { name: nm } => nm == source_spec_read_variant
-    Positional => false
-  }
-}
-
-
-// node_roots_source_spec_read_fact — this node is a Disj carrying the
-// SourceSpecRead variant (the witness root).
-fn node_roots_source_spec_read_fact(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Disj } =>
-      fold(n.children, init: false, f: fn(acc, e) {
-        acc || disj_edge_is_source_spec_read_variant(e: e)
-      })
-    ComputationNode { behavior: _ } => false
-    TypeNode { connective: _ } => false
-  }
-}
-
-
-// subtree_contains_spec_read_fact — DFS for ≥1 witness root.
-fn subtree_contains_spec_read_fact(n: Node) -> Bool {
-  node_roots_source_spec_read_fact(n: n)
-    || fold(n.children, init: false, f: fn(acc, e) {
-         acc || subtree_contains_spec_read_fact(n: e.target)
-       })
-}
-
-
-// is_hollow_instantiation_candidate — proxy hollow spine + zero spec reads.
-fn is_hollow_instantiation_candidate(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Instantiation } =>
-      if hollow_instantiation_two_positional_atoms(children: n.children) {
-        if subtree_contains_spec_read_fact(n: n) {
-          false
-        } else {
-          true
-        }
-      } else {
-        false
-      }
-    ComputationNode { behavior: _ } => false
-    TypeNode { connective: _ } => false
-  }
-}
-
-
-// hollow_alias_violation_present — first hollow spine anywhere in the tree.
-fn hollow_alias_violation_present(n: Node) -> Bool {
-  is_hollow_instantiation_candidate(n: n)
-    || fold(n.children, init: false, f: fn(acc, e) {
-         acc || hollow_alias_violation_present(n: e.target)
-       })
-}
-
-
-// hollow_alias_gate_diagnostic — typed failure (locus = checked root).
-// Pinpointing the deepest Instantiation violator is a follow-on once T-8
-// exposes declaration-boundary metadata on `Node` walks; the gate stays
-// fail-closed on presence, not on best locus.
-fn hollow_alias_gate_diagnostic(root: Node) -> Diagnostic {
-  Diagnostic {
-    reason: hollow_alias_gate_reason,
-    at: NodeLocus {
-      node: root
-    },
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-// hollow_alias_gate — T-30 entry: pure Node -> Outcome<Bool> structural tier.
-// Produced { value: true } means no hollow Instantiation spine was found;
-// Rejected carries a Diagnostic at the checked root locus.
-fn hollow_alias_gate(n: Node) -> Outcome<Bool> {
-  if hollow_alias_violation_present(n: n) {
-    Rejected {
-      diagnostic: hollow_alias_gate_diagnostic(root: n)
-    }
-  } else {
-    Produced {
-      value: true
-    }
-  }
-}
