@@ -22,9 +22,9 @@
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess}, Diagnostic>
-//   - wait(pt, p)    -> Result<{table: ProcessTable, process: WaitedTerminatedProcess}, Diagnostic>
+//   - wait(spawned)  -> Result<{table: ProcessTable, process: WaitedTerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
+//   - capture(source) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -89,6 +89,9 @@
 // before wait from RunningProcess or after wait from
 // WaitedTerminatedProcess. The preserved post-wait pipe authority has a
 // declared consumer and does not require an ad hoc side path.
+// Follow-up reconcile: wait/capture consume the paired SpawnedProcess /
+// WaitedProcess operation carriers instead of dissolving the ProcessTable
+// and process handle into parallel request fields.
 // HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
 // the unused broad Process carrier was removed after operation-specific
 // lifecycle carriers landed. RunningProcess, WaitedTerminatedProcess,
@@ -174,8 +177,8 @@ import v4.std.machine { Byte }
 // captured-output pipe source for that child. `WaitedTerminatedProcess`
 // carries the same pipe source after wait; `TerminatedProcess` is the
 // terminal postcondition carrier after capture has consumed the source.
-// `CaptureSource` is the capture input authority: either pre-wait live
-// process pipes, or post-wait terminal process pipes.
+// `CaptureSource` is the capture input authority: either the pre-wait
+// SpawnedProcess pair, or the post-wait WaitedProcess pair.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -290,24 +293,25 @@ type WaitedTerminatedProcess {
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. Capture can drain output from a
-// still-running child or from a child whose lifecycle was already waited
-// while preserving pipe authority. The first capture realization
-// consumer must confirm both paths use the same pipe source carrier and
+// still-running spawned child or from a child whose lifecycle was already
+// waited while preserving pipe authority. The first capture realization
+// consumer must confirm both paths use the paired operation carrier and
 // do not route through an ambient process table side channel. Named
 // trigger: T-4.5 effect/resolver seam lands capture realization.
 // Ledger:
 //   1. Fact placement — FAILS: capture source state is consumed
 //      uniformly by capture, not per-consumer metadata.
 //   2. Variant-is-data — FAILS: each variant carries the lifecycle
-//      carrier that owns CapturedOutputPipes for that state.
+//      operation carrier that owns ProcessTable plus CapturedOutputPipes
+//      for that state.
 //   3. Algebraic form — N/A: capture source is not an algebra carrier.
 //   4. Dimensional — FAILS: one capture request uses either live or
 //      post-wait authority, not both.
 //   5. Parameterized family — FAILS: the variants are different
 //      lifecycle carriers, not a projection over identical payloads.
 type CaptureSource
-  = Live { process: RunningProcess }
-  | Waited { process: WaitedTerminatedProcess }
+  = Live { spawned: SpawnedProcess }
+  | Waited { waited: WaitedProcess }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -348,8 +352,7 @@ type SpawnedProcess {
 type SpawnProcessResult = Outcome<SpawnedProcess>
 
 type WaitProcessRequest {
-  table: ProcessTable
-  process: RunningProcess
+  spawned: SpawnedProcess
 }
 
 type WaitedProcess {
@@ -367,7 +370,6 @@ type CapturedProcessOutput {
 }
 
 type CaptureProcessRequest {
-  table: ProcessTable
   source: CaptureSource
 }
 
