@@ -6,11 +6,13 @@
 // Owns:
 //   - Process { id, command, state, parent }
 //     (NO separate exit_code field — termination status lives ONLY inside
-//     ProcessState::Terminated { status: Termination }. A separate
-//     exit_code would allow Running-with-exit-code or
+//     TerminatedProcessState { termination: Termination }, reached
+//     through ProcessState::Terminated or TerminatedProcess.state. A
+//     separate exit_code would allow Running-with-exit-code or
 //     Terminated(Exited(0))-but-exit_code=1 — illegal states
-//     representable. The state sum is the single source of truth; exit
-//     code is reached via pattern-match on state, then on Termination.)
+//     representable. The state carrier is the single source of truth;
+//     exit code is reached via pattern-match on that state, then on
+//     Termination.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
 //   - ProcessState = Running | Terminated(Termination)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
@@ -53,6 +55,9 @@
 // modified ProcessTable alongside the advanced process. D5 also
 // reconciles the stale ProcessState::Exited rationale prose above,
 // which the same operator-sanctioned ProcessState refactor made stale.
+// The terminal postcondition reconcile factors terminal process state
+// through TerminatedProcessState, so ProcessState::Terminated and
+// TerminatedProcess reuse the same terminal-state carrier.
 
 
 module v4.extdeps.process
@@ -70,15 +75,16 @@ import v4.std.diagnostic { Outcome }
 // returns structural outcomes, not string probes over shared stderr.
 // Setup/spawn failure is `Outcome.Rejected { diagnostic }`; a logical
 // child that ran and terminated returns an advanced `TerminatedProcess`
-// whose `termination` carries the terminal fact. The two facts are not
+// whose `state` carries the terminal fact. The two facts are not
 // collapsed, so a wrapper failure cannot be mistaken for a child exit
 // and a signal death cannot be fabricated as an exit code.
 //
 // TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` is either
-// `Running` or `Terminated { status: Termination }`. The terminal-status
-// facts (`Exited` vs `Signaled`) live only in `Termination`, and all
-// wait/capture results return a `TerminatedProcess` that carries that
-// same terminal carrier, never a bare `ExitCode`. There is no sibling
+// `Running` or `Terminated { state: TerminatedProcessState }`. The
+// terminal-status facts (`Exited` vs `Signaled`) live only in
+// `Termination`, reached through the shared `TerminatedProcessState`
+// carrier; wait/capture results return a `TerminatedProcess` with that
+// same state shape, never a bare `ExitCode`. There is no sibling
 // `exit_code` field on `Process`; consumers pattern-match the state.
 //
 // VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
@@ -144,7 +150,7 @@ type Command {
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
 //
 // `Running` is a live state. `Terminated` carries the single terminal
-// status authority consumed by wait/capture, so those operations cannot
+// state authority consumed by wait/capture, so those operations cannot
 // return a still-running process and cannot flatten signal death into an
 // exit code.
 //
@@ -168,16 +174,21 @@ type Command {
 //      payload shape projected over an enumerable set.
 type ProcessState
   = Running
-  | Terminated { status: Termination }
+  | Terminated { state: TerminatedProcessState }
 
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
 
-// `Termination` is the single terminal-status sum. `ProcessState`
-// references it from the `Terminated` arm rather than re-declaring exit
-// vs signal facts, so Process.state and wait/capture cannot disagree
-// about the terminal status by construction.
+type TerminatedProcessState {
+  termination: Termination
+}
+
+// `TerminatedProcessState` is the single terminal-state carrier.
+// `ProcessState` references it from the `Terminated` arm, and
+// wait/capture success carriers reference it directly, so Process.state
+// and wait/capture cannot disagree about the terminal status by
+// construction.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -196,13 +207,13 @@ type Process {
 }
 
 // `TerminatedProcess` is the wait/capture success carrier. It keeps the
-// same child identity facts as `Process`, but its terminal status is the
-// single `Termination` carrier, so `Running` is structurally impossible
-// in successful wait/capture results.
+// same child identity facts as `Process`, but its state is the shared
+// terminal-state carrier, so `Running` is structurally impossible in
+// successful wait/capture results.
 type TerminatedProcess {
   id: ProcessId
   command: Command
-  termination: Termination
+  state: TerminatedProcessState
   parent: ProcessId
 }
 
