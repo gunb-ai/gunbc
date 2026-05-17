@@ -360,11 +360,20 @@ OpenAPI, … — are worked in full in
 That document is the companion rubric to this practice; consult it for
 the concrete shape of a faithful fact-bundle per target.
 
-#### The structural fact-density gate (T-30)
+#### Interim floor: the hollow-alias discriminator
 
-This practice is enforced mechanically by the **structural fact-density
-gate** (TASKS.md T-30) — and, until that checker lands, by reviewers
-applying the same discriminator by hand.
+Enforcement of this practice is **two-tier**. The *structural* tier — a
+generated checker (`Node -> Outcome`) that makes a hollow alias
+*impossible to construct*, not merely review-discouraged — is its own
+task, **TASKS.md T-30**, a hard prerequisite of the per-language rework
+(T-4). It is deliberately *not* this document: convention is exactly
+what let D2 through, so the reseed runs under the structural gate, not a
+doc.
+
+What follows is the **interim floor** — the discriminator a *reviewer*
+applies by hand until T-30's checker lands, and the spec T-30 then
+implements. It is not the structural tier; it is the convention-tier
+bad-example, written so a review can fail a hollow alias against it.
 
 A declaration is **hollow** when *all three* hold:
 
