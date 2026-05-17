@@ -37,8 +37,7 @@ type NormalizedTree = Node
 
 
 data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
-data normalize_reason_post_normalize_not_well_formed: Symbol =
-  normalize_reason_post_normalize_not_well_formed
+data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
 
 
 // 🟡 coproduct dissolution — DECISIONS.md CP-1b item 4 (SurfaceSugarKind)
