@@ -166,6 +166,12 @@ type LeanLevelRef {
 }
 
 
+type LeanLevelNode {
+  name: LeanName
+  level: LeanLevel
+}
+
+
 // LeanBinderInfo — binder visibility in Lean term syntax.
 // Anchor: Lean 4.20.0 Reference Manual, function binders:
 // https://lean-lang.org/doc/reference/4.20.0/
