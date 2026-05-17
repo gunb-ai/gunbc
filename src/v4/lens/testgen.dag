@@ -52,7 +52,10 @@
 //     gate; sim-pass + oracle-fail ⟹ the WireContract is incomplete ⟹
 //     STOP and extend the carrier. Generated simulation is necessary,
 //     not sufficient.
-//   - TestClassification = (Tier, Layer) for every produced claim
+//   - **TestClassification** (Tier × Layer) is a **required field on every
+//     `TestClaim`** — canonical home `std/verification.dag` (STRUCTURE.md
+//     §248); each fold stamps `classification` consistently with its
+//     `Generator<C>.classification` at materialization.
 //     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
 //     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
 //   - lens read: () -> Set<TestClaim>  (the produced corpus)
@@ -198,13 +201,17 @@
 
 module v4.lens.testgen
 
+import v4.std.verification { TestClassification }
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Modeling notes (read before validating against the anchor)
 //
-// PRODUCER LENS. This file owns the GENERIC CARRIER and the Tier×Layer
-// cross-cut shared with lens/coverage.dag (T-18). **`src/v4/std/verification.dag`**
-// (`module v4.std.verification`) owns TestClaim SHAPE (T-3). The five testgen categories map INTO the
+// PRODUCER LENS. This file owns the GENERIC CARRIER and schedules substrate
+// slices. **`src/v4/std/verification.dag`** (`module v4.std.verification`)
+// owns the canonical **`TestClaim`** shape **including** `TestgenTier` /
+// `TestgenLayer` / `TestClassification` (STRUCTURE.md §248 — Tier×Layer on
+// every claim). The five testgen categories map INTO the
 // closed four **`v4.std.verification.AssertKind`** variants (`Equals` |
 // `Diagnostic` | `Compiles` | `RoundTrips` in **`src/v4/std/verification.dag`**)
 // — never a parallel claim vocabulary; manual `assert_kind` Int codes are
@@ -219,68 +226,10 @@ module v4.lens.testgen
 
 
 // ─────────────────────────────────────────────────────────────────────
-// TestClassification — THESIS correctness tier × TESTING.md test layer.
-// Every testgen-emitted claim carries this cross-cut for coverage ratio
-// enforcement (lens/coverage.dag T-18 reads the same axes).
-//
-// TestgenTier — THESIS Tier1 / Tier2 / Tier3 (correctness dimension).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// classification: 🟢 GREEN (terminal — authoritative mirror of THESIS
-// correctness tiers). Ledger — five patterns on **forward** `TestgenTier`:
-//   1. Fact placement — N/A: lens-owned cross-cut; the same `tier` field tags
-//      every emission (shared with lens/coverage.dag T-18), not per-variant
-//      facts scattered to unrelated consumers.
-//   2. Variant-is-data — FAILS: Tier1/2/3 are three distinct correctness
-//      classes, not one payload shape plus a free label.
-//   3. Algebraic form — N/A: tiers classify claims; they are not intro/elim
-//      references into distinct `std/` algebraic carriers.
-//   4. Dimensional — N/A: not a coproduct masking an M-dimensional product;
-//      the three variants ARE the exhaustive named partition of the single
-//      THESIS tier axis (see THESIS §168–182).
-//   5. Parameterized family — FAILS: not `F<X>` / projection over a separate
-//      enumerable source set X (Practice 7).
-// Terminal: irreducible three-way partition ratified for this lens.
-type TestgenTier
-  = Tier1
-  | Tier2
-  | Tier3
-
-
-// TestgenLayer — TESTING.md Unit / Integration / Boundary test layer.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// classification: 🟢 GREEN (terminal — authoritative mirror of TESTING.md
-// test layers). Ledger — five patterns on **forward** `TestgenLayer`:
-//   1. Fact placement — N/A: same `layer` field on every emitted claim;
-//      coverage.dag reads the identical axis — not variant facts parked in
-//      unrelated DAG locations.
-//   2. Variant-is-data — FAILS: Unit / Integration / Boundary are three
-//      distinct layer semantics, not one record plus label.
-//   3. Algebraic form — N/A: layers are not algebraic elim/inhabitance refs.
-//   4. Dimensional — N/A: three named values exhaust the single TESTING.md
-//      layer axis (~75% / ~15% / ~10% targets); not a hidden product space.
-//   5. Parameterized family — FAILS: not mechanical `F<X>` over external X.
-// Terminal: irreducible three-way partition ratified for this lens.
-type TestgenLayer
-  = Unit
-  | Integration
-  | Boundary
-
-
-// Coproduct dissolution: `TestClassification` is a Conj of two **separate**
-// terminal sums (`TestgenTier`, `TestgenLayer`) — not an N-variant coproduct
-// of its own; Practice‑4 enum checkpoint + ledger live on each sum above.
-type TestClassification {
-  tier: TestgenTier
-  layer: TestgenLayer
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
 // Generator<C> — generic carrier: one scheduled generation unit over a
 // substrate concept slice `C`. `classification` is the Tier×Layer tag
-// applied to every TestClaim this unit contributes to the corpus.
+// copied onto **every** `TestClaim` emitted when this unit lowers to corpus
+// data (same `TestClassification` value on each claim — facts-flow-forward).
 //
 // Coproduct dissolution: Conj record — no ledger.
 type Generator<C> {
