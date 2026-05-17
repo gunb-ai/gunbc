@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 (https://spec.openapis.org/oas/v3.1.0) document model (OAS slice); Responses: non-empty via `first_key`/`first_response` plus `additional_by_status` `Map` (OAS ≥1 code; tail keys Map-unique per std/collection.dag; `first_key` vs tail overlap parse-normalized T-4 brief); Paths Object keys `/`-prefixed via `OpenApiPathTemplateKey` (wire `"/" ++ after_slash`).
-// Owns: OpenApiSchema, OpenApiHttpMethod, OpenApiOptionalString, OpenApiReferenceObject, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiContact, OpenApiContactSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLicense, OpenApiLicenseSlot, OpenApiInfo, OpenApiMediaType, OpenApiMediaTypeSchemaSlot, OpenApiResponseContentSlot, OpenApiHeadersSlot, OpenApiLinksSlot, OpenApiResponse, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiResponseOrReference, OpenApiResponses, OpenApiOperation, OpenApiPathItem, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiComponentsSchemasSlot, OpenApiComponents, OpenApiComponentsSlot, OpenApiWebhooks, OpenApiDocumentRoot, OpenApiOpenapiField3_1, OpenApiDocument
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 
@@ -11,10 +11,75 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 
 
+type OpenApiSpecificationExtensionKey {
+  vendor_suffix: String,
+}
+
+
+type OpenApiOpenapiObjectDeferredKey
+  = OpenApiOpenapiDeferredServers
+  | OpenApiOpenapiDeferredSecurity
+  | OpenApiOpenapiDeferredTags
+  | OpenApiOpenapiDeferredExternalDocs
+
+
+type OpenApiOperationDeferredKey
+  = OpenApiOpDeferredTags
+  | OpenApiOpDeferredSummary
+  | OpenApiOpDeferredDescription
+  | OpenApiOpDeferredExternalDocs
+  | OpenApiOpDeferredParameters
+  | OpenApiOpDeferredRequestBody
+  | OpenApiOpDeferredCallbacks
+  | OpenApiOpDeferredSecurity
+  | OpenApiOpDeferredServers
+  | OpenApiOpDeferredDeprecated
+
+
+type OpenApiPathItemDeferredKey
+  = OpenApiPathDeferredDollarRef
+  | OpenApiPathDeferredSummary
+  | OpenApiPathDeferredDescription
+  | OpenApiPathDeferredServers
+  | OpenApiPathDeferredParameters
+
+
+type OpenApiComponentsDeferredKey
+  = OpenApiComponentsDeferredResponses
+  | OpenApiComponentsDeferredParameters
+  | OpenApiComponentsDeferredRequestBodies
+  | OpenApiComponentsDeferredHeaders
+  | OpenApiComponentsDeferredSecuritySchemes
+  | OpenApiComponentsDeferredExamples
+  | OpenApiComponentsDeferredLinks
+  | OpenApiComponentsDeferredCallbacks
+
+
+type OpenApiMediaTypeDeferredKey
+  = OpenApiMediaDeferredExample
+  | OpenApiMediaDeferredExamples
+  | OpenApiMediaDeferredEncoding
+
+
+type OpenApiHeaderDeferredKey
+  = OpenApiHeaderDeferredAllowEmptyValue
+  | OpenApiHeaderDeferredStyle
+  | OpenApiHeaderDeferredExplode
+  | OpenApiHeaderDeferredExample
+  | OpenApiHeaderDeferredExamples
+  | OpenApiHeaderDeferredContent
+
+
+type OpenApiLinkDeferredKey
+  = OpenApiLinkDeferredParameters
+  | OpenApiLinkDeferredRequestBody
+  | OpenApiLinkDeferredServer
+
+
 type OpenApiSchema {
   core: JsonSchema,
   openapi_schema_members: Map<String, JsonValue>,
-  openapi_schema_specification_extensions: Map<String, JsonValue>,
+  openapi_schema_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -34,11 +99,56 @@ type OpenApiOptionalString
   | OpenApiStringAbsent
 
 
+type OpenApiReferenceObject {
+  dollar_ref: String,
+  summary: OpenApiOptionalString,
+  description: OpenApiOptionalString,
+}
+
+
+type OpenApiHeaderRequiredSlot
+  = OpenApiHeaderRequiredAbsent
+  | OpenApiHeaderRequiredPresent { value: Bool }
+
+
+type OpenApiHeaderSchemaSlot
+  = OpenApiHeaderSchemaPresent { schema: OpenApiSchema }
+  | OpenApiHeaderSchemaAbsent
+
+
+type OpenApiHeaderObject {
+  description: OpenApiOptionalString,
+  required: OpenApiHeaderRequiredSlot,
+  schema_shape: OpenApiHeaderSchemaSlot,
+  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
+  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiHeaderOrReference
+  = OpenApiHeaderInline { header: OpenApiHeaderObject }
+  | OpenApiHeaderReference { reference: OpenApiReferenceObject }
+
+
+type OpenApiLinkObject {
+  operation_id: OpenApiOptionalString,
+  operation_ref: OpenApiOptionalString,
+  description: OpenApiOptionalString,
+  link_deferred_members: Map<OpenApiLinkDeferredKey, JsonValue>,
+  link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
+}
+
+
+type OpenApiLinkOrReference
+  = OpenApiLinkInline { link: OpenApiLinkObject }
+  | OpenApiLinkReference { reference: OpenApiReferenceObject }
+
+
 type OpenApiContact {
   name: OpenApiOptionalString,
   url: OpenApiOptionalString,
   email: OpenApiOptionalString,
-  contact_extensions: Map<String, JsonValue>,
+  contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -56,7 +166,7 @@ type OpenApiLicenseUrlOrIdentifierSlot
 type OpenApiLicense {
   name: String,
   url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
-  license_extensions: Map<String, JsonValue>,
+  license_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -73,14 +183,14 @@ type OpenApiInfo {
   contact: OpenApiContactSlot,
   license: OpenApiLicenseSlot,
   version: String,
-  info_specification_extensions: Map<String, JsonValue>,
+  info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
 type OpenApiMediaType {
   schema_shape: OpenApiMediaTypeSchemaSlot,
-  media_type_deferred_members: Map<String, JsonValue>,
-  media_type_specification_extensions: Map<String, JsonValue>,
+  media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, JsonValue>,
+  media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -96,12 +206,12 @@ type OpenApiResponseContentSlot
 
 type OpenApiHeadersSlot
   = OpenApiHeadersAbsent
-  | OpenApiHeadersPresent { headers: Map<String, JsonValue> }
+  | OpenApiHeadersPresent { headers: Map<String, OpenApiHeaderOrReference> }
 
 
 type OpenApiLinksSlot
   = OpenApiLinksAbsent
-  | OpenApiLinksPresent { links: Map<String, JsonValue> }
+  | OpenApiLinksPresent { links: Map<String, OpenApiLinkOrReference> }
 
 
 type OpenApiResponse {
@@ -109,13 +219,13 @@ type OpenApiResponse {
   content: OpenApiResponseContentSlot,
   headers: OpenApiHeadersSlot,
   links: OpenApiLinksSlot,
-  extensions: Map<String, JsonValue>,
+  extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
 type OpenApiResponseOrReference
   = OpenApiResponseInline { response: OpenApiResponse }
-  | OpenApiResponseReference { reference_wire: JsonValue }
+  | OpenApiResponseReference { reference: OpenApiReferenceObject }
 
 
 type OpenApiStatusDigit
@@ -157,22 +267,22 @@ type OpenApiResponses {
   first_key: OpenApiResponseKey,
   first_response: OpenApiResponseOrReference,
   additional_by_status: Map<OpenApiResponseKey, OpenApiResponseOrReference>,
-  responses_object_extensions: Map<String, JsonValue>,
+  responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
   responses: OpenApiResponses,
-  operation_deferred_members: Map<String, JsonValue>,
-  operation_specification_extensions: Map<String, JsonValue>,
+  operation_deferred_members: Map<OpenApiOperationDeferredKey, JsonValue>,
+  operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
 type OpenApiPathItem {
   routes: Map<OpenApiHttpMethod, OpenApiOperation>,
-  path_deferred_members: Map<String, JsonValue>,
-  path_specification_extensions: Map<String, JsonValue>,
+  path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
+  path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -183,7 +293,7 @@ type OpenApiPathTemplateKey {
 
 type OpenApiPaths {
   routes: Map<OpenApiPathTemplateKey, OpenApiPathItem>,
-  paths_extensions: Map<String, JsonValue>,
+  paths_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -199,8 +309,8 @@ type OpenApiComponentsSchemasSlot
 
 type OpenApiComponents {
   schemas: OpenApiComponentsSchemasSlot,
-  components_deferred_members: Map<String, JsonValue>,
-  components_specification_extensions: Map<String, JsonValue>,
+  components_deferred_members: Map<OpenApiComponentsDeferredKey, JsonValue>,
+  components_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -211,7 +321,7 @@ type OpenApiComponentsSlot
 
 type OpenApiWebhooks {
   routes: Map<String, OpenApiPathItem>,
-  webhooks_extensions: Map<String, JsonValue>,
+  webhooks_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
 
@@ -234,6 +344,6 @@ type OpenApiDocument {
   json_schema_dialect: OpenApiOptionalString,
   info: OpenApiInfo,
   root: OpenApiDocumentRoot,
-  root_deferred_members: Map<String, JsonValue>,
-  root_specification_extensions: Map<String, JsonValue>,
+  root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonValue>,
+  root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
