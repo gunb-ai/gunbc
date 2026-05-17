@@ -67,9 +67,6 @@
 //
 // Status: scaffold — fill per TASKS.md T-10 (paired with emit implementation;
 //         orchestrator is the consumer of every prior stage)
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.compiler.compile

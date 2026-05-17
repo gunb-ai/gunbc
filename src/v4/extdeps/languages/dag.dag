@@ -46,9 +46,6 @@
 //
 // Status: operator-ratified C1 closed-tree extension 2026-05-16 (Option **A**,
 // relay merry-ibex-337) — **admitted**; scaffold — fill per TASKS.md T-4 + T-6/T-7.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.extdeps.languages.dag

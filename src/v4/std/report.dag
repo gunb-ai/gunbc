@@ -39,7 +39,6 @@
 //     reason/severity semantics)
 //
 // Status: scaffold — fill per TASKS.md T-17
-// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.std.report
 

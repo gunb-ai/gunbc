@@ -21,9 +21,6 @@
 //   - compiler/04_infer.dag: InferredTree (shared with 05_emit.dag)
 //
 // Status: scaffold — fill per TASKS.md T-22
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 module v4.compiler.eval
 

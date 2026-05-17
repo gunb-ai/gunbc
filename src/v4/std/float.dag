@@ -77,9 +77,6 @@
 //   per D2b (this file does not ship fabricating primitive `fn` bodies).
 //   Replaces part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
 //   §"scalar/numeric concept decomposition".
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.std.float

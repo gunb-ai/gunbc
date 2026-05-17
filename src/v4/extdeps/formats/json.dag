@@ -15,9 +15,6 @@
 //   - std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (FreeMonoid)
 //
 // Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 module v4.extdeps.formats.json
 

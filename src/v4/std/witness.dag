@@ -20,9 +20,6 @@
 //   - std/diagnostic.dag: Diagnostic (the Violates payload)
 //
 // Status: T-3 modeled 2026-05-16 (quiet-deer-32).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 //
 // HEADER RECONCILE (operator-ratified Option A, 2026-05-16). The original
 // scaffold header declared `Violates(reason: NamedReason)`, consuming

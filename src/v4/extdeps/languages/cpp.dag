@@ -36,9 +36,6 @@
 //   inhabitance, no IrToCpp string table, no grammar operation stub.
 //   Header edits encode the resolver shape under DECISIONS.md D2's
 //   delegated "extdeps/languages/* headers" authority.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 module v4.extdeps.languages.cpp
 

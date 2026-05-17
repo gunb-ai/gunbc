@@ -39,9 +39,6 @@
 //
 // Status: Wave-1 — E0 void-lex path is **realized** (`Produced`); richer
 // encodings ⇒ honest `Rejected { … walk_not_realized }` until ratified.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.compiler.tokenize

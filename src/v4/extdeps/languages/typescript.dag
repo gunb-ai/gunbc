@@ -67,9 +67,6 @@
 //   grounding 🟡 operator-pending; D2a(3) ECMA-262-native semantics +
 //   numeric-kind vocabulary landed; numeric/string/symbol/nullability
 //   alias rows 🟡 TRACKED-SCAFFOLD per std/ ladders + refinement policy.
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.extdeps.languages.typescript

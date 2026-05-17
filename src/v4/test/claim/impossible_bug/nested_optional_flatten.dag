@@ -15,7 +15,6 @@
 //   - std/verification.dag, std/diagnostic.dag, std/cardinality.dag
 //
 // Status: scaffold — fill per TASKS.md T-14
-// Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.impossible_bug.nested_optional_flatten
 

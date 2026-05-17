@@ -30,9 +30,6 @@
 //   (String for label is the kernel-ambient String — no import.)
 //
 // Status: T-3 modeled 2026-05-16 (cool-wren-237).
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 //
 // HEADER RECONCILE (operator decision I, 2026-05-16). The original
 // scaffold left `input` and `expected` DELIBERATELY UNTYPED while `kind`
