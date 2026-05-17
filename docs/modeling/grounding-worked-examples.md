@@ -23,7 +23,12 @@ coerce : A -> Outcome<B>
 `Produced` carries the coerced value; `Rejected` carries a `Diagnostic` —
 a **named, located** failure (it has a `Locus`), never a silent drop.
 
-**How a coercion is derived — read this.** A coercion is *derived* by
+**How a coercion is derived — read this.** Coercion is the
+**verification facet** of the derived homomorphism — the fold that
+checks a candidate structure-preserving map (see
+[modeling-discipline.md](../modeling-discipline.md) "The three facets"
+and [the-derived-homomorphism.md](thesis/the-derived-homomorphism.md)).
+A coercion is *derived* by
 comparing two groundings, not hand-authored. The deriver is a **mechanical
 zip-fold** (a catamorphism): it walks both groundings in parallel — `List`
 against `List` recurses, `Conj` against `Conj` compares field-wise, leaves
