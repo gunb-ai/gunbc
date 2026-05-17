@@ -22,7 +22,7 @@ src/v4/
     cardinality.dag      # cardinality refinement, P4 decidability
     witness.dag          # Witness<C> — fail-closed lens reads, no Option::None
     diagnostic.dag       # structural Diagnostic { reason, at, correction }
-    fact_density.dag     # T-30 hollow-alias gate substrate; SourceSpecReadFact { body: Node } witness
+    fact_density.dag     # T-30 hollow-alias gate substrate; SourceSpecReadFact nominal witness (body-less; Node payload deferred — file header)
     logic.dag            # Bool — classical two-valued logic (Boolean algebra)
     nat.dag              # Nat — natural numbers (Peano); numeric-tower base
     machine.dag          # Byte/Word*/MachineWidth/PointerWidth — machine repr

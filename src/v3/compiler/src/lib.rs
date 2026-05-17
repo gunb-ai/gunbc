@@ -5784,31 +5784,6 @@ fn needs_parallelism_lens_authority_prepended(module: &parse::SurfaceModule) -> 
     })
 }
 
-fn is_v4_std_node_authority_module(module: &parse::SurfaceModule) -> bool {
-    use crate::parse::SurfaceItem;
-    module.items.iter().any(|item| {
-        matches!(
-            item,
-            SurfaceItem::Module { path, .. }
-                if path.len() == 3 && path[0] == "v4" && path[1] == "std" && path[2] == "node"
-        )
-    })
-}
-
-fn needs_v4_std_node_authority_prepended(module: &parse::SurfaceModule) -> bool {
-    use crate::parse::SurfaceItem;
-    if is_v4_std_node_authority_module(module) {
-        return false;
-    }
-    module.items.iter().any(|item| {
-        matches!(
-            item,
-            SurfaceItem::Import { path, .. }
-                if path.len() == 3 && path[0] == "v4" && path[1] == "std" && path[2] == "node"
-        )
-    })
-}
-
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
@@ -5817,7 +5792,6 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
         &surface,
         needs_complexity_lens_authority_prepended(&surface),
         needs_parallelism_lens_authority_prepended(&surface),
-        needs_v4_std_node_authority_prepended(&surface),
     );
     infer::infer(&mut dag);
     r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);

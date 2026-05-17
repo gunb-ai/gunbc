@@ -6,8 +6,10 @@
 //! width/signedness worked example; that is one motivating instance only
 //! (manager brief T-30 / CORE).
 //!
-//! Substrate witness carrier: `src/v4/std/fact_density.dag` (`SourceSpecReadFact
-//! { body: Node }` — carrier + meaning per `docs/modeling/grounding-worked-examples.md`).
+//! Substrate witness carrier: `src/v4/std/fact_density.dag` — `SourceSpecReadFact`
+//! is a **body-less nominal** (same discipline as `Symbol` / `Hash` in `std/node.dag`):
+//! not a `Nat` alias, not an unconstrained product. Intended richer form: `Node` subtree
+//! per `docs/modeling/grounding-worked-examples.md` (documented dissolution trigger in that file).
 //! M1(2.8) rejects block-bodied `.dag` functions that walk `Node` with `match` in the
 //! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`), so the
 //! gate logic is mirrored here as a **pure** harness until those bodies ship in `.dag`.

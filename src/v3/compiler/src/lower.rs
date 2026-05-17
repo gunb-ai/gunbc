@@ -104,17 +104,6 @@ fn append_parallelism_lens_authority(dag: &mut Dag) {
     lower_into(dag, &module);
 }
 
-fn append_v4_std_node_authority(dag: &mut Dag) {
-    let tokens = crate::tokenize::tokenize(V4_STD_NODE_AUTHORITY_DAG, V4_STD_NODE_AUTHORITY_FILE)
-        .unwrap_or_else(|diag| {
-            panic!("v4 std/node authority must tokenize ({V4_STD_NODE_AUTHORITY_FILE}): {diag:?}")
-        });
-    let module = crate::parse::parse(&tokens, V4_STD_NODE_AUTHORITY_FILE).unwrap_or_else(|diag| {
-        panic!("v4 std/node authority must parse ({V4_STD_NODE_AUTHORITY_FILE}): {diag:?}")
-    });
-    lower_into(dag, &module);
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct RecursiveEdge {
     caller: DeclarationId,
@@ -211,7 +200,7 @@ struct LambdaLoweringContext<'a> {
 }
 
 pub fn lower(module: &SurfaceModule) -> Dag {
-    lower_compile_module(module, false, false, false)
+    lower_compile_module(module, false, false)
 }
 
 /// Prepends lens authority subgraphs requested by surfaced imports (`lenses.complexity`,
