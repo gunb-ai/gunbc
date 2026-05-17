@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/machine_code.dag
 // Scope: machine-code language model parameterized by Isa.
-// Owns: IsaFamily, Isa, InstructionLength, InstructionWord, RegisterRef, AddressingMode, Operand, InstructionProduction, DecodedInstruction, MachineFidelityFeature, MachineIntegerOperationSemantics.
+// Owns: IsaFamily, Isa, InstructionLength, InstructionWord, RegisterDeclaration, RegisterRef, AddressingMode, Operand, InstructionProduction, DecodedInstruction, MachineFidelityFeature, MachineIntegerOperationSemantics.
 // Consumes: Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, List, Byte, Symbol.
 // Status: D2-hard-held; fact-bundle rework gated.
 // Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
@@ -88,25 +88,15 @@ type RegisterClass
   | ControlRegister
 
 
-// 🟢 coproduct dissolution — DECISIONS.md P4-3208
-type RegisterRef
-  = GeneralPurposeRegisterRef { register: Symbol }
-  | FloatingPointRegisterRef { register: Symbol }
-  | VectorRegisterRef { register: Symbol }
-  | PredicateRegisterRef { register: Symbol }
-  | FlagsRegisterRef { register: Symbol }
-  | ControlRegisterRef { register: Symbol }
+type RegisterDeclaration {
+  isa: Isa
+  name: Symbol
+  class: RegisterClass
+}
 
 
-fn register_class(r: RegisterRef) -> RegisterClass {
-  match r {
-    GeneralPurposeRegisterRef { register } => GeneralPurposeRegister
-    FloatingPointRegisterRef { register } => FloatingPointRegister
-    VectorRegisterRef { register } => VectorRegister
-    PredicateRegisterRef { register } => PredicateRegister
-    FlagsRegisterRef { register } => FlagsRegister
-    ControlRegisterRef { register } => ControlRegister
-  }
+type RegisterRef {
+  declaration: RegisterDeclaration
 }
 
 
