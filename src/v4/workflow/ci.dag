@@ -83,161 +83,54 @@
 // ratification (substrate extension = stop signal).
 //
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
+// Modeling notes
 //
-// DATA, not a runner. `CiPipeline` is the gunbc CI pipeline AS DATA:
-// the job/gate dependency DAG (the affected-set-selection surface —
-// the load-bearing T-24 concern) as inert structure. The
-// `.github/workflows/ci.yml` C4 projection is the eventual goal; v3's
-// gate #98 `ci_yml_hand_authority_dissolved` was an open R3 gap and v4
-// must not reproduce it.
+// DATA, not a runner: `CiPipeline` is the gunbc job/gate dependency DAG
+// (the affected-set surface) as inert structure.
 //
-// HONEST SCOPE OF THE C4 CLAIM (INVARIANTS P1 no-fabrication + P2
-// single-authority; the affected_set.dag `detect-affected-components.sh`
-// interim-bridge precedent). A FAITHFUL `.github/workflows/ci.yml`
-// requires GitHub Actions transport facts — `on:` triggers, per-job
-// `runs-on:` runners, the `steps:` list (checkout/setup/run),
-// concurrency, permissions (workflow-syntax spec) — that `CiPipeline
-// { jobs, gates }` deliberately does NOT carry: those are the GHA
-// TRANSPORT, not the gunbc job/gate DAG. A `CiPipeline -> ci.yml`
-// projection over only jobs/gates would have to FABRICATE every
-// trigger/runner/step (INVARIANTS P1/P2).
+// NO FABRICATION / SINGLE AUTHORITY (P1/P2). A faithful ci.yml needs
+// GHA transport facts (`on`/`runs-on`/`steps`/concurrency/permissions)
+// that `{ jobs, gates }` deliberately omits; a `CiPipeline -> ci.yml`
+// projection would fabricate them. No projection is authored: it must
+// FEED the RATIFIED single authority — v3's `extdeps.github.actions`
+// `Workflow` carrier pinned on `gunbc.ci CIWorkflowDag`, with
+// `project_github_actions(CIWorkflowDag, WorkflowRuntime) -> Workflow`
+// (`ci_emission.dag`); ci.yml is that carrier under
+// `WorkflowRuntime = YamlStatic`, never a parallel `-> YamlValue`. That
+// v4 substrate is MISSING (new extdeps file = operator-tier, not a
+// worker add); until it lands the committed ci.yml is the explicit
+// interim hand-authored bridge and C4 is a gated FUTURE state. The
+// frozen Owns/C4 header was reconciled IN-PR per DECISIONS.md D5/#3216
+// (operator-tier BLOCKING review actions) — see the HEADER RECONCILE
+// block in the header above; C4 intent preserved, only mechanism
+// corrected.
 //
-// SINGLE-AUTHORITY SEAM — DEFER to the RATIFIED T-Workflow-As-Data
-// path, do NOT mint a parallel one (INVARIANTS P2; the SELF_HOSTING
-// authority-audit precedent — review finding 2026-05-16). The ratified
-// single authority for the GHA transport is the `Workflow` carrier:
-// v3 `extdeps.github.actions { Workflow, Job, RunStep, UsesStep, … }`,
-// pinned on `gunbc.ci { CIWorkflowDag }` (regenerated from the
-// committed `ci.yml`; "sole live Actions transport for gunbc CI —
-// single authority; no hand-parallel `Workflow` mirror"), with
-// `WorkflowRuntime = YamlStatic | BinaryShim` deciding arm dispatch and
-// the seam `project_github_actions(CIWorkflowDag, WorkflowRuntime) ->
-// Workflow` (`dsl/gunbc/ci_emission.dag`). The committed
-// `.github/workflows/ci.yml` is that `Workflow` carrier serialized
-// under `WorkflowRuntime = YamlStatic` — YAML is DOWNSTREAM of
-// `Workflow`, never a parallel `CiPipeline -> YamlValue` projection.
-// (An earlier revision of this seam minted `GhaWorkflowSchema` +
-// `project_ci_yml -> YamlValue`; that was parallel authority and is
-// retracted — provenance, not silently dropped.)
+// `CiJob.needs` / `CiGate.job` are opaque `Symbol` name-references (a
+// DAG by name, never producer-inlining). `command` is NON-EXECUTABLE
+// documentation data (P1): no interpreter exists (process carrier is
+// T-4.5 scaffold) and one `String` can't carry a GHA job; it stores
+// the exact primary gate invocation VERBATIM (not a paraphrase). The
+// full step + spawn are deferred (TRACKED SCAFFOLD (3)), not fabricated.
 //
-// It is NOT fabricated here because no projection is authored: the
-// ratified `Workflow` carrier + `WorkflowRuntime`/`project_github_-
-// actions` seam are MISSING SUBSTRATE in v4 (v3's
-// `extdeps.github.actions` + `dsl/gunbc/ci_emission.dag` have NO v4
-// counterpart; minting the v4 counterpart is a NEW extdeps file =
-// substrate extension = operator-tier, NOT a worker add — STOP, not
-// improvise, and NOT a worker-invented substitute shape). UNTIL that
-// substrate exists, the committed `.github/workflows/ci.yml` REMAINS
-// the explicit INTERIM HAND-AUTHORED BRIDGE — exactly as
-// `scripts/detect-affected-components.sh` is the declared interim
-// bridge for affected_set (lens/affected_set.dag header) — and the
-// `committed == emit(...)` CHECKED-PROJECTION C4 state is explicitly a
-// FUTURE state gated on that named missing ratified substrate, with an
-// owner (TRACKED SCAFFOLD (1)), not a property claimed of the present
-// `{ jobs, gates }` data.
-//
-// HEADER TENSION — RECONCILED in-PR (D5). The immutable scaffold
-// header (Owns / C4) originally bound BOTH the `CiPipeline { jobs,
-// gates }` shape AND a direct "committed == emit(CiPipeline) CHECKED
-// PROJECTION" of `.github/workflows/ci.yml`. Those two were in tension:
-// the projection cannot be faithful over jobs/gates alone (above).
-// Resolving it needs the v4 counterpart of the ratified
-// `extdeps.github.actions { Workflow }` carrier + `ci_emission.dag`
-// `project_github_actions`/`WorkflowRuntime` seam (new file,
-// operator-tier) feeding the projection. Per the DECISIONS.md D5 /
-// #3216 standing rule, the operator-tier BLOCKING review actions on
-// this PR sanctioned reconciling the frozen header IN-PR: the `Owns`
-// "emission target" + C4 lines were reconciled to the single-authority
-// `Workflow`-carrier projection with C4 gated on that missing v4
-// substrate, and a `HEADER RECONCILE` block (below the Status line)
-// cites the actions. C4 operator-ratified intent is preserved; only
-// the projection mechanism/source was corrected. This is the honest
-// tracked record of that reconcile, not a silent reinterpretation.
-//
-// WHY job/gate edges are `Symbol`, not inlined sub-nodes. `CiJob.needs`
-// and `CiGate.job` are post-resolution opaque `Symbol` references
-// (std/node.dag, K-1) to job ids — a job-dependency DAG by NAME, never
-// producer-inlining (project_v4_ssa_name_reference_not_inlining: a cyclic
-// or shared dependency graph cannot be finitely represented by
-// inlining). Affected-set selection (TRACKED SCAFFOLD (2)) traverses
-// these `Symbol` edges exactly as lens/affected_set.dag derives its
-// graph by `Symbol`-equality traversal.
-//
-// WHY `command` is a NON-EXECUTABLE faithful `String` (INVARIANTS P1 —
-// no fabrication of process facts; codex BLOCKING 2026-05-17). It is
-// NOT "the command line the interpreter runs": there is no interpreter
-// (the process carrier extdeps/process.dag is T-4.5 SCAFFOLD), and a
-// single `String` cannot faithfully carry a GHA job (the live gate is a
-// multi-step shell script PLUS a prerequisite `cargo build -p
-// v2-compiler --release` step). So `command` is DOCUMENTATION DATA: it
-// stores the EXACT primary gate invocation VERBATIM (not a lossy
-// paraphrase — the codex finding), and is explicitly NON-EXECUTABLE
-// until the process carrier lands. Nothing in this substrate executes
-// or branches on it. The faithful FULL step (the `set -euo pipefail` /
-// `rm` / `mkdir` / `echo` wrapper + the `cargo build` prerequisite) and
-// actual process spawn are the deferred operation carried by
-// extdeps/process.dag (T-4.5) + the interpreter (T-22) — TRACKED
-// SCAFFOLD (3); they are NOT fabricated into this `String`. Modeled
-// like yaml.dag's scalar `lexeme: String` (faithful inert leaf, not a
-// sentinel).
-//
-// TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
-// the operator-ratified declarative-now / operations-deferred discipline
-// (std/collection.dag #3169, canonical json.dag #3184). NOT improvised
-// bodies, NOT bodiless `fn` (frozen v2 rejects bodiless `fn`, DECISIONS
-// PARSE-1):
-//   (1) The C4 projection is the RATIFIED single-authority seam
-//       `project_github_actions(CIWorkflowDag, WorkflowRuntime) ->
-//       Workflow` (NOT a worker-invented `project_ci_yml ->
-//       YamlValue`; see SINGLE-AUTHORITY SEAM above — that parallel
-//       shape is retracted). `CiPipeline` (this file's gunbc job/gate
-//       DAG) FEEDS the ratified `CIWorkflowDag`-pinned `Workflow`
-//       carrier; it never invents transport facts (no fabrication,
-//       INVARIANTS P1; single authority, P2). The committed
-//       `.github/workflows/ci.yml` is the `Workflow` carrier under
-//       `WorkflowRuntime = YamlStatic` (YAML downstream of `Workflow`);
-//       it then becomes a `committed == emit(...)` CHECKED PROJECTION
-//       (C4 / STRUCTURE.md invariant 7). UNTIL THEN the committed file
-//       is the explicit interim hand-authored bridge (see HONEST SCOPE
-//       OF THE C4 CLAIM above).
-//       OWNER/TRIGGER: BLOCKED on MISSING SUBSTRATE — the v4 counterpart
-//       of the ratified `extdeps.github.actions { Workflow }` carrier
-//       + `dsl/gunbc/ci_emission.dag`'s `WorkflowRuntime` /
-//       `project_github_actions` seam (no v4 file exists; a NEW extdeps
-//       file = operator-tier substrate extension, surfaced on the PR,
-//       NOT added here, NOT substituted with a worker-minted shape).
-//       Then additionally needs extdeps/formats/yaml.dag `yaml_emit`
-//       (T-4.6, the `YamlStatic` serialization) + compiler/05_emit.dag
-//       (T-10) Shape-B emission.
+// TRACKED SCAFFOLD (🟡) — deferred operations, owner+trigger
+// (declarative-now; not bodiless `fn`, DECISIONS PARSE-1):
+//   (1) C4 projection = the ratified `project_github_actions(
+//       CIWorkflowDag, WorkflowRuntime) -> Workflow` seam (NOT a
+//       worker-minted `-> YamlValue`). OWNER/TRIGGER: BLOCKED on the
+//       missing v4 counterpart of `extdeps.github.actions { Workflow }`
+//       + `ci_emission.dag` (operator-tier), then yaml_emit (T-4.6) +
+//       05_emit Shape-B (T-10).
 //   (2) `select_jobs : (CiPipeline, Diff) -> Outcome<List<CiJob>>` —
-//       affected-set job selection ONLY. Well-formedness is NO LONGER
-//       part of this deferral: it is eagerly enforced NOW by
-//       `ci_pipeline_well_formed` (see WELL-FORMEDNESS above), so
-//       `select_jobs` consumes an already-validated pipeline and only
-//       computes the affected frontier. It consumes lens/
-//       affected_set.dag's `affected_set : (Dag, Diff) ->
-//       Witness<ReExecFrontier>` (this is IB-2 / what dissolves
-//       scripts/detect-affected-components.sh). lens/affected_set.dag
-//       is T-21 SCAFFOLD (zero declarations today) — no `affected_set`
-//       / `ReExecFrontier` symbol exists to consume yet, so the
-//       selection body is not authored (scaffold-header drift
-//       discipline: reference the seam, defer the body). The
-//       well-formedness BOUNDARY is authored here now; only the
-//       affected-set SELECTION body is deferred.
-//       OWNER/TRIGGER: dissolves when lens/affected_set.dag (T-21) lands.
-//   (3) The executable per-job evaluation (running fmt/clippy/test jobs,
-//       structural cache restore/store keyed by `content_hash` B1) rides
+//       affected-set selection only (well-formedness is eagerly
+//       enforced now by `ci_pipeline_well_formed`, NOT deferred here).
+//       OWNER/TRIGGER: lens/affected_set.dag (T-21) lands.
+//   (3) executable per-job eval + structural cache rides
 //       compiler/05_eval.dag + extdeps/process.dag.
-//       OWNER/TRIGGER: T-22 (eval) + T-4.5 (process). Until then the
-//       ONLY exercised gate is structural: this file v2-compiles as
-//       well-formed data, and `v2_compile_gate_job` models that existing
-//       day-1 CI gate concretely (not theater — it is the real gate).
+//       OWNER/TRIGGER: T-22 + T-4.5. Today only the structural gate is
+//       exercised (`v2_compile_gate_job` models the real day-1 gate).
 //
-// `CiPipeline` is a Conj record over closed Disj-free records; no
-// Practice-4 ledger applies (records do not dissolve to a richer
-// source — the diagnostic.dag `Diagnostic` / verification.dag
-// `TestClaim` precedent).
+// All declarations are Conj records — no coproduct, no Practice-4
+// ledger applies.
 
 module v4.workflow.ci
 
@@ -255,12 +148,9 @@ import v4.std.diagnostic {
 
 // ─────────────────────────────────────────────────────────────────────
 // CiJob — one CI job. `id` is its opaque identity; `needs` are the job
-// ids it depends on (the job DAG, traversed by `Symbol` equality);
-// `command` is a NON-EXECUTABLE faithful record of the exact primary
-// gate invocation (documentation data — NOT executed here; the full
-// step + process spawn are deferred to extdeps/process.dag, TRACKED
-// SCAFFOLD (3); see "WHY `command` is a NON-EXECUTABLE faithful
-// `String`" above).
+// ids it depends on (DAG by `Symbol`); `command` is NON-EXECUTABLE
+// documentation data (verbatim primary gate invocation; full step +
+// spawn deferred — TRACKED SCAFFOLD (3)).
 type CiJob {
   id: Symbol
   command: String
@@ -289,47 +179,23 @@ type CiGate {
 // `jobs` is TRACKED SCAFFOLD (2).
 //
 // WELL-FORMEDNESS — an EAGER fail-closed boundary, present NOW
-// (INVARIANTS P2/P4; still-hawk-102 operator adjudication 2026-05-17,
-// relayed via Lane B). #3162 (`Diff`) does NOT govern `CiPipeline`:
-// #3162's precondition is that the carrier has NO intrinsic
-// well-formedness (ANY `List<Edit>` is a valid rewrite program; the
-// only failure is genuinely apply-time). That precondition is FALSE
-// here — a job/gate DAG has INTRINSIC, statically-decidable
-// well-formedness (unique job ids, no `needs` cycle, resolving edge
-// references); a pipeline with two `build` jobs or an A→B→A cycle is
-// malformed INDEPENDENT of any consumer. Patterns do not auto-extend;
-// per-instance the precondition must hold and here it does not.
-// Applying #3162 here was itself the illegal-states-representable
-// anti-pattern (modeling-discipline Practice 2). The operator's
-// "structural OR fail-closed well-formedness boundary BEFORE consumers
-// land" rules out deferring this to `select_jobs` (a consumer).
-//
-// SHAPE (picked by feasibility, per the adjudication). PREFERRED was
-// structural (e.g. `jobs: Map<Symbol, CiJob>` so duplicate ids are
-// unrepresentable). INFEASIBLE here: v4's `Map<K,V>` (collection.dag)
-// is `{ lookup: fn(K) -> Witness<V> }` — LOOKUP-ONLY, NO key
-// enumeration — so a `Map` jobs field cannot be traversed for the
-// REQUIRED acyclicity / reference-resolution checks (those need the
-// full job set). So jobs/gates stay `List` (traversable via `fold`)
-// and well-formedness is the ACCEPTABLE eager fail-closed predicate
-// `ci_pipeline_well_formed : CiPipeline -> Outcome<CiPipeline>`
-// (below), covering all three intrinsic properties:
-//   - unique job ids — duplicate ⇒ `Rejected`. (Uniqueness as a
-//     CHECK-enforced invariant is itself a ratified v4 pattern: the
-//     node.dag `all_names_distinct` precedent, explicitly "CHECK-
-//     enforced, not type-unrepresentable", node.dag:513.)
-//   - reference resolution — every `CiJob.needs` symbol and every
-//     `CiGate.job` resolves to a declared job id, else `Rejected`.
-//   - acyclicity — no cycle in the `needs` graph, else `Rejected`.
-//     Decidable / terminating (INVARIANTS P4 / A2): Kahn-style sink
-//     elimination bounded by `count(jobs)` passes, expressed as a
-//     `fold` over the finite `jobs` list (A2 IMPLICIT — descent on a
-//     finite List, the node.dag fold idiom), never a non-terminating
-//     walk. NOT a #3162 exception (#3162 never governed this carrier).
-// This is the single well-formedness authority — like node.dag's
-// `node_well_formed`, it is authored NOW and consumed by the (still
-// deferred) `select_jobs`; the BOUNDARY is no longer deferred, only a
-// downstream consumer is.
+// (INVARIANTS P2/P4; still-hawk-102 operator adjudication 2026-05-17).
+// #3162 (`Diff`) does NOT govern `CiPipeline`: a job/gate DAG has
+// INTRINSIC, statically-decidable well-formedness (unique ids, no
+// `needs` cycle, resolving refs) — malformed independent of any
+// consumer — so deferring to `select_jobs` is ruled out. The PREFERRED
+// structural shape (`jobs: Map` for unique ids) is INFEASIBLE: v4
+// `Map<K,V>` is `{ lookup: fn(K) -> Witness<V> }` — lookup-only, no key
+// enumeration — so it can't be traversed for the required acyclicity /
+// ref checks. So jobs/gates stay `List` and `ci_pipeline_well_formed :
+// CiPipeline -> Outcome<CiPipeline>` (below) eagerly checks all three:
+// unique ids (node.dag `all_names_distinct` CHECK-enforced precedent),
+// reference resolution, and acyclicity (Kahn sink-elimination bounded
+// by `count(jobs)` as a `fold` over the finite jobs list — A2 IMPLICIT,
+// P4-decidable, never a non-terminating walk). NOT a #3162 exception
+// (#3162 never governed this carrier). Single authority — like
+// node.dag's `node_well_formed`, authored now, consumed by the still
+// deferred `select_jobs`.
 type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
