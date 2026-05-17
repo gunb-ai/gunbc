@@ -318,7 +318,7 @@ a named YELLOW trigger in this ledger (Practice 9 — not in `Scope:`).
 
 | ID | Carrier / slice | Disposition | YELLOW trigger (omit if GREEN) | Encoded in |
 |----|------------------|-------------|--------------------------------|------------|
-| **T-4.6-CSV** | RFC 4180 row/document carriers (`CsvRow` Peano depth = per-row field arity) + **`CsvRfc4180*` product witness records** (comma / DQUOTE / line-break / header / UTF-8 / `text/csv` facts — no new coproducts) | 🟡 | Cross-row/header-vs-body arity mesh is **operator-pending** until a ruling + substrate hook (TASKS.md T-4.6); until then validation may fail-closed without a claimed total mesh. | `extdeps/formats/csv.dag` |
+| **T-4.6-CSV** | RFC 4180 rectangular document carriers: **`CsvListMatching`** (first data row sets width; tail is **`CsvListMatchingForWidth`**) + optional named header via **`CsvDocument`** coproduct + **`CsvRow`** / spines + **`CsvRfc4180*`** product witnesses | 🟢 | RFC / MIME churn on modeled facts extends **`CsvRfc4180*`** products + amends **T-4.6-CSV** in the same change-set. | `extdeps/formats/csv.dag` |
 | **T-4.6-JSK** | `JsonSchemaAdditionalKeywordKey` — closed sum for Draft 2020-12 Core vocabulary keywords exercised by this slice | 🟡 | Ratified spec adds/renames/removes a modeled Core keyword such that this enum must change — extend the coproduct **and** amend this row in the same change-set. | `extdeps/formats/json_schema.dag` |
 | **T-4.6-OAS** | OpenAPI 3.1 document/object carriers in `openapi.dag` | 🟡 | Upstream OAS 3.1 normative or meta-schema change forces a modeled fixed field, deferred-key family, or path-template wire rule to migrate — ship with operator-visible reconcile (D5). | `extdeps/formats/openapi.dag` |
 
@@ -331,8 +331,12 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 
 | ID | Coproduct | Disp | Ledger (dissolution / trigger) |
 |----|-----------|------|--------------------------------|
-| **T-4.6-P4-CsvHeaderPresence** | `CsvHeaderPresence` | 🟡 | Header present vs absent; cross-row arity couples to **T-4.6-CSV** mesh (operator-pending). |
-| **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = per-row field count; mesh with **T-4.6-CSV** / **T-4.6-P4-CsvHeaderPresence**. |
+| **T-4.6-P4-CsvDocument** | `CsvDocument` | 🟡 | Optional header row vs body-only file; with-header arm ties **`records`** to **`header`** width via **`CsvListMatchingForWidth`** (**T-4.6-CSV**). |
+| **T-4.6-P4-CsvListMatching** | `CsvListMatching` | 🟡 | Rectangular grid spine: all-`CsvRowZ` rows vs first row sets width for **`CsvListMatchingForWidth`** tail (**T-4.6-CSV**). |
+| **T-4.6-P4-CsvListMatchingForWidth** | `CsvListMatchingForWidth` | 🟡 | Inductive column peel under fixed per-row **`CsvRow`** width template (**T-4.6-CSV**). |
+| **T-4.6-P4-CsvStrSpine** | `CsvStrSpine` | 🟡 | One CSV column as a spine of cells (pairs with **`CsvZRowSpine`** row counts in **`CsvListMatchingForWidth`**). |
+| **T-4.6-P4-CsvZRowSpine** | `CsvZRowSpine` | 🟡 | Row-count spine for all-`CsvRowZ` record blocks inside **`CsvListMatching` / `CsvListMatchingForWidth`**. |
+| **T-4.6-P4-CsvRow** | `CsvRow` | 🟡 | Peano spine = one row’s field cells; width template for **`CsvListMatchingForWidth`** / first row of **`CsvListMatching`** (**T-4.6-CSV**). |
 | **T-4.6-P4-JsonSchemaCoreTypeName** | `JsonSchemaCoreTypeName` | 🟡 | Draft 2020-12 `type` keyword closed vocabulary for this slice; spec keyword churn extends the sum + amends this row. |
 | **T-4.6-P4-JsonSchemaTypeSlot** | `JsonSchemaTypeSlot` | 🟡 | Optional / single / union type shapes over **T-4.6-P4-JsonSchemaCoreTypeName**; union cardinality vs Core rules is slice-bounded (T-4 brief). |
 | **T-4.6-P4-JsonSchemaItemsSlot** | `JsonSchemaItemsSlot` | 🟡 | `items` absent vs schema subtree; validation/type-derivation for `items` keywords deferred (T-4.6 header). |
@@ -365,7 +369,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiStatusDigit** | `OpenApiStatusDigit` | 🟢 | Decimal digit spine for explicit HTTP status codes (0–9). |
 | **T-4.6-P4-OpenApiStatusHundreds** | `OpenApiStatusHundreds` | 🟢 | Hundreds class spine (`1xx`…`5xx`) for explicit status codes. |
 | **T-4.6-P4-OpenApiResponseKeyWildcardKind** | `OpenApiResponseKeyWildcardKind` | 🟢 | OAS wildcard response key buckets `1XX`…`5XX` (uppercase `X` wire discipline in model). |
-| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses`:** `additional_by_status` is `Map`-unique on tail keys only; **`first_key` ∉ tail keys** and other OAS Responses invariants are **parse/Diagnostic** (T-4 brief), not structurally illegal—same deferral class as **`T-4.6-P4-JsonSchemaPropertiesSlot`** / `Map` property keys. |
+| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses.by_status`** is a **`Map`**: duplicate response keys are **not** structurally representable. |
 | **T-4.6-P4-OpenApiPathsSlot** | `OpenApiPathsSlot` | 🟡 | Root `paths` present vs absent channel (**T-4.6-OAS**); empty vs missing distinguished structurally. |
 | **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; schema registry churn (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsPathItemsSlot** | `OpenApiComponentsPathItemsSlot` | 🟡 | OAS 3.1 **`components.pathItems`** present vs absent; values are **T-4.6-P4-OpenApiPathItemOrReference** (**T-4.6-OAS**). |
