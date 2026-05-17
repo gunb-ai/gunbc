@@ -756,9 +756,9 @@ stay opaque and fail-closed at the boundary, recorded as named P2 debt.
 a type `collection.dag` does not declare. This is a dangling-`Consumes`
 bug **regardless of which T-25 fork lands** (the header cites a
 non-existent type whether refinement substrate is scheduled or ruled
-out) — so it is NOT gated on this ratification. It is fixed standalone:
-routed to the `file_system.dag` owner (T-4.5 / PR #3209) to correct the
-header now.
+out) — so it is NOT gated on this ratification. It is routed standalone
+to the `file_system.dag` owner (T-4.5 / PR #3209) to correct the header;
+the dangling `Consumes` stands on the PR-head tree until that PR lands.
 
 ### T-26 — extdeps shared boundary carriers (net-address / URL / HttpMethod)  [PROPOSED]
 **Gap:** `NetworkAddress` appears only in `coordination.dag` prose;
