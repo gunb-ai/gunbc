@@ -17,8 +17,8 @@
 // `verification.dag` (“Tier2 = Equals” names an assertion *form*, not
 // `TestgenTier::Tier2`). Structural connective anchors (incl. reflexive
 // **Equals** on the empty Conj stub) sit with the **Compiles** stubs:
-// **Tier1 + Unit** (compile-time / structural slice — same band as rows
-// (1–6) in `t19_manual_anchor_manifest.dag`).
+// **Tier1 + Unit** (compile-time / structural slice — each has a matching
+// `t19_manual_anchor_manifest.dag` row by slug).
 
 module v4.test.claim.manual.connective_anchors
 

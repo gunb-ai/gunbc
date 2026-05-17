@@ -1,58 +1,21 @@
 // src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
 //
-// Scope: T-19 manual regression manifest — twelve named anchors mirroring the
-//        still-lark-213 hand-off: one row per bootstrap claim testgen must
-//        eventually subsume (produced corpus ⊇ manual). Integer codes keep
-//        `data` bodies structurally valid under M1(2.8) until record+sum
-//        literals validate together; map to enums in **`src/v4/std/verification.dag`**
-//        (`TestgenTier`, `TestgenLayer`, `AssertKind`):
-//          tier: 0=Tier1, 1=Tier2, 2=Tier3
-//          layer: 0=Unit, 1=Integration, 2=Boundary
-//          testgen_category: 0 type_construction … 4 bidirectional_roundtrip
-//            (order = five top-level scheduling arms in `lens/testgen.dag` header)
-//          assert_kind: Int codes = `AssertKind` order in `verification.dag`
-//            (not dsl/v3 Assert*; not v3 `TestPredicate`).
-//
-// Int / single-authority guard (INVARIANTS P2): `tier` / `layer` / `assert_kind`
-// Int literals mirror **declaration order** of `TestgenTier`, `TestgenLayer`,
-// and `AssertKind` in `src/v4/std/verification.dag` — same numeric spine as
-// typed `TestClaim.classification` + `kind`. `testgen_category` mirrors the
-// five category names in the `lens/testgen.dag` file header (type_construction …
-// bidirectional_roundtrip). Any substrate PR that **reorders or inserts**
-// variants in those sums **must** update this header map **and** all twelve
-// `data …: ManualTestgenAnchor` rows in the **same** change set; tracker-only
-// drift is STOP. Retirement = M2 loader + literal validation band in TASKS
-// §T-19 Phase-1.5 (replace Int fields with the real sums / `AssertKind`).
-// Anchor: src/v4/TASKS.md §T-19 "Phase-1.5 scaffolding — forward dissolution"
-//         (Int field retirement + Symbol slugs + uncomment carriers) +
-//         lens/testgen.dag bootstrap path + K-1 (slugs are stable string keys
-//         until the dissolution band; no `Sym` mint at authoring time)
+// Scope: T-19 Int-coded projection of the **live** manual `TestClaim` corpus only
+//        (`connective_anchors.dag` ∪ `nat_law_anchors.dag`) — one `data` row per
+//        claim, no forward-only slots. Integer fields mirror declaration order in
+//        `src/v4/std/verification.dag` (`TestgenTier`, `TestgenLayer`, `AssertKind`)
+//        and the five testgen arms in `lens/testgen.dag` (`testgen_category` 0…4).
+// Anchor: src/v4/TASKS.md §T-19 Phase-1.5
 //
 // Owns:
-//   - Twelve `data …: ManualTestgenAnchor` rows covering:
-//       (1–6) type-construction — `testgen_category` 0; `assert_kind` **Compiles**
-//             (code 2); `tier` **Tier1** (code 0) / Unit — one per closed connective
-//       (7–8) algebra-law — `assert_kind` **Equals** (code 0); `tier` **Tier3**
-//             (code 2) / Integration — Magmoid + Monoid law slots (THESIS §168–182:
-//             algebraic laws = L7 verification ⇒ **TestgenTier3**, not Tier2)
-//       (9)   diagnostic-exhaustiveness — `assert_kind` **Diagnostic** (1);
-//             `tier` **Tier1** (0) / Unit
-//       (10)  lens-applicability — `assert_kind` **Equals** (0); `tier` **Tier2** (1) / Unit
-//       (11)  bidirectional-roundtrip — `assert_kind` **RoundTrips** (3); `tier` **Tier3** (2)
-//             / Boundary
-//       (12)  type-construction — L1 `Value` via closed **`Behavior`** payload
-//             (`BehaviorValueSubject` in `lens/testgen.dag`; `Value` unit)
+//   - `ManualTestgenAnchor` + exactly twelve `data` rows (bijection to the twelve
+//     live manual claims). Slugs are stable keys; drift vs claim `kind` /
+//     `classification` in the two anchor modules = STOP (same change set).
 //
 // Consumes:
-//   - (none — self-contained until M2 module graph links std/)
+//   - (none — self-contained; authority for claim shape remains the anchor modules.)
 //
-// Status: landed 2026-05-16 (still-deer-194). Keep slugs stable; coverage
-//         lens (T-18) keys off them when comparing testgen output.
-//
-// P2 — authority split:
-//   - Live `TestClaim` `data`: **only** `connective_anchors.dag` ∪ `nat_law_anchors.dag`.
-//   - This file: **testgen expectation grid** (slug + Int); not a second claim list.
-//     Unbacked slugs = forward slots (TASKS §T-19). Backed slugs ↔ claim stamps consistent.
+// Status: landed 2026-05-16; reconciled 2026-05-17 (P2 single projection vs live corpus).
 // Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
@@ -67,15 +30,7 @@ type ManualTestgenAnchor {
 }
 
 
-data manual_anchor_tc_atom: ManualTestgenAnchor = {
-  slug: "t19.type_construction.atom",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
-}
-
-
+// connective_anchors: claim_conj_empty_compiles
 data manual_anchor_tc_conj: ManualTestgenAnchor = {
   slug: "t19.type_construction.conj",
   tier: 0,
@@ -85,6 +40,7 @@ data manual_anchor_tc_conj: ManualTestgenAnchor = {
 }
 
 
+// connective_anchors: claim_disj_empty_compiles
 data manual_anchor_tc_disj: ManualTestgenAnchor = {
   slug: "t19.type_construction.disj",
   tier: 0,
@@ -94,6 +50,7 @@ data manual_anchor_tc_disj: ManualTestgenAnchor = {
 }
 
 
+// connective_anchors: claim_arrow_two_conj_compiles
 data manual_anchor_tc_arrow: ManualTestgenAnchor = {
   slug: "t19.type_construction.arrow",
   tier: 0,
@@ -103,6 +60,7 @@ data manual_anchor_tc_arrow: ManualTestgenAnchor = {
 }
 
 
+// connective_anchors: claim_cardinality_empty_compiles
 data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
   slug: "t19.type_construction.cardinality",
   tier: 0,
@@ -112,6 +70,7 @@ data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
 }
 
 
+// connective_anchors: claim_instantiation_empty_compiles
 data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
   slug: "t19.type_construction.instantiation",
   tier: 0,
@@ -121,59 +80,71 @@ data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
 }
 
 
-data manual_anchor_alg_magma_closure: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.magma_closure",
-  tier: 2,
-  layer: 1,
-  testgen_category: 1,
-  assert_kind: 0
-}
-
-
-data manual_anchor_alg_monoid_identity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.monoid_identity",
-  tier: 2,
-  layer: 1,
-  testgen_category: 1,
-  assert_kind: 0
-}
-
-
-data manual_anchor_diag_exhaustive_cell: ManualTestgenAnchor = {
-  slug: "t19.diagnostic_exhaustiveness.named_reason_cell",
-  tier: 0,
-  layer: 0,
-  testgen_category: 2,
-  assert_kind: 1
-}
-
-
-data manual_anchor_lens_applicability: ManualTestgenAnchor = {
-  slug: "t19.lens_applicability.shape_equals",
-  tier: 1,
-  layer: 0,
-  testgen_category: 3,
-  assert_kind: 0
-}
-
-
-data manual_anchor_roundtrip_boundary: ManualTestgenAnchor = {
-  slug: "t19.bidirectional_roundtrip.language_production",
-  tier: 2,
-  layer: 2,
-  testgen_category: 4,
-  assert_kind: 3
-}
-
-
-// Row (12): L1 `Value` **behavior** — maps to **unit** `BehaviorValueSubject`
-//         in `lens/testgen.dag` (internal arm of `TypeConstructionSubject`;
-//         semantically `std/node.dag` **`Behavior::Value`** only — no field that
-//         could carry other `Behavior` variants). `testgen_category=0` unchanged.
-data manual_anchor_tc_behavior_value: ManualTestgenAnchor = {
-  slug: "t19.type_construction.behavior_value",
+// connective_anchors: claim_conj_equals_refl
+data manual_anchor_tc_conj_equals_refl: ManualTestgenAnchor = {
+  slug: "t19.type_construction.conj_equals_refl",
   tier: 0,
   layer: 0,
   testgen_category: 0,
+  assert_kind: 0
+}
+
+
+// nat_law_anchors: claim_nat_add_left_identity
+data manual_anchor_nat_add_left_identity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_add_left_identity",
+  tier: 0,
+  layer: 0,
+  testgen_category: 1,
   assert_kind: 2
+}
+
+
+// nat_law_anchors: claim_nat_add_right_identity
+data manual_anchor_nat_add_right_identity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_add_right_identity",
+  tier: 0,
+  layer: 0,
+  testgen_category: 1,
+  assert_kind: 2
+}
+
+
+// nat_law_anchors: claim_nat_add_associativity
+data manual_anchor_nat_add_associativity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_add_associativity",
+  tier: 0,
+  layer: 0,
+  testgen_category: 1,
+  assert_kind: 2
+}
+
+
+// nat_law_anchors: claim_nat_mul_left_identity
+data manual_anchor_nat_mul_left_identity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_mul_left_identity",
+  tier: 0,
+  layer: 0,
+  testgen_category: 1,
+  assert_kind: 2
+}
+
+
+// nat_law_anchors: claim_nat_mul_annihilator
+data manual_anchor_nat_mul_annihilator: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_mul_annihilator",
+  tier: 0,
+  layer: 0,
+  testgen_category: 1,
+  assert_kind: 2
+}
+
+
+// nat_law_anchors: claim_nat_mul_associativity
+data manual_anchor_nat_mul_associativity: ManualTestgenAnchor = {
+  slug: "t19.algebra_law.nat_mul_associativity",
+  tier: 2,
+  layer: 1,
+  testgen_category: 1,
+  assert_kind: 0
 }

@@ -10,8 +10,8 @@
 // **structural compile smoke** only (law text in `label`) — stamp
 // **`Tier1` + `Unit`**, same honesty band as connective **`Compiles`** anchors.
 // The one **`Equals`** row exercises the algebra-law **assertion form** on the
-// stub — stamp **`Tier3` + `Integration`** per `t19_manual_anchor_manifest.dag`
-// algebra rows (THESIS L7 / manifest §Owns 7–8). Do **not** stamp `Compiles`
+// stub — stamp **`Tier3` + `Integration`** (THESIS L7 / manifest row
+// `manual_anchor_nat_mul_associativity` only). Do **not** stamp `Compiles`
 // stubs as L7 integration: that mis-trains `TestClaim.classification` vs
 // `TESTING.md` behavior-driven discipline.
 // Anchor: src/v4/std/nat.dag + TASKS.md T-14
