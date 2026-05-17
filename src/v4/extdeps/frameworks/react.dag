@@ -1,7 +1,7 @@
 // src/v4/extdeps/frameworks/react.dag
 // Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional refs, dependency-array and cleanup sites.
 // Owns: ReactCrossDeclRef, ReactOptRef, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
-// Consumes: v4.std.collection.List, v4.std.diagnostic.Outcome
+// Consumes: v4.std.collection.List
 // Status: T-4.7
 
 module v4.extdeps.frameworks.react
