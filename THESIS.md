@@ -86,6 +86,12 @@ Target growth should cost one spec file, not a new compiler path per target.
 
 See [docs/thesis/target-realization-efficiency.md](docs/thesis/target-realization-efficiency.md).
 
+### The derived homomorphism — model local, derive global
+
+Every target — language, format, service, persistence layer — is modeled once in the shared substrate. Translation between any two targets is then a homomorphism the compiler *derives* by comparing groundings, never an adapter anyone authors: you write N target-models, the compiler derives the N×M translations. Integration becomes local — you model only your own target — and every translation that cannot be made faithful surfaces as an explicit, located diagnostic rather than a silent bug. The thesis rests on one honest bet: that target-modeling, done in shared vocabulary, is correct, bounded, and checkable — which is what the modeling discipline exists to secure. This is the purpose the rest of the design serves; a reviewer should read every modeling rule as protecting this homomorphism.
+
+See [docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md).
+
 ## Correctness dimensions
 
 Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures. A dimension — complexity, cost, idempotency, ownership, parallelism, or any user-declared invariant — is a structural fact carried by the program's data model, not a behavioral check run at test time. Validation is reading the structure; it is not running the code.
