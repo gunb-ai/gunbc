@@ -18,10 +18,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
-  Correction,
   Diagnostic,
-  Locus,
-  NoCorrectionReason,
   NodeLocus,
   Outcome,
   PortLocus,
@@ -31,10 +28,7 @@ import v4.std.node {
   Behavior,
   Connective,
   Edge,
-  EdgeDiscipline,
-  EdgeLabel,
   Node,
-  NodeKind,
   Symbol,
   edge_is_named,
   edge_is_positional,

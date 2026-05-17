@@ -13,11 +13,8 @@ import v4.compiler.normalize { NormalizedTree }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
   AmbiguousIntent,
-  Correction,
   Diagnostic,
-  Locus,
   NodeLocus,
-  NoCorrectionReason,
   Outcome,
   UserInputBoundary
 }
@@ -28,7 +25,6 @@ import v4.std.node {
   ComputationNode,
   Conj,
   Edge,
-  EdgeLabel,
   Node,
   Symbol,
   TypeNode,
@@ -62,13 +58,6 @@ type ResolveResult
 type ResolveChildrenResult
   = ResolvedChildren { children: List<Edge> }
   | ResolveChildrenRejected { diagnostic: Diagnostic }
-
-
-fn empty_scope() -> Scope {
-  Scope {
-    namespace: empty_namespace()
-  }
-}
 
 
 fn empty_namespace() -> Namespace {
