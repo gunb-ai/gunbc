@@ -382,6 +382,16 @@ clobber surviving language vocabulary and the `std/` numeric core.
   `std/float.dag` D2 header prose (NOT the core).
 - **Active PRs:** `#3219` closed; `#3208` held.
 
+### Worked examples
+
+`docs/modeling/grounding-worked-examples.md` (this PR) demonstrates the
+fact-bundle/grounding model on one complex type per target — spanning
+`machine_code` (pure bits) → `rust` → `verilog` (4-valued logic) →
+`spice` (continuous) → `lean` (dependent types) → `english` (natural
+language, mostly fail-closed). Each: the model (carrier + meaning) and
+step-by-step coercion. Plan-only; the remaining mainstream
+language/format targets fan out against the same template.
+
 ### Status
 
 PROPOSED. Ratify by merging; redirect by review comment. On
