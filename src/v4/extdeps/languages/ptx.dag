@@ -997,15 +997,15 @@ type RegisterStateSpace
 // Memory-op Transforms read this field directly from operand types;
 // there is no separate state-space-annotation layer.
 //
-// SEAM (where D2 inhabitance plugs in). When the D2 form decision
-// lands (operator-pending), the per-variant inhabitance instance-
-// values land in this file with these typed variants as their
-// carriers — UnsignedScalar { width: Bits32, ... } is the carrier
-// for PTX `.u32` inhabitance into Semiring (or its v4-equivalent
-// per the D2-ratified form); FloatScalar { width: Bits32, ... } is
-// the carrier for `.f32` → ApproximateField; PredicateScalar is
-// the carrier for `.pred` → BooleanAlgebra. The seam itself is the
-// typed variant; the inhabitance value is the deferred row.
+// SEAM (where scalar inhabitance plugs in). When the operator ratifies
+// the inhabitance-instance form, per-variant inhabitance rows land in
+// this file with these typed variants as their carriers —
+// UnsignedScalar { width: Bits32, ... } is the carrier for PTX `.u32`
+// inhabitance into Semiring (or its v4-equivalent per the ratified std/
+// row); FloatScalar { width: Bits32, ... } is the carrier for `.f32` →
+// ApproximateField; PredicateScalar is the carrier for `.pred` →
+// BooleanAlgebra. The seam itself is the typed variant; the inhabitance
+// value is the deferred row.
 //
 // Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
 // 🟢 GREEN (terminal). Ledger — five patterns attempted:
