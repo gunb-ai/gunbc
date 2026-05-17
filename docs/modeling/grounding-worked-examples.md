@@ -608,26 +608,26 @@ Go channels are typed FIFO communication endpoints. Their value model is not
 **Model:**
 
 ```
-// CARRIER — the channel TYPE `chan T`: the static type facts only —
-// element type, direction (send-only / receive-only / bidirectional),
-// and declared buffer capacity.
+// CARRIER — the channel TYPE `chan T`. Per the Go spec, a channel type
+// is EXACTLY element type + direction — two channel types are identical
+// iff same element type and same direction. Nothing else is a type fact.
 type GoChan<T> = Conj {
   element:   TypeGrounding<T>,
-  direction: SendOnly | ReceiveOnly | Bidirectional,
-  capacity:  Nat
+  direction: SendOnly | ReceiveOnly | Bidirectional
 }
-// SCOPE — this carrier models the channel TYPE, not a channel VALUE. The
-// runtime value-state — open/closed, live buffer occupancy, queued
-// contents, nil-ness — is NOT a type-grounding fact; it is runtime state
-// the eval / effect layer carries, explicitly outside this type carrier.
-// Modeling part of that state here (e.g. open/closed without occupancy)
-// would be a half-model — so the type carrier carries none of it.
+// SCOPE — this carrier models the channel TYPE, not a channel VALUE.
+// `capacity` is NOT a type fact: it is a value-construction argument to
+// `make(chan T, n)` — two `chan int` types are identical regardless of
+// the capacity their values were made with. Capacity, and the runtime
+// value-state — open/closed, live buffer occupancy, queued contents,
+// nil-ness — all belong to the channel VALUE / `make` / eval layer,
+// explicitly outside this type carrier.
 
 // MEANING — the channel type's communication contract: ordered FIFO
-// transfer of T values, with `direction` and `capacity` the static type
-// facts. Blocking behavior is a RUNTIME fact — it depends on the live
-// buffer occupancy and open/closed-ness, which the static type does NOT
-// determine — so it is not claimed by this carrier.
+// transfer of T values, with `direction` the static type fact. Blocking
+// behavior is a RUNTIME fact — it depends on the make-time capacity and
+// the live buffer occupancy / open/closed-ness, none of which the static
+// type determines — so it is not claimed by this carrier.
 ```
 
 **Step-by-step coercion shape — `GoChan<int32> -> Outcome<IR Stream<Int32>>`:**
@@ -635,14 +635,19 @@ type GoChan<T> = Conj {
 2. the coercion fold compares endpoint vs endpoint,
    then recurses into the element grounding.
 3. `int32` vs `Int32` coincide when both decode as 32-bit two's-complement.
-4. matching payload plus direction/capacity facts return `Produced`.
-   Missing direction/capacity facts return `Rejected { diagnostic:
-   Diagnostic }` rather than defaulting to bidirectional or unbuffered.
+4. matching element grounding plus the `direction` type fact return
+   `Produced`. A missing `direction` returns `Rejected { diagnostic:
+   Diagnostic }` rather than defaulting to bidirectional. `capacity` is
+   *not* a type fact, so its absence is **not** a rejection criterion for
+   the channel type — rejecting a `chan T` type for "missing capacity"
+   would itself be an unfaithful model (a plain `chan T` type genuinely
+   has no capacity).
 
-The static concurrency type facts (`direction`, `capacity`) are grounded
-target facts, not annotations. The runtime scheduling state — live buffer
-occupancy, open/closed-ness — is a separate eval / effect-layer concern,
-not part of this type grounding.
+The channel type fact is `direction` (with the element type) — a grounded
+target fact, not an annotation. Capacity (a `make`-time value-construction
+argument) and the runtime scheduling state — live buffer occupancy,
+open/closed-ness — are a separate channel-value / eval-layer concern, not
+part of this type grounding.
 
 ---
 
