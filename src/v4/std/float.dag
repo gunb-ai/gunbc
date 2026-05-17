@@ -25,13 +25,13 @@ import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: FloatSpecial.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FloatSpecial.
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: FloatBody.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FloatBody.
 type FloatBody
   = Finite {
       sign: Bit

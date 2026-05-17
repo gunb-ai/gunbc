@@ -10,7 +10,7 @@ module v4.std.logic
 
 
 import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Bool.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Bool.
 type Bool = True | False
 data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
   bounded_lattice: BoundedLattice {

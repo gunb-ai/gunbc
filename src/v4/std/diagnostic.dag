@@ -10,21 +10,21 @@ module v4.std.diagnostic
 
 
 import v4.std.node { Node }
-// 🟡 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Extent.ByteRange.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Extent.
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Locus.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Locus.
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { node: Node }
   | PortLocus { port: Symbol }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: NoCorrectionReason.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: NoCorrectionReason.
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Correction.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Correction.
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
@@ -33,7 +33,7 @@ type Diagnostic {
   at: Locus
   correction: Correction
 }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Outcome<T>.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Outcome<T>.
 type Outcome<T>
   = Produced { value: T }
   | Rejected { diagnostic: Diagnostic }

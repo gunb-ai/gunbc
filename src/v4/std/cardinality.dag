@@ -10,7 +10,7 @@ module v4.std.cardinality
 
 import v4.std.collection { List }
 import v4.std.node { Symbol }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: DescentEvidence.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: DescentEvidence.
 type DescentEvidence
   = Strict
   | NonIncreasing
@@ -22,7 +22,7 @@ type TerminationProof {
   non_increasing: List<RankingDimension>
   strict: RankingDimension
 }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Multiplicity.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Multiplicity.
 type Multiplicity
   = Bounded
   | Unbounded { step: TerminationProof }

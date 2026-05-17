@@ -9,7 +9,7 @@
 module v4.std.node
 type Symbol
 type Hash
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Connective.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Connective.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -17,18 +17,18 @@ type Connective
   | Arrow
   | Cardinality
   | Instantiation
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: Behavior.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: Behavior.
 type Behavior
   = Value
   | Transform
   | Branch
   | Loop
   | Bind
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: NodeKind.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: NodeKind.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: EdgeLabel.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: EdgeLabel.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -40,7 +40,7 @@ type Node {
   kind: NodeKind
   children: List<Edge>
 }
-// 🟢 coproduct dissolution — DECISIONS.md De-Prosed Substrate Receipts: EdgeDiscipline.
+// 🟢 coproduct dissolution — DECISIONS.md classification ledger: EdgeDiscipline.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
