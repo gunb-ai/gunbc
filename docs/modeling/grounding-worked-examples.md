@@ -130,7 +130,8 @@ ours without distortion.
 **Model:**
 
 ```
-// CARRIER — a node voltage is a real number, in volts.
+// CARRIER — a SPICE node voltage is an exact physical quantity: a real
+// magnitude paired with the volt dimension. It is not a Float64 carrier.
 type SpiceVoltage = Conj { magnitude: Real, unit: Volt }
 
 // MEANING — identity: the real IS the voltage.
@@ -138,14 +139,19 @@ type SpiceVoltage = Conj { magnitude: Real, unit: Volt }
 
 `Real` grounds — as a construction over `Nat`/`Rational` (Cauchy
 sequences / Dedekind cuts): still primitives, a richer construction than
-a finite bit-vector. `Volt` is a `Dimension`.
+a finite bit-vector. `Volt` is a `Dimension`. IEEE-754 `f64` grounds
+separately as an `ApproximateField` carrier with rounding and special-value
+facts; it is related to `Real`, not identical to it.
 
 **Step-by-step coercion — `SpiceVoltage ↔ Rust f64`:**
 1. `SpiceVoltage` grounds to `Real` (continuous, uncountable);
    `f64` grounds to IEEE-754 binary64 (finite — 2⁶⁴ values —
    approximating `Real`; `std/float.dag` `ApproximateField`).
-2. catamorphism: `Real` vs `binary64` — related but not equal.
-3. `f64 → SPICE`: **exact** (every `f64` IS a specific real).
+2. catamorphism: exact physical `Real` vs `ApproximateField(binary64)` —
+   related but not equal.
+3. finite `f64 → SPICE`: **exact** (each finite binary64 value denotes a
+   specific real); `NaN` / `±∞` are IEEE-754 special values, not real
+   voltages, so they **fail-closed** rather than being erased.
 4. `SPICE → f64`: **lossy** — rounding; most reals are not
    representable. A *declared* loss, surfaced, not silent.
 
@@ -163,8 +169,8 @@ length `n` is part of the type itself.
 
 ```
 // CARRIER + WITNESS — the dependent index n is a Nat; the type-level
-// constraint "length = n" grounds as a Witness (std/witness.dag), the
-// substrate's proof-carrier.
+// constraint "length = n" grounds as a Witness (see src/v3/std/dimensions.dag),
+// the substrate's proof-carrier.
 type LeanVector<A> = Conj {
   elements:     List<A>,
   length_proof: Witness< |elements| = n >     // n : Nat, lifted into the type
