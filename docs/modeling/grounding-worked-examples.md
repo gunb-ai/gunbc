@@ -425,7 +425,7 @@ rounding and special-value facts. An ideal SPICE voltage that requires an
 exact mathematical continuum is therefore a named fail-closed gap:
 `SpiceExactVoltageMissingExactRealCarrier`, not a silent reuse of `Real`.
 
-**Step-by-step coercion shape — `Rust f64 → SpiceApproxVoltage`:**
+**Step-by-step — coercing a `Rust f64` toward `SpiceApproxVoltage` (the unit must be supplied, not fabricated):**
 1. `SpiceApproxVoltage` grounds to `ApproximateField<FieldOfFractions<Int>>`
    **plus a `Volt` unit fact**; `f64` grounds to IEEE-754 binary64 — a
    **unitless** approximate magnitude (`dsl/std/float.dag` /
