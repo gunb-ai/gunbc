@@ -28,6 +28,16 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/03_normalize.dag: NormalizedTree
 //
+// HEADER RECONCILE (Codex #3211 artifact 13260 / B-4 Wave-1 scaffold, CP-1b):
+// Prior prose required public `resolve` to use an empty Namespace whose
+// canonical_symbols set rejected every unbound Atom fail-closed. That made
+// the default entry point unusable for parse-shaped trees carrying only K-1
+// opaque identities (no binding table yet). Receipt: public `resolve` now
+// seeds canonical_symbols with an all-pass Set so Atoms preserve identity
+// until a producer supplies real bindings via `resolve_with_namespace`. Use→def
+// rewriting remains exclusively the `bindings` map; empty bindings => no
+// rewrite, never fabrication from EdgeLabel.Named (unchanged B-4 discipline).
+//
 // Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
 // scope/env/lookup/name binding for the front-end, including method-name
 // lookup through the same canonical Symbol boundary. It consumes explicit
@@ -48,11 +58,14 @@ module v4.compiler.resolve
 import v4.compiler.normalize { NormalizedTree }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
+  AmbiguousIntent,
   Correction,
   Diagnostic,
   Locus,
+  NodeLocus,
   NoCorrectionReason,
-  Outcome
+  Outcome,
+  UserInputBoundary
 }
 import v4.std.node {
   Connective,
@@ -80,10 +93,9 @@ data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 // not collapse into one implicit binder channel. Imports, prelude/std
 // names, method names, and local declaration binders all enter resolve
 // through this one carrier when the parser/namespace producer supplies
-// them. CP-1b's public `resolve` entry uses an empty Namespace and
-// therefore rejects unresolved Atoms fail-closed rather than fabricating
-// bindings from structural labels. A producer that has already proven an
-// external/std/import Symbol canonical records it in `canonical_symbols`.
+// them. CP-1b's public `resolve` entry seeds canonical_symbols so
+// unbound Atoms pass through as opaque identities (K-1 preserve) when the
+// bindings map is empty; callers with real binders use `resolve_with_namespace`.
 type Namespace {
   bindings: Map<Symbol, Symbol>
   canonical_symbols: Set<Symbol>
@@ -125,6 +137,25 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
     member: fn(_) {
       false
     }
+  }
+}
+
+
+// Wave-1 public resolve: treat every Atom identity as an opaque canonical
+// symbol when no explicit bindings map is populated (parse-shaped trees).
+fn all_atoms_pass_as_canonical() -> Set<Symbol> {
+  Set {
+    member: fn(_) {
+      true
+    }
+  }
+}
+
+
+fn default_public_resolve_namespace() -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: all_atoms_pass_as_canonical()
   }
 }
 
@@ -259,7 +290,10 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
 
 
 fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
-  resolve_with_namespace(tree: tree, namespace: empty_namespace())
+  resolve_with_namespace(
+    tree: tree,
+    namespace: default_public_resolve_namespace()
+  )
 }
 
 
