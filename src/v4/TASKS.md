@@ -331,20 +331,10 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-6: compiler/01_tokenize.dag
 
-**Not a bespoke procedural lexer.** tokenize is the **first half of the
-generic `ingest` walker** (`ingest : (Source, LanguageModel) -> Result<Node, Diagnostic>`,
-00_compile.dag B2-OMNI) — a *language-agnostic* structural walker driven by
-a `LanguageModel`'s **declarative lexical rules** (grammar-as-data over
-`Node`, never prose, never a hardcoded character class). `.dag` is
-language #1 *at the data layer* (`extdeps/languages/dag.dag`); a
-`.dag`-specific class encoded in this stage reintroduces the N×M trap and
-is a STOP. The merged 01_tokenize.dag already encodes this (`B2-OMNI`,
-the E0 void-lexical-fragment encoding contract) — the worker authoring
-Wave-2+ encodings (keywords, …) extends the **data**, not the walker.
+**Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
-**I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` — the lexical
-half of `ingest`. (`Outcome` is the ratified carrier, `std/diagnostic.dag`.)
-*Concrete merged entry today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` — treat `LexRules` (= `Node`) as the lexical projection of the `LanguageModel` bundle until Theme-A #9 names the carrier type explicitly.
+**I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` (conceptual ingest half).
+*Merged today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` — `LexRules` = lexical projection until Theme-A #9 names `LanguageModel`.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
@@ -362,19 +352,9 @@ half of `ingest`. (`Outcome` is the ratified carrier, `std/diagnostic.dag`.)
 
 ### T-7: compiler/02_parse.dag
 
-**Not a bespoke procedural parser.** parse is the **second half of the
-generic `ingest` walker** — the language-agnostic structural walker over
-a `LanguageModel`'s **declarative grammar** (`Grammar` as `Node`). The
-grammar *is* the **bidirectional relation** concrete-syntax ⟷ `Node`;
-parse applies it in the *ingest* direction, and emit (T-10) applies the
-**same** relation inverted — `ingest = emit⁻¹` (00_compile.dag C5). parse
-does not own a grammar substrate decision: the grammar is `Node`-data on
-the `LanguageModel`, settled. The merged 02_parse.dag already encodes
-this (B2-OMNI generic walker, the G0 void-syntactic-fragment contract);
-Wave-2+ productions land as **data** on the language model.
+**Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
 
-**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node`
-(A1), the syntactic half of `ingest`.
+**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1).
 
 **Modeling decisions**:
 - The grammar **production data schema** as `Node` — a declarative
@@ -391,21 +371,10 @@ Wave-2+ productions land as **data** on the language model.
 
 ### T-8: compiler/03_normalize.dag + 03_resolve.dag
 
-**The first two `core` transforms.** After `ingest` produces a `Node`,
-`core` is the language-agnostic spine (`core : Node -> Result<InferredTree, Diagnostic>`,
-00_compile.dag) — `normalize ∘ resolve ∘ infer`. T-8 owns the first two;
-each is a **causal transform on the universal `Node` pivot**, not a
-bespoke tree-rewriting pass. normalize dissolves the 4 sugar forms (C3);
-resolve binds opaque `Symbol`s (K-1) — and each carries the facts it
-derives as **single-authority** structure on the `Node` it returns
-(a downstream stage reads the derived fact, never re-derives it).
+**Role:** First two `core` transforms (`normalize ∘ resolve ∘ infer` after `ingest` on 00_compile): causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
 
-**I/O**: `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`
-— transforms on the pivot; the composite is `resolve ∘ normalize`.
-*Seam discipline:* stage files may still name `ParseTree` / `NormalizedTree` /
-`ResolvedTree` (= `Node`) and `Result<…, Diagnostic>` while scaffolding lands —
-the TASKS contract is the **pivot facts** above, not an order to delete seam
-aliases before CP-1b closes.
+**I/O**: `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`; composite `resolve ∘ normalize`.
+*Seams:* files may still use `ParseTree`/`NormalizedTree`/`ResolvedTree` + `Result` until CP-1b scaffold retires — TASKS states **pivot** contract.
 
 **Modeling decisions**:
 - The 4 sugar forms and their dissolution **as structural rewrites on
