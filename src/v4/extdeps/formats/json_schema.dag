@@ -195,11 +195,15 @@ type JsonSchema
 //   operation (json.dag seam #3); a structurally constructible but spec-
 //   invalid `JsonSchemaInstance` (e.g. contradictory `type` vs payload,
 //   **empty `JsonSchemaTypeUnion.types`** encoding **`[]`** at the JSON surface
-//   per Validation §6.1.1 — duplicates structurally excluded via `Set<…>`;
-//   **`required` names absent from `properties`** or other §6.5.3 / object
-//   consistency failures — duplicate strings in `required` excluded via
-//   **`Set<String>`**)
-//   validates/derives `Rejected`, never a fabricated success.
+//   per Validation §6.1.1 — core-type duplicates structurally excluded via
+//   `Set<…>`; **duplicate strings in the JSON `required` array** at the wire
+//   surface — structurally excluded via **`Set<String>`** per Validation §6.5.3
+//   uniqueness)
+//   validates/derives `Rejected`, never a fabricated success. **§6.5.3 / P1:**
+//   `required` constrains **instances**, not a sibling-schema rule that each name
+//   must appear under `properties`; a future **`schema_to_type`** closed-record
+//   carve-out from `properties` alone is a **derivation** concern (name it
+//   then), not `json_schema_validate` invalidity implied by this carrier.
 //     (a) scaffold doc — THIS note.
 //     (b) bounds on use — no symbols exported yet; consumers wait.
 //     (c) dissolution trigger — operator pins the remaining Core keyword
