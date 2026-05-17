@@ -218,16 +218,19 @@ type OpenApiMediaTypeSchemaSlot
   | OpenApiMediaSchemaAbsent
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseContentSlot
 type OpenApiResponseContentSlot
   = OpenApiResponseContentAbsent
   | OpenApiResponseContentPresent { content: Map<String, OpenApiMediaType> }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeadersSlot
 type OpenApiHeadersSlot
   = OpenApiHeadersAbsent
   | OpenApiHeadersPresent { headers: Map<String, OpenApiHeaderOrReference> }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinksSlot
 type OpenApiLinksSlot
   = OpenApiLinksAbsent
   | OpenApiLinksPresent { links: Map<String, OpenApiLinkOrReference> }
@@ -242,11 +245,13 @@ type OpenApiResponse {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseOrReference
 type OpenApiResponseOrReference
   = OpenApiResponseInline { response: OpenApiResponse }
   | OpenApiResponseReference { reference: OpenApiReferenceObject }
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusDigit
 type OpenApiStatusDigit
   = OpenApiDigit0
   | OpenApiDigit1
@@ -260,6 +265,7 @@ type OpenApiStatusDigit
   | OpenApiDigit9
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiStatusHundreds
 type OpenApiStatusHundreds
   = OpenApiHundreds1
   | OpenApiHundreds2
@@ -268,6 +274,7 @@ type OpenApiStatusHundreds
   | OpenApiHundreds5
 
 
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyWildcardKind
 type OpenApiResponseKeyWildcardKind
   = OpenApiWildcard1xx
   | OpenApiWildcard2xx
@@ -276,6 +283,7 @@ type OpenApiResponseKeyWildcardKind
   | OpenApiWildcard5xx
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKey
 type OpenApiResponseKey
   = OpenApiResponseKeyDefault
   | OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
@@ -316,11 +324,13 @@ type OpenApiPaths {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathsSlot
 type OpenApiPathsSlot
   = OpenApiPathsPresent { paths: OpenApiPaths }
   | OpenApiPathsAbsent
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSchemasSlot
 type OpenApiComponentsSchemasSlot
   = OpenApiComponentsSchemasAbsent
   | OpenApiComponentsSchemasPresent { schemas: Map<String, OpenApiSchema> }
