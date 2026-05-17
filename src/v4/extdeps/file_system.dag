@@ -42,7 +42,7 @@ type RelativePathHead
 // 🟡 coproduct dissolution — DECISIONS.md OS-1
 type RelativePath
   = CurrentDirectory
-  | CurrentDescendant { first: PathComponent, rest: List<PathComponent> }
+  | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
   | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 
 // 🟡 coproduct dissolution — DECISIONS.md OS-1

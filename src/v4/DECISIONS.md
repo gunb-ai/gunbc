@@ -124,17 +124,17 @@ more specific trigger is stated.
   because a non-current relative descendant head is parent or named;
   parameterized family fails because variants are not identical payloads
   over an enumerable set.
-- `RelativePath`: current directory, current-prefixed descendant, and
-  non-current relative descendant are distinct POSIX relative-path facts.
-  Trigger: filesystem path parsing / resolution realization. Ledger:
-  fact placement fails because the partition is consumed uniformly by
-  path operations; variant-is-data fails because current-prefixed and
-  non-current descendants carry different structural facts while
-  current directory is nullary; algebraic form is not applicable;
-  dimensional fails because a relative path is current directory,
-  current-prefixed descendant, or non-current descendant; parameterized
-  family fails because variants are not identical payloads over an
-  enumerable set.
+- `RelativePath`: current directory, current-prefixed descendant with a
+  non-current continuation, and non-current relative descendant are
+  distinct POSIX relative-path facts. Trigger: filesystem path parsing /
+  resolution realization. Ledger: fact placement fails because the
+  partition is consumed uniformly by path operations; variant-is-data
+  fails because current-prefixed and non-current descendants carry
+  different leading facts while sharing the non-current continuation
+  head; algebraic form is not applicable; dimensional fails because a
+  relative path is current directory, current-prefixed descendant, or
+  non-current descendant; parameterized family fails because variants
+  are not identical payloads over an enumerable set.
 - `Path`: absolute-vs-relative is a POSIX root fact. Trigger:
   filesystem path parsing / resolution realization. Ledger: fact
   placement fails because root-ness is consumed by path resolution and
