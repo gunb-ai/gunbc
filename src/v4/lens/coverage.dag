@@ -1,10 +1,14 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
 // Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey
-// Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages
+// Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages lens/testgen
 // Status: scaffold — fill per TASKS T-18.
 
 module v4.lens.coverage
+
+
+import v4.std.node { Connective, Behavior }
+import v4.lens.testgen { TestgenConcept }
 
 
 type Coverage<C> {
@@ -13,8 +17,8 @@ type Coverage<C> {
 
 
 type L6CoverageKey {
-  connective_axis: Int
-  behavior_axis: Int
+  connective: Connective
+  behavior: Behavior
 }
 
 
@@ -29,6 +33,4 @@ type ImpossibleBugCoverageKey {
 }
 
 
-type TestgenCoverageKey {
-  category: Int
-}
+type TestgenCoverageKey = TestgenConcept
