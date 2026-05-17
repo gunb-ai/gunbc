@@ -84,8 +84,10 @@ module v4.extdeps.file_system
 
 
 import v4.std.algebra { FreeMonoid }
+import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
+import v4.std.text { String }
 
 
 // ─────────────────────────────────────────────────────────────────────

@@ -106,8 +106,11 @@ module v4.extdeps.process
 
 import v4.extdeps.file_system { AbsolutePath }
 import v4.std.algebra { FreeMonoid }
+import v4.std.collection { List, Map }
 import v4.std.diagnostic { Outcome }
+import v4.std.integer { Int }
 import v4.std.machine { Byte }
+import v4.std.text { String }
 
 
 // ─────────────────────────────────────────────────────────────────────
