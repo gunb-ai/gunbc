@@ -1,360 +1,13 @@
 // src/v4/std/node.dag
-//
-// Scope: foundational substrate — type connectives + L1 behaviors. THE root of the epistemic chain.
-// Anchor: THESIS.md "Substrate shape" §198-203 + MODELING.md
-//
-// Owns:
-//   - 6 type connectives: Atom | Conj | Disj | Arrow | Cardinality | Instantiation
-//   - 5 L1 behaviors: Value | Transform | Branch | Loop | Bind
-//   - C1 stop-signal discipline (no 7th connective, no 6th behavior)
-//   - Symbol: opaque kernel identity (K-1, operator-ratified 2026-05-15)
-//   - Hash: opaque content-address digest (B1, operator-ratified
-//     2026-05-15; re-homed from the deleted std/primitive.dag)
-//   - Node / NodeKind / Edge: the one recursive type + its skeleton
-//   - the edge-discipline structural invariant (a connective fixes its
-//     edge shape; the illegal pairing is never silently constructible)
-//   - D1 Diff family, DATA ONLY: Path / Edit / Diff — the
-//     structural-delta vocabulary over Node (operator-ratified
-//     2026-05-15; shape refined per a P2 review finding, PR #3162 —
-//     see the D1 block below). The operations (subterm_at /
-//     apply_diff) live in lens/application.dag, not here (forced
-//     split — see the D1 block).
-//   - B1-CANON: the canonical-form clause (the total deterministic
-//     normal form) + the `content_hash = merkle_fold ∘ canonical`
-//     contract — a SEPARATE authority from A1; T-1 implements it, does
-//     not design it (see the B1-CANON block below)
-//
-// A1 (operator-ratified 2026-05-15) — the recursion contract:
-//   - ONE recursive type: Node. Recursion lives SOLELY in Node children
-//     (the children list), never in a self-referential type definition.
-//   - A Node carries ORTHOGONAL flat-discriminant coordinates — connective
-//     (∈ the closed 6, incl. `Instantiation` which is how genericity is
-//     expressed: parameter-names + the Instantiation connective, NOT a
-//     recursive Generic type) and, for computation Nodes, behavior (∈ the
-//     closed 5). The two-coordinated-substrate framing (THESIS §198-203)
-//     = these axes stay orthogonal; it does NOT license a 2nd recursive
-//     type. Behaviors are STRUCTURAL, never lens-derived (same discipline
-//     as feedback_no_annotations); THESIS's uncommitted "unified substrate"
-//     means *deriving behaviors away* — rejected here.
-//   - A separate recursive Behavior / Inferred / Pattern / Generic type is
-//     the bounded-kernel violation that split v2 infer into 12 files —
-//     STOP and escalate, NOT a worker choice.
-//   - Recursive generics: a recursive generic is a FINITE Node tree with
-//     an `Instantiation` connective + a name-reference Node back to its
-//     own declaration (resolved through the namespace — feedback_naming_is
-//     _aliasing); it is "just Node underlying." Regular recursion (same
-//     parameter at the recursive occurrence) is unconditionally admissible
-//     and decidable. Non-regular / polymorphic recursion (recursive
-//     occurrence at a different instantiation) is a STOP unless a decidable
-//     bound is exhibited (defers to the A2 decidability resolution).
-//
-// A2 (operator-ratified 2026-05-15) — termination is Tier-1, not optional:
-//   - `Loop` is BOUNDED RECURSION, total-by-construction (the
-//     Coq/Agda/Idris totality choice — INVARIANTS:72). No Y-combinator,
-//     no general recursion. This is the established INVARIANT P4 made
-//     explicit as the T-1 substrate shape.
-//   - Termination is a Tier-1 (compile-time) structural fact carried as
-//     descent evidence: IMPLICIT when recursion descends on a sub-Node
-//     (the bounded-kernel "recursion in children" default — the common
-//     case, no measure needed); EXPLICIT RankingDimension/TerminationProof
-//     (lexicographic/multiset per Dershowitz-Manna) when descent is not
-//     structural.
-//   - A CHECKER reading VERIFIES the descent proof (decidable). It never
-//     searches/discovers a measure (INVARIANTS:66 "checker not discoverer"
-//     = feedback_no_engine). `DescentUnknown` ⇒ fail-closed Diagnostic,
-//     never a fabricated or assumed termination.
-//   - The bound IS the structural datum lens/cost.dag reads — termination
-//     ∧ complexity are ONE read on the U1 homomorphism-with-cost spine
-//     (this is why C2 cost derivation is sound).
-//   - Genuine unboundedness (servers/streams/REPLs) is a TERMINATING step
-//     iterated by the coordination-boundary driver — never an unbounded
-//     `.dag` loop.
-//   - Residual boundary (ratified, not buried): a true-but-not-
-//     structurally-rankable termination (open conjecture / un-encodable
-//     math) is NOT expressible as a total value — express it as bounded
-//     search returning a fail-closed typed result; you may not CLAIM a
-//     totality you cannot prove. Where even that is impossible ⇒ STOP-
-//     escalate (a modeling conversation, not a worker hack). Correct
-//     closure of a decidable system (INVARIANTS:31), not a defect.
-//
-// K-1 (operator-ratified 2026-05-15) — kernel identifiers are opaque:
-//   - `Symbol` is an opaque identity: equality-comparable and NOTHING
-//     else. The type exposes no content accessor — kernel and lens code
-//     physically cannot read or branch on an identifier's spelling.
-//   - This forecloses the v2 failure mode structurally, not by review:
-//     a readable kernel String became a heuristic-smuggling channel
-//     (`match name { "x" => ... }`, prefix checks; INVARIANTS:229,
-//     feedback_opaque_strings_attract_heuristics). With an opaque Symbol
-//     the heuristic is UNWRITABLE — the type won't yield content
-//     (feedback_no_textual_enforcement_bridges: structure, not a test).
-//   - The human-readable spelling lives in a boundary intern table,
-//     consulted ONLY at diagnostics rendering and emission — never by
-//     kernel/lens logic. Whether Symbol is backed by a hash or an intern
-//     index is hidden by the type (seed/runtime implementation detail).
-//   - Bonus consistency: with opaque Symbol the content-hash fold over an
-//     `Atom` is automatically rename-invariant — α-equivalent programs
-//     hash equal — because the fold cannot observe the spelling.
-//
-// D1 (operator-ratified 2026-05-15; shape refined 2026-05-15 per a P2
-// review finding on PR #3162 — codex REQUEST_CHANGES; the refinement is
-// for operator confirm) — the structural-delta vocabulary:
-//   - An `Edit` replaces the subtree at a `Path` with a replacement
-//     `Node` (the term-rewriting `t[s]p`; the anchor term for a Path is
-//     a *position* / *occurrence*, the practitioner form a JSON Pointer,
-//     RFC 6901 — here restricted to member-name tokens, see below). The
-//     TYPE is named `Path` (the route), not `Position` (operator pick:
-//     a position is a coordinate, a path is how you get there).
-//   - A `Path` is `List<Symbol>`: each step descends the `Named` edge
-//     keyed by that opaque `Symbol`. Flat & finite — NOT a new
-//     recursive type (A1: `Node` stays the SOLE recursion). Resolution
-//     needs only `Symbol` EQUALITY (K-1 grants exactly that; no
-//     spelling read) — K-1-clean, NOT K-1-exempt.
-//   - NO positional / ordinal selector (P2 finding 1). An `Int` ordinal
-//     admits negative / out-of-range values — EXACTLY the
-//     representable-illegal-state this file DESIGNED OUT at the
-//     `EdgeLabel`/`EdgeDiscipline` block (the `Positional` variant
-//     carries no index — see `type EdgeLabel`, ~284, and its
-//     "deliberately NO stored index" rationale, ~278). It is NOT
-//     reintroduced. Positional-connective children
-//     (Arrow/Cardinality/Instantiation) are therefore NOT individually
-//     addressed: an Edit replaces the nearest enclosing `Named` subtree
-//     (coarser granularity = the safe over-fire #3157 point 3 blesses).
-//     Surgical positional addressing is a future operator-ratified
-//     substrate extension, deliberately omitted — it would need an
-//     ordinal primitive the consumes-nothing root cannot have (no
-//     kernel `Nat`; a recursive Peano nat = A1 STOP). The omission is
-//     structural honesty, not a deferral: the capability is reachable
-//     today via enclosing-subtree replacement; any future surgical
-//     need is an explicit ratification, never a silent TODO.
-//   - NO well-formedness predicate (P2 finding 2). A `Diff` is an
-//     ORDERED `List<Edit>` applied as SEQUENTIAL rewrites
-//     (`root |> apply(e1) |> apply(e2) |> …`). There is NO "set /
-//     pairwise-independent / parallel-positions" invariant: ANY
-//     `List<Edit>` is a valid rewrite program, so no illegal state is
-//     representable and there is nothing for an external predicate to
-//     recover (the prior set+`diff_well_formed` shape was exactly the
-//     illegal-states-representable anti-pattern the rubric blocks). An
-//     Edit whose Path no longer resolves after earlier Edits ⇒ a
-//     fail-closed Diagnostic at apply time (legitimate operational
-//     behavior, NOT a type-level illegal state). `apply_diff` is a
-//     fold; all-or-nothing — any failing step makes the whole result
-//     that one Diagnostic.
-//   - DATA-ONLY here. The operations — `subterm_at`/`apply_diff`
-//     (`-> Result<Node, Diagnostic>`) — live in `lens/application.dag`,
-//     NOT here. FORCED, not stylistic: `std/diagnostic.dag` already
-//     `Consumes std/node.dag` (`Correction = Suggested(Node)`), so a
-//     node.dag operation returning `Result<_, Diagnostic>` would make
-//     node.dag depend back on Diagnostic = a substrate cycle. This is
-//     exactly the discipline already stated for `node_well_formed`
-//     below: the substrate root declares the structural data; CONSUMERS
-//     evaluate fail-closed and raise the Diagnostic.
-//   - Single authority for the Diff TYPES is here, by the B1/`Hash`
-//     precedent: a structural delta over `Node` is substrate-tier, not
-//     a lens's private type. Consumed by `lens/affected_set.dag` (T-21
-//     `(Dag, Diff)` parameter), `lens/application.dag` (T-23
-//     `apply_diff`), incremental eval, and structural caching.
-//
-// B1-CANON (operator-ratified 2026-05-15) — the canonical-form clause.
-//   A SEPARATE explicit authority from A1 (A1 = recursion-admissibility /
-//   axis-closure / generics / termination; THIS = the total deterministic
-//   normal form B1's `content_hash` folds over). B1 DEPENDS on this; it
-//   is NOT subsumed by A1. Designed + ratified HERE, not a worker-relay
-//   choice: every consumer (B1, A3, T-15, T-20, T-21, the AGENT-1
-//   content-addressed Diff) rests on it — the most load-bearing
-//   definition in the substrate is not delegated. T-1 IMPLEMENTS this
-//   contract (`canonical : Node -> Node`; `content_hash =
-//   merkle_fold ∘ canonical`); it does not redesign it.
-//
-//   1. DOMAIN — post-normalize. `canonical` is defined on the C3-
-//      normalized kernel (the 4 sugar forms already dissolved). Raw
-//      parse trees are out of domain — sugar variance cannot reach the
-//      hash because it is gone before canonicalization.
-//   2. α-EQUIVALENCE (K-1) — a `merkle_fold` property, NOT a
-//      canonical-Node rewrite. The Node substrate's ONLY identifier
-//      carrier is `Atom { identity: Symbol }` (opaque, K-1) — there is
-//      NO De Bruijn Node, and adding one is an A1 closed-kernel STOP.
-//      So `canonical : Node -> Node` does NOT replace bound occurrences
-//      with De Bruijn positions (that rewrite is unrepresentable —
-//      surfaced by review 2026-05-16). Binder-relative identity lives
-//      in the FOLD of `content_hash = merkle_fold ∘ canonical`: the
-//      fold tracks binder scope as it descends and hashes a BOUND
-//      occurrence by its binder-relative position, while a FREE Symbol
-//      hashes by opaque K-1 identity (equality only). The De Bruijn
-//      position is a transient fold-local value contributing to a
-//      `Hash` — never a Node needing a carrier — so the α-fact IS
-//      representable (it lives where it can: the fold, whose codomain
-//      is `Hash`, not `Node`; no INVARIANTS P2/P4 carrier gap). ⇒
-//      renaming a bound local is hash-invariant by construction (the
-//      full K-1 "bonus"; affected_set Ex.2 "rename a local ⇒ same
-//      hash").
-//   3. CHILD ORDER IS `children`-LIST ORDER, UNCONDITIONALLY — never
-//      algebra-derived, never hand-flagged (B-3 — an AMENDMENT to the
-//      2026-05-15 B1-CANON clause above, NOT a separate ratification;
-//      B-3 itself operator-ratified 2026-05-16). Every connective's
-//      children hash in their
-//      `children`-list order (node.dag already makes list order the
-//      single positional authority). The COMMUTATIVE/quotient branch is
-//      NOT a degraded fallback — it is STRUCTURALLY FORECLOSED, two
-//      independent ways:
-//        (a) No sort key exists. Quotienting commutative children means
-//            sorting them; the only candidate key is the child's own
-//            recursive `content_hash`, but `Hash` is opaque /
-//            equality-only ("exactly like `Symbol`", B1 / K-1-style:
-//            no content accessor, no order). "sort by content_hash" is
-//            inexpressible. (A `Hash` order would erode that opacity
-//            AND yield only an arbitrary digest order — no gain over
-//            list order.)
-//        (b) Algebra is unreachable from here. `canonical`/
-//            `content_hash` are pure folds in this consumes-nothing
-//            root; algebra inhabitance lives in std/algebra.dag (which
-//            Consumes std/node.dag — reading it back is a substrate
-//            cycle, the D1 cycle class) and is bound by infer (T-9),
-//            downstream of `canonical`'s pre-infer domain (point 1).
-//            The signal does not exist at this stage; importing it
-//            cycles.
-//        (c) Even GRANTING (a)/(b), the sort is NONDETERMINISTIC by
-//            construction: distinct labeled children can share an
-//            identical child subtree (e.g. `{ a: Int, b: Int }` — both
-//            children's subtree is the same `Int` name-ref ⇒ equal
-//            child content_hash), and K-1 makes the label `Symbol`
-//            equality-only (NO order) ⇒ no deterministic tie-break ⇒
-//            the sort falls back to incidental order, exactly the
-//            INVARIANTS P2/P4 nondeterminism this clause must not admit.
-//            (Surfaced by review 2026-05-16 — a third INDEPENDENT
-//            reason the commutative-quotient is unsound; list order is
-//            the only deterministic choice.)
-//      This is the correct closure of a decidable system
-//      (INVARIANTS:31 — same honest-bounding as A3/C5/U1), NOT a
-//      defect. Lost: ONLY field-permutation dedup — a memo nicety;
-//      treating a permuted record as changed only makes affected_set
-//      OVER-fire (wasted recompute — safe), never a MISSED change (the
-//      unsafe direction is foreclosed because list order is total + the
-//      hash). content_hash stays rename-invariant (opaque Symbol, the
-//      K-1 bonus). T-2 / std/algebra.dag needs NO change — its
-//      inhabitance model is fine; point 3 was MISLAYERED, not deficient.
-//   4. RECURSION IS BY-REFERENCE — hashed by Symbol identity, NEVER
-//      inlined. Recursive types/fns are (per A1) Instantiation / name-
-//      reference `Atom`s carrying an opaque Symbol. The fold treats a
-//      name-ref as a LEAF (its K-1 Symbol identity); it never expands
-//      it. A definition's body is canonicalized once, its self-
-//      references being name-ref leaves. THIS is what makes
-//      `content_hash` total on `type T = … T …` — without it the fold
-//      would not terminate.
-//   5. TOTALITY / DECIDABILITY. With (4) `canonical` is a structural
-//      catamorphism over a FINITE Node tree (recursion is by-reference);
-//      it terminates by Node finiteness and is decidable
-//      (feedback_decidability_invariant; the same A2-implicit descent
-//      `node_well_formed` uses). `content_hash = merkle_fold ∘
-//      canonical`; structurally-shared sub-Nodes hash ONCE — content-
-//      addressing / dedup / the affected_set "unchanged subgraph"
-//      detection is a FREE consequence of the Merkle property, not
-//      separate machinery.
-//   6. NO INCIDENTAL ORDERING. The ONLY order that survives into the
-//      normal form is the `children`-list order (point 3 —
-//      unconditional, no algebra qualifier).
-//      Declaration source order, import order, post-resolve binding
-//      order, whitespace/comments (gone post-normalize) — none enter
-//      `canonical`. The "no incidental ordering" requirement, precise.
-//
-// T-1 scope dispositions (operator-ratified 2026-05-15):
-//   - Q1: `Atom` carries an opaque `Symbol` identity only. Literal VALUE
-//     typing (int/string/bool literal data) is owned by the scalar/numeric
-//     files — std/integer.dag, std/text.dag, std/logic.dag (T-3) — a
-//     different concern from identifier identity.
-//   - Q2: this file owns the `Loop` behavior variant + the A2 discipline
-//     above; the descent-evidence carriers (RankingDimension /
-//     TerminationProof / DescentEvidence) belong to std/cardinality.dag
-//     (T-3, P4 decidability). The IMPLICIT descent case (recursion on a
-//     proper sub-Node child) needs no carrier — it is free from A1's
-//     children structure; only explicit non-structural ranking needs one.
-//   - `inhabits` is NOT a field of `Node`: A1 forbids non-`children`
-//     Node-recursion, and inhabitance is a cross-declaration relation
-//     expressed via name-reference `Atom`s (resolved through the
-//     namespace) — each inhabiting concrete type declares its OWN
-//     inhabitance in its own concept file (std/integer.dag,
-//     std/logic.dag, …); std/algebra.dag (T-2) owns only the algebra
-//     STRUCTURES that get inhabited, never the inhabitance instances
-//     (P2). (T-1-closeout correction 2026-05-15: the prior
-//     "declared/owned by std/algebra.dag (T-2)" wording predated the
-//     operator-ratified structures-only scope.)
-//
-// Consumes:
-//   nothing — this is the substrate root
-//
-// Status: T-1 modeled 2026-05-15 (cool-boar-275).
-// Substrate-extension rule: see src/v4/STRUCTURE.md closed-tree discipline.
+// Scope: v4 substrate root for type and computation nodes.
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, Path, Edit, Diff.
+// Consumes: nothing.
+// Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
 module v4.std.node
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Symbol — opaque kernel identity (K-1).
-//
-// Body-less by design: an opaque type yields no content. Equality is the
-// only operation; there is deliberately no accessor that returns the
-// spelling. Symbol is substrate-ambient (declared at the substrate root,
-// like the kernel List/Int/Bool) — it is not "consumed" from another
-// file. See header K-1 for the full rationale.
 type Symbol
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Hash — opaque content-address digest (B1, operator-ratified 2026-05-15).
-//
-// Body-less and opaque, exactly like `Symbol` (the K-1 discipline):
-// equality only, no content accessor. `Hash` is the content-addressing
-// carrier — the result of `content_hash : Node -> Hash`, a Merkle
-// catamorphism over the canonical-form clause. That fold and the
-// canonical-form clause are the T-1 closeout (B1: "T-1 worker encodes
-// the clause + fold per relay"); THIS is the carrier type they produce.
-// One scheme — consumed by T-15 (fixed point) / T-20 (pinned binary) /
-// T-21 (affected-set + structural caching) / the A3 reproduction check /
-// C5 RoundTrips. (Re-homed here from the deleted std/primitive.dag —
-// `Hash` is a content identity, not a scalar; see STRUCTURE.md
-// §"Scalar/numeric concept decomposition".)
 type Hash
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Connective — the closed type-substrate classifier. Exactly six.
-//
-// `Atom` is terminal at the user-input boundary: it carries an opaque
-// `Symbol` identity (an identifier / type-parameter name) and decomposes
-// no further. The other five connectives are pure structural
-// discriminants whose entire content is their `children` edges.
-//   Concept anchor — an `Atom` is the type-substrate analogue of an
-//   *atomic formula* in logic: a term containing NO connectives, hence
-//   irreducible. The other five variants are the "connectives" proper;
-//   the atom / connective split is borrowed from logic, not coined here.
-//   https://en.wikipedia.org/wiki/Atomic_formula
-//
-// CLOSED (C1 stop-signal). A seventh connective is an edit to THIS
-// declaration — a visible diff routed to operator ratification (per
-// STRUCTURE.md A3: the substrate does not magically refuse it; the edit
-// is loud and un-missable). There is no `Other` / open-ended variant.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every pipeline stage (parse/normalize/
-//      infer/emit) dispatches on the connective; it is the shared
-//      classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the six are structurally distinct
-//      (Atom carries a Symbol; Conj/Disj labeled; Arrow/Cardinality/
-//      Instantiation positional) — no uniform label space to fold.
-//   3. Algebraic form — N/A by construction: this IS the type-substrate
-//      root (THESIS:202); the connectives do not trace to a richer
-//      std/ algebra — they are the source other structure grounds in.
-//   4. Dimensional — FAILS: a node carries EXACTLY ONE connective;
-//      genuine alternatives, never simultaneous coordinates.
-//   5. Parameterized family — FAILS: the six are structurally
-//      heterogeneous (Atom carries a Symbol; Conj/Disj labeled;
-//      Arrow/Cardinality/Instantiation positional, distinct arities/
-//      semantics) — NOT one generic `F<X>` / projection over a source
-//      set X (Practice 7). No enumeration-to-projection collapse exists.
-// Terminal: the closed 6 type connectives; a 7th is the C1 stop-signal
-// (a visible ratified edit to this declaration, STRUCTURE.md
-// commitment #1). Irreducible substrate root.
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -362,195 +15,30 @@ type Connective
   | Arrow
   | Cardinality
   | Instantiation
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Behavior — the closed computation-substrate classifier. Exactly five.
-//
-// Flat unit variants: a behavior carries no payload. All structure (a
-// Loop's body, a Branch's paths, a Transform's operands) lives in the
-// owning Node's `children`. This file owns the five-behavior ENUM and
-// the A2 `Loop`-is-bounded discipline; per-behavior edge wiring is built
-// by the pipeline-stage tasks (T-6+).
-//
-// CLOSED (C1 stop-signal). A sixth behavior is an edit to THIS
-// declaration — a visible diff routed to operator ratification.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every computation-substrate consumer
-//      dispatches on the behavior; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: the five are distinct computation
-//      kinds (the typed-total-λ fragment per INVARIANTS — Transform=
-//      application, Bind=let, Branch=sums, Loop=bounded rec, Value);
-//      no uniform label space.
-//   3. Algebraic form — N/A by construction: this IS the computation-
-//      substrate root (THESIS:202); no richer std/ source.
-//   4. Dimensional — FAILS: a computation node carries EXACTLY ONE
-//      behavior; alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the five are distinct computation
-//      kinds (the typed-total-λ fragment — Transform=application,
-//      Bind=let, Branch=sums, Loop=bounded rec, Value) — NOT one
-//      generic `F<X>` / projection over a source set (Practice 7).
-// Terminal: the closed 5 L1 behaviors; a 6th is the C1 stop-signal
-// (STRUCTURE.md commitment #1). Irreducible substrate root.
 type Behavior
   = Value
   | Transform
   | Branch
   | Loop
   | Bind
-
-
-// ─────────────────────────────────────────────────────────────────────
-// NodeKind — which of the two coordinated substrates a Node lives in.
-//
-// Shape S (operator-confirmed 2026-05-15): a Node belongs to EXACTLY one
-// substrate. A type node has a connective; a computation node has a
-// behavior. It is NOT the case that one node carries both — that would
-// conflate the two independent C1 closures. The connective and behavior
-// enums stay orthogonal closed sets; `NodeKind` merely selects which
-// one applies (THESIS:198-203 — computation references type by edge, it
-// does not co-locate the two coordinates on one node).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every Node consumer branches on kind
-//      to know which substrate it is in; shared, not scattered.
-//   2. Variant-is-data — FAILS: TypeNode carries a Connective,
-//      ComputationNode a Behavior — disjoint payloads, no uniform
-//      label space.
-//   3. Algebraic form — N/A by construction: the two-coordinated-
-//      substrate split IS the substrate shape (THESIS:198-203); no
-//      richer source.
-//   4. Dimensional — FAILS: Shape S — a Node is in EXACTLY ONE
-//      substrate, never both; alternatives, not coordinates (co-
-//      locating both would conflate the two independent C1 closures).
-//   5. Parameterized family — FAILS: TypeNode/ComputationNode carry
-//      disjoint payloads (Connective vs Behavior) — not one generic
-//      `F<X>` / projection over a source set (Practice 7); it is the
-//      irreducible two-coordinated-substrate selector.
-// Terminal: the binary type/computation substrate split; irreducible.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// EdgeLabel — how a child Node is addressed from its parent.
-//
-// `Named` (carrying an opaque `Symbol` per K-1 — never a readable string)
-// for the labeled-children connectives (Conj/Disj). `Positional` is a
-// bare marker for the positional-children connectives (Arrow/Cardinality/
-// Instantiation): a positional child's identity IS its 0-based position
-// in the parent's `children` list. That list order is the SINGLE
-// authority for positional order (CULTURE §8 — canonical, deterministic).
-//
-// There is deliberately NO stored index. A `Positional { index: Int }`
-// field would duplicate the list order — a second authority that can
-// disagree (INVARIANTS P2), and it is exactly that duplication that made
-// negative / gapped / duplicate / out-of-order indices representable.
-// With no index field those illegal states are STRUCTURALLY
-// UNREPRESENTABLE — not "rejected by a checker."
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: every edge consumer branches on the
-//      label kind uniformly; shared, not scattered.
-//   2. Variant-is-data — FAILS: `Named` carries a Symbol; `Positional`
-//      is a bare marker whose identity IS list position. Folding to a
-//      uniform record means a stored index — the INVARIANTS P2
-//      duplicate-authority anti-pattern this type exists to forbid.
-//   3. Algebraic form — N/A by construction: the two child-addressing
-//      modes are the edge-discipline primitive; no richer std/ source.
-//   4. Dimensional — FAILS: an edge is EITHER named OR positional,
-//      never both; alternatives, not coordinates.
-//   5. Parameterized family — FAILS: `Named` carries a Symbol,
-//      `Positional` is a bare marker (identity = list position) —
-//      heterogeneous, NOT one generic `F<X>` / projection over a
-//      source set (Practice 7).
-// Terminal: the two child-addressing modes; the no-stored-index design
-// makes illegal index states unrepresentable — this IS already the
-// dissolved form, not a compression of one.
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
-
-
-// Edge — a parent Node's reference to one child Node.
 type Edge {
   label: EdgeLabel
   target: Node
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Node — THE one recursive type (A1).
-//
-// Recursion lives SOLELY in `children`: each Edge's `target` is a Node,
-// reached only via the children list. There is no other self-reference —
-// no `inhabits: Node` slot, no parent pointer. Cross-declaration
-// references are name-reference `Atom`s resolved through the namespace
-// (A1), which keeps every Node tree finite and the content-hash fold
-// well-defined.
 type Node {
   kind: NodeKind
   children: List<Edge>
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Edge-discipline invariant (operator directive D3, 2026-05-15).
-//
-// A connective FIXES its edge discipline: Conj/Disj address children by
-// name (`Named`), Arrow/Cardinality/Instantiation by position
-// (`Positional`), `Atom` is terminal with no children. The one illegal
-// state left to guard is a label-KIND mismatch — a `Named` edge under a
-// positional connective (or the reverse), or any edge under `Atom`.
-//
-// That mismatch is CHECK-enforced, not type-unrepresentable: making it
-// unrepresentable would require connective-specific child collections —
-// the per-connective redesign D3 explicitly declined ("keep one
-// `children: List<Edge>` list"). `node_well_formed` is therefore the
-// structural invariant consumers (parse / normalize) evaluate fail-closed
-// (INVARIANTS P3).
-//
-// This is deliberately NOT justified by the STRUCTURE.md A3 precedent.
-// A3 is checked-rather-than-unrepresentable because it guards an
-// unpreventable human edit (Trusting-Trust — editing the seed). A
-// malformed edge is an in-language VALUE — structurally preventable — so
-// INVARIANTS P2 would prefer type-unrepresentability; the only reason it
-// stays a check here is the D3 no-redesign call, not an A3-style
-// impossibility. (Contrast: the closed `Connective` enum below — a 7th
-// connective genuinely IS the A3 case, an edit to this file.)
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: derived uniformly from the connective
-//      via `connective_edge_discipline` and consumed by
-//      `node_well_formed`; single authority, not scattered.
-//   2. Variant-is-data — FAILS: the three are distinct structural
-//      rules (no edges / labeled+distinct / positional), not a uniform
-//      label space.
-//   3. Algebraic form — N/A by construction: it is the projection of
-//      the closed `Connective` set's edge rule; it IS the rule, no
-//      richer source.
-//   4. Dimensional — FAILS: a connective fixes EXACTLY ONE discipline;
-//      alternatives, not coordinates.
-//   5. Parameterized family — FAILS: the three are distinct structural
-//      rules (no edges / labeled+distinct / positional) — NOT one
-//      generic `F<X>` / projection over a source set (Practice 7);
-//      it is the irreducible projection OF the closed `Connective` set
-//      onto its edge rule, already in dissolved form.
-// Terminal: the three connective edge-disciplines; a closed classifier
-// over the closed `Connective` set — irreducible with it.
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
   | PositionalEdges
-
-
-// The discipline a connective fixes for its children.
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges
@@ -561,18 +49,12 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Instantiation => PositionalEdges
   }
 }
-
-
-// Is one edge addressed by name (`Named`) rather than by position?
 fn edge_is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
     Positional => false
   }
 }
-
-// Is one edge a positional edge? (Its position is its index in the
-// parent's `children` list — there is nothing else to check.)
 fn edge_is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
@@ -591,9 +73,6 @@ fn all_edges_positional(children: List<Edge>) -> Bool {
     acc && edge_is_positional(e: e)
   })
 }
-
-// How many of `children` carry the Named key `name`?
-// (`Symbol` equality is the one operation K-1 grants the opaque type.)
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
   fold(children, init: 0, f: fn(acc, e) {
     match e.label {
@@ -602,12 +81,6 @@ fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
     }
   })
 }
-
-// Are all Named keys distinct? A `Named` edge is an ADDRESS — two
-// children sharing a key make "address a child by name" ambiguous, so a
-// labeled connective with a duplicate key is malformed. Checked here so
-// downstream consumers can treat a well-formed Conj/Disj's names as keys
-// without each re-verifying uniqueness (INVARIANTS P2 — one authority).
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -616,13 +89,6 @@ fn all_names_distinct(children: List<Edge>) -> Bool {
     }
   })
 }
-
-
-// Do all of a node's edges satisfy the connective's discipline?
-//   NoEdges          → the children list must be empty
-//   LabeledEdges     → every edge is addressed by name AND all names are
-//                      distinct (a name is an address — no duplicates)
-//   PositionalEdges  → every edge is positional (order = list order)
 fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
   match d {
     NoEdges => count(children) == 0
@@ -631,11 +97,6 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     PositionalEdges => all_edges_positional(children: children)
   }
 }
-
-
-// The LOCAL edge discipline of a single node (its own `children` only).
-// A type node's connective fixes the discipline; a computation node has
-// no local edge constraint at this substrate-root layer (see below).
 fn node_locally_well_formed(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: c } =>
@@ -643,130 +104,19 @@ fn node_locally_well_formed(n: Node) -> Bool {
     ComputationNode { behavior: _ } => true
   }
 }
-
-// node_well_formed — the checked structural invariant (D3), WHOLE-TREE.
-//
-// A node is well-formed iff its own local edge discipline holds AND every
-// child subtree is well-formed. This is ONE self-recursive function (not
-// a mutual pair) so the v2 seed's termination analyzer accepts it — it
-// recurses through `children` exactly the way v2's own recursive Node
-// walks do (e.g. `check_bare_containers` in `src/v2/03_normalize.dag`).
-// Termination is the A2 implicit case: each `e.target` is a proper
-// sub-Node, structurally smaller, so the descent is finite.
-//
-// One call to `node_well_formed(root)` means the ENTIRE Node tree is
-// well-formed — consumers (parse / normalize) do not traverse and
-// re-check; that is the single-authority promise (INVARIANTS P2/P3).
-//
-// NAMED OBLIGATION ON T-6+ (not optional): the computation-node arm of
-// `node_locally_well_formed` is an explicitly EMPTY local constraint —
-// NOT "computation nodes are unconstrained, forever". The pipeline-stage
-// tasks that build the computation substrate (T-6 tokenize … T-22 eval)
-// MUST extend that arm with each behavior's edge discipline as they
-// land. The whole-tree recursion here is already in force regardless.
 fn node_well_formed(n: Node) -> Bool {
   node_locally_well_formed(n: n)
     && fold(n.children, init: true, f: fn(acc, e) {
          acc && node_well_formed(n: e.target)
        })
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// D1 — the structural-delta vocabulary over Node (operator-ratified
-// 2026-05-15; shape refined per a P2 review finding, PR #3162). DATA
-// ONLY. The operations (subterm_at / apply_diff) live in
-// lens/application.dag, NOT here — see the D1 header block above for
-// the forced-by-cycle rationale (std/diagnostic.dag already depends on
-// std/node.dag).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (DISSOLVED-AWAY,
-// terminal). A prior shape carried a Path step as a sum
-// `EdgeSelector = ByName { name: Symbol } | ByPosition { index: Int }`.
-// That sum is dissolved, not retained; this receipt is the required
-// substrate-shape artifact for that decision (PR #3162 BLOCKING — a
-// D1 sum needs the ledger or it is not landable). Ledger — the five
-// patterns attempted against "must a positional/ordinal selector
-// variant exist":
-//   1. Fact placement — DISSOLVES it. The "address a positional child"
-//      fact has no independent consumer: every D1 consumer (affected_set
-//      frontier seed, apply_diff, incremental eval, structural caching)
-//      acts on edits expressible at NAMED-declaration granularity. A
-//      positional-connective child (Arrow/Cardinality/Instantiation
-//      param/result) is never the REQUIRED unit of an edit — any change
-//      to it is expressible by replacing its enclosing `Named`
-//      declaration's subtree wholesale (the replacement is a full Node
-//      the caller rebuilds). The fact factors entirely through the
-//      `ByName` step.
-//   2. Variant-is-data — N/A once (1) removes the second variant: a
-//      one-variant sum IS its payload, so `Path = List<Symbol>` — no
-//      sum, no coproduct; the receipt obligation discharges itself.
-//   3. Algebraic form — N/A: a Path step is not an algebraic structure;
-//      it is a `Named`-edge key (`Symbol`), already owned by this file.
-//      No richer std/ source to ground in.
-//   4. Dimensional — FAILS as a reason to KEEP a positional variant:
-//      addressing is never "by-name AND by-position" simultaneously;
-//      positional internals are reached THROUGH the enclosing `ByName`
-//      step, so there is exactly one addressing coordinate, not two.
-//   5. Parameterized family — FAILS: `ByName`/`ByPosition` are NOT one
-//      mechanical `F<X>` over a separately-declared set — they carry
-//      different payload types (`Symbol` vs `Int`) and different
-//      addressing semantics; they mirror node.dag's genuine 2-variant
-//      `EdgeLabel` discriminant, NOT an enumerated copy of some
-//      declared "selector-kind" set (contrast the Pattern-5
-//      `Homomorphism`-per-algebra example → one generic
-//      `Homomorphism<C>`). No source set X to project over ⇒ the
-//      Practice-7 projection is N/A. (And post-(1) a single constructor
-//      remains — a one-element family is not a family.)
-// Terminal: positional addressing is structurally SUBSUMED by
-// enclosing-`Named`-subtree replacement — coarser granularity #3157
-// point 3 ratifies as safe over-fire, not lossy. This is NOT a deferred
-// gap: the capability is reachable today; any future surgical/minimal-
-// diff positional addressing is an explicit operator-ratified substrate
-// extension (it would need an ordinal primitive the consumes-nothing
-// root cannot host — no kernel `Nat`; a recursive Peano = A1 STOP),
-// never a silent TODO. (An `Int` ordinal was rejected outright: it
-// admits negative / out-of-range values — the representable-illegal-
-// state this file designed out at `EdgeLabel`.)
-
-
-// Path — the route from a root Node to a descendant: the ordered list
-// of `Named`-edge keys to follow. `List<Symbol>`, NOT a new recursive
-// type (A1: `Node` stays the sole recursion). The empty `steps` list
-// denotes the root itself. Each step descends the `Named` edge keyed
-// by that opaque `Symbol` (resolution = `Symbol` equality, K-1-clean).
-// No positional/ordinal step — see the Practice-4 dissolution receipt
-// above. Anchor term: a term-rewriting *position* / *occurrence*; the
-// practitioner form is a JSON Pointer (RFC 6901) restricted to
-// member-name tokens.
 type Path {
   steps: List<Symbol>
 }
-
-
-// Edit — replace the subtree at `at` with `replacement` (the
-// term-rewriting `t[replacement]at`). A deletion is a `replacement`
-// whose cardinality is empty (expressed through the `Cardinality`
-// connective) — never an `Option::None` sentinel (M5 / fail-closed).
 type Edit {
   at: Path
   replacement: Node
 }
-
-
-// Diff — an ORDERED list of Edits applied as SEQUENTIAL rewrites
-// (`root |> apply(e1) |> apply(e2) |> …`). There is deliberately NO
-// set / pairwise-independence / "parallel positions" invariant: ANY
-// `List<Edit>` is a valid rewrite program, so no illegal state is
-// representable and no external well-formedness predicate exists to
-// recover one (P2 finding 2, PR #3162 — the prior "set, validity via
-// `diff_well_formed`" shape was exactly the illegal-states-representable
-// anti-pattern). An Edit whose Path no longer resolves after earlier
-// Edits ⇒ a fail-closed Diagnostic at apply time (legitimate
-// operational behavior, NOT a type-level illegal state). `apply_diff`
-// (lens/application.dag) is a fold; all-or-nothing — any failing step
-// makes the whole result that one Diagnostic.
 type Diff {
   edits: List<Edit>
 }

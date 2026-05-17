@@ -1,72 +1,8 @@
 // src/v4/compiler/00_compile.dag
-//
-// Scope: pipeline orchestrator — the OMNI pivot architecture.
-// Anchor: https://en.wikipedia.org/wiki/Compiler +
-//         THESIS:215-221 omni-emission (Shape A: O(1)/target, O(N+M) not O(N×M))
-//
-// B2-OMNI (operator-ratified 2026-05-15) — parse is NOT special; it is
-// ONE instance of ingestion. The pipeline is three parts: two
-// PARAMETERIZED BOUNDARIES and a language-agnostic core:
-//
-//   ingest : (Source, LanguageModel) -> Result<Node, Diagnostic>
-//     The ingest boundary. tokenize (T-6) + parse (T-7) are the GENERIC
-//     walker over LanguageModel's declarative grammar (B2) — NOT
-//     .dag-specific. Self-parse is just `ingest(src, dag_model)`; Rust is
-//     `ingest(src, rust_model)`. `.dag` is language #1, never hardcoded.
-//     (A non-text agent does NOT enter here: its change is already
-//     Node, so it does NOT pass `ingest` — it enters at `core` below
-//     as the D1 `apply_diff:(Node,Diff)->Result<Node,Diagnostic>`, a
-//     SIBLING of ingest (which is itself `->Result<Node,Diagnostic>`).
-//     An agent-supplied Diff is external/possibly-stale ⇒ FAIL-CLOSED
-//     typed Diagnostic, never a total `->Node`. See
-//     lens/application.dag AGENT-SURFACE; DECISIONS.md AGENT-1.)
-//
-//   core   : Node -> Result<InferredTree, Diagnostic>
-//     Language-agnostic: normalize (C3 — dissolve the 4 sugar forms)
-//     ∘ resolve (bind opaque Symbols, K-1) ∘ infer (U1 Find → IR-1).
-//
-//   emit   : (InferredTree, TargetModel) -> Result<Source, Diagnostic>
-//     The emit boundary, parameterized by target (U1 Realize phase).
-//   eval   : (InferredTree, Inputs)      -> Result<Value, Diagnostic>
-//     The primary execution path (THESIS:225); sibling of emit.
-//
-//   compile = emit ∘ core ∘ ingest        run = eval ∘ core ∘ ingest
-//
-//   O(N+M), structurally: N bidirectional language models + M target
-//   models. Adding model #k is O(1) — it instantly ingests to all M and
-//   is a target for all N. N×M capabilities from N+M models because Node
-//   is the universal pivot. `ingest(Rust) ∘ emit(Python)` translates
-//   Rust→Python with NO Rust→Python translator ever written — the
-//   visceral cash of the O(N+M) promise. Per C5, ingest = emit⁻¹ on each
-//   model's lossless core; outside it, a fail-closed Diagnostic (never a
-//   lossy guess — feedback_no_engine).
-//
-// Owns:
-//   - ingest:  (Source, LanguageModel)    -> Result<Node, Diagnostic>
-//   - emit:    (InferredTree, TargetModel) -> Result<Source, Diagnostic>
-//   - compile = emit ∘ core ∘ ingest ; run = eval ∘ core ∘ ingest
-//     (top-level entries; fail-closed on any stage's Diagnostic)
-//
-// Shape A vs Shape B (correction 3248488229 — the boundary must NOT be
-// blurred, THESIS):
-//   - `ingest`/`emit` here are the **Shape A** compiler boundary; their
-//     LanguageModel/TargetModel parameter is `extdeps/languages/*.dag`
-//     ONLY (programming-language render/ingest targets).
-//   - `extdeps/formats/*.dag` (csv/json/yaml/spice/…) are **Shape B**:
-//     emitted/consumed by user `.dag` programs walking typed values —
-//     NOT a compiler ingest/emit parameter. The compiler does not render
-//     to a Shape B format; a `.dag` program does. Conflating them
-//     reintroduces the N×M trap at the boundary.
-//
-// Consumes:
-//   - compiler/01_tokenize.dag → 05_emit.dag + 05_eval.dag (core + boundaries)
-//   - std/diagnostic.dag for error propagation
-//   - extdeps/languages/*.dag — the Shape A bidirectional LanguageModel /
-//     TargetModel parameter (one model, two directions). (Shape B
-//     `extdeps/formats/*` is user-program emission, not consumed here.)
-//
-// Status: scaffold — fill per TASKS.md T-10 (paired with emit implementation;
-//         orchestrator is the consumer of every prior stage)
+// Scope: compiler orchestration from source and target spec to target source.
+// Owns: compile
+// Consumes: compiler tokenize/parse/normalize/resolve/infer/emit, std diagnostic.
+// Status: scaffold for T-10.
 
 
 module v4.compiler.compile

@@ -1,117 +1,15 @@
 // src/v4/std/logic.dag
-//
-// Scope: classical two-valued logic — the `Bool` truth value and its
-//        algebraic grounding. The boolean kernel every predicate returns.
-// Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
-//         (two-element / classical bivalent logic; the Boolean data type)
-//
-// Owns:
-//   - Bool — the closed two-variant truth value (a `Disj` of True | False)
-//   - inhabitance: Bool inhabits `BooleanAlgebra` (std/algebra.dag) —
-//     conjunction / disjunction / negation FALL OUT of the algebra; they
-//     are never re-declared here (epistemic stacking)
-//
-// Consumes:
-//   - std/node.dag: Disj
-//   - std/algebra.dag: BooleanAlgebra
-//
-// Status: T-3 logic modeled 2026-05-16 (still-fox-366).
-// Substrate-extension rule: see src/v4/STRUCTURE.md closed-tree discipline.
+// Scope: classical two-valued logic.
+// Owns: Bool, bool_boolean_algebra.
+// Consumes: std algebra.
+// Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
 module v4.std.logic
 
 
 import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// `Bool` is kernel-ambient (provided by the v2 seed, usable without an
-// import — STRUCTURE.md "Kernel-ambient types"). That relaxes only the
-// import edge: this file remains `Bool`'s SOLE modeling authority. The
-// v4 model of `Bool` is the closed two-variant `Disj` declared below.
-//
-// INHABITANCE IS AN INSTANCE-VALUE, NOT A KEYWORD (operator-ratified).
-// `Bool` inhabits `BooleanAlgebra` by the `data bool_boolean_algebra`
-// declaration below — a real `BooleanAlgebra<Bool>` value in THIS file.
-// There is no `inhabits` keyword and no inhabitance carrier; the relation
-// IS the instance value. The boolean operations — conjunction (meet),
-// disjunction (join), negation (complement), the constants top/bottom —
-// are NOT re-declared as free functions here (the v3 mistake: see
-// dsl/std/logic.dag's free `classical_and`/`classical_or`/`classical_not`,
-// a parallel authority disjoint from the algebra). They FALL OUT of the
-// instance by walking it: `bool_boolean_algebra.complement` IS negation,
-// `bool_boolean_algebra.bounded_lattice.lattice.meet` IS conjunction.
-// One authority per operation (INVARIANTS P2); epistemic stacking
-// (THESIS) — `Bool`'s logic is GROUNDED in the algebra, not asserted
-// alongside it.
-//
-// LAWS ARE GROUNDED DEFINITIONS, NOT FIELDS. The Boolean-algebra axioms
-// (complement: meet(a,complement(a))==bottom, join(a,complement(a))==top;
-// distributivity; the bounded-lattice absorption/identity laws) ARE the
-// definition of the named structure `BooleanAlgebra` (algebra.dag,
-// anchored to Wikipedia "Boolean algebra (structure)"). They are not
-// stored as a flag and not hand-built equation ASTs here; the L7
-// algebra-law surface (lens/coverage.dag + lens/testgen.dag) derives the
-// per-axiom TestClaim corpus from that cited definition.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Bool — the classical two-valued truth value: the `Disj` of True|False.
-//
-// The codomain of every predicate and the carrier classical
-// `BooleanAlgebra` is defined over. Bivalent by construction — exactly
-// two values, no third (law of excluded middle ∧ non-contradiction).
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: True/False are not per-consumer scattered
-//      facts; every predicate, every `Branch`, every boolean fold
-//      handles BOTH (the two outcomes of every decision). No consumer
-//      uses only one variant.
-//   2. Variant-is-data — FAILS: the two variants are nullary and carry
-//      no payload — there is no uniform label space to fold to. Promoting
-//      to `{ bit: Int }` replaces a closed 2-valued exhaustive sum with
-//      an unbounded Int (`bit=42` representable) — violates INVARIANTS P2
-//      + M4 (closed sets are enums, not numeric proxies). The 2-variant
-//      enum IS the faithful form.
-//   3. Algebraic form — N/A by construction: `Bool` IS the carrier
-//      classical `BooleanAlgebra` is defined over and the std/ ground
-//      other logic attaches to; there is no richer std/ source to trace
-//      to — pointing it elsewhere is circular.
-//   4. Dimensional — FAILS: a truth value is EXACTLY ONE of True/False
-//      (bivalence — excluded middle ∧ non-contradiction); mutually-
-//      exclusive alternatives, never simultaneous coordinates. No value
-//      is "both".
-//   5. Parameterized family — FAILS: True/False are two nullary
-//      constructors — there is no source set X they project over, no
-//      generic `F<X>` (Practice 7). The 2-element set IS a projection
-//      source, not a projection of one; no enumeration-to-projection
-//      collapse exists.
-// Terminal: the irreducible two-element inductive definition of the
-// classical truth value; the carrier classical Boolean algebra grounds in.
 type Bool = True | False
-
-
-// ─────────────────────────────────────────────────────────────────────
-// bool_boolean_algebra — Bool's inhabitance of `BooleanAlgebra` (the
-// operator-ratified instance-value form: a real `BooleanAlgebra<Bool>`
-// value declared in this file).
-//
-// Walking the instance yields every boolean operation, one authority each:
-//   - bounded_lattice.lattice.meet   — conjunction (AND)
-//   - bounded_lattice.lattice.join   — disjunction (OR)
-//   - bounded_lattice.top            — the True constant (meet identity)
-//   - bounded_lattice.bottom         — the False constant (join identity)
-//   - complement                     — negation (NOT)
-//
-// `meet`/`join`/`complement` are the standard two-valued truth tables;
-// each is total over the closed `Bool` Disj (both variants covered, no
-// fail-open arm). The Boolean-algebra axioms they satisfy are the
-// grounded definition of `BooleanAlgebra` (see Modeling notes), not
-// asserted here.
 data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
   bounded_lattice: BoundedLattice {
     lattice: Lattice {

@@ -1,63 +1,8 @@
 // src/v4/compiler/05_emit.dag
-//
-// Scope: pipeline stage 5 — emission orchestrator. Reads target spec, emits source.
-// Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
-// Unifies: (per THESIS:188) coercion = emission. NO separate coercion engine. The compiler reads target spec and translates; coercion logic lives in THIS file. A worker hitting "I need to coerce X to Y" extends emit, not a new file.
-// Primary: emission is MECHANICAL projection of the epistemic chain
-//   (per THESIS:196 "the epistemic chain IS the emission algorithm;
-//   every emitter special case is evidence of an ungrounded concept
-//   upstream"). A worker writing `if target == X` special-cases here
-//   has found an UPSTREAM grounding gap — STOP, fix std/algebra.dag or
-//   the epistemic chain (04_infer.dag), do NOT special-case the emitter.
-//
-// B2-OMNI (operator-ratified 2026-05-15): emit is the PARAMETERIZED emit
-// boundary — the inverse direction of `ingest` over the SAME bidirectional
-// model (C5). It is the U1 *Realize* phase. `TargetModel` is declarative
-// data from `extdeps/languages/*` **ONLY** (Shape A — programming-language
-// targets); `extdeps/formats/*` is Shape B (user `.dag` programs walking
-// typed values), NOT a compiler emit parameter — see 00_compile.dag's
-// Shape-A-vs-B block. No per-target `if` here. The
-// "target-agnostic IR" is exactly InferredTree (IR-1: Node + the frozen
-// flat InferredFacts coordinate — NOT a separate IR type). emit ∘ core ∘
-// ingest = compile; the Node pivot is what makes it O(N+M).
-//
-// C5-2 emit-locality (operator-ratified 2026-05-16) — emit is
-// STRUCTURALLY LOCAL, defined on the Node, NOT on files:
-//   - The emitted form of a subtree depends ONLY on that subtree plus a
-//     bounded, DECLARED context (e.g. indentation depth) — never on
-//     unrelated siblings or whole-program reflow. So a D1 `apply_diff`
-//     at Path p re-emits ONLY p's subtree's projection; everything
-//     outside p is unchanged by construction.
-//   - LOCALITY IS NODE-RELATIVE, never file-relative. A "file" is one
-//     CONVENIENCE rendering of the emitted form — not the unit, not an
-//     anchor (operator code-as-data steer 2026-05-16: the substrate
-//     must not anchor any semantic on the file concept; files are a
-//     projection of convenience only). Stability = "the Node subtree
-//     outside p projects identically", measured by content_hash of the
-//     emitted subtree, never by file bytes.
-//   - A genuinely non-local emit decision (ordering a sibling set, a
-//     scope-wide normalization) is a DECLARED normalization at the
-//     smallest ENCLOSING NODE SCOPE containing it (a declaration/module
-//     subtree) per C5-fidelity — reviewable, never silent, and never
-//     widened to "the whole file" (there is no file in the model, only
-//     the enclosing Node scope).
-//   - Load-bearing: AGENT-1/D1 "faithful re-emit" is UNPROVABLE without
-//     this even when global `ingest∘emit=id_Node` (C5-1) holds — global
-//     round-trip permits whole-program reflow; locality is the
-//     stronger, separate property AGENT-1 needs. The C5↔D1 hinge.
-//
-// Owns:
-//   - emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>
-//   - InferredTree IS the target-agnostic IR (IR-1); TargetModel (declarative)
-//     drives concrete realization — no per-target special-casing
-//   - C5-2: emit is structurally local (subtree-relative, Node not file)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag
-//   - compiler/04_infer.dag: InferredTree
-//   - extdeps/languages/*.dag: TargetSpec
-//
-// Status: scaffold — fill per TASKS.md T-10
+// Scope: target-source projection from inferred tree and target spec.
+// Owns: TargetSpec, TargetSource, emit_target.
+// Consumes: std diagnostic/node/algebra, compiler infer, extdeps languages.
+// Status: scaffold for T-10.
 
 
 module v4.compiler.emit

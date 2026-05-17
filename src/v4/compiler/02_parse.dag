@@ -1,38 +1,8 @@
 // src/v4/compiler/02_parse.dag
-//
-// Scope: pipeline stage 2 — TokenStream to ParseTree. Pure function, fail-closed.
-// Anchor: https://en.wikipedia.org/wiki/Parsing
-//
-// B2-OMNI (operator-ratified 2026-05-15): parse is the GENERIC walker over a
-// `LanguageModel`'s declarative grammar (`Grammar` as `Node`); `.dag` is
-// language #1 at the **data** layer (`extdeps/languages/dag.dag`), never
-// special-cased in-body here.
-//
-// Wave-1 **encoding contract** (mirrors `01_tokenize.dag` E0):
-//   **G0 — void syntactic fragment**: `Grammar` root is **type** `Node` with
-//   connective **`Conj` + zero children**. With an **empty** `TokenStream`,
-//   the parse result is `Produced { value: grammar }` — the grammar root is
-//   itself the (degenerate) `ParseTree` spine for the empty sentence (A1:
-//   `ParseTree = Node`). Non-empty tokens against G0 ⇒ `Rejected`
-//   (tokens unconsumed). Empty tokens against non-G0 grammar ⇒ not realized
-//   until additional productions are ratified in data.
-//
-// PARSE-1 bodiless-`fn` remains a **grammar-data** obligation on the
-// LanguageModel file, not a special case in this walker (see header in
-// `extdeps/languages/dag.dag`).
-//
-// Owns:
-//   - Grammar, ParseTree (= Node), parse: (TokenStream, Grammar) -> Outcome<ParseTree>
-//
-// Consumes:
-//   - std/node.dag: Node, NodeKind, TypeNode, ComputationNode, Conj,
-//     Symbol, node_well_formed
-//   - std/diagnostic.dag: Diagnostic, Outcome, Locus, PortLocus, Correction,
-//     ExternalContractUnknown, UserInputBoundary
-//   - compiler/01_tokenize.dag: TokenStream
-//
-// Status: Wave-1 — G0 void-grammar + empty tokens path **realized**; else
-// honest `Rejected` per encoding coverage.
+// Scope: generic parsing over language grammar rules.
+// Owns: ParseTree, parse_tokens, grammar_node_is_conj_empty_root.
+// Consumes: std diagnostic/node, compiler tokenize, extdeps languages dag.
+// Status: Wave-1 void-grammar path realized.
 
 
 module v4.compiler.parse
@@ -99,10 +69,6 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// grammar_node_is_conj_empty_root — structural G0 predicate (Wave-1).
 fn grammar_node_is_conj_empty_root(g: Node) -> Bool {
   match g.kind {
     TypeNode { connective: Conj } => count(g.children) == 0
@@ -110,10 +76,6 @@ fn grammar_node_is_conj_empty_root(g: Node) -> Bool {
     ComputationNode { behavior: _ } => false
   }
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// parse — GENERIC syntactic ingest (B2-OMNI).
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = PortLocus {
     port: parse_stage_locus_port

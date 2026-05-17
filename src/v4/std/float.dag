@@ -1,82 +1,8 @@
 // src/v4/std/float.dag
-//
-// Scope: IEEE-754 binary floating-point — the `Float` scalar. Separate
-//        from integer because its arithmetic is APPROXIMATE: rounding
-//        breaks associativity / distributivity and NaN breaks reflexive
-//        equality, so Float inhabits a weakened algebra rather than an
-//        exact `Field`. It is NOT opaque — it is a fully grounded,
-//        decomposable concept (bit-record structure + a rounding-aware
-//        algebra), consistent with epistemic stacking ("no concept is
-//        opaque"); only its *algebra* is weaker than exact arithmetic.
-// Anchor: https://en.wikipedia.org/wiki/IEEE_754
-//
-// Owns:
-//   - Float — IEEE-754 binary floating-point (Float32 / Float64). Its
-//     STRUCTURE decomposes: a sign / exponent / mantissa bit-record over
-//     std/machine.dag, with the non-finite values (NaN, ±Inf, signed
-//     zero) modeled as explicit structure. Every part is reachable —
-//     nothing opaque.
-//   - inhabitance: Float is **typed** to inhabit the rounding-aware
-//     `ApproximateField` structure owned by std/algebra.dag (ontology +
-//     TASKS.md T-3), **not** an exact `Field` (rounding is non-associative).
-//     The std/extdeps typescript.dag header already anticipates this shape;
-//     algebra.dag (T-2) owns its exact name and definition. A **machine-
-//     readable** `data …: ApproximateField<Float>` inhabitance is **not**
-//     published in this file until IEEE primitive ops and identity (`one`)
-//     are non-fabricating facts (INVARIANTS P1/P3; DECISIONS.md **D3**;
-//     codex REQUEST_CHANGES on PR #3191): v2-bridge constructive bodies here
-//     cannot honestly realize finite `+`/`*` or bias-1023 `one` on the Peano
-//     exponent carrier without known-wrong stubs.
-//   - Tier-2 totalization for the partial / non-total operations
-//     (NaN-producing ops; ordering in the presence of NaN) — STRUCTURE.md
-//     commitment #2
-//
-// Consumes:
-//   - std/node.dag: Conj / Disj shapes; opaque `Symbol` for Tier-2 `Rejected`
-//     (`data …: Symbol = …` intrinsic identities — D2 cross-declaration idiom)
-//   - std/machine.dag: bit-width interchange authorities (`Bit`, `Word32` /
-//     `Word64`) for `Float*` nominal widths
-//   - std/algebra.dag: `Ordering` + `ApproximateField` ontology (no
-//     monomorphic `ApproximateField<Float>` **data** witness in this file yet)
-//   - std/diagnostic.dag: `Outcome` / `Diagnostic` / `PortLocus` — Tier-2
-//     fail-closed compare API (NaN / unavailable inputs)
-//   - std/logic.dag: `Bool` (finite sign bit and other carrier-local uses)
-//   - std/nat.dag: `Nat` for Peano exponent / significand fields on
-//     `FloatBody.Finite` (carrier-local `nat_compare` only; no duplicate
-//     numeric authority vs interchange + Grounding)
-//
-// D2b (operator-ratified 2026-05-16; see DECISIONS.md D2) — Float's
-//   algebra inhabitance is NOT constructive the way the integer chain is
-//   (there, Peano `Nat` → GroupCompletion → … fills `Int`'s operation
-//   `Arrow` bodies with sub-DAGs of L1 behaviors). IEEE-754 round-to-
-//   nearest arithmetic is a genuine SPEC PRIMITIVE — irreducible, an
-//   open-system fact gunbc consumes (the open-system case INVARIANTS P1
-//   explicitly names; not a heuristic).
-//   A primitive operation uses the SAME single external-primitive path
-//   THESIS:203 already defines — NOT a new one. A primitive op is an
-//   `Arrow` reached canonically via `Transform → FunctionRef → Arrow`;
-//   the `Arrow`'s `body` is *a realization declaration in `extdeps/`*
-//   (THESIS:203's primitive case — contrast the L1-sub-DAG body of a
-//   constructive op). A future **grounded** `ApproximateField<Float>` data
-//   witness will hold `FunctionRef`s to those op `Arrow` signatures; the
-//   realizations — anchored to the exact IEEE-754 § — are the per-target
-//   `extdeps/languages/*` resolvers (the D2.2 resolver). This file does
-//   NOT home a separate `Symbol`+`Anchor` primitive carrier referenced
-//   directly by the inhabitance — that would be the second external-
-//   primitive path P2 forbids. The `Arrow` HAS a body (the `extdeps/`
-//   realization), so it is not a bodiless `fn` (PARSE-1 untriggered),
-//   and it is NOT a kernel/A1 extension (no new connective or behavior).
-//   A language `extdeps` file alias-identifies its `f32` / `f64` to
-//   `Float32` / `Float64` here, supplies those `Arrow`-body realizations,
-//   and adds its own operation-semantics siblings (NaN/Inf handling); it
-//   does NOT re-declare the `ApproximateField` inhabitance.
-//
-// Status: T-3 modeled — float carrier + Tier-2 ordered compare; grounded
-//   `ApproximateField<Float>` **data** witness deferred per D3/P1/P3. IEEE
-//   primitive **executable** semantics route through T-4 `extdeps/languages/*`
-//   per D2b (this file does not ship fabricating primitive `fn` bodies).
-//   Replaces part of the deleted std/primitive.dag; see src/v4/STRUCTURE.md
-//   §"scalar/numeric concept decomposition".
+// Scope: IEEE-754 floating-point carriers and totalized operations.
+// Owns: Float, Float32, Float64, FloatKind, FloatRounding, FloatOperation, FloatComparison, float_* operations.
+// Consumes: std algebra, std machine, std diagnostic.
+// Status: T-3 modeled.
 
 
 module v4.std.float
@@ -96,111 +22,13 @@ import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// WIDTH NOMINALS — `Float32` / `Float64` are distinct nominal wrappers
-// around ONE shared semantic carrier `FloatBody` (IEEE-754 *semantic*
-// classification: finite sign + biased exponent + trailing significand
-// as Peano `Nat`, vs non-finite tags). Binary32/binary64 **bit layout**
-// (interchange formats) remain the authority of `Word32` / `Word64` in
-// std/machine.dag — Grounding maps `Float*` ↔ interchange words; this
-// file does not duplicate width-correct bit lists (same 🟡 list-length
-// scaffold class as machine.dag's `Word*` fields).
-//
-// P2 NOMINAL WRAPPERS — `Float32` / `Float64` add **no** fields beyond
-// `body: FloatBody` and therefore attach **no** structural witness tying
-// `Finite.biased_exponent` / `Finite.trailing_significand` to binary32
-// (8+23) vs binary64 (11+52) bit counts. A `Float32` value whose `body` is
-// `Finite { … }` with exponent/significand magnitudes that could not decode
-// from any `Word32` interchange pattern is **still representable** here —
-// that hole is the same honest deferral class as **std/machine.dag**'s
-// `Word*` / `Byte` list-length vs nominal-width **"LIST FIELD LENGTH vs
-// NOMINAL WIDTH — TRACKED SCAFFOLD (🟡)"** block (single P2 authority for
-// interchange bit-vectors: `Word32` / `Word64`, not a shadow width engine
-// re-authored inside float.dag). Producer-side discipline + bounded
-// refinement / dissolution named there close the gap.
-//
-// NAT FIELDS — `biased_exponent` / `trailing_significand` are honest
-// unrefined `Nat` carriers: nominal IEEE field *widths* (8+23 binary32,
-// 11+52 binary64) are NOT type-enforced here — the same honest deferral
-// pattern as machine.dag's `List<Bit>` width scaffold. Producers must
-// respect nominal widths; the dissolution trigger is the same bounded
-// refinement substrate named in machine.dag's modeling notes.
-//
-// APPROXIMATEFIELD INHABITANCE — DECISIONS.md **D3**: a machine-readable
-// `data …: ApproximateField<Float>` witness is **not** encoded in this file.
-// Shipping left-operand `add`/`mul`, a non–bias-1023 `one`, or wiring those
-// into inhabitance data would publish INVARIANTS P1/P3-violating substrate
-// authority (codex REQUEST_CHANGES, PR #3191). Re-introduce the data row only
-// when T-4 `extdeps/languages/*` supplies grounded Arrow bodies and/or v4
-// admits bodiless primitive signatures (**PARSE-1**). Tier-2 compare and
-// carrier-local `float_body_compare_semantic_total` remain honest scaffolds,
-// not interchange-grounded IEEE `totalOrder`.
-//
-// D2 — intrinsic Tier-2 diagnostic identities (operator 2026-05-16): the
-// `Rejected` nan path uses **this file's** `data …: Symbol = …` name-reference
-// carriers for `Diagnostic.reason` and `PortLocus.port` (diagnostic.dag header
-// lines 42–51; node.dag K-1 cross-declaration idiom). **Not** caller-supplied
-// `Symbol` parameters (integer totalizer parity).
-//
-// INTERCHANGE TYPE ALIASES — machine-readable consumption of machine.dag's
-// interchange authorities for Grounding edges (P2 single place for words).
-//
-// IMPORT CLOSURE — `float.dag` imports `v4.std.diagnostic`, `nat`, `logic`,
-// `machine`, `node`, `algebra` only as **declared** std carriers. On the merge
-// base (`main`), those modules are **fully modeled** substrate (e.g.
-// `diagnostic.dag` owns `Outcome`/`Diagnostic`/`PortLocus` — not a header stub);
-// float does not advance ahead of ghost dependencies or duplicate their authority
-// (INVARIANTS P1/P2).
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-
-
-// ─────────────────────────────────────────────────────────────────────
-// FloatSpecial — the closed non-finite discriminant (quiet / signaling
-// NaN; ±∞). Anchor: IEEE 754 non-finite classes.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every float classifier matches these tags
-//      uniformly; not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: four nullary variants — no `{kind,…}`
-//      fold without inventing a readable label space (M4).
-//   3. Algebraic form — N/A: exceptional-value classification is not an
-//      algebra carrier in std/.
-//   4. Dimensional — FAILS: a non-finite value is EXACTLY ONE of these
-//      alternatives — not simultaneous coordinates.
-//   5. Parameterized family — FAILS: the four variants are not one generic
-//      `F<X>` / projection over a separately-declared source set (Practice 7).
-// Terminal: the irreducible IEEE non-finite partition at semantic float scope.
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-
-
-// ─────────────────────────────────────────────────────────────────────
-// FloatBody — finite IEEE semantic record vs non-finite tagged class.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every float consumer folds finite vs
-//      non-finite; shared substrate fact, not per-site.
-//   2. Variant-is-data — FAILS: `Finite` carries a Conj; `NonFinite` a tag;
-//      a flat `{kind,…}` record admits illegal mutual states (P2 inverse).
-//   3. Algebraic form — N/A: this is the float semantic carrier, not a
-//      compression of a richer algebra row.
-//   4. Dimensional — FAILS: a float semantic value is EITHER finite with
-//      fields OR non-finite — mutually exclusive, not coordinates.
-//   5. Parameterized family — FAILS: `Finite` vs `NonFinite` are not a
-//      mechanical `F<X>` family over one source set (Practice 7).
-// Terminal: the irreducible finite / non-finite split for IEEE semantics.
 type FloatBody
   = Finite {
       sign: Bit
@@ -208,14 +36,6 @@ type FloatBody
       trailing_significand: Nat
     }
   | NonFinite { tag: FloatSpecial }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Float32 / Float64 — nominal width wrappers over the shared semantic body.
-//
-// INVARIANTS P2 — outer nominal discriminates API / defaults only; it does
-// **not** refine `FloatBody.Finite` fields to binary32 vs binary64 exponent /
-// significand bounds (see modeling notes "P2 NOMINAL WRAPPERS").
 type Float32 {
   body: FloatBody
 }
@@ -223,21 +43,9 @@ type Float32 {
 type Float64 {
   body: FloatBody
 }
-
-
-// Default scalar float is binary64 (same default spirit as dsl/std/float.dag).
 type Float = Float64
-
-
-// D2 — intrinsic Tier-2 diagnostic identities (cross-declaration `Symbol`
-// name-references per diagnostic.dag header lines 42–51; NOT caller-supplied).
 data float_totalizer_reason_ieee754_nan_unordered: Symbol = float_totalizer_reason_ieee754_nan_unordered
 data float_totalizer_port_ieee754_nan_totalizer: Symbol = float_totalizer_port_ieee754_nan_totalizer
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Peano compare — reused for lexicographic float compare (carrier-local;
-// nat.dag owns `Nat`; this is float-local scaffolding, not a second Nat).
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   match a {
     Zero => match b {
@@ -250,22 +58,12 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
     }
   }
 }
-
-
-// sign_rank_lex — total deterministic rank for lex ordering: negative (True)
-// sorts before non-negative (False) at the first lex key (same finite sign
-// phase as IEEE 754 `totalOrder`; not a claim of full interchange `totalOrder`).
 fn sign_rank_lex(s: Bit) -> Nat {
   match s {
     true => Zero
     false => Succ { prev: Zero }
   }
 }
-
-
-// ordering_invert — flips Less/Greater; used for negative finite magnitudes when
-// composing `float_body_compare_semantic_total` (same invert as IEEE
-// `totalOrder` on negative magnitudes; carrier-scaffold only).
 fn ordering_invert(o: Ordering) -> Ordering {
   match o {
     Less => Greater
@@ -273,12 +71,6 @@ fn ordering_invert(o: Ordering) -> Ordering {
     Equal => Equal
   }
 }
-
-
-// float_finite_unsigned_field_order — lexicographic Nat order on encoded
-// `(biased_exponent, trailing_significand)` as unsigned magnitude keys
-// (correct for **positive** IEEE finite values; negatives compose via
-// `ordering_invert` in `float_body_compare_semantic_total`).
 fn float_finite_unsigned_field_order(
   ea: Nat,
   fa: Nat,
@@ -311,11 +103,6 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
     _ => false
   }
 }
-
-
-// float_finite_magnitude_zero — true when `biased_exponent` and
-// `trailing_significand` are both Peano `Zero` (IEEE ±0 magnitude on this
-// carrier; sign bit may still differ).
 fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
   match e {
     Zero => match f {
@@ -325,27 +112,6 @@ fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
     Succ { prev: _ } => false
   }
 }
-
-
-// float_body_compare_semantic_total — deterministic **total** order on the
-// modeled `FloatBody` carrier: finite values use sign-rank then unsigned
-// exponent/significand lex with **inverted** magnitude keys when both signs are
-// negative; non-finite rows use `float_special_rank` on `FloatSpecial` only.
-//
-// INVARIANTS P1 — **not** full IEEE 754 `totalOrder` over interchange: `QuietNan`
-// / `SignalingNan` carry **no** NaN sign or payload here (those bits live on
-// `Word32`/`Word64` + Grounding). This order is an honest **scaffold** over the
-// discriminant this file owns; do not treat it as interchange-grounded
-// `totalOrder`. Distinguishes `-0` before `+0` on the carrier. For Tier-2
-// numeric extension (incl. `±0` ⇒ `Equal`), use `float_body_compare_ieee_ordered_outcome`.
-// NaN **unordered** IEEE `<` stays Tier-2-only (`Rejected`).
-//
-// **Dissolution / terminal (openai-pro scaffold receipt):** treating this
-// carrier order as interchange-grounded IEEE 754 `totalOrder` (incl. NaN
-// sign/payload bits; full binary32/64 width refinement on `Finite` fields)
-// **terminates** only on `Word32`/`Word64` interchange + Grounding + the
-// per-language `extdeps/languages/*` resolver spine — not by extending this
-// semantic `FloatBody` discriminant or adding silent Peano-field arithmetic.
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
     Finite { sign: sa, biased_exponent: ea, trailing_significand: fa } => match b {
@@ -389,13 +155,6 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
     }
   }
 }
-
-
-// float_body_compare_ieee_ordered_outcome — IEEE **numeric** ordered compare on
-// `FloatBody` with **API-enforced** NaN fail-closed: returns `Rejected` (Tier-2
-// diagnostic shape) if either body is `QuietNan`/`SignalingNan`, else `Produced`
-// with the `Ordering` (±0 magnitude collapse per prior discipline). No raw
-// `Ordering` surface on NaN inputs (INVARIANTS P2 / P3).
 fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcome<Ordering> {
   if float_body_is_nan(a) {
     float_ordered_compare_nan_rejected()
@@ -423,10 +182,6 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
     }
   }
 }
-
-
-// float_ordered_compare_nan_rejected — shared Tier-2 `Rejected` shape for NaN
-// on either operand (D2 intrinsic `Symbol` identities for `reason` + `port`).
 fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
   Rejected {
     diagnostic: Diagnostic {
@@ -436,18 +191,9 @@ fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
     }
   }
 }
-
-
-// float_ieee_ordered_compare_outcome — `Float` wrapper over
-// `float_body_compare_ieee_ordered_outcome`.
 fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<Ordering> {
   float_body_compare_ieee_ordered_outcome(a: a.body, b: b.body)
 }
-
-
-// float_ordered_compare_tier2 — STRUCTURE.md Tier-2 name: delegates to
-// `float_ieee_ordered_compare_outcome` → `float_body_compare_ieee_ordered_outcome`
-// (`Outcome` + NaN fail-closed on `FloatBody`; intrinsic diagnostic identities).
 fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }

@@ -1,47 +1,8 @@
 // src/v4/std/text.dag
-//
-// Scope: Unicode text — code points (`Char`) and strings (`String`).
-// Anchor: https://en.wikipedia.org/wiki/Unicode
-//         (Char = a Unicode scalar value / code point)
-//
-// Owns:
-//   - Char — a Unicode scalar value carrier, delivered as unrefined `Nat`
-//     with the code-point-range / surrogate-exclusion refinement tracked as
-//     a bounded scaffold below
-//   - String — `FreeMonoid<Char>`
-//   - inhabitance: String inhabits `FreeMonoid<Char>` (std/algebra.dag) —
-//     concatenation / empty fall out of the free monoid
-//
-// Consumes:
-//   - std/nat.dag: Nat (a code point is a bounded Nat)
-//   - std/algebra.dag: FreeMonoid
-//   (The original scaffold's `std/node.dag: Cardinality` entry is
-//   superseded by the header reconcile below: text.dag does not consume
-//   node.dag's Cardinality connective today.)
-//
-// Status: T-3 modeled 2026-05-16 (wise-dove-896). Replaces part of the
-//   deleted std/primitive.dag; see src/v4/STRUCTURE.md §"scalar/numeric
-//   concept decomposition".
-//
-// HEADER RECONCILE (worker-tier Extent-🟡 value-refinement class,
-// 2026-05-16). The frozen scaffold header named `Char` as a
-// `Cardinality`-bounded `Nat` excluding surrogates and listed
-// `std/node.dag: Cardinality` as a consumed dependency. The delivered
-// carrier is intentionally `type Char = Nat`: v2 syntax plus this file's
-// settled deps (`nat` + `algebra`) cannot express the Unicode scalar set
-// U+0000..U+D7FF ∪ U+E000..U+10FFFF as a type-enforced value refinement,
-// and a single upper-bound interval would admit surrogate code points
-// (fabricated Char). This follows the diagnostic.dag `Extent.ByteRange`
-// 🟡 precedent: keep the honest carrier, document the illegal states the
-// current substrate cannot exclude, bound producer use, and name the
-// dissolution trigger. It also follows the operator-ratified
-// collection.dag b2 header reconcile pattern: when a frozen Cardinality
-// wording names an unbuildable refinement, reconcile the header to the
-// actual carrier and mark the refinement deferred-out rather than
-// pretending to consume node.dag's Cardinality connective. The `Owns`,
-// `Consumes`, and `Status` lines above reflect this reconcile; the
-// `String = FreeMonoid<Char>` alias edge remains the machine-readable
-// inhabitance authority.
+// Scope: Unicode text carriers.
+// Owns: Char, String, string_is_empty.
+// Consumes: std nat, std algebra.
+// Status: T-3 modeled.
 
 
 module v4.std.text
@@ -49,73 +10,8 @@ module v4.std.text
 
 import v4.std.algebra { FreeMonoid, free_monoid_is_empty }
 import v4.std.nat { Nat }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// STRING INHABITANCE IS MACHINE-READABLE. `String` is a type alias onto
-// `FreeMonoid<Char>` below. That alias edge is the inhabitance edge: a
-// consumer does not read prose or a side table to learn that strings are
-// finite character sequences. This is the same authority pattern as
-// collection.dag's `List<T> = FreeMonoid<T>`.
-//
-// CHAR RANGE IS A TRACKED SCAFFOLD. Unicode scalar values are exactly
-// U+0000..U+D7FF and U+E000..U+10FFFF: natural-number code points in
-// the Unicode codespace, excluding surrogate code points. The current
-// v2 syntax and this file's settled dependency set (`nat` + `algebra`)
-// cannot express that non-contiguous bounded subset as a
-// type-enforced value refinement. A single upper-bound interval would
-// admit surrogates, which would be a fabricated `Char`.
-//
-// The honest T-3 carrier is therefore the unrefined `Nat` alias below,
-// with these bridge properties:
-//   (a) scaffold doc — THIS note; `Char` currently names the code-point
-//       carrier but does not type-enforce the Unicode scalar subset.
-//   (b) bounds on use — producers of `Char` must construct only Unicode
-//       scalar values. A surrogate-valued `Char` is a producer bug
-//       against this scaffold, not a legal Unicode scalar value.
-//   (c) dissolution trigger — when v4 has a machine-readable value
-//       refinement for finite unions of ordered `Nat` intervals (or an
-//       equivalent Unicode-scalar predicate substrate) in the settled
-//       dependency path, replace this alias with the refined carrier:
-//       U+0000..U+D7FF ∪ U+E000..U+10FFFF.
-//
-// No coproduct is introduced in this file. `String` aliases the
-// `FreeMonoid<T>` construction owned by std/algebra.dag, whose own
-// Practice-4 ledger lives there; `Char` is an alias over `Nat`, whose
-// ledger lives in std/nat.dag. This file therefore has no new
-// Practice-4 ledger.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Char — Unicode scalar value carrier.
-//
-// Terminal target: a bounded `Nat` over Unicode scalar values
-// (U+0000..U+D7FF and U+E000..U+10FFFF). Current v2-expressible shape:
-// an unrefined `Nat` alias with the tracked scaffold above. This keeps
-// the code-point parent faithful while avoiding the false single-range
-// model that would admit surrogate code points.
 type Char = Nat
-
-
-// ─────────────────────────────────────────────────────────────────────
-// String — finite sequence of `Char`.
-//
-// The alias IS the machine-readable inhabitance edge:
-// `String` inhabits `FreeMonoid<Char>` by being the free-monoid carrier
-// over `Char`. Concatenation, empty, fold, and length are structural
-// reads of std/algebra.dag's `FreeMonoid<T>` shape, not operations
-// re-declared in this file.
 type String = FreeMonoid<Char>
-
-
-// ─────────────────────────────────────────────────────────────────────
-// string_is_empty — canonical **boundary query** for `String`.
-//
-// `String` is `FreeMonoid<Char>` (alias edge above). Emptiness is
-// std/algebra.dag's `free_monoid_is_empty` on that carrier — not a
-// per-consumer spine walk.
 fn string_is_empty(s: String) -> Bool {
   free_monoid_is_empty(xs: s)
 }

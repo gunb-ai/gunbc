@@ -1,26 +1,8 @@
 // src/v4/compiler/05_eval.dag
-//
-// Scope: evaluator/interpreter — directly executes an InferredTree without emitting target source. THE PRIMARY execution path (THESIS:225 "dag run is the primary execution path"). Sibling of 05_emit.dag: both consume InferredTree; eval EXECUTES, emit PROJECTS to target languages (omni-emission). eval is primary; emit is the projection.
-// Anchor: THESIS:225 (dag run primary execution path) + https://en.wikipedia.org/wiki/Interpreter_(computing) + concept-unification THESIS:188 (interpreter runtime = language spec = transport spec)
-// Primary: per THESIS:225 eval is the DEFAULT execution path; emit is
-//   the omni-emission projection. Same InferredTree input as 05_emit.dag
-//   (concept-unification: interpreter runtime = language spec = transport
-//   spec, THESIS:188). NOT stage 6 — parallel backend to emit at stage 5.
-//
-// Owns:
-//   - eval: (InferredTree, Inputs) -> Result<Value, Diagnostic>
-//   - bounded execution (INVARIANTS P4 decidability — no unbounded loops)
-//   - THE runner that three things compose over:
-//     - workflow/bootstrap.dag (interpreted, not compiled — v2's eval
-//       seeds, then v4's own eval)
-//     - TestClaim evaluation (run the claim, check the assertion)
-//     - lens dry-run / structural-execution-trace (eval without effects)
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/witness.dag
-//   - compiler/04_infer.dag: InferredTree (shared with 05_emit.dag)
-//
-// Status: scaffold — fill per TASKS.md T-22
+// Scope: primary evaluation path over inferred tree and inputs.
+// Owns: Value, EvalInput, eval_program.
+// Consumes: std diagnostic/node, compiler infer.
+// Status: scaffold for T-22.
 
 module v4.compiler.eval
 
