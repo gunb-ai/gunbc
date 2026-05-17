@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180SpacesOutsideQuotesSignificant, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
@@ -52,8 +52,11 @@ type CsvRfc4180NewlineInsideQuotedFieldOnly {
   line_break_inside_field_only_when_field_is_quoted: Bool,
 }
 
-type CsvRfc4180SpacesOutsideQuotesSignificant {
-  spaces_and_tabs_outside_quotes_are_part_of_field: Bool,
+// RFC 4180 §2: TEXTDATA = %x20-21 / %x23-2B / %x2D-7E — SP is field data outside
+// quotes; HTAB is **not** TEXTDATA (do not conflate with “insignificant whitespace”).
+type CsvRfc4180UnquotedFieldTextdataVsTab {
+  ascii_sp_u0020_outside_unquoted_field_is_textdata_field_char: Bool,
+  horizontal_tab_u0009_outside_unquoted_field_is_rejected_not_textdata: Bool,
 }
 
 type CsvRfc4180EmptyFieldBetweenCommas {
