@@ -80,7 +80,7 @@ def main() -> None:
         (
             "src/v4/extdeps/languages/ptx.dag",
             "// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (T-4.14).",
-            "// Anchor: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
+            "// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html",
             "// Consumes: (none; Int kernel-ambient).",
             "// Status: T-4.14 PASS (IN-B).",
         ),
