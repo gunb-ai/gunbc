@@ -2,7 +2,7 @@
 //
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
 // Anchor: https://spec.openapis.org/oas/v3.1.0
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 
@@ -144,9 +144,14 @@ type OpenApiHeaderOrReference
   | OpenApiHeaderReference { reference: OpenApiReferenceObject }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkTarget
+type OpenApiLinkTarget
+  = OpenApiLinkTargetOperationId { operation_id: String }
+  | OpenApiLinkTargetOperationRef { operation_ref: String }
+
+
 type OpenApiLinkObject {
-  operation_id: OpenApiOptionalString,
-  operation_ref: OpenApiOptionalString,
+  target: OpenApiLinkTarget,
   description: OpenApiOptionalString,
   link_deferred_members: Map<OpenApiLinkDeferredKey, JsonValue>,
   link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,

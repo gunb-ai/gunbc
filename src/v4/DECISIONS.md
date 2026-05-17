@@ -316,6 +316,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiMediaTypeDeferredKey** | `OpenApiMediaTypeDeferredKey` | 🟡 | Media Type deferred members; encoding/example surface churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiHeaderDeferredKey** | `OpenApiHeaderDeferredKey` | 🟡 | Header Object deferred members; Header spec churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkDeferredKey** | `OpenApiLinkDeferredKey` | 🟡 | Link Object deferred members; Link spec churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiLinkTarget** | `OpenApiLinkTarget` | 🟡 | OAS Link Object **`operationId` XOR `operationRef`** — exactly one target identity; carried as `OpenApiLinkObject.target` (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiHttpMethod** | `OpenApiHttpMethod` | 🟢 | Closed eight-verb Operation map key set (OAS Path Item `get`…`trace`). |
 | **T-4.6-P4-OpenApiOptionalString** | `OpenApiOptionalString` | 🟢 | Present/absent optional string field idiom over OAS optional strings. |
 | **T-4.6-P4-OpenApiHeaderRequiredSlot** | `OpenApiHeaderRequiredSlot` | 🟢 | Required boolean slot on Header Object (spec-bounded two-way). |
