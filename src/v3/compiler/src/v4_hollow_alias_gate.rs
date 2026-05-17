@@ -39,6 +39,8 @@
 // pass/fail tokens (`Produced` / `Rejected`); no third semantic axis at this boundary.
 // Ledger: P5(b) interim Rust mirror only — the *verdict shape* stays this coproduct; a generated
 // `.dag` checker does not add a third outcome variant here.
+// These 🟢/🟡 lines are **harness-side §4 receipts** (dissolution + color), not a claim that
+// arbitrary Rust enums are user `.dag` coproducts — scope stays the hand-built T-30 mirror.
 /// Fail-closed outcome analogue to `std/diagnostic.dag`'s `Outcome<Bool>`
 /// success token (`Produced { value: true }` in the `.dag` spelling).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +56,13 @@ pub enum HollowAliasGateOutcome {
 /// Classification of **what** the declaration models for condition (2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeledSubject {
-    /// Kernel-ambient atom (`String`, `Int`, `Bool`, `Char`, `List`, `Map`) — exempt.
+    /// Kernel-ambient atom — **exempt** from the hollow three-prong `AND` (Practice 8 interim).
+    ///
+    /// **Authoritative membership** is `src/v4/STRUCTURE.md` **Kernel-ambient types** (same
+    /// section the module-level doc cites). The substrate names there (`String`, `Int`, …) are
+    /// the spec anchor; this enum variant is **harness / test IR** only until the gate walks
+    /// structural `Node` — when wiring to syntax, keep the exempt set aligned with that doc, not
+    /// with ad hoc renames in tests.
     KernelAmbientAtom,
     /// Internal `std` / compiler substrate — not an external spec primitive for (2).
     InternalStdCarrier,
