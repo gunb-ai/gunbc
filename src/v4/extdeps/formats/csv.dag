@@ -1,12 +1,11 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
-// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordTrailingDelimiterOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180SpacesOutsideQuotesSignificant, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180Utf8Charset, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
 
 module v4.extdeps.formats.csv
-
 
 type CsvDialect
   = CsvDialectRfc4180 {}
@@ -20,6 +19,53 @@ type CsvHeaderPresence
 type CsvRow
   = CsvRowZ
   | CsvRowS { field: String, tail: CsvRow }
+
+type CsvRfc4180CommaFieldSep {
+  fields_separated_by_comma_u002c: Bool,
+  horizontal_tab_is_rejected_separator_for_this_slice: Bool,
+}
+
+type CsvRfc4180DoubleQuoteEnclosure {
+  dquote_u0022_may_enclose_entire_field: Bool,
+  enclosed_field_may_contain_comma_crlf_or_lf: Bool,
+}
+
+type CsvRfc4180EscapeDoubledQuote {
+  doubled_dquote_represents_literal_quote_in_quoted_field: Bool,
+}
+
+type CsvRfc4180RecordLineBreak {
+  record_boundary_is_line_break_crlf_or_lf: Bool,
+  crlf_preferred_for_interoperability: Bool,
+}
+
+type CsvRfc4180LastRecordTrailingDelimiterOptional {
+  last_record_may_omit_trailing_record_delimiter: Bool,
+}
+
+type CsvRfc4180HeaderRowOptional {
+  first_record_line_may_be_column_header_names: Bool,
+}
+
+type CsvRfc4180NewlineInsideQuotedFieldOnly {
+  line_break_inside_field_only_when_field_is_quoted: Bool,
+}
+
+type CsvRfc4180SpacesOutsideQuotesSignificant {
+  spaces_and_tabs_outside_quotes_are_part_of_field: Bool,
+}
+
+type CsvRfc4180EmptyFieldBetweenCommas {
+  adjacent_commas_denote_empty_field: Bool,
+}
+
+type CsvRfc4180Utf8Charset {
+  utf8_is_authoring_charset_for_this_slice: Bool,
+}
+
+type CsvRfc4180RegisteredTextCsvMime {
+  media_type_text_csv_registered_semantics: Bool,
+}
 
 type CsvDocument {
   header: CsvHeaderPresence,
