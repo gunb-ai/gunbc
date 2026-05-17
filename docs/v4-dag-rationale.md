@@ -4,6 +4,9 @@
 substrate, `DECISIONS.md`, `INVARIANTS.md`, and `MODELING.md`. This file is an
 **archaeological appendix** only: fenced text preserves superseded in-file
 commentary captured around #3229. **Do not cite it as ratified operator text.**
+Practice-4 coproduct **🟢/🟡** classifications and tracked-scaffold dissolution
+triggers removed from live `.dag` bodies by strict de-prose are **authoritative
+only in `DECISIONS.md` Part 6 (PR #3229)** — not here.
 
 > For integer/float inhabitance, alias discipline, and IEEE primitive resolution,
 > read `DECISIONS.md` and the current `std/*.dag` / `extdeps/languages/*.dag` headers.

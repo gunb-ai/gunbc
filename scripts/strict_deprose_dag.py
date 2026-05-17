@@ -120,6 +120,7 @@ def main() -> None:
             f"{owns_lines}\n"
             f"{consumes}\n"
             f"{status}\n"
+            f"// Ledger: DECISIONS.md Part 6 (PR #3229).\n"
             f"\n"
         )
         rewrite(path, header)
