@@ -61,11 +61,11 @@ type ReactHookSite
   | UseEffectEvent { callback_ref: ReactCrossDeclRef }
   | UseMemo {
       factory_ref: ReactCrossDeclRef
-      dependencies: ReactHookInlineDependenciesArgument
+      dependencies: List<ReactCrossDeclRef>
     }
   | UseCallback {
       callback_ref: ReactCrossDeclRef
-      dependencies: ReactHookInlineDependenciesArgument
+      dependencies: List<ReactCrossDeclRef>
     }
   | UseTransition
   | UseDeferredValue {
