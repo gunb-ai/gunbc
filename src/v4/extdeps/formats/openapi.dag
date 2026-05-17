@@ -343,6 +343,7 @@ type OpenApiComponents {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSlot
 type OpenApiComponentsSlot
   = OpenApiComponentsPresent { components: OpenApiComponents }
   | OpenApiComponentsAbsent
@@ -354,6 +355,7 @@ type OpenApiWebhooks {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiWebhooksSlot
 type OpenApiWebhooksSlot
   = OpenApiWebhooksPresent { webhooks: OpenApiWebhooks }
   | OpenApiWebhooksAbsent
