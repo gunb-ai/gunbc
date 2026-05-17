@@ -16,11 +16,16 @@
 //
 // Owns:
 //   - Twelve `data …: ManualTestgenAnchor` rows covering:
-//       (1–6) type-construction — one per closed connective (Compiles tier)
-//       (7–8) algebra-law — Equals tier (Magmoid + Monoid law slots)
-//       (9)   diagnostic-exhaustiveness — Diagnostic tier
-//       (10)  lens-applicability — Equals tier
-//       (11)  bidirectional-roundtrip — RoundTrips tier / Boundary layer
+//       (1–6) type-construction — `testgen_category` 0; `assert_kind` **Compiles**
+//             (code 2); `tier` **Tier1** (code 0) / Unit — one per closed connective
+//       (7–8) algebra-law — `assert_kind` **Equals** (code 0); `tier` **Tier3**
+//             (code 2) / Integration — Magmoid + Monoid law slots (THESIS §168–182:
+//             algebraic laws = L7 verification ⇒ **TestgenTier3**, not Tier2)
+//       (9)   diagnostic-exhaustiveness — `assert_kind` **Diagnostic** (1);
+//             `tier` **Tier1** (0) / Unit
+//       (10)  lens-applicability — `assert_kind` **Equals** (0); `tier` **Tier2** (1) / Unit
+//       (11)  bidirectional-roundtrip — `assert_kind` **RoundTrips** (3); `tier` **Tier3** (2)
+//             / Boundary
 //       (12)  type-construction — L1 `Value` via closed **`Behavior`** payload
 //             (`BehaviorValueSubject` in `lens/testgen.dag`; `Value` unit)
 //
@@ -99,7 +104,7 @@ data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
 
 data manual_anchor_alg_magma_closure: ManualTestgenAnchor = {
   slug: "t19.algebra_law.magma_closure",
-  tier: 1,
+  tier: 2,
   layer: 1,
   testgen_category: 1,
   assert_kind: 0
@@ -108,7 +113,7 @@ data manual_anchor_alg_magma_closure: ManualTestgenAnchor = {
 
 data manual_anchor_alg_monoid_identity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.monoid_identity",
-  tier: 1,
+  tier: 2,
   layer: 1,
   testgen_category: 1,
   assert_kind: 0
