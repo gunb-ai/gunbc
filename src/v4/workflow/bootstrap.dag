@@ -80,8 +80,9 @@
 // sequence are present and v2-compile-clean (the structural gate). The
 // INTERPRETATION of the plan (spawning v2-compiler/rustc/v4-stage-N via
 // extdeps/process.dag, reading/writing build-dir via
-// extdeps/file_system.dag) and the executable BitIdentical fixed-point
-// TestClaim are DEFERRED — see the TRACKED SCAFFOLD note below.
+// extdeps/file_system.dag) and the executable bit-identical fixed-point
+// TestClaim (std/verification.dag `kind: RoundTrips`) are DEFERRED —
+// see the TRACKED SCAFFOLD note below.
 // Brief: see BRIEF_TEMPLATE.md.
 //
 // ─────────────────────────────────────────────────────────────────────
@@ -118,10 +119,10 @@
 // PRODUCED by `content_hash : Node -> Hash` at interpret time, never
 // hand-written here (a hand-written hash would be exactly the editable
 // proxy A3 rejects). So the plan stores no `pinned: Hash` field; the
-// `FixptStage1Stage2` step DECLARES the BitIdentical equality
-// structurally, and
-// the executable assertion over real emitted artifacts is T-15's
-// `BitIdentical` TestClaim CONSUMING this plan — not authored here.
+// `FixptStage1Stage2` step DECLARES the bit-identical (stage1==stage2)
+// equality structurally, and the executable assertion over real
+// emitted artifacts is T-15's `RoundTrips` TestClaim
+// (std/verification.dag) CONSUMING this plan — not authored here.
 //
 // TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
 // the operator-ratified declarative-now / operations-deferred discipline
@@ -217,7 +218,7 @@ type Stage0ToStage1 {}
 type Stage1ToStage2 {}
 
 // Fixed-point assertion: v4-stage1-emitted == v4-stage2-emitted,
-// BitIdentical. The self-host fixed point is stage1==stage2 — NOT
+// bit-identical. The self-host fixed point is stage1==stage2 — NOT
 // stage0==stage1 (stage0 is v2-emission-style, stage1+ is v4-style).
 // The executable assertion is T-15's `RoundTrips` TestClaim consuming
 // this step (deferred — TRACKED SCAFFOLD (2) above).
