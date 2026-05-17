@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseEntry, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -14,6 +14,13 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 
 type OpenApiSpecificationExtensionKey {
   vendor_suffix: String,
+}
+
+
+// OAS 3.1 Components Object: fixed-field map keys MUST match `^[a-zA-Z0-9\.\-_]+$`.
+// Wire gate is **parse/Diagnostic** (T-4 brief); nominal key avoids conflating with arbitrary strings.
+type OpenApiComponentsMapKey {
+  name: String,
 }
 
 
@@ -71,7 +78,6 @@ type OpenApiMediaTypeDeferredKey
 type OpenApiHeaderDeferredKey
   = OpenApiHeaderDeferredStyle
   | OpenApiHeaderDeferredExplode
-  | OpenApiHeaderDeferredDeprecated
   | OpenApiHeaderDeferredExample
   | OpenApiHeaderDeferredExamples
 
@@ -127,6 +133,12 @@ type OpenApiReferenceObject {
 type OpenApiHeaderRequiredSlot
   = OpenApiHeaderRequiredAbsent
   | OpenApiHeaderRequiredPresent { value: Bool }
+
+
+// 🟢 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeprecatedSlot
+type OpenApiHeaderDeprecatedSlot
+  = OpenApiHeaderDeprecatedAbsent
+  | OpenApiHeaderDeprecatedPresent { value: Bool }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkTarget
@@ -202,15 +214,23 @@ type OpenApiMediaType {
 }
 
 
+// OAS 3.1 Header/Parameter `content`: exactly one media-type entry (not an arbitrary map).
+type OpenApiHeaderContentSingle {
+  media_type: String,
+  media: OpenApiMediaType,
+}
+
+
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderPayloadSlot
 type OpenApiHeaderPayloadSlot
   = OpenApiHeaderPayloadSchema { schema: OpenApiSchema }
-  | OpenApiHeaderPayloadContent { content: Map<String, OpenApiMediaType> }
+  | OpenApiHeaderPayloadContent { content: OpenApiHeaderContentSingle }
 
 
 type OpenApiHeaderObject {
   description: OpenApiOptionalString,
   required: OpenApiHeaderRequiredSlot,
+  deprecated: OpenApiHeaderDeprecatedSlot,
   payload: OpenApiHeaderPayloadSlot,
   header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
   header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
@@ -294,22 +314,34 @@ type OpenApiResponseKeyWildcardKind
   | OpenApiWildcard5xx
 
 
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKey
-type OpenApiResponseKey
-  = OpenApiResponseKeyDefault
-  | OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKeyNonDefault
+type OpenApiResponseKeyNonDefault
+  = OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
   | OpenApiResponseKeyWildcard { kind: OpenApiResponseKeyWildcardKind }
 
 
-type OpenApiResponseEntry {
-  status_key: OpenApiResponseKey,
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponseKey
+type OpenApiResponseKey
+  = OpenApiResponseKeyDefault
+  | OpenApiResponseKeyOther { key: OpenApiResponseKeyNonDefault }
+
+
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiResponsesDefaultSlot
+type OpenApiResponsesDefaultSlot
+  = OpenApiResponsesDefaultAbsent
+  | OpenApiResponsesDefaultPresent { response: OpenApiResponseOrReference }
+
+
+type OpenApiResponsesPrimaryEntry {
+  status_key: OpenApiResponseKeyNonDefault,
   response: OpenApiResponseOrReference,
 }
 
 
 type OpenApiResponses {
-  primary_response: OpenApiResponseEntry,
-  additional_by_status: Map<OpenApiResponseKey, OpenApiResponseOrReference>,
+  primary_response: OpenApiResponsesPrimaryEntry,
+  default_response: OpenApiResponsesDefaultSlot,
+  additional_by_status: Map<OpenApiResponseKeyNonDefault, OpenApiResponseOrReference>,
   responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
@@ -355,13 +387,13 @@ type OpenApiPathsSlot
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsSchemasSlot
 type OpenApiComponentsSchemasSlot
   = OpenApiComponentsSchemasAbsent
-  | OpenApiComponentsSchemasPresent { schemas: Map<String, OpenApiSchema> }
+  | OpenApiComponentsSchemasPresent { schemas: Map<OpenApiComponentsMapKey, OpenApiSchema> }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsPathItemsSlot
 type OpenApiComponentsPathItemsSlot
   = OpenApiComponentsPathItemsAbsent
-  | OpenApiComponentsPathItemsPresent { path_items: Map<String, OpenApiPathItemOrReference> }
+  | OpenApiComponentsPathItemsPresent { path_items: Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference> }
 
 
 type OpenApiComponents {
