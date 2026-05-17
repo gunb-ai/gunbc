@@ -135,7 +135,7 @@ type ReactElement
   | Fragment { key: ReactOptRef, child_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/react/createElement
-// Practice-4: DECISIONS.md#react-p4-node
+// 🟡 coproduct dissolution — DECISIONS.md#react-p4-node
 type ReactNode
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }

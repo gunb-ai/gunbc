@@ -466,7 +466,7 @@ D2-reversal as ratified is therefore correct, not premature.
 
 ## T-4.7 — `extdeps/frameworks/react.dag` Practice 4 / INVARIANTS P1 receipts
 
-**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification** (🟢 / 🟡 / N/A per carrier), five-pattern **ledger**, and named **triggers** live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// Practice-4: DECISIONS.md#…` cite per coproduct. **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
+**Binding:** `docs/modeling-discipline.md` Practice 9 — coproduct **classification** (🟢 / 🟡 / N/A per carrier), five-pattern **ledger**, and named **triggers** live in this file, not as multi-line prose in `react.dag`. The substrate carries **one** `// Anchor:` + **one** `// 🟢|🟡 coproduct dissolution — DECISIONS.md#…` one-liner per **N≥2** coproduct (operator PR **#3234** / T‑4 reconcile). **TASKS authority:** `src/v4/TASKS.md` T-4.7 (incl. `ReactNode` partial-slice posture).
 
 ### react-p4-optref
 
