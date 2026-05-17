@@ -452,6 +452,31 @@ fn assert_react_create_element_child_element_arm_wraps_react_element(dag: &v3_co
     );
 }
 
+fn assert_react_context_binding_fields_match_create_context_surface(dag: &v3_compiler::Dag) {
+    let binding = dag
+        .declaration_by_name("ReactContextBinding")
+        .expect("ReactContextBinding should exist after compiling react.dag");
+    let TypeConnective::Conj { children } = &binding.connective else {
+        panic!(
+            "ReactContextBinding: expected record (Conj), got {:?}",
+            binding.connective
+        );
+    };
+    let labels: Vec<&str> = children.iter().map(|f| f.label.as_str()).collect();
+    assert!(
+        labels.contains(&"context_ref"),
+        "ReactContextBinding must declare `context_ref` (single createContext return object); got {labels:?}"
+    );
+    assert!(
+        labels.contains(&"default_value_ref"),
+        "ReactContextBinding must declare `default_value_ref`; got {labels:?}"
+    );
+    assert!(
+        !labels.iter().any(|l| *l == "context_pair_ref"),
+        "ReactContextBinding must not declare invented `context_pair_ref`; got {labels:?}"
+    );
+}
+
 #[test]
 fn v4_extdeps_react_dag_compiles() {
     let _dag = react_extdeps_dag_or_panic();
