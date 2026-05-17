@@ -1009,9 +1009,13 @@ operation is not an endpoint implementation; it is a typed boundary declaration.
 type OpenApiOperation = Conj {
   method:      HttpMethod,
   path:        PathTemplate,
-  parameters:  List<Parameter>,
+  parameters:  Conj {
+    items:        List<Parameter>,
+    unique_proof: Witness< all_distinct_by(items, name_and_location) >
+                  // OpenAPI: parameters MUST be unique by (name, `in`) location
+  },
   request:     Optional<MediaTypedSchema>,
-  responses:   Map<HttpStatus, MediaTypedSchema>
+  responses:   Map<HttpStatus, MediaTypedSchema>   // Map keys unique by construction
 }
 
 // MEANING — a partial function from grounded HTTP requests to grounded HTTP
