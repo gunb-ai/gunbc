@@ -281,11 +281,14 @@ or defer to the task.
 
 ---
 
-## D2 REVERSAL + FACT-BUNDLE RESEED — PROPOSED (2026-05-17)
+## D2 REVERSAL + FACT-BUNDLE RESEED — RATIFIED (2026-05-17)
 
-> Operator-declared 2026-05-17. This section **supersedes D2** (and its
-> downstream D4). Ratify by merging this PR; redirect by review comment.
-> Nothing below is encoded into substrate until ratified.
+> Operator-declared and **RATIFIED 2026-05-17**. This section
+> **supersedes D2** (and its downstream D4). The operator declared D2
+> wrong, ratified the fact-bundle principle, and dispatched the Phase-1
+> execution (PR #3224) — so the decision is ratified, not awaiting a
+> merge vote. This PR (#3223) is the ledger encoding of that ratified
+> decision; #3224 executes Phase 1 against it.
 
 ### What reversed
 
@@ -450,8 +453,12 @@ language/format targets fan out against the same template.
 
 ### Status
 
-PROPOSED. Ratify by merging; redirect by review comment. On
-ratification, Phase 1 executes as the immediate next PR.
+**RATIFIED 2026-05-17** (operator, out-of-band — the operator declared D2
+wrong, ratified the fact-bundle principle, and dispatched the Phase-1
+execution). Phase 1 is executing now as **PR #3224** (TASKS.md +
+DECISIONS.md re-sequencing). This PR (#3223) encodes the ratified
+decision into the ledger; #3224 is stacked on it. TASKS.md consuming the
+D2-reversal as ratified is therefore correct, not premature.
 
 ---
 
