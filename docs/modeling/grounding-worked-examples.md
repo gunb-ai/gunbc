@@ -971,7 +971,11 @@ over JSON values, encoded in JSON syntax.
 type JsonSchemaObject = Conj {
   type_keyword: Optional<JsonTypeSet>,
   properties:   Map<String, JsonSchema>,
-  required:     List<String>
+  required:     Conj {
+    names:        List<String>,
+    unique_proof: Witness< all_distinct(names) >   // JSON Schema: the `required`
+                                                   // array elements MUST be unique
+  }
 }
 
 // MEANING — a predicate: JsonValue -> Bool, plus witnesses for accepted values.
