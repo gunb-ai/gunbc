@@ -29,6 +29,7 @@ type ExclusionKey {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md #3153-subsumed
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
   | DimensionNotRead { producer: Path }
