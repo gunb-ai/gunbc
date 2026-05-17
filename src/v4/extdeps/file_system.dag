@@ -8,7 +8,7 @@
 //   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
 //   - RelativePath { components: List<PathComponent> }
 //   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
-//   - FileKind = RegularFile | Directory | Symlink(target: Path)
+//   - FileKind = RegularFile | Directory | Symlink
 //   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
 //   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
 //   - list_dir(fs, p)         -> Result<List<PathComponent>, Diagnostic>
@@ -43,6 +43,11 @@
 // `NonEmptyList`; header Owns/Consumes now cite the real importable
 // `List` carrier. Body already used List<PathComponent>; no body
 // carrier change and no worker-minted NonEmptyList.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): FileKind::Symlink is a kind fact only. POSIX kind comes
+// from stat/lstat mode bits; link target comes from readlink, which is
+// outside this frozen file_system subset. Do not attach target Path to
+// FileKind.
 
 
 module v4.extdeps.file_system
@@ -157,9 +162,10 @@ type Path
 //
 // This is a genuine closed sum for v4's filesystem subset: a path names
 // exactly one of regular file, directory, or symlink at the operation
-// boundary. A richer POSIX file-type set (FIFO, socket, block device,
-// character device) would be a scope expansion to this extdep file, not
-// a string label or `Other` variant.
+// boundary. Symlink target text is a separate `readlink` fact outside
+// this frozen subset, not payload on the kind. A richer POSIX file-type
+// set (FIFO, socket, block device, character device) would be a scope
+// expansion to this extdep file, not a string label or `Other` variant.
 //
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. The frozen scaffold intentionally
@@ -170,11 +176,12 @@ type Path
 // the D1 `Outcome<FileKind>` seam rather than inventing `Other` or a
 // string label. Ledger:
 //   1. Fact placement — FAILS: file kind is consumed uniformly by
-//      readers deciding whether to read text, list entries, or resolve
-//      a link; it is not per-consumer metadata.
-//   2. Variant-is-data — FAILS: `Symlink` alone carries a target path;
-//      a flat `{ kind, target? }` admits illegal target-bearing regular
-//      files or target-less symlinks.
+//      readers deciding whether to read text, list entries, or handle
+//      a link as a link; it is not per-consumer metadata.
+//   2. Variant-is-data — FAILS: the variant itself is the file-kind
+//      fact. Attaching readlink target payload here would conflate two
+//      POSIX observations; flattening to a string/flag would lose the
+//      bounded kind partition.
 //   3. Algebraic form — N/A: file kind is not an algebra carrier.
 //   4. Dimensional — FAILS: one directory entry has one kind in this
 //      v4 subset, not simultaneous coordinates.
@@ -183,7 +190,7 @@ type Path
 type FileKind
   = RegularFile
   | Directory
-  | Symlink { target: Path }
+  | Symlink
 
 
 // ─────────────────────────────────────────────────────────────────────

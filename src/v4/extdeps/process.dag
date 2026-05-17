@@ -25,7 +25,7 @@
 //     Termination — wait cannot return a non-terminal state.)
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
-//   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
+//   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
 //   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
@@ -58,6 +58,10 @@
 // The terminal postcondition reconcile factors terminal process state
 // through TerminatedProcessState, so ProcessState::Terminated and
 // TerminatedProcess reuse the same terminal-state carrier.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): Command carries caller-supplied argv0 explicitly. POSIX
+// exec does not derive argv[0] from the program path; fabricating it
+// would collapse distinct command invocations.
 
 
 module v4.extdeps.process
@@ -133,12 +137,13 @@ type SignalNum = Int
 //
 // `program` is an absolute filesystem path from extdeps/file_system.dag,
 // not a shell string or PATH-search policy.
-// `args` excludes argv[0] policy: the realization supplies argv[0] from
-// `program` unless a later operator-ratified command-profile carrier
-// explicitly models custom argv[0]. `env` is a map from variable name
-// to value; duplicate variable names are structurally unrepresentable.
+// `argv0` is caller-supplied POSIX argv[0], not derived from `program`.
+// `args` are the remaining argv entries after argv[0]. `env` is a map
+// from variable name to value; duplicate variable names are structurally
+// unrepresentable.
 type Command {
   program: AbsolutePath
+  argv0: String
   args: List<String>
   env: Map<String, String>
 }
