@@ -71,6 +71,7 @@ type OpenApiMediaTypeDeferredKey
 type OpenApiHeaderDeferredKey
   = OpenApiHeaderDeferredStyle
   | OpenApiHeaderDeferredExplode
+  | OpenApiHeaderDeferredDeprecated
   | OpenApiHeaderDeferredExample
   | OpenApiHeaderDeferredExamples
 
