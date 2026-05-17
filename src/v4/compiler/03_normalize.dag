@@ -11,6 +11,16 @@
 // normalize do in a no-sugar language" tension — there IS bounded sugar,
 // exactly these 4; cascade-closure of A1.)
 //
+// Architecture (`compiler/00_compile.dag` **core**): normalize is the first
+// transform in `core` after `ingest` (`core = normalize ∘ resolve ∘ infer`).
+// The four C3 sugar **Atom identities** (`dag_c3_surface_sugar_*`) are minted
+// in the **LanguageModel** bundle (`extdeps/languages/dag.dag`) as **grammar-as-data**
+// — the same declarative corpus `ingest`/`parse` walks (B2-OMNI: one bidirectional
+// relation, not a normalize-local naming table). This stage **consumes** that
+// mint: `classify_sugar` compares parse output **only** by identity against those
+// authorities; dissolution rewrites `Node` shape. A parallel sugar Symbol here
+// would be a second authority (the Codex finding #1 defect) — forbidden.
+//
 // Owns:
 //   - NormalizedTree type
 //   - normalize: ParseTree -> Result<NormalizedTree, Diagnostic>
