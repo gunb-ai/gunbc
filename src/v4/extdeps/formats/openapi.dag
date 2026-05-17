@@ -295,9 +295,7 @@ type OpenApiResponseKey
 
 
 type OpenApiResponses {
-  first_key: OpenApiResponseKey,
-  first_response: OpenApiResponseOrReference,
-  additional_by_status: Map<OpenApiResponseKey, OpenApiResponseOrReference>,
+  by_status: Map<OpenApiResponseKey, OpenApiResponseOrReference>,
   responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
