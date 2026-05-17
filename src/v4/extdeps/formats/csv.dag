@@ -1,24 +1,8 @@
 // src/v4/extdeps/formats/csv.dag
-//
-// Scope: CSV (Comma-Separated Values) data format model — direction-agnostic.
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180 (RFC 4180 — fixed edition)
-//
-// Owns:
-//   - RFC 4180 COMMA/DQUOTE profile (`CsvDialectRfc4180`); not a tunable multi-dialect surface here.
-//   - `CsvRow` / `CsvDocument` (+ `CsvHeaderPresence`): pre-ruling tabular carriers (`Nat` width + `List<String>` per row); rectangularity operator-pending (Deferred (2)).
-//   - Future `csv_parse` / `csv_emit` — Deferred (1); `Outcome<…>` seam (json.dag #3184 / DECISIONS I).
-//
+// Scope: CSV (RFC 4180) format model.
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
-//
-// Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable contract
-// for the worker. Splitting this file requires explicit operator ratification.
-//
-// ─── HEADER RECONCILE (operator directive, vivid-carp-207, dashboard msg_3499949b-8d4e-4826-a51d-05b9e1757775, 2026-05-17) ───
-// In-PR de-prose: comment volume reduced; carriers unchanged.
-//
-// Seams: C5 anchor pin; mirror json `Outcome` fail-closed parse+emit; no bodiless `fn` (DECISIONS PARSE-1).
-// Immut. header `Result` / total-`String` emit ↔ `Outcome` reconcile per json.dag #3184 class (Deferred (1)).
+// Status: scaffold — TASKS.md T-4.6
 
 module v4.extdeps.formats.csv
 
@@ -26,42 +10,22 @@ module v4.extdeps.formats.csv
 import v4.std.nat { Nat }
 
 
-// CsvDialect — RFC 4180 §2 nullary witness (fixed COMMA/DQUOTE grammar).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-// Practice 4: GREEN — one profile per arm; new profiles = new arm or sibling file.
 type CsvDialect
   = CsvDialectRfc4180 {}
 
 
-// CsvHeaderPresence — optional header row (P2 explicit sum, not `Option<Row>`).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-// Practice 4: GREEN.
 type CsvHeaderPresence
   = HeaderPresent { row: CsvRow }
   | HeaderAbsent
 
 
-// CsvRow — one logical record = ordered field list (`Row` in immutable header).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-// Practice 4: N/A (Conj). Rectangularity vs `width`: Deferred (2).
 type CsvRow {
   fields: List<String>,
 }
 
 
-// CsvDocument — header + body + `width: Nat` (counting carrier; strict PositiveInt refinements operator-pending).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180#section-2
-// Practice 4: N/A (Conj). Row arity vs `width`: Deferred (2); no false structural rectangularity claim.
 type CsvDocument {
   width: Nat,
   header: CsvHeaderPresence,
   records: List<CsvRow>,
 }
-
-
-// Deferred — TRACKED SCAFFOLD (🟡).
-//
-// (1) `csv_parse` / `csv_emit` — RFC 4180 §2 on std/text; `CsvDialectRfc4180`; `Outcome` fail-closed both ways (json.dag #3184).
-//   (a) doc — this block. (b) bounds — symbols absent here. (c) trigger — std/text lands ⇒ ops + emit validation (Unicode/CRLF/quotes) + CSV consistency rules **after** (2) where applicable.
-//
-// (2) Operator **csv-rectangularity ruling** — rectangularity, width rules, ragged rows, header/body arity, parse on mismatch: deferred to named ruling + substrate; no worker disposition. Trigger: ruling + substrate ⇒ wire Deferred (1) `Outcome` ops.

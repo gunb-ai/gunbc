@@ -1,38 +1,8 @@
 // src/v4/extdeps/formats/openapi.dag
-//
-// Scope: OpenAPI Specification model — REST API contract description. Direction-agnostic.
-// Anchor: https://spec.openapis.org/oas/v3.1.0 (OpenAPI Specification v3.1.0)
-//
-// Owns:
-//   - OpenApiDocument { info, servers, paths slot, components, ... }
-//   - Root **`paths`** — **`OpenApiPathsSlot`** (omit vs present, incl. empty
-//     **`OpenApiPaths`**)
-//   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
-//   - Path { operations: Map<HttpMethod, Operation> }
-//   - Operation { …, Responses Object (`OpenApiResponses`: **`by_status` map
-//     values `OpenApiResponseOrReference`** + **`responses_object_extensions`**) };
-//     nested **Response Object**
-//     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
-//   - parse(String) -> Result<OpenApiDocument, Diagnostic>  (YAML or JSON input;
-//     mechanical seam = `Outcome<OpenApiDocument>` — modeling notes below)
-//   - emit(OpenApiDocument) -> String  (typically YAML; mechanical seam =
-//     `Outcome<String>` — modeling notes below)
-//   - Type derivation from **`OpenApiSchema.core`** values under **`components`**
-//     (when the **`schemas`** field is **`OpenApiComponentsSchemasPresent`**) delegates to
-//     json_schema.dag's future `schema_to_type` — not re-declared here.
-//
-// Consumes:
-//   - std/node.dag, std/diagnostic.dag, std/collection.dag
-//   - extdeps/formats/json_schema.dag: schema modeling
-//   - extdeps/formats/yaml.dag, extdeps/formats/json.dag: parse surface
-//
-// Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-//
-// ─── HEADER RECONCILE (operator directive, vivid-carp-207, dashboard msg_3499949b-8d4e-4826-a51d-05b9e1757775, 2026-05-17) ───
-// In-PR de-prose: comment volume reduced; carriers unchanged.
+// Scope: OpenAPI 3.1.0 document model (OAS slice).
+// Owns: OpenApiSchema, OpenApiHttpMethod, OpenApiOptionalString, OpenApiContact, OpenApiContactSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLicense, OpenApiLicenseSlot, OpenApiInfo, OpenApiMediaType, OpenApiMediaTypeSchemaSlot, OpenApiResponseContentSlot, OpenApiHeadersSlot, OpenApiLinksSlot, OpenApiResponse, OpenApiResponseOrReference, OpenApiResponses, OpenApiOperation, OpenApiPathItem, OpenApiPaths, OpenApiPathsSlot, OpenApiComponentsSchemasSlot, OpenApiComponents, OpenApiComponentsSlot, OpenApiDocument
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Status: scaffold — TASKS.md T-4.6
 
 module v4.extdeps.formats.openapi
 
@@ -41,17 +11,6 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 
 
-// Modeling (C5 OAS 3.1.0; seams: json.dag #3184 / DECISIONS I / #3195 D2)
-// — C5: `openapi_version_lexeme` verbatim `String` until semver/version substrate (Deferred (2)).
-// — Parse: `OpenApiDocument` semantic carrier after yaml/json + `$ref` (Deferred (1)); consume yaml/json modules when ops exist; no `import` until bodies close unused-import rule.
-// — JSON Schema: `OpenApiSchema` wraps `JsonSchema` (Practice 8 fact-bundle — not hollow bare alias): P2 split `openapi_schema_members` vs `openapi_schema_specification_extensions` (`^x-` only); no OAS keys folded into `JsonSchemaInstance.additional_keywords`.
-// — HTTP: `OpenApiHttpMethod` M4 sum; extension verbs → deferred/extension maps (Deferred (3)).
-// — P2 maps: each `*_specification_extensions` = `^x-` ONLY on that object; paired `*_deferred_members` / `paths_extensions` / `responses_object_extensions` / `root_deferred_members` hold other fixed overflow per Deferred (1).
-
-
-// OpenApiSchema — OAS Schema Object: `JsonSchema` core + OAS-only members + `^x-` extensions (P2/M5); not a bare `JsonSchema` alias.
-// Anchor: https://spec.openapis.org/oas/v3.1.0#schema-object
-// Practice 4: N/A (Conj).
 type OpenApiSchema {
   core: JsonSchema,
   openapi_schema_members: Map<String, JsonValue>,
@@ -59,9 +18,6 @@ type OpenApiSchema {
 }
 
 
-// OpenApiHttpMethod — Path Item operation verbs (M4 closed sum).
-// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-// Practice 4: GREEN (terminal).
 type OpenApiHttpMethod
   = OpenApiGet
   | OpenApiPut
@@ -73,17 +29,11 @@ type OpenApiHttpMethod
   | OpenApiTrace
 
 
-// OpenApiOptionalString — optional string fields (P2 explicit sum).
-// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-// Practice 4: GREEN (terminal).
 type OpenApiOptionalString
   = OpenApiStringPresent { value: String }
   | OpenApiStringAbsent
 
 
-// OpenApiContact — Contact Object + `contact_extensions` (`^x-`); URI/email tightening 🟡 parse (Deferred (1)).
-// Anchor: https://spec.openapis.org/oas/v3.1.0#contact-object
-// Practice 4: N/A (Conj).
 type OpenApiContact {
   name: OpenApiOptionalString,
   url: OpenApiOptionalString,
@@ -92,26 +42,17 @@ type OpenApiContact {
 }
 
 
-// OpenApiContactSlot — optional `contact` on Info.
-// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-// Practice 4: GREEN (terminal).
 type OpenApiContactSlot
   = OpenApiContactPresent { contact: OpenApiContact }
   | OpenApiContactAbsent
 
 
-// OpenApiLicenseUrlOrIdentifierSlot — License `url` XOR `identifier` (or neither); not two independent Options.
-// Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
-// Practice 4: GREEN (terminal).
 type OpenApiLicenseUrlOrIdentifierSlot
   = OpenApiLicenseUrlPresent { url: String }
   | OpenApiLicenseIdentifierPresent { identifier: String }
   | OpenApiLicenseUrlOrIdentifierNeither
 
 
-// OpenApiLicense — License Object: required `name`; `url`/`identifier` via slot; `license_extensions` (`^x-`).
-// Anchor: https://spec.openapis.org/oas/v3.1.0#license-object
-// Practice 4: N/A (Conj).
 type OpenApiLicense {
   name: String,
   url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
@@ -119,17 +60,11 @@ type OpenApiLicense {
 }
 
 
-// OpenApiLicenseSlot — optional `license` on Info.
-// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-// Practice 4: GREEN (terminal).
 type OpenApiLicenseSlot
   = OpenApiLicensePresent { license: OpenApiLicense }
   | OpenApiLicenseAbsent
 
 
-// OpenApiInfo — Info Object (OAS 3.1.0 fixed fields + `info_specification_extensions` `^x-` only); unknown non-`^x-` keys → `Rejected` at parse (Deferred (1)); C5 migration for future normative fields (Deferred (2)).
-// Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
-// Practice 4: N/A (Conj).
 type OpenApiInfo {
   title: String,
   summary: OpenApiOptionalString,
@@ -142,16 +77,6 @@ type OpenApiInfo {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiMediaType — Media Type Object (OAS 3.1.0). **`schema_shape`** carries an
-// optional **`OpenApiSchema`** (OAS Schema Object — **not** bare `JsonSchema`).
-// Undecomposed **fixed** Media Type fields (`example`, `examples`, `encoding`, …)
-// round-trip under **`media_type_deferred_members`**
-// as **`JsonValue`** until decomposed (🟡 Deferred (1)) — **not** under
-// **`media_type_specification_extensions`**, reserved for **Specification
-// Extensions** (`^x-`) only on this object (P2 / M5).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#media-type-object
 type OpenApiMediaType {
   schema_shape: OpenApiMediaTypeSchemaSlot,
   media_type_deferred_members: Map<String, JsonValue>,
@@ -159,77 +84,26 @@ type OpenApiMediaType {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiMediaTypeSchemaSlot — schema MAY be omitted on a media type object.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#media-type-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
-// vs absent schema are genuine alternatives; flat Bool+optional record would
-// admit illegal paired states (P2 violation).
 type OpenApiMediaTypeSchemaSlot
   = OpenApiMediaSchemaPresent { schema: OpenApiSchema }
   | OpenApiMediaSchemaAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiResponseContentSlot — OAS 3.1.0 Response Object **`content`** field
-// (map of media type → Media Type Object). Optional at the JSON surface —
-// **omit** vs **present** (including **present-empty** `{}`) are distinct wire
-// facts (P2).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: present
-// vs absent `content` are genuine alternatives; a flat optional map would
-// conflate “field omitted” with “empty map” unless paired with a separate
-// presence bit (illegal paired states).
 type OpenApiResponseContentSlot
   = OpenApiResponseContentAbsent
   | OpenApiResponseContentPresent { content: Map<String, OpenApiMediaType> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiHeadersSlot — OAS 3.1.0 Response Object **`headers`** map (Header
-// Object | Reference Object values). Typed **`OpenApiHeader`** decomposition
-// is 🟡 deferred (Trigger (1)); wire **faithfulness** today uses **`JsonValue`**
-// payloads per map entry — **not** folded into **`extensions`**, which is
-// reserved for **Specification Extensions** (`^x-`) only on this object (M5 /
-// P2 single field authority per OAS fixed-field name).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
 type OpenApiHeadersSlot
   = OpenApiHeadersAbsent
   | OpenApiHeadersPresent { headers: Map<String, JsonValue> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiLinksSlot — OAS 3.1.0 Response Object **`links`** map (Link Object |
-// Reference Object values). Typed **`OpenApiLink`** decomposition is 🟡
-// deferred (Trigger (1)); wire payloads captured as **`JsonValue`** (bounded
-// fixed-field path — not `extensions`).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal).
 type OpenApiLinksSlot
   = OpenApiLinksAbsent
   | OpenApiLinksPresent { links: Map<String, JsonValue> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiResponse — OAS 3.1.0 **Response Object**. **`description`** is REQUIRED
-// at the JSON surface; **`content`**, **`headers`**, and **`links`** are optional
-// fixed fields with explicit **present/absent** slots (omit vs present-empty).
-// **`extensions`** carries only **Specification Extensions** (`^x-`) on this
-// object — not a dumping ground for `headers` / `links` / `content` wire.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#response-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record) for the outer record;
-// nested slots supply the Response-object-level ledger splits.
 type OpenApiResponse {
   description: String,
   content: OpenApiResponseContentSlot,
@@ -239,68 +113,17 @@ type OpenApiResponse {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiResponseOrReference — OAS 3.1.0 **Responses Object** map **values**
-// (each status code / `default` / wildcard-bucket entry): either an inline
-// **Response Object** or a **Reference Object** (`$ref` to a reusable response).
-// Typed **`OpenApiReference`** + resolver graph are 🟡 Deferred (1); the
-// **`Reference`** arm carries **bounded Reference Object wire JSON** as
-// **`JsonValue`** (same bounded-json class as `OpenApiHeadersSlot` map entries —
-// not folded into **`responses_object_extensions`**, which is `^x-` only on
-// the Responses Object).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
-// Anchor: https://spec.openapis.org/oas/v3.1.0#reference-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: inline
-// Response vs Reference are mutually exclusive wire shapes; `Map<String,
-// OpenApiResponse>` alone would either reject valid `$ref` entries or smuggle
-// them through a non-Response-shaped carrier (P2 / Practice-7).
 type OpenApiResponseOrReference
   = OpenApiResponseInline { response: OpenApiResponse }
   | OpenApiResponseReference { reference_wire: JsonValue }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiResponses — OAS 3.1.0 **Responses Object** under an Operation: status
-// keys (three-digit codes, `default`, and OAS wildcard buckets **`1XX`…`5XX`**
-// — uppercase **`XX`** per the Responses Object key grammar, not HTTP “class”
-// shorthand) plus **object-level** Specification
-// Extensions (`^x-`) as siblings of those keys — distinct from each
-// `OpenApiResponse.extensions` on the nested Response Object vs
-// **`responses_object_extensions`** on the Responses Object. Map **values** are
-// **`OpenApiResponseOrReference`** — Response Object **or** Reference Object per
-// the OAS Responses Object value grammar.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record). **`by_status` keys**
-// are **`String` lexemes** (three-digit status, `default`, **`1XX`/`2XX`/`3XX`/
-// `4XX`/`5XX`**) — OAS key grammar + future closed-ish sum dissolve under
-// **`openapi_parse`** structural
-// validation (Deferred (1); INVARIANTS §2 honesty — no false structural
-// guarantee of key shape at the carrier layer).
 type OpenApiResponses {
   by_status: Map<String, OpenApiResponseOrReference>,
   responses_object_extensions: Map<String, JsonValue>,
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiOperation — Operation Object slice modeled here: `operationId`,
-// `responses` (**`OpenApiResponses`** — status map + Responses Object
-// `responses_object_extensions`; required-by-OAS rules once the operation
-// exists — empty `by_status` may be structurally representable; OAS-level
-// validity is 🟡 deferred parse authority). Undecomposed **fixed** Operation
-// fields (`parameters`, `requestBody`, `callbacks`, `security`, `deprecated`,
-// `tags`, `externalDocs`, …) round-trip under **`operation_deferred_members`**
-// as **`JsonValue`** until decomposed (🟡 Deferred (1)) — **not** under
-// **`operation_specification_extensions`**, which is reserved for **Specification
-// Extensions** (`^x-`) on the Operation Object only (P2 / M5).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#operation-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiOperation {
   operation_id: OpenApiOptionalString,
   responses: OpenApiResponses,
@@ -309,20 +132,6 @@ type OpenApiOperation {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiPathItem — Path Item Object: concrete path (`routes` map) with
-// split **fixed-field deferrals** vs **Specification Extensions**. Undecomposed
-// **fixed** Path Item members (`$ref`, `summary`, `description`, `servers`,
-// `parameters`, …) round-trip under **`path_deferred_members`** as **`JsonValue`**
-// (🟡 Deferred (1)) — **not** under **`path_specification_extensions`**, which
-// is reserved for **`^x-`** only. **`$ref` sibling form** (Path Item Object
-// reference) is deferred 🟡 (1): until `$ref` substrate lands, a path item
-// that is ONLY a reference round-trips its JSON shape through
-// **`path_deferred_members`** / operator follow-up — not silently normalized.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiPathItem {
   routes: Map<OpenApiHttpMethod, OpenApiOperation>,
   path_deferred_members: Map<String, JsonValue>,
@@ -330,70 +139,22 @@ type OpenApiPathItem {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiPaths — OAS 3.1.0 **Paths Object**: path-template → Path Item
-// entries plus **object-level** Specification Extensions (`^x-`) as siblings
-// of those keys — distinct from each **`OpenApiPathItem.path_specification_extensions`**
-// (and **`path_deferred_members`**) on the Path Item Object.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#paths-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiPaths {
   routes: Map<String, OpenApiPathItem>,
   paths_extensions: Map<String, JsonValue>,
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiPathsSlot — root OpenAPI Object **`paths`** field (OAS 3.1.0
-// §4.8.1). Only **`openapi`** and **`info`** are individually REQUIRED; **`paths`**
-// is not — per **§3.1** a valid document MUST contain **at least one** of
-// `paths`, `components`, or `webhooks`, so **`paths` MAY be absent** on the wire
-// while another root arm carries the document. When present, the value is an
-// **`OpenApiPaths`** (including **present-empty** `{}` per §4.8.8 — Paths MAY be
-// empty for ACL). **`OpenApiPathsAbsent`** vs **`OpenApiPathsPresent { paths }`**
-// preserves omit-wire vs present-empty without P2 collapse.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#openapi-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: absent
-// vs present `paths` are distinct shapes; a nullable `OpenApiPaths?` would
-// conflate absent with present-empty and fabricate paths for valid omit-wire
-// documents (P2 / Practice-7).
 type OpenApiPathsSlot
   = OpenApiPathsPresent { paths: OpenApiPaths }
   | OpenApiPathsAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiComponentsSchemasSlot — OAS 3.1.0 Components Object **`schemas`** field.
-// Optional at the JSON surface — **omit** vs **present** (including **present-empty**
-// `{}` with zero named schemas) are distinct wire facts (P2).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: a flat
-// `Map<String, OpenApiSchema>` on `OpenApiComponents` would conflate “`schemas` key
-// omitted” with “`schemas`: {}`” unless paired with a separate presence bit
-// (illegal paired states).
 type OpenApiComponentsSchemasSlot
   = OpenApiComponentsSchemasAbsent
   | OpenApiComponentsSchemasPresent { schemas: Map<String, OpenApiSchema> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiComponents — Components Object: **`schemas`** is **`OpenApiComponentsSchemasSlot`**
-// (**`OpenApiSchema`** map values — OAS Schema Object, not bare `JsonSchema`).
-// Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
-// round-trip under **`components_deferred_members`** as **`JsonValue`** until a
-// pinned decomposition lands (MODELING.md M10 — proper homes before variant
-// explosion) — **not** under **`components_specification_extensions`**, reserved
-// for **Specification Extensions** (`^x-`) on the Components Object only (P2 / M5).
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiComponents {
   schemas: OpenApiComponentsSchemasSlot,
   components_deferred_members: Map<String, JsonValue>,
@@ -401,35 +162,11 @@ type OpenApiComponents {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiComponentsSlot — the entire `components` object is optional on the
-// root OpenAPI document.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger:
-// `Present` vs `Absent` are genuine alternatives; a nullable single
-// `OpenApiComponents?` would collapse structural facts (P2 / Practice-7).
 type OpenApiComponentsSlot
   = OpenApiComponentsPresent { components: OpenApiComponents }
   | OpenApiComponentsAbsent
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiDocument — OpenAPI 3.1 root document (semantic carrier). **`paths`**
-// is **`OpenApiPathsSlot`** — wire **omit** vs **`OpenApiPathsPresent`** (incl.
-// **present-empty** Paths Object) per §3.1 / §4.8.1 / §4.8.8. Fixed root members
-// **`servers`**, **`webhooks`**, **`security`**, **`tags`**, **`externalDocs`**
-// that are not yet given typed carriers round-trip under **`root_deferred_members`**
-// as **`JsonValue`** (🟡 Deferred (1)) — **not** folded into
-// **`root_specification_extensions`**, which is reserved for **Specification
-// Extensions** (`^x-`) on the OpenAPI Object only (P2 single field authority).
-// `jsonSchemaDialect` is modeled verbatim when present as a string (OAS 3.1
-// feature) — absence is explicit.
-//
-// Anchor: https://spec.openapis.org/oas/v3.1.0#openapi-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiDocument {
   openapi_version_lexeme: String,
   json_schema_dialect: OpenApiOptionalString,
@@ -439,62 +176,3 @@ type OpenApiDocument {
   root_deferred_members: Map<String, JsonValue>,
   root_specification_extensions: Map<String, JsonValue>,
 }
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Deferred — TRACKED SCAFFOLD (🟡).
-//
-// (1) `openapi_parse` / `openapi_emit` — surface decode (JSON per json.dag
-//   seam; YAML per yaml.dag seam) + OpenAPI structural validation + `$ref`
-//   resolution graph + Path Item reference normalization. Requires std/text.
-//   dag + the json/yaml parse bodies. Fail-closed `Outcome<OpenApiDocument>`
-//   / `Outcome<String>` (seam #3). **Dissolution trigger:** std/text.dag
-//   lands + yaml/json parse operations land + operator pins reference
-//   substrate. Structural validation **includes** §3.1 **at-least-one-of**
-//   (`paths` present / `components` present / `webhooks` in `root_deferred_members`
-//   parse lane — exact `webhooks` decomposition 🟡) and `OpenApiResponses.by_status`
-//   map keys (three-digit status strings, `default`, and OAS wildcard buckets
-//   **`1XX`/`2XX`/`3XX`/`4XX`/`5XX`** — uppercase **`XX`** per spec, not
-//   lowercase `xx` spellings): the carrier uses **`String` lexemes** today
-//   for faithful wire capture; lifting to a closed-ish sum (vs silent string
-//   abuse) rides the **same** parse/validation operation — not a parallel
-//   authority. **`OpenApiHeadersSlot` / `OpenApiLinksSlot`** carry **`JsonValue`**
-//   per map entry until Header Object / Link Object carriers land (same trigger);
-//   **`OpenApiResponseContentSlot`** defers Media Type Object value validation to
-//   the same parse lane. **`OpenApiResponseOrReference`**: **`OpenApiResponseReference`**
-//   wire payloads validate as Reference Objects and resolve under the **same**
-//   `$ref` graph trigger — not a parallel authority. **`OpenApiSchema`**: parse
-//   partitions Schema Object wire between **`core`** (`JsonSchema` — JSON Schema
-//   vocabulary only), **`openapi_schema_members`** (OAS fixed fields outside the
-//   typed `JsonSchemaInstance` slice), and **`openapi_schema_specification_extensions`**
-//   (`^x-`); OAS-only keys MUST NOT be normalized into **`JsonSchemaInstance.additional_keywords`**
-//   without an explicit **`OpenApiSchema`** home (same trigger). **`OpenApiInfo`** at
-//   **OAS 3.1.0**: **`info_specification_extensions`** is **`^x-`** only; any other
-//   unknown top-level member is **`Rejected`** (not structurally representable as
-//   “deferred fixed field” on this pin — avoids admitting illegal non-extension keys
-//   in a catch-all map).
-//
-// (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
-//   comparison against supported spec revisions; trigger = operator version
-//   lattice + semver substrate.
-//
-// (3) Extension HTTP methods / non-OAS verbs — policy for whether they lift
-//     into a dedicated sum or remain JSON-tagged; trigger = operator transport
-//     layer pin (`HttpMethod` shared home).
-//
-// (4) Info Object **value validation** — `termsOfService` / `contact.url` URI
-//     shapes, `contact.email` addr-spec checks, **`license.url` URI** checks,
-//     and **`license.identifier` SPDX expression** checks remain 🟡 with the
-//     same dissolution trigger as (1) (`openapi_parse` + std/text substrate);
-//     structural `OpenApiLicenseUrlOrIdentifierSlot` forbids **both** `url` and
-//     `identifier` at the carrier layer; JSON surface repair for malformed
-//     both-present objects is parse authority, not silent coercion here.
-//     **`contact_extensions`** / **`paths_extensions`** /
-//     **`info_specification_extensions`** /
-//     **`path_specification_extensions`** / **`operation_specification_extensions`** /
-//     **`media_type_specification_extensions`** / **`openapi_schema_specification_extensions`** /
-//     **`components_specification_extensions`** /
-//     **`responses_object_extensions`** / **`root_specification_extensions`**
-//     keys are carried structurally —
-//     validation of extension-member shapes vs `^x-` patterns remains 🟡 with
-//     trigger (1).
