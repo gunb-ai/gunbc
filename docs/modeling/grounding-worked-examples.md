@@ -293,8 +293,13 @@ outside the `MachineWidth<Word32>` predicate or any non-3 length returns
 **Model:**
 
 ```
-// CARRIER — a register value is exactly 64 classical bits.
-type Reg64 = List<Bool>            // |bits| = 64
+// CARRIER — a register value is exactly 64 classical bits. The width is a
+// structural fact (a length witness), not a comment — same shape as the
+// Rust array above; a bare `List<Bool>` would admit any length.
+type Reg64 = Conj {
+  bits: List<Bool>,
+  length_proof: Witness< |bits| = 64 >
+}
 
 // MEANING — none intrinsic. A raw register is an uninterpreted bit
 // pattern; meaning is supplied by the instruction that consumes it
@@ -306,8 +311,9 @@ type Reg64 = List<Bool>            // |bits| = 64
 This is the spectrum's trivial endpoint — `machine_code` *is* bits, so
 the grounding is direct, no decode.
 
-**Coercion shape — `Reg64 -> Outcome<List<Bool>>`:** the direct carrier
-match returns `Produced { value: bits }`. Instruction-specific reads are
+**Coercion shape — `Reg64 -> Outcome<List<Bool>>`:** the fold projects the
+`bits` field and the `length_proof` witness discharges to the target —
+returning `Produced { value: bits }`. Instruction-specific reads are
 separate coercions: the consumer supplies the meaning (`Int64`, address,
 binary64, ...), and an unsupported or missing meaning returns
 `Rejected { diagnostic: Diagnostic }` rather than inventing one.
@@ -322,9 +328,13 @@ Verilog's logic value is **4-valued**: `{0, 1, x (unknown), z (high-Z)}`
 **Model:**
 
 ```
-// CARRIER — 32 four-state bits.
+// CARRIER — exactly 32 four-state bits. Width is a structural length
+// witness, not a comment — same shape as the Rust array.
 type VBit   = Zero | One | Unknown | HighZ   // closed 4-sum (a coproduct)
-type VReg32 = List<VBit>                     // |bits| = 32
+type VReg32 = Conj {
+  bits: List<VBit>,
+  length_proof: Witness< |bits| = 32 >
+}
 
 // MEANING — the 32 four-state bits; when used as a number, two's-
 // complement over the {0,1} bits, undefined if any bit is x/z.
@@ -336,8 +346,8 @@ richer. `Bool` is exactly the `{Zero, One}` sub-part of `VBit`.
 
 **Step-by-step coercion shape — `VReg32 -> Outcome<IR Int32>`:**
 1. IR `Int32` grounds to `Compose<Int, MachineWidth<Word32>>` (the
-   fixed-width integer discipline from §B); `VReg32` grounds to `32×VBit`
-   (4-valued).
+   fixed-width integer discipline from §B); `VReg32` grounds to
+   `Conj { bits: List<VBit>, length_proof: Witness<|bits| = 32> }`.
 2. the coercion fold compares element-wise:
    `Bool` vs `VBit` — `Bool ⊊ VBit`.
 3. `IR Int32 -> Outcome<VReg32>` is total over this relation: every
