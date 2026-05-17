@@ -18,9 +18,16 @@ import v4.std.diagnostic {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md CICMD-1
+type CiCommand
+  = LintCommand
+  | TestCommand
+  | IgnoredTestCommand { test_name: String }
+  | ShellCommand { command: String }
+
 type CiJob {
   id: Symbol
-  command: String
+  command: CiCommand
   needs: List<Symbol>
 }
 
@@ -40,7 +47,7 @@ data structural_v2_compile: Symbol = structural_v2_compile
 
 data v2_compile_gate_job: CiJob = CiJob {
   id: v2_compile_src_v4,
-  command: "target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag",
+  command: ShellCommand { command: "target/release/v2-compiler compile --source-root src/v4 --output-dir /tmp/v4-stage1 --target dag" },
   needs: []
 }
 
