@@ -1,8 +1,8 @@
 // src/v4/std/report.dag
 // Scope: advisory report carrier.
 // Anchor: docs/r4-carve-out-routing.md C7.
-// Owns: none.
-// Consumes: none.
-// Status: scaffold for T-17.
+// Owns: Report, ReportReason, ReportSuggestion.
+// Consumes: std diagnostic, std node.
+// Status: scaffold for T-17; advisory discipline in DECISIONS.md C7-REPORT.
 
 module v4.std.report
