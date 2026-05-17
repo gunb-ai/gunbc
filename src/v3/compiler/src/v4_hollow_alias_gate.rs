@@ -30,6 +30,11 @@
 //! types): [`ModeledSubject::KernelAmbientAtom`] never yields a hollow site (aliases onto
 //! those terminals are structurally exempt).
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
+// 🟢 GREEN — terminal two-variant harness mirror of `std/diagnostic.dag` `Outcome<Bool>`
+// pass/fail tokens (`Produced` / `Rejected`); no third semantic axis at this boundary.
+// Ledger: P5(b) interim Rust mirror only — the *verdict shape* stays this coproduct; a generated
+// `.dag` checker does not add a third outcome variant here.
 /// Fail-closed outcome analogue to `std/diagnostic.dag`'s `Outcome<Bool>`
 /// success token (`Produced { value: true }` in the `.dag` spelling).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +43,10 @@ pub enum HollowAliasGateOutcome {
     Rejected,
 }
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
+// 🟡 YELLOW — harness IR for Practice 8 condition (2); substrate should own this classification
+// when the T-30 hollow-alias gate is generated from `.dag` / walks structural `Node`.
+// scaffold: dissolve when T-30 `.dag` checker + bootstrap bridge land (`INVARIANTS.md` P5(b)).
 /// Classification of **what** the declaration models for condition (2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeledSubject {
@@ -60,6 +69,10 @@ pub struct HollowDeclarationSite {
     pub coincidence_evidence: bool,
 }
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
+// 🟡 YELLOW — interim harness AST discriminator (`Declaration` vs `Group`) until the Practice-8
+// gate walks structural `Node` in the substrate (same T-30 sunset as `ModeledSubject`).
+// scaffold: dissolve when T-30 `.dag` checker + bootstrap bridge land (`INVARIANTS.md` P5(b)).
 /// Classifier for the **minimal** tree the T-30 harness walks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HollowGateKind {
