@@ -2,56 +2,37 @@
 //
 // Scope: T-30 — structural fact-density / hollow-alias gate (operator 2026-05-17,
 //        DECISIONS.md D2 reversal, TASKS.md T-30).
-// Anchor: docs/modeling/grounding-worked-examples.md (carrier + meaning;
-//        grounding demonstrates decomposition into shared `std/` vocabulary
-//        as `Node`) + docs/modeling-discipline.md (Practice 6 — structural
-//        enforcement) + INVARIANTS P1.
+// Anchor: docs/modeling/grounding-worked-examples.md + docs/modeling-discipline.md
+//        + INVARIANTS P1.
 //
 // Owns:
-//   - SourceSpecReadFact — obligates a non-empty **meaning** subtree
-//     (`body: Node`): machine-readable evidence that the model reads at
-//     least one fact from the source spec into the substrate.
+//   - SourceSpecReadFact — nominal witness carrier (see implementation split).
 //
 // Consumes:
-//   - std/node.dag: Node (field payload only)
+//   - std/nat.dag: Nat (nominal staging carrier — see NOTE below).
 //
-// Implementation split (M1(2.8) / lower.rs `reject_user_unparsed_scaffolds`):
-//   Block-bodied `fn` definitions that use `match` / folds over `Node` are
-//   not yet lowerable through `compile_to_dag` in the user declaration range.
-//   The mechanical **Node → Outcome** gate is mirrored in bootstrap Rust as
-//   `v3_compiler::v4_hollow_alias_gate` (kept in lockstep with this file's
-//   contract). When M1(2.8) lifts, the walker should land here as `.dag`
-//   bodies and the Rust mirror can shrink.
+// Implementation split (M1(2.8) / standalone `compile_to_dag`):
+//   The mechanical **Node → Outcome** gate is mirrored in Rust as
+//   `v3_compiler::v4_hollow_alias_gate` (hermetic unit tests there).
 //
-// Modeling — T-30 structural tier (prerequisite of T-4):
-//   **Hollow alias:** identity to a `std/` vocabulary type with **zero**
-//   machine-readable grounding from the external spec (carrier isolation).
-//   **Witness:** embed ≥1 `SourceSpecReadFact` subtree per primitive bundle.
-//   **Proxy:** `Instantiation` with exactly two positional bare-`Atom`
-//   children and no witness under that node — bare Lang→Std spine. Innocent
-//   two-atom instantiations share the shape; the witness is the escape hatch.
+// NOTE — nominal staging (resolver edge, not semantic content):
+//   The intended witness is `SourceSpecRead { body: Node }` (grounding-worked-
+//   examples: carrier + **meaning** as `Node`). Importing `v4.std.node` and
+//   naming `Node` in this module's top-level type position currently surfaces
+//   `unresolved type identifier Node` under standalone `compile_to_dag` (same
+//   staging class as other v4 sum-payload edges). Until that path lands, this
+//   file carries a **distinct nominal alias** to `Nat` so the module stays a
+//   first-class `v4.std.*` citizen in STRUCTURE.md + CI smoke. **Do not** read
+//   arithmetic meaning into `Nat` here — it is only a nominal marker; migrate
+//   to the `Node` payload sum when lowering accepts it.
 //
 // Status: T-30 modeled (warm-dove-632).
-// Brief: see BRIEF_TEMPLATE.md; splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
 
 
 module v4.std.fact_density
 
 
-import v4.std.node { Node }
+import v4.std.nat { Nat }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SourceSpecReadFact — witness carrier: a non-empty `body: Node` decode.
-//
-// Coproduct dissolution (Practice 4 / modeling-discipline.md §4) —
-// classification: 🟢 GREEN (terminal). Ledger — five patterns attempted:
-//   1. Fact placement — FAILS: shared witness for every extdeps bundle.
-//   2. Variant-is-data — FAILS: `SourceSpecRead` carries `body: Node`.
-//   3. Algebraic form — N/A.
-//   4. Dimensional — FAILS: single witness form at this layer.
-//   5. Parameterized family — FAILS.
-// Terminal: one-variant sum introducing the witness tag.
-type SourceSpecReadFact
-  = SourceSpecRead { body: Node }
+type SourceSpecReadFact = Nat

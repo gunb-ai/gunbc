@@ -1,7 +1,8 @@
 //! T-30 — hollow-alias / fact-density structural gate (bootstrap mirror).
 //!
-//! Substrate authority for the **witness type** lives in
-//! `src/v4/std/fact_density.dag` (`SourceSpecReadFact`). M1(2.8) currently
+//! Substrate authority for the **nominal witness type** lives in
+//! `src/v4/std/fact_density.dag` (`SourceSpecReadFact`, currently staged as a
+//! nominal alias per that file's resolver NOTE — migrate to `Node` payload).
 //! rejects block-bodied `.dag` functions that walk `Node` with `match` in the
 //! user declaration range (`lower.rs` — `reject_user_unparsed_scaffolds`).
 //! This module is the hermetic **pure** mirror of the intended gate until
@@ -84,9 +85,7 @@ fn subtree_contains_spec_read_fact(n: &HollowGateNode) -> bool {
     if node_roots_source_spec_read_fact(n) {
         return true;
     }
-    n.children
-        .iter()
-        .any(subtree_contains_spec_read_fact)
+    n.children.iter().any(subtree_contains_spec_read_fact)
 }
 
 fn node_roots_source_spec_read_fact(n: &HollowGateNode) -> bool {
@@ -121,10 +120,7 @@ mod tests {
     #[test]
     fn rejects_two_atom_instantiation_without_witness() {
         let hollow = inst(vec![atom(), atom()]);
-        assert_eq!(
-            hollow_alias_gate(&hollow),
-            HollowAliasGateOutcome::Rejected
-        );
+        assert_eq!(hollow_alias_gate(&hollow), HollowAliasGateOutcome::Rejected);
     }
 
     #[test]
@@ -134,8 +130,9 @@ mod tests {
     }
 
     #[test]
-    fn accepts_instantiation_with_non_atom_child() {
-        let ok = inst(vec![atom(), inst(vec![atom(), atom()])]);
+    fn accepts_instantiation_when_inner_spine_is_not_hollow() {
+        let inner_ok = inst(vec![atom(), witness()]);
+        let ok = inst(vec![atom(), inner_ok]);
         assert_eq!(hollow_alias_gate(&ok), HollowAliasGateOutcome::Produced);
     }
 
@@ -151,9 +148,6 @@ mod tests {
             kind: HollowGateKind::Other,
             children: vec![inst(vec![atom(), atom()])],
         };
-        assert_eq!(
-            hollow_alias_gate(&root),
-            HollowAliasGateOutcome::Rejected
-        );
+        assert_eq!(hollow_alias_gate(&root), HollowAliasGateOutcome::Rejected);
     }
 }
