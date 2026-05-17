@@ -725,25 +725,29 @@ execution context. The lane coordinate is part of the fact.
 **Model:**
 
 ```
-// CARRIER — one classical truth value per active lane.
-type PtxPredicate = Conj {
-  lanes:       List<Bool>,
-  active_mask: List<Bool>
-}
+// CARRIER — one per-lane record per lane: the lane's truth value and
+// whether the lane is within the current execution mask. A SINGLE list
+// of per-lane records — value and active flag co-index by construction,
+// so a mismatched-length mask is structurally unrepresentable (P2). Two
+// independent List<Bool> (lanes / active_mask) would admit a length
+// mismatch — an illegal state — and is rejected for that reason.
+type PtxLane      = Conj { value: Bool, active: Bool }
+type PtxPredicate = List<PtxLane>
 
 // MEANING — a lane-indexed condition; inactive lanes do not assert false,
 // they are outside the current execution mask.
 ```
 
 **Step-by-step coercion shape — `PtxPredicate -> Outcome<IR List<Bool>>`:**
-1. predicate grounds to `{ lanes: List<Bool>, active_mask: List<Bool> }`.
+1. predicate grounds to `List<PtxLane>` — each element a `{ value, active }`
+   record; value and mask co-index by construction.
 2. IR `List<Bool>` grounds only to lane truth values.
-3. the coercion fold finds related but non-identical
-   groundings: the mask coordinate exists in PTX but not in the plain list.
+3. the coercion fold finds related but non-identical groundings: the
+   per-lane `active` flag exists in PTX but not in the plain list.
 4. PTX to plain list returns `Produced` only if an explicit accepted-loss
-   policy drops the mask, or if the IR target also carries it. Plain list to
-   PTX requires a supplied active mask; otherwise it returns
-   `Rejected { diagnostic: Diagnostic }`.
+   policy drops the `active` flags, or if the IR target also carries them.
+   Plain list to PTX requires the `active` flags supplied per lane;
+   otherwise it returns `Rejected { diagnostic: Diagnostic }`.
 
 The model prevents treating inactive lanes as false values. That distinction is
 a structural coordinate, not a convention.
