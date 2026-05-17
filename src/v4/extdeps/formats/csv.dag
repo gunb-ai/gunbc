@@ -1,5 +1,5 @@
 // src/v4/extdeps/formats/csv.dag
-// Scope: CSV (RFC 4180) format model.
+// Scope: CSV RFC 4180 (https://datatracker.ietf.org/doc/html/rfc4180); rectangularity/width-vs-row-arity operator-pending (dissolves: operator ruling + substrate per T-4 brief).
 // Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
