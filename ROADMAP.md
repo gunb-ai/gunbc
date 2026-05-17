@@ -4,6 +4,7 @@ Single source of truth for project status, active work, and deferred items. Long
 
 > **v4 supersession (2026-05-15).** The active development phase is **v4** — see [`src/v4/STRUCTURE.md`](src/v4/STRUCTURE.md), [`src/v4/TASKS.md`](src/v4/TASKS.md), [`docs/v4-close-interrogation.md`](docs/v4-close-interrogation.md). v4 combines R3 + R4 into one ship per zero-deferrals discipline; the R1 program below is being superseded by v4's XL task plan. v3 is frozen (CI gated to `src/v3/`-affected only). This roadmap doc retains R1 lane structure as historical context until v4-driven work fully replaces it; lane-by-lane translation lands incrementally.
 
+> **Core theme / direction:** [THESIS.md](THESIS.md) → "The derived homomorphism" ([docs/thesis/the-derived-homomorphism.md](docs/thesis/the-derived-homomorphism.md)) — model local, derive global; every target modeled once, translation derived (N+M, not N×M).
 > Design spec: [docs/v3-spec.md](docs/v3-spec.md)
 > Validation: [docs/v3-validation-experiments.md](docs/v3-validation-experiments.md)
 > Lineage: [docs/design-lineage.md](docs/design-lineage.md)
