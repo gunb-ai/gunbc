@@ -308,41 +308,48 @@ ours without distortion.
 
 ---
 
-## 4. SPICE — a node voltage (the continuous endpoint)
+## 4. SPICE — a node voltage (approximate carrier vs exact-voltage gap)
 
 **Model:**
 
 ```
-// CARRIER — a SPICE node voltage is an exact physical quantity: a real
-// magnitude paired with the volt dimension. It is not a Float64 carrier.
-type SpiceVoltage = Conj { magnitude: Real, unit: Volt }
+// CARRIER — current std authority: dsl/std/float.dag pins Real to
+// ApproximateField<FieldOfFractions<Int>>, not an exact continuum.
+type SpiceApproxVoltage = Conj {
+  magnitude: ApproximateField<FieldOfFractions<Int>>,
+  unit: Volt
+}
 
-// MEANING — identity: the real IS the voltage.
+// MEANING — approximate voltage fact with explicit approximation policy.
+// GAP — SpiceExactVoltage requires a grounded exact-real/quantity carrier.
 ```
 
-`Real` grounds — as a construction over `Nat`/`Rational` (Cauchy
-sequences / Dedekind cuts): still primitives, a richer construction than
-a finite bit-vector. `Volt` is a `Dimension`. IEEE-754 `f64` grounds
-separately as an `ApproximateField` carrier with rounding and special-value
-facts; it is related to `Real`, not identical to it.
+`Real` is not treated here as an exact continuous carrier: the live
+authority (`dsl/std/float.dag`) defines `Real =
+ApproximateField<FieldOfFractions<Int>>`. `Volt` is a `Dimension`.
+IEEE-754 `f64` grounds separately as a fixed-width approximate carrier with
+rounding and special-value facts. An ideal SPICE voltage that requires an
+exact mathematical continuum is therefore a named fail-closed gap:
+`SpiceExactVoltageMissingExactRealCarrier`, not a silent reuse of `Real`.
 
-**Step-by-step coercion shape — `Rust f64 -> Outcome<SpiceVoltage>`:**
-1. `SpiceVoltage` grounds to `Real` (continuous, uncountable);
-   `f64` grounds to IEEE-754 binary64 (finite — 2⁶⁴ values —
-   approximating `Real`; `dsl/std/float.dag` / `src/v4/std/float.dag`
-   `ApproximateField`).
-2. Phase-1/2 `derive_coercion` design compares exact physical `Real` vs
-   `ApproximateField(binary64)` — related but not equal.
-3. finite `f64 -> Outcome<SpiceVoltage>` returns `Produced`: each finite
-   binary64 value denotes a specific real voltage.
+**Step-by-step coercion shape — `Rust f64 -> Outcome<SpiceApproxVoltage>`:**
+1. `SpiceApproxVoltage` grounds to
+   `ApproximateField<FieldOfFractions<Int>>` plus `Volt`; `f64` grounds to
+   IEEE-754 binary64 (`dsl/std/float.dag` / `src/v4/std/float.dag`).
+2. Phase-1/2 `derive_coercion` design compares two approximate-field
+   carriers with different width/policy facts — related but not identical.
+3. finite `f64 -> Outcome<SpiceApproxVoltage>` returns `Produced` only when
+   the approximation policy is explicitly accepted and recorded.
 4. `NaN` / `±∞` return `Rejected { diagnostic: Diagnostic }` because they
-   are IEEE-754 special values, not real voltages. The reverse
-   `SpiceVoltage -> Outcome<Rust f64>` is lossy and returns `Produced`
-   only with an explicit rounding/loss fact; an unaccepted loss policy
-   returns `Rejected`.
+   are IEEE-754 special values, not voltage magnitudes. A requested
+   `Rust f64 -> Outcome<SpiceExactVoltage>` returns
+   `Rejected { diagnostic: Diagnostic { reason:
+   SpiceExactVoltageMissingExactRealCarrier, ... } }` until an exact carrier
+   is modeled.
 
-The continuous endpoint, and the middle coercion case: neither identity
-nor fail-closed but a **declared-lossy** derived map.
+The endpoint here is no longer mislabeled as exact. The approximate path is
+a **declared-lossy** derived map; the exact-voltage path is a named
+fail-closed gap.
 
 ---
 
