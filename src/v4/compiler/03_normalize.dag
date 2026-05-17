@@ -186,7 +186,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
       }
     OperationSugar =>
       if all_children_positional(children: children) {
-        Produced { value: type_node(connective: Conj, children: children) }
+        Produced { value: type_node(connective: Arrow, children: children) }
       } else {
         Rejected { diagnostic: malformed_sugar_diagnostic(n: n) }
       }
