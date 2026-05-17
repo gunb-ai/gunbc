@@ -8,7 +8,7 @@ module v4.extdeps.formats.json_schema
 
 
 import v4.extdeps.formats.json { JsonValue }
-import v4.std.collection { Set }
+import v4.std.collection { Map, Set }
 
 
 type JsonSchemaCoreTypeName
