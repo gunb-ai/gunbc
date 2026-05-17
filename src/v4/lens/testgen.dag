@@ -5,10 +5,7 @@
 //        code" (THESIS facet 3). Output is consumed by lens/coverage.dag
 //        which verifies the produced set covers the expected substrate
 //        cross-product.
-// Anchor: TESTING.md §"Test layers (target ratios)" + THESIS.md §348-368
-//         "Tests are structural data" + §168-182 correctness tiers +
-//         memory: feedback_groundedness_gates_lenses (testgen applies
-//         to every program by construction)
+// Anchor: TESTING.md §141 + THESIS §348–368 + §168–182
 //
 // Owns:
 //   - Generator<C> generic carrier (parameterized over substrate concept)
@@ -46,58 +43,21 @@
 //   - Simulation adds NO AssertKind: it substitutes generated-simulator
 //     Node into `input` at the WireContract boundary. AssertKind stays
 //     the closed 4 (see std/verification.dag).
-//   - Sim fidelity caveat: a generated simulator is faithful-to-CONTRACT,
-//     not faithful-to-reality. Catching contract under-specification is
-//     STRUCTURAL — the opt-in live-oracle reconciliation is a CI-as-data
-//     gate; sim-pass + oracle-fail ⟹ the WireContract is incomplete ⟹
-//     STOP and extend the carrier. Generated simulation is necessary,
-//     not sufficient.
+//     hermetic deterministic claims (`input` = program ∘ sim). Live oracle
+//     opt-in only. AssertKind stays the closed four (`std/verification.dag`).
+//     Simulator is contract-faithful, not reality-complete; under-spec ⇒
+//     extend `WireContract` / STOP — not a new `AssertKind`.
 //   - **TestClassification** (Tier × Layer) is a **required field on every
 //     `TestClaim`** — canonical home `std/verification.dag` (STRUCTURE.md
 //     §248); each fold stamps `classification` consistently with its
 //     `Generator<C>.classification` at materialization.
 //     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
 //     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
-//   - lens read: () -> Set<TestClaim>  (the produced corpus)
+//   - lens read: () -> Set<TestClaim>
 //
-// C5-1 / C5-3 (operator-ratified 2026-05-16) — the bidirectional_roundtrip
-// contract:
-//   - C5-1: a RoundTrips TestClaim asserts `ingest∘emit = id_Node` —
-//     B1 `content_hash(N) == content_hash(ingest(emit(N)))` — the
-//     MEANING round-trips. It does NOT assert text-byte identity
-//     (`emit∘ingest = id_text`); the lexical skin (0x1F vs 31,
-//     whitespace, comment placement) is allowed to canonicalize.
-//   - C5-3: F (the lossless core a roundtrip claim covers) = the
-//     SPEC-PROVABLE meaning set. If the language spec does not
-//     unambiguously place a feature on the meaning side it is OUT of F
-//     — Declared-normalized (emit canonicalizes; recorded per-feature)
-//     or Fail-closed (ingest can't disambiguate without semantics ⇒
-//     Diagnostic, never a guess). Conservative / fail-safe: the spec
-//     decides, the modeler has NO discretion. A language's roundtrip
-//     corpus covers its declared F; non-F shrinkage (e.g. C++
-//     most-vexing-parse) is explicit up front, not discovered at test
-//     time.
-//   - Text-level fidelity (`emit∘ingest = id_text`) is a DEFERRED,
-//     ORTHOGONAL future layer: a concrete-syntax/trivia sidecar
-//     OUTSIDE the Node and OUTSIDE content_hash, partial (only
-//     ingest-originated Nodes; vacuous for synthesized ones). It does
-//     NOT change C5-1 or content_hash (Node stays the α-/rename-
-//     invariant identity, K-1). The C5-fidelity Declared-normalized
-//     per-feature dispositions ARE its forward hook — adopting
-//     node-level + the disposition table preserves text-level as a
-//     clean future add with zero rework. Not built now.
-//
-// Tier × Layer cross-cut discipline (per TESTING.md ratio targets):
-//   - Unit tests target ~75%: type-construction, exhaustiveness, lens-applicability
-//   - Integration tests target ~15%: cross-stage invariants, fixed-point convergence
-//   - Boundary tests target ~10%: language roundtrips (rustc/python/go/cpp/ts), L4 runtime equivalence
-//   - testgen output respecting these ratios is structurally enforceable via coverage lens
-//
-// Bootstrap path:
-//   - test/claim/manual/ holds hand-authored TestClaims authored after T-1 lands
-//   - testgen (T-19) produces the same corpus programmatically
-//   - Assertion: testgen-produced set ⊇ manual set; manual claims are
-//     anti-regression anchors against testgen drift
+// ELSEWHERE (do not duplicate long prose here): C5-1/C5-3 roundtrip contract,
+// text-fidelity deferral, TESTING.md §141 ratio targets — see Anchor refs;
+// T-18 / `lens/coverage.dag` enforces coverage. Bootstrap contract: TASKS §T-19.
 //
 // Consumes:
 //   - std/node.dag (substrate to walk)
@@ -108,18 +68,11 @@
 //   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
 //   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
 //
-// Status: T-19 modeled 2026-05-16 (still-deer-194) — **live** declarations here
-//         today: `import v4.std.verification { TestClassification }` + `type
-//         Generator<C>` (M1 single-module compile). Subject payloads referencing
-//         std/node.dag (`Connective`, `Node`, `Symbol`) and the five `fn … ->
-//         Set<TestClaim>` folds are **comment substrate** below until M2 module
-//         loading lowers them in one graph with std/ (see TASKS.md §T-19 +
-//         MODELING.md; forward dissolution bullets there track Int-coded manual
-//         anchors + M2 uncomment acceptance for the block below).
-// Brief: see BRIEF_TEMPLATE.md. T-19 is Phase 1.5 — right after std/*
-// substrate (T-1/T-2/T-3) lands, BEFORE compiler stages (T-6+) start.
-// This buys test evidence early — every Phase 2+ task gets a testgen-
-// derived corpus instead of hand-authoring.
+// Status: T-19 modeled 2026-05-16 (still-deer-194). **Live:** `import …
+//         TestClassification` + `type Generator<C>` (M1 compile). **Comment
+//         substrate until M2:** subject carriers + `TestgenConcept` + five
+//         `fn … -> Set<TestClaim>` folds — loader acceptance per TASKS §T-19.
+// Brief: see BRIEF_TEMPLATE.md.
 //
 // ─── Subject carriers (fold once M2 loads v4 std in one compilation unit) ───
 // type TypeConstructionSubject
