@@ -371,12 +371,14 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ```
 data t_15_self_host_fixed_point: TestClaim {
-  kind: BitIdentical,
+  kind: Equals,   // Equals over B1 content_hash — see the Theme-A note below
   label: "v4 compiler is a fixed point — iteration N matches iteration N+1",
-  input: compile(src/v4/compiler/*.dag, target=Rust),  // iteration N+1
-  expected: <committed v4 stage binary bytes>          // iteration N
+  input: content_hash(compile(src/v4/compiler/*.dag, target=Rust)),       // emitted Rust source, iteration N+1
+  expected: <pinned content_hash of iteration N's emitted Rust source>    // same artifact, iteration N
 }
 ```
+
+**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, Diagnostic, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
 
 Failure modes the probe MUST catch (each enumerable, each testable):
 - **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations
@@ -712,3 +714,123 @@ Every task in this plan is a bounded, modeling-load-bearing pure function (the c
 If a task hits an unmodelable case or escalations pile up, that's a substrate-design signal — STOP, re-model, do not paper over.
 
 The release is when v4-done. Not before, not after.
+
+---
+
+## Theme-A planning-debt closure — consumer-DFS audit (2026-05-17)
+
+The adversarial consumer→`std/` DFS audit traced every planned consumer's
+substrate needs against the merged `std/` plus the scheduled plan. It
+found 12 items where a consumer needs substrate the plan never scheduled,
+or a doc promises what the tree lacks. Per the operator framing — at this
+stage the only debt v4 can introduce is *missed-planning* debt
+(worker-discretion debt is foreclosed by STOP + settled contracts) — this
+section closes that debt: every row below now points somewhere. The
+disposition forks are **PROPOSED** (operator ratify-or-redirect, the
+DECISIONS.md flow); on ratification the new tasks T-25…T-29 join T-15's
+close-gate plan.
+
+**Dissolved (no new substrate — wording/clarification):**
+- **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
+  `AssertKind`. Encoded in the T-15 probe above.
+- **#2 `AlgebraRef`** — `04_infer.dag`'s IR-1 `InferredFacts.inhabits`
+  names `AlgebraRef`; `std/algebra.dag` declares no such type. It is a
+  `Symbol` name-reference to the algebra inhabitance (the
+  `Diagnostic.reason` cross-declaration idiom, K-1). Disposition: T-9
+  declares `type AlgebraRef = Symbol` (or the IR-1 header states the
+  identity) — a clarification in existing T-9 scope, not a new task.
+
+**New PROPOSED tasks (the "missing substrate" Theme-A gaps):**
+
+### T-25 — std/ value-predicate refinement substrate  [PROPOSED]
+**Gap:** `PositiveInt` (PID), `NonNegativeInt` (exit code), non-empty
+`String` (paths/keys), `NonEmptyList` (`AbsolutePath`), and a general
+`where`-clause / phantom-bound on records — needed by T-4.5
+process/file_system, T-4.6 json/toml, rust.dag and others; no substrate
+exists (`integer.dag` explicitly states "no `where`-clause").
+**Disposition fork:** (a) schedule this task — a value-predicate
+refinement carrier in/around `std/cardinality.dag`; or (b) **rule
+out-of-v4** — the kernel excludes value-predicate refinements; carriers
+stay opaque and fail-closed at the boundary, recorded as named P2 debt.
+**Independent sub-bug — decoupled from the T-25 fork:**
+`file_system.dag`'s header `Consumes` cites `std/collection NonEmptyList`,
+a type `collection.dag` does not declare. This is a dangling-`Consumes`
+bug **regardless of which T-25 fork lands** (the header cites a
+non-existent type whether refinement substrate is scheduled or ruled
+out) — so it is NOT gated on this ratification. It is routed standalone
+to the `file_system.dag` owner (T-4.5 / PR #3209) to correct the header;
+the dangling `Consumes` stands on the PR-head tree until that PR lands.
+
+### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [PROPOSED]
+**Gap:** `HttpMethod` and `URL` already have a single authority in the
+reference tree — `dsl/std/types.dag` (`HttpMethod` = the RFC 9110 enum;
+`Url` = a `String` refinement). They are not yet ported to v4 `std/`, so
+v4 consumers (`openapi.dag` references `HttpMethod`; the T-16 wire
+contract) have no carrier to `Consume`. `NetworkAddress` appears only in
+`coordination.dag` prose — DFS the concept DAG (M9) for an existing
+authority before minting.
+**Disposition:** **port** `HttpMethod` / `Url` into v4 `std/` from the
+`dsl/std/types.dag` authority — RFC 9110 / the URL spec are genuine
+shared facts, so the home is `std/`, not a new `extdeps` file; **create**
+a spec-grounded `NetworkAddress` carrier in `std/` if M9 finds none.
+Consumers (`openapi.dag`, `coordination.dag`, T-16) `Consume` the single
+`std/` authority. Minting a parallel `extdeps` carrier would be the very
+P2 violation this task names (INVARIANTS P2 / M9).
+
+### T-27 — extdeps version / semver / edition lattice  [PROPOSED]
+**Gap:** no `std`/`extdeps` version carrier; rust.dag anchors and format
+pins carry version semantics as ad-hoc prose; openapi needs semver
+comparison.
+**Disposition fork:** (a) schedule `extdeps/versioning.dag` (semver +
+ordering lattice); or (b) **rule out-of-v4** — versions stay opaque
+`String`, fail-closed at the boundary, named P2 debt.
+
+### T-28 — std/ module-graph substrate  [PROPOSED]
+**Gap:** `03_resolve` cross-file binding and `rust.dag`'s `PubInPath`
+visibility both need a module-tree + an ancestor-relation `Witness`; no
+substrate exists, no scheduled task. (This is the substrate side of the
+Theme-B "module-loading" dependency.)
+**Disposition:** schedule a `std/` module-graph carrier — bundle with
+the T-8 resolver work, or as its own task.
+
+### T-29 — extdeps C++ ABI / target data-model  [PROPOSED]
+**Gap:** `cpp.dag`'s D2 alias-identity of `int`/`long`/… to `std` `Int*`
+is undefined without an ABI data-model — C++ integer widths are
+implementation-defined (LP64 / ILP32 / …).
+**Disposition fork:** (a) schedule an `extdeps` ABI/target-model slice
+the `cpp.dag` D2 aliases parameterize over; or (b) `cpp.dag` aliases
+`int` to abstract `Int` and the width is target-resolved at emit.
+
+**Scope / clarification dispositions:**
+- **#4 — T-16 SQL DDL.** T-16's demo lists a SQL DDL artifact; no
+  `extdeps` SQL model exists. **Fork:** (a) schedule an operator-ratified
+  `extdeps` SQL/relational model (SQL has a versioned spec — L-2
+  admissible); or (b) narrow T-16 to a Shape-B *string* DDL artifact and
+  explicitly rule typed SQL out-of-v4.
+- **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
+  prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
+  no `type LanguageModel` is declared. Disposition: T-6/T-10 either
+  declare the carrier type, or the B2-OMNI header states formally "a
+  LanguageModel IS a `Node` — no separate type." A naming-clarity fix in
+  existing scope, not a new task.
+- **#12 — ExecuteCommand TestClaims.** THESIS facet 3 names
+  `ExecuteCommand`-based `TestClaim`s; v4 models the boundary via a
+  simulator `Node` + the closed 4 `AssertKind`s. Disposition:
+  confirm-only — T-19/T-14 verify `ExecuteCommand`-shaped TestClaims are
+  expressible via `process.dag` + `eval` with no lost predicate surface
+  vs v3; if a gap surfaces, escalate. No planning edit pending the
+  confirm.
+
+**THESIS-vs-tree dispositions (encoded in `THESIS.md`, this PR):**
+- **#10 — timing lens.** THESIS facet 4 listed a *timing* lens; the
+  closed `lens/` tree has none. Disposition: timing is a projection of
+  the **cost** lens (cost is the time/complexity dimension — U2), not a
+  separate lens — THESIS facet 4 edited accordingly.
+- **#11 — Swift.** THESIS Shape-A lists Swift; no `swift.dag`.
+  Disposition: **not a gap** — THESIS:217 is an illustrative capability
+  claim (Shape-A costs one language spec), not a v4 task commitment;
+  TASKS.md T-4 scopes the v4 languages. No edit; confirmed.
+
+Net: every Theme-A row now points to a scheduled task, a wording fix, a
+scope ruling, or a confirmed non-gap. Theme-A missed-planning debt is
+closed once the operator ratifies the disposition forks above.
