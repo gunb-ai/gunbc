@@ -192,12 +192,13 @@ obligation becomes a `Witness` the coercion must discharge.
 
 ---
 
-## 6. English — an integer noun phrase (the fail-closed endpoint)
+## 6. English — noun phrases (the fail-closed endpoint, and composite grounding)
 
-English has no type system. What we model is the **groundable fragment**,
-and we show the rest fail-closed.
+English has no type system. What we model is the **groundable fragment** —
+and that fragment is not only leaf values: English has words for the
+**connectives**, so it can ground *composite structure*.
 
-**Model:**
+### Leaves — number words → `Nat`
 
 ```
 // CARRIER — a sequence of words from English's CLOSED number grammar:
@@ -212,24 +213,54 @@ type EnglishInteger = List<NumberWord>
 ```
 
 An English integer literal **grounds** — closed carrier + deterministic
-decode.
+decode. "negative forty-two" decodes to the math integer `−42`, which
+coincides with IR `Int` value `−42` → coercion = **identity**. A number
+can be ingested from English text into the IR.
 
-**Coercion:** "negative forty-two" decodes to the math integer `−42`,
-which coincides with IR `Int` value `−42` → coercion = **identity**. A
-number can be ingested from English text into the IR.
+### Connectives — English grounds *composite* structure
 
-**The fail-closed half (the honest part):**
-- "forty-two-ish", "about forty-two", "forty-two, give or take" — the
-  qualifiers have no deterministic decode → **fail-closed**. The model
-  refuses; it does not invent a value.
-- "ship it when the build feels solid" — "feels solid", intent, context
-  — none ground → the whole sentence fail-closes.
+English has words for the substrate connectives, used in their
+*structural* sense — so it reaches composite types, not only scalars:
 
-English "speaks our primitives" only on closed, decodable islands
-(numbers, booleans, a closed command vocabulary). Everything else is
-fail-closed — and that refusal *is* the model being honest. (This is the
-`english_ingest_fail_closed.dag` boundary-honesty probe v4 already
-plans.)
+| English (structural sense) | Primitive | Grounds to |
+|---|---|---|
+| "and" (enumerative) | `Conj` | "a customer **and** a total" → `Conj{ customer, total }` |
+| "or" / "either…or" | `Disj` | "cash **or** card" → `Disj{ Cash, Card }` |
+| "not" / "no" | `Bool` negation | "**not** empty" → `Not(Empty)` |
+| "a … **of** …" | `Instantiation` | "a list **of** customers" → `List<Customer>` |
+| plural / "three" / "every" | `Cardinality` | "**three** retries" → `Cardinality(3, Retry)` |
+| "for each X, a Y" | `Arrow` | "**for each** request, a response" → `Arrow(Request, Response)` |
+
+They nest — the grounding is built by the same `Node` catamorphism:
+
+> "a list of orders, each with a customer **or** a guest"
+> → `List< Conj{ …, party: Disj{ Customer, Guest } } >`
+
+So the groundable subset of English is the **structural vocabulary**
+(connectives + leaves), and it can describe a whole composite type — not
+just a scalar.
+
+### The fail-closed half — every structural word is polysemous
+
+`"and"` grounds to `Conj` **only in the enumerative sense**. It does not
+in: "she arrived **and** left" (temporal sequence — a different
+primitive, not `Conj`); "**try and** stop me" (idiom); "the build broke
+**and** so we reverted" (consequence). The decode checks the *sense* —
+the structural reading grounds; the others **fail-closed**, or ground to
+the connective they actually mean. The same holds for "or" (inclusive /
+exclusive / "or else") and "a … of" ("a friend **of** mine" is not
+`Instantiation`).
+
+Leaf phrases fail the same way: "forty-two-ish", "about forty-two" have
+no deterministic decode → **fail-closed**; "ship it when the build feels
+solid" grounds nowhere → the whole sentence fail-closes.
+
+English "speaks our primitives" on the structural vocabulary used in its
+structural sense — a genuine, useful island that reaches *composite*
+structure — and honestly fail-closes the large polysemous remainder.
+(This is the `english_ingest_fail_closed.dag` boundary-honesty probe v4
+already plans.) English is not a degenerate case; it is a full language
+with a large fail-closed boundary.
 
 ---
 
