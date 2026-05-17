@@ -281,6 +281,108 @@ or defer to the task.
 
 ---
 
+## D2 REVERSAL + FACT-BUNDLE RESEED — PROPOSED (2026-05-17)
+
+> Operator-declared 2026-05-17. This section **supersedes D2** (and its
+> downstream D4). Ratify by merging this PR; redirect by review comment.
+> Nothing below is encoded into substrate until ratified.
+
+### What reversed
+
+D2 ratified the **alias-identity inhabitance form**: a language `extdeps`
+file declares each primitive as `type <Lang>X = StdX` (e.g.
+`type RustI32 = Int32`), the algebra "flowing through the alias." D4
+homed the shared D2-resolver type (`GroundingMap`) in
+`extdeps/languages/resolver.dag`.
+
+The operator declared D2 **wrong** (verbatim: *"D2 is wrong — i was
+misunderstanding the purpose of this alias"*). A bare alias is not
+modeling: it asserts an *unproven* identity between our carrier and an
+external language's, while reading **zero facts** from that language's
+spec. `type RustI32 = Int32` models nothing about Rust.
+
+### Root cause — an enforcement gap, not a missing principle
+
+`MODELING.md` **M1** ("types decompose into facts") and **M3** ("extdeps
+model specs") already mandate fact-modeling. The principle was not
+missing. Two failures let the alias through:
+
+1. **`INVARIANTS.md` P1:42** (`numeric_aliases_align_to_refinements`)
+   forbids a *parallel `OrderedRing<Word*>` substrate* — do not
+   re-declare the algebra per language. D2 read this as "therefore
+   bare-alias the whole carrier," conflating *algebra duplication*
+   (correctly forbidden) with *carrier fact-modeling* (wrongly dropped).
+2. **A hollow alias is invisible to every structural gate.**
+   `type RustX = StdX` is structurally minimal — nothing for a reviewer
+   or checker to flag. The api-review rubric (`INVARIANTS.md` +
+   `modeling-discipline.md`) checks duplicate authority and coproduct
+   dissolution; it has no **fact-density** check. Aliasing passes review
+   *because* it is hollow.
+
+### The replacement — fact-bundle modeling
+
+Operator-stated principle (2026-05-17), governing the reseed:
+
+- **Model the facts. Always.** Deduplicate two models into one **only**
+  when their identity is **proven** — identity is an evidenced claim,
+  never an assumed default.
+- **Invent or reuse — a bare alias is neither.** To model an external
+  primitive you either *invent* a fact for it (read from that system's
+  spec) or *reuse* a `std/` fact (with cited evidence of identity).
+- **External defaults to separate; internal defaults to reuse.**
+  `extdeps/` models systems we do not control and do not fully know →
+  default to separate, honest, accumulated modeling; reuse `std/` only
+  on evidenced identity. Internal code (compiler layers, our own
+  substrate) → we control both sides, identity is usually *known* →
+  default to reuse `std/`, still naming the evidence. Keeping
+  `RustSignedness` separate until Rust's spec is checked is honest
+  modeling, not a duplicate-authority violation.
+
+### The phased plan
+
+- **Phase 0 — stop the bleeding. DONE 2026-05-17.** `#3219`
+  (`resolver.dag`, the D2-resolver encoding-half) closed; `#3208`
+  (lean/machine_code, D2-resolver-shaped) held. Forward-fix, not revert.
+- **Phase 1 — the doc keystone (rubric + enforcement).** Amend
+  `INVARIANTS.md` P1:42 so "aligns to refinements" means *the language
+  carrier is a fact-bundle coinciding with the std carrier*, not a bare
+  alias. Promote `MODELING.md` M1 to a named first-class rule. Add a new
+  Practice to `docs/modeling-discipline.md` — "model facts, not aliases"
+  — with a worked good example (fact-bundle) and bad example (bare
+  alias); since the api-review rubric reads that doc, a documented
+  bad-example *is* the enforcement. Reverse the D2/D4 rows. Rewrite the
+  `TASKS.md` T-4 authoring contract.
+- **Phase 2 — rework the entire T-## program** around fact-bundle
+  modeling, first-class, plus the `std/` substrate axes the model needs
+  (signedness, representation) that do not exist yet.
+- **Phase 3 — execution.** Per-task / per-language / per-compiler-layer
+  modeling rework, Rust exemplar first, under the Phase-1 rubric.
+
+### Impact-map disposition (the close/revert/rework list)
+
+`extdeps/languages` files and the merged D2 commits were classified
+(grep-verified). The unwind is **forward-fix / supersession**, never
+`git revert` of the merged commits (#3195 D2, #3216 D4/D5) — that would
+clobber surviving language vocabulary and the `std/` numeric core.
+
+- **Orthogonal — untouched:** the `std/` numeric core
+  (`Int`/`UInt`/`Compose`/algebra witnesses/`Float`), `llvm_ir`/`ptx`
+  carriers, the format models, `react`, `coordination`,
+  `process`/`file_system`.
+- **D2-encoding — rework (vocabulary preserved):** the 5 merged language
+  files (`rust`/`python`/`go`/`cpp`/`typescript`); `verilog`/`llvm_ir`/
+  `ptx` prose-only; `INVARIANTS.md` P1:42 (the doc root); `DECISIONS.md`
+  D2/D4; `TASKS.md` T-4 contract; the `std/integer.dag` /
+  `std/float.dag` D2 header prose (NOT the core).
+- **Active PRs:** `#3219` closed; `#3208` held.
+
+### Status
+
+PROPOSED. Ratify by merging; redirect by review comment. On
+ratification, Phase 1 executes as the immediate next PR.
+
+---
+
 ## Part 5 — Ratification flow
 
 For each PROPOSED item: ratify (👍 / "confirm") or redirect ("instead,
