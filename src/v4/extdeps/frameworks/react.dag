@@ -32,11 +32,9 @@
 // Owns:
 //   - ReactModuleSurface (client vs React Server Components module capability)
 //   - ReactFunctionComponent (surface + props + `render_root_ref` declaration edge)
-//   - ReactCrossDeclRef (opaque cross-declaration edge — v4-local; same epistemic
-//     role as `std/node.dag::Symbol` / `v3.spec.v3_l1::DeclarationRef`, but defined
-//     HERE so single-file `compile_to_dag` smoke and `v2-compiler`’s `src/v4`-only
-//     stage1 closure both succeed without forbidden `v3.*` imports or unresolved
-//     `v4.std.node` merge under M1(2.7) import no-op — bundle time aligns carriers.)
+//   - ReactCrossDeclRef — opaque cross-decl ref (TASKS T-4.7 fork vs
+//     `std/node.dag::Symbol` until M1(2.7) merge); local for v4-only smoke + stage1
+//     closure without `v3.*` / pending `v4.std.node` import.
 //   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (narrowed **element object**
 //     partition per `createElement` return: host + composite + keyed `Fragment`;
@@ -47,8 +45,8 @@
 //   - ReactHookSite — closed hook call-site coproduct under react@19.2.0 pin +
 //     `CustomHook` (🟡 YELLOW Practice-4 per design-r4 §12 HookKind; canvas in-repo;
 //     dissolution = new built-in at pin bump; see block ledger)
-//   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactEffectCleanupSite — supporting **substrate sums** (each carries its own
-//     Practice‑4 🟢 ledger below; they are not un-owned implementation details).
+//   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactEffectCleanupSite —
+//     supporting substrate sums (each: Practice-4 🟢 ledger below).
 //
 // Consumes (traceability):
 //   - std/collection.dag: List<T> (kernel-ambient `List` needs no import for use;
@@ -187,11 +185,9 @@ type ReactModuleSurface
 //   3. Algebraic form — PARTIAL: per-hook algebras live std/ elsewhere.
 //   4. Dimensional — FAILS: exactly one hook arm per call site.
 //   5. Parameterized family — FAILS: not `F<X>` Practice-7 over a width set.
-// Closed **under the pin**: **20-arm** `react@19.2.0` **call-site** partition — **19**
-// built-in hook APIs from the pinned react.dev surface (hooks index + `use(resource)`
-// as `UseResource`) + the **`CustomHook`** user-input boundary arm (= 20 `ReactHookSite`
-// variants below; `use` is **not** a twenty-first bucket). P1 names track react.dev;
-// effect lifecycle is carried ONLY on the three effect arms.
+// Pin call-site partition: 20 arms — 19 built-ins (hooks index + `UseResource` for
+// `use(resource)`) + `CustomHook` (`use` API is not a separate twenty-first bucket).
+// P1 names track react.dev; effect cleanup only on the three effect arms.
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   // Anchor: https://react.dev/reference/react/useReducer — `useReducer(reducer,
