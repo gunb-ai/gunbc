@@ -105,14 +105,18 @@ src/v4/
       diagnostic_correction/
       algebra_laws/
       manual/            # hand-authored anti-regression anchors (Phase 1.5)
+        resolve_compile_anchor.dag  # resolve + wave-1 canonical `Set` compile anchor (#3225; T-22 defers `v2 run`)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 65 .dag files + 5 docs + 5 .gitkeep = 75 files.** (Per invariant
+**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
++1 .dag 2026-05-17: `test/claim/manual/resolve_compile_anchor.dag` — compile-only
+resolve / wave-1 canonical-symbol contract anchor (codex #13724 / TESTING.md
+Tier-1 ratchet; `v2-compiler run` still deferred per MOVE1_COVERAGE.txt until T-22).
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
 meta-layer cut, operator-ratified.)
