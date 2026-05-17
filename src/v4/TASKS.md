@@ -333,8 +333,9 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `Node` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
-**I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` (conceptual ingest half).
-*Merged today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` — `LexRules` = lexical projection until Theme-A #9 names `LanguageModel`.
+**I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` — conceptual ingest half once `LanguageModel` is the named bundle in headers.
+*Merged `01_tokenize.dag` entry today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = Node`.
+*Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
@@ -355,6 +356,7 @@ substrate imported them, so the cut is a pure scope reduction.
 **Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
 
 **I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1).
+*Theme-A #9:* Same projection reading as T-6 — `Grammar` is the syntax-side parameter until the named `LanguageModel` bundles lex + grammar explicitly.
 
 **Modeling decisions**:
 - The grammar **production data schema** as `Node` — a declarative
@@ -373,8 +375,9 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** First two `core` transforms (`normalize ∘ resolve ∘ infer` after `ingest` on 00_compile): causal `Node` transforms — C3 desugar; K-1 resolve; derived facts carried **once** on returned `Node`.
 
-**I/O**: `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`; composite `resolve ∘ normalize`.
-*Seams:* files may still use `ParseTree`/`NormalizedTree`/`ResolvedTree` + `Result` until CP-1b scaffold retires — TASKS states **pivot** contract.
+**I/O (pivot truth):** `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`; composite `resolve ∘ normalize` — authoring discipline on the universal **`Node`** pivot (`ParseTree` / `NormalizedTree` / `ResolvedTree` = `Node`, A1).
+*Merged seam (CP-1b, literal headers today):* `normalize: ParseTree -> Result<NormalizedTree, Diagnostic>`, `resolve: NormalizedTree -> Result<ResolvedTree, Diagnostic>` in `03_normalize.dag` / `03_resolve.dag`.
+*Do not drift:* **Carrier is `Node`; the seam types are parse→normalize scaffolding** — keep the header aliases and `Result<…, Diagnostic>` until CP-1b closes; do not delete or flatten signatures early chasing “purity.”
 
 **Modeling decisions**:
 - The 4 sugar forms and their dissolution **as structural rewrites on
@@ -437,6 +440,8 @@ if any emission step cannot be expressed as inverse grammar-data.)
   `05_emit.dag` headers).
 - `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
+
+**`Result` vs `Outcome` (literal alignment, api-review):** `compiler/00_compile.dag` spells `ingest`, `core`, `emit`, `eval`, and the composed paths with **`Result<…, Diagnostic>`** — not `Outcome<…>` at the orchestrator boundary. TASKS matches that here for `emit` / `compile` (and pairs with `05_emit.dag`'s `Result<TargetSource, Diagnostic>`; `00_compile.dag` may still say `Result<Source, Diagnostic>` — same emitted-artifact role). Per-stage scaffolds may keep **`Outcome<…>`** where the merged stage file does (`std/diagnostic.dag`); do not “standardize” TASKS or `00_compile.dag` to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
 
 **Modeling decisions**:
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
