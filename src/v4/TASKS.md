@@ -371,12 +371,14 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ```
 data t_15_self_host_fixed_point: TestClaim {
-  kind: BitIdentical,
+  kind: Equals,   // Equals over B1 content_hash — see the Theme-A note below
   label: "v4 compiler is a fixed point — iteration N matches iteration N+1",
   input: compile(src/v4/compiler/*.dag, target=Rust),  // iteration N+1
   expected: <committed v4 stage binary bytes>          // iteration N
 }
 ```
+
+**`BitIdentical` is a property name, not an `AssertKind`** (Theme-A audit, 2026-05-17): the probe's `kind` is `Equals` over the B1 `content_hash` of the two stage outputs — `verification.dag`'s closed `AssertKind` `{Equals, Diagnostic, Compiles, RoundTrips}` is sufficient; **no 5th kind**. The word "BitIdentical" elsewhere in this task denotes that *property*, never a substrate type.
 
 Failure modes the probe MUST catch (each enumerable, each testable):
 - **Non-determinism**: HashMap-iteration-order dependency in emit → different bytes between compilations
