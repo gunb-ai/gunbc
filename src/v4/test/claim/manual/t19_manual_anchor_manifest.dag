@@ -1,124 +1,72 @@
 // src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
-// Scope: Int-coded projection of the twelve live manual TestClaims (connective_anchors ∪ nat_law_anchors).
-// Owns: ManualTestgenAnchor twelve data rows (slug keys; Int field map per TASKS §T-19)
+// Scope: Stable slug keys for the twelve live manual TestClaims (connective_anchors ∪ nat_law_anchors).
+// Owns: ManualTestgenAnchor twelve data rows (slug only — no duplicate tier/layer/kind metadata)
 // Consumes: (none)
-// Status: M1 grid — enum dissolution band with lens/testgen in TASKS §T-19.
+// Status: P2 join table; `TestClaim.kind` + `TestClaim.classification` are sole authority for those axes.
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
 
 
 type ManualTestgenAnchor {
   slug: String
-  tier: Int
-  layer: Int
-  testgen_category: Int
-  assert_kind: Int
 }
 
 
 data manual_anchor_tc_conj: ManualTestgenAnchor = {
-  slug: "t19.type_construction.conj",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
+  slug: "t19.type_construction.conj"
 }
 
 
 data manual_anchor_tc_disj: ManualTestgenAnchor = {
-  slug: "t19.type_construction.disj",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
+  slug: "t19.type_construction.disj"
 }
 
 
 data manual_anchor_tc_arrow: ManualTestgenAnchor = {
-  slug: "t19.type_construction.arrow",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
+  slug: "t19.type_construction.arrow"
 }
 
 
 data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
-  slug: "t19.type_construction.cardinality",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
+  slug: "t19.type_construction.cardinality"
 }
 
 
 data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
-  slug: "t19.type_construction.instantiation",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 2
+  slug: "t19.type_construction.instantiation"
 }
 
 
 data manual_anchor_tc_conj_equals_refl: ManualTestgenAnchor = {
-  slug: "t19.type_construction.conj_equals_refl",
-  tier: 0,
-  layer: 0,
-  testgen_category: 0,
-  assert_kind: 0
+  slug: "t19.type_construction.conj_equals_refl"
 }
 
 
 data manual_anchor_nat_add_left_identity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_add_left_identity",
-  tier: 0,
-  layer: 0,
-  testgen_category: 1,
-  assert_kind: 2
+  slug: "t19.algebra_law.nat_add_left_identity"
 }
 
 
 data manual_anchor_nat_add_right_identity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_add_right_identity",
-  tier: 0,
-  layer: 0,
-  testgen_category: 1,
-  assert_kind: 2
+  slug: "t19.algebra_law.nat_add_right_identity"
 }
 
 
 data manual_anchor_nat_add_associativity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_add_associativity",
-  tier: 0,
-  layer: 0,
-  testgen_category: 1,
-  assert_kind: 2
+  slug: "t19.algebra_law.nat_add_associativity"
 }
 
 
 data manual_anchor_nat_mul_left_identity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_mul_left_identity",
-  tier: 0,
-  layer: 0,
-  testgen_category: 1,
-  assert_kind: 2
+  slug: "t19.algebra_law.nat_mul_left_identity"
 }
 
 
 data manual_anchor_nat_mul_annihilator: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_mul_annihilator",
-  tier: 0,
-  layer: 0,
-  testgen_category: 1,
-  assert_kind: 2
+  slug: "t19.algebra_law.nat_mul_annihilator"
 }
 
 
 data manual_anchor_nat_mul_associativity: ManualTestgenAnchor = {
-  slug: "t19.algebra_law.nat_mul_associativity",
-  tier: 2,
-  layer: 1,
-  testgen_category: 1,
-  assert_kind: 0
+  slug: "t19.algebra_law.nat_mul_associativity"
 }
