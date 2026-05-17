@@ -22,6 +22,7 @@ type NamedPathComponent {
   bytes: PosixByteString
 }
 
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type PathComponent
   = CurrentComponent
   | ParentComponent
@@ -33,26 +34,31 @@ type AbsolutePath {
   components: List<PathComponent>
 }
 
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type RelativePathHead
   = ParentHead
   | NamedHead { component: NamedPathComponent }
 
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type RelativePath
   = CurrentDirectory
   | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type Path
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type FileKind
   = RegularFile
   | Directory
   | Symlink
 
 // tag: stat/lstat symlink policy.
+// 🟡 coproduct dissolution — DECISIONS.md OS-1
 type FileKindResolutionPolicy
   = FollowSymlinks
   | DoNotFollowSymlinks
