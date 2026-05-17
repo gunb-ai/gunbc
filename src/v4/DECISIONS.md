@@ -312,7 +312,8 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiOpenapiObjectDeferredKey** | `OpenApiOpenapiObjectDeferredKey` | 🟡 | Fixed-field deferrals on root OpenAPI Object; new OAS fixed field ⇒ extend sum + **T-4.6-OAS**. |
 | **T-4.6-P4-OpenApiOperationDeferredKey** | `OpenApiOperationDeferredKey` | 🟡 | Operation Object deferred members; OAS adds/reorders modeled deferrals ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiPathItemDeferredKey** | `OpenApiPathItemDeferredKey` | 🟡 | Path Item deferred members + `$ref` slot; OAS Path Item churn ⇒ extend sum + row. |
-| **T-4.6-P4-OpenApiComponentsDeferredKey** | `OpenApiComponentsDeferredKey` | 🟡 | Components deferred map keys; Components object spec churn ⇒ extend sum + row. |
+| **T-4.6-P4-OpenApiPathItemOrReference** | `OpenApiPathItemOrReference` | 🟡 | Path Item inline vs `$ref`; reused for **Paths**, **Webhooks**, **`components.pathItems`** (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiComponentsDeferredKey** | `OpenApiComponentsDeferredKey` | 🟡 | Components deferred map keys (fixed fields **not** modeled here — e.g. **`pathItems`** lives on **`OpenApiComponents.path_items`** / **T-4.6-P4-OpenApiComponentsPathItemsSlot**); Components object spec churn on *these* keys ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiMediaTypeDeferredKey** | `OpenApiMediaTypeDeferredKey` | 🟡 | Media Type deferred members; encoding/example surface churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiHeaderDeferredKey** | `OpenApiHeaderDeferredKey` | 🟡 | Header Object deferred members; Header spec churn ⇒ extend sum + row. |
 | **T-4.6-P4-OpenApiLinkDeferredKey** | `OpenApiLinkDeferredKey` | 🟡 | Link Object deferred members; Link spec churn ⇒ extend sum + row. |
@@ -337,6 +338,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses`:** `additional_by_status` is `Map`-unique on tail keys only; **`first_key` ∉ tail keys** and other OAS Responses invariants are **parse/Diagnostic** (T-4 brief), not structurally illegal—same deferral class as **`T-4.6-P4-JsonSchemaPropertiesSlot`** / `Map` property keys. |
 | **T-4.6-P4-OpenApiPathsSlot** | `OpenApiPathsSlot` | 🟡 | Root `paths` present vs absent channel (**T-4.6-OAS**); empty vs missing distinguished structurally. |
 | **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; schema registry churn (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiComponentsPathItemsSlot** | `OpenApiComponentsPathItemsSlot` | 🟡 | OAS 3.1 **`components.pathItems`** present vs absent; values are **T-4.6-P4-OpenApiPathItemOrReference** (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsSlot** | `OpenApiComponentsSlot` | 🟡 | `components` subtree present vs absent at document root coordinate (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiWebhooksSlot** | `OpenApiWebhooksSlot` | 🟡 | `webhooks` map present vs absent at document root coordinate (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiOpenapiField3_1** | `OpenApiOpenapiField3_1` | 🟢 | OAS `openapi` field version token for this slice: singleton `OpenApi310` (= `3.1.0` wire). YELLOW if OAS normative vocabulary for this anchor gains a token this model must enumerate — extend the sum + amend this row (same change-set). |
