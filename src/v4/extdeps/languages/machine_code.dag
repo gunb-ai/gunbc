@@ -241,7 +241,6 @@ type RegisterClass
 
 
 type RegisterRef {
-  isa: Isa
   register: Symbol
 }
 
@@ -290,10 +289,12 @@ type AddressingMode
   | PcRelative { displacement: MachineI32 }
 
 
-// Operand — instruction operand shape. `Immediate` is byte-carried here:
-// interpreting those bytes as signed/unsigned/float is selected by the
-// instruction production plus D2 alias target, not by duplicating an
-// algebra row on the operand itself.
+// Operand — instruction operand shape. `RegisterRef` names are resolved
+// relative to the enclosing `InstructionProductionRef`/operand slot, so
+// the production remains the single ISA authority. `Immediate` is
+// byte-carried here: interpreting those bytes as signed/unsigned/float is
+// selected by the instruction production plus D2 alias target, not by
+// duplicating an algebra row on the operand itself.
 // Anchor: version-pinned ISA instruction-format sections named above.
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
