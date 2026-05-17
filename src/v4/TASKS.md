@@ -103,7 +103,7 @@ prioritized over the critical path.
 ```
 Substrate / extdeps fan-out:
   T-4.5 extdeps/{process,file_system}.dag                      [needs T-3]
-  T-4.6 extdeps/formats/* (6 files: json/yaml/csv/toml/json_schema/openapi)
+  T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; B2-OMNI falsification probe — concurrency vs the 5 behaviors]
@@ -396,7 +396,7 @@ substrate imported them, so the cut is a pure scope reduction.
 **Why separate from T-10**: T-10 is the orchestrator; T-11 is the per-target translation tables that populate emit's behavior across rust/python/go.
 
 **Modeling decisions**:
-- Per-target translation rules
+- Per-target translation rules — **as grammar-as-data, never string templates** (no-templating principle, operator 2026-05-17). The per-target "translation tables" are the declarative bidirectional grammar relation (concrete-syntax ⟷ `Node`, the canonical non-templated form — see T-4 "Grammar encoding"), NOT fill-in-the-holes string templates. A string-template emit path is the emit-side D2 hollow alias: an artifact the compiler cannot ground and check. STOP if a translation rule cannot be expressed as grammar-data.
 - Target-specific optimizations (or absence thereof)
 
 ---
@@ -490,9 +490,9 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
-### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi)
+### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
-**File**: 6 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models)
+**File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
 **Why bundled**: identical structural shape per format; each file declares the format MODEL (data structure + parse/emit operations).
 
 **Modeling decisions**:
@@ -501,8 +501,9 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - Schema-to-type derivation (json_schema.dag): given a schema, generate corresponding `.dag` types via `schema_to_type` operation
 - Anchor/Alias resolution (yaml.dag): YAML's structure-sharing must resolve before producing typed value
 - Dialect handling (csv.dag): delimiter/quote/escape/line-terminator parameterization
+- **SQL DDL (`sql.dag`, Theme-A #4 (a))**: model the relational/DDL surface of the versioned ISO SQL spec (L-2 — the spec, not a dialect's library). T-16 emits its schema artifact *through* this grounded model so the DDL is coercion-checked against the domain types and stays inside T-16's shared `Node` tree — never a string-templated printout (no-templating principle). Dialect variance is `Declared-normalized`/`Fail-closed` per C5-fidelity, same as csv dialects.
 
-**Scope**: M-L (medium-to-large; six files but each is bounded by its anchored spec)
+**Scope**: M-L (medium-to-large; seven files but each is bounded by its anchored spec)
 
 ---
 
@@ -821,10 +822,10 @@ section closes that debt: every row below now points somewhere. The
 planning-level deferrals — every "(b) rule out-of-v4" escape was killed
 and the schedule fork taken. T-25 (decomposed core + prover tail), T-26,
 T-28 (bundled into T-8), and T-29 are **SCHEDULED** and join T-15's
-close-gate plan; **T-27 was DROPPED** (ruled orthogonal to v4). One fork
-remains **OPEN**: the `#4 — T-16 SQL DDL` scope fork (below) was not in
-the Phase-1 brief and still awaits an operator disposition — it is *not*
-yet covered by the 2026-05-17 ratification.
+close-gate plan; **T-27 was DROPPED** (ruled orthogonal to v4). The one
+remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
+2026-05-17**: fork (a), SQL modeled as a checked `extdeps` Shape-B format
+(scheduled by extending T-4.6). Every Theme-A fork is now disposed.
 
 **Dissolved (no new substrate — wording/clarification):**
 - **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
@@ -946,17 +947,18 @@ and the other kernel-ambient atoms are legitimately atomic — not hollow);
 the Diagnostic shape on a fail-closed hollow alias.
 
 **Scope / clarification dispositions:**
-- **#4 — T-16 SQL DDL.** T-16's demo lists a SQL DDL artifact; no
-  `extdeps` SQL model exists. **Fork — STILL OPEN; awaits an operator
-  disposition.** This fork was *not* in the D2-reversal Phase-1 brief, so
-  the 2026-05-17 ratification does not cover it; it is the one Theme-A row
-  still carrying an unresolved fork. **Fork:** (a) schedule an
-  operator-ratified `extdeps` SQL/relational model (SQL has a versioned
-  spec — L-2 admissible); or (b) narrow T-16 to a Shape-B *string* DDL
-  artifact and explicitly rule typed SQL out-of-v4. (Note: SQL schemas are
-  Shape-B per `THESIS.md`:217 — fork (b) is the THESIS-consistent default;
-  fork (a) would make typed SQL a modeled `extdeps` format. The operator
-  owns this scope call.)
+- **#4 — T-16 SQL DDL — RESOLVED (operator 2026-05-17): fork (a).** SQL is
+  modeled as a **checked `extdeps` Shape-B format** — a sibling of
+  `csv`/`json`/`yaml` (SQL has a versioned ISO spec, L-2-admissible).
+  T-16 emits the DDL **through** that grounded format model, so the schema
+  is coercion-checked against the domain types and cannot drift — it stays
+  inside T-16's gate #28 (all omni-layers share one `Node` tree). Fork (b)
+  — a string DDL printout — is **ruled out**: an artifact the compiler
+  cannot ground and check is the templating smell (the emit-side
+  equivalent of the D2 hollow alias; see the no-templating principle).
+  Scheduled by **extending T-4.6** — `extdeps/formats/sql.dag` joins the
+  formats bundle as a 7th file. (Not a standalone task: SQL DDL is a
+  format sibling of the other six; bundling matches how they are scoped.)
 - **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
   prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
   no `type LanguageModel` is declared. Disposition: T-6/T-10 either
@@ -982,9 +984,8 @@ the Diagnostic shape on a fail-closed hollow alias.
   TASKS.md T-4 scopes the v4 languages. No edit; confirmed.
 
 Net: every Theme-A row now points to a scheduled task, a wording fix, a
-scope ruling, a confirmed non-gap, or (the `#4 — T-16 SQL DDL` row) an
-open fork explicitly flagged for an operator disposition. The operator
-ratified the T-25…T-29 disposition forks 2026-05-17 (D2-reversal Phase-1
-execution); Theme-A missed-planning debt is closed **except** the one
-`#4` SQL-DDL scope fork, which is named and tracked open rather than
-silently deferred.
+scope ruling, or a confirmed non-gap. The operator ratified the T-25…T-29
+disposition forks and resolved the `#4 — T-16 SQL DDL` fork (fork (a) —
+SQL as a checked `extdeps` Shape-B format) on 2026-05-17 (D2-reversal
+Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
+remains open.
