@@ -610,29 +610,36 @@ attached to the endpoint and consumed by effect/scheduling lenses.
 
 ## 8. C++ — `int` (implementation-defined primitive width)
 
-C++ `int` is a language primitive, but its width and representation are
-implementation-defined target facts. LP64 and ILP32 commonly choose 32 bits,
-but the language model must read that from the target/ABI binding instead of
-asserting it.
+C++ `int` is a language primitive. Per the current standard (C++20,
+ISO/IEC 14882:2020, §[basic.fundamental]) its **signed value representation
+is fixed — two's complement**; only its **width** is implementation-defined
+(16+ bits; LP64 / ILP32 commonly pick 32). The model reads width from the
+target/ABI binding (T-29) and treats representation as a fixed *spec* fact,
+not an implementation-defined axis. (Pre-C++20, signed representation was
+itself implementation-defined — modeling that would require pinning an
+older edition; this example is anchored to C++20.)
 
 **Model:**
 
 ```
-// CARRIER — a signed integer whose width/representation come from the
-// concrete C++ implementation/ABI model.
-type CppInt = Compose<Int, CppImplementationInt {
-  width: Nat,
-  representation: SignedIntegerRepresentation
-}
+// Anchor: ISO/IEC 14882:2020 (C++20) §[basic.fundamental]
+// CARRIER — a signed integer. Representation is a FIXED spec fact
+// (two's complement, C++20); width is the ONLY implementation-defined
+// fact, supplied by the target/ABI model (T-29).
+type CppInt = Compose<Int, TwosComplement, CppImplementationInt {
+  width: Nat
+}>
 
-// MEANING — integer value within the implementation-defined range.
+// MEANING — integer value within the range fixed by width under
+// two's-complement.
 ```
 
 **Step-by-step coercion shape — `CppInt -> Outcome<IR Int>`:**
-1. `CppInt` grounds to `Int` plus implementation facts: width,
-   signedness/range, and representation.
+1. `CppInt` grounds to `Int` plus a **fixed** two's-complement
+   representation fact plus **one** implementation-defined fact — `width`
+   (the genuine per-ABI variable; range is derived from width).
 2. the coercion fold compares the abstract integer value to
-   IR `Int`; the implementation facts stay attached as target facts.
+   IR `Int`; the width fact stays attached as a target fact.
 3. `CppInt -> Outcome<IR Int>` returns `Produced` because every inhabited
    C++ `int` denotes an integer value.
 4. `IR Int -> Outcome<CppInt>` is partial: it returns `Produced` only when
@@ -640,8 +647,9 @@ type CppInt = Compose<Int, CppImplementationInt {
    `Rejected { diagnostic: Diagnostic }`.
 
 This contrasts Rust `i32`: Rust fixes the width in the type name; C++ `int`
-requires the target model to carry the ABI facts. If the binding cannot
-provide them, the coercion fails closed instead of assuming LP64/ILP32.
+requires the target/ABI model to carry the implementation-defined **width**
+fact. If the binding cannot provide it, the coercion fails closed instead
+of assuming LP64/ILP32.
 
 ---
 
