@@ -19,7 +19,6 @@ type AffectedDimension = Symbol
 
 
 type ReExecNode {
-  at: Path
   node: Node
 }
 
@@ -31,8 +30,6 @@ type ExclusionKey {
 
 
 type ExclusionReceipt {
-  at: Path
-  dimension: AffectedDimension
   node: Node
 }
 
