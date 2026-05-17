@@ -1,7 +1,8 @@
 // src/v4/std/integer.dag
 // Scope: integer carriers and totalized arithmetic.
-// Owns: Int, Int8, Int16, Int32, Int64, Int128, UInt, UInt8, UInt16, UInt32, UInt64, UInt128, integer operations.
-// Consumes: std algebra, std nat, std machine, std diagnostic.
+// Anchor: https://en.wikipedia.org/wiki/Integer
+// Owns: GroupCompletion, Int, UInt, Compose, fixed-width integer carriers, integer operations.
+// Consumes: std algebra, std diagnostic, std machine, std nat, std node.
 // Status: T-3 modeled.
 
 

@@ -1,9 +1,9 @@
 // src/v4/compiler/04_infer.dag
 // Scope: inference from resolved tree to inferred tree.
-// Owns: InferredTree, InferenceEnv, InferenceCandidate, infer_types.
-// Consumes: std node/diagnostic/algebra/cardinality, compiler resolve.
+// Anchor: https://en.wikipedia.org/wiki/Type_inference
+// Owns: none.
+// Consumes: none.
 // Status: scaffold for T-9.
 
 
 module v4.compiler.infer
-

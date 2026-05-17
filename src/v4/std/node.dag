@@ -1,5 +1,6 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
+// Anchor: THESIS.md "Substrate shape" + MODELING.md.
 // Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, Path, Edit, Diff.
 // Consumes: nothing.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.

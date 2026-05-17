@@ -1,9 +1,9 @@
 // src/v4/compiler/00_compile.dag
 // Scope: compiler orchestration from source and target spec to target source.
-// Owns: compile
-// Consumes: compiler tokenize/parse/normalize/resolve/infer/emit, std diagnostic.
+// Anchor: https://en.wikipedia.org/wiki/Compiler
+// Owns: none.
+// Consumes: none.
 // Status: scaffold for T-10.
 
 
 module v4.compiler.compile
-

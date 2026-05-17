@@ -1,5 +1,6 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
+// Anchor: THESIS.md "show the correct code" + INVARIANTS P3.
 // Owns: Diagnostic, Outcome, Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node.
 // Status: T-3 modeled.

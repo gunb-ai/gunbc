@@ -1,5 +1,6 @@
 // src/v4/std/witness.dag
 // Scope: fail-closed proof/read carrier.
+// Anchor: INVARIANTS.md P3.
 // Owns: Witness.
 // Consumes: std diagnostic.
 // Status: T-3 modeled.
@@ -12,4 +13,3 @@ import v4.std.diagnostic { Diagnostic }
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }
-

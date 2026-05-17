@@ -1,6 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
-// Owns: Magma, Semigroup, Monoid, Group, Semiring, Ring, Field, Lattice, FreeMonoid, PointwisePower, Ordering, Homomorphism.
+// Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
+// Owns: Magma, Semigroup, Monoid, Group, Semiring, Ring, Field, ApproximateField, Lattice, BooleanAlgebra, FreeMonoid, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 

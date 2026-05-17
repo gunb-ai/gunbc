@@ -1,7 +1,8 @@
 // src/v4/std/float.dag
 // Scope: IEEE-754 floating-point carriers and totalized operations.
-// Owns: Float, Float32, Float64, FloatKind, FloatRounding, FloatOperation, FloatComparison, float_* operations.
-// Consumes: std algebra, std machine, std diagnostic.
+// Anchor: https://en.wikipedia.org/wiki/IEEE_754
+// Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_* operations.
+// Consumes: std algebra, std diagnostic, std logic, std machine, std nat, std node.
 // Status: T-3 modeled.
 
 
@@ -197,4 +198,3 @@ fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<Ordering> {
 fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }
-

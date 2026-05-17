@@ -1,5 +1,6 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality and descent-evidence substrate.
+// Anchor: https://en.wikipedia.org/wiki/Cardinality
 // Owns: DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
 // Consumes: std node.
 // Status: T-3 modeled.
@@ -22,4 +23,3 @@ type TerminationProof {
 type Multiplicity
   = Bounded
   | Unbounded { step: TerminationProof }
-

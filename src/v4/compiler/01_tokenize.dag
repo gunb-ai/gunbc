@@ -1,7 +1,8 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
-// Owns: SourceFile, TokenStream, tokenize_source, lex_rules_node_is_conj_empty_root.
-// Consumes: std diagnostic/node/text, extdeps languages dag.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
+// Owns: LexRules, Token, TokenStream, tokenize, lex_rules_node_is_conj_empty_root.
+// Consumes: std collection, std diagnostic, std node, std text.
 // Status: Wave-1 void-lex path realized.
 
 

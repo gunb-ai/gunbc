@@ -1,8 +1,8 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree and inputs.
-// Owns: Value, EvalInput, eval_program.
-// Consumes: std diagnostic/node, compiler infer.
+// Anchor: https://en.wikipedia.org/wiki/Interpreter_(computing)
+// Owns: none.
+// Consumes: none.
 // Status: scaffold for T-22.
 
 module v4.compiler.eval
-

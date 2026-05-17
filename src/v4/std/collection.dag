@@ -1,6 +1,7 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: List, Set, Map, map_lookup.
+// Anchor: https://en.wikipedia.org/wiki/Free_monoid
+// Owns: List, Set, Map.
 // Consumes: std algebra, std witness.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 

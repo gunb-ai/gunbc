@@ -1,5 +1,6 @@
 // src/v4/std/nat.dag
 // Scope: natural numbers.
+// Anchor: https://en.wikipedia.org/wiki/Natural_number
 // Owns: Nat, nat_monoid, nat_semiring.
 // Consumes: std algebra.
 // Status: T-3 modeled.

@@ -1,5 +1,6 @@
 // src/v4/std/logic.dag
 // Scope: classical two-valued logic.
+// Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
 // Owns: Bool, bool_boolean_algebra.
 // Consumes: std algebra.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.

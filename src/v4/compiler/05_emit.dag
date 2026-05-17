@@ -1,9 +1,9 @@
 // src/v4/compiler/05_emit.dag
 // Scope: target-source projection from inferred tree and target spec.
-// Owns: TargetSpec, TargetSource, emit_target.
-// Consumes: std diagnostic/node/algebra, compiler infer, extdeps languages.
+// Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
+// Owns: none.
+// Consumes: none.
 // Status: scaffold for T-10.
 
 
 module v4.compiler.emit
-
