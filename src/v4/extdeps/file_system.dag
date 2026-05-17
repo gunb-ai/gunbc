@@ -6,8 +6,8 @@
 // Owns:
 //   - Path = AbsolutePath | RelativePath
 //   - AbsolutePath { components: List<PathComponent> }  // root is empty components; PathComponent refinement deferred
-//   - RelativePath { components: List<PathComponent> }
-//   - PathComponent (NonEmptyStr, no slashes, no nulls — per POSIX portable filename charset)
+//   - RelativePath = CurrentDirectory | RelativeDescendant { first: PathComponent, rest: List<PathComponent> }
+//   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(String)
 //   - FileKind = RegularFile | Directory | Symlink
 //   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
 //   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
@@ -57,6 +57,15 @@
 // and return only derived values. Only write_file returns Filesystem,
 // preserving lens/effect.dag B3's returned-modified-resource = write vs
 // returned-derived-value = read distinction.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// RelativePath separates current-directory from non-empty relative
+// descendants, and PathComponent carries dot/dotdot/name cases
+// structurally. This avoids mixing normalized path identity with raw
+// POSIX pathname components.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// FileKindRequest carries a FileKindResolutionPolicy so callers choose
+// stat-like symlink-following or lstat-like no-follow observation
+// structurally.
 
 
 module v4.extdeps.file_system
@@ -77,21 +86,22 @@ import v4.std.text { Char }
 // exclusion by string inspection. The `Path` sum below is the single
 // authority: consumers pattern-match the root fact and walk components.
 //
-// VALUE-REFINEMENT SCAFFOLDS. POSIX path components exclude slash and
-// null; portable filenames further restrict the character set. v4's
+// VALUE-REFINEMENT SCAFFOLDS. POSIX path name components exclude slash
+// and null; portable filenames further restrict the character set. `.`
+// and `..` are structural components below, not ordinary strings. v4's
 // settled dependency path has `String`/`Char` but not a machine-readable
 // predicate/refinement substrate for "non-empty string with no slash or
-// null". `PathComponent` is therefore the honest carrier with bridge
-// properties:
+// null and not dot/dotdot". `NamedComponent` is therefore the honest
+// carrier with bridge properties:
 //   (a) scaffold doc — THIS note; the current carrier is an unrefined
 //       `String`, not the terminal POSIX filename refinement.
-//   (b) bounds on use — producers must construct non-empty components
-//       that contain no slash and no null byte; "." / ".." are ordinary
-//       relative-directory components only when the producer intends
-//       POSIX resolution semantics.
+//   (b) bounds on use — producers must construct non-empty named
+//       components that contain no slash, no null byte, and are not `.`
+//       or `..`; use `CurrentComponent` / `ParentComponent` for those
+//       POSIX components.
 //   (c) dissolution trigger — when v4 lands value refinements over
-//       `String` / `Char` predicates, replace `PathComponent` with the
-//       refined non-empty no-slash no-null carrier.
+//       `String` / `Char` predicates, replace `NamedComponent.name`
+//       with the refined non-empty no-slash no-null non-dot carrier.
 //
 // OPERATION SEAM. The scaffold header's `Result<..., Diagnostic>` prose
 // denotes std/diagnostic.dag's ratified `Outcome<T>` carrier
@@ -108,13 +118,17 @@ import v4.std.text { Char }
 
 
 // ─────────────────────────────────────────────────────────────────────
-// PathComponent — one filename component.
+// PathComponent — one pathname component.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 //
-// Terminal target: a non-empty `String` excluding slash and null, with
-// any portable-filename policy expressed as an explicit profile. Current
+// Terminal target for `NamedComponent.name`: a non-empty `String`
+// excluding slash and null and not equal to `.` or `..`, with any
+// portable-filename policy expressed as an explicit profile. Current
 // carrier: `String` with the tracked refinement scaffold above.
-type PathComponent = String
+type PathComponent
+  = CurrentComponent
+  | ParentComponent
+  | NamedComponent { name: String }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -122,10 +136,9 @@ type PathComponent = String
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 //
 // `AbsolutePath` carries the root fact by variant, not by a leading
-// slash in text. Its component list is intentionally the same carrier
-// shape as `RelativePath`; absolute-vs-relative is the only extra fact.
-// Empty absolute components denotes the POSIX root directory. Empty
-// relative components denotes the current directory.
+// slash in text. Empty absolute components denotes the POSIX root
+// directory. Relative current-directory is a `CurrentDirectory` variant;
+// non-empty relative descendants carry a first component and rest list.
 //
 // 🟡 TRACKED-SCAFFOLD (project_v4_path_component_refinement):
 // the frozen scaffold header previously named
@@ -136,15 +149,17 @@ type PathComponent = String
 // `AbsolutePath.components` would be unfaithful. The remaining
 // refinement target is per-component validity: each PathComponent is
 // non-empty and excludes slash/null once v4 lands string/char value
-// refinements. Until then this body uses `List<PathComponent>` with the
-// POSIX root/current-directory semantics above.
+// refinements. Until then absolute paths use `List<PathComponent>` to
+// preserve POSIX root-as-empty semantics; relative paths use the
+// `CurrentDirectory | RelativeDescendant` sum so empty relative
+// components are not a second current-directory authority.
 type AbsolutePath {
   components: List<PathComponent>
 }
 
-type RelativePath {
-  components: List<PathComponent>
-}
+type RelativePath
+  = CurrentDirectory
+  | RelativeDescendant { first: PathComponent, rest: List<PathComponent> }
 
 // Coproduct dissolution (Practice 4 / INVARIANTS P1) — classification:
 // 🟡 YELLOW, first-consumer-confirmed. The POSIX absolute-vs-relative split
@@ -201,6 +216,13 @@ type FileKind
   | Directory
   | Symlink
 
+// `FileKindResolutionPolicy` is the POSIX stat-vs-lstat choice. Follow
+// symlinks for resolved target kind (`stat`-like), or do not follow and
+// observe the link itself (`lstat`-like).
+type FileKindResolutionPolicy
+  = FollowSymlinks
+  | DoNotFollowSymlinks
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
@@ -246,6 +268,7 @@ type ListDirResult = Outcome<List<PathComponent>>
 type FileKindRequest {
   filesystem: Filesystem
   path: Path
+  resolution: FileKindResolutionPolicy
 }
 
 type FileKindResult = Outcome<FileKind>
