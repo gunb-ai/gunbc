@@ -4,7 +4,7 @@
 // Anchor: https://spec.openapis.org/oas/v3.1.0 (OpenAPI Specification v3.1.0)
 //
 // Owns:
-//   - OpenApiSpec { info, servers, paths slot, components, ... }
+//   - OpenApiDocument { info, servers, paths slot, components, ... }
 //   - Root **`paths`** — **`OpenApiPathsSlot`** (omit vs present, incl. empty
 //     **`OpenApiPaths`**)
 //   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
@@ -13,8 +13,10 @@
 //     values `OpenApiResponseOrReference`** + **`responses_object_extensions`**) };
 //     nested **Response Object**
 //     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
-//   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
-//   - emit(OpenApiSpec) -> String  (typically YAML)
+//   - parse(String) -> Result<OpenApiDocument, Diagnostic>  (YAML or JSON input;
+//     mechanical seam = `Outcome<OpenApiDocument>` — modeling notes below)
+//   - emit(OpenApiDocument) -> String  (typically YAML; mechanical seam =
+//     `Outcome<String>` — modeling notes below)
 //   - Type derivation from **`OpenApiSchema.core`** values under **`components`**
 //     (when the **`schemas`** field is **`OpenApiComponentsSchemasPresent`**) delegates to
 //     json_schema.dag's future `schema_to_type` — not re-declared here.
