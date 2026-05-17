@@ -8,7 +8,7 @@ module v4.lens.coverage
 
 
 import v4.std.node { Connective, Behavior }
-import v4.lens.testgen { TestgenConcept }
+import v4.lens.testgen { TestgenConcept, AlgebraLawSubject }
 
 
 type Coverage<C> {
@@ -22,10 +22,7 @@ type L6CoverageKey {
 }
 
 
-type L7CoverageKey {
-  algebra: String
-  law: String
-}
+type L7CoverageKey = AlgebraLawSubject
 
 
 type ImpossibleBugCoverageKey {
