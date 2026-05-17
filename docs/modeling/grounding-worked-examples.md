@@ -208,37 +208,43 @@ overflow at the emit boundary.
 
 ## Per-target carrier groundings
 
-## 1. Rust — `Vec<T>` (generics, compound coercion)
+## 1. Rust — `[T; N]` (const generics, compound coercion)
 
-**Model** — grounded from the Rust Reference / `std` docs:
+**Model** — grounded from the Rust Reference array type:
 
 ```
-// CARRIER — observationally a Vec<T> value IS a finite ordered sequence
-// of T. (pointer/capacity are allocation facts → cost lens, not the
-// value model.) A finite ordered sequence grounds to List = FreeMonoid
-// over the connectives; length is a Nat.
-type RustVec<T> = List<T>          // parametric: grounds to List<grounding(T)>
+// CARRIER — an array value is exactly N elements of T in order. N is part
+// of the type as a const Nat parameter, not a library allocation fact.
+type RustArray<T, N: Nat> = Conj {
+  elements: List<T>,
+  length_proof: Witness< |elements| = N >
+}
 
 // MEANING — identity on the element sequence.
 ```
 
-`RustVec<RustI32>` grounds to `List<grounding(RustI32)>`, and `RustI32`
-grounds as `Compose<Int, MachineWidth<Word32>>` (§B — the substrate's
-fixed-width discipline, `std/integer.dag`; not a `{32×Bool}` bit-carrier).
+`RustArray<RustI32, 3>` grounds to `List<grounding(RustI32)>` plus a
+length witness, and `RustI32` grounds as `Compose<Int,
+MachineWidth<Word32>>` (§B — the substrate's fixed-width discipline,
+`std/integer.dag`; not a `{32×Bool}` bit-carrier).
 
-**Step-by-step coercion shape — `RustVec<RustI32> -> Outcome<IR List<Int32>>`:**
-1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` on both sides.
+**Step-by-step coercion shape — `RustArray<RustI32, 3> -> Outcome<IR List<Int32>>`:**
+1. groundings: `List<Compose<Int,MachineWidth<Word32>>>` plus
+   `Witness(length = 3)` on the Rust side; `List<Int32>` on the IR side.
 2. Phase-1/2 `derive_coercion` design compares outer `List` vs `List`,
    then recurses into the element grounding.
 3. element `grounding(RustI32)` vs `grounding(Int32)` → coincide.
-4. both levels coincide → `Produced { value: IR List<Int32> }`. No
-   `Vec`-coercion is authored; the compound result follows from the
-   structural comparison.
+4. coincident element groundings return `Produced { value: IR List<Int32> }`;
+   the array length witness is preserved as a target fact. No array
+   coercion is authored; the compound result follows from the structural
+   comparison.
 
-**Cross-language shape — `PythonList[int] -> Outcome<RustVec<i32>>`:**
+**Cross-language shape — `PythonList[int] -> Outcome<RustArray<i32, 3>>`:**
 outer `List` matches, but each element must pass `IR_Int -> Outcome<RustI32>`
-as in §B. In-range values produce the Rust vector; any element outside the
-`MachineWidth<Word32>` predicate returns `Rejected { diagnostic: Diagnostic }`.
+as in §B, and the source length must discharge `Witness(length = 3)`.
+In-range values of the right length produce the Rust array; any element
+outside the `MachineWidth<Word32>` predicate or any non-3 length returns
+`Rejected { diagnostic: Diagnostic }`.
 
 ---
 
@@ -353,32 +359,32 @@ fail-closed gap.
 
 ---
 
-## 5. Lean — `Vector α n` (dependent types)
+## 5. Lean — `Fin n` (dependent types)
 
-A Lean type can depend on a *value*. `Vector α n` is a list of `α` whose
-length `n` is part of the type itself.
+A Lean type can depend on a *value*. `Fin n` is the type of natural numbers
+strictly less than `n`, so the bound `n` is part of the type itself.
 
 **Model:**
 
 ```
 // CARRIER + WITNESS — the dependent index n is an explicit Nat; the type-level
-// constraint "length = n" grounds as a Witness (see src/v3/std/dimensions.dag),
+// constraint "value < n" grounds as a Witness (see src/v3/std/dimensions.dag),
 // the substrate's proof-carrier.
-type LeanVector<A, n: Nat> = Conj {
-  elements:     List<A>,
-  length_proof: Witness< |elements| = n >     // n : Nat, lifted into the type
+type LeanFin<n: Nat> = Conj {
+  value: Nat,
+  bound_proof: Witness< value < n >     // n : Nat, lifted into the type
 }
 ```
 
 A dependent type = carrier + a `Witness` pinning the dependent value.
 
-**Step-by-step coercion shape — `IR List<Int> -> Outcome<LeanVector<Int, 3>>`:**
-1. grounds to `List<grounding(Int)>` + `Witness(length = 3)`.
-2. an IR `List<Int>` of statically-known length 3 discharges the witness
-   and returns `Produced { value: LeanVector<Int, 3> }`.
-3. an IR `List<Int>` of unknown or other length cannot discharge the
-   witness and returns `Rejected { diagnostic: Diagnostic }`; you cannot
-   claim `Vector Int 3` without the length proof.
+**Step-by-step coercion shape — `IR Nat -> Outcome<LeanFin<3>>`:**
+1. grounds to `Nat` + `Witness(value < 3)`.
+2. an IR `Nat` value `0`, `1`, or `2` discharges the witness and returns
+   `Produced { value: LeanFin<3> }`.
+3. an IR `Nat` value `>= 3` cannot discharge the witness and returns
+   `Rejected { diagnostic: Diagnostic }`; you cannot claim `Fin 3`
+   without the bound proof.
 
 Dependent types ground via the `Witness` substrate — the type's proof
 obligation becomes a `Witness` the coercion must discharge.
@@ -500,37 +506,40 @@ attached to the endpoint and consumed by effect/scheduling lenses.
 
 ---
 
-## 8. C++ — `std::vector<T>` (template container with allocator facts)
+## 8. C++ — `int` (implementation-defined primitive width)
 
-`std::vector<T>` is a contiguous, finite, ordered sequence. Allocator and
-capacity affect realization and cost; the observable value is the ordered
-elements.
+C++ `int` is a language primitive, but its width and representation are
+implementation-defined target facts. LP64 and ILP32 commonly choose 32 bits,
+but the language model must read that from the target/ABI binding instead of
+asserting it.
 
 **Model:**
 
 ```
-// CARRIER — finite ordered sequence of T. Contiguity and allocator are
-// realization/cost facts, not extra value fields.
-type CppVector<T> = Conj {
-  elements: List<T>,
-  allocator: AllocatorModel
+// CARRIER — a signed integer whose width/representation come from the
+// concrete C++ implementation/ABI model.
+type CppInt = Compose<Int, CppImplementationInt {
+  width: Nat,
+  representation: SignedIntegerRepresentation
 }
 
-// MEANING — identity on elements; allocator grounds allocation behavior.
+// MEANING — integer value within the implementation-defined range.
 ```
 
-**Step-by-step coercion shape — `std::vector<int32_t> -> Outcome<IR List<Int32>>`:**
-1. outer carrier grounds to `List<grounding(int32_t)>` plus allocator facts.
-2. Phase-1/2 `derive_coercion` design matches `List` against `List`;
-   allocator has no IR value role.
-3. `int32_t` vs `Int32` coincide only when the target model proves width and
-   representation from the C++ implementation/spec binding.
-4. coincident element groundings return `Produced { value: IR List<Int32> }`;
-   allocator facts remain target realization facts, not hidden list semantics.
+**Step-by-step coercion shape — `CppInt -> Outcome<IR Int>`:**
+1. `CppInt` grounds to `Int` plus implementation facts: width,
+   signedness/range, and representation.
+2. Phase-1/2 `derive_coercion` design compares the abstract integer value to
+   IR `Int`; the implementation facts stay attached as target facts.
+3. `CppInt -> Outcome<IR Int>` returns `Produced` because every inhabited
+   C++ `int` denotes an integer value.
+4. `IR Int -> Outcome<CppInt>` is partial: it returns `Produced` only when
+   the value is inside the implementation-defined range; otherwise
+   `Rejected { diagnostic: Diagnostic }`.
 
-If the target model cannot prove `int32_t` width for a platform binding, the
-coercion returns `Rejected { diagnostic: Diagnostic }`. It does not silently
-assume 32 bits.
+This contrasts Rust `i32`: Rust fixes the width in the type name; C++ `int`
+requires the target model to carry the ABI facts. If the binding cannot
+provide them, the coercion fails closed instead of assuming LP64/ILP32.
 
 ---
 
