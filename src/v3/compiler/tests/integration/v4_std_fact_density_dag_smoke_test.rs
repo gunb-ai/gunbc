@@ -13,8 +13,8 @@
 //! line + matching `INVARIANTS.md` table row land in the same PR as the harness
 //! (home-of-record for the hand-Rust receipt).
 
-use v3_compiler::CompileError;
 use v3_compiler::compile_to_dag;
+use v3_compiler::CompileError;
 
 const FACT_DENSITY_DAG: &str = include_str!("../../../../v4/std/fact_density.dag");
 const FACT_DENSITY_PATH: &str = "src/v4/std/fact_density.dag";
