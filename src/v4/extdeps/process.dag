@@ -14,7 +14,7 @@
 //     exit code is reached via pattern-match on that state, then on
 //     Termination.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
-//   - ProcessState = Running | Terminated(Termination)
+//   - ProcessState = Running | Terminated(TerminatedProcessState)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
 //     (the terminal status nested inside ProcessState — the ONLY two ways
 //     a process ends per POSIX. wait/capture return an advanced Process
@@ -164,9 +164,10 @@ type Command {
 // Ledger:
 //   1. Fact placement — FAILS: lifecycle state is consumed uniformly by
 //      wait/capture/process inspection; not per-consumer metadata.
-//   2. Variant-is-data — FAILS: `Exited` carries `ExitCode`, `Signaled`
-//      carries `SignalNum`, and `Running` is nullary; a flat record
-//      admits running-with-exit-code and exited-with-signal states.
+//   2. Variant-is-data — FAILS: `Terminated` carries
+//      `TerminatedProcessState`, and `Running` is nullary; a flat record
+//      admits running-with-terminal-state and terminal-with-running
+//      states.
 //   3. Algebraic form — N/A: lifecycle state is not an algebra carrier.
 //   4. Dimensional — FAILS: a process is exactly one lifecycle state at
 //      a time, not all states as coordinates.
