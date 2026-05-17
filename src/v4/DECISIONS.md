@@ -333,7 +333,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiStatusDigit** | `OpenApiStatusDigit` | 🟢 | Decimal digit spine for explicit HTTP status codes (0–9). |
 | **T-4.6-P4-OpenApiStatusHundreds** | `OpenApiStatusHundreds` | 🟢 | Hundreds class spine (`1xx`…`5xx`) for explicit status codes. |
 | **T-4.6-P4-OpenApiResponseKeyWildcardKind** | `OpenApiResponseKeyWildcardKind` | 🟢 | OAS wildcard response key buckets `1XX`…`5XX` (uppercase `X` wire discipline in model). |
-| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit triple / wildcard key forms; overlaps + parse-normalization per Responses Object rules (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiResponseKey** | `OpenApiResponseKey` | 🟡 | `default` / explicit / wildcard key forms + overlaps per Responses Object (**T-4.6-OAS**). **`OpenApiResponses`:** `additional_by_status` is `Map`-unique on tail keys only; **`first_key` ∉ tail keys** and other OAS Responses invariants are **parse/Diagnostic** (T-4 brief), not structurally illegal—same deferral class as **`T-4.6-P4-JsonSchemaPropertiesSlot`** / `Map` property keys. |
 | **T-4.6-P4-OpenApiPathsSlot** | `OpenApiPathsSlot` | 🟡 | Root `paths` present vs absent channel (**T-4.6-OAS**); empty vs missing distinguished structurally. |
 | **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; schema registry churn (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsSlot** | `OpenApiComponentsSlot` | 🟡 | `components` subtree present vs absent at document root coordinate (**T-4.6-OAS**). |
@@ -341,7 +341,7 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiOpenapiField3_1** | `OpenApiOpenapiField3_1` | 🟢 | OAS `openapi` field version token for this slice: singleton `OpenApi310` (= `3.1.0` wire). YELLOW if OAS normative vocabulary for this anchor gains a token this model must enumerate — extend the sum + amend this row (same change-set). |
 
 `JsonSchemaAdditionalKeywordKey` uses row **T-4.6-JSK** (same coproduct).
-`OpenApiOpenapiField3_1` is ledgered at **T-4.6-P4-OpenApiOpenapiField3_1** (N=1 sum / version pin; in-file 🟢/🟡/🔴 coproduct tag applies only where Practice 4 requires N ≥ 2).
+**`OpenApiOpenapiField3_1`:** optional Practice-9 item-4 **DECISIONS cite** on the `type` line in `openapi.dag`; **N ≥ 2** coproducts still require the emoji dissolution tag + matching **§T-4.6-P4** row.
 
 ---
 

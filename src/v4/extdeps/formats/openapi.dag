@@ -367,7 +367,7 @@ type OpenApiDocumentRoot {
   webhooks: OpenApiWebhooksSlot,
 }
 
-
+// N=1 version pin; see DECISIONS.md T-4.6-P4-OpenApiOpenapiField3_1
 type OpenApiOpenapiField3_1
   = OpenApi310 {}
 
