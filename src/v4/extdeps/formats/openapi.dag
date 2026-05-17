@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderRequiredSlot, OpenApiHeaderSchemaSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseEntry, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderDeferredKey, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseEntry, OpenApiResponseKey, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -69,12 +69,10 @@ type OpenApiMediaTypeDeferredKey
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderDeferredKey
 type OpenApiHeaderDeferredKey
-  = OpenApiHeaderDeferredAllowEmptyValue
-  | OpenApiHeaderDeferredStyle
+  = OpenApiHeaderDeferredStyle
   | OpenApiHeaderDeferredExplode
   | OpenApiHeaderDeferredExample
   | OpenApiHeaderDeferredExamples
-  | OpenApiHeaderDeferredContent
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkDeferredKey
@@ -128,27 +126,6 @@ type OpenApiReferenceObject {
 type OpenApiHeaderRequiredSlot
   = OpenApiHeaderRequiredAbsent
   | OpenApiHeaderRequiredPresent { value: Bool }
-
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderSchemaSlot
-type OpenApiHeaderSchemaSlot
-  = OpenApiHeaderSchemaPresent { schema: OpenApiSchema }
-  | OpenApiHeaderSchemaAbsent
-
-
-type OpenApiHeaderObject {
-  description: OpenApiOptionalString,
-  required: OpenApiHeaderRequiredSlot,
-  schema_shape: OpenApiHeaderSchemaSlot,
-  header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
-  header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
-}
-
-
-// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiHeaderOrReference
-type OpenApiHeaderOrReference
-  = OpenApiHeaderInline { header: OpenApiHeaderObject }
-  | OpenApiHeaderReference { reference: OpenApiReferenceObject }
 
 
 // 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiLinkTarget

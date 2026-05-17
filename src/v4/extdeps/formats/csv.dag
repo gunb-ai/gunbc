@@ -36,8 +36,8 @@ type CsvRfc4180EscapeDoubledQuote {
 }
 
 type CsvRfc4180RecordLineBreak {
-  record_boundary_is_line_break_crlf_or_lf: Bool,
-  crlf_preferred_for_interoperability: Bool,
+  records_separated_by_ascii_crlf_u000d_u000a_per_rfc4180: Bool,
+  generator_should_emit_crlf_between_records_per_rfc4180: Bool,
 }
 
 type CsvRfc4180LastRecordTrailingDelimiterOptional {
