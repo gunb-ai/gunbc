@@ -344,6 +344,7 @@ Wave-2+ encodings (keywords, …) extends the **data**, not the walker.
 
 **I/O**: `(Source, LanguageModel) -> Outcome<TokenStream>` — the lexical
 half of `ingest`. (`Outcome` is the ratified carrier, `std/diagnostic.dag`.)
+*Concrete merged entry today:* `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` — treat `LexRules` (= `Node`) as the lexical projection of the `LanguageModel` bundle until Theme-A #9 names the carrier type explicitly.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
@@ -401,6 +402,10 @@ derives as **single-authority** structure on the `Node` it returns
 
 **I/O**: `normalize : Node -> Outcome<Node>`, `resolve : Node -> Outcome<Node>`
 — transforms on the pivot; the composite is `resolve ∘ normalize`.
+*Seam discipline:* stage files may still name `ParseTree` / `NormalizedTree` /
+`ResolvedTree` (= `Node`) and `Result<…, Diagnostic>` while scaffolding lands —
+the TASKS contract is the **pivot facts** above, not an order to delete seam
+aliases before CP-1b closes.
 
 **Modeling decisions**:
 - The 4 sugar forms and their dissolution **as structural rewrites on
@@ -458,9 +463,10 @@ governs T-10's emit boundary as well as T-11's per-target tables — STOP
 if any emission step cannot be expressed as inverse grammar-data.)
 
 **I/O**:
-- `emit: (InferredTree, TargetModel) -> Outcome<Source>` — the emit
-  boundary, the U1 Realize phase, inverse of `ingest`.
-- `compile: (Source, TargetModel) -> Outcome<Source>` — the orchestrator,
+- `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>` — the emit
+  boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` /
+  `05_emit.dag` headers).
+- `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
 
 **Modeling decisions**:
@@ -468,7 +474,8 @@ if any emission step cannot be expressed as inverse grammar-data.)
   of the same relation parse (T-7) applies forward — the bidirectional
   relation is authored once, consumed in both directions.
 - The orchestrator as function composition (`emit ∘ core ∘ ingest`),
-  `Outcome` short-circuiting on the `Rejected` branch.
+  fail-closed error propagation on the `Result` / `Rejected` branch (same
+  discipline as `Outcome` in `std/diagnostic.dag`).
 - `00_compile.dag` `LanguageModel` / `TargetModel`: declare the carrier
   type, or state formally "a model IS a `Node`" (Theme-A audit #9).
 
