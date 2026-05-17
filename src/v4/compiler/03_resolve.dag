@@ -28,25 +28,29 @@
 //   - std/node.dag, std/diagnostic.dag
 //   - compiler/03_normalize.dag: NormalizedTree
 //
-// HEADER RECONCILE (Codex #3211 artifact 13260 / B-4 Wave-1 scaffold, CP-1b):
-// Prior prose required public `resolve` to use an empty Namespace whose
-// canonical_symbols set rejected every unbound Atom fail-closed. That made
-// the default entry point unusable for parse-shaped trees carrying only K-1
-// opaque identities (no binding table yet). Receipt: public `resolve` now
-// seeds canonical_symbols with an all-pass Set so Atoms preserve identity
-// until a producer supplies real bindings via `resolve_with_namespace`. Use→def
-// rewriting remains exclusively the `bindings` map; empty bindings => no
-// rewrite, never fabrication from EdgeLabel.Named (unchanged B-4 discipline).
-//
 // Status: T-8 modeled 2026-05-16 (bright-seal-437). Resolution owns
 // scope/env/lookup/name binding for the front-end, including method-name
-// lookup through the same canonical Symbol boundary. It consumes explicit
-// Namespace bindings; it does NOT infer binders from `EdgeLabel.Named`,
-// because Named is also the structural field-label carrier in node.dag.
-// It canonicalizes Atom use-sites when a Namespace binding exists, and
-// preserves already-canonical external/std/import Symbols at the declared
-// namespace boundary. 04_infer preserves these Symbols and owns only type
-// inference, algebra Find, cardinality propagation, and diagnostics.
+// lookup through the same canonical Symbol boundary.
+//
+// Binding construction (CP-1b operator ruling, #3211): public `resolve`
+// builds a `Namespace` by walking the `NormalizedTree` — no external
+// namespace producer. Within-file rules (B-4 node precision, K-1-only):
+//   (M) At the program root `TypeNode { Conj }`, each `EdgeLabel.Named`
+//       child key is a module-level declaration Symbol (the module table
+//       uses Named as the declaration address — distinct from using Named
+//       inside arbitrary inner Conj record sugar as an implicit binder).
+//   (P) Under any `TypeNode { Arrow }`, the domain (first positional child)
+//       MAY be a `Conj` of formal parameters; each `Named` key there is a
+//       parameter binder Symbol (fn / Pi domain discipline).
+//   (B) `ComputationNode { Bind }` with arity 3: first child target
+//       `TypeNode { Atom { identity } }` introduces a let-binder for the
+//       third child subtree (pattern is Atom-only in this wave).
+// Cross-file / import / module-loading edges are OUT OF SCOPE here — STOP
+// escalate to operator with that exact dependency if a change needs them.
+// Unbound Atoms (no `bindings` entry, not listed in `canonical_symbols`)
+// fail closed. `canonical_symbols` remains for explicit extern/std/import
+// producers that attach canonical identities without a use→def rewrite.
+// 04_infer preserves resolved Symbols and owns type inference, Find, cost.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
@@ -68,12 +72,16 @@ import v4.std.diagnostic {
   UserInputBoundary
 }
 import v4.std.node {
-  Connective,
+  Arrow,
+  Atom,
+  Bind,
+  ComputationNode,
+  Conj,
   Edge,
   EdgeLabel,
   Node,
-  NodeKind,
   Symbol,
+  TypeNode,
   node_well_formed
 }
 
@@ -87,15 +95,11 @@ data resolve_reason_malformed_tree: Symbol = resolve_reason_malformed_tree
 data resolve_reason_unbound_symbol: Symbol = resolve_reason_unbound_symbol
 
 
-// Namespace is the explicit binding authority for this stage: authored
-// use-site Symbol -> canonical declaration Symbol. It is separate from
-// `EdgeLabel`, so record fields / variant fields / declaration names do
-// not collapse into one implicit binder channel. Imports, prelude/std
-// names, method names, and local declaration binders all enter resolve
-// through this one carrier when the parser/namespace producer supplies
-// them. CP-1b's public `resolve` entry seeds canonical_symbols so
-// unbound Atoms pass through as opaque identities (K-1 preserve) when the
-// bindings map is empty; callers with real binders use `resolve_with_namespace`.
+// Namespace is the explicit binding authority for this stage: use-site
+// Symbol -> canonical declaration Symbol (B-4). `bindings` is populated
+// by `build_program_namespace` for within-file/module/parameter/let
+// discipline; `canonical_symbols` lists extern symbols that are already
+// canonical without a map entry (imports / std — module-loading TBD).
 type Namespace {
   bindings: Map<Symbol, Symbol>
   canonical_symbols: Set<Symbol>
@@ -141,21 +145,94 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
-// Wave-1 public resolve: treat every Atom identity as an opaque canonical
-// symbol when no explicit bindings map is populated (parse-shaped trees).
-fn all_atoms_pass_as_canonical() -> Set<Symbol> {
-  Set {
-    member: fn(_) {
-      true
-    }
+fn merge_binding_self(m: Map<Symbol, Symbol>, sym: Symbol) -> Map<Symbol, Symbol> {
+  map_insert(m, sym, sym)
+}
+
+
+// (M) Module root: Conj children carry declaration Symbols on Named edges.
+fn add_module_named_exports(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: acc, f: fn(acc2, e) {
+        match e.label {
+          Named { name: decl } => merge_binding_self(m: acc2, sym: decl)
+          Positional => acc2
+        }
+      })
+    _ => acc
   }
 }
 
 
-fn default_public_resolve_namespace() -> Namespace {
+// (P) fn / Pi domain: first Arrow child is a Conj of formal parameters.
+fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      if count(n.children) >= 1 {
+        match first(n.children) {
+          Some { value: e0 } =>
+            match e0.target.kind {
+              TypeNode { connective: Conj } =>
+                fold(e0.target.children, init: acc, f: fn(acc2, pe) {
+                  match pe.label {
+                    Named { name: param } =>
+                      merge_binding_self(m: acc2, sym: param)
+                    Positional => acc2
+                  }
+                })
+              _ => acc
+            }
+          None => acc
+        }
+      } else {
+        acc
+      }
+    _ => acc
+  }
+}
+
+
+// (B) let-bind: Bind arity-3 with Atom pattern in slot 0.
+fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      if count(n.children) == 3 {
+        match first(n.children) {
+          Some { value: e0 } =>
+            match e0.target.kind {
+              TypeNode { connective: Atom { identity: b } } =>
+                merge_binding_self(m: acc, sym: b)
+              _ => acc
+            }
+          None => acc
+        }
+      } else {
+        acc
+      }
+    _ => acc
+  }
+}
+
+
+fn gather_bindings_walk(n: Node, acc: Map<Symbol, Symbol>, is_root: Bool) -> Map<Symbol, Symbol> {
+  let acc = if is_root {
+    add_module_named_exports(root: n, acc: acc)
+  } else {
+    acc
+  }
+  let acc = add_arrow_domain_named_params(n: n, acc: acc)
+  let acc = add_bind_atom_binder(n: n, acc: acc)
+  fold(n.children, init: acc, f: fn(acc2, e) {
+    gather_bindings_walk(n: e.target, acc: acc2, is_root: false)
+  })
+}
+
+
+fn build_program_namespace(tree: NormalizedTree) -> Namespace {
   Namespace {
-    bindings: empty_map(),
-    canonical_symbols: all_atoms_pass_as_canonical()
+    bindings: gather_bindings_walk(n: tree, acc: empty_map(), is_root: true),
+    canonical_symbols: empty_canonical_symbol_set()
   }
 }
 
@@ -292,7 +369,7 @@ fn resolve_node(n: Node, scope: Scope) -> ResolveResult {
 fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
-    namespace: default_public_resolve_namespace()
+    namespace: build_program_namespace(tree: tree)
   )
 }
 
