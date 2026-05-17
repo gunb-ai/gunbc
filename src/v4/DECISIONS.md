@@ -358,6 +358,17 @@ Operator-stated principle (2026-05-17), governing the reseed:
   *structural* tier — a generated fact-density / hollow-alias gate — is
   explicitly deferred to and owned by Phase 2 of this reseed plan; the
   documented example is the floor, not the ceiling.
+  Phase 1's convention tier is **not** the tier that failed. D2 slipped
+  through *two* failures (see root cause above): an **inverted** `P1:42`
+  — misread as *licensing* the alias — and the **absence** of any
+  bad-example for review to fail against. Phase 1 corrects both: it
+  re-points `P1:42` and adds the bad-example, so api-review now has a
+  named anti-pattern it never had. That is net-new enforcement, not a
+  repeat of a failed convention. The structural fact-density gate
+  (Phase 2) is the *additional* belt-and-suspenders and is a **close-gate
+  requirement** of the reseed — not an optional follow-up; the reseed is
+  not "done" until it lands. Sequencing it to Phase 2 reflects that it is
+  a larger build (a generated checker), not a softening of intent.
   Reverse the D2/D4 rows. Rewrite the
   `TASKS.md` T-4 authoring contract.
 - **Phase 2 — rework the entire T-## program** around fact-bundle
