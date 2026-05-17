@@ -5,8 +5,9 @@ Warning: every `//` line after `module` is deleted—non-idempotent if a target 
 authored in-body commentary; scoped to the pinned allowlist for that reason.
 
 Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md Part 6 · …`) are
-preserved and (re)injected from merge-base `92cb26402` Practice-4 / SL-3229 state
-(operator directive 2026-05-17, PR #3234 modeling-discipline alignment).
+(re)written from merge-base `92cb26402` Practice-4 / SL-3229 state (operator directive
+2026-05-17, PR #3234 modeling-discipline alignment): an existing tag with the wrong slug
+is replaced so `--check` cannot pass on stale pointers.
 
 `// Owns:` is a **manifest of top-level module symbols** in **file order**: every
 `type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
@@ -28,6 +29,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DECISIONS_REL = "src/v4/DECISIONS.md"
 
 MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
+
+# Lines of merge-base text above a `type` row to resolve Practice-4 face when the
+# immediate authority tail is empty (e.g. sibling LLVM ordering carriers after a
+# shared dissolution banner).
+PRACTICE4_CONTEXT_LINES = 250
 
 TYPE_RE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
@@ -151,6 +157,17 @@ def practice4_face(block: str) -> str | None:
     return None
 
 
+def practice4_tail_for_face(lines: list[str], coproduct_line_idx: int) -> str:
+    """Merge-base text used to classify a coproduct: immediate tail, else a short upward window."""
+    block = authority_block(lines, coproduct_line_idx)
+    if practice4_face(block) is not None:
+        return block
+    ctx = "\n".join(lines[max(0, coproduct_line_idx - PRACTICE4_CONTEXT_LINES) : coproduct_line_idx])
+    if block and ctx:
+        return block + "\n" + ctx
+    return block or ctx
+
+
 def verilog_yellow_ref(block: str) -> str:
     """Split Verilog 🟡 coproducts: #3200 first-consumer matrix vs Wave-A2 list-non-empty."""
     key = "Coproduct dissolution (Practice 4 / modeling-discipline.md §4)"
@@ -159,8 +176,10 @@ def verilog_yellow_ref(block: str) -> str:
         pos = block.rfind("Coproduct dissolution (Practice 4")
     tail = block[pos:] if pos >= 0 else block
     ledger_header = tail.split("// Terminal:")[0]
+    # `#3200` footers often live after `// Terminal:` in merge-base banners; scan the full
+    # authority tail, not only the pre-Terminal slice (DECISIONS.md §SL-3229-VERILOG-D3200).
     if (
-        "#3200" in ledger_header
+        "#3200" in block
         or "first meaning-consumer" in ledger_header
         or "first consumer of" in ledger_header
     ):
@@ -186,14 +205,15 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in block:
             out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
             continue
-        face = practice4_face(block)
+        tail = practice4_tail_for_face(lines, i)
+        face = practice4_face(tail)
         if face == "green":
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
         elif face == "red":
             out[nm] = ("🔴", "CP-3229-RED-PRACTICE4")
         elif face == "yellow":
             if "verilog" in rel:
-                out[nm] = ("🟡", verilog_yellow_ref(block))
+                out[nm] = ("🟡", verilog_yellow_ref(tail))
             elif "ptx" in rel:
                 out[nm] = ("🟡", "SL-3229-PTX-DIM3")
             elif "float" in rel:
@@ -201,7 +221,12 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             else:
                 out[nm] = ("🟡", "CP-3229-GREEN-TERMINAL")
         else:
-            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+            print(
+                f"FAIL: cannot classify Practice-4 face for {rel} coproduct {nm!r} "
+                f"(merge-base {MERGE_BASE}); extend tail or add explicit mapping.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     return out
 
 
@@ -252,10 +277,19 @@ def inject_coproduct_tags(body: str, _rel: str, tag_map: dict[str, tuple[str, st
     while j < len(bl):
         nm = is_coproduct(bl, j)
         if nm and nm in tag_map:
+            em, ref = tag_map[nm]
+            expected = format_coproduct_tag(em, ref)
             prev = bl[j - 1] if j > 0 else ""
-            if not COPRODUCT_TAG_RE.match(prev):
-                em, ref = tag_map[nm]
-                out_lines.append(format_coproduct_tag(em, ref))
+            if COPRODUCT_TAG_RE.match(prev):
+                if prev != expected:
+                    if not out_lines:
+                        raise SystemExit(
+                            "internal error: coproduct tag mismatch but out_lines empty "
+                            f"({nm!r})"
+                        )
+                    out_lines[-1] = expected
+            else:
+                out_lines.append(expected)
             out_lines.append(bl[j])
             j += 1
             continue
@@ -347,10 +381,10 @@ def run_check(specs: list[tuple[str, str, str, str, str]]) -> None:
         header = (
             f"{first}\n"
             f"{scope}\n"
-            f"{anchor}\n"
             f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
+            f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map)}"
             f"\n"
         )
@@ -432,10 +466,10 @@ def main() -> None:
         header = (
             f"{first}\n"
             f"{scope}\n"
-            f"{anchor}\n"
             f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
+            f"{anchor}\n"
             f"{format_ledger_line(rel, tag_map)}"
             f"\n"
         )

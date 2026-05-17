@@ -1,9 +1,9 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers (T-4.9).
-// Anchor: https://standards.ieee.org/ieee/1364/3641/
 // Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost
 // Consumes: std/node.dag; Int kernel-ambient.
 // Status: T-4.9 PASS (IN-B); import v4.std.node Symbol only.
+// Anchor: https://standards.ieee.org/ieee/1364/3641/
 // Ledger: DECISIONS.md Part 6 (PR #3229): CP-3229-GREEN-TERMINAL, SL-3229-VERILOG-COST, SL-3229-VERILOG-D3200, SL-3229-VERILOG-VECTOR-RANGE.
 
 module v4.extdeps.languages.verilog
@@ -21,7 +21,7 @@ type PortDirection
   | Inout
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type NonTriregNetKind
   = Wire
   | Tri
@@ -36,7 +36,7 @@ type NonTriregNetKind
   | Uwire
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type NetType
   = NonTriregNet { kind: NonTriregNetKind }
   | TriregNet
@@ -171,7 +171,7 @@ type NetIdentifierDeclarator {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type VariableDeclaration
   = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
   | IntegerVariable { declarators: List<VariableDeclarator> }
@@ -180,7 +180,7 @@ type VariableDeclaration
   | RealTimeVariable { declarators: List<VariableDeclarator> }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type VariableDeclarator
   = NamedVariable {
       name: Symbol
@@ -204,14 +204,14 @@ type OutputPortAnsiNetTypeKind
   | OutputAnsiNoNetType { packing: PackingShape, signedness: Signedness }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type OutputPortAnsiVariableTypeKind
   = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
   | OutputAnsiIntegerType
   | OutputAnsiTimeType
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type NonAnsiPort
   = BlankNonAnsiPort
   | ExpressionNonAnsiPort { expression_lexeme: String }
@@ -261,7 +261,7 @@ type AnsiOutputPortDeclarator {
 
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type ParameterTypeKind
   = UntypedParameter { packing: PackingShape, signedness: Signedness }
   | IntegerParameter
@@ -470,7 +470,7 @@ type LocalParameterDeclaration {
 }
 
 
-// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-NONEMPTY.
+// 🟡 coproduct dissolution — DECISIONS.md Part 6 · SL-3229-VERILOG-D3200.
 type PrimitiveGateKind
   = GateAnd
   | GateNand
