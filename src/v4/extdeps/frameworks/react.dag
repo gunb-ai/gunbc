@@ -39,7 +39,7 @@
 //   - ReactPropsSite (props type + value sites — `ReactCrossDeclRef` edges)
 //   - ReactHostElement / ReactCompositeElement / ReactElement (host + composite +
 //     fragment + text partition)
-//   - ReactContextBinding (`createContext` site identity)
+//   - ReactContextBinding (`createContext(defaultValue)` site — context object + default)
 //   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
 //     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
 //     in-repo — dissolution trigger = new built-in at pin bump; see block ledger)
@@ -79,7 +79,8 @@ type ReactCrossDeclRef
 //
 // Optional operand at a hook call site (e.g. optional `getServerSnapshot`,
 // optional `useDebugValue` formatter, optional `useActionState` permalink,
-// optional `useReducer` `init`, optional `useDeferredValue` `initialValue`) —
+// optional `useReducer` `init`, optional `useDeferredValue` `initialValue`,
+// optional `useOptimistic` `reducer`) —
 // encodes arity holes in the **pinned** API surface.
 //
 // Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger — five patterns:
@@ -280,7 +281,9 @@ type ReactHookSite
       initial_state_ref: ReactCrossDeclRef
       permalink: ReactOptRef
     }
-  | UseOptimistic { state_ref: ReactCrossDeclRef, update_fn_ref: ReactCrossDeclRef }
+  // Anchor: https://react.dev/reference/react/useOptimistic — `useOptimistic(value,
+  //         reducer?)`; second operand pure reducer `(currentState, action) => nextState`.
+  | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptRef }
   // Anchor: https://react.dev/reference/react/use — `use(resource)`
   | UseResource { resource_ref: ReactCrossDeclRef }
   | CustomHook { implementation_ref: ReactCrossDeclRef }
@@ -347,8 +350,10 @@ type ReactElement
 
 // ═════════════════════════════════════════════════════════════════════
 // ReactContextBinding
-// Anchor: https://react.dev/reference/react/createContext +
+// Anchor: https://react.dev/reference/react/createContext — `createContext(defaultValue)`
+//         (required operand; may be `null` per docs) +
 //         https://react.dev/learn/passing-data-deeply-with-context
 type ReactContextBinding {
   context_pair_ref: ReactCrossDeclRef
+  default_value_ref: ReactCrossDeclRef
 }
