@@ -42,7 +42,7 @@ type ExclusionReceipt {
 
 
 type ReExecFrontier {
-  rerun: Map<Path, ReExecNode>
+  rerun: Map<ExclusionKey, ReExecNode>
   excluded: Map<ExclusionKey, ExclusionReceipt>
 }
 
