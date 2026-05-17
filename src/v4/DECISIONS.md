@@ -23,7 +23,7 @@ authority location(s) and moves to Part 1.
 | **A2** | Termination is Tier-1; `Loop` = bounded recursion total-by-construction; descent evidence implicit-on-sub-Node or explicit ranking; checker not discoverer; the bound IS the cost-lens datum; residual boundary stated | this row + `std/node.dag`/`std/cardinality.dag` declarations |
 | **A3** | Retirement = a reproduction predicate, not a count; it is an early-surfacing amplifier, NOT un-gameable (Trusting-Trust); seed trust is a named axiom; culture + operator-ratification is the actual enforcement | `STRUCTURE.md` §7, `workflow/bootstrap.dag`, `TASKS.md` T-5/T-15 |
 | **A4** | Folded into A3 — a 7th connective is the same machine: deviation changes the reproduction → conspicuous signal → STOP. Not "the substrate refuses by construction" | `STRUCTURE.md` §7, `workflow/bootstrap.dag` |
-| **U1** | One homomorphism-with-cost carrier; the back half is five phases (Find/Realize/Measure/Compare) not five engines; no-engine discipline (empty search → helpful Diagnostic, never fabrication) | this row + `std/algebra.dag` declarations |
+| **U1** | One homomorphism-with-cost carrier; the back half is five phases (Find/Realize/Measure/Compare) not five engines; no-engine discipline (empty search → helpful Diagnostic, never fabrication). **U1's homomorphism-with-cost carrier IS the THESIS core-theme *derived homomorphism*** — the structure-preserving cross-target map the compiler derives, never an authored adapter (see `docs/thesis/the-derived-homomorphism.md`). | this row + `std/algebra.dag` declarations |
 | **C2** | Synthesis = compare(derived cost, the relation's structurally-derived lower bound) via a closed `LowerBoundTechnique` set; NOT a (naive→better) rule library; honest worked examples preserved | `lens/synthesis.dag`, `TASKS.md` T-17 |
 | **C7-REPORT** | `std/report.dag` owns the advisory, non-fail-closed carrier family for C7/T-17: `Report`, closed `ReportReason`, and typed `ReportSuggestion`. Reports are distinct from fail-closed `Diagnostic`/`Witness<C>` output; advisory lenses emit report sets directly, and the only advisory→blocking bridge is explicit user opt-in through `apply_lens(..., Enforce { ... })`. | this row + `std/report.dag` boundary index + `TASKS.md` T-17/T-23 |
 | **U2** | `complexity.dag` *consumes* `cost.dag`'s `SymbolicCost`, never re-derives; **cost is TOTAL over the closed kernel** — no per-feature opt-in, so a future addition cannot bypass cost (the no-eternal-maintenance property) | `lens/cost.dag` + `lens/complexity.dag` headers |
@@ -430,6 +430,10 @@ structurally equal** — equal under `node.dag`'s B1-CANON contract
 `content_hash = merkle_fold ∘ canonical`. This is the *single* definition
 of the word across v4: the U1 homomorphism, the T-9 coercion fold, and the
 `docs/modeling/grounding-worked-examples.md` companion all use exactly it.
+(The T-9 coercion fold is the **verification facet** of the derived
+homomorphism — the fold that checks a candidate map preserves structure;
+see `docs/modeling-discipline.md` "The three facets" and
+`docs/thesis/the-derived-homomorphism.md`.)
 Three consequences pin it down:
 
 - **Mechanical, not free-form semantic equivalence.** Coincidence is
