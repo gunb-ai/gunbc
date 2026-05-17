@@ -15,7 +15,8 @@
 //     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
 //   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
 //   - emit(OpenApiSpec) -> String  (typically YAML)
-//   - Type derivation from `components.schemas` **`.core`** values delegates to
+//   - Type derivation from **`OpenApiSchema.core`** values under **`components`**
+//     (when the **`schemas`** field is **`OpenApiComponentsSchemasPresent`**) delegates to
 //     json_schema.dag's future `schema_to_type` — not re-declared here.
 //
 // Consumes:
@@ -62,7 +63,7 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // facts (**single JSON Schema vocabulary authority** — INVARIANTS P2) with
 // separate **`openapi_schema_members`** (OAS fixed fields outside the shared
 // `JsonSchemaInstance` typed slice today) and **`openapi_schema_specification_extensions`**
-// (`^x-` only). **`components.schemas`** and Media Type **`schema`** use **`OpenApiSchema`**,
+// (`^x-` only). **`components`** **`schemas`** (when present on the wire) and Media Type **`schema`** use **`OpenApiSchema`**,
 // not a bare **`JsonSchema`** alias, so OAS schema wire does not collapse into
 // `JsonSchemaInstance.additional_keywords` without an explicit OpenAPI home.
 //
@@ -88,8 +89,7 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // discipline applies when operation bodies close the yaml/json surface loop.
 //
 // DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
-// the document root, **Info Object (OAS-fixed fields + `info_deferred_members` +
-// `info_specification_extensions`)**,
+// the document root, **Info Object (typed OAS 3.1.0 fixed fields + `info_specification_extensions`)**,
 // **`OpenApiPathsSlot`** (root `paths` omit vs present) + **Paths Object
 // (`OpenApiPaths`: `routes` + `paths_extensions`)**, path items, operations, **Responses Object (`OpenApiResponses`)** + **Response Object fixed-field slots** (`content` / `headers` / `links` vs `extensions`), media types,
 // and component schemas; **$ref** resolution, parameter objects, callbacks,
@@ -101,7 +101,7 @@ import v4.extdeps.formats.json_schema { JsonSchema }
 // (Path Item Object) /
 // **`responses_object_extensions`** (Responses Object) /
 // **`operation_deferred_members`** + **`operation_specification_extensions`** /
-// `info_deferred_members` + **`info_specification_extensions`** / **`contact_extensions` (nested under `OpenApiContact`)** /
+// **`info_specification_extensions`** / **`contact_extensions` (nested under `OpenApiContact`)** /
 // **`root_specification_extensions`** (`^x-` on the OpenAPI Object) vs
 // **`root_deferred_members`** (undecomposed **fixed** root fields —
 // `servers` / `webhooks` / `security` / `tags` / `externalDocs` — as bounded
@@ -249,12 +249,15 @@ type OpenApiLicenseSlot
 // ─────────────────────────────────────────────────────────────────────
 // OpenApiInfo — OAS 3.1.0 Info Object: required `title` + `version`, optional
 // `summary` / `description` / `termsOfService`, optional nested `contact`
-// (with its own **`contact_extensions`**) / `license`, plus **`info_deferred_members`**
-// for undecomposed **fixed** Info Object top-level members **outside** this typed
-// slice at **OAS 3.1.0** (typically empty when the slice is complete) **and** for
-// forward **normative** wire from a **future** OpenAPI revision **before** an explicit
-// C5 anchor migration — **never** Specification Extensions (`^x-`), which live only
-// in **`info_specification_extensions`** (P2 / M5 — same split as `root_*` / `operation_*`).
+// (with its own **`contact_extensions`**) / `license`, plus **`info_specification_extensions`**
+// for **Specification Extensions** (`^x-`) only on the Info Object (M5 / P2).
+// **Every** OAS **3.1.0** fixed Info Object member at this anchor is already modeled
+// in the fields above — there is **no** remaining honest “deferred fixed-field” map
+// here; **unknown non-`^x-` top-level keys** at this pin are **`Rejected`** under
+// **`openapi_parse`** (Deferred (1)), not admitted as silent wire (P1 fail-closed).
+// Future normative OpenAPI revisions extend this carrier under an **explicit** C5
+// anchor migration (🟡 Deferred (2)), not via an unbounded non-extension overflow
+// map on the **3.1.0**-pinned type.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#info-object
 //
@@ -267,7 +270,6 @@ type OpenApiInfo {
   contact: OpenApiContactSlot,
   license: OpenApiLicenseSlot,
   version: String,
-  info_deferred_members: Map<String, JsonValue>,
   info_specification_extensions: Map<String, JsonValue>,
 }
 
@@ -497,8 +499,25 @@ type OpenApiPathsSlot
 
 
 // ─────────────────────────────────────────────────────────────────────
-// OpenApiComponents — Components Object `schemas` map (**`OpenApiSchema`** values —
-// OAS Schema Object, not bare `JsonSchema`). Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
+// OpenApiComponentsSchemasSlot — OAS 3.1.0 Components Object **`schemas`** field.
+// Optional at the JSON surface — **omit** vs **present** (including **present-empty**
+// `{}` with zero named schemas) are distinct wire facts (P2).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#components-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: a flat
+// `Map<String, OpenApiSchema>` on `OpenApiComponents` would conflate “`schemas` key
+// omitted” with “`schemas`: {}`” unless paired with a separate presence bit
+// (illegal paired states).
+type OpenApiComponentsSchemasSlot
+  = OpenApiComponentsSchemasAbsent
+  | OpenApiComponentsSchemasPresent { schemas: Map<String, OpenApiSchema> }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// OpenApiComponents — Components Object: **`schemas`** is **`OpenApiComponentsSchemasSlot`**
+// (**`OpenApiSchema`** map values — OAS Schema Object, not bare `JsonSchema`).
+// Other **fixed** component map keys (`responses`, `parameters`, `requestBodies`, …)
 // round-trip under **`components_deferred_members`** as **`JsonValue`** until a
 // pinned decomposition lands (MODELING.md M10 — proper homes before variant
 // explosion) — **not** under **`components_specification_extensions`**, reserved
@@ -508,7 +527,7 @@ type OpenApiPathsSlot
 //
 // Coproduct dissolution (Practice 4) — N/A (`Conj` record).
 type OpenApiComponents {
-  schemas: Map<String, OpenApiSchema>,
+  schemas: OpenApiComponentsSchemasSlot,
   components_deferred_members: Map<String, JsonValue>,
   components_specification_extensions: Map<String, JsonValue>,
 }
@@ -581,10 +600,11 @@ type OpenApiDocument {
 //   vocabulary only), **`openapi_schema_members`** (OAS fixed fields outside the
 //   typed `JsonSchemaInstance` slice), and **`openapi_schema_specification_extensions`**
 //   (`^x-`); OAS-only keys MUST NOT be normalized into **`JsonSchemaInstance.additional_keywords`**
-//   without an explicit **`OpenApiSchema`** home (same trigger). **`OpenApiInfo`**:
-//   **`info_specification_extensions`** is **`^x-`** only; **`info_deferred_members`**
-//   carries forward **fixed** Info top-level keys (future normative revision / slice
-//   gaps) — **not** Specification Extensions (same trigger).
+//   without an explicit **`OpenApiSchema`** home (same trigger). **`OpenApiInfo`** at
+//   **OAS 3.1.0**: **`info_specification_extensions`** is **`^x-`** only; any other
+//   unknown top-level member is **`Rejected`** (not structurally representable as
+//   “deferred fixed field” on this pin — avoids admitting illegal non-extension keys
+//   in a catch-all map).
 //
 // (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
 //   comparison against supported spec revisions; trigger = operator version
