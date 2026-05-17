@@ -1,239 +1,32 @@
 // src/v4/extdeps/languages/ptx.dag
 //
-// Scope: CUDA model — direction-agnostic. Modeled at the PTX ISA layer
-//        (forced by DECISIONS.md L-3 — PTX is the SIMT *IR*; CUDA-C++ is
-//        a Shape A source already covered by general modeling, so it
-//        would not be a down-the-stack probe at all): the SIMT execution
-//        model (grid / block / thread), the memory hierarchy
-//        (register / shared / global / etc.), kernels and barriers.
-// Anchor: NVIDIA "Parallel Thread Execution ISA Version 8.5" —
-//         https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
-//         (release PDF: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf,
-//         CUDA Toolkit 12.5). This is the L-2 versioned fidelity authority
-//         the carriers below are pinned to (BarrierScope's `.cluster`,
-//         ThreadCoordSource's cluster hierarchy, and StateSpace's eight
-//         memory regions are derived from this release; a future ISA
-//         release modifying any of them is a visible C1 edit). The
-//         "CUDA C++ Programming Guide" documents the SIMT execution
-//         model the spec encodes.
-//
-// IN-B FINDING (the T-4.14 probe's deliverable, operator-ratified
-//   STOP-or-find discipline per §D): SIMT data-parallelism IS modelable
-//   as the existing 5 L1 behaviors — NO 6th `Parallel` / `Kernel`
-//   behavior is required. The full mapping lives in the modeling notes
-//   section below; the headline:
-//     kernel        → Transform (a function over (thread_coord, params))
-//     thread grid   → Loop (bounded recursion over the grid's bounded
-//                     thread-index cardinality; THESIS:19 "parallelism
-//                     is the default" — independence is read from the
-//                     dependency graph, scheduling is mechanical)
-//     barrier       → Bind (sequencing synchronization point)
-//     state space   → effect-typed parameter (a structural Conj field
-//                     on the value, per THESIS:396 IN-B "intrinsic to
-//                     the type signature, not an annotation layer")
-//     @p predicate  → Branch (predicated execution = guarded Branch on
-//                     a `.pred` carrier)
-//   The 5 behaviors hold; the probe surfaces no substrate gap (no STOP).
+// Scope: PTX ISA layer (DECISIONS.md L-3) — SIMT grid/block/thread, memory hierarchy, kernels, barriers.
+// Anchor: NVIDIA PTX ISA 8.5 (HTML + PDF pinned in prior header text; full URLs in docs/v4-dag-rationale.md).
 //
 // Owns:
 //   - PTX coordinate classifiers as closed structural carriers:
-//     StateSpace (memory hierarchy — with ParamScope / SharedScope
-//     sub-qualifiers structurally enforced on `.param` / `.shared`
-//     per PTX 8.5 §5.1.7-8 / §6 memory-operand grammar),
-//     BarrierScope (CTA/cluster/GPU/sys),
-//     ThreadAxis (X/Y/Z), ThreadCoordSource (thread / CTA-in-cluster /
-//     cluster / CTA-in-grid hierarchy per PTX ISA 8.5),
-//     BitsWidth / IntegerWidth / FloatWidth (per-kind admissible-
-//     width sub-enums — kind × width admissibility is structurally
-//     enforced by RegisterScalar's Disj-with-payloads below, not
-//     deferred to a check), RegisterScalarKind
-//     (Bits/Unsigned/Signed/Float/Predicate)
-//   - PTX value shapes: RegisterScalar (Disj-with-heterogeneous-
-//     payloads, kind × admissible-width × admissible-residence
-//     STRUCTURALLY enforced — see RegisterScalar declaration);
-//     Dim3 / ThreadCoord (Conj records — Dim3 carries the 🟡 scaffold
-//     bridge to std/cardinality.dag, same as std/diagnostic.dag's
-//     ByteRange); ThreadHierarchyShape (Disj over launch shapes:
-//     FlatLaunch | ImplicitClusterLaunch | ExplicitClusterLaunch
-//     per PTX 8.5 §11 + `%is_explicit_cluster`)
-//   - PTX cost-realization carrier shape: PtxCost (per-instruction +
-//     occupancy components — the per-target cost projection U1 reads)
-//   - the IN-B mapping (modeling notes): SIMT → 5 behaviors, no 6th
+//     StateSpace (memory hierarchy — ParamScope / SharedScope enforced per ISA),
+//     BarrierScope, ThreadAxis, ThreadCoordSource,
+//     BitsWidth / IntegerWidth / FloatWidth, RegisterScalarKind
+//   - PTX value shapes: RegisterScalar; Dim3 / ThreadCoord; ThreadHierarchyShape
+//   - PTX cost-realization carrier: PtxCost
+//   - IN-B mapping narrative (relocated): docs/v4-dag-rationale.md
 //
 // Owned ELSEWHERE (do not duplicate here):
-//   - the bidirectional LanguageModel substrate (grammar productions,
-//     C5-fidelity disposition tags, ingest∘emit roundtrip carrier) — the
-//     BUNDLED work of T-4 across the 5 Shape A source languages, where
-//     "the SHAPE is the work" (TASKS.md T-4 authoring contract). When
-//     that shape lands, this file's classifiers slot into the PTX
-//     `LanguageModel` instance; the classifiers themselves do not
-//     prejudge that shape.
-//   - PTX integer / float scalar grounding (`.u32` inhabits `Semiring`,
-//     `.s32` inhabits `OrderedRing`, `.f32` inhabits `ApproximateField`)
-//     — flows from std/integer.dag / std/machine.dag / std/float.dag
-//     (T-3 wave A3) when those carriers + their algebra instance-values
-//     land. The PTX register-type vocabulary (kind × width) declared
-//     here is the SURFACE through which that grounding parameterizes.
-//     Pre-T-3-A3 this file declares no algebra instance-value, by P2
-//     single-authority: re-declaring an inhabitance whose carrier file
-//     is unwritten would foreclose its eventual authority.
-//   - SIMT-as-Bind composition's effect-typing carrier — that is the
-//     subject of extdeps/coordination.dag (T-4.8); the IN-B finding
-//     here demonstrates the mapping fits the 5 behaviors, and
-//     coordination.dag (when it lands) owns the effect-typed Bind
-//     carrier the kernel-as-Transform composes through.
+//   - LanguageModel substrate (T-4 bundle)
+//   - PTX scalar algebra instance-values (std/integer.dag / std/machine.dag / std/float.dag — T-3 A3)
+//   - SIMT effect-typed Bind carrier (extdeps/coordination.dag — T-4.8)
 //
 // Consumes:
-//   - nothing — this file is closed-enum + Conj-record declarations
-//     only. `Int` is kernel-ambient (Dim3 component; the per-kind
-//     width sub-enums BitsWidth/IntegerWidth/FloatWidth are closed
-//     enums, not Int-carrying). No algebra instance-values are declared at this
-//     phase (see "Owned ELSEWHERE" — PTX scalar inhabitance is
-//     downstream of T-3 wave A3 + T-4's LanguageModel shape).
-//   (The scaffold header's prior `std/node.dag, std/algebra.dag,
-//   std/primitive.dag` Consumes line predated PR #3152's
-//   std/primitive.dag decomposition AND the operator-ratified §0
-//   scope-narrowing of this probe to "closed classifiers + IN-B
-//   finding"; the revised Consumes line above reflects what the file
-//   actually imports, not the scaffold's anticipatory list. Header
-//   Consumes change pending operator ratification of the systemic
-//   scaffold-Consumes reconciliation (T-4 mgr synthesis
-//   msg_1fddb75c) — the surface+trigger discipline lets the
-//   operator ratify all per-file Consumes strikes uniformly in one
-//   pass; this is not worker-settled.)
+//   - nothing — closed enums + Conj records only; `Int` kernel-ambient.
 //
-// Status: T-4.14 modeled 2026-05-16 (gentle-deer-446); probe finding:
-// NO 6th behavior surfaced. The I/O contract in this header is
-// immutable for downstream workers. Splitting this file requires
-// explicit operator ratification (substrate extension = stop signal).
-
-
+// Status: T-4.14 PASS (no 6th behavior). Header contract + long rationale: docs/v4-dag-rationale.md.
+//
+//
 module v4.extdeps.languages.ptx
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// THE IN-B FALSIFICATION PROBE (T-4.14, B2-OMNI + IN-B, DECISIONS.md
-// L-3). The brief's §D framing is binding: "the STOP discipline is the
-// deliverable — if the substrate (5 behaviors / 6 connectives / fail-
-// closed) genuinely can't model the target, that is a substrate
-// finding to surface, not force." For T-4.14: "STOP if tempted toward
-// a 6th behavior." This section records the structural fit and
-// names the operator-tier triggers that would have flipped the
-// finding to STOP — neither fired.
-//
-// PROBE OUTCOME — the 5 behaviors hold; the SIMT model fits without a
-// 6th. The mapping, member-by-member:
-//
-//   - KERNEL ↦ Transform.
-//     A PTX `.entry` is a function `(thread_coord, kernel_params) ->
-//     side-effects-on-state-space`. That is exactly the Transform
-//     behavior (function application — INVARIANTS:72 typed-total-λ
-//     fragment, node.dag:209 "Transform=application"). The kernel's
-//     body is a sub-DAG of the 5 behaviors, identical to a CPU
-//     function's body — no kernel-specific behavior surfaces.
-//     "Run once per thread" is the SCHEDULING of the surrounding Loop
-//     (see next), not a property of the kernel function itself; the
-//     Transform IS the kernel callable.
-//
-//   - THREAD GRID ↦ Loop.
-//     The execution-of-a-kernel-across-its-grid is bounded recursion
-//     over the grid's bounded thread-index cardinality (gridDim ×
-//     blockDim, both Cardinality-bounded). This is exactly the A2
-//     `Loop` discipline (node.dag:42-68: bounded recursion, total-by-
-//     construction). Per THESIS:19 / node.dag:209 "Parallelism is the
-//     default because independence is visible in the structure" —
-//     iterations of the kernel-Loop over distinct thread-coords are
-//     INDEPENDENT unless they communicate (through `.shared` /
-//     `.global` reads/writes or barriers, both visible structural
-//     edges). The SIMT schedule (lock-step warp execution) is the
-//     mechanical realization of the dependency graph; it is NOT a
-//     separate behavior. Tempting alternative: a `Parallel` /
-//     `Kernel` behavior carrying "this Loop is data-parallel". That
-//     temptation would have been the STOP trigger — but it duplicates
-//     what the dependency graph already says (THESIS:19 again:
-//     "sequential execution is what needs justification"). Adding
-//     such a behavior would be a feedback_no_annotations violation
-//     (annotating a property structurally already visible). REJECTED;
-//     no STOP needed.
-//
-//   - BARRIER ↦ Bind.
-//     `bar.sync` / `membar` join concurrent threads at a
-//     synchronization point. That is exactly the Bind behavior
-//     (node.dag:209 "Bind=let" — sequencing). A barrier's SCOPE (CTA
-//     / GPU / system) is a Conj-record field on the Bind (the
-//     `BarrierScope` classifier below), not a new behavior; same
-//     pattern as `bar.sync 0` vs `membar.gl` differing only in scope.
-//     Tempting alternative: a `Synchronize` behavior. REJECTED — Bind
-//     is the existing sequencing primitive; "synchronize across
-//     concurrent threads" is a property of the surrounding parallel
-//     Loop reading the Bind, not of the Bind itself.
-//
-//   - STATE SPACE ↦ effect-typed parameter (structural variant
-//     payload). A PTX value's `.reg` / `.shared::cta` /
-//     `.shared::cluster` / `.global` / `.const` / `.local` /
-//     `.param::entry` / `.param::func` residence is a structural
-//     payload on `RegisterScalar`'s typed variants — specifically
-//     the `state_space: RegisterStateSpace` field on
-//     BitsScalar / UnsignedScalar / SignedScalar / FloatScalar
-//     (RegisterStateSpace is the 6-variant user-declarable typed-
-//     scalar-resident
-//     sub-classifier of StateSpace, excluding `.tex` since the
-//     `.tex` state space holds opaque texture/sampler descriptors
-//     per PTX 8.5 §5.1.10, not typed scalars). PredicateScalar is
-//     a BARE variant with NO state_space field — per PTX 8.5
-//     §5.1.1 predicates are virtual predicate registers (`.reg
-//     .pred`) with no memory load/store path; residence is
-//     implicit `.reg`. Memory ops (`ld.global`, `st.shared::cta`)
-//     are Transforms whose input/output state-space tags constrain
-//     valid composition. This IS the THESIS:396 IN-B claim made
-//     concrete: effects are "intrinsic to the type signature, NOT
-//     an annotation layer." Tempting alternative: a
-//     `StateSpaceTransfer` behavior wrapping every ld/st. REJECTED
-//     — it would parallel-represent what the Transform's
-//     signature already says; the effect-typed parameter is the
-//     unannotated primitive.
-//
-//   - @p PREDICATE ↦ Branch.
-//     PTX predicated execution (`@p mov.b32 r1, r2;`) is a guarded
-//     Branch on the `.pred` carrier: `if p then op else skip`. The
-//     `Branch` behavior already covers this (node.dag:209
-//     "Branch=sums"). Predicate negation (`@!p`) is the
-//     `BooleanAlgebra<.pred>.complement` instance-value — to land
-//     downstream when std/logic.dag's inhabitance form lands;
-//     declaring it here would parallel-represent it pre-substrate
-//     (P2). For T-4.14 the structural fit is the deliverable; the
-//     instance-value follows.
-//
-// CONCLUSION. The probe's IN-B half closes with no STOP. The B2-OMNI
-// half (PTX grammar as declarative bidirectional data) hinges on
-// T-4's LanguageModel shape — when that bundled shape lands, this
-// file's coordinate classifiers slot into the PTX `LanguageModel`
-// instance without revision (their I/O contract is the immutable
-// header above).
-//
-// SCOPE NEGATIVE (operator-tier, do not work around): warp-level
-// intrinsics (`%warpid`, `%laneid`, `%smid`), texture / surface
-// references, async copies (`cp.async`), tensor cores (`wmma`,
-// `mma.sync`), and the `bf16` / vector-pack types (`.f16x2`,
-// `.f32x2`) are deliberately not modeled at T-4.14. They sit either
-// (a) inside the bundled LanguageModel shape (grammar productions —
-// T-4's work), (b) inside the cost-realization detail per release
-// pin (PtxCost note below), or (c) inside the SIMT-effect-typed Bind
-// substrate that coordination.dag (T-4.8) owns. The classifiers
-// declared here are the irreducible SIMT coordinate set; the rest
-// composes over them when their substrate lands.
-//
-// PRACTICE-4 LEDGER DISCIPLINE. Every closed-Disj carrier below
-// carries the full 🟢/🟡/🔴 + all five patterns (Fact-placement /
-// Variant-is-data / Algebraic-form / Dimensional / Parameterized-
-// family-Practice-7) per modeling-discipline.md §4 (operator-ratified
-// binding 2026-05-15, gate (b) — #3163 made the 4-pattern miss the
-// proof case; do not omit Practice-7). Conj records carry no ledger
-// (only coproducts dissolve); scaffold-residual Conj fields (Dim3
-// raw Int offsets) carry a 🟡 bridge note mirroring std/diagnostic.dag's
-// `Extent.ByteRange` precedent.
+// Relocated modeling notes: docs/v4-dag-rationale.md.
 
 
 // ─────────────────────────────────────────────────────────────────────

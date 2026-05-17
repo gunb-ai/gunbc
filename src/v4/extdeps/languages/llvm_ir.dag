@@ -1,23 +1,7 @@
 // src/v4/extdeps/languages/llvm_ir.dag
 //
-// Scope: LLVM IR model — direction-agnostic. Typed SSA intermediate
-//        representation: modules, functions, basic blocks, SSA values,
-//        instructions, types. A LOWER-level language than rust/py/ts.
-// Anchor: LLVM Language Reference Manual — pin a concrete release
-//         (e.g. LLVM 18 LangRef) as the versioned fidelity authority
-//         (L-2: model the spec, not a library; the spec IS the anchor).
-// Stress (T-4.12 — a B2-OMNI falsification probe): does the Node
-//   substrate + B2-OMNI generalize DOWN the abstraction stack, not just
-//   across surface languages? SSA form (every value defined once;
-//   phi nodes; dominance) is a structural shape unlike source ASTs. If
-//   LLVM IR cannot be a plain `LanguageModel` without core/pipeline
-//   changes, B2-OMNI is leaking — surfaced now, before load-bearing.
-// Clear win: `.dag → LLVM IR` (then LLVM lowers to machine code), AND
-//   `LLVM IR → Node` ingest — the down-stack half of O(N+M).
-// C5-fidelity note: F here is essentially all-structural — LLVM IR has
-//   negligible cosmetic surface, so `emit∘ingest` is ~identity (no
-//   trivia to normalize). Contrast source models where F may include
-//   comments/formatting by intent.
+// Scope: LLVM IR (LangRef-pinned, e.g. LLVM 18) — modules, functions, blocks, SSA, instructions, types.
+// Anchor: LLVM Language Reference Manual (L-2: spec, not a library build).
 //
 // Owns:
 //   - LLVM IR grammar as declarative bidirectional data (B2-OMNI):
@@ -30,141 +14,17 @@
 // Consumes:
 //   - std/node.dag, std/algebra.dag, std/primitive.dag
 //
-// Status: T-4.12 modeled 2026-05-16 (snappy-badger-570). B2-OMNI probe
-//   RESULT: PASS — LLVM IR is a plain declarative LanguageModel over the
-//   closed Node substrate with NO 6th behavior and NO core/pipeline
-//   change (see modeling notes "B2-OMNI probe finding"). The header I/O
-//   contract is immutable for downstream workers; the `std/primitive.dag`
-//   line in Consumes is a pre-T-1-closeout staleness (primitive.dag was
-//   decomposed; `Symbol`/`Hash` re-homed to std/node.dag per PR #3152 —
-//   this file imports from node.dag accordingly; surfaced, not edited,
-//   since the contract lines are immutable and the re-home is already
-//   operator-ratified). Splitting this file requires explicit operator
-//   ratification (substrate extension = stop signal).
-
-
+// Status: T-4.12 PASS (B2-OMNI probe). Header `Consumes` verbatim; staleness + narrative: docs/v4-dag-rationale.md.
+//
+//
 module v4.extdeps.languages.llvm_ir
 
 
-// std/node.dag is imported: it makes the K-1 opaque `Symbol` (the
-// name-reference identity used pervasively in the grammar — block
-// labels, SSA/parameter/global names) resolvable through this file's
-// import closure. std/algebra.dag is NOT imported: this file's declared
-// `Consumes` of it is its INHABITANCE, which is DEFERRED until the std/
-// scalar owner ratifies inhabitance instance rows (see the Inhabitance
-// section). The algebra import + the ratified instance-value form are
-// added only at that owner; importing algebra now while unused would
-// be dead code, and improvising the instances now would be the exact
-// per-file `<Algebra><Concrete>` form P2 single-authority forbids.
+// Imports: `Symbol` via std/node.dag only — algebra deferral: docs/v4-dag-rationale.md.
 import v4.std.node { Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// SPEC, NOT LIBRARY (M3 / L-2). Anchor = the LLVM Language Reference
-// Manual, pinned at LLVM 18. The model is the LangRef grammar + type
-// system + value/instruction taxonomy. LLVM intrinsics, target
-// libraries, and pass-specific metadata are NOT modeled — an intrinsic
-// call is just a `Call` whose callee is a named function (a program in
-// the modeled language = a `Node`), exactly as M3 / the T-4 authoring
-// contract requires. Modeling the intrinsic/library universe is infinite
-// and the wrong layer.
-//
-// DECLARATIVE MODEL, NOT A RECOGNIZER (T-4 authoring contract). This
-// file is the grammar/type/semantics as DATA. It declares no
-// `ingest`/`emit` procedure: those are the GENERIC walker (compiler
-// 01_tokenize/02_parse/05_emit, B2-OMNI) reading this model. Concretely
-// this is why the file consumes neither a `Result<T, Diagnostic>` carrier
-// nor std/diagnostic.dag: there is an open operator-tier STOP on the
-// absence of a shared value-or-Diagnostic carrier in src/v4 (first
-// surfaced by T-4.6); a declarative LanguageModel does not need it and
-// must not improvise one. Fail-closed behavior off the lossless core is
-// the walker's obligation; this file's contribution is to DECLARE the
-// lossless core F structurally (see `FidelityDisposition`), which is
-// pure node.dag Disj data — no Diagnostic, no Result.
-//
-// B2-OMNI PROBE FINDING (the deliverable — the STOP discipline is the
-// product). LLVM IR models as a plain `LanguageModel` with NO 6th
-// behavior and NO core/pipeline change. The structurally-unusual SSA
-// shapes resolve to ORDINARY Node structure — and modeling them HONESTLY
-// drove the right structural form:
-//   - "every value defined once" (SSA) — the value graph (operands
-//     reference their producers) realized the A1-FAITHFUL, FINITE way:
-//     a value-producing instruction / φ carries `result: Symbol` (its
-//     def-site name); an operand is a NAME-REFERENCE
-//     (`LlvmValue.LocalRef`) resolved through function scope to that
-//     def-site (or a parameter / a global / an inline constant). This
-//     IS the scaffold's "value graph is Node edges" — node.dag A1's
-//     cross-declaration idiom (references are name `Atom`s resolved
-//     through the namespace; precedent: diagnostic.dag `reason:
-//     Symbol`). Single-assignment is the structural fact that exactly
-//     one def-site declares each name (INVARIANTS P2). CRUCIAL: the
-//     def-use graph is CYCLIC for every loop (a loop-carried φ names an
-//     instruction whose operand names the φ) — a name-reference keeps
-//     the bounded Node tree FINITE while expressing that cycle, which is
-//     PRECISELY why A1 mandates name-reference recursion. An EARLIER cut
-//     INLINED the producer node into each use (`InstructionValue {
-//     instruction }` / `PhiValue { phi }`); that could not finitely
-//     represent cyclic loop-carried SSA — it excluded ALL loops, a
-//     P1/M3 spec-narrowing and the exact A1 violation A1 exists to
-//     prevent. The name-reference form is the correct finite
-//     REALIZATION of the value-graph intent (operands → producers), not
-//     an abandonment of it. `result: Symbol` is a
-//     declaration FIELD = a name-reference (K-1-opaque, resolved
-//     structurally), NOT a runtime Symbol mint — the K-1 no-mint rule
-//     was specific to the removed inhabitance LAMBDAS, not declaration-
-//     class fields. The textual `%x`/`%1` spelling is `DeclaredNormalized`
-//     (α-equivalent — `Symbol` is opaque, the content-hash fold is
-//     rename-invariant).
-//   - phi — phi is an ORDINARY Node, hoisted to the block's structural
-//     `phis` region (`PhiNode`), so "a phi after a non-phi instruction"
-//     is UNREPRESENTABLE (P2), not a checker rule. It is NOT a variant
-//     of the general instruction sum (its block-start position is
-//     structural). At the computation layer phi is `Branch`-shaped (it
-//     selects an incoming value by which CFG edge was taken) — it reuses
-//     the EXISTING closed `Behavior::Branch`, it does not add one. Per
-//     IN-B: control/data flow is Node edges; phi is a Node.
-//   - dominance — NOT a field or flag (feedback_no_annotations). The CFG
-//     is carried structurally (each block's terminator names its
-//     successor labels — `block_successors`). "Definition dominates all
-//     uses" is a LENS read over that Node graph (the same shape as the
-//     complexity/effect lenses), derived, never stored; a `dominates`
-//     edge would be a second authority for what the CFG already
-//     determines (INVARIANTS P2).
-//
-// A2 TOTALITY IS A `.dag`-PROGRAM PROPERTY, NOT A MODELED-LANGUAGE ONE.
-// An LLVM CFG can contain irreducible / non-terminating loops (a back-
-// edge `br` to a dominating block). That is faithful to LangRef and is
-// MODELED here as ordinary CFG data — std/node.dag A2 (Loop is bounded,
-// total-by-construction) constrains `.dag` programs the compiler
-// ACCEPTS, never the external languages it models/emits (M3: extdeps
-// model real specs). `emit (.dag → LLVM IR)` only ever emits the bounded
-// forms a `.dag` program can express; ingesting arbitrary LLVM whose
-// termination is not structurally evident is the walker's fail-closed
-// boundary (declared in F below), not a totality this file may claim.
-//
-// INHABITANCE IS OWNED ELSEWHERE (P2) — see the "Inhabitance — OWNED
-// ELSEWHERE" section near the end. This file declares only the LLVM
-// type/value/instruction VOCABULARY; WHICH algebra a scalar grounds in
-// is owned by the std/ scalar wave (std/integer.dag/float.dag/logic.dag,
-// T-3) + the operator-pending inhabitance-instance form, by P2 single-
-// authority. This file does NOT declare, assert, or restate that
-// grounding (an extdeps language file restating it is a second-authority
-// P2 violation).
-// Faithful observations for that std/ scalar owner (NOT this file's
-// authority): LLVM `iN` arithmetic wraps mod 2^N ⇒ a finite ring
-// that is NOT order-compatible (the algebra.dag Float≠Field analog);
-// `fcmp` is NaN-unordered; pointers have no total numeric algebra.
-//
-// Every coproduct below carries the full Practice-4 🟢/🟡/🔴
-// classification + the 5-pattern dissolution ledger (modeling-
-// discipline.md §4 — operator-ratified binding 2026-05-15; FIVE patterns
-// attempted, the fifth being Parameterized-family / Practice-7).
-// Records (Conj) carry no ledger. The closed opcode/predicate enums are
-// the LangRef-defined sets: an addition is an upstream LangRef revision
-// (the M3 spec-anchor analog of std/node.dag's C1 stop-signal — a
-// visible, ratified edit, never a silent `Other`/`...`).
+// Relocated modeling notes: docs/v4-dag-rationale.md.
 
 
 // ─────────────────────────────────────────────────────────────────────
