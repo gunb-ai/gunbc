@@ -64,10 +64,10 @@
 //       // same scheduling fact as **`std/node.dag` `Behavior::Value`** (the
 //       // unit variant of closed `Behavior`) **without** a `behavior: Behavior`
 //       // field that would admit `Transform` / `Branch` / `Loop` / `Bind`
-//       (P2 / illegal states unrepresentable). Manual anchor
-//       // `t19.type_construction.behavior_value` maps HERE. Scheduling other
-//       // `Behavior` variants inside `type_construction` = operator STOP +
-//       // distinct ratified subject arms — not widening this carrier.
+//       (P2 / illegal states unrepresentable). A `t19_manual_anchor_manifest` slug
+//       for this arm appears only when a live manual `TestClaim` exists (TASKS §T-19).
+//       Scheduling other `Behavior` variants inside `type_construction` = operator STOP +
+//       distinct ratified subject arms — not widening this carrier.
 //
 // Coproduct dissolution (Practice 4) — **internal** sum under the single
 // `type_construction` arm of `TestgenConcept`; classification: 🟢 GREEN.
