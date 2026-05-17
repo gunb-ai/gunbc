@@ -423,7 +423,8 @@ language/format targets fan out against the same template.
 ### Status
 
 **RATIFIED 2026-05-17** (operator, out-of-band — the operator declared D2
-wrong, ratified the fact-bundle principle, and dispatched the Phase-1
+wrong [the verbatim operator quote is in *What reversed* above, this same
+section], ratified the fact-bundle principle, and dispatched the Phase-1
 execution). Phase 1 is executing now as **PR #3224** (TASKS.md +
 DECISIONS.md re-sequencing). This PR (#3223) encodes the ratified
 decision into the ledger; #3224 is stacked on it. TASKS.md consuming the
