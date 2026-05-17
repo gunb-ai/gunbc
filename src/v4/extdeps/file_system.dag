@@ -2,7 +2,7 @@
 // Scope: file system substrate — paths, file kinds, read/write/list/kind operations.
 // Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, Path, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, file-system request/result/operation carriers.
 // Consumes: Diagnostic, Outcome, Byte, FreeMonoid, List.
-// Status: T-4.5 modeled 2026-05-16; de-prosed 2026-05-17.
+// Status: T-4.5 modeled 2026-05-16.
 
 module v4.extdeps.file_system
 
@@ -58,9 +58,7 @@ type FileKindResolutionPolicy
   | DoNotFollowSymlinks
 
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
 type Filesystem
 
 // coincides: finite POSIX byte sequence.

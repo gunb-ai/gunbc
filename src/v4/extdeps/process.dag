@@ -2,7 +2,7 @@
 // Scope: process substrate — command invocation, lifecycle, wait/capture.
 // Owns: ProcessId, ExitCode, SignalNum, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
 // Consumes: AbsolutePath, Filesystem, PosixByteString, Diagnostic, Outcome, Byte, FreeMonoid, Int, List, Map.
-// Status: T-4.5 modeled 2026-05-16; de-prosed 2026-05-17.
+// Status: T-4.5 modeled 2026-05-16.
 
 module v4.extdeps.process
 
@@ -13,8 +13,7 @@ import v4.std.diagnostic { Outcome }
 import v4.std.machine { Byte }
 
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html + https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
 // scaffold: POSIX numeric refinements; trigger T-25-core/T-30.
 type ProcessId = Int
 type ExitCode = Int
@@ -44,8 +43,7 @@ type Command {
 }
 
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html + https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
@@ -83,9 +81,7 @@ type CaptureSource
   | Waited { waited: WaitedProcess }
 
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 type ProcessTable
 
 // coincides: finite POSIX pipe byte sequence.
