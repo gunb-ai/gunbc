@@ -9,8 +9,9 @@
 //     **`OpenApiPaths`**)
 //   - Paths Object (`OpenApiPaths`: route map + **`paths_extensions`**)
 //   - Path { operations: Map<HttpMethod, Operation> }
-//   - Operation { …, Responses Object (`OpenApiResponses`: status map +
-//     **`responses_object_extensions`**) }; nested **Response Object**
+//   - Operation { …, Responses Object (`OpenApiResponses`: **`by_status` map
+//     values `OpenApiResponseOrReference`** + **`responses_object_extensions`**) };
+//     nested **Response Object**
 //     (`OpenApiResponse`: **`content` / `headers` / `links`** slots vs **`extensions`**)
 //   - parse(String) -> Result<OpenApiSpec, Diagnostic>  (YAML or JSON input)
 //   - emit(OpenApiSpec) -> String  (typically YAML)
@@ -334,13 +335,37 @@ type OpenApiResponse {
 
 
 // ─────────────────────────────────────────────────────────────────────
+// OpenApiResponseOrReference — OAS 3.1.0 **Responses Object** map **values**
+// (each status code / `default` / wildcard-bucket entry): either an inline
+// **Response Object** or a **Reference Object** (`$ref` to a reusable response).
+// Typed **`OpenApiReference`** + resolver graph are 🟡 Deferred (1); the
+// **`Reference`** arm carries **bounded Reference Object wire JSON** as
+// **`JsonValue`** (same bounded-json class as `OpenApiHeadersSlot` map entries —
+// not folded into **`responses_object_extensions`**, which is `^x-` only on
+// the Responses Object).
+//
+// Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
+// Anchor: https://spec.openapis.org/oas/v3.1.0#reference-object
+//
+// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: inline
+// Response vs Reference are mutually exclusive wire shapes; `Map<String,
+// OpenApiResponse>` alone would either reject valid `$ref` entries or smuggle
+// them through a non-Response-shaped carrier (P2 / Practice-7).
+type OpenApiResponseOrReference
+  = OpenApiResponseInline { response: OpenApiResponse }
+  | OpenApiResponseReference { reference_wire: JsonValue }
+
+
+// ─────────────────────────────────────────────────────────────────────
 // OpenApiResponses — OAS 3.1.0 **Responses Object** under an Operation: status
 // keys (three-digit codes, `default`, and OAS wildcard buckets **`1XX`…`5XX`**
 // — uppercase **`XX`** per the Responses Object key grammar, not HTTP “class”
 // shorthand) plus **object-level** Specification
 // Extensions (`^x-`) as siblings of those keys — distinct from each
 // `OpenApiResponse.extensions` on the nested Response Object vs
-// **`responses_object_extensions`** on the Responses Object.
+// **`responses_object_extensions`** on the Responses Object. Map **values** are
+// **`OpenApiResponseOrReference`** — Response Object **or** Reference Object per
+// the OAS Responses Object value grammar.
 //
 // Anchor: https://spec.openapis.org/oas/v3.1.0#responses-object
 //
@@ -351,7 +376,7 @@ type OpenApiResponse {
 // validation (Deferred (1); INVARIANTS §2 honesty — no false structural
 // guarantee of key shape at the carrier layer).
 type OpenApiResponses {
-  by_status: Map<String, OpenApiResponse>,
+  by_status: Map<String, OpenApiResponseOrReference>,
   responses_object_extensions: Map<String, JsonValue>,
 }
 
@@ -514,7 +539,9 @@ type OpenApiDocument {
 //   authority. **`OpenApiHeadersSlot` / `OpenApiLinksSlot`** carry **`JsonValue`**
 //   per map entry until Header Object / Link Object carriers land (same trigger);
 //   **`OpenApiResponseContentSlot`** defers Media Type Object value validation to
-//   the same parse lane.
+//   the same parse lane. **`OpenApiResponseOrReference`**: **`OpenApiResponseReference`**
+//   wire payloads validate as Reference Objects and resolve under the **same**
+//   `$ref` graph trigger — not a parallel authority.
 //
 // (2) `openapi_version_lexeme` refinement — patch-level policy + numeric
 //   comparison against supported spec revisions; trigger = operator version
