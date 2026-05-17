@@ -1,6 +1,6 @@
 // src/v4/extdeps/frameworks/react.dag
-// Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional refs, dependency-array and cleanup sites.
-// Owns: ReactCrossDeclRef, ReactOptRef, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
+// Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional ref handles, optional keys, optional hook value operands, dependency-array and cleanup sites.
+// Owns: ReactCrossDeclRef, ReactOptRef, ReactOptKey, ReactOptValue, ReactEffectCleanupSite, ReactHookInlineDependenciesArgument, ReactModuleSurface, ReactHookSite, ReactUseCallSite, ReactPropsSite, ReactFunctionComponent, ReactHostElement, ReactCompositeElement, ReactElement, ReactNode, ReactContextBinding
 // Consumes: v4.std.collection.List
 // Status: T-4.7
 
@@ -15,6 +15,18 @@ type ReactCrossDeclRef
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
+
+// Anchor: https://react.dev/reference/react/createElement
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-opt-key
+type ReactOptKey
+  = KeyPresent { key_ref: ReactCrossDeclRef }
+  | KeyAbsent
+
+// Anchor: https://react.dev/reference/react/hooks
+// 🟢 coproduct dissolution — DECISIONS.md#react-p4-opt-value
+type ReactOptValue
+  = ValuePresent { value_ref: ReactCrossDeclRef }
+  | ValueAbsent
 
 // Anchor: https://react.dev/reference/react/useEffect
 // 🟢 coproduct dissolution — DECISIONS.md#react-p4-effect-cleanup-site
@@ -41,7 +53,7 @@ type ReactHookSite
   | UseReducer {
       reducer_ref: ReactCrossDeclRef
       initial_arg_ref: ReactCrossDeclRef
-      init: ReactOptRef
+      init: ReactOptValue
     }
   | UseContext { context_ref: ReactCrossDeclRef }
   | UseRef { initial_ref: ReactCrossDeclRef }
@@ -77,21 +89,21 @@ type ReactHookSite
   | UseTransition
   | UseDeferredValue {
       value_ref: ReactCrossDeclRef
-      initial_value: ReactOptRef
+      initial_value: ReactOptValue
     }
   | UseId
   | UseSyncExternalStore {
       subscribe_ref: ReactCrossDeclRef
       get_snapshot_ref: ReactCrossDeclRef
-      get_server_snapshot: ReactOptRef
+      get_server_snapshot: ReactOptValue
     }
-  | UseDebugValue { value_ref: ReactCrossDeclRef, format: ReactOptRef }
+  | UseDebugValue { value_ref: ReactCrossDeclRef, format: ReactOptValue }
   | UseActionState {
       action_ref: ReactCrossDeclRef
       initial_state_ref: ReactCrossDeclRef
-      permalink: ReactOptRef
+      permalink: ReactOptValue
     }
-  | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptRef }
+  | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptValue }
   | CustomHook { implementation_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/use
@@ -114,7 +126,7 @@ type ReactFunctionComponent {
 // Anchor: https://react.dev/reference/react-dom/components
 type ReactHostElement {
   tag_ref: ReactCrossDeclRef
-  key: ReactOptRef
+  key: ReactOptKey
   ref: ReactOptRef
   props: ReactPropsSite
   child_refs: List<ReactCrossDeclRef>
@@ -123,7 +135,7 @@ type ReactHostElement {
 // Anchor: https://react.dev/reference/react/createElement
 type ReactCompositeElement {
   component_ref: ReactCrossDeclRef
-  key: ReactOptRef
+  key: ReactOptKey
   ref: ReactOptRef
   props: ReactPropsSite
   child_refs: List<ReactCrossDeclRef>
@@ -134,7 +146,7 @@ type ReactCompositeElement {
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
-  | Fragment { key: ReactOptRef, child_refs: List<ReactCrossDeclRef> }
+  | Fragment { key: ReactOptKey, child_refs: List<ReactCrossDeclRef> }
 
 // Anchor: https://react.dev/reference/react/createElement
 // 🟡 coproduct dissolution — DECISIONS.md#react-p4-node

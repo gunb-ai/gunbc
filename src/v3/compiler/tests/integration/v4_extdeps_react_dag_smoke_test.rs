@@ -247,23 +247,32 @@ fn assert_react_host_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {
             host_el.connective
         );
     };
+    let opt_key = dag
+        .declaration_by_name("ReactOptKey")
+        .expect("ReactOptKey should exist in this module");
     let opt_ref = dag
         .declaration_by_name("ReactOptRef")
         .expect("ReactOptRef should exist in this module");
-    for label in ["key", "ref"] {
-        let field = children
-            .iter()
-            .find(|f| f.label == label)
-            .unwrap_or_else(|| {
-                panic!("ReactHostElement should declare `{label}` (createElement lift)")
-            });
-        let ty = dag.declaration(field.ty);
-        assert_eq!(
-            ty.id, opt_ref.id,
-            "ReactHostElement.{label} must be `ReactOptRef`, got {:?}",
-            ty.name
-        );
-    }
+    let key_field = children
+        .iter()
+        .find(|f| f.label == "key")
+        .expect("ReactHostElement should declare `key` (createElement lift)");
+    assert_eq!(
+        dag.declaration(key_field.ty).id,
+        opt_key.id,
+        "ReactHostElement.key must be `ReactOptKey`, got {:?}",
+        dag.declaration(key_field.ty).name
+    );
+    let ref_field = children
+        .iter()
+        .find(|f| f.label == "ref")
+        .expect("ReactHostElement should declare `ref` (createElement lift)");
+    assert_eq!(
+        dag.declaration(ref_field.ty).id,
+        opt_ref.id,
+        "ReactHostElement.ref must be `ReactOptRef`, got {:?}",
+        dag.declaration(ref_field.ty).name
+    );
 }
 
 fn assert_react_composite_element_has_key_and_ref_fields(dag: &v3_compiler::Dag) {

@@ -522,6 +522,38 @@ Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) 
 
 **Terminal:** irreducible optional ref handle arity pinned to react.dev call signatures.
 
+### react-p4-opt-key
+
+**Carrier:** `ReactOptKey` in `src/v4/extdeps/frameworks/react.dag`.
+
+**Nominal split (P1 / Practice 2 / Practice 8):** `key` on `createElement` / host / composite / fragment objects is **not** a ref-callback / ref-handle fact — it must not share the **`ReactOptRef`** name used for `ref:` and hook ref operands. Structural shape mirrors `ReactOptRef` (present vs absent declaration edge) but **payload field is `key_ref`** and the sum tags are **`KeyPresent` / `KeyAbsent`**.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: optional-key discriminant is shared across element kinds.
+2. Variant-is-data — FAILS: `KeyPresent` vs `KeyAbsent` differ structurally.
+3. Algebraic form — N/A: not a std/algebra re-export at this boundary.
+4. Dimensional — FAILS: exclusive key-present vs key-absent at the lifted `element.key` slot.
+5. Parameterized family — FAILS: not one generic `F<KeySite>` over an external set.
+
+**Terminal:** irreducible optional **key** slot on the pinned createElement-returned element partition (react.dev).
+
+### react-p4-opt-value
+
+**Carrier:** `ReactOptValue` in `src/v4/extdeps/frameworks/react.dag`.
+
+**Nominal split (P1 / Practice 2 / Practice 8):** optional **value / operand** slots on hooks (`useDeferredValue` `initialValue`, `useActionState` `permalink`, lazy `init`, optional `getServerSnapshot`, `useDebugValue` `format`, `useOptimistic` `reducer`, …) are **not** “optional ref handle” facts — they must not reuse **`ReactOptRef`**. Same present/absent declaration-edge shape with **`ValuePresent` / `ValueAbsent`** and field **`value_ref`**.
+
+Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-discipline.md §4) — **🟢 GREEN (terminal).** Abbreviated five-pattern ledger:
+
+1. Fact placement — FAILS: shared optional-operand classifier across several hook arms.
+2. Variant-is-data — FAILS: present vs absent operand shapes differ.
+3. Algebraic form — N/A: operands are not std/algebra carriers here.
+4. Dimensional — FAILS: exclusive omit-vs-present per pinned call signature.
+5. Parameterized family — FAILS: not one `F<OperandSite>` mechanical copy.
+
+**Terminal:** irreducible optional **non-ref** hook operands at the react.dev call-shape boundary.
+
 ### react-p4-effect-cleanup-site
 
 **Carrier:** `ReactEffectCleanupSite`.
