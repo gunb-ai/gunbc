@@ -241,9 +241,30 @@ type RegisterClass
 
 
 type RegisterRef {
-  class: RegisterClass
-  name: Symbol
+  isa: Isa
+  register: Symbol
 }
+
+
+// IndexScale — legal scale factors for scaled indexed addressing in the
+// first ISA probe set. The production table decides where a scaled index is
+// legal; this carrier prevents arbitrary byte values from masquerading as
+// scale factors.
+// Anchor: Intel SDM 2025 addressing modes; Arm ARM 2025-03 load/store
+// addressing modes.
+//
+// Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
+//   1. Fact placement — FAILS: decode, emit, and address calculation all
+//      share scale-factor legality.
+//   2. Variant-is-data — FAILS: `MachineU8` admits impossible factors.
+//   3. Algebraic form — N/A: addressing-mode syntax, not algebra.
+//   4. Dimensional — FAILS: a scaled index has exactly one factor.
+//   5. Parameterized family — FAILS: closed nullary factors, not F<X>.
+type IndexScale
+  = Scale1
+  | Scale2
+  | Scale4
+  | Scale8
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -265,7 +286,7 @@ type AddressingMode
   = AbsoluteAddress { displacement: MachineI64 }
   | RegisterIndirect { base: RegisterRef }
   | BaseDisplacement { base: RegisterRef, displacement: MachineI32 }
-  | BaseIndexScale { base: RegisterRef, index: RegisterRef, scale: MachineU8, displacement: MachineI32 }
+  | BaseIndexScale { base: RegisterRef, index: RegisterRef, scale: IndexScale, displacement: MachineI32 }
   | PcRelative { displacement: MachineI32 }
 
 
