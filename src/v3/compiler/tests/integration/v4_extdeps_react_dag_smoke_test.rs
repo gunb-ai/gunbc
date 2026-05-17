@@ -77,13 +77,15 @@ fn assert_effect_hook_arms_require_setup_ref(dag: &v3_compiler::Dag) {
                 payload.connective
             );
         };
-        let setup = children.iter().find(|f| f.label == "setup_ref").unwrap_or_else(|| {
-            panic!("{arm} payload should declare `setup_ref` (required setup function)")
-        });
+        let setup = children
+            .iter()
+            .find(|f| f.label == "setup_ref")
+            .unwrap_or_else(|| {
+                panic!("{arm} payload should declare `setup_ref` (required setup function)")
+            });
         let setup_ty = dag.declaration(setup.ty);
         assert_eq!(
-            setup_ty.id,
-            cross_decl.id,
+            setup_ty.id, cross_decl.id,
             "{arm}.setup_ref must be `ReactCrossDeclRef`, got {:?}",
             setup_ty.name
         );
