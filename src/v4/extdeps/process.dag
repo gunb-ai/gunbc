@@ -27,10 +27,10 @@
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
-//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
+//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process, output: CapturedOutputPipes}, Diagnostic>
 //   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
+//   - capture(pt, p, output) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -73,6 +73,10 @@
 // capture returns raw byte streams (`FreeMonoid<Byte>`), not decoded
 // `String`. Text decoding is a separate fallible projection once v4 owns
 // encoding/error carriers.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// spawn returns an opaque CapturedOutputPipes source and capture consumes
+// it, so stdout/stderr bytes flow from a declared pipe authority rather
+// than appearing from Process alone.
 
 
 module v4.extdeps.process
@@ -139,6 +143,13 @@ import v4.std.machine { Byte }
 // carrier that this file does not own. `capture` therefore returns raw
 // `FreeMonoid<Byte>` streams. Text projection belongs in a later
 // encoding-aware seam.
+//
+// CAPTURE OUTPUT SOURCE IS STRUCTURAL. `CapturedOutputPipes` is an
+// opaque handle to the stdout/stderr pipe arrangement established for a
+// spawned process. It is deliberately not a file-descriptor model: fd
+// numbering, open/close/dup, and general pipe operations are outside this
+// frozen subset. Capture consumes the handle so returned bytes have a
+// declared source.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -266,6 +277,8 @@ type ProcessTable
 // bundle here, not an effect resolver.
 type CapturedByteStream = FreeMonoid<Byte>
 
+type CapturedOutputPipes
+
 type SpawnProcessRequest {
   table: ProcessTable
   command: Command
@@ -274,6 +287,7 @@ type SpawnProcessRequest {
 type SpawnedProcess {
   table: ProcessTable
   process: Process
+  output: CapturedOutputPipes
 }
 
 type SpawnProcessResult = Outcome<SpawnedProcess>
@@ -300,6 +314,7 @@ type CapturedProcessOutput {
 type CaptureProcessRequest {
   table: ProcessTable
   process: Process
+  output: CapturedOutputPipes
 }
 
 type CaptureProcessResult = Outcome<CapturedProcessOutput>
