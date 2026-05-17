@@ -90,6 +90,11 @@
 // BLOCKING): wait preserves the captured-output pipe authority in
 // WaitedTerminatedProcess. Waiting reaps lifecycle/table state; it does
 // not by itself drain or close stdout/stderr pipes.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// capture consumes a CaptureSource sum, so it can drain pipe authority
+// before wait from RunningProcess or after wait from
+// WaitedTerminatedProcess. The preserved post-wait pipe authority has a
+// declared consumer and does not require an ad hoc side path.
 
 
 module v4.extdeps.process
@@ -170,6 +175,8 @@ import v4.std.machine { Byte }
 // captured-output pipe source for that child. `WaitedTerminatedProcess`
 // carries the same pipe source after wait; `TerminatedProcess` is the
 // terminal postcondition carrier after capture has consumed the source.
+// `CaptureSource` is the capture input authority: either pre-wait live
+// process pipes, or post-wait terminal process pipes.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -297,6 +304,10 @@ type WaitedTerminatedProcess {
   parent: ProcessId
 }
 
+type CaptureSource
+  = Live { process: RunningProcess }
+  | Waited { process: WaitedTerminatedProcess }
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Operation contract carriers.
@@ -356,7 +367,7 @@ type CapturedProcessOutput {
 
 type CaptureProcessRequest {
   table: ProcessTable
-  process: RunningProcess
+  source: CaptureSource
 }
 
 type CaptureProcessResult = Outcome<CapturedProcessOutput>
