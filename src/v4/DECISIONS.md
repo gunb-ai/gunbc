@@ -338,8 +338,10 @@ the in-file `// <emoji> coproduct dissolution — DECISIONS.md <ID>` tag
 | **T-4.6-P4-OpenApiComponentsSchemasSlot** | `OpenApiComponentsSchemasSlot` | 🟡 | `components.schemas` map present vs absent; schema registry churn (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiComponentsSlot** | `OpenApiComponentsSlot` | 🟡 | `components` subtree present vs absent at document root coordinate (**T-4.6-OAS**). |
 | **T-4.6-P4-OpenApiWebhooksSlot** | `OpenApiWebhooksSlot` | 🟡 | `webhooks` map present vs absent at document root coordinate (**T-4.6-OAS**). |
+| **T-4.6-P4-OpenApiOpenapiField3_1** | `OpenApiOpenapiField3_1` | 🟢 | OAS `openapi` field version token for this slice: singleton `OpenApi310` (= `3.1.0` wire). YELLOW if OAS normative vocabulary for this anchor gains a token this model must enumerate — extend the sum + amend this row (same change-set). |
 
 `JsonSchemaAdditionalKeywordKey` uses row **T-4.6-JSK** (same coproduct).
+`OpenApiOpenapiField3_1` is ledgered at **T-4.6-P4-OpenApiOpenapiField3_1** (N=1 sum / version pin; in-file 🟢/🟡/🔴 coproduct tag applies only where Practice 4 requires N ≥ 2).
 
 ---
 
