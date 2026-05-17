@@ -26,15 +26,17 @@ its end state is that **even the seed is a projection**, not hand-code.
 
 Each layer is a fact model (declared `.dag` data), not code:
 
+(All paths repo-root-relative.)
+
 | Layer | Fact model | Status |
 |-------|-----------|--------|
-| v4 source language | the `LanguageModel` / grammar-as-data (`extdeps/languages/dag.dag`) | modeled |
-| The v4 compiler | the `compiler/*.dag` pipeline (tokenize…emit) | modeled |
+| v4 source language | the `LanguageModel` / grammar-as-data (`src/v4/extdeps/languages/dag.dag`) | modeled |
+| The v4 compiler | the `src/v4/compiler/*.dag` pipeline (tokenize…emit) | modeled |
 | The seed's comprehension boundary | the **frozen sub-model** — a subset of the `LanguageModel` (§4) | T-32 |
 | The snapshot | the v4 compiler pinned at version N, expressed in the frozen subset | T-32 |
-| The target language | `extdeps/languages/rust.dag`; lower, `extdeps/languages/machine_code.dag` | modeled |
-| The runtime | the execution substrate — syscall surface, memory model, ABI; `extdeps/process.dag` + `extdeps/file_system.dag` are its start | partial |
-| The bootstrap orchestration | `compiler/workflow/bootstrap.dag` — the staged chain as data | modeled (T-20) |
+| The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | modeled |
+| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/process.dag` + `src/v4/extdeps/file_system.dag` are its start | partial |
+| The bootstrap orchestration | `src/v4/workflow/bootstrap.dag` — the staged chain | T-20 scaffold on `main`; staged-chain expansion in flight (#3213) |
 
 The layer models needed already exist individually (`rust.dag`,
 `machine_code.dag`, `process.dag`, `file_system.dag`). What T-32 adds is
@@ -103,7 +105,7 @@ is a **fixed point**, and modeling it means declaring that fixed point
 explicitly.
 
 Let `S_C` be the v4 compiler's own source (a v4 program — the
-`compiler/*.dag` pipeline). Let `compile_X` be compilation performed by
+`src/v4/compiler/*.dag` pipeline). Let `compile_X` be compilation performed by
 compiler `X`. The self-hosting compiler is the fixed point:
 
 ```
@@ -123,10 +125,13 @@ seed  →  C0 = compile_seed(S_C)
          …  →  Cn = compile_{Cn}(S_C) = Cn      (fixed point reached)
 ```
 
-`bootstrap.dag` already carries this as data: the staged
-`SeedToStage0 → Stage0ToStage1 → Stage1ToStage2` chain plus
-`FixptStage1Stage2` and the `bit_identical_check`. The check
-`Cn(S_C) == Cn` is the **witness** that the fixed point is reached.
+`src/v4/workflow/bootstrap.dag` is where this is carried. On `main` it
+is a T-20 scaffold — its header names the staged `seed → stage0 →
+stage1 → stage2` chain in prose; the T-20 expansion (in flight on
+#3213) makes the staged-stage records, `FixptStage1Stage2`, and the
+`bit_identical_check` actual workflow data. This Phase-1 model specifies
+that shape; it is not yet all carried as `.dag` data on `main`. The
+check `Cn(S_C) == Cn` is the **witness** that the fixed point is reached.
 
 **Path-independence — the key fact.** The fixed point `C*` is a
 mathematical object. *How you first stepped onto the ladder does not
@@ -138,7 +143,7 @@ need not be `C*`, only close enough to converge to it.
 The modeled circularity therefore has four declared parts:
 
 1. **the fixed-point equation** `C* = compile_{C*}(S_C)` — the self-hosting fact;
-2. **the convergence ladder** `seed → C0 → … → Cn` — the staged chain (`bootstrap.dag`);
+2. **the convergence ladder** `seed → C0 → … → Cn` — the staged chain (`src/v4/workflow/bootstrap.dag`);
 3. **the seed as entry point** — `emit(snapshot, …)`, §3;
 4. **the bit-identical witness** — `Cn(S_C) == Cn`, the proof the fixed point is reached.
 
@@ -184,8 +189,9 @@ all* — you edit facts, and the seed re-emits.
 
 The `.dag` modeling extends from here: the frozen sub-model + the
 `footprint` lens + the `⊆`-`Witness` (§4) are new substrate; the
-circularity's fixed-point equation + witness (§5) extend `bootstrap.dag`
-beyond the staged chain it already carries; the runtime model (§2) is
-the accumulation of `process.dag`/`file_system.dag` into a complete
-execution substrate. None of it dispatches before the operator ratifies
-this layer model as the Phase-1 definition.
+circularity's fixed-point equation + witness (§5) extend
+`src/v4/workflow/bootstrap.dag` beyond the staged chain (building on the
+T-20 expansion); the runtime model (§2) is the accumulation of
+`src/v4/extdeps/process.dag` / `src/v4/extdeps/file_system.dag` into a
+complete execution substrate. None of it dispatches before the operator
+ratifies this layer model as the Phase-1 definition.
