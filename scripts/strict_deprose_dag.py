@@ -3,18 +3,140 @@
 
 Warning: every `//` line after `module` is deleted—non-idempotent if a target file gains
 authored in-body commentary; scoped to the pinned allowlist for that reason.
+
+Coproduct one-liners (`// 🟢|🟡|🔴 coproduct dissolution — DECISIONS.md Part 6 · …`) are
+preserved and (re)injected from merge-base `92cb26402` Practice-4 / SL-3229 state
+(operator directive 2026-05-17, PR #3234 modeling-discipline alignment).
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+MERGE_BASE = "92cb26402eeb21471acb6ac47559cbae3b52afdb"
+
 TYPE_RE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+COPRODUCT_TAG_RE = re.compile(
+    r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
+)
+
+
+def git_merge_base_lines(rel: str) -> list[str]:
+    out = subprocess.check_output(
+        ["git", "show", f"{MERGE_BASE}:{rel}"],
+        cwd=ROOT,
+        text=True,
+    )
+    return out.splitlines()
+
+
+def is_coproduct(lines: list[str], i: int) -> str | None:
+    """Return carrier name if `lines[i]` starts a sum type (N>=2 variants, `|`)."""
+    m = TYPE_RE.match(lines[i])
+    if not m:
+        return None
+    name = m.group(1)
+    if "|" in lines[i] and "=" in lines[i]:
+        return name
+    j = i + 1
+    pipes = 0
+    while j < len(lines):
+        s = lines[j].strip()
+        if not s or s.startswith("//"):
+            j += 1
+            continue
+        if s.startswith("type ") or s.startswith("data ") or s.startswith("module ") or s.startswith("fn "):
+            break
+        if s.startswith("{") and pipes == 0 and "=" not in lines[i]:
+            return None
+        if s.startswith("="):
+            j += 1
+            continue
+        if s.startswith("|"):
+            pipes += 1
+        j += 1
+        if pipes >= 1:
+            return name
+    return None
+
+
+def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
+    """Map coproduct `type` name -> (emoji, Part-6 ref slug) from merge-base authority."""
+    lines = git_merge_base_lines(rel)
+    out: dict[str, tuple[str, str]] = {}
+    for i, _ln in enumerate(lines):
+        nm = is_coproduct(lines, i)
+        if not nm:
+            continue
+        lo = max(0, i - 160)
+        window = "\n".join(lines[lo:i])
+        if rel.endswith("llvm_ir.dag") and nm == "LlvmType" and "RAW-Int WIDTH RESIDUAL" in window:
+            out[nm] = ("🟡", "SL-3229-LLVM-WIDTH")
+            continue
+        last_class: str | None = None
+        for k in range(i - 1, lo - 1, -1):
+            ln = lines[k]
+            if not ln.lstrip().startswith("//"):
+                continue
+            if "classification:" in ln:
+                last_class = ln
+                break
+            if "🟡 YELLOW" in ln and (
+                "deferred-on-consumer" in ln
+                or "re-scoped" in ln
+                or "namable richer" in ln
+            ):
+                last_class = ln
+                break
+        if last_class:
+            if "🟢 GREEN" in last_class:
+                out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+            elif "🔴" in last_class:
+                out[nm] = ("🔴", "CP-3229-GREEN-TERMINAL")
+            elif "🟡" in last_class or "YELLOW" in last_class:
+                if "verilog" in rel:
+                    out[nm] = ("🟡", "SL-3229-VERILOG-NONEMPTY")
+                elif "ptx" in rel:
+                    out[nm] = ("🟡", "SL-3229-PTX-DIM3")
+                elif "float" in rel:
+                    out[nm] = ("🟡", "SL-3229-FLOAT-NOMINAL")
+                else:
+                    out[nm] = ("🟡", "CP-3229-GREEN-TERMINAL")
+            else:
+                out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        else:
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    return out
+
+
+def format_coproduct_tag(emoji: str, ref: str) -> str:
+    return f"// {emoji} coproduct dissolution — DECISIONS.md Part 6 · {ref}."
+
+
+def inject_coproduct_tags(body: str, _rel: str, tag_map: dict[str, tuple[str, str]]) -> str:
+    bl = body.splitlines()
+    out_lines: list[str] = []
+    j = 0
+    while j < len(bl):
+        nm = is_coproduct(bl, j)
+        if nm and nm in tag_map:
+            prev = bl[j - 1] if j > 0 else ""
+            if not COPRODUCT_TAG_RE.match(prev):
+                em, ref = tag_map[nm]
+                out_lines.append(format_coproduct_tag(em, ref))
+            out_lines.append(bl[j])
+            j += 1
+            continue
+        out_lines.append(bl[j])
+        j += 1
+    trailing = "\n" if body.endswith("\n") or not body else ""
+    return "\n".join(out_lines) + trailing
 
 
 def carrier_names(path: Path) -> list[str]:
@@ -49,19 +171,20 @@ def comment_ratio(text: str) -> tuple[int, int, float]:
 def strip_body_comments(after_module: str) -> str:
     out_lines: list[str] = []
     for line in after_module.splitlines(True):
-        if line.lstrip().startswith("//"):
+        if line.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(line):
             continue
         out_lines.append(line)
     return "".join(out_lines)
 
 
-def rewrite(path: Path, header: str) -> None:
+def rewrite(path: Path, header: str, rel: str, tag_map: dict[str, tuple[str, str]]) -> None:
     text = path.read_text()
     lines = text.splitlines(keepends=True)
     idx = next(i for i, ln in enumerate(lines) if ln.startswith("module "))
     module_line = lines[idx]
     body = "".join(lines[idx + 1 :])
     new_body = strip_body_comments(body)
+    new_body = inject_coproduct_tags(new_body, rel, tag_map)
     path.write_text(header + module_line + new_body)
 
 
@@ -107,8 +230,9 @@ def main() -> None:
     report: list[tuple[str, float]] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
+        tag_map = coproduct_tag_from_merge_base(rel)
         names = carrier_names(path)
-        owns_lines = "\n".join(f"//   {n}" for n in names)
+        owns_line = "// Owns: " + ", ".join(names)
         first = path.read_text().splitlines()[0]
         if not first.startswith("// src/"):
             raise SystemExit(f"{rel}: expected line 1 // src/…, got {first!r}")
@@ -116,14 +240,13 @@ def main() -> None:
             f"{first}\n"
             f"{scope}\n"
             f"{anchor}\n"
-            f"// Owns:\n"
-            f"{owns_lines}\n"
+            f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
             f"// Ledger: DECISIONS.md Part 6 (PR #3229).\n"
             f"\n"
         )
-        rewrite(path, header)
+        rewrite(path, header, rel, tag_map)
         c, t, pct = comment_ratio(path.read_text())
         report.append((rel, pct))
         print(f"{rel}: {c}/{t} comments = {pct:.1f}%")

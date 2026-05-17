@@ -1,5 +1,5 @@
 // src/v4/std/float.dag
-// Scope: IEEE-754 floating-point carriers and totalized operations.
+// Scope: IEEE-754 Float32/Float64 semantic carrier + Tier-2 compare (T-3).
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
 // Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_totalizer_reason_ieee754_nan_unordered, float_totalizer_port_ieee754_nan_totalizer, nat_compare, sign_rank_lex, ordering_invert, float_finite_unsigned_field_order, float_special_rank, float_body_is_nan, float_finite_magnitude_zero, float_body_compare_semantic_total, float_body_compare_ieee_ordered_outcome, float_ordered_compare_nan_rejected, float_ieee_ordered_compare_outcome, float_ordered_compare_tier2.
 // Consumes: std algebra, std diagnostic, std logic, std machine, std nat, std node.
@@ -26,13 +26,13 @@ import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FloatSpecial.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-// 🟢 coproduct dissolution — DECISIONS.md classification ledger: FloatBody.
+// 🟢 coproduct dissolution — DECISIONS.md Part 6 · CP-3229-GREEN-TERMINAL.
 type FloatBody
   = Finite {
       sign: Bit
