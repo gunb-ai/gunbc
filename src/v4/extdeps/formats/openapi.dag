@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document model (OAS slice).
-// Owns: OpenApiSchema, OpenApiHttpMethod, OpenApiOptionalString, OpenApiContact, OpenApiContactSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLicense, OpenApiLicenseSlot, OpenApiInfo, OpenApiMediaType, OpenApiMediaTypeSchemaSlot, OpenApiResponseContentSlot, OpenApiHeadersSlot, OpenApiLinksSlot, OpenApiResponse, OpenApiResponseOrReference, OpenApiResponses, OpenApiOperation, OpenApiPathItem, OpenApiPaths, OpenApiPathsSlot, OpenApiComponentsSchemasSlot, OpenApiComponents, OpenApiComponentsSlot, OpenApiDocument
+// Owns: OpenApiSchema, OpenApiHttpMethod, OpenApiOptionalString, OpenApiContact, OpenApiContactSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLicense, OpenApiLicenseSlot, OpenApiInfo, OpenApiMediaType, OpenApiMediaTypeSchemaSlot, OpenApiResponseContentSlot, OpenApiHeadersSlot, OpenApiLinksSlot, OpenApiResponse, OpenApiResponseOrReference, OpenApiResponses, OpenApiOperation, OpenApiPathItem, OpenApiPaths, OpenApiPathsSlot, OpenApiComponentsSchemasSlot, OpenApiComponents, OpenApiComponentsSlot, OpenApiOpenapiField3_1, OpenApiDocument
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 
@@ -167,8 +167,12 @@ type OpenApiComponentsSlot
   | OpenApiComponentsAbsent
 
 
+type OpenApiOpenapiField3_1
+  = OpenApi310 {}
+
+
 type OpenApiDocument {
-  openapi_version_lexeme: String,
+  openapi: OpenApiOpenapiField3_1,
   json_schema_dialect: OpenApiOptionalString,
   info: OpenApiInfo,
   paths: OpenApiPathsSlot,
