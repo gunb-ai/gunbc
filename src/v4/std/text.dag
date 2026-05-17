@@ -50,7 +50,7 @@
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid }
+import v4.std.algebra { FreeMonoid, free_monoid_is_empty }
 import v4.std.nat { Nat }
 
 
@@ -111,3 +111,14 @@ type Char = Nat
 // reads of std/algebra.dag's `FreeMonoid<T>` shape, not operations
 // re-declared in this file.
 type String = FreeMonoid<Char>
+
+
+// ─────────────────────────────────────────────────────────────────────
+// string_is_empty — canonical **boundary query** for `String`.
+//
+// `String` is `FreeMonoid<Char>` (alias edge above). Emptiness is
+// std/algebra.dag's `free_monoid_is_empty` on that carrier — not a
+// per-consumer spine walk.
+fn string_is_empty(s: String) -> Bool {
+  free_monoid_is_empty(xs: s)
+}
