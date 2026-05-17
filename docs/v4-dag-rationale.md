@@ -5,6 +5,8 @@ Long-form modeling narrative for operators and reviewers. The corresponding
 Owns / Consumes / Status) and point here for essay-length rationale removed
 in the de-prose pass (operator directive via parent session).
 
+> **Editorial note:** The fenced bodies below are a verbatim relocation of `.dag` comment text captured during the de-prose pass (including historical identifiers like `D2` where they appeared in std/ headers). The live `.dag` headers now point here instead of repeating this volume inline.
+
 
 ## `verilog.dag` — preamble modeling notes (former lines ~84–278)
 
