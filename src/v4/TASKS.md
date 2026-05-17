@@ -373,8 +373,8 @@ substrate imported them, so the cut is a pure scope reduction.
 data t_15_self_host_fixed_point: TestClaim {
   kind: Equals,   // Equals over B1 content_hash — see the Theme-A note below
   label: "v4 compiler is a fixed point — iteration N matches iteration N+1",
-  input: compile(src/v4/compiler/*.dag, target=Rust),  // iteration N+1
-  expected: <committed v4 stage binary bytes>          // iteration N
+  input: content_hash(compile(src/v4/compiler/*.dag, target=Rust)),  // content_hash of iteration N+1
+  expected: <pinned content_hash of the committed v4 stage binary>   // iteration N
 }
 ```
 
