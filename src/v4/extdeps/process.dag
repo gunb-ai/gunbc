@@ -4,15 +4,13 @@
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/ (POSIX.1-2024 / IEEE Std 1003.1-2024)
 //
 // Owns:
-//   - Process { id, command, state, parent }
-//     (NO separate exit_code field — termination status lives ONLY inside
-//     TerminatedProcessState { termination: Termination }, reached
-//     through ProcessState::Terminated or TerminatedProcess.state. A
-//     separate exit_code would allow Running-with-exit-code or
-//     Terminated(Exited(0))-but-exit_code=1 — illegal states
-//     representable. The state carrier is the single source of truth;
-//     exit code is reached via pattern-match on that state, then on
-//     Termination.)
+//   - RunningProcess / WaitedTerminatedProcess / TerminatedProcess
+//     (NO broad lifecycle Process carrier and NO separate exit_code
+//     field — each operation boundary uses the lifecycle-specific
+//     process carrier that makes impossible states unrepresentable.
+//     Terminal status lives ONLY inside TerminatedProcessState {
+//     termination: Termination }, reached through
+//     WaitedTerminatedProcess.state or TerminatedProcess.state.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
 //   - ProcessState = Running | Terminated(TerminatedProcessState)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
@@ -95,6 +93,11 @@
 // before wait from RunningProcess or after wait from
 // WaitedTerminatedProcess. The preserved post-wait pipe authority has a
 // declared consumer and does not require an ad hoc side path.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + codex BLOCKING):
+// the unused broad Process carrier was removed after operation-specific
+// lifecycle carriers landed. RunningProcess, WaitedTerminatedProcess,
+// and TerminatedProcess are now the only process lifecycle boundary
+// carriers in this substrate file.
 
 
 module v4.extdeps.process
@@ -118,13 +121,11 @@ import v4.std.machine { Byte }
 // collapsed, so a wrapper failure cannot be mistaken for a child exit
 // and a signal death cannot be fabricated as an exit code.
 //
-// TERMINATION IS THE SINGLE AUTHORITY. `ProcessState` is either
-// `Running` or `Terminated { state: TerminatedProcessState }`. The
-// terminal-status facts (`Exited` vs `Signaled`) live only in
-// `Termination`, reached through the shared `TerminatedProcessState`
-// carrier; wait/capture results return a `TerminatedProcess` with that
-// same state shape, never a bare `ExitCode`. There is no sibling
-// `exit_code` field on `Process`; consumers pattern-match the state.
+// TERMINATION IS THE SINGLE AUTHORITY. The terminal-status facts
+// (`Exited` vs `Signaled`) live only in `Termination`, reached through
+// the shared `TerminatedProcessState` carrier. wait returns
+// `WaitedTerminatedProcess`, capture returns `TerminatedProcess`, and
+// neither result can carry `Running` or a sibling `exit_code` field.
 //
 // VALUE-REFINEMENT SCAFFOLDS. POSIX PIDs are positive integers, exit
 // status values are non-negative and conventionally bounded to 8 bits
@@ -255,25 +256,18 @@ type TerminatedProcessState {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Process — a spawned child process as known to the parent.
+// Process lifecycle carriers — a spawned child process as known to the parent.
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
 //
 // `parent` is the parent process identifier in the bounded spawned-child
 // model named by the frozen scaffold. Process groups, sessions, orphan
 // reparenting, and general process-table observation are outside this
 // file's scope unless a future scaffold amends it.
-type Process {
-  id: ProcessId
-  command: Command
-  state: ProcessState
-  parent: ProcessId
-}
-
 // `RunningProcess` is the spawn success and wait/capture input carrier.
-// It keeps the same child identity facts as `Process`, but its lifecycle
-// state is fixed by the carrier itself: a successful spawn cannot be
-// already terminated. The captured-output pipe source is inside this
-// carrier, so it cannot be separated from the live child it belongs to.
+// Its lifecycle state is fixed by the carrier itself: a successful spawn
+// cannot be already terminated. The captured-output pipe source is
+// inside this carrier, so it cannot be separated from the live child it
+// belongs to.
 type RunningProcess {
   id: ProcessId
   command: Command
@@ -281,10 +275,9 @@ type RunningProcess {
   parent: ProcessId
 }
 
-// `TerminatedProcess` is the wait/capture success carrier. It keeps the
-// same child identity facts as `Process`, but its state is the shared
-// terminal-state carrier, so `Running` is structurally impossible in
-// successful wait/capture results.
+// `TerminatedProcess` is the capture success carrier. Its state is the
+// shared terminal-state carrier, so `Running` is structurally impossible
+// in successful capture results.
 type TerminatedProcess {
   id: ProcessId
   command: Command
