@@ -191,7 +191,7 @@ type InstructionByteLimitRef {
 
 // InstructionWord — admissible instruction-word / maximum-length width
 // tokens. This carrier records the width category selected by the ISA
-// production; the encoded bytes remain owned by EncodedInstruction.
+// production; raw bytes are owned by encoding/decoding operation results.
 // Anchor: Intel SDM 2025 instruction format; Arm ARM 2025-03 instruction
 // encoding; RISC-V Unprivileged ISA 20240411 instruction-length encoding.
 //
