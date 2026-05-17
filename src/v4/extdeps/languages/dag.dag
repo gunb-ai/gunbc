@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (lex + grammar Node; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_wave1_void_canonical_symbols.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_canonical_symbols; dag_language_model_wave1_void_canonical_symbols.
 // Consumes: std/node.dag, std/collection.dag.
 // Status: scaffold — TASKS T-4/T-6/T-7.
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/v3-spec.md

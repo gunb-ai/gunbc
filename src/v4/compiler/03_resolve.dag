@@ -377,6 +377,141 @@ fn resolve_edges_first_outer_then_inner(
 }
 
 
+// Bind=let (arity-3): slot-0 binder is a declaration site (not a use), slot-1
+// initializer resolves without the new binder, slot-2+ body under `ScopeFrame`.
+fn resolve_bind_binder_target(t: Node, scope_outer: Scope) -> ResolveResult {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      ResolvedNode {
+        node: canonical_atom(identity: id)
+      }
+    _ =>
+      resolve_node(n: t, scope: scope_outer)
+  }
+}
+
+
+fn resolve_bind_edges(
+  edges: List<Edge>,
+  scope_outer: Scope,
+  scope_inner: Scope
+) -> ResolveChildrenResult {
+  match fold(
+    edges,
+    init: BindEdgeAccMk {
+      idx: 0,
+      acc: ResolvedChildren { children: [] }
+    },
+    f: fn(state, e) {
+      match state {
+        BindEdgeAccMk { idx: i, acc: acc_state } =>
+          match acc_state {
+            ResolveChildrenRejected { diagnostic: d } =>
+              BindEdgeAccMk {
+                idx: i + 1,
+                acc: ResolveChildrenRejected { diagnostic: d }
+              }
+            ResolvedChildren { children: done } =>
+              if i == 0 {
+                match resolve_bind_binder_target(t: e.target, scope_outer: scope_outer) {
+                  ResolveRejected { diagnostic: d } =>
+                    BindEdgeAccMk {
+                      idx: i + 1,
+                      acc: ResolveChildrenRejected { diagnostic: d }
+                    }
+                  ResolvedNode { node: rt } =>
+                    BindEdgeAccMk {
+                      idx: i + 1,
+                      acc: ResolvedChildren {
+                        children: list_push(
+                          done,
+                          Edge {
+                            label: e.label,
+                            target: rt
+                          }
+                        )
+                      }
+                    }
+                }
+              } else {
+                if i == 1 {
+                  match resolve_node(n: e.target, scope: scope_outer) {
+                    ResolveRejected { diagnostic: d } =>
+                      BindEdgeAccMk {
+                        idx: i + 1,
+                        acc: ResolveChildrenRejected { diagnostic: d }
+                      }
+                    ResolvedNode { node: rt } =>
+                      BindEdgeAccMk {
+                        idx: i + 1,
+                        acc: ResolvedChildren {
+                          children: list_push(
+                            done,
+                            Edge {
+                              label: e.label,
+                              target: rt
+                            }
+                          )
+                        }
+                      }
+                  }
+                } else {
+                  match resolve_node(n: e.target, scope: scope_inner) {
+                    ResolveRejected { diagnostic: d } =>
+                      BindEdgeAccMk {
+                        idx: i + 1,
+                        acc: ResolveChildrenRejected { diagnostic: d }
+                      }
+                    ResolvedNode { node: rt } =>
+                      BindEdgeAccMk {
+                        idx: i + 1,
+                        acc: ResolvedChildren {
+                          children: list_push(
+                            done,
+                            Edge {
+                              label: e.label,
+                              target: rt
+                            }
+                          )
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+    }
+  ) {
+    BindEdgeAccMk { acc: acc_state, idx: _ } => acc_state
+  }
+}
+
+
+fn resolve_bind_node(n: Node, scope: Scope) -> ResolveResult {
+  if count(n.children) == 3 {
+    match resolve_bind_edges(
+      edges: n.children,
+      scope_outer: scope,
+      scope_inner: ScopeFrame {
+        locals: add_bind_atom_binder(n: n, acc: empty_map()),
+        outer: scope
+      }
+    ) {
+      ResolveChildrenRejected { diagnostic: d } => ResolveRejected { diagnostic: d }
+      ResolvedChildren { children: resolved_children } =>
+        ResolvedNode {
+          node: Node {
+            kind: n.kind,
+            children: resolved_children
+          }
+        }
+    }
+  } else {
+    resolve_children_homogeneous_scope(n: n, scope: scope)
+  }
+}
+
+
 fn resolve(tree: NormalizedTree) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
