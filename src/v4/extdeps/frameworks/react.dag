@@ -6,6 +6,8 @@
 
 module v4.extdeps.frameworks.react
 
+// Anchor: https://react.dev/learn/referencing-values-with-refs
+// 🟡 authority fork — DECISIONS.md#react-p4-cross-decl-ref
 type ReactCrossDeclRef
 
 // Anchor: https://react.dev/reference/react/useEffect
