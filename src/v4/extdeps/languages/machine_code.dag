@@ -189,6 +189,18 @@ type InstructionByteLimitRef {
 }
 
 
+// OperandFieldWidthRef — opaque reference to an ISA-declared operand or
+// displacement field width. This is separate from InstructionByteLimitRef:
+// whole-instruction byte maxima and operand-field widths are different
+// ISA facts with different authorities.
+// Anchor: RISC-V Unprivileged ISA Specification 20240411, Chapter 1
+// instruction formats; Intel SDM Vol. 2A §3.1 instruction format.
+type OperandFieldWidthRef {
+  isa: Isa,
+  width: Symbol
+}
+
+
 // InstructionWord — admissible instruction-word / maximum-length width
 // tokens. This carrier records the width category selected by the ISA
 // production; raw bytes are owned by encoding/decoding operation results.
@@ -360,7 +372,7 @@ type ImmediateOperandTarget
 
 
 type ImmediateOperandConstraint {
-  width: InstructionByteLimitRef
+  width: OperandFieldWidthRef
   order: ByteOrder
   target: ImmediateOperandTarget
 }
@@ -383,19 +395,19 @@ type ImmediateOperandConstraint {
 //      form.
 //   5. Parameterized family — FAILS: heterogeneous payloads.
 type MemoryOperandConstraint
-  = AbsoluteAddressSlot { displacement_width: InstructionByteLimitRef }
+  = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
   | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
   | BaseDisplacementSlot {
       allowed_bases: List<RegisterRef>,
-      displacement_width: InstructionByteLimitRef
+      displacement_width: OperandFieldWidthRef
     }
   | BaseIndexScaleSlot {
       allowed_bases: List<RegisterRef>,
       allowed_indexes: List<RegisterRef>,
       scale: IndexScale,
-      displacement_width: InstructionByteLimitRef
+      displacement_width: OperandFieldWidthRef
     }
-  | PcRelativeSlot { displacement_width: InstructionByteLimitRef }
+  | PcRelativeSlot { displacement_width: OperandFieldWidthRef }
 
 
 // InstructionOperandSlot — operand-category authority for a declared

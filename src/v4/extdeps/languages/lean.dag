@@ -262,22 +262,23 @@ type LeanTerminationMeasure {
 
 
 // LeanTerminationBy — Lean accepts both structural-recursion and
-// well-founded-recursion termination hints. The well-founded form carries
-// an explicit measure term; structural recursion has no measure payload.
+// well-founded-recursion termination hints. The structural form carries
+// the decreasing parameter selected by `termination_by structural`; the
+// well-founded form carries an explicit measure term.
 // Anchor: Lean 4.20.0 Reference Manual, termination_by clauses:
 // https://lean-lang.org/doc/reference/4.20.0/Definitions/Definitions/
 //
 // Coproduct dissolution — 🟢 GREEN (terminal). Ledger:
 //   1. Fact placement — FAILS: proof export, termination checking, and
 //      emitter all distinguish structural and well-founded hints.
-//   2. Variant-is-data — FAILS: the well-founded form carries a measure
-//      payload while structural recursion does not.
+//   2. Variant-is-data — FAILS: structural recursion carries a decreasing
+//      parameter while well-founded recursion carries a measure payload.
 //   3. Algebraic form — N/A: Lean termination syntax/checking fact.
 //   4. Dimensional — FAILS: one `termination_by` hint is structural OR
 //      well-founded.
 //   5. Parameterized family — FAILS: heterogeneous payloads.
 type LeanTerminationBy
-  = LeanStructuralTermination
+  = LeanStructuralTermination { decreasing_parameter: LeanName }
   | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
 
 
