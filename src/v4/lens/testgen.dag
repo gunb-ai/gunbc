@@ -8,13 +8,13 @@ module v4.lens.testgen
 
 
 import v4.std.verification { TestClassification }
-import v4.std.node { Node, Connective, Symbol }
+import v4.std.node { Node, Connective, Behavior, Symbol }
 
 
 type TypeConstructionSubject
-// 🟡 coproduct dissolution — DECISIONS.md LB-P4-3212
+// 🟢 coproduct dissolution — DECISIONS.md LB-P4-3212
   = ConnectiveKernel { connective: Connective }
-  | BehaviorValueSubject
+  | BehaviorValueSubject { behavior: Behavior }
 
 
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
