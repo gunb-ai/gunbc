@@ -149,8 +149,9 @@ type LeanName {
 //   2. Variant-is-data — FAILS: variants have heterogeneous payloads; a
 //      Symbol-only or Nat-only carrier collapses level expressions.
 //   3. Algebraic form — N/A: Lean universe syntax is the external source.
-//   4. Dimensional — FAILS: one universe level is zero, succ, max, imax,
-//      param, or metavariable.
+//   4. Dimensional — FAILS: one resolved universe level is zero, succ,
+//      max, imax, or parameter. Unresolved metavariables fail closed via
+//      `LeanUnresolvedUniverseLevel`; they are not kernel-term payloads.
 //   5. Parameterized family — FAILS: heterogeneous constructors, not F<X>.
 type LeanLevel
   = LeanLevelZero
@@ -158,7 +159,6 @@ type LeanLevel
   | LeanLevelMax { left: LeanLevelRef, right: LeanLevelRef }
   | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
   | LeanLevelParam { name: Symbol }
-  | LeanLevelMVar { name: Symbol }
 
 
 type LeanLevelRef {
