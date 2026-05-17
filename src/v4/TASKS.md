@@ -741,6 +741,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Coverage<C> generic carrier shape — one lens, parameterized over coverage concern (L6 form×target / L7 algebra×law×inhabitant / impossible-bug class enum / testgen type×inhabitant)
+- **L6 (THESIS L6 / §181):** `L6CoverageKey` is **`{ subject: TypeConstructionSubject, language: Symbol }`** — form × **target language identity** (not form-only). Canonical **gunbc `.dag`** surface token: **`dag_language_model_surface_id`** in `extdeps/languages/dag.dag` (K-1); other `extdeps/languages/*` models add their own `Symbol` anchors when L6 expands past language #1.
 - Substrate read for each concern: derive EXPECTED set from substrate authority (not hand-enumerated)
 - Comparison shape: actual TestClaim corpus vs expected derived set; emit Diagnostic per missing
 - Composition with testgen: testgen produces TestClaims; coverage lens checks they cover the expected combinatorics

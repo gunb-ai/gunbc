@@ -32,7 +32,7 @@ src/v4/
     verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
-  extdeps/               # external system contracts (21 files)
+  extdeps/               # external system contracts (22 files)
     languages/           # language models (direction-agnostic — emit AND ingest)
       dag.dag            # gunbc `.dag` — B2-OMNI language #1 (C1 extension 2026-05-16; relay merry-ibex-337)
       rust.dag
@@ -102,20 +102,30 @@ src/v4/
   test/
     claim/               # TestClaim data — no hand-Rust tests
       impossible_bug/    # the R1+ impossible-bug class demos
+        idempotency_contract.dag
+        nested_optional_flatten.dag
+        suboptimal_complexity.dag
+        transport_type_drift.dag
+        unenumerated_effects.dag
+        unhandled_diagnostic_paths.dag
       diagnostic_correction/
       algebra_laws/
       manual/            # hand-authored anti-regression anchors (Phase 1.5)
+        connective_anchors.dag
+        nat_law_anchors.dag
+        t19_manual_anchor_manifest.dag  # T-19 manifest ↔ TestClaim.anchor_slug (P2)
       boundary/          # boundary-honesty probes
         english_ingest_fail_closed.dag  # T-4.11 — fail-closed ingest, no fabrication
     fixture/             # canonical input programs
 ```
 
-**Total: 65 .dag files + 5 docs + 5 .gitkeep = 75 files.** (Per invariant
+**Total: 68 .dag files + 5 docs + 5 .gitkeep = 78 files.** (Per invariant
 #1 the enumeration above — not the count — is authoritative; the count is
 a checksum, updated on every operator-ratified file addition/removal.
 +1 .dag 2026-05-16: `extdeps/languages/dag.dag` — operator-ratified C1 closed-tree
 extension (Option A, relay merry-ibex-337). −5 .dag 2026-05-15: work-direction
-meta-layer cut, operator-ratified.)
+meta-layer cut, operator-ratified. **2026-05-17 (PR #3212):** enumerate
+`test/claim/manual/*` (3) + `test/claim/impossible_bug/*` (6); checksum **65→68** `.dag`.)
 
 ## Scalar/numeric concept decomposition
 
