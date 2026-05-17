@@ -1,171 +1,41 @@
 // src/v4/lens/testgen.dag
-//
-// Scope: testgen lens — reads substrate declarations and produces TestClaim
-//        instances structurally. The producer side of "tests are data, not
-//        code" (THESIS facet 3). Output is consumed by lens/coverage.dag
-//        which verifies the produced set covers the expected substrate
-//        cross-product.
-// Anchor: TESTING.md §141 + THESIS §348–368 + §168–182
-//
-// Owns:
-//   - Generator<C> generic carrier (parameterized over substrate concept)
-//   - Per-substrate-kind testgen rules. Every rule emits TestClaims whose
-//     `kind` is one of std/verification.dag's CLOSED AssertKind
-//     (Equals | Diagnostic | Compiles | RoundTrips) — testgen names the
-//     AssertKind, it does NOT coin parallel claim vocabulary:
-//     - type_construction(
-//         (Atom | Conj | Disj | Arrow | Cardinality | Instantiation)
-//         — six-connective kernel — OR
-//         L1 `Value` **behavior** construction — **unit** `BehaviorValueSubject`
-//         arm (only `Behavior::Value`; see subject carriers)
-//       ) -> Set<Compiles TestClaim>
-//       (kernel + Value-behavior are ONE `type_construction` fold via internal
-//       `TypeConstructionSubject` sum — see subject carriers below; not a
-//       sixth top-level testgen category)
-//     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
-//     - diagnostic_exhaustiveness(NamedReason variant) -> Set<Diagnostic TestClaim>
-//     - lens_applicability(Lens × Program) -> Set<Equals TestClaim>
-//     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<RoundTrips TestClaim>
-//   - Simulator + boundary conformance (this file, not `lens/simulation.dag`):
-//     `simulator_generation(WireContract | Effect | Language) -> Node`;
-//     `external_conformance(...) -> Set<{Compiles|Equals|RoundTrips} TestClaim>`.
-//     Hermetic generated sim (data, not hand-Rust); `input` = program ∘ sim;
-//     live oracle opt-in; AssertKind stays closed-4 (`std/verification.dag`).
-//     Contract under-spec ⇒ extend `WireContract` / STOP — not a new kind.
-//   - **TestClassification** (Tier × Layer) is a **required field on every
-//     `TestClaim`** — canonical home `std/verification.dag` (STRUCTURE.md
-//     §248); each fold stamps `classification` consistently with its
-//     `Generator<C>.classification` at materialization.
-//     - Tier: Tier1 | Tier2 | Tier3 (THESIS correctness tier)
-//     - Layer: Unit | Integration | Boundary (TESTING.md test layer)
-//   - lens read: () -> Set<TestClaim>
-//
-// ELSEWHERE (do not duplicate long prose here): C5-1/C5-3 roundtrip contract,
-// text-fidelity deferral, TESTING.md §141 ratio targets — see Anchor refs;
-// T-18 / `lens/coverage.dag` enforces coverage. Bootstrap contract: TASKS §T-19.
-//
-// Consumes:
-//   - std/node.dag (substrate to walk)
-//   - std/algebra.dag (algebra inhabitance for L7-class testgen)
-//   - std/verification.dag (TestClaim output schema)
-//   - std/diagnostic.dag (Diagnostic.NamedReason for exhaustiveness testgen)
-//   - lens/*.dag (each lens's declared read shape, for applicability testgen)
-//   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
-//   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
-//
-// Status: T-19 modeled 2026-05-16 (still-deer-194). **Live:** `import v4.std.verification { TestClassification }` + `type Generator<C>` (M1 compile). **Comment substrate until M2:** subject carriers + `TestgenConcept` + five `fn … -> Set<TestClaim>` folds — loader acceptance per TASKS §T-19.
-// Brief: see BRIEF_TEMPLATE.md.
-//
-// ─── Subject carriers (fold once M2 loads v4 std in one compilation unit) ───
-// type TypeConstructionSubject
-//   = ConnectiveKernel { connective: Connective }
-//   | BehaviorValueSubject
-//       // **Unit arm** — L1 `Value` type-construction slice only. Denotes the
-//       // same scheduling fact as **`std/node.dag` `Behavior::Value`** (the
-//       // unit variant of closed `Behavior`) **without** a `behavior: Behavior`
-//       // field that would admit `Transform` / `Branch` / `Loop` / `Bind`
-//       (P2 / illegal states unrepresentable). A `t19_manual_anchor_manifest` slug
-//       for this arm appears only when a live manual `TestClaim` exists (TASKS §T-19).
-//       Scheduling other `Behavior` variants inside `type_construction` = operator STOP +
-//       distinct ratified subject arms — not widening this carrier.
-//
-// Coproduct dissolution (Practice 4) — **internal** sum under the single
-// `type_construction` arm of `TestgenConcept`; classification: 🟢 GREEN.
-// Ledger — five patterns on **forward** `TypeConstructionSubject`:
-//   1. Fact placement — N/A: both variants schedule through the one
-//      `type_construction` fold — not a sixth **top-level** testgen category
-//      (TASKS.md T-19: 6th top-level = operator STOP).
-//   2. Variant-is-data — FAILS: `ConnectiveKernel` carries a `Connective`;
-//      `BehaviorValueSubject` is a **unit** arm (no `Behavior` payload) —
-//      only the L1 **`Value`** slice is representable here vs six-way
-//      connective kernel; structurally distinct shapes.
-//   3. Algebraic form — N/A: not a single richer std/algebra carrier.
-//   4. Dimensional — FAILS: one unit picks **one** of kernel vs behavior
-//      slice for this category (mutually exclusive).
-//   5. Parameterized family — FAILS: behavior slice is not `F<Connective>`
-//      nor an enumerated copy of the six-connective set (Practice 7).
-//
-// type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
-// type DiagnosticExhaustivenessSubject { reason: Symbol }
-// type LensApplicabilitySubject { lens: Symbol, program: Node }
-// type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
-// type TestgenConcept
-//   = TypeConstruction { subject: TypeConstructionSubject }
-//   | AlgebraLaw { subject: AlgebraLawSubject }
-//   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
-//   | LensApplicability { subject: LensApplicabilitySubject }
-//   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted on the **forward** `TestgenConcept` sum above
-// (materializes with the same declaration when M2 loads v4 std in one
-// graph — this ledger is binding at that moment, not deferred):
-//   1. Fact placement — FAILS: lens/testgen.dag (producer) and
-//      lens/coverage.dag (T-18 completeness) both dispatch on the
-//      category axis; it is the shared testgen-discriminant for the five
-//      substrate folds, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the five **top-level** arms carry STRUCTURALLY
-//      DISTINCT payloads (`TypeConstructionSubject` vs `AlgebraLawSubject`
-//      vs …); `TypeConstructionSubject` is itself a documented internal sum
-//      (`ConnectiveKernel` | `BehaviorValueSubject` — see above), still
-//      ONE arm here. Collapsing to `{ kind: Int, blob: … }` reintroduces
-//      illegal states and an open `kind` axis — violates P2 + closed-set
-//      discipline. The five-variant top-level sum IS the faithful discriminant.
-//   3. Algebraic form — N/A: a testgen **category** is not an algebra
-//      carrier; categories do not trace to a single richer std/algebra.dag
-//      construction to dissolve into (algebra-law testgen *reads*
-//      algebra, it is not itself an algebra instance).
-//   4. Dimensional — FAILS: one generation unit selects EXACTLY ONE of the
-//      five categories — mutually exclusive alternatives (never
-//      simultaneous coordinates in a product of independent axes).
-//   5. Parameterized family — FAILS: the five are not one mechanical
-//      `F<X>` / projection over a separately-declared enumerable set X
-//      (Practice 7). Payload shapes are heterogeneous per arm; there is
-//      no single source set the five enumerate-and-project from.
-// Terminal: the irreducible closed partition of T-19 testgen category
-// inputs (TASKS.md T-19); a 6th category is a substrate-extension STOP
-// (operator ratification), not a silent open enum.
-//
-// fn type_construction(subject: TypeConstructionSubject) -> Set<TestClaim>
-// fn algebra_law(subject: AlgebraLawSubject) -> Set<TestClaim>
-// fn diagnostic_exhaustiveness(subject: DiagnosticExhaustivenessSubject) -> Set<TestClaim>
-// fn lens_applicability(subject: LensApplicabilitySubject) -> Set<TestClaim>
-// fn bidirectional_roundtrip(subject: BidirectionalRoundtripSubject) -> Set<TestClaim>
+// Scope: T-19 testgen — substrate folds emit TestClaim; five scheduling categories + Generator<C>.
+// Owns: Generator<C> TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject TestgenConcept
+// Consumes: v4.std.node v4.std.verification (algebra/diagnostic/lens/extdeps at materialization — TASKS T-19)
+// Status: M1 — live types + Generator<C>; eval wiring T-22.
 
 module v4.lens.testgen
 
+
 import v4.std.verification { TestClassification }
+import v4.std.node { Node, Connective, Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// PRODUCER LENS. This file owns the GENERIC CARRIER and schedules substrate
-// slices. **`src/v4/std/verification.dag`** (`module v4.std.verification`)
-// owns the canonical **`TestClaim`** shape **including** `TestgenTier` /
-// `TestgenLayer` / `TestClassification` (STRUCTURE.md §248 — Tier×Layer on
-// every claim). The five testgen categories map INTO the
-// closed four **`v4.std.verification.AssertKind`** variants (`Equals` |
-// `Diagnostic` | `Compiles` | `RoundTrips` in **`src/v4/std/verification.dag`**)
-// — never a parallel claim vocabulary; manual `assert_kind` Int codes are
-// the same four-way projection (not dsl/v3 Assert* / `TestPredicate` surfaces).
-//
-// `compile_to_dag` today lowers a single module without following
-// `import v4.std.*` to on-disk peers (M2 module graph). The subject
-// carriers + `TestgenConcept` + rule `fn` signatures therefore remain
-// COMMENTED here; they are not deleted — they are the ratified shape to
-// materialize when the loader lands. `Generator<C>` below is already
-// meaningful with abstract `C` (including `C = TestgenConcept` later).
+type TypeConstructionSubject
+  = ConnectiveKernel { connective: Connective }
+  | BehaviorValueSubject
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Generator<C> — generic carrier: one scheduled generation unit over a
-// substrate concept slice `C`. `classification` is the Tier×Layer tag
-// copied onto **every** `TestClaim` emitted when this unit lowers to corpus
-// data (same `TestClassification` value on each claim — facts-flow-forward).
-//
-// Coproduct dissolution: Conj record — no ledger.
+type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
+
+
+type DiagnosticExhaustivenessSubject { reason: Symbol }
+
+
+type LensApplicabilitySubject { lens: Symbol, program: Node }
+
+
+type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
+
+
+type TestgenConcept
+  = TypeConstruction { subject: TypeConstructionSubject }
+  | AlgebraLaw { subject: AlgebraLawSubject }
+  | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
+  | LensApplicability { subject: LensApplicabilitySubject }
+  | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+
+
 type Generator<C> {
   classification: TestClassification
   slot: C

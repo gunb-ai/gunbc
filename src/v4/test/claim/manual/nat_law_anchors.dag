@@ -1,20 +1,8 @@
 // src/v4/test/claim/manual/nat_law_anchors.dag
-//
-// Scope: algebra-law TestClaim anchors for Nat addition / multiplication
-//        (monoid / semiring laws stated in std/nat.dag prose). Payload
-//        uses the same well-formed type-node stub as other manual claims —
-//        the law itself is carried in the label until T-22 can evaluate
-//        program-shaped `input` nodes (dissolution: T-22 eval lands).
-// **Classification stamps what each row asserts today**, not only the file’s
-// narrative scope: five **`Compiles`** stubs over `stub_empty_conj` are
-// **structural compile smoke** only (law text in `label`) — stamp
-// **`Tier1` + `Unit`**, same honesty band as connective **`Compiles`** anchors.
-// The one **`Equals`** row exercises the algebra-law **assertion form** on the
-// stub — stamp **`Tier3` + `Integration`** (THESIS L7 / manifest row
-// `manual_anchor_nat_mul_associativity` only). Do **not** stamp `Compiles`
-// stubs as L7 integration: that mis-trains `TestClaim.classification` vs
-// `TESTING.md` behavior-driven discipline.
-// Anchor: src/v4/std/nat.dag + TASKS.md T-14
+// Scope: Manual Nat law TestClaims (stub payload; law text in label until T-22 eval).
+// Owns: claim_nat_* TestClaim data
+// Consumes: v4.std.verification v4.std.diagnostic v4.test.claim.manual.connective_anchors
+// Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
 
 module v4.test.claim.manual.nat_law_anchors
 

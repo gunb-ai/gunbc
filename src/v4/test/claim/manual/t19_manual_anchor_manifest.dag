@@ -1,22 +1,8 @@
 // src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
-//
-// Scope: T-19 Int-coded projection of the **live** manual `TestClaim` corpus only
-//        (`connective_anchors.dag` ∪ `nat_law_anchors.dag`) — one `data` row per
-//        claim, no forward-only slots. Integer fields mirror declaration order in
-//        `src/v4/std/verification.dag` (`TestgenTier`, `TestgenLayer`, `AssertKind`)
-//        and the five testgen arms in `lens/testgen.dag` (`testgen_category` 0…4).
-// Anchor: src/v4/TASKS.md §T-19 Phase-1.5
-//
-// Owns:
-//   - `ManualTestgenAnchor` + exactly twelve `data` rows (bijection to the twelve
-//     live manual claims). Slugs are stable keys; drift vs claim `kind` /
-//     `classification` in the two anchor modules = STOP (same change set).
-//
-// Consumes:
-//   - (none — self-contained; authority for claim shape remains the anchor modules.)
-//
-// Status: landed 2026-05-16; reconciled 2026-05-17 (P2 single projection vs live corpus).
-// Brief: see BRIEF_TEMPLATE.md.
+// Scope: Int-coded projection of the twelve live manual TestClaims (connective_anchors ∪ nat_law_anchors).
+// Owns: ManualTestgenAnchor twelve data rows (slug keys; Int field map per TASKS §T-19)
+// Consumes: (none)
+// Status: M1 grid — enum dissolution band with lens/testgen in TASKS §T-19.
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
 
@@ -30,7 +16,6 @@ type ManualTestgenAnchor {
 }
 
 
-// connective_anchors: claim_conj_empty_compiles
 data manual_anchor_tc_conj: ManualTestgenAnchor = {
   slug: "t19.type_construction.conj",
   tier: 0,
@@ -40,7 +25,6 @@ data manual_anchor_tc_conj: ManualTestgenAnchor = {
 }
 
 
-// connective_anchors: claim_disj_empty_compiles
 data manual_anchor_tc_disj: ManualTestgenAnchor = {
   slug: "t19.type_construction.disj",
   tier: 0,
@@ -50,7 +34,6 @@ data manual_anchor_tc_disj: ManualTestgenAnchor = {
 }
 
 
-// connective_anchors: claim_arrow_two_conj_compiles
 data manual_anchor_tc_arrow: ManualTestgenAnchor = {
   slug: "t19.type_construction.arrow",
   tier: 0,
@@ -60,7 +43,6 @@ data manual_anchor_tc_arrow: ManualTestgenAnchor = {
 }
 
 
-// connective_anchors: claim_cardinality_empty_compiles
 data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
   slug: "t19.type_construction.cardinality",
   tier: 0,
@@ -70,7 +52,6 @@ data manual_anchor_tc_cardinality: ManualTestgenAnchor = {
 }
 
 
-// connective_anchors: claim_instantiation_empty_compiles
 data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
   slug: "t19.type_construction.instantiation",
   tier: 0,
@@ -80,7 +61,6 @@ data manual_anchor_tc_instantiation: ManualTestgenAnchor = {
 }
 
 
-// connective_anchors: claim_conj_equals_refl
 data manual_anchor_tc_conj_equals_refl: ManualTestgenAnchor = {
   slug: "t19.type_construction.conj_equals_refl",
   tier: 0,
@@ -90,7 +70,6 @@ data manual_anchor_tc_conj_equals_refl: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_add_left_identity
 data manual_anchor_nat_add_left_identity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_add_left_identity",
   tier: 0,
@@ -100,7 +79,6 @@ data manual_anchor_nat_add_left_identity: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_add_right_identity
 data manual_anchor_nat_add_right_identity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_add_right_identity",
   tier: 0,
@@ -110,7 +88,6 @@ data manual_anchor_nat_add_right_identity: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_add_associativity
 data manual_anchor_nat_add_associativity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_add_associativity",
   tier: 0,
@@ -120,7 +97,6 @@ data manual_anchor_nat_add_associativity: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_mul_left_identity
 data manual_anchor_nat_mul_left_identity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_mul_left_identity",
   tier: 0,
@@ -130,7 +106,6 @@ data manual_anchor_nat_mul_left_identity: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_mul_annihilator
 data manual_anchor_nat_mul_annihilator: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_mul_annihilator",
   tier: 0,
@@ -140,7 +115,6 @@ data manual_anchor_nat_mul_annihilator: ManualTestgenAnchor = {
 }
 
 
-// nat_law_anchors: claim_nat_mul_associativity
 data manual_anchor_nat_mul_associativity: ManualTestgenAnchor = {
   slug: "t19.algebra_law.nat_mul_associativity",
   tier: 2,

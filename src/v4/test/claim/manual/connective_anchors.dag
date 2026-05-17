@@ -1,24 +1,8 @@
 // src/v4/test/claim/manual/connective_anchors.dag
-//
-// Scope: hand-authored TestClaim regression anchors for the six type
-//        connectives (Atom excluded — K-1 forbids minting a Symbol value
-//        in data literals; Atom-shaped claims wait on T-22 / boundary
-//        table). v2 `compile` indexes this module today; v2 `run` claim
-//        execution is deferred per MOVE1_COVERAGE.txt until T-22.
-//        The five L1 *behaviors* (Value/Transform/Branch/Loop/Bind) are
-//        carried on computation `Node`s; authoring representative
-//        computation-node claims without pipeline-produced graphs is the
-//        same Atom/Symbol gap — tracked in MOVE1_COVERAGE.txt, not papered
-//        over here.
-// Anchor: src/v4/TASKS.md T-14 + std/node.dag + std/verification.dag
-//
-// `TestgenTier` / `TestgenLayer` on each claim follow **THESIS / TESTING**
-// axes (`STRUCTURE.md` §248), not the **`AssertKind` prose shorthand** in
-// `verification.dag` (“Tier2 = Equals” names an assertion *form*, not
-// `TestgenTier::Tier2`). Structural connective anchors (incl. reflexive
-// **Equals** on the empty Conj stub) sit with the **Compiles** stubs:
-// **Tier1 + Unit** (compile-time / structural slice — each has a matching
-// `t19_manual_anchor_manifest.dag` row by slug).
+// Scope: Manual TestClaim anchors for non-Atom connective stubs (K-1; Atom deferred).
+// Owns: stub_empty_conj stub_arrow_pair stub_empty_* claim_* TestClaim data
+// Consumes: v4.std.verification v4.std.diagnostic v4.std.node
+// Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.connective_anchors
 
@@ -27,14 +11,12 @@ import v4.std.diagnostic { Produced }
 import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
 
 
-// Shared stub: empty labeled Conj (no Symbol / Atom).
 data stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
 
 
-// Arrow domain/codomain: two positional edges to duplicate stubs (no Atom).
 data stub_arrow_pair: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
@@ -107,7 +89,6 @@ data claim_instantiation_empty_compiles: TestClaim = TestClaim {
 }
 
 
-// Reflexive Equals on identical stub (structural identity anchor for T-22).
 data claim_conj_equals_refl: TestClaim = TestClaim {
   kind: Equals,
   label: "manual/connective: Equals reflexivity on empty Conj stub",
