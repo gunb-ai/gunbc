@@ -26,27 +26,12 @@
 //     - diagnostic_exhaustiveness(NamedReason variant) -> Set<Diagnostic TestClaim>
 //     - lens_applicability(Lens × Program) -> Set<Equals TestClaim>
 //     - bidirectional_roundtrip(Language × GrammarProduction) -> Set<RoundTrips TestClaim>
-//   - Simulator-generation arm (operator-ratified 2026-05-15: lives HERE,
-//     not a separate lens/simulation.dag — testgen owns both claim
-//     production and the simulators its boundary claims need):
-//     - simulator_generation(WireContract | Effect | Language) -> Node
-//       generates a hermetic simulator (just Node — bounded kernel) from
-//       the declared contract. NOT hand-written (would be a rotting
-//       mirror — feedback_isomorphism_or_generation_for_mirrors); the
-//       simulator is structurally bound to the contract and regenerates
-//       when it changes.
-//     - external_conformance(Language | WireContract × Node)
-//       -> Set<{Compiles|Equals|RoundTrips} TestClaim>
-//       boundary claims whose `input` is (program ∘ generated simulator) —
-//       hermetic AND deterministic. The live oracle (real rustc / live
-//       endpoint) is the OPT-IN boundary run, never the default suite.
-//   - Simulation adds NO AssertKind: it substitutes generated-simulator
-//     Node into `input` at the WireContract boundary. AssertKind stays
-//     the closed 4 (see std/verification.dag).
-//     hermetic deterministic claims (`input` = program ∘ sim). Live oracle
-//     opt-in only. AssertKind stays the closed four (`std/verification.dag`).
-//     Simulator is contract-faithful, not reality-complete; under-spec ⇒
-//     extend `WireContract` / STOP — not a new `AssertKind`.
+//   - Simulator + boundary conformance (this file, not `lens/simulation.dag`):
+//     `simulator_generation(WireContract | Effect | Language) -> Node`;
+//     `external_conformance(...) -> Set<{Compiles|Equals|RoundTrips} TestClaim>`.
+//     Hermetic generated sim (data, not hand-Rust); `input` = program ∘ sim;
+//     live oracle opt-in; AssertKind stays closed-4 (`std/verification.dag`).
+//     Contract under-spec ⇒ extend `WireContract` / STOP — not a new kind.
 //   - **TestClassification** (Tier × Layer) is a **required field on every
 //     `TestClaim`** — canonical home `std/verification.dag` (STRUCTURE.md
 //     §248); each fold stamps `classification` consistently with its
@@ -68,10 +53,7 @@
 //   - extdeps/languages/*.dag (bidirectional roundtrip testgen)
 //   - extdeps/coordination.dag (WireContract/Effect — simulator-generation arm)
 //
-// Status: T-19 modeled 2026-05-16 (still-deer-194). **Live:** `import …
-//         TestClassification` + `type Generator<C>` (M1 compile). **Comment
-//         substrate until M2:** subject carriers + `TestgenConcept` + five
-//         `fn … -> Set<TestClaim>` folds — loader acceptance per TASKS §T-19.
+// Status: T-19 modeled 2026-05-16 (still-deer-194). **Live:** `import v4.std.verification { TestClassification }` + `type Generator<C>` (M1 compile). **Comment substrate until M2:** subject carriers + `TestgenConcept` + five `fn … -> Set<TestClaim>` folds — loader acceptance per TASKS §T-19.
 // Brief: see BRIEF_TEMPLATE.md.
 //
 // ─── Subject carriers (fold once M2 loads v4 std in one compilation unit) ───
