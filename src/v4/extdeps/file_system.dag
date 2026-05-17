@@ -10,7 +10,7 @@
 //   - NamedPathComponent { name: String }
 //   - PathComponent = CurrentComponent | ParentComponent | NamedComponent(NamedPathComponent)
 //   - FileKind = RegularFile | Directory | Symlink
-//   - read_file(fs, p)        -> Result<FreeMonoid<Char>, Diagnostic>
+//   - read_file(fs, p)        -> Result<FreeMonoid<Byte>, Diagnostic>
 //   - write_file(fs, p, body) -> Result<Filesystem, Diagnostic>
 //   - list_dir(fs, p)         -> Result<List<PathComponent>, Diagnostic>
 //   - file_kind(fs, p)        -> Result<FileKind, Diagnostic>
@@ -23,8 +23,9 @@
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
-//   - std/text.dag: Char, String (and their Tier-2 totalizations)
-//   - std/algebra.dag: FreeMonoid<Char>
+//   - std/text.dag: String (and its Tier-2 totalizations)
+//   - std/machine.dag: Byte
+//   - std/algebra.dag: FreeMonoid
 //   - std/collection.dag: List
 //
 // Status: T-4.5 modeled 2026-05-16 (keen-wren-663). Operation bodies
@@ -73,6 +74,10 @@
 // FileKindRequest carries a FileKindResolutionPolicy so callers choose
 // stat-like symlink-following or lstat-like no-follow observation
 // structurally.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): read_file/write_file carry raw byte streams
+// (`FreeMonoid<Byte>`), not decoded text. POSIX read/write operate on
+// byte buffers; text decoding/encoding is a separate fallible projection.
 
 
 module v4.extdeps.file_system
@@ -80,7 +85,7 @@ module v4.extdeps.file_system
 
 import v4.std.algebra { FreeMonoid }
 import v4.std.diagnostic { Outcome }
-import v4.std.text { Char }
+import v4.std.machine { Byte }
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -117,11 +122,13 @@ import v4.std.text { Char }
 // the Filesystem as input and return derived values; writes return the
 // modified Filesystem.
 //
-// FILE CONTENT IS TEXT IN V4. `read_file` / `write_file` are scoped to
-// the compiler self-hosting need: reading and writing text `.dag`,
-// generated source, and derived workflow artifacts. Raw bytes,
-// permissions, timestamps, memory mapping, and locks remain outside this
-// v4 file's immutable scope.
+// FILE CONTENT IS BYTES AT THE POSIX BOUNDARY. `read_file` /
+// `write_file` return and accept raw `FreeMonoid<Byte>` streams because
+// POSIX read/write operate on byte buffers. Text decoding/encoding for
+// `.dag`, generated source, and derived workflow artifacts belongs in a
+// later fallible encoding-aware projection. Permissions, timestamps,
+// memory mapping, and locks remain outside this v4 file's immutable
+// scope.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -332,7 +339,7 @@ type Filesystem
 // header/prose. The `FileSystemOperations` record is the declared
 // callable boundary a future host realization must inhabit; it is
 // intentionally only a signature bundle here, not an effect resolver.
-type FileBody = FreeMonoid<Char>
+type FileBody = FreeMonoid<Byte>
 
 type ReadFileRequest {
   filesystem: Filesystem
