@@ -30,6 +30,9 @@
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
+//
+// ─── HEADER RECONCILE (operator directive, vivid-carp-207, dashboard msg_3499949b-8d4e-4826-a51d-05b9e1757775, 2026-05-17) ───
+// In-PR de-prose: comment volume reduced; carriers unchanged.
 
 module v4.extdeps.formats.openapi
 
@@ -38,96 +41,17 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// L-2 VERSION PIN (C5): OpenAPI **3.1.0** (`spec.openapis.org/oas/v3.1.0`)
-// is the normative document revision for this file. The `openapi` field
-// value is carried as a **verbatim** `String` (`openapi_version_lexeme`) —
-// the json.dag lexeme-preserving / yaml.dag scalar discipline — so patch
-// levels (`3.1.1`, tooling quirks) remain round-trip-visible until a
-// dedicated version-refinement substrate lands (🟡 Deferred (2)).
-//
-// PARSE SURFACE (immutable header: YAML or JSON). The **wire instance** of
-// an OpenAPI document is a UTF-8 text file in JSON or YAML encoding; the
-// typed `OpenApiDocument` below is the **semantic** carrier after surface
-// parse + reference resolution (deferred — 🟡 (1)). This file does not
-// re-declare `yaml_parse` / `json_parse`; it **consumes** those seams from
-// `yaml.dag` / `json.dag` once they exist, then runs OpenAPI-specific
-// structural validation (also deferred). Cross-file Consumes authority for
-// the YAML/JSON surface remains the format modules (header lines above);
-// no `import` edge is required until an operation body closes the loop
-// (unused import = 0-diagnostics failure) — same json.dag pattern.
-//
-// JSON SCHEMA ALIGNMENT (OAS 3.1). OpenAPI **Schema Object** is a **JSON Schema
-// applicator** **plus** OpenAPI-specific members on the same object — modeled here
-// as **`OpenApiSchema`** wrapping **`JsonSchema`** (`core`) for Draft **2020-12**
-// facts (**single JSON Schema vocabulary authority** — INVARIANTS P2) with
-// separate **`openapi_schema_members`** (OAS fixed fields outside the shared
-// `JsonSchemaInstance` typed slice today) and **`openapi_schema_specification_extensions`**
-// (`^x-` only). **`components`** **`schemas`** (when present on the wire) and Media Type **`schema`** use **`OpenApiSchema`**,
-// not a bare **`JsonSchema`** alias, so OAS schema wire does not collapse into
-// `JsonSchemaInstance.additional_keywords` without an explicit OpenAPI home.
-//
-// HTTP METHOD MAP (immutable header `Map<HttpMethod, Operation>`). The v4
-// kernel does not yet host a shared transport-level `HttpMethod` enum in
-// std/ (dsl `extdeps/transports/rest.dag` references legacy `std.types` —
-// not v4). This file therefore declares **`OpenApiHttpMethod`** as the
-// closed OAS Path Item Object operation set (get/put/post/delete/options/
-// head/patch/trace) — M4 closed set as a sum, not strings. **Extension
-// verbs** (`x-` object members and non-OAS methods) remain in
-// **`paths_extensions`** (Paths Object), **`path_deferred_members`** /
-// **`path_specification_extensions`** (Path Item Object), and
-// **`operation_deferred_members`** / **`operation_specification_extensions`**
-// as `JsonValue` until an operator-pinned extension
-// policy lands (🟡 (3)).
-//
-// CANONICAL-MIRROR — `Outcome<T>` seam for parse/emit (json.dag #3184
-// seam #3): when `openapi_parse` / `openapi_emit` land, they are fail-
-// closed BOTH directions using std/diagnostic.dag **`Outcome<T>`** (**D1**
-// DECISIONS **I**, PR #3181). The immutable header's `parse -> Result<…>` /
-// `emit -> String` lines reconcile the same way as csv/json/yaml (total
-// emit superseded). **D2** resolver shape ratified #3195 — import/consume
-// discipline applies when operation bodies close the yaml/json surface loop.
-//
-// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER — modeled carriers for
-// the document root, **Info Object (typed OAS 3.1.0 fixed fields + `info_specification_extensions`)**,
-// **`OpenApiPathsSlot`** (root `paths` omit vs present) + **Paths Object
-// (`OpenApiPaths`: `routes` + `paths_extensions`)**, path items, operations, **Responses Object (`OpenApiResponses`)** + **Response Object fixed-field slots** (`content` / `headers` / `links` vs `extensions`), media types,
-// and component schemas; **$ref** resolution, parameter objects, callbacks,
-// security schemes, servers, and the full Components object beyond `schemas`
-// are 🟡 deferred with named triggers — not silently omitted without a
-// receipt: overflow lives in **`components_deferred_members`** +
-// **`components_specification_extensions`** / **`paths_extensions`**
-// (Paths Object) / **`path_deferred_members`** + **`path_specification_extensions`**
-// (Path Item Object) /
-// **`responses_object_extensions`** (Responses Object) /
-// **`operation_deferred_members`** + **`operation_specification_extensions`** /
-// **`info_specification_extensions`** / **`contact_extensions` (nested under `OpenApiContact`)** /
-// **`root_specification_extensions`** (`^x-` on the OpenAPI Object) vs
-// **`root_deferred_members`** (undecomposed **fixed** root fields —
-// `servers` / `webhooks` / `security` / `tags` / `externalDocs` — as bounded
-// `JsonValue` wire, not mixed into the extension map) (M5 / P2).
+// Modeling (C5 OAS 3.1.0; seams: json.dag #3184 / DECISIONS I / #3195 D2)
+// — C5: `openapi_version_lexeme` verbatim `String` until semver/version substrate (Deferred (2)).
+// — Parse: `OpenApiDocument` semantic carrier after yaml/json + `$ref` (Deferred (1)); consume yaml/json modules when ops exist; no `import` until bodies close unused-import rule.
+// — JSON Schema: `OpenApiSchema` wraps `JsonSchema` (Practice 8 fact-bundle — not hollow bare alias): P2 split `openapi_schema_members` vs `openapi_schema_specification_extensions` (`^x-` only); no OAS keys folded into `JsonSchemaInstance.additional_keywords`.
+// — HTTP: `OpenApiHttpMethod` M4 sum; extension verbs → deferred/extension maps (Deferred (3)).
+// — P2 maps: each `*_specification_extensions` = `^x-` ONLY on that object; paired `*_deferred_members` / `paths_extensions` / `responses_object_extensions` / `root_deferred_members` hold other fixed overflow per Deferred (1).
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiSchema — OAS 3.1.0 **Schema Object** (JSON Schema application **plus**
-// OpenAPI-specific **fixed** members and **Specification Extensions** on the
-// same JSON object — **not** a bare alias of `JsonSchema`).
-//
-// **`core`** carries Draft **2020-12** schema facts using **`JsonSchema`**
-// (single **JSON Schema** vocabulary authority — INVARIANTS P2). **`openapi_schema_members`**
-// holds OAS Schema Object members **outside** the shared typed `JsonSchemaInstance`
-// slice modeled in `json_schema.dag` today (`discriminator`, `xml`, `externalDocs`, …)
-// as bounded **`JsonValue`** until decomposed (🟡 Deferred (1)). **`openapi_schema_specification_extensions`**
-// is **`^x-`** only on the Schema Object (M5 — same split as `media_type_*` maps).
-//
+// OpenApiSchema — OAS Schema Object: `JsonSchema` core + OAS-only members + `^x-` extensions (P2/M5); not a bare `JsonSchema` alias.
 // Anchor: https://spec.openapis.org/oas/v3.1.0#schema-object
-//
-// Coproduct dissolution (Practice 4) — N/A (`Conj` record). Ledger: wrapper vs
-// raw `JsonSchema` prevents OAS-only keywords from being normalized into
-// `JsonSchemaInstance.additional_keywords` without an explicit OpenAPI field
-// authority (P2 / Practice-5 single-home metadata).
+// Practice 4: N/A (Conj).
 type OpenApiSchema {
   core: JsonSchema,
   openapi_schema_members: Map<String, JsonValue>,
@@ -135,18 +59,9 @@ type OpenApiSchema {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// OpenApiHttpMethod — Path Item Object operation names (OAS 3.1.0 §Path
-// Item Object). Closed set; extension methods are NOT silently folded here.
-//
+// OpenApiHttpMethod — Path Item operation verbs (M4 closed sum).
 // Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — five patterns: (1) fact placement FAILS — HTTP verb is uniform
-// across routing/emit; (2) variant-is-data FAILS — eight distinct nullary
-// constructors vs a flat tag+payload record admitting impossible mixes;
-// (3) algebraic N/A; (4) dimensional FAILS — exactly one HTTP method per
-// map slot; (5) parameterized family FAILS — not `F<X>` over one index set.
+// Practice 4: GREEN (terminal).
 type OpenApiHttpMethod
   = OpenApiGet
   | OpenApiPut

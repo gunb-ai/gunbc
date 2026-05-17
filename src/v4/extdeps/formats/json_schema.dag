@@ -4,23 +4,22 @@
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core (JSON Schema Draft 2020-12 Core — fixed edition)
 //
 // Owns:
-//   - JsonSchema { type, properties/required/items presence slots, ... }
-//   - Validation: validate(JsonValue, JsonSchema) -> Result<(), Diagnostic>
-//   - Type derivation: schema_to_type(JsonSchema) -> Result<Node (TypeNode), Diagnostic>
-//     (this is the load-bearing capability — given a schema, generate corresponding .dag types)
-//   - emit(Node (TypeNode)) -> JsonSchema (for emit direction)
+//   - JsonSchema (+ typed slots for `type` / `properties` / `required` / `items`, `additional_keywords`).
+//   - Future: validate / schema_to_type / emit — Deferred (1); `Outcome<…>` (json.dag #3184 / DECISIONS I).
 //
 // Consumes:
 //   - std/node.dag, std/diagnostic.dag, std/witness.dag
-//   - std/collection.dag: `Set<T>` (alias `PointwisePower<T>` — uniqueness
-//     for `"type"` array form per Validation §6.1.1 and for **`required`**
-//     property names per §6.5.3; lane-wide authority)
-//   - extdeps/formats/json.dag: JsonValue (subject of validation)
+//   - std/collection.dag: `Set<T>` for `"type"` array uniqueness (§6.1.1) and `required` names (§6.5.3).
+//   - extdeps/formats/json.dag: JsonValue (validation subject + overflow keyword payloads).
 //
 // Status: scaffold — fill per TASKS.md T-4.6
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable contract
+// for the worker. Splitting this file requires explicit operator ratification.
+//
+// ─── HEADER RECONCILE (operator directive, vivid-carp-207, dashboard msg_3499949b-8d4e-4826-a51d-05b9e1757775, 2026-05-17) ───
+// In-PR de-prose: comment volume reduced; carriers unchanged.
+//
+// Seams: C5 Draft 2020-12 pin; future ops `Outcome`-seamed (not parallel `Result`, not total emit); boolean schemas as `JsonSchemaTrue`/`JsonSchemaFalse` (Core §4.2.1); recursion via `JsonSchemaPropertiesPresent` + `JsonSchemaItemsSchema`; `"type"` is M4 closed sum not raw `String`; overflow keywords stay `JsonValue` (M5). No bodiless `fn` (DECISIONS PARSE-1).
 
 module v4.extdeps.formats.json_schema
 
@@ -29,74 +28,9 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.std.collection { Set }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// CANONICAL-MIRROR (T-4.6 fan-out). Mirrors the ratified json.dag seam
-// family for **fail-closed outcomes** on any future operation symbols
-// (PR #3184 / msg_f5971a8a): when `json_schema_validate` /
-// `json_schema_emit` / `schema_to_type` land, they return **`Outcome<…>`**
-// using the **D1** carrier from std/diagnostic.dag (DECISIONS **I**, PR
-// #3181) — NOT parallel `Result<ok, err>` spellings and NOT total emit from
-// an ill-typed `Node` (json.dag #3184 P3 / seam #3 propagated). **D2**
-// resolver discipline is ratified #3195. Single authority = Deferred (1).
-//
-// L-2 VERSION PIN (C5): Draft **2020-12** core document is the normative
-// JSON Schema release modeled here; the Anchor URL is the checkable
-// revision. Migration to a newer JSON Schema release is a visible C1
-// edit to this header + a Practice-4 re-ledger pass, not a silent drift.
-//
-// DECLARATIVE-NOW / OPERATIONS-DEFERRED-WITH-OWNER. Modeled NOW: the
-// closed recursive **`JsonSchema`** sum + typed carriers for the highest-
-// traffic Core vocabulary slice (`type`, **`properties` / `required`**
-// presence slots, `items`)
-// + an `additional_keywords` map for spec-faithful extension without
-// inventing a closed keyword enum that would rot on every Core appendix
-// change (MODELING.md M3: extdeps model specs — the keyword set is
-// open-ended at the JSON surface; closed-keyword modeling lands as a
-// follow-up with an operator pin, not an improvised partial enum).
-// DEFERRED (🟡): validation walk, `schema_to_type`, emit-from-`TypeNode`,
-// `$ref` / `$dynamicRef` resolution graph, unevaluatedProperties/items
-// evaluation, numeric-string `"type"` union edge cases, and annotation
-// collection. NEVER bodiless `fn` (DECISIONS PARSE-1).
-//
-// BOOLEAN SCHEMA (Core §4.2.1). JSON Schema instances may be `true` or
-// `false` booleans at the JSON value level — not objects. They are their
-// own sum variants here (`JsonSchemaTrue` / `JsonSchemaFalse`), NOT
-// `JsonValue` wrappers, so schema composition stays explicitly typed.
-//
-// RECURSION (node.dag A1). `JsonSchema` references itself through
-// **`JsonSchemaPropertiesPresent.properties`** (`Map<String, JsonSchema>`)
-// and **`JsonSchemaItemsSchema.item_schema`** — regular recursion ⇒
-// admissible; termination for walks is
-// the implicit JSON value / schema tree descent (same class as `JsonValue`).
-//
-// `JsonValue` is the validation SUBJECT and the carrier for keyword values
-// that remain JSON-first at this layer (`additional_keywords` + the
-// `JsonSchemaItemsSlot` JSON-shaped edges). The **`"type"`** keyword is the
-// exception: Draft 2020-12 Validation §6.1.1 fixes a **closed seven-name**
-// vocabulary — modeled as `JsonSchemaCoreTypeName` (M4 / P2), not open
-// `String`. **Honest scope:** not every other Core keyword is decomposed;
-// unknown / deferred keywords remain in `additional_keywords` as faithful
-// `JsonValue` payloads — no silent drop (M5).
-
-
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchemaCoreTypeName — closed JSON Schema 2020-12 **instance type**
-// strings for the `"type"` keyword (Validation §6.1.1: exactly the seven
-// primitive names `"null"`, `"boolean"`, `"object"`, `"array"`, `"number"`,
-// `"string"`, `"integer"` — M4 closed set, not `String`). **Synonym in review
-// rubric:** *primitive type* / `JsonSchemaPrimitiveType` vocabulary — this
-// sum is that authority.
-//
+// JsonSchemaCoreTypeName — Validation §6.1.1 closed seven-name `"type"` vocabulary (M4).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — five patterns: (1) fact placement FAILS — each JSON type string
-// is its own constructor; (2) variant-is-data FAILS — seven distinct nullary
-// discriminants vs one `String` admitting `"frob"`; (3) algebraic N/A;
-// (4) dimensional FAILS — exactly one core name per constructor; (5)
-// parameterized family FAILS — not `F<X>` over strings.
+// Practice 4: GREEN (terminal).
 type JsonSchemaCoreTypeName
   = JsonSchemaCoreTypeNull
   | JsonSchemaCoreTypeBoolean
@@ -107,103 +41,42 @@ type JsonSchemaCoreTypeName
   | JsonSchemaCoreTypeInteger
 
 
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchemaTypeSlot — the `"type"` keyword (Validation vocabulary §6.1.1).
-// JSON Schema permits either **one** core type name **or** a JSON **array**
-// of distinct core type names; absent keyword is its own variant (not a
-// fabricated default). Single-name and array forms use **`JsonSchemaCoreTypeName`**
-// (closed seven-set — M4). **Uniqueness** in the array form is **structural**:
-// `JsonSchemaTypeUnion.types` is **`Set<JsonSchemaCoreTypeName>`** (imported
-// `Set` = `PointwisePower<T>` from **std/collection.dag** — lane-wide carrier,
-// not a per-file mint). **Non-emptiness** of that set (encoding `[]` at the
-// JSON surface) and **finite positive cardinality** for JSON’s finite array
-// witness are **not** carried by bare `Set<T>` (see collection.dag Wave-A2
-// **FiniteSet** / cardinality–enumerability substrate — same standing
-// discipline class as **NonEmptyList**); those remain **🟡** under
-// `json_schema_validate` + **Deferred (1)** until Wave-A2 refines the carrier
-// substrate — INVARIANTS §2 honesty (no false “non-empty finite subset” claim).
-//
+// JsonSchemaTypeSlot — `"type"` absent | single name | distinct-name union (`Set<…>` uniqueness; non-`[]` / finiteness still 🟡 on bare `Set` — Deferred (1) + collection Wave-A2).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.1
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — five patterns: (1) fact placement FAILS — uniform classifier for
-// type-keyword shape; (2) variant-is-data FAILS — absent vs one core vs
-// core-set union are distinct shapes; (3) algebraic N/A; (4) dimensional FAILS —
-// exactly one alternative; (5) parameterized family FAILS — not `F<X>`.
+// Practice 4: GREEN (terminal).
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
   | JsonSchemaTypeUnion { types: Set<JsonSchemaCoreTypeName> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchemaItemsSlot — the `"items"` keyword (2020-12 applicator slice
-// modeled here). `prefixItems` / `unevaluatedItems` / tuple forms remain
-// in `additional_keywords` until a pinned decomposition PR (named in
-// Deferred (1)) — not silently conflated with `items`.
-//
+// JsonSchemaItemsSlot — `"items"` applicator (2020-12 slice); tuple / `prefixItems` / `unevaluatedItems` stay in `additional_keywords` until pinned PR (Deferred (1)).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.1
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
-// scan as `JsonSchemaTypeSlot` (absent vs nested schema).
+// Practice 4: GREEN (terminal).
 type JsonSchemaItemsSlot
   = JsonSchemaItemsAbsent
   | JsonSchemaItemsSchema { item_schema: JsonSchema }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchemaPropertiesSlot — the `"properties"` keyword (Core applicator).
-// **P2 optional-keyword presence:** distinguishes **keyword absent** from
-// **keyword present with `{}`** at the JSON surface (same discipline as
-// `JsonSchemaTypeSlot` / `JsonSchemaItemsSlot` — no empty-map collapse).
-//
+// JsonSchemaPropertiesSlot — `"properties"` P2 presence (absent vs present `{}`).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.2.1
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: same
-// scan as `JsonSchemaTypeSlot` (absent vs nested object map).
+// Practice 4: GREEN (terminal).
 type JsonSchemaPropertiesSlot
   = JsonSchemaPropertiesAbsent
   | JsonSchemaPropertiesPresent { properties: Map<String, JsonSchema> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchemaRequiredSlot — the `"required"` keyword (Validation §6.5.3).
-// **P2 optional-keyword presence:** distinguishes **keyword absent** from
-// **keyword present** (including **`[]`** at the JSON wire — element
-// uniqueness is structural via **`Set<String>`** in the Present variant).
-//
+// JsonSchemaRequiredSlot — `"required"` P2 presence (absent vs present incl. `[]`; uniqueness structural via `Set<String>` in Present).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-validation#section-6.5.3
-//
-// Coproduct dissolution (Practice 4) — 🟢 GREEN (terminal). Ledger: absent
-// vs present-with-set (not conflated with “no constraint”).
+// Practice 4: GREEN (terminal).
 type JsonSchemaRequiredSlot
   = JsonSchemaRequiredAbsent
   | JsonSchemaRequiredPresent { required: Set<String> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// JsonSchema — JSON Schema 2020-12 schema document: boolean form OR object
-// form carrying the typed keyword bundle + faithful keyword overflow map.
-//
+// JsonSchema — boolean schema OR object schema + `additional_keywords` overflow (open keyword set — M3/M5).
 // Anchor: https://json-schema.org/draft/2020-12/json-schema-core#section-4.3
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1) — 🟢 GREEN (terminal).
-// Ledger — six patterns attempted:
-//   1. Fact placement — FAILS: schema kind is uniform across validation,
-//      emit, and OpenAPI `components.schemas` ingestion.
-//   2. Variant-is-data — FAILS: boolean schemas are nullary; object schemas
-//      carry a large structured payload — a flat record would admit illegal
-//      mixes (boolean + object fields).
-//   3. Algebraic form — N/A: JSON Schema is external-spec data, not an
-//      algebra inhabitant in the std/algebra.dag sense.
-//   4. Dimensional — FAILS: a schema is exactly one of boolean true / false /
-//      object form at the JSON value grammar level for this subset.
-//   5. Parameterized family — FAILS: variants are heterogeneous, not `F<X>`
-//      over one enumerable index set.
-//   6. `JsonSchemaRequiredPresent.required` uses **`Set<String>`** —
-//      Validation §6.5.3: elements MUST be strings and **unique**; structural
-//      via **std/collection.dag** `Set` (same carrier as `"type"` array
-//      uniqueness).
+// Practice 4: GREEN (terminal) on the sum; `JsonSchemaInstance` is the typed object slice.
 type JsonSchema
   = JsonSchemaTrue
   | JsonSchemaFalse
@@ -216,36 +89,11 @@ type JsonSchema
     }
 
 
-// ─────────────────────────────────────────────────────────────────────
 // Deferred — TRACKED SCAFFOLD (🟡).
 //
-// (1) Operations — `json_schema_validate`, `schema_to_type`, `json_schema_
-//   emit_from_type_node`, plus full applicator vocabulary decomposition
-//   (`prefixItems`, `contains`, `unevaluated*`, `$ref` graph, annotation
-//   collection). All require std/text.dag stream substrate + std/node.dag
-//   `TypeNode` facts for derivation — T-3 / T-6 pipeline work, not bodiless
-//   signatures here. When authored: **fail-closed `Outcome<…>`** on every
-//   operation (json.dag seam #3). **Schema document vs instance:** reject
-//   **illegal schema keyword shapes / values** once validation closes (e.g.
-//   **empty `JsonSchemaTypeUnion.types`** encoding **`"type": []`** at the JSON
-//   wire per Validation §6.1.1 — non-emptiness still 🟡 on the bare `Set` carrier;
-//   **duplicate `required` strings** on the wire — structurally excluded via
-//   **`Set<String>`** here; malformed payloads for other keywords when modeled).
-//   **`json_schema_validate`** on a parsed schema + instance MUST follow Draft
-//   **2020-12 applicability** — keywords evaluate per the normative instance rules
-//   (e.g. union **`type`** alongside other applicators such as **`maxLength`** is
-//   ordinary composition; **do not** treat “`type` vs sibling keywords *look*
-//   contradictory at the object layer” as automatic schema-self-**`Rejected`**
-//   without a normative violation). **`schema_to_type`** /
-//   **`json_schema_emit_from_type_node`** may still **`Rejected`** / unsupported
-//   for **derivation-only** limits — **not** conflated with **`json_schema_validate`**
-//   invalidity (same lane split as §6.5.3 / `properties` below). Never fabricate
-//   success on a true spec failure. **§6.5.3 / P1:**
-//   `required` constrains **instances**, not a sibling-schema rule that each name
-//   must appear under `properties`; a future **`schema_to_type`** closed-record
-//   carve-out from `properties` alone is a **derivation** concern (name it
-//   then), not `json_schema_validate` invalidity implied by this carrier.
-//     (a) scaffold doc — THIS note.
-//     (b) bounds on use — no symbols exported yet; consumers wait.
-//     (c) dissolution trigger — operator pins the remaining Core keyword
-//         carriers + lands parser/typecheck substrate for the operations.
+// (1) Operations — `json_schema_validate`, `schema_to_type`, `json_schema_emit_from_type_node`, full applicator vocabulary (`prefixItems`, `contains`, `unevaluated*`, `$ref`, annotations). std/text + std/node `TypeNode`; no bodiless `fn`. Fail-closed `Outcome<…>` (json.dag seam #3).
+//   **Schema document vs instance:** reject illegal keyword **shapes/values** when validation lands (e.g. `"type": []` per §6.1.1 — non-emptiness still 🟡 on bare `Set`; duplicate `required` strings on wire structurally excluded here via `Set<String>`; other malformed payloads when modeled).
+//   **`json_schema_validate`** MUST follow Draft **2020-12 applicability** (keywords evaluate per instance rules; union `type` + e.g. `maxLength` is ordinary composition — **not** automatic `Rejected` from “object-layer mismatch” without normative violation).
+//   **`schema_to_type` / `json_schema_emit_from_type_node`** may `Rejected`/unsupported for **derivation-only** limits — **not** conflated with `json_schema_validate` invalidity (same split as §6.5.3 / `properties` below). Never fabricate success on true spec failure.
+//   **§6.5.3 / P1:** `required` constrains **instances**, not a rule that each name appears under `properties`; closed-record carve-out from `properties` alone is **derivation**, not `json_schema_validate` invalidity from this carrier alone.
+//   (a) THIS note. (b) no symbols exported yet. (c) trigger — operator pins remaining Core keyword carriers + parser/typecheck substrate for ops.
