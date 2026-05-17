@@ -63,6 +63,21 @@ authority location(s) and moves to Part 1.
 
 ---
 
+## De-Prosed Substrate Receipts
+
+These receipts were relocated from local `.dag` comments during T-31(b).
+The terse `.dag` headers remain boundary indexes; this table carries the
+checkable scaffold/coproduct receipt until the named substrate support lands.
+
+| File | Declaration(s) | Class | Receipt |
+|------|----------------|-------|---------|
+| `std/cardinality.dag` | `DescentEvidence`, `TerminationProof`, `Multiplicity` | Green coproducts | `DescentEvidence` is the closed per-edge descent observation sum. `TerminationProof` encodes lexicographic descent by structure: `non_increasing: List<RankingDimension>` plus mandatory `strict: RankingDimension`; no stored `DescentEvidence` field may stand in for the strict witness. `Multiplicity = Bounded | Unbounded { step: TerminationProof }` keeps the bounded/unbounded distinction closed. |
+| `std/diagnostic.dag` | `Extent.ByteRange` | Yellow value-refinement scaffold | Documented: `ByteRange { start: Int, end: Int }` is an honest bridge carrier because current substrate syntax cannot exclude negative offsets or `start > end`. Bounded use: producers must validate textual spans before constructing diagnostics that rely on byte-range validity. Trigger: bounded/non-negative ordered span carrier or equivalent substrate refinement. |
+| `std/text.dag` | `Char` | Yellow value-refinement scaffold | Documented: `Char = Nat` is an honest bridge carrier for Unicode scalar values because current substrate syntax cannot express `0..=0x10FFFF` excluding surrogate range `0xD800..=0xDFFF`. Bounded use: producers/ingesters must validate scalar-value membership. Trigger: bounded non-contiguous value refinement or equivalent character scalar carrier. |
+| `std/machine.dag` | `Byte`, `Word8`, `Word16`, `Word32`, `Word64`, `Word128` | Yellow fixed-cardinality scaffold | Documented: `bits: List<Bit>` and `bytes: List<Byte>` fields are intentionally unrefined list carriers. Bounded use: no consumer may treat list length as proven width without an explicit validator, witness, or grounding-side check. Trigger: fixed-cardinality list/field refinement substrate. |
+
+---
+
 ## Part 2 — RATIFIED 2026-05-15 (cascade-closures — now in Part 1)
 
 > **All three (U2, C3, C1) were ratified and are encoded — see Part 1.**

@@ -8,6 +8,7 @@
 
 module v4.std.cardinality
 
+import v4.std.collection { List }
 import v4.std.node { Symbol }
 type DescentEvidence
   = Strict
