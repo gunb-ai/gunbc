@@ -11,7 +11,7 @@
 > Full derivations, worked examples, and the background modeling analysis
 > live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Eight Modeling Practices
+## Nine Modeling Practices
 
 Each practice implements one of the five invariant principles from
 INVARIANTS.md. A reviewer works from the five principles; the practices
@@ -28,6 +28,7 @@ Mapping:
 - Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
 - Practice 7 (Projection over enumeration) — implements **P1: Modeling Faithfulness**
 - Practice 8 (Fact-bundle modeling) — implements **P1: Modeling Faithfulness**
+- Practice 9 (No-prose discipline) — implements **P2: Boundary Discipline**
 
 A reviewer should name specifically whether the diff satisfies each
 relevant practice, where it could be violated, and whether the existing
