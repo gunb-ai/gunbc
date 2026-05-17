@@ -10,19 +10,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TYPE_RE = re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
-def type_names(path: Path) -> list[str]:
+def carrier_names(path: Path) -> list[str]:
+    """Declaration-order carrier names: `type` rows first, then `data` rows (deduped)."""
     seen: set[str] = set()
     out: list[str] = []
     for line in path.read_text().splitlines():
-        m = TYPE_RE.match(line.strip())
-        if not m:
+        s = line.strip()
+        m = TYPE_RE.match(s)
+        if m:
+            name = m.group(1)
+            if name not in seen:
+                seen.add(name)
+                out.append(name)
             continue
-        name = m.group(1)
-        if name not in seen:
-            seen.add(name)
-            out.append(name)
+        m = DATA_RE.match(s)
+        if m:
+            name = m.group(1)
+            if name not in seen:
+                seen.add(name)
+                out.append(name)
     return out
 
 
@@ -94,7 +103,7 @@ def main() -> None:
     report: list[tuple[str, float]] = []
     for rel, scope, anchor, consumes, status in specs:
         path = ROOT / rel
-        names = type_names(path)
+        names = carrier_names(path)
         owns_lines = "\n".join(f"//   {n}" for n in names)
         first = path.read_text().splitlines()[0]
         if not first.startswith("// src/"):
