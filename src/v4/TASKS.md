@@ -1047,8 +1047,13 @@ It has two parts:
   reviewer and the substrate depend on).
 - **REMOVE** — rationale prose, narrative motivation, design-history
   asides: anything a reader does not need to *use* the file.
-- **RELOCATE** — long-form rationale worth keeping moves to a `docs/`
-  subdoc; the file keeps a one-line pointer.
+- **RELOCATE** — long-form rationale worth keeping moves to
+  `src/v4/DECISIONS.md` or a `docs/` subdoc. The `.dag` file keeps **no
+  pointer**: per Practice 9 a file's comments are only the four allowed
+  classes (file-path line, terse header, per-carrier `// Anchor:`,
+  optional one-line concept tag), and a `see docs/X` pointer is not one
+  of them. The relocated rationale is discoverable at its destination,
+  not linked from the carrier.
 
 **Load-bearing files** (`node.dag`, `STRUCTURE.md`-named substrate,
 the four pipeline stages) de-prose **carefully**: KEEP the structured
