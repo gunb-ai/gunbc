@@ -751,9 +751,14 @@ exists (`integer.dag` explicitly states "no `where`-clause").
 refinement carrier in/around `std/cardinality.dag`; or (b) **rule
 out-of-v4** — the kernel excludes value-predicate refinements; carriers
 stay opaque and fail-closed at the boundary, recorded as named P2 debt.
-**Also fixes:** `file_system.dag`'s header `Consumes` cites
-`std/collection NonEmptyList`, a type `collection.dag` does not declare —
-a dangling-`Consumes` bug to correct under whichever fork lands.
+**Independent sub-bug — decoupled from the T-25 fork:**
+`file_system.dag`'s header `Consumes` cites `std/collection NonEmptyList`,
+a type `collection.dag` does not declare. This is a dangling-`Consumes`
+bug **regardless of which T-25 fork lands** (the header cites a
+non-existent type whether refinement substrate is scheduled or ruled
+out) — so it is NOT gated on this ratification. It is fixed standalone:
+routed to the `file_system.dag` owner (T-4.5 / PR #3209) to correct the
+header now.
 
 ### T-26 — extdeps shared boundary carriers (net-address / URL / HttpMethod)  [PROPOSED]
 **Gap:** `NetworkAddress` appears only in `coordination.dag` prose;
