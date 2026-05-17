@@ -24,8 +24,9 @@
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, args: List<String>, env: Map<String,String> }
 //   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: Process}, Diagnostic>
-//   - wait(pt, p)    -> Result<Process, Diagnostic>  (blocks until terminated)
-//   - capture(pt, p) -> Result<{stdout, stderr, process: Process}, Diagnostic>
+//   - wait(pt, p)    -> Result<{table: ProcessTable, process: Process}, Diagnostic>
+//     (blocks until terminated)
+//   - capture(pt, p) -> Result<{stdout, stderr, table: ProcessTable, process: Process}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -46,8 +47,8 @@
 // fact), reconciling the frozen wait/capture contract per the operator
 // P2/§2-floor BLOCKING. Follow-up effect-resource reconcile: process
 // operations also take an explicit ProcessTable resource parameter per
-// ratified lens/effect.dag B3/B-5; spawn returns the modified
-// ProcessTable alongside the spawned Process.
+// ratified lens/effect.dag B3/B-5; spawn/wait/capture return the
+// modified ProcessTable alongside the advanced Process.
 
 
 module v4.extdeps.process
@@ -230,11 +231,17 @@ type WaitProcessRequest {
   process: Process
 }
 
-type WaitProcessResult = Outcome<Process>
+type WaitedProcess {
+  table: ProcessTable
+  process: Process
+}
+
+type WaitProcessResult = Outcome<WaitedProcess>
 
 type CapturedProcessOutput {
   stdout: String
   stderr: String
+  table: ProcessTable
   process: Process
 }
 
