@@ -540,16 +540,29 @@ type LlvmValue
 //     landed at the inhabitant. Conflating the two is the trap
 //     (briansrls + codex BLOCKING on prior 83afba81/69392ed80 caught
 //     this).
+//     Landed-witness inventory on origin/main (verified, FIVE in
+//     total across std/algebra.dag-inhabiting carriers): (1)
+//     int_abelian_group: AbelianGroup<Int> (std/integer.dag:234),
+//     (2) int_ordered_ring: OrderedRing<Int> (std/integer.dag:244 —
+//     int_abelian_group is its `add:` sub-component per integer.dag:
+//     246; one Int-arithmetic story, not two), (3)
+//     bool_boolean_algebra: BooleanAlgebra<Bool> (std/logic.dag:120),
+//     (4) nat_additive_commutative_monoid: CommutativeMonoid<Nat>
+//     (std/nat.dag:151), (5) nat_semiring: CommutativeSemiring<Nat>
+//     (std/nat.dag:174). The Nat witnesses are NOT a richer source
+//     for any LLVM iN opcode (LLVM iN ≅ Z/2^N-modular ≠ ℕ); they
+//     would mis-route any meaning consumer.
 //     (a) LANDED ONTOLOGY (the structure types exist on origin/main):
-//       - OpAdd / OpMul → Semiring (std/algebra.dag:185); landed data
-//         witness on origin/main = `int_ordered_ring: OrderedRing<Int>`
-//         (std/integer.dag:244, abstract Int — Semiring is its `add` /
-//         `mul` sub-structure). Per-iN-width witnesses are deferred to
-//         std/integer.dag D2 fan-out (no per-width data instance
-//         landed yet).
-//       - OpSub → Ring (std/algebra.dag:197); Ring witness rides the
-//         same `int_ordered_ring` (Ring is its base). Per-iN per-width
-//         witnesses deferred to D2 fan-out.
+//       - OpAdd / OpMul → Semiring (std/algebra.dag:185); ontology
+//         landed; per-iN-width witness deferred to std/integer.dag D2
+//         fan-out (the abstract-Int story rides int_ordered_ring's
+//         `add:` / `mul:` sub-components, but no per-width iN
+//         witness — and the Nat witnesses are not applicable per the
+//         inventory note above).
+//       - OpSub → Ring (std/algebra.dag:197 — additive inverse, which
+//         Semiring lacks); ontology landed; per-iN-width witness
+//         deferred to D2 fan-out (rides int_abelian_group on abstract
+//         Int; no per-width iN witness, no Nat applicability).
 //       - OpAnd / OpOr / OpXor → BooleanAlgebra (std/algebra.dag:291);
 //         landed data witness on origin/main = `bool_boolean_algebra:
 //         BooleanAlgebra<Bool>` (std/logic.dag:120). The per-iN
@@ -1088,15 +1101,24 @@ type AtomicRmwOrdering
 //     inhabit, and (b) the per-(type, op) WITNESS, which may or may
 //     not yet be landed at the inhabitant. Conflating the two is the
 //     trap (briansrls + codex BLOCKING caught it).
+//     Landed-witness inventory on origin/main matches BinaryOpcode's
+//     (FIVE total: int_abelian_group/integer.dag:234,
+//     int_ordered_ring/integer.dag:244,
+//     bool_boolean_algebra/logic.dag:120,
+//     nat_additive_commutative_monoid/nat.dag:151,
+//     nat_semiring/nat.dag:174). int_abelian_group is the `add:`
+//     sub-component OF int_ordered_ring (one Int-arithmetic story);
+//     the Nat witnesses are NOT a richer source for LLVM iN
+//     (iN ≅ Z/2^N ≠ ℕ).
 //     (a) LANDED ONTOLOGY (the structure types exist on origin/main):
-//       - RmwAdd → Semiring (std/algebra.dag:185); ontology landed,
-//         witness rides `int_ordered_ring: OrderedRing<Int>` (std/
-//         integer.dag:244) for abstract Int — per-iN per-width
-//         witnesses deferred to D2 fan-out.
+//       - RmwAdd → Semiring (std/algebra.dag:185); ontology landed;
+//         abstract-Int story rides int_ordered_ring's `add:` /
+//         `mul:` sub-components; per-iN per-width witnesses deferred
+//         to D2 fan-out.
 //       - RmwSub → Ring (std/algebra.dag:197 — additive inverse,
-//         which Semiring lacks); witness rides the same
-//         `int_ordered_ring`. Per-iN per-width witnesses deferred to
-//         D2 fan-out.
+//         which Semiring lacks); ontology landed; abstract-Int story
+//         rides int_abelian_group. Per-iN per-width witnesses
+//         deferred to D2 fan-out.
 //       - RmwAnd / RmwOr / RmwXor / RmwNand → BooleanAlgebra (std/
 //         algebra.dag:291); nand is De-Morgan over the same carrier
 //         (NOT a fresh algebra). Landed data witness on origin/main =
