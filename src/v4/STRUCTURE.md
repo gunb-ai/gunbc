@@ -29,7 +29,7 @@ src/v4/
     float.dag            # Float — IEEE-754 floating-point (rounding-aware algebra, not exact Field)
     text.dag             # Char (Unicode code point) + String (FreeMonoid<Char>)
     collection.dag       # bounded containers
-    verification.dag     # TestClaim schema (imported from v3)
+    verification.dag     # TestClaim schema + Tier×Layer classification (v4-fresh; studied v3/dsl)
     report.dag           # advisory carrier (NOT fail-closed Diagnostic); used by synthesis lens
 
   extdeps/               # external system contracts (21 files)
