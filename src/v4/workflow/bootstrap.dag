@@ -86,124 +86,49 @@
 // Brief: see BRIEF_TEMPLATE.md.
 //
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
+// Modeling notes
 //
-// DATA, not a runner. This file declares the bootstrap chain AS DATA: a
-// fixed `BootstrapPlan` record of four named singleton edge-identity
-// slots (`SeedToStage0` / `Stage0ToStage1` / `Stage1ToStage2` /
-// `FixptStage1Stage2`) that v2's `run` interpreter walks. There is
-// deliberately NO orchestration body here — no fn that spawns
-// processes, reads the filesystem, or shells out. That is exactly the
-// v3 regression door (build.rs / bootstrap.sh = editable Rust/script
-// authority). The plan is inert structured data; the interpreter that
-// gives it effect is the deferred operation, with a named owner and
-// dissolution trigger (below).
+// DATA, not a runner: a fixed `BootstrapPlan` record of four named
+// singleton edge-identity slots that v2's `run` interpreter walks. No
+// orchestration body here — build.rs/shell would be the v3 regression
+// door (editable Rust authority).
 //
-// WHY EACH POSITION IS A SINGLETON EDGE TYPE. The chain has exactly
-// four positions over the artifacts {external seed (v2, src/v2/,
-// touched once), stage0, stage1, stage2}. Each position's source→target
-// edge is the chain's FIXED structural identity, not configuration, so
-// it is encoded as a distinct empty-record singleton TYPE (the edge IS
-// the type) rather than free `Stage` fields — emission style (stage0 =
-// v2-style, stage1+ = v4-style) and source root (always src/v4) are
-// derivable FACTS, never stored. This is why the fixed point is the
-// `FixptStage1Stage2` singleton and NOT stage0==stage1: stage0 is
-// v2-emission-style, so only stage1==stage2 is the self-host fixed
-// point. Result: `BootstrapPlan` has exactly one inhabitant; no
-// mis-wiring is representable (the openai-pro/operator P2 resolution).
+// Each slot type is an empty-record SINGLETON whose edge IS its
+// identity, so `BootstrapPlan` has exactly ONE inhabitant — reorder /
+// duplicate / missing / mis-wire is unconstructible (P1/P2, structural;
+// resolves the openai-pro/operator P2 finding). Supersedes the original
+// `steps: List<BootstrapStep>` (node.dag `Diff` #3162 over-general-list
+// anti-pattern) and the interim free-field `CompileStep`/`FixedPointStep`
+// (still admitted mis-wiring). All declarations are records / empty-
+// record singletons — no coproduct, so no Practice-4 ledger applies
+// (the prior `Stage`/`BootstrapStep` coproducts + ledgers were removed
+// with the types; the ledger finding is mooted by dissolution).
 //
-// WHY THE PINNED HASH IS NOT A STORED LITERAL. STRUCTURE.md §"Bootstrap
-// chain" + the A3 block (above) make the v4 binary a content-addressed
-// release artifact pinned at the fixed-point `Hash` (B1, std/node.dag).
-// `Hash` is opaque (K-1, no literal constructor): a pin value is
-// PRODUCED by `content_hash : Node -> Hash` at interpret time, never
-// hand-written here (a hand-written hash would be exactly the editable
-// proxy A3 rejects). So the plan stores no `pinned: Hash` field; the
-// `FixptStage1Stage2` step DECLARES the bit-identical (stage1==stage2)
-// equality structurally, and the executable assertion over real
-// emitted artifacts is T-15's `RoundTrips` TestClaim
-// (std/verification.dag) CONSUMING this plan — not authored here.
+// The pinned fixed-point `Hash` (B1) is NOT stored: it is produced by
+// `content_hash` at interpret time (a hand-written hash = the editable
+// proxy A3 rejects). The `FixptStage1Stage2` slot declares the
+// bit-identical stage1==stage2 equality; the executable assertion is
+// T-15's `RoundTrips` TestClaim (std/verification.dag), not here.
 //
-// TRACKED SCAFFOLD (🟡) — operations deferred with owner + trigger, per
-// the operator-ratified declarative-now / operations-deferred discipline
-// (std/collection.dag #3169, canonical json.dag #3184). NOT improvised
-// bodies, NOT bodiless `fn` (frozen v2 rejects bodiless `fn`, DECISIONS
-// PARSE-1):
-//   (1) `interpret(BootstrapPlan) -> Outcome<Hash>` — walks the steps,
-//       spawning v2-compiler/rustc/v4-stage-N (extdeps/process.dag) and
-//       reading src/v4/*.dag + writing transient build-dir Rust
-//       (extdeps/file_system.dag). Both extdeps files are T-4.5 SCAFFOLD
-//       (zero declarations today) — no process/fs carrier exists to
-//       consume. Fail-closed: any step → `Rejected { diagnostic }`
-//       (std/diagnostic.dag `Outcome<T>`, DECISIONS item I).
-//       OWNER/TRIGGER: dissolves when compiler/05_eval.dag (T-22, the
-//       PRIMARY execution path that interprets workflow/*.dag) lands AND
-//       extdeps/{process,file_system}.dag (T-4.5) are filled.
-//   (2) The executable fixed-point assertion (stage1-emitted ==
-//       stage2-emitted, BitIdentical) is a `TestClaim`
-//       (std/verification.dag, `kind: RoundTrips`) AUTHORED BY T-15, not
-//       here — bootstrap.dag declares the `FixptStage1Stage2` step it
-//       consumes.
-//       OWNER/TRIGGER: T-15 fixed-point validation lane.
-//   Bounds on use: no consumer reads an `interpret`/run symbol from this
-//   file in this PR; the only gate this file rides today is the
-//   structural one (it v2-compiles as well-formed data — the existing CI
-//   gate, modeled concretely in workflow/ci.dag's v2-compile job).
-//
-// SHAPE (INVARIANTS P1/P2 — structural NOW, not a deferred check). The
-// bootstrap chain is FIXED by STRUCTURE.md §"Bootstrap chain": exactly
-// seed→stage0, stage0→stage1, stage1→stage2, then the stage1==stage2
-// fixed point — ZERO degrees of freedom (the source/target edges are
-// the chain's structural IDENTITY, NOT user configuration). So each of
-// the four positions is its OWN distinct SINGLETON type — an empty
-// record whose sole inhabitant's identity IS the edge (documented at
-// the type) — and `BootstrapPlan` is the fixed record of those four
-// slots, so it has EXACTLY ONE inhabitant. A reordered / duplicated /
-// missing / extra / MIS-WIRED step is UNCONSTRUCTIBLE by type: there
-// are no free `Stage` fields for a slot name and a payload to disagree
-// about. This is the openai-pro REQUEST_CHANGES (2026-05-16) + operator
-// P2 finding resolved: the edge identity is structural now, NOT an
-// interpret-time check.
-//
-// SUPERSESSION (provenance, not silently dropped — diagnostic.dag #3161
-// reconcile precedent). This replaces, in order: (i) the original
-// `steps: List<BootstrapStep>` (the node.dag `Diff` #3162
-// over-general-list anti-pattern); (ii) the interim free-field
-// `CompileStep`/`FixedPointStep` records, which still admitted the
-// mis-wiring (`seed` typed-valid with `produces: Stage2`) their own
-// comments claimed eliminated — the exact P2 illegal-state. The earlier
-// "BOUNDED RESIDUAL / YamlInt-lexeme-class / future-grammar deferral"
-// is RETRACTED: an empty-record singleton step type IS valid,
-// constructible v4 (verified — v2 parses `type X {}` and constructs
-// `X {}`), so the structural form is reachable NOW; the deferral was
-// unnecessary, not a real bounded refinement.
-//
-// LEDGER PROVENANCE. `BootstrapPlan` is a Conj RECORD and the four step
-// types are empty-record SINGLETONS — NO Practice-4 🟢/🟡/🔴
-// dissolution ledger applies anywhere in this file: Practice 4 binds
-// COPRODUCTS (a ≥2-variant choice to dissolve); a record has no choice
-// and a one-inhabitant singleton presents no variant set (modeling-
-// discipline.md §4). The earlier `Stage` coproduct (with its full
-// five-pattern ledger) and the `BootstrapStep` coproduct are BOTH
-// REMOVED — the stage/edge identity is now carried by the four
-// singleton step-type NAMES, so neither coproduct is reachable and each
-// ledger is removed WITH the type it classified. This MOOTS the earlier
-// "Stage/BootstrapStep need ledgers" finding by DISSOLUTION (no
-// coproduct remains), the same resolution shape already applied to
-// `BootstrapStep`.
+// TRACKED SCAFFOLD (🟡) — deferred operations with owner+trigger
+// (declarative-now discipline; not bodiless `fn`, DECISIONS PARSE-1):
+//   (1) `interpret(BootstrapPlan) -> Outcome<Hash>` — spawns
+//       v2-compiler/rustc (extdeps/process.dag) + build-dir IO
+//       (extdeps/file_system.dag); fail-closed per step.
+//       OWNER/TRIGGER: compiler/05_eval.dag (T-22) +
+//       extdeps/{process,file_system}.dag (T-4.5) land.
+//   (2) the executable fixed-point assertion is T-15's `RoundTrips`
+//       TestClaim. OWNER/TRIGGER: T-15.
+//   Today the only gate this file rides is structural (v2-compiles as
+//   well-formed data).
 
 module v4.workflow.bootstrap
 
 
-// ─────────────────────────────────────────────────────────────────────
-// The four chain positions — each a distinct SINGLETON (empty record,
-// exactly one inhabitant `X {}`) whose EDGE IDENTITY is the type itself
-// (no free stage fields ⇒ nothing for a slot name and a payload to
-// disagree about; the mis-wiring P2 illegal-state is unconstructible).
-// The stage vocabulary (Seed/Stage0/Stage1/Stage2, STRUCTURE.md
-// §"Bootstrap chain") is embedded in these names; there is no separate
-// `Stage` enum (removed — see LEDGER PROVENANCE). An empty record is
-// the unit type, not a coproduct — no Practice-4 ledger applies.
+// The four chain positions — each an empty-record SINGLETON whose edge
+// IS its identity (no free stage fields; `BootstrapPlan` has exactly
+// one inhabitant). Stage vocabulary is embedded in the names; no
+// separate `Stage` enum. A unit type, not a coproduct — no ledger.
 
 // Seed-once compile: the frozen external v2 seed (src/v2/, touched
 // EXACTLY ONCE) compiles src/v4/*.dag → the v4-stage0 binary (v2
@@ -225,15 +150,10 @@ type Stage1ToStage2 {}
 type FixptStage1Stage2 {}
 
 
-// ─────────────────────────────────────────────────────────────────────
-// BootstrapPlan — the bootstrap chain AS DATA. A FIXED RECORD whose
-// four NAMED slots each have a distinct singleton edge-identity type,
-// so the seed-once→stage0→stage1→stage2→fixed-point sequence IS the
-// type and `BootstrapPlan` has EXACTLY ONE inhabitant — reorder /
-// duplicate / missing / extra / mis-wire are ALL unconstructible
-// (INVARIANTS P1/P2, structural now). The pinned content-hash is NOT a
-// stored field — produced by `content_hash` (B1) at interpret time,
-// asserted by T-15.
+// BootstrapPlan — the bootstrap chain AS DATA: a fixed record of the
+// four singleton slots, so the seed→stage0→stage1→stage2→fixed-point
+// sequence IS the type (exactly one inhabitant). Pinned hash is not
+// stored (produced by `content_hash` at interpret, asserted by T-15).
 type BootstrapPlan {
   seed: SeedToStage0
   self0: Stage0ToStage1
@@ -242,12 +162,8 @@ type BootstrapPlan {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// The canonical (and ONLY constructible) bootstrap plan — STRUCTURE.md
-// §"Bootstrap chain" AS DATA. This is the ONLY bootstrap authority;
-// v2's `run` interpreter walks THIS. By construction there is exactly
-// one inhabitant, so this `data` is not "the correct wiring among
-// many" — it is the sole representable value.
+// The canonical (and only constructible) bootstrap plan — the sole
+// bootstrap authority; v2's `run` interpreter walks THIS.
 data bootstrap_plan: BootstrapPlan = BootstrapPlan {
   seed: SeedToStage0 {},
   self0: Stage0ToStage1 {},
