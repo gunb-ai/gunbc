@@ -331,27 +331,25 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-6: compiler/01_tokenize.dag
 
-**I/O**: `FreeMonoid<Char> -> Result<TokenStream, Diagnostic>`
+**Architecture (authoritative in `compiler/00_compile.dag`):** Tokenize is **not** a bespoke procedural lexer for `.dag`. It is the **first half of generic `ingest`**, paired with T-7 parse as a **generic walker** over a `LanguageModel`'s declarative **`lex`** subtree (`Node`). That makes tokenization **one application** of the **same bidirectional language-model relation** the model carries for ingest **and** emit (C5: `ingest` / `emit` are inverse directions on identical declarative data — see `compiler/05_emit.dag` + `docs/modeling/grounding-worked-examples.md`).
 
-**Modeling decisions**:
-- Character class encoding (predicate fn vs enum vs charset)
-- Whitespace/comment handling (preserve vs discard)
-- Token boundary discipline
+**Task definition (what workers author):** Ratify lexical facts **as data in `LexRules` / `extdeps/languages/*`**, then extend the generic walker with **new discriminant shapes** (fail-closed `Rejected` until each shape is ratified — Wave-1 `E0` pattern in `01_tokenize.dag`). Character classes, whitespace, and token boundaries are **facts carried on the lex tree** the walker projects — not three disconnected “pick an encoding” policy axes.
+
+**I/O (spine contract):** `(String, file: Symbol, LexRules) -> Outcome<TokenStream>` with `LexRules = Node` (see `01_tokenize.dag`).
 
 **Reference**:
 - v2: `src/v2/01_tokenize.dag`
-- v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-2
+- v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-2 (bridge-era prose — reconcile to v4 architecture above)
 
 ---
 
 ### T-7: compiler/02_parse.dag
 
-**I/O**: `TokenStream -> Result<ParseTree, Diagnostic>`
+**Architecture (`compiler/02_parse.dag`, `00_compile.dag`):** Parse is the **second half of `ingest`** — a **generic walker** over the `LanguageModel`'s declarative **`grammar` `Node`**, never surface-special-cased for `.dag`. Productions are **facts in the grammar tree**; PARSE-1 bodiless `fn` obligations are **grammar data**, not magic baked into the walker.
 
-**Modeling decisions**:
-- Grammar productions as Node trees vs separate parser substrate
-- Error recovery (single Diagnostic vs continued)
-- ParseTree shape (layout-preserving?)
+**Task definition:** Add grammar subgraphs + vocabulary to the model; grow the walker by **explicit encodings** (Wave-1 `G0` today). Error recovery and layout fidelity are **`Outcome` + locus** questions on the **same projection**, not permission to fork a separate parser substrate unless escalated.
+
+**I/O (spine contract):** `(TokenStream, Grammar) -> Outcome<ParseTree>` with `ParseTree = Node`, `Grammar = Node` (A1).
 
 **Reference**:
 - v2: `src/v2/02_parse.dag`
@@ -361,11 +359,13 @@ substrate imported them, so the cut is a pure scope reduction.
 
 ### T-8: compiler/03_normalize.dag + 03_resolve.dag
 
-**I/O**: `ParseTree -> NormalizedTree -> ResolvedTree`
+**Architecture (`00_compile.dag` `core`):** `core = normalize ∘ resolve ∘ infer`. Normalize + resolve are **language-agnostic `Node` transforms** on the spine: **C3** dissolves the four closed surface-sugar forms into `Node` trees; **resolve** is the **B-4** authority for use→def **via opaque `Symbol` identity** (K-1). They consume the frozen `ParseTree` seam from T-7 and hand `ResolvedTree` to T-9 — **not** separate mini-languages.
 
-**Modeling decisions**:
-- Surface sugar dissolution rules (service/fn/type -> Node tree)
-- Identifier binding strategy (scope chain vs flat namespace)
+**Task definition:** Model sugar + binding **against the same declared authorities** the parse / `extdeps/languages` bundle mints (single Symbol mint for C3 sugar Atoms; resolve documents wave-1 flat namespace gather vs deeper lexical scopes until ratified). Workers extend **declared rules + header contracts**, not one-directional bespoke passes that reinvent symbols.
+
+**I/O:** `ParseTree -> NormalizedTree -> ResolvedTree` (carrier `Node`; see stage files).
+
+**CP-1b / #3211 alignment:** Implementation classifies sugar via **imported `dag_c3_surface_sugar_*`** from `extdeps/languages/dag.dag` and binds with a **flat program-level `bindings` map + single `Scope` walk** (wave-1) — consistent with **grammar-as-data** + single-authority discipline.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
