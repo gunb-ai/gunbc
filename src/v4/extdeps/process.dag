@@ -27,10 +27,10 @@
 //   - ExitCode = NonNegativeInt (per POSIX — 0 success, 1-255 conventional)
 //   - SignalNum (per POSIX signal table)
 //   - Command { program: AbsolutePath, argv0: String, args: List<String>, env: Map<String,String> }
-//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess, output: CapturedOutputPipes}, Diagnostic>
+//   - spawn(pt, cmd) -> Result<{table: ProcessTable, process: RunningProcess}, Diagnostic>
 //   - wait(pt, p)    -> Result<{table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //     (blocks until terminated)
-//   - capture(pt, p, output) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
+//   - capture(pt, p) -> Result<{stdout, stderr: FreeMonoid<Byte>, table: ProcessTable, process: TerminatedProcess}, Diagnostic>
 //
 // Consumes:
 //   - std/diagnostic.dag: Diagnostic
@@ -82,6 +82,10 @@
 // successful spawn cannot structurally return an already-terminated
 // child. wait/capture consume that live carrier and return
 // TerminatedProcess.
+// HEADER RECONCILE (2026-05-17, #3209, keen-wren-663 + briansrls
+// BLOCKING): RunningProcess carries CapturedOutputPipes inside the live
+// process carrier, so capture cannot pair one process with another
+// spawn's pipe source or silently omit the pipe authority.
 
 
 module v4.extdeps.process
@@ -153,13 +157,14 @@ import v4.std.machine { Byte }
 // opaque handle to the stdout/stderr pipe arrangement established for a
 // spawned process. It is deliberately not a file-descriptor model: fd
 // numbering, open/close/dup, and general pipe operations are outside this
-// frozen subset. Capture consumes the handle so returned bytes have a
-// declared source.
+// frozen subset. RunningProcess owns the handle so returned bytes have a
+// declared source tied to the specific live child.
 //
 // SPAWN SUCCESS IS LIVE. A successful spawn cannot return a terminal
 // child observation. `RunningProcess` is the live postcondition carrier
-// for spawn and the input carrier for wait/capture; `TerminatedProcess`
-// is the terminal postcondition carrier for wait/capture.
+// for spawn and the input carrier for wait/capture; it carries the
+// captured-output pipe source for that child. `TerminatedProcess` is the
+// terminal postcondition carrier for wait/capture.
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -255,10 +260,12 @@ type Process {
 // `RunningProcess` is the spawn success and wait/capture input carrier.
 // It keeps the same child identity facts as `Process`, but its lifecycle
 // state is fixed by the carrier itself: a successful spawn cannot be
-// already terminated.
+// already terminated. The captured-output pipe source is inside this
+// carrier, so it cannot be separated from the live child it belongs to.
 type RunningProcess {
   id: ProcessId
   command: Command
+  output: CapturedOutputPipes
   parent: ProcessId
 }
 
@@ -307,7 +314,6 @@ type SpawnProcessRequest {
 type SpawnedProcess {
   table: ProcessTable
   process: RunningProcess
-  output: CapturedOutputPipes
 }
 
 type SpawnProcessResult = Outcome<SpawnedProcess>
@@ -334,7 +340,6 @@ type CapturedProcessOutput {
 type CaptureProcessRequest {
   table: ProcessTable
   process: RunningProcess
-  output: CapturedOutputPipes
 }
 
 type CaptureProcessResult = Outcome<CapturedProcessOutput>
