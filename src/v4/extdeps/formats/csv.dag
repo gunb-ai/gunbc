@@ -13,11 +13,13 @@ type CsvDialect
   = CsvDialectRfc4180 {}
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvHeaderPresence
 type CsvHeaderPresence
   = HeaderPresent { row: CsvRow }
   | HeaderAbsent
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-CsvRow
 type CsvRow
   = CsvRowZ
   | CsvRowS { field: String, tail: CsvRow }

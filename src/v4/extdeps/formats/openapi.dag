@@ -18,6 +18,7 @@ type OpenApiSpecificationExtensionKey {
 }
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOpenapiObjectDeferredKey
 type OpenApiOpenapiObjectDeferredKey
   = OpenApiOpenapiDeferredServers
   | OpenApiOpenapiDeferredSecurity
@@ -25,6 +26,7 @@ type OpenApiOpenapiObjectDeferredKey
   | OpenApiOpenapiDeferredExternalDocs
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiOperationDeferredKey
 type OpenApiOperationDeferredKey
   = OpenApiOpDeferredTags
   | OpenApiOpDeferredSummary
@@ -38,6 +40,7 @@ type OpenApiOperationDeferredKey
   | OpenApiOpDeferredDeprecated
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiPathItemDeferredKey
 type OpenApiPathItemDeferredKey
   = OpenApiPathDeferredDollarRef
   | OpenApiPathDeferredSummary
@@ -46,6 +49,7 @@ type OpenApiPathItemDeferredKey
   | OpenApiPathDeferredParameters
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiComponentsDeferredKey
 type OpenApiComponentsDeferredKey
   = OpenApiComponentsDeferredResponses
   | OpenApiComponentsDeferredParameters
@@ -57,6 +61,7 @@ type OpenApiComponentsDeferredKey
   | OpenApiComponentsDeferredCallbacks
 
 
+// 🟡 coproduct dissolution — DECISIONS.md T-4.6-P4-OpenApiMediaTypeDeferredKey
 type OpenApiMediaTypeDeferredKey
   = OpenApiMediaDeferredExample
   | OpenApiMediaDeferredExamples
