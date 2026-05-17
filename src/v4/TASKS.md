@@ -1034,3 +1034,50 @@ disposition forks and resolved the `#4 — T-16 SQL DDL` fork (fork (a) —
 SQL as a checked `extdeps` Shape-B format) on 2026-05-17 (D2-reversal
 Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
+
+### T-31 — de-prose / de-templating backward sweep  [SCHEDULED]
+**Operator-confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
+no-prose and no-templating principles are operator-ratified, but they
+currently get only *forward* enforcement: `P1-KEYSTONE` makes new work
+compliant. The *backward* sweep had no task home — every already-merged
+`.dag` file (`node.dag`, `algebra.dag`, the whole `std/` stack, the
+`extdeps/` files) carries large prose headers today. T-31 is that home.
+
+It has two parts:
+
+- **(a) The rework rider — no separate PR.** Every fact-bundle / T-##
+  rework PR de-proses and de-templates the files it already touches, *in
+  the same edit*. A file is never touched twice — a rework PR that
+  modifies a file's body and leaves a stale prose header behind is
+  incomplete. This is a rider on the existing rework tasks (T-4 and the
+  D2-impact rework), not a task that dispatches its own work.
+- **(b) The mop-up task.** A standalone pass over already-merged `.dag`
+  files that *no other rework PR will touch* — settled `std/` files,
+  compiler stages not otherwise changing. Without this, those files keep
+  their prose indefinitely.
+
+**KEEP / REMOVE / RELOCATE** is the per-line classification:
+- **KEEP** — the structured header *contract* (a file's `Consumes` /
+  `Owns` / `Scope` lines, behavior tables, the machine-readable parts a
+  reviewer and the substrate depend on).
+- **REMOVE** — rationale prose, narrative motivation, design-history
+  asides: anything a reader does not need to *use* the file.
+- **RELOCATE** — long-form rationale worth keeping moves to
+  `src/v4/DECISIONS.md` or a `docs/` subdoc. The `.dag` file keeps **no
+  pointer**: per Practice 9 a file's comments are only the four allowed
+  classes (file-path line, terse header, per-carrier `// Anchor:`,
+  optional one-line concept tag), and a `see docs/X` pointer is not one
+  of them. The relocated rationale is discoverable at its destination,
+  not linked from the carrier.
+
+**Load-bearing files** (`node.dag`, `STRUCTURE.md`-named substrate,
+the four pipeline stages) de-prose **carefully**: KEEP the structured
+header contract intact — REMOVE only the rationale prose around it. When
+in doubt on a load-bearing file, KEEP.
+
+**Where it sits.** Parallel fill, **not** critical path — it does not
+block the T-4 gates and is not blocked by them. It cites
+`docs/modeling-discipline.md` (the no-prose / no-templating rules) once
+that doc lands, but need not block on it: the KEEP/REMOVE/RELOCATE
+classification is settled. The rider (a) starts with the first rework
+PR; the mop-up (b) dispatches immediately as parallel fill.
