@@ -2,41 +2,31 @@
 //
 // Scope: React framework substrate — module surface, function components,
 //         elements (host + composite), props sites, ordered child refs,
-//         context bindings, hook call sites — all declarative.
-// Anchor: React **19.2.0** (npm `react@19.2.0`) — release authority
-//   https://github.com/facebook/react/releases/tag/v19.2.0 . Rolling API index
-//   https://react.dev/reference/react (partition + hook list C1-tracked against
-//   the semver pin; site-only drift without a matching pin edit = STOP).
-// Pin call-signature fidelity (`dsl/extdeps/extdeps.md`): each `ReactHookSite` arm
-// carries an explicit **react.dev** anchor for the **react@19.2.0** call shape modeled
-// there; `ReactOptRef` / `ReactHookInlineDependenciesArgument` are used **only** where
-// the pinned docs mark an operand optional or admit omit-vs-present deps. Required
-// operands that are **not** dependency-array arity (e.g. `createContext(defaultValue)`)
-// are plain `ReactCrossDeclRef` fields — `null` defaults are still declaration-backed
-// refs, not “missing fields”. **semver / hooks-index bump** = mandatory re-audit of **every** arm
-// against that tag’s react.dev surface (STOP on silent drift).
-// Anchor: composition mental model — https://react.dev/learn
-// Unifies: (per THESIS:188) framework spec = transport spec = interpreter
-//         runtime where applicable. ONE substrate carrier set per React slice;
-//         emit / ingest / eval read distinct facts from the same declarations —
-//         extend THIS file, not parallel "emit-only" mirrors.
+//         context bindings, hook call sites — declarative.
+// Anchor: React **19.2.0** (`react@19.2.0`) —
+//   https://github.com/facebook/react/releases/tag/v19.2.0
+//   https://react.dev/reference/react — hook roster + partition C1-tracked vs pin;
+//   site-only drift without pin edit = STOP.
+// Anchor (composition): https://react.dev/learn
+// Unifies: (THESIS:188) one substrate carrier set per slice; emit / ingest / eval
+//         read distinct facts from the same declarations — extend HERE, not mirrors.
 //
-// R4 alignment (design-r4-full-stack-omni-emission-canvas.md §4 Q2):
-//   - Hook call sites are **per-arm** `ReactHookSite` variants — each arm carries
-//     only the call-signature facts for that hook (deps / cleanup / refs live on
-//     the arms that admit them per react.dev), NOT a flat built-in tag + uniform
-//     phantom dependency slots on every hook (codex canvas:76 — avoids UseState carrying
-//     dependency slots it does not have).
-//   - **No** standalone lifecycle / “effect trigger” coproduct: mount / update /
-//     unmount / cleanup-only obligations are read from `UseEffect` /
-//     `UseLayoutEffect` / `UseInsertionEffect` arm payloads
-//     (`ReactHookInlineDependenciesArgument`, **required `setup_ref`** setup function +
-//     `NoCleanup` vs `CleanupBody`) per §4 dissolution receipt — INVARIANTS P1/P2
-//     (anti-pattern §11 #12). **No** `NoEffectBody` call-site shorthand: react.dev
-//     requires the effect **setup** function; cleanup-only / unmount semantics are
-//     derived inside that setup’s return value in lowered `Node`, not as an absent
-//     setup at the hook call-site grammar.
-//   - `CustomHook` + R4‑Phase‑1.5 Practice‑4 canvas:
+// Pin / call-signature (`dsl/extdeps/extdeps.md`):
+//   - Each `ReactHookSite` arm: react.dev anchor for **v19.2.0** call shape.
+//   - `ReactOptRef` / `ReactHookInlineDependenciesArgument`: only where pin admits
+//     optional operand or omit-vs-present deps.
+//   - Other required operands (e.g. `createContext(defaultValue)`): `ReactCrossDeclRef`
+//     fields; `null` defaults stay declaration-backed refs.
+//   - Semver / hooks-index bump ⇒ re-audit every arm (STOP on silent drift).
+//
+// R4 (design-r4-full-stack-omni-emission-canvas.md §4 Q2):
+//   - Per-arm `ReactHookSite` — deps / cleanup / refs only on arms that admit them
+//     per react.dev (canvas:76 — no phantom deps on every hook).
+//   - No standalone lifecycle coproduct: effect obligations on `UseEffect` /
+//     `UseLayoutEffect` / `UseInsertionEffect` arms (`ReactHookInlineDependenciesArgument`,
+//     required `setup_ref`, `ReactEffectCleanupSite`) per §4 + INVARIANTS P1/P2
+//     (anti-pattern §11 #12). No `NoEffectBody` — setup required per react.dev.
+//   - `CustomHook` + R4-Phase-1.5 Practice-4:
 //     docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
 // Owns:
@@ -54,9 +44,9 @@
 //     slice: `Element` | `Text` only; full react.dev / JSX child lattice **Owned ELSEWHERE**;
 //     dissolution trigger in-file at `ReactNode` ledger)
 //   - ReactContextBinding (`createContext(defaultValue)` site — context object + default)
-//   - ReactHookSite — closed hook **call-site** coproduct under the react@19.2.0 pin
-//     + `CustomHook` (🟡 YELLOW Practice‑4 carrier per design-r4 §12 HookKind; canvas
-//     in-repo — dissolution trigger = new built-in at pin bump; see block ledger)
+//   - ReactHookSite — closed hook call-site coproduct under react@19.2.0 pin +
+//     `CustomHook` (🟡 YELLOW Practice-4 per design-r4 §12 HookKind; canvas in-repo;
+//     dissolution = new built-in at pin bump; see block ledger)
 //   - ReactHookInlineDependenciesArgument, ReactOptRef, ReactEffectCleanupSite — supporting **substrate sums** (each carries its own
 //     Practice‑4 🟢 ledger below; they are not un-owned implementation details).
 //
@@ -69,6 +59,13 @@
 // directives, per-hook algebra inhabitance, GroundingMap home, parse→Outcome ops.
 //
 // Status: T-4.7 forward-modeled (mgr brief DOC-ANCHOR + A1 + Practice-4).
+// HEADER RECONCILE (2026-05-16, operator msg_889d8554, vivid-carp-207):
+//   In-PR de-prose: pin/R4/header narrative compressed to bullet facts; no `Owns` /
+//   `Consumes` substance change. Practice-8 (PR #3226 interim hollow-alias
+//   discriminator): CONFORMANT — no `type X = Y` bare alias to an external spec
+//   primitive without coincidence-evidence; `ReactCrossDeclRef` is opaque K-1
+//   (TASKS T-4.7 authority-fork note), not std-primitive identity; kernel-ambient
+//   `List` traceability only per header `Consumes`.
 // Brief: BRIEF_TEMPLATE.md; splitting = operator ratification.
 
 
@@ -78,12 +75,10 @@ module v4.extdeps.frameworks.react
 // ═════════════════════════════════════════════════════════════════════
 // ReactCrossDeclRef
 //
-// Opaque cross-declaration identity for every `*_ref` / `*_refs` field in this
-// module. Body-less like `std/node.dag::Symbol` (K-1); declared locally because
-// `v2-compiler` indexes `src/v4` without `v3.*`, and isolated `compile_to_dag`
-// does not yet merge `import v4.std.node { Symbol }` (M1(2.7) — see TASKS / M1
-// substrate notes). Downstream bundling aligns `ReactCrossDeclRef` with the
-// single-authority K-1 / L1 carrier at link time.
+// Opaque cross-declaration identity for `*_ref` / `*_refs` fields (K-1, body-less).
+// Local carrier until `import v4.std.node { Symbol }` merge (M1(2.7)); TASKS T-4.7
+// tracks dissolution to `std/node.dag::Symbol`. Bundle aligns to single-authority
+// K-1 / L1 at link time — not a bare alias to a spec primitive (Practice-8).
 type ReactCrossDeclRef
 
 
@@ -145,18 +140,12 @@ type ReactHookInlineDependenciesArgument
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Modeling notes
+// Modeling notes (A1)
 //
-// A1 / ordered children + dependency lists. Inside `DependenciesArgPresent`,
-// `List<ReactCrossDeclRef>` is the ordered **dependency-array** identity spine.
-// **Omit vs present** is modeled only via `ReactHookInlineDependenciesArgument` —
-// never by conflating “missing field” with an empty list.
-//
-// Program-shaped sites use `ReactCrossDeclRef` for declarations whose bodies lower
-// to the `Node` tree in the full bundle — not a second recursive program type here.
-//
-// D1. Future `parse_* -> Outcome<…>` seams reference `v4.std.diagnostic.Outcome<T>`;
-// no operation rows here (DECLARATIVE-NOW).
+// `DependenciesArgPresent.dependency_refs`: ordered dependency-array spine.
+// Omit vs present: only `ReactHookInlineDependenciesArgument` — never “missing field”
+// = empty list. `ReactCrossDeclRef`: declaration edges into lowered `Node` bundle,
+// not a second program type. D1: `Outcome<T>` commentary only — no parse rows here.
 
 
 // ═════════════════════════════════════════════════════════════════════
@@ -184,19 +173,14 @@ type ReactModuleSurface
 // Anchor: https://react.dev/reference/rules/rules-of-hooks
 // Canvas: docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md
 //
-// Coproduct dissolution (Practice 4) — 🟡 YELLOW (R4-Phase‑1.5 carrier; **not** 🟢
-// terminal). **Authority:** `docs/design-r4-full-stack-omni-emission-canvas.md` §12
-// ratifies **Practice 4 HookKind** as **🟡 YELLOW** — pinned closed built-in roster
-// + `CustomHook` boundary + mandatory Practice‑4‑promotion canvas (this file:
-// `docs/design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md`); **dissolution
-// trigger** = React **semver pin / hooks-index** edit when react.dev adds a new
-// built-in (re‑ratify `ReactHookSite` arms on that PR). **Already dissolved here
-// (structural facts, §4 Q2 / canvas:76):** per-arm call signatures (no uniform
-// phantom `dependency_refs` on every hook); `ReactHookInlineDependenciesArgument`
-// where the pinned API admits **omit vs present** deps; effect arms carry a
-// **required** `setup_ref` (react.dev `useEffect(setup, …)` — setup is mandatory)
-// plus `ReactEffectCleanupSite` — no parallel lifecycle sum. **This canvas does not “close” the §12 YELLOW** — it only
-// authorizes Custom **shape** evolution; roster closure remains pin/index edits.
+// Coproduct dissolution (Practice 4) — 🟡 YELLOW (R4-Phase-1.5; not terminal).
+// Authority: design-r4-full-stack-omni-emission-canvas.md §12 — HookKind 🟡;
+// promotion canvas: design-r4-phase-1-5-hookkind-custom-react-substrate-canvas.md.
+// Dissolution trigger: semver pin / hooks-index edit + new built-in ⇒ re-ratify
+// arms on that PR. Structural facts already here (§4 Q2 / canvas:76): per-arm
+// signatures; `ReactHookInlineDependenciesArgument` for omit-vs-present deps;
+// effect arms: required `setup_ref` + `ReactEffectCleanupSite`; no lifecycle sum.
+// Canvas does not “close” §12 YELLOW — Custom shape only; roster = pin/index edits.
 // Ledger — five patterns:
 //   1. Fact placement — FAILS: shared hook-site tag for resolver/emit.
 //   2. Variant-is-data — FAILS: Int hook_id admits illegal values (P2).
@@ -373,24 +357,16 @@ type ReactElement
 // Anchor: https://react.dev/reference/react/createElement (Parameters: `...children`) +
 //         https://react.dev/learn (React node mental model)
 //
-// **Child / render-tree node** superset at this substrate layer: nested **elements**
-// vs primitive **text** (declaration-backed value). Matches react.dev separation of
-// arbitrary **React nodes** in `children` from the narrowed **element object** returned
-// by `createElement` (modeled as `ReactElement` above — not duplicated here as a flat
-// host/composite/fragment repeat).
+// Partial `children` slice: nested elements vs declaration-backed text — not the full
+// react.dev child lattice (arrays, portals, conditional null, numbers, …). Full
+// lattice: Owned ELSEWHERE (header; JSX/TSX → `Node`). Cannot claim 🟢 terminal
+// until absorbed or proven equivalent (modeling-discipline.md).
 //
-// Coproduct dissolution (Practice 4) — 🟡 YELLOW (T‑4.7 forward-modeled carrier; **not**
-// 🟢 terminal). react.dev’s `children` contract is **broader** than this two-arm sum
-// (arrays, portals, `null` / booleans for conditional rendering, numbers as nodes,
-// iterables, …). That **richer lattice** is **Owned ELSEWHERE** (see header: JSX/TSX
-// grammar → `Node` lowering). Per **modeling-discipline.md**, a namable richer source
-// outside this closed pair forbids claiming 🟢 GREEN “Terminal” here until absorbed or
-// proven equivalent under a named authority. **Dissolution trigger** = operator-ratified
-// PR that either **(a)** extends this coproduct to cover the remaining **pinned** child
-// kinds and re‑audits this ledger, or **(b)** retires this sum in favor of a JSX/TSX
-// extdeps slice that owns the full node algebra (T‑16 / grammar milestone). **React
-// semver / hooks-index bump alone** does **not** dissolve this YELLOW — child-kind churn
-// is grammar/lowering ownership unless react.dev materially narrows the children contract.
+// Coproduct dissolution (Practice 4) — 🟡 YELLOW (T-4.7; not terminal).
+// Dissolution: operator-ratified PR (a) extends coproduct + re-audits ledger, or
+// (b) retires sum for JSX/TSX extdeps owning full node algebra (T-16). Pin bump
+// alone does not dissolve — child churn is grammar/lowering unless react.dev
+// narrows contract materially.
 // Ledger — five patterns:
 //   1. Fact placement — FAILS: portal/array/null children folded into `Text`.
 //   2. Variant-is-data — FAILS: Bool `is_text` admits impossible union with portals.
