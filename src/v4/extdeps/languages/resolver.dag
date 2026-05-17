@@ -65,6 +65,9 @@
 //   (substrate extension = stop signal).
 
 
+module v4.extdeps.languages.resolver
+
+
 // ─────────────────────────────────────────────────────────────────────
 // GroundingMap<IRCarrier> — the per-primitive surface-spelling carrier.
 //
