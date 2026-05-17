@@ -6,10 +6,11 @@
 // Owns:
 //   - Process { id, command, state, parent }
 //     (NO separate exit_code field — termination status lives ONLY inside
-//     ProcessState::Exited(ExitCode). A separate exit_code would allow
-//     Running-with-exit-code or Exited(0)-but-exit_code=1 — illegal states
+//     ProcessState::Terminated { status: Termination }. A separate
+//     exit_code would allow Running-with-exit-code or
+//     Terminated(Exited(0))-but-exit_code=1 — illegal states
 //     representable. The state sum is the single source of truth; exit
-//     code is reached via pattern-match on state.)
+//     code is reached via pattern-match on state, then on Termination.)
 //   - ProcessId (PID, PositiveInt — never zero per POSIX)
 //   - ProcessState = Running | Terminated(Termination)
 //   - Termination = Exited(ExitCode) | Signaled(SignalNum)
@@ -48,7 +49,9 @@
 // P2/§2-floor BLOCKING. Follow-up effect-resource reconcile: process
 // operations also take an explicit ProcessTable resource parameter per
 // ratified lens/effect.dag B3/B-5; spawn/wait/capture return the
-// modified ProcessTable alongside the advanced Process.
+// modified ProcessTable alongside the advanced Process. D5 also
+// reconciles the stale ProcessState::Exited rationale prose above,
+// which the same operator-sanctioned ProcessState refactor made stale.
 
 
 module v4.extdeps.process
