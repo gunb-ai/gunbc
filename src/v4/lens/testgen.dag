@@ -19,9 +19,10 @@
 //     - type_construction(
 //         (Atom | Conj | Disj | Arrow | Cardinality | Instantiation)
 //         — six-connective kernel — OR
-//         L1 `Value` **behavior** construction — bounded behavior slice
+//         L1 `Value` **behavior** construction — **unit** `BehaviorValueSubject`
+//         arm (only `Behavior::Value`; see subject carriers)
 //       ) -> Set<Compiles TestClaim>
-//       (kernel + behavior are ONE `type_construction` fold via internal
+//       (kernel + Value-behavior are ONE `type_construction` fold via internal
 //       `TypeConstructionSubject` sum — see subject carriers below; not a
 //       sixth top-level testgen category)
 //     - algebra_law(Algebra × Inhabitant × Law) -> Set<Equals TestClaim>
@@ -121,15 +122,15 @@
 // ─── Subject carriers (fold once M2 loads v4 std in one compilation unit) ───
 // type TypeConstructionSubject
 //   = ConnectiveKernel { connective: Connective }
-//   | BehaviorValueSubject {
-//       // L1 computation substrate: **closed** `Behavior` from
-//       // `std/node.dag` (C1 — Value | Transform | Branch | Loop | Bind).
-//       // Manual anchor `t19.type_construction.behavior_value` schedules the
-//       // **Value** unit arm only — a typed substrate fact (P2 / API-level
-//       // enforcement), not a K-1 `Symbol` name-ref as the behavioral
-//       // classifier. Slug remains a stable manifest key (K-1 elsewhere).
-//       behavior: Behavior
-//     }
+//   | BehaviorValueSubject
+//       // **Unit arm** — L1 `Value` type-construction slice only. Denotes the
+//       // same scheduling fact as **`std/node.dag` `Behavior::Value`** (the
+//       // unit variant of closed `Behavior`) **without** a `behavior: Behavior`
+//       // field that would admit `Transform` / `Branch` / `Loop` / `Bind`
+//       (P2 / illegal states unrepresentable). Manual anchor
+//       // `t19.type_construction.behavior_value` maps HERE. Scheduling other
+//       // `Behavior` variants inside `type_construction` = operator STOP +
+//       // distinct ratified subject arms — not widening this carrier.
 //
 // Coproduct dissolution (Practice 4) — **internal** sum under the single
 // `type_construction` arm of `TestgenConcept`; classification: 🟢 GREEN.
@@ -137,9 +138,10 @@
 //   1. Fact placement — N/A: both variants schedule through the one
 //      `type_construction` fold — not a sixth **top-level** testgen category
 //      (TASKS.md T-19: 6th top-level = operator STOP).
-//   2. Variant-is-data — FAILS: `ConnectiveKernel` vs `BehaviorValueSubject`
-//      have structurally distinct payloads (`Connective` vs `Behavior` from
-//      `std/node.dag` — both closed C1 classifiers, not a free-name axis).
+//   2. Variant-is-data — FAILS: `ConnectiveKernel` carries a `Connective`;
+//      `BehaviorValueSubject` is a **unit** arm (no `Behavior` payload) —
+//      only the L1 **`Value`** slice is representable here vs six-way
+//      connective kernel; structurally distinct shapes.
 //   3. Algebraic form — N/A: not a single richer std/algebra carrier.
 //   4. Dimensional — FAILS: one unit picks **one** of kernel vs behavior
 //      slice for this category (mutually exclusive).

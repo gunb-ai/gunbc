@@ -147,11 +147,10 @@ data manual_anchor_roundtrip_boundary: ManualTestgenAnchor = {
 }
 
 
-// Row (12): L1 `Value` **behavior** — `BehaviorValueSubject { behavior: Behavior }`
-//         with `behavior` pinned to the **`Value`** unit of `std/node.dag`'s
-//         closed `Behavior` sum (not `Symbol`); see `lens/testgen.dag` subject
-//         carriers. `testgen_category=0` unchanged (internal arm of
-//         `TypeConstructionSubject`).
+// Row (12): L1 `Value` **behavior** — maps to **unit** `BehaviorValueSubject`
+//         in `lens/testgen.dag` (internal arm of `TypeConstructionSubject`;
+//         semantically `std/node.dag` **`Behavior::Value`** only — no field that
+//         could carry other `Behavior` variants). `testgen_category=0` unchanged.
 data manual_anchor_tc_behavior_value: ManualTestgenAnchor = {
   slug: "t19.type_construction.behavior_value",
   tier: 0,
