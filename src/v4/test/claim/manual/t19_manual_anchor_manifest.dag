@@ -54,17 +54,19 @@
 // Status: landed 2026-05-16 (still-deer-194). Keep slugs stable; coverage
 //         lens (T-18) keys off them when comparing testgen output.
 //
-// Completeness vs hand `TestClaim` data: these twelve slugs are the stable
-// **regression key set** for “produced corpus ⊇ manual” at T-18 — not a claim
-// that twelve `TestClaim` `data` values exist today with identical names in
-// `connective_anchors.dag` / `nat_law_anchors.dag`. Live hand claims currently
-// cover the five **Compiles** connective stubs + one **Equals** anchor (see
-// `connective_anchors.dag` header: **no** Atom `TestClaim` under K-1) plus six
-// Nat law stubs that back the algebra-law **category** without 1:1 slug match.
-// Rows for **atom**, **diagnostic / lens-applicability / roundtrip**, and
-// **behavior_value** remain **named forward anchors** in the same dissolution
-// band as the Int-coded fields (TASKS §T-19); closing ⊇ is follow-up once those
-// substrates or claims land — not a silent assumption in this file.
+// P2 / single authority — “manual” **claims** vs this grid:
+//   - **Authoritative manual `TestClaim` corpus (today):** only the `data`
+//     values in `connective_anchors.dag` and `nat_law_anchors.dag`. T-18’s
+//     **produced ⊇ manual** side for **existing** claims is keyed off those
+//     modules — not this file.
+//   - **This manifest:** Phase-1.5 **testgen expectation grid** (slug + Int
+//     classifiers) for category / ratio / tier discipline. It is **not** a
+//     second, competing list of fictitious `TestClaim`s. Rows whose slugs have
+//     **no** backing `TestClaim` yet are **unmaterialized contract slots**
+//     (testgen / coverage forward work — TASKS §T-19), not alternate “manual”
+//     facts. Slugs that **do** have live claims must stay **consistent** with
+//     those claims’ `TestClaim.classification` + `kind` (no silent Int↔claim
+//     drift).
 // Brief: see BRIEF_TEMPLATE.md.
 
 module v4.test.claim.manual.t19_manual_anchor_manifest
