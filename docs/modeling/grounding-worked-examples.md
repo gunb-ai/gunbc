@@ -646,13 +646,21 @@ edition where the fact became fixed.)
 
 ```
 // Anchor: ISO/IEC 14882:2020 (C++20) §[basic.fundamental]
-// CARRIER — a signed integer. Representation is a FIXED spec fact
-// (two's complement, C++20); width is the ONLY implementation-defined
-// fact, supplied by the target/ABI model (T-29).
-type CppInt = Compose<Int, TwosComplement, CppImplementationInt {
-  width:       Nat,
-  width_proof: Witness< width >= 16 >   // C++ guarantees int is >= 16 bits
-}>
+// CARRIER — a C++ `int` fact-bundle: the signed-integer base plus the
+// width and representation facts. `Compose` is BINARY in std/
+// (`Compose<carrier, dimension>`, integer.dag) — a multi-fact bundle is
+// a `Conj` of facts, not a variadic `Compose`. PLAN-ONLY note: the
+// `Representation` axis is Phase-2 std/ substrate (T-3-extended —
+// signedness/representation do not exist in std/ yet); it is shown here
+// as the intended fact, marked future-substrate, not a live carrier.
+type CppInt = Conj {
+  base:           Int,                       // signed-integer carrier (live std/)
+  width:          Nat,                       // implementation-defined
+  width_proof:    Witness< width >= 16 >,    // C++ guarantees int is >= 16 bits
+  representation: Representation              // = TwosComplement, C++20-fixed;
+                                             // Representation axis is Phase-2
+                                             // substrate (T-3-extended), not live
+}
 
 // MEANING — integer value within the range fixed by width under
 // two's-complement.
